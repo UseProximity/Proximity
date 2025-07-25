@@ -1,77 +1,90 @@
 "use client";
 
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { useUser } from "@/context/UserContext";
 
 export function Header() {
+  const { role, loginAs, logout } = useUser();
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-4 py-5">
+    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur px-4 py-5">
       <div className="flex items-center justify-between w-full">
-        {/* Logo and Navigation - Far Left */}
+        {/* Left: Logo + Navigation */}
         <div className="flex items-center space-x-16 pl-2">
           <Link href="/" className="flex items-center space-x-3">
-            <div className="relative flex h-12 w-12 items-center justify-center">
-              {/* Outer red circle */}
-              <div className="h-12 w-12 rounded-full bg-red-600 flex items-center justify-center">
-                {/* Inner white circle */}
-                <div className="h-4 w-4 rounded-full bg-white"></div>
-                {/* Target crosshairs */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="h-8 w-0.5 bg-white"></div>
-                </div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-8 h-0.5 bg-white"></div>
-                </div>
-              </div>
-            </div>
+            {/* ... logo code ... */}
             <span className="text-lg font-bold text-gray-900">Proximity</span>
           </Link>
 
-          {/* Navigation - Bigger gap from logo */}
-          <nav className="flex items-center space-x-8 text-base md:text-sm lg:text-base font-medium">
-            <Link
-              href="/browse"
-              className="text-base text-gray-700 hover:text-gray-900 font-medium transition-colors"
-            >
+          <nav className="flex items-center space-x-8 text-base font-medium">
+            <Link href="/browse" className="text-gray-700 hover:text-gray-900">
               Browse Listings
             </Link>
             <Link
-              href="/reviews"
-              className="text-base text-gray-700 hover:text-gray-900 font-medium transition-colors"
+              href="/CampusHub"
+              className="text-gray-700 hover:text-gray-900"
             >
-              Student Reviews
+              On Campus Hub
             </Link>
-            <Link
-              href="/heatmaps"
-              className="text-base text-gray-700 hover:text-gray-900 font-medium transition-colors"
-            >
-              Heatmaps
-            </Link>
-            <Link
-              href="/add-listing"
-              className="text-base text-gray-700 hover:text-gray-900 font-medium transition-colors"
-            >
-              Add a Listing
-            </Link>
+            {role === "landlord" ? (
+              <Link
+                href="/add-listing"
+                className="text-gray-700 hover:text-gray-900"
+              >
+                Add a Listing
+              </Link>
+            ) : (
+              <Link
+                href="/add-sub-lease"
+                className="text-gray-700 hover:text-gray-900"
+              >
+                Add a Sub-Lease
+              </Link>
+            )}
           </nav>
         </div>
 
-        {/* Search and Auth - Right Side */}
-        <div className="flex items-center space-x-8 pr-2">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              name="q"
-              placeholder="Address, Neighborhood, Amenities"
-              className="w-[340px] pl-10 h-10 text-base bg-gray-50 border-gray-200 focus:bg-white transition-colors placeholder:text-base font-[Rubik,sans-serif] placeholder:font-[Rubik,sans-serif]"
-              autoComplete="off"
-              style={{
-                fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif",
-                fontSize: "1rem",
-              }}
-            />
-          </div>
+        {/* Right: Login or User Info + Dashboard */}
+        <div className="flex items-center space-x-4 pr-2">
+          {role ? (
+            <>
+              <Link
+                href={
+                  role === "student"
+                    ? "/dashboard/student"
+                    : "/dashboard/landlord"
+                }
+              >
+                <button className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+                  Go to Dashboard
+                </button>
+              </Link>
+              <span className="text-sm text-gray-600">
+                Logged in as: <strong>{role}</strong>
+              </span>
+              <button
+                onClick={logout}
+                className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg"
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => loginAs("student")}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
+              >
+                Student Login
+              </button>
+              <button
+                onClick={() => loginAs("landlord")}
+                className="px-4 py-2 text-sm font-medium text-red-600 border border-red-600 hover:bg-red-50 rounded-lg"
+              >
+                Landlord Login
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>

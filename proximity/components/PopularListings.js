@@ -1,16 +1,5 @@
 "use client";
 import React from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Bed,
-  Bath,
-  MapPin,
-  Heart,
-  Star,
-} from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
 
 export function PopularListings() {
   return (

@@ -1,6 +1,6 @@
 import { Header } from "@/components/Header";
 
-export default function AddListingPage() {
+export default function AddSubLease() {
   return (
     <>
       <Header />
