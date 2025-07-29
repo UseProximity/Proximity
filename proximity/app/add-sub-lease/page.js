@@ -1,9 +1,9 @@
 "use client";
 
-import axios from "axios";
 import { Header } from "@/components/Header";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import axios from "axios";
 
 export default function AddSubLease() {
   const [isLoading, setIsLoading] = useState(false);
@@ -16,7 +16,6 @@ export default function AddSubLease() {
     area: "",
     bedrooms: "",
     bathrooms: "",
-    leaseType: "",
     images: [],
   });
 
@@ -46,12 +45,13 @@ export default function AddSubLease() {
       bathrooms: Number(formData.bathrooms),
       longitude: Number(formData.longitude),
       latitude: Number(formData.latitude),
-      ownerId: "68860dbc15d884a2dc96b79c", // FIX-ME always giving a fixed owner id until auth resolved
+      leaseType: "sublease",
+      ownerId: "68877696221d6bb66c4c7c7d", // FIX-ME always giving a fixed student id until auth resolved
     };
 
     try {
       await axios.post("/api/addListing", dataToSend);
-      toast.success("Listing Added!");
+      toast.success("Sub-Lease Added!");
 
       setFormData({
         address: "",
@@ -77,7 +77,9 @@ export default function AddSubLease() {
     <>
       <Header />
       <main className="max-w-2xl mx-auto p-6 mt-10">
-        <h1 className="text-3xl font-bold text-red-600 mb-6">Add a Listing</h1>
+        <h1 className="text-3xl font-bold text-red-600 mb-6">
+          Add a Sub-Lease
+        </h1>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Address */}
           <div>
@@ -206,14 +208,15 @@ export default function AddSubLease() {
             </label>
             <select
               name="leaseType"
-              value={formData.leaseType}
-              onChange={handleChange}
+              value="sublease"
+              disabled
               className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100"
             >
               <option value="">--Select Lease Type--</option>
               <option value="twelve">12 Month Lease</option>
               <option value="nine">9 Month Lease</option>
               <option value="academic">Academic Year</option>
+              <option value="sublease">Sub-Lease</option>
             </select>
           </div>
 
@@ -243,7 +246,7 @@ export default function AddSubLease() {
                 <div className="w-6 h-6 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
               </div>
             )}
-            Submit Listing
+            Submit Sub-Lease
           </button>
         </form>
       </main>

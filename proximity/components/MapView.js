@@ -30,7 +30,7 @@ for (let lng = lngMin; lng < lngMax; lng += 0.00035) {
   }
 }
 
-export default function MapView({ houses = [] }) {
+export default function MapView({ listings = [] }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -68,27 +68,27 @@ export default function MapView({ houses = [] }) {
     }
     map.markers = [];
 
-    houses.forEach((house) => {
-      if (!house.lng || !house.lat) return;
+    listings.forEach((listing) => {
+      if (!listing.longitude || !listing.latitude) return;
       const marker = new mapboxgl.Marker()
-        .setLngLat([house.lng, house.lat])
+        .setLngLat([listing.longitude, listing.latitude])
         .setPopup(
           new mapboxgl.Popup({ offset: 25 }).setHTML(`
             <a href="/browse/${encodeURIComponent(
-              house.address
+              listing._id
             )}" style="text-decoration: none; color: inherit;">
               <div style="width: 240px; font-family: sans-serif;">
-                <img src="${house.image}" alt="House image"
+                <img src="${listing.images[0]}" alt="House image"
                   style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px;" />
                 <div style="padding: 8px;">
-                  <div style="font-weight: bold; font-size: 18px; color: #111;">${
-                    house.price
+                  <div style="font-weight: bold; font-size: 18px; color: #111;">$${
+                    listing.rent
                   }</div>
                   <div style="font-size: 14px; color: #666;">${
-                    house.beds
-                  } bds • ${house.baths} ba • ${house.sqft} sqft</div>
+                    listing.bedrooms
+                  } bds • ${listing.bathrooms} ba • ${listing.area} sqft</div>
                   <div style="font-size: 13px; margin-top: 4px;">${
-                    house.address
+                    listing.address
                   }</div>
                 </div>
               </div>
@@ -161,7 +161,7 @@ export default function MapView({ houses = [] }) {
       map.remove();
       mapRef.current = null;
     };
-  }, [houses, showHeatmap]);
+  }, [listings, showHeatmap]);
 
   return (
     <div className="relative w-full h-full">

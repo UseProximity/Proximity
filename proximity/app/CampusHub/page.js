@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Modal from "../../components/Modal";
 import { AiFillStar } from "react-icons/ai";
 import { Header } from "@/components/Header";
 
-// Full dorm list
 const allDorms = [
   "Beaumont",
   "Danforth",
@@ -62,72 +62,18 @@ const reviews = [
     content: "Super cozy and clean dorm, would recommend.",
     date: "July 2025",
   },
-  {
-    name: "Ben",
-    classYear: 2026,
-    rating: 3,
-    dorm: "Dardick",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Old Building"],
-    content: "It was okay, but lots of maintenance issues.",
-    date: "July 2025",
-  },
-  {
-    name: "Leo",
-    classYear: 2026,
-    rating: 3,
-    dorm: "Koenig",
-    dormType: "Traditional Double",
-    tags: ["On-Campus"],
-    content: "Average dorm, nothing too special.",
-    date: "July 2025",
-  },
-  {
-    name: "Grace",
-    classYear: 2028,
-    rating: 2,
-    dorm: "Mudd",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Old Building"],
-    content: "Great location but terrible heating system.",
-    date: "July 2025",
-  },
-  {
-    name: "Ellie",
-    classYear: 2027,
-    rating: 5,
-    dorm: "Lien",
-    dormType: "Modern Double",
-    tags: ["On-Campus", "Quiet Floor"],
-    content: "Super friendly community and clean facilities.",
-    date: "July 2025",
-  },
-  {
-    name: "Alex",
-    classYear: 2025,
-    rating: 4,
-    dorm: "Umrath",
-    dormType: "Modern Double",
-    tags: ["On-Campus"],
-    content: "Maintenance was quick and friendly.",
-    date: "July 2025",
-  },
-  {
-    name: "Morgan",
-    classYear: 2026,
-    rating: 5,
-    dorm: "Eliot A",
-    dormType: "Modern Double",
-    tags: ["On-Campus", "New Building"],
-    content: "Brand new facilities and spacious room.",
-    date: "July 2025",
-  },
 ];
 
-const dormImages = allDorms.reduce((acc, dorm) => {
-  acc[dorm] = [`/images/${dorm.toLowerCase().replace(/\s+/g, "-")}.jpg`];
-  return acc;
-}, {});
+const dormImages = {};
+allDorms.forEach((dorm) => {
+  if (dorm && typeof dorm === "string") {
+    const imageName = dorm
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9\-]/g, "");
+    dormImages[dorm] = [`/images/${imageName}.jpg`];
+  }
+});
 
 export default function CampusHub() {
   const [selectedType, setSelectedType] = useState("All");
@@ -141,7 +87,6 @@ export default function CampusHub() {
     "Traditional Double",
     "Modern Single",
     "Modern Double",
-    "Modern Triple",
   ];
 
   const dormGroups = reviews.reduce((acc, review) => {
@@ -178,7 +123,6 @@ export default function CampusHub() {
           Every review is written by real students who lived at the property.
         </p>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-4 justify-center mb-8">
           <select
             value={selectedType}
@@ -226,30 +170,31 @@ export default function CampusHub() {
           </button>
         </div>
 
-        {/* Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {filteredDorms.map((dorm) => {
-            const reviews = dormGroups[dorm] || [];
-            const roomType = reviews[0]?.dormType || "N/A";
+            const dormReviews = dormGroups[dorm] || [];
+            const roomType = dormReviews[0]?.dormType || "No reviews yet";
             return (
               <div
                 key={dorm}
                 className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg transition"
                 onClick={() => {
-                  setSelectedDorm({ name: dorm, reviews });
+                  setSelectedDorm({ name: dorm, reviews: dormReviews });
                   setModalOpen(true);
                 }}
               >
-                <img
-                  src={dormImages[dorm]?.[0] || "/images/fallback.jpg"}
+                <Image
+                  src={dormImages[dorm]?.[0] || "/images/room-placeholder.jpg"}
                   alt={dorm}
+                  width={400}
+                  height={192}
                   className="w-full h-48 object-cover rounded-t-lg"
                 />
                 <div className="p-4">
                   <h2 className="text-lg font-bold">{dorm}</h2>
                   <p className="text-sm text-gray-600">{roomType}</p>
                   <p className="text-sm text-gray-500">
-                    {reviews.length} student review{reviews.length !== 1 && "s"}
+                    {dormReviews.length} review{dormReviews.length !== 1 && "s"}
                   </p>
                 </div>
               </div>
@@ -258,64 +203,94 @@ export default function CampusHub() {
         </div>
 
         {/* Modal */}
-        <Modal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          contentLabel="Dorm Details"
-          style={{
-            content: {
-              maxWidth: "900px",
-              margin: "auto",
-              inset: "60px",
-              borderRadius: "10px",
-              padding: "20px",
-            },
-          }}
-        >
-          {selectedDorm && selectedDorm.name && (
-            <>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold">{selectedDorm.name}</h2>
-                <button
-                  onClick={() => setModalOpen(false)}
-                  className="text-sm text-gray-500 hover:text-gray-800"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {dormImages[selectedDorm.name]?.map((img, idx) => (
-                  <img
-                    key={idx}
-                    src={img}
-                    alt=""
-                    className="w-full h-40 object-cover rounded"
-                  />
-                ))}
-              </div>
-
-              <div className="space-y-4">
-                {selectedDorm.reviews.map((r, idx) => (
-                  <div key={idx} className="bg-gray-100 p-4 rounded">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-semibold">
-                        {r.name}, Class of {r.classYear}
-                      </span>
-                      <div className="flex">
-                        {[...Array(r.rating)].map((_, i) => (
-                          <AiFillStar key={i} className="text-yellow-500" />
-                        ))}
+        <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}>
+          {selectedDorm && (
+            <div className="flex flex-col md:flex-row gap-6 w-[90vw] h-[85vh] max-w-none max-h-none overflow-y-auto">
+              <div className="w-full md:w-2/3">
+                <h2 className="text-2xl font-bold mb-4">{selectedDorm.name}</h2>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {dormImages[selectedDorm.name]?.map((img, idx) => (
+                    <Image
+                      key={idx}
+                      src={img}
+                      alt=""
+                      width={400}
+                      height={400}
+                      className="w-full h-[300px] md:h-[400px] object-cover rounded-lg"
+                    />
+                  ))}
+                </div>
+                {selectedDorm.reviews.length > 0 ? (
+                  <div className="space-y-4">
+                    {selectedDorm.reviews.map((r, idx) => (
+                      <div key={idx} className="bg-gray-100 p-4 rounded">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-semibold">
+                            {r.name}, Class of {r.classYear}
+                          </span>
+                          <div className="flex">
+                            {[...Array(r.rating)].map((_, i) => (
+                              <AiFillStar key={i} className="text-yellow-500" />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-gray-700 mb-1">{r.content}</div>
+                        <div className="text-xs text-gray-500">
+                          {r.dormType} • {r.tags.join(", ")} • Posted {r.date}
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-gray-700 mb-1">{r.content}</div>
-                    <div className="text-xs text-gray-500">
-                      {r.dormType} • {r.tags.join(", ")} • Posted {r.date}
-                    </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <p className="text-gray-500">No reviews yet</p>
+                )}
               </div>
-            </>
+
+              <div className="w-full md:w-1/4 space-y-4">
+                <Image
+                  src="/images/room-placeholder.jpg"
+                  alt="Dorm Setup"
+                  width={300}
+                  height={160}
+                  className="w-full h-40 object-cover rounded"
+                />
+                <div>
+                  <h3 className="font-semibold mb-2">Recommended Items</h3>
+                  <ul className="text-sm list-disc list-inside space-y-1">
+                    <li>
+                      <a
+                        href="https://www.amazon.com/dp/B01N5IB20Q"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 underline"
+                      >
+                        Clip-on Fan
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        href="https://www.amazon.com/dp/B09JPFMNMT"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 underline"
+                      >
+                        LED Desk Lamp
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        href="https://www.amazon.com/dp/B081H3Y5NW"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 underline"
+                      >
+                        Mini Fridge
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           )}
         </Modal>
       </div>

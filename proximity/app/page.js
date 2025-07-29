@@ -1,6 +1,5 @@
 import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
-import { PopularListings } from "@/components/PopularListings";
 
 export default function Home() {
   return (
@@ -8,8 +7,7 @@ export default function Home() {
       <Header />
       <main className="min-h-screen w-full">
         <HeroSection />
-        <PopularListings />
-        <section className="w-full flex flex-col items-center py-16">
+        <section className="w-full flex flex-col items-center py-16 mt-14">
           <div className="w-full flex justify-center mb-10">
             <div className="bg-gradient-to-r from-red-500 to-red-700 rounded-3xl px-8 py-6 shadow-xl flex flex-col items-center">
               <h2 className="text-4xl md:text-5xl font-extrabold text-white text-center tracking-tight drop-shadow-lg mb-2">
@@ -22,7 +20,7 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <div className="flex flex-row gap-8 w-full max-w-7xl justify-center flex-nowrap overflow-x-auto">
+          <div className="flex flex-row gap-8 w-full max-w-7xl justify-center flex-nowrap overflow-x-auto mt-10">
             {/* Card 1 */}
             <div
               className="flex flex-col items-center bg-white rounded-3xl p-10 w-[28rem] min-h-[256px]"

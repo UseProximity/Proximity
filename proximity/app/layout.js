@@ -2,6 +2,8 @@ import { Inter } from "next/font/google";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
+import { FavoritesProvider } from "@/context/FavoritesContext";
+import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -12,9 +14,14 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="">
       <body className={inter.className}>
-        <UserProvider>{children}</UserProvider>
+        <div>
+          <Toaster />
+        </div>
+        <UserProvider>
+          <FavoritesProvider>{children}</FavoritesProvider>
+        </UserProvider>
       </body>
     </html>
   );
