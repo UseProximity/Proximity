@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useUser } from "@/context/UserContext";
 import Logo from "@/public/logo.png";
 import { useRouter } from "next/navigation";
+import { Home, Plus, Search, User, Menu, Users } from "lucide-react";
 
 export function Header() {
   const { role, loginAs, logout } = useUser();
@@ -16,68 +17,79 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur px-4 py-5">
-      <div className="flex items-center justify-between w-full">
-        {/* Left: Logo + Navigation */}
-        <div className="flex items-center space-x-16 pl-2">
-          <Link href="/" className="flex items-center space-x-1">
-            <div className="relative -my-2">
+    <header className="bg-white border-b border-gray-200 px-4 py-1 sticky top-0 z-50 backdrop-blur-sm">
+      <div className="flex items-center justify-between w-full mx-auto h-[64px]">
+        <div className="flex items-center gap-4">
+          {/* Logo with fixed height */}
+          <Link href="/" className="flex items-center gap-0">
+            <div className="h-14 w-auto">
               <Image
                 src={Logo}
                 alt="Proximity Logo"
-                width={56}
-                height={56}
-                className="object-contain"
+                className="h-full w-auto object-contain"
+                priority
               />
             </div>
-
-            <span className="text-2xl font-bold text-gray-900 leading-none">
+            <span className="text-xl font-bold text-gray-900 self-center">
               Proximity
             </span>
           </Link>
 
-          <nav className="flex items-center space-x-8 text-base font-medium">
-            <Link href="/browse" className="text-gray-700 hover:text-gray-900">
-              Browse Listings
+          {/* Nav */}
+          <nav className="hidden md:flex items-center gap-4 text-sm font-medium">
+            <Link
+              href="/browse"
+              className="flex items-center gap-1.5 text-gray-700 hover:text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-md transition"
+            >
+              <Search className="h-4 w-4" />
+              Browse
             </Link>
             <Link
               href="/CampusHub"
-              className="text-gray-700 hover:text-gray-900"
+              className="flex items-center gap-1.5 text-gray-700 hover:text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-md transition"
             >
+              <Home className="h-4 w-4" />
               On Campus Hub
             </Link>
             {role === "landlord" && (
               <Link
                 href="/add-listing"
-                className="text-gray-700 hover:text-gray-900"
+                className="flex items-center gap-1.5 text-gray-700 hover:text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-md transition"
               >
-                Add a Listing
+                <Plus className="h-4 w-4" />
+                Add Listing
               </Link>
             )}
             {role === "student" && (
               <Link
                 href="/add-sub-lease"
-                className="text-gray-700 hover:text-gray-900"
+                className="flex items-center gap-1.5 text-gray-700 hover:text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-md transition"
               >
-                Add a Sub-Lease
+                <Plus className="h-4 w-4" />
+                Sub-Lease
               </Link>
             )}
             {role === "student" && (
               <Link
                 href="/roommate-finder"
-                className="px-3 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#cc0100] to-[#e63946] rounded-full shadow hover:from-[#b80000] hover:to-[#d62828] transition
-"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-[#cc0100] to-[#e63946] rounded-full shadow hover:from-[#b80000] hover:to-[#d62828] transition"
               >
-                Roommate Finder
+                <Users className="h-4 w-4" />
+                Roommates
               </Link>
             )}
           </nav>
         </div>
 
-        {/* Right: Login or User Info + Dashboard */}
-        <div className="flex items-center space-x-4 pr-2">
+        {/* Right: Auth Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Mobile toggle */}
+          <button className="md:hidden text-gray-600 hover:text-gray-900">
+            <Menu className="h-5 w-5" />
+          </button>
+
           {role ? (
-            <>
+            <div className="hidden md:flex items-center gap-2">
               <Link
                 href={
                   role === "student"
@@ -85,35 +97,41 @@ export function Header() {
                     : "/dashboard/landlord"
                 }
               >
-                <button className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
-                  Go to Dashboard
+                <button className="px-3 py-1.5 text-sm font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition">
+                  Dashboard
                 </button>
               </Link>
-              <span className="text-sm text-gray-600">
-                Logged in as: <strong>{role}</strong>
-              </span>
+              <div className="flex items-center gap-1.5">
+                <div className="h-7 w-7 rounded-full bg-gray-200 flex items-center justify-center">
+                  <User className="h-3.5 w-3.5 text-gray-600" />
+                </div>
+                <div className="flex flex-col leading-none">
+                  <span className="text-sm font-medium capitalize">{role}</span>
+                  <span className="text-xs text-gray-500">Logged in</span>
+                </div>
+              </div>
               <button
                 onClick={handleLogout}
-                className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg"
+                className="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 rounded-md"
               >
                 Log out
               </button>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="hidden md:flex items-center gap-2">
               <button
                 onClick={() => loginAs("student")}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
               >
                 Student Login
               </button>
               <button
                 onClick={() => loginAs("landlord")}
-                className="px-4 py-2 text-sm font-medium text-red-600 border border-red-600 hover:bg-red-50 rounded-lg"
+                className="px-3 py-1.5 text-sm font-medium text-red-600 border border-red-600 hover:bg-red-50 rounded-md"
               >
                 Landlord Login
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>

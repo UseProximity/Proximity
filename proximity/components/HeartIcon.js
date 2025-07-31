@@ -16,12 +16,7 @@ export default function HeartIcon({
   const handleClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log("Heart clicked!", { listingId, role, isStudent });
-    alert(
-      `Heart clicked! Role: ${role}, Student: ${isStudent}, ListingId: ${listingId}`
-    );
     if (isStudent) {
-      console.log("Toggling favorite for:", listingId);
       toggleFavorite(listingId);
     }
   };

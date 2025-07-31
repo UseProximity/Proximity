@@ -62,6 +62,7 @@ const reviews = [
     content: "Super cozy and clean dorm, would recommend.",
     date: "July 2025",
   },
+  // Add more review entries here if needed
 ];
 
 const dormImages = {};
@@ -71,7 +72,7 @@ allDorms.forEach((dorm) => {
       .toLowerCase()
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9\-]/g, "");
-    dormImages[dorm] = [`/images/${imageName}.jpg`];
+    dormImages[dorm] = [`/images/${imageName}.jpeg`];
   }
 });
 
@@ -184,12 +185,13 @@ export default function CampusHub() {
                 }}
               >
                 <Image
-                  src={dormImages[dorm]?.[0] || "/images/room-placeholder.jpg"}
+                  src={dormImages[dorm]?.[0] || "/images/placeholder.jpeg"}
                   alt={dorm}
                   width={400}
                   height={192}
                   className="w-full h-48 object-cover rounded-t-lg"
                 />
+
                 <div className="p-4">
                   <h2 className="text-lg font-bold">{dorm}</h2>
                   <p className="text-sm text-gray-600">{roomType}</p>
@@ -205,21 +207,23 @@ export default function CampusHub() {
         {/* Modal */}
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}>
           {selectedDorm && (
-            <div className="flex flex-col md:flex-row gap-6 w-[90vw] h-[85vh] max-w-none max-h-none overflow-y-auto">
+            <div className="flex flex-col md:flex-row gap-6 w-full h-full overflow-y-auto">
+              {/* Left side */}
               <div className="w-full md:w-2/3">
-                <h2 className="text-2xl font-bold mb-4">{selectedDorm.name}</h2>
-                <div className="grid grid-cols-2 gap-2 mb-4">
+                <h2 className="text-3xl font-bold mb-4">{selectedDorm.name}</h2>
+                <div className="grid grid-cols-2 gap-3 mb-6">
                   {dormImages[selectedDorm.name]?.map((img, idx) => (
                     <Image
                       key={idx}
                       src={img}
                       alt=""
-                      width={400}
-                      height={400}
-                      className="w-full h-[300px] md:h-[400px] object-cover rounded-lg"
+                      width={500}
+                      height={350}
+                      className="w-full h-[300px] md:h-[350px] object-cover rounded-lg"
                     />
                   ))}
                 </div>
+
                 {selectedDorm.reviews.length > 0 ? (
                   <div className="space-y-4">
                     {selectedDorm.reviews.map((r, idx) => (
@@ -246,16 +250,19 @@ export default function CampusHub() {
                 )}
               </div>
 
-              <div className="w-full md:w-1/4 space-y-4">
+              {/* Right sidebar */}
+              <div className="w-full md:w-1/3 space-y-4">
                 <Image
-                  src="/images/room-placeholder.jpg"
+                  src="/images/room-placeholder.jpeg"
                   alt="Dorm Setup"
-                  width={300}
-                  height={160}
-                  className="w-full h-40 object-cover rounded"
+                  width={350}
+                  height={180}
+                  className="w-full h-44 object-cover rounded"
                 />
                 <div>
-                  <h3 className="font-semibold mb-2">Recommended Items</h3>
+                  <h3 className="font-semibold mb-2 text-lg">
+                    Recommended Items
+                  </h3>
                   <ul className="text-sm list-disc list-inside space-y-1">
                     <li>
                       <a

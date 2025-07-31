@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -30,24 +30,51 @@ for (let lng = lngMin; lng < lngMax; lng += 0.00035) {
   }
 }
 
-export default function MapView({ listings = [] }) {
+export default function MapView({
+  listings = [],
+  filters,
+  setFilters,
+  handleReset,
+}) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
 
-  const heatmapData = {
-    type: "FeatureCollection",
-    features: mockHeatmapPoints.map((pt) => ({
-      type: "Feature",
-      geometry: {
-        type: "Point",
-        coordinates: [pt.lng, pt.lat],
-      },
-      properties: {
-        weight: pt.weight,
-      },
-    })),
-  };
+  // Add custom CSS for popup styling
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = `
+      .custom-popup .mapboxgl-popup-content {
+        padding: 0 !important;
+        border-radius: 16px !important;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+        border: 1px solid rgba(226, 232, 240, 0.8) !important;
+        background: transparent !important;
+      }
+      .custom-popup .mapboxgl-popup-tip {
+        border-top-color: #ffffff !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  const heatmapData = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: mockHeatmapPoints.map((pt) => ({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [pt.lng, pt.lat],
+        },
+        properties: {
+          weight: pt.weight,
+        },
+      })),
+    }),
+    []
+  );
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -73,26 +100,124 @@ export default function MapView({ listings = [] }) {
       const marker = new mapboxgl.Marker()
         .setLngLat([listing.longitude, listing.latitude])
         .setPopup(
-          new mapboxgl.Popup({ offset: 25 }).setHTML(`
-            <a href="/browse/${encodeURIComponent(
+          new mapboxgl.Popup({
+            offset: 25,
+            closeButton: true,
+            className: "custom-popup",
+          }).setHTML(`
+            <div style="
+              width: 260px; 
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+              border-radius: 16px;
+              overflow: hidden;
+              box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+              border: 1px solid rgba(226, 232, 240, 0.8);
+              cursor: pointer;
+            " onclick="window.location.href='/browse/${encodeURIComponent(
               listing._id
-            )}" style="text-decoration: none; color: inherit;">
-              <div style="width: 240px; font-family: sans-serif;">
-                <img src="${listing.images[0]}" alt="House image"
-                  style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px;" />
-                <div style="padding: 8px;">
-                  <div style="font-weight: bold; font-size: 18px; color: #111;">$${
-                    listing.rent
-                  }</div>
-                  <div style="font-size: 14px; color: #666;">${
-                    listing.bedrooms
-                  } bds • ${listing.bathrooms} ba • ${listing.area} sqft</div>
-                  <div style="font-size: 13px; margin-top: 4px;">${
-                    listing.address
-                  }</div>
+            )}'">
+              <div style="position: relative; overflow: hidden;">
+                <img src="${listing.images[0]}" alt="Property image"
+                  style="
+                    width: 100%; 
+                    height: 130px; 
+                    object-fit: cover;
+                  " />
+                <div style="
+                  position: absolute;
+                  bottom: 0;
+                  left: 0;
+                  right: 0;
+                  height: 4px;
+                  background: linear-gradient(90deg, #ef4444 0%, #f97316 50%, #ec4899 100%);
+                "></div>
+              </div>
+              <div style="padding: 14px;">
+                <div style="
+                  font-weight: 700; 
+                  font-size: 22px; 
+                  color: #111827;
+                  margin-bottom: 10px;
+                  line-height: 1.2;
+                ">
+                  $${listing.rent.toLocaleString()}
+                  <span style="font-size: 13px; font-weight: 400; color: #6b7280;">/month</span>
+                </div>
+                <div style="
+                  display: flex; 
+                  gap: 6px; 
+                  margin-bottom: 10px;
+                  flex-wrap: wrap;
+                ">
+                  <span style="
+                    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+                    border: 1px solid #a7f3d0;
+                    color: #047857;
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 2px;
+                  ">
+                    ${
+                      listing.bedrooms
+                    } <span style="font-weight: 400;">bd</span>
+                  </span>
+                  <span style="
+                    background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%);
+                    border: 1px solid #f9a8d4;
+                    color: #be185d;
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 2px;
+                  ">
+                    ${
+                      listing.bathrooms
+                    } <span style="font-weight: 400;">ba</span>
+                  </span>
+                  <span style="
+                    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+                    border: 1px solid #fcd34d;
+                    color: #d97706;
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 2px;
+                  ">
+                    ${listing.area} <span style="font-weight: 400;">sqft</span>
+                  </span>
+                </div>
+                <div style="
+                  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+                  border: 1px solid #e2e8f0;
+                  border-radius: 12px;
+                  padding: 10px;
+                  display: flex;
+                  align-items: flex-start;
+                  gap: 8px;
+                ">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="#6366f1" style="margin-top: 2px; flex-shrink: 0;">
+                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+                  </svg>
+                  <div style="
+                    font-size: 12px; 
+                    color: #374151; 
+                    line-height: 1.4;
+                    font-weight: 500;
+                  ">${listing.address}</div>
                 </div>
               </div>
-            </a>
+            </div>
           `)
         )
         .addTo(map);
@@ -161,20 +286,25 @@ export default function MapView({ listings = [] }) {
       map.remove();
       mapRef.current = null;
     };
-  }, [listings, showHeatmap]);
+  }, [listings, showHeatmap, heatmapData]);
 
   return (
     <div className="relative w-full h-full">
-      <button
-        className="absolute z-10 top-4 left-4 bg-white px-4 py-2 rounded shadow"
-        onClick={() => setShowHeatmap((v) => !v)}
-      >
-        {showHeatmap ? "Hide Heatmap" : "Show Heatmap"}
-      </button>
+      {/* Filter Controls Row */}
+      <div className="absolute z-10 top-4 left-4 right-4 flex items-center justify-start">
+        <div className="flex gap-2">
+          <button
+            className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            onClick={() => setShowHeatmap((v) => !v)}
+          >
+            {showHeatmap ? "Hide Heatmap" : "Show Heatmap"}
+          </button>
+        </div>
+      </div>
 
       {showHeatmap && (
         <div
-          className="absolute z-10 top-20 left-4 bg-white px-4 py-2 rounded shadow text-sm flex flex-col gap-1"
+          className="absolute z-10 top-20 left-4 bg-white px-4 py-3 rounded-lg shadow-lg border border-gray-200 text-sm flex flex-col gap-2"
           style={{ minWidth: 160 }}
         >
           <div className="flex items-center gap-2">

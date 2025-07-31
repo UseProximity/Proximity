@@ -539,23 +539,30 @@ export default function RoommateResults() {
           {/* Profile Modal */}
           {selectedProfile && (
             <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}>
-              <div className="w-[90vw] h-[85vh] max-w-none max-h-none overflow-y-auto">
-                <div className="flex flex-col md:flex-row gap-6">
-                  <div className="md:w-1/3">
+              <div className="space-y-4">
+                {/* Profile Header with Image */}
+                <div className="flex gap-4">
+                  {/* Profile Image */}
+                  <div className="w-24 h-24 flex-shrink-0">
                     <img
                       src={selectedProfile.image}
                       alt={selectedProfile.name}
-                      className="w-full h-64 md:h-80 object-cover rounded-lg"
+                      className="w-full h-full object-cover rounded-lg"
                     />
                   </div>
 
-                  <div className="md:w-2/3">
-                    <div className="flex items-start justify-between mb-4">
+                  {/* Header Info */}
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
                       <div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <h2 className="text-3xl font-bold">
-                            {selectedProfile.name}
-                          </h2>
+                        <h2 className="text-xl font-bold">
+                          {selectedProfile.name}
+                        </h2>
+                        <p className="text-gray-600 text-base">
+                          {selectedProfile.age} years old •{" "}
+                          {selectedProfile.gender}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
                           <div
                             className={`px-3 py-1 rounded-full text-sm font-semibold ${
                               selectedProfile.matchPercentage >= 90
@@ -569,49 +576,63 @@ export default function RoommateResults() {
                           >
                             {selectedProfile.matchPercentage}% Match
                           </div>
+                          {selectedProfile.verified && (
+                            <div className="flex items-center text-green-600">
+                              <BsShieldCheck className="mr-1 text-sm" />
+                              <span className="text-sm">Verified</span>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-gray-600">
-                          {selectedProfile.age} years old •{" "}
-                          {selectedProfile.gender}
-                        </p>
-                        {selectedProfile.verified && (
-                          <div className="flex items-center mt-2 text-green-600">
-                            <BsShieldCheck className="mr-1" />
-                            <span className="text-sm">Verified Student</span>
-                          </div>
-                        )}
                       </div>
                       <button
                         onClick={() => toggleFavorite(selectedProfile._id)}
-                        className="p-3 bg-gray-100 rounded-full hover:bg-gray-200"
+                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"
                       >
                         {favorites.has(selectedProfile._id) ? (
-                          <AiFillHeart className="text-red-500 text-xl" />
+                          <AiFillHeart className="text-red-500 text-lg" />
                         ) : (
-                          <AiOutlineHeart className="text-gray-600 text-xl" />
+                          <AiOutlineHeart className="text-gray-600 text-lg" />
                         )}
                       </button>
                     </div>
+                  </div>
+                </div>
 
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                      <button className="bg-red-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-red-700 transition">
-                        Add Friend
-                      </button>
-                      <button className="border border-red-600 text-red-600 py-3 px-6 rounded-lg font-semibold hover:bg-red-50 transition">
-                        Contact
-                      </button>
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="bg-red-600 text-white py-3 px-4 rounded-lg text-base font-semibold hover:bg-red-700 transition">
+                    Add Friend
+                  </button>
+                  <button className="border border-red-600 text-red-600 py-3 px-4 rounded-lg text-base font-semibold hover:bg-red-50 transition">
+                    Contact
+                  </button>
+                </div>
+
+                {/* Two Column Layout for Content */}
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {/* Left Column */}
+                  <div className="space-y-3">
+                    {/* About */}
+                    <div>
+                      <h3 className="font-semibold text-base mb-2">About</h3>
+                      <p className="text-gray-700 text-sm leading-relaxed">
+                        {selectedProfile.bio}
+                      </p>
                     </div>
 
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">About</h3>
-                        <p className="text-gray-700">{selectedProfile.bio}</p>
-                      </div>
+                    {/* Budget */}
+                    <div>
+                      <h3 className="font-semibold text-base mb-2">Budget</h3>
+                      <p className="text-gray-700 text-sm">
+                        ${selectedProfile.budget.min} - $
+                        {selectedProfile.budget.max}/month
+                      </p>
+                    </div>
 
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">
-                          Contact Information
-                        </h3>
+                    {/* Contact */}
+                    <div>
+                      <h3 className="font-semibold text-base mb-2">Contact</h3>
+                      <div className="space-y-1 text-sm">
                         <p className="text-gray-700">
                           📧 {selectedProfile.email}
                         </p>
@@ -619,78 +640,73 @@ export default function RoommateResults() {
                           📱 {selectedProfile.phone}
                         </p>
                         <p className="text-gray-700">
-                          💬 Prefers: {selectedProfile.contactPreference}
+                          💬 {selectedProfile.contactPreference}
                         </p>
                       </div>
+                    </div>
+                  </div>
 
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">Budget</h3>
-                        <p className="text-gray-700">
-                          ${selectedProfile.budget.min} - $
-                          {selectedProfile.budget.max} per month
-                        </p>
-                      </div>
-
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">
-                          Preferences
-                        </h3>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="bg-gray-50 p-3 rounded">
-                            <p className="font-medium">Pets</p>
-                            <p className="text-gray-600">
-                              {selectedProfile.pets}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <p className="font-medium">Smoking</p>
-                            <p className="text-gray-600">
-                              {selectedProfile.smoking}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <p className="font-medium">A/C</p>
-                            <p className="text-gray-600">
-                              {selectedProfile.ac}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <p className="font-medium">Cleanliness</p>
-                            <p className="text-gray-600">
-                              {selectedProfile.cleanliness}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <p className="font-medium">Social Level</p>
-                            <p className="text-gray-600">
-                              {selectedProfile.socialLevel}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <p className="font-medium">Sleep Schedule</p>
-                            <p className="text-gray-600">
-                              {selectedProfile.sleepSchedule}
-                            </p>
-                          </div>
+                  {/* Right Column */}
+                  <div className="space-y-2">
+                    {/* Preferences Grid */}
+                    <div>
+                      <h3 className="font-semibold text-sm mb-1">
+                        Preferences
+                      </h3>
+                      <div className="grid grid-cols-1 gap-1">
+                        <div className="bg-gray-50 p-1.5 rounded">
+                          <span className="font-medium text-xs">Smoking:</span>
+                          <span className="text-gray-600 text-xs ml-1">
+                            {selectedProfile.smoking}
+                          </span>
                         </div>
-                      </div>
-
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">
-                          Interests
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedProfile.interests.map((interest, idx) => (
-                            <span
-                              key={idx}
-                              className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                            >
-                              {interest}
-                            </span>
-                          ))}
+                        <div className="bg-gray-50 p-1.5 rounded">
+                          <span className="font-medium text-xs">Clean:</span>
+                          <span className="text-gray-600 text-xs ml-1">
+                            {selectedProfile.cleanliness}
+                          </span>
+                        </div>
+                        <div className="bg-gray-50 p-1.5 rounded">
+                          <span className="font-medium text-xs">Pets:</span>
+                          <span className="text-gray-600 text-xs ml-1">
+                            {selectedProfile.pets}
+                          </span>
+                        </div>
+                        <div className="bg-gray-50 p-1.5 rounded">
+                          <span className="font-medium text-xs">A/C:</span>
+                          <span className="text-gray-600 text-xs ml-1">
+                            {selectedProfile.ac}
+                          </span>
+                        </div>
+                        <div className="bg-gray-50 p-1.5 rounded">
+                          <span className="font-medium text-xs">Social:</span>
+                          <span className="text-gray-600 text-xs ml-1">
+                            {selectedProfile.socialLevel}
+                          </span>
+                        </div>
+                        <div className="bg-gray-50 p-1.5 rounded">
+                          <span className="font-medium text-xs">Sleep:</span>
+                          <span className="text-gray-600 text-xs ml-1">
+                            {selectedProfile.sleepSchedule}
+                          </span>
                         </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Interests - Full Width */}
+                <div>
+                  <h3 className="font-semibold text-base mb-2">Interests</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedProfile.interests.map((interest, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                      >
+                        {interest}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
