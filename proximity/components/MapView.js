@@ -97,7 +97,7 @@ export default function MapView({
 
     listings.forEach((listing) => {
       if (!listing.longitude || !listing.latitude) return;
-      const marker = new mapboxgl.Marker()
+      const marker = new mapboxgl.Marker({ color: "#ef4444" })
         .setLngLat([listing.longitude, listing.latitude])
         .setPopup(
           new mapboxgl.Popup({

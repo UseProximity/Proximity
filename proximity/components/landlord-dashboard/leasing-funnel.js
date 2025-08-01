@@ -159,7 +159,7 @@ export default function LeasingFunnel() {
                 Abandonment Rate
               </CardTitle>
               <CardDescription className="text-xs">
-                Users who started messages but didn&aptos;t send them
+                Users who started messages but didn&apos;t send them
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -355,7 +355,7 @@ export default function LeasingFunnel() {
                       Reduce Application Drop-off
                     </div>
                     <div className="text-xs text-gray-600 mt-1">
-                      64.6% of inquiries don&aptos;t convert to applications.
+                      64.6% of inquiries don&apos;t convert to applications.
                       Consider simplifying your application process.
                     </div>
                   </div>
@@ -365,7 +365,7 @@ export default function LeasingFunnel() {
                     </div>
                     <div className="text-xs text-gray-600 mt-1">
                       Implement automated follow-ups for inquiries that
-                      don&aptos;t respond within 24 hours.
+                      don&apos;t respond within 24 hours.
                     </div>
                   </div>
                 </div>

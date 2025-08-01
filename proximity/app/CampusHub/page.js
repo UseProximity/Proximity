@@ -191,7 +191,7 @@ export default function CampusHub() {
                   height={192}
                   className="w-full h-48 object-cover rounded-t-lg"
                 />
-
+                {console.log(dormImages[dorm]?.[0])}
                 <div className="p-4">
                   <h2 className="text-lg font-bold">{dorm}</h2>
                   <p className="text-sm text-gray-600">{roomType}</p>

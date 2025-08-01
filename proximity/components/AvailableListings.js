@@ -187,6 +187,15 @@ export default function AvailableListings({ listings }) {
     <>
       {/* Listings Section */}
       <div className="md:w-1/2 w-full overflow-y-auto px-4 py-8">
+        <div className="flex flex-wrap items-center gap-4 mb-4">
+          <input
+            type="text"
+            placeholder="Search by street name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg shadow-sm"
+          />
+        </div>
         {/* Filter Buttons Row */}
         <div ref={filterRef} className="flex gap-3 mb-6">
           <button
@@ -1190,16 +1199,6 @@ export default function AvailableListings({ listings }) {
             </div>
           </>
         )}
-
-        <div className="flex flex-wrap items-center gap-4 mb-4">
-          <input
-            type="text"
-            placeholder="Search by street name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg shadow-sm"
-          />
-        </div>
 
         <div className="grid grid-cols-2 gap-6">
           {filteredListings.map((listing) => (

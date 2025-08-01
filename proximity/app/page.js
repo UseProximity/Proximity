@@ -22,7 +22,7 @@ function FeaturesOverview() {
     {
       id: 1,
       icon: Search,
-      title: "All Listings. One Platform",
+      title: "All Listings. One Platforms",
       description:
         "Access on-market, off-market, and student sublease listings—finally all in one place.",
       image: "/placeholder.svg?height=400&width=600&text=All+Listings",
@@ -226,7 +226,6 @@ function FeaturesOverview() {
                   <div className="absolute inset-0">
                     <img
                       src={feature.image || "/placeholder.svg"}
-                      alt={feature.title}
                       className="w-full h-full object-cover opacity-3"
                     />
                     <div className="absolute inset-0 bg-gradient-to-br from-white/80 via-gray-50/60 to-gray-100/40" />
@@ -357,8 +356,7 @@ function StudentBanner() {
 
             <div className="space-y-1 md:space-y-2 text-base sm:text-lg md:text-xl lg:text-2xl font-light opacity-95">
               <p>
-                Trusted by students at some of the world&aptos;s top
-                universities
+                Trusted by students at some of the world&apos;s top universities
               </p>
             </div>
           </div>
@@ -435,10 +433,6 @@ function HeroSection() {
 
     return () => clearTimeout(timeout);
   }, [currentText, currentIndex, isDeleting, isPaused, phrases]);
-
-  const handleLockedFeatureClick = (featureName) => {
-    alert(`${featureName} is coming soon! Stay tuned for updates.`);
-  };
 
   return (
     <section className="w-full py-8 md:py-16">
@@ -524,7 +518,7 @@ function HeroSection() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-lg mx-auto">
               <button
-                onClick={() => handleLockedFeatureClick("Map Explorer")}
+                onClick={() => (window.location.href = "/browse")}
                 className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
                 style={{
                   boxShadow: "0 10px 25px rgba(220, 38, 38, 0.3)",
@@ -547,8 +541,8 @@ function HeroSection() {
               </button>
 
               <button
-                onClick={() => handleLockedFeatureClick("Reviews")}
                 className="w-full sm:w-auto bg-white hover:bg-gray-50 text-red-600 border-2 border-red-600 hover:border-red-700 px-8 py-4 rounded-2xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
+                onClick={() => (window.location.href = "/browse")}
                 style={{
                   backgroundColor: "#ffffff",
                   backgroundImage: "none",
