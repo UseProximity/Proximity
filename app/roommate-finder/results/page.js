@@ -6,6 +6,7 @@ import { Header } from "@/components/Header";
 import Modal from "../../../components/Modal";
 import { AiFillHeart, AiOutlineHeart } from "react-icons/ai";
 import { BsShieldCheck } from "react-icons/bs";
+import { Suspense } from "react";
 
 // Mock data - 61 roommate profiles
 const mockProfiles = [
@@ -210,6 +211,14 @@ const generateMockProfiles = () => {
 const allProfiles = [...mockProfiles, ...generateMockProfiles()];
 
 export default function RoommateResults() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <RoommateResultsContent />
+    </Suspense>
+  );
+}
+
+function RoommateResultsContent() {
   const searchParams = useSearchParams();
   const [profiles] = useState(allProfiles);
   const [filteredProfiles, setFilteredProfiles] = useState(allProfiles);
