@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, useInView } from "framer-motion";
 import { Header } from "@/components/Header";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
@@ -15,6 +15,7 @@ import {
   Users,
   DollarSign,
 } from "lucide-react";
+import Footer from "@/components/Footer";
 
 // Features Overview Component
 function FeaturesOverview() {
@@ -224,10 +225,6 @@ function FeaturesOverview() {
                   />
 
                   <div className="absolute inset-0">
-                    <img
-                      src={feature.image || "/placeholder.svg"}
-                      className="w-full h-full object-cover opacity-3"
-                    />
                     <div className="absolute inset-0 bg-gradient-to-br from-white/80 via-gray-50/60 to-gray-100/40" />
                   </div>
 
@@ -393,14 +390,341 @@ function HeroSection() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
 
-  const phrases = [
-    "3 bed near the Loop with parking",
-    "1 bed under $900 with a gym",
-    "Pet-friendly sublease near campus",
-    "Top-rated landlord near WashU",
-    "Housing near campus with low crime",
-  ];
+  const phrases = useMemo(
+    () => [
+      "3 bed near the Loop with parking",
+      "1 bed under $900 with a gym",
+      "Pet-friendly sublease near campus",
+      "Top-rated landlord near WashU",
+      "Housing near campus with low crime",
+    ],
+    []
+  );
+
+  // Smart search mapping
+  const searchMapping = {
+    // Direct page mappings
+    browse: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    listings: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    search: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    find: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    houses: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    apartments: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    properties: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    housing: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    rent: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+    rental: {
+      path: "/browse",
+      title: "Browse Listings",
+      description: "Find apartments and houses",
+    },
+
+    sublease: {
+      path: "/add-sub-lease",
+      title: "Add Sublease",
+      description: "Post your sublease listing",
+    },
+    sublet: {
+      path: "/add-sub-lease",
+      title: "Add Sublease",
+      description: "Post your sublease listing",
+    },
+
+    roommate: {
+      path: "/roommate-finder",
+      title: "Find Roommates",
+      description: "Match with compatible roommates",
+    },
+    roommates: {
+      path: "/roommate-finder",
+      title: "Find Roommates",
+      description: "Match with compatible roommates",
+    },
+
+    reviews: {
+      path: "/CampusHub",
+      title: "Campus Hub",
+      description: "Read dorm and property reviews",
+    },
+    review: {
+      path: "/CampusHub",
+      title: "Campus Hub",
+      description: "Read dorm and property reviews",
+    },
+    campus: {
+      path: "/CampusHub",
+      title: "Campus Hub",
+      description: "Read dorm and property reviews",
+    },
+    dorm: {
+      path: "/CampusHub",
+      title: "Campus Hub",
+      description: "Read dorm and property reviews",
+    },
+    dorms: {
+      path: "/CampusHub",
+      title: "Campus Hub",
+      description: "Read dorm and property reviews",
+    },
+
+    dashboard: {
+      path: "/dashboard/student",
+      title: "Student Dashboard",
+      description: "Manage your profile and favorites",
+    },
+    profile: {
+      path: "/dashboard/student",
+      title: "Student Dashboard",
+      description: "Manage your profile and favorites",
+    },
+    account: {
+      path: "/dashboard/student",
+      title: "Student Dashboard",
+      description: "Manage your profile and favorites",
+    },
+
+    "add listing": {
+      path: "/add-listing",
+      title: "Add Listing",
+      description: "List your property for rent",
+    },
+    "list property": {
+      path: "/add-listing",
+      title: "Add Listing",
+      description: "List your property for rent",
+    },
+    "add property": {
+      path: "/add-listing",
+      title: "Add Listing",
+      description: "List your property for rent",
+    },
+
+    landlord: {
+      path: "/dashboard/landlord",
+      title: "Landlord Dashboard",
+      description: "Manage your properties and listings",
+    },
+    owner: {
+      path: "/dashboard/landlord",
+      title: "Landlord Dashboard",
+      description: "Manage your properties and listings",
+    },
+  };
+
+  const performSearch = (query) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    const normalizedQuery = query.toLowerCase().trim();
+    const results = [];
+
+    // Check if it's a complex housing query with enhanced patterns
+    const isHousingQuery = (query) => {
+      const housingPatterns = [
+        /\d+\s*(?:bed|bedroom|br|bdr)s?/i,
+        /\d+(?:\.\d+)?\s*(?:bath|bathroom|ba)s?/i,
+        /under\s*\$?\d+/i,
+        /below\s*\$?\d+/i,
+        /less\s+than\s*\$?\d+/i,
+        /max\s*\$?\d+/i,
+        /maximum\s*\$?\d+/i,
+        /\$\d+\s*(?:or\s+)?(?:less|under|below|max|maximum)/i,
+        /\d+\s*(?:dollar|bucks?)\s*(?:or\s+)?(?:less|under|below|max|maximum)/i,
+        /(?:up\s+to|upto)\s*\$?\d+/i,
+        /not\s+more\s+than\s*\$?\d+/i,
+        /(?:within|around)\s*\$?\d+/i,
+        /near\s+\w+/i,
+        /in\s+\w+/i,
+        /(?:close\s+to|by)\s+\w+/i,
+        /with\s+(?:parking|gym|pool|laundry|washer|dryer|dishwasher|ac|balcony|patio)/i,
+        /(?:studio|apartment|house|condo|townhouse)/i,
+        /(?:pet\s*friendly|pets?\s*allowed)/i,
+        /(?:furnished|unfurnished)/i,
+      ];
+
+      return housingPatterns.some((pattern) => pattern.test(query));
+    };
+
+    if (isHousingQuery(query)) {
+      results.push({
+        path: "/browse",
+        title: "Search for: " + query,
+        description: "Find listings matching your criteria",
+        matchType: "housing",
+        relevance: 100,
+        isHousingSearch: true,
+        searchQuery: query,
+      });
+    }
+
+    // Direct matches
+    for (const [key, value] of Object.entries(searchMapping)) {
+      if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
+        // Check if we already have a result with this path to avoid duplicates
+        if (!results.find((r) => r.path === value.path)) {
+          results.push({
+            ...value,
+            matchType: "direct",
+            relevance: key === normalizedQuery ? 100 : 80,
+          });
+        }
+      }
+    }
+
+    // Fuzzy matches for multi-word queries
+    const words = normalizedQuery.split(" ");
+    for (const [key, value] of Object.entries(searchMapping)) {
+      const keyWords = key.split(" ");
+      const wordMatches = words.filter((word) =>
+        keyWords.some(
+          (keyWord) => keyWord.includes(word) || word.includes(keyWord)
+        )
+      );
+
+      if (
+        wordMatches.length > 0 &&
+        !results.find((r) => r.path === value.path)
+      ) {
+        results.push({
+          ...value,
+          matchType: "fuzzy",
+          relevance: (wordMatches.length / words.length) * 60,
+        });
+      }
+    }
+
+    // If no results found, show "no results" message
+    if (results.length === 0) {
+      results.push({
+        path: null,
+        title: "No results found",
+        description:
+          "Try searching for browse, roommates, sublease, reviews, or housing criteria like '2 bed under $1000'",
+        matchType: "none",
+        relevance: 0,
+        isNoResult: true,
+      });
+    }
+
+    // Sort by relevance
+    results.sort((a, b) => b.relevance - a.relevance);
+
+    setSearchResults(results.slice(0, 5)); // Show top 5 results
+    setShowResults(results.length > 0);
+  };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    performSearch(query);
+  };
+
+  const selectResult = (result) => {
+    if (result.isNoResult) return;
+
+    if (result.isHousingSearch) {
+      // Navigate to browse with search parameters
+      const searchParams = new URLSearchParams();
+      searchParams.set("search", result.searchQuery);
+      window.location.href = `${result.path}?${searchParams.toString()}`;
+    } else {
+      window.location.href = result.path;
+    }
+    setShowResults(false);
+    setSearchQuery("");
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    // Check if it's a housing search using the same enhanced function
+    const isHousingQuery = (query) => {
+      const housingPatterns = [
+        /\d+\s*(?:bed|bedroom|br|bdr)s?/i,
+        /\d+(?:\.\d+)?\s*(?:bath|bathroom|ba)s?/i,
+        /under\s*\$?\d+/i,
+        /below\s*\$?\d+/i,
+        /less\s+than\s*\$?\d+/i,
+        /max\s*\$?\d+/i,
+        /maximum\s*\$?\d+/i,
+        /\$\d+\s*(?:or\s+)?(?:less|under|below|max|maximum)/i,
+        /\d+\s*(?:dollar|bucks?)\s*(?:or\s+)?(?:less|under|below|max|maximum)/i,
+        /(?:up\s+to|upto)\s*\$?\d+/i,
+        /not\s+more\s+than\s*\$?\d+/i,
+        /(?:within|around)\s*\$?\d+/i,
+        /near\s+\w+/i,
+        /in\s+\w+/i,
+        /(?:close\s+to|by)\s+\w+/i,
+        /with\s+(?:parking|gym|pool|laundry|washer|dryer|dishwasher|ac|balcony|patio)/i,
+        /(?:studio|apartment|house|condo|townhouse)/i,
+        /(?:pet\s*friendly|pets?\s*allowed)/i,
+        /(?:furnished|unfurnished)/i,
+      ];
+
+      return housingPatterns.some((pattern) => pattern.test(query));
+    };
+
+    if (isHousingQuery(searchQuery)) {
+      const searchParams = new URLSearchParams();
+      searchParams.set("search", searchQuery);
+      window.location.href = `/browse?${searchParams.toString()}`;
+    } else {
+      // Try to find a matching page
+      const normalizedQuery = searchQuery.toLowerCase().trim();
+      for (const [key, value] of Object.entries(searchMapping)) {
+        if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
+          window.location.href = value.path;
+          return;
+        }
+      }
+      // Default to browse if no match
+      window.location.href = "/browse";
+    }
+  };
 
   useEffect(() => {
     const currentPhrase = phrases[currentIndex];
@@ -463,7 +787,7 @@ function HeroSection() {
 
           <div className="pt-4 md:pt-8 space-y-4">
             <div className="relative max-w-2xl mx-auto">
-              <div className="relative">
+              <form onSubmit={handleSearchSubmit} className="relative">
                 <div
                   className="relative overflow-hidden bg-white border-2 border-gray-200 hover:border-red-300 focus-within:border-red-500 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 p-1"
                   style={{
@@ -477,16 +801,23 @@ function HeroSection() {
                     <div className="flex-1 relative">
                       <input
                         type="text"
+                        value={searchQuery}
+                        onChange={handleSearchChange}
                         placeholder={currentText || "Search for housing..."}
                         className="w-full px-4 md:px-6 py-4 md:py-5 text-base md:text-lg bg-white border-0 outline-none placeholder-gray-500 text-gray-900"
                         style={{
                           backgroundColor: "#ffffff",
                           backgroundImage: "none",
                         }}
+                        onFocus={() => setShowResults(searchResults.length > 0)}
+                        onBlur={() =>
+                          setTimeout(() => setShowResults(false), 200)
+                        }
                       />
                     </div>
 
                     <button
+                      type="submit"
                       className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 hover:from-red-700 hover:via-red-600 hover:to-red-700 text-white px-6 py-4 md:px-8 md:py-5 text-base md:text-lg font-semibold rounded-lg md:rounded-xl transform hover:scale-105 transition-all duration-300 shadow-lg border-0 flex items-center gap-2 md:gap-3"
                       style={{
                         boxShadow: "0 8px 20px rgba(220, 38, 38, 0.3)",
@@ -513,13 +844,62 @@ function HeroSection() {
                     style={{ width: "50%" }}
                   />
                 </div>
-              </div>
+
+                {/* Search Results Dropdown */}
+                {showResults && searchResults.length > 0 && (
+                  <div className="absolute top-full mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                    {searchResults.map((result, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => selectResult(result)}
+                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200 flex items-center justify-between ${
+                          result.isNoResult
+                            ? "cursor-default hover:bg-white"
+                            : ""
+                        }`}
+                        disabled={result.isNoResult}
+                      >
+                        <div>
+                          <div
+                            className={`font-medium ${
+                              result.isNoResult
+                                ? "text-gray-500"
+                                : "text-gray-900"
+                            }`}
+                          >
+                            {result.title}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {result.description}
+                          </div>
+                        </div>
+                        {!result.isNoResult && (
+                          <svg
+                            className="w-4 h-4 text-gray-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </form>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-lg mx-auto">
               <button
                 onClick={() => (window.location.href = "/browse")}
-                className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
+                className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white px-6 py-3 rounded-xl font-semibold text-base shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
                 style={{
                   boxShadow: "0 10px 25px rgba(220, 38, 38, 0.3)",
                 }}
@@ -541,14 +921,14 @@ function HeroSection() {
               </button>
 
               <button
-                className="w-full sm:w-auto bg-white hover:bg-gray-50 text-red-600 border-2 border-red-600 hover:border-red-700 px-8 py-4 rounded-2xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
-                onClick={() => (window.location.href = "/browse")}
+                className="w-full sm:w-auto bg-white hover:bg-gray-50 text-red-600 border-2 border-red-600 hover:border-red-700 px-6 py-3 rounded-xl font-semibold text-base shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
+                onClick={() => (window.location.href = "/CampusHub")}
                 style={{
                   backgroundColor: "#ffffff",
                   backgroundImage: "none",
                 }}
               >
-                See Reviews
+                Explore Campus Hub
                 <svg
                   className="w-5 h-5"
                   fill="none"
@@ -598,40 +978,6 @@ function HeroSection() {
         }
       `}</style>
     </section>
-  );
-}
-
-// Footer Component
-function Footer() {
-  return (
-    <footer className="bg-black text-white py-8 px-4">
-      <div className="container mx-auto flex flex-col items-center justify-center">
-        <button
-          className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 hover:from-red-700 hover:via-red-600 hover:to-red-700 text-white px-6 py-3 md:px-8 md:py-4 text-base md:text-lg font-semibold rounded-xl md:rounded-2xl transform hover:scale-105 transition-all duration-300 shadow-lg border-0 w-full sm:w-auto"
-          style={{
-            boxShadow:
-              "0 10px 25px rgba(220, 38, 38, 0.4), 0 0 0 1px rgba(220, 38, 38, 0.1)",
-          }}
-        >
-          <span className="flex items-center justify-center gap-2 md:gap-3">
-            Get Started
-            <svg
-              className="w-4 h-4 md:w-5 md:h-5 transform group-hover:translate-x-1 transition-transform duration-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 8l4 4m0 0l-4 4m4-4H3"
-              />
-            </svg>
-          </span>
-        </button>
-      </div>
-    </footer>
   );
 }
 

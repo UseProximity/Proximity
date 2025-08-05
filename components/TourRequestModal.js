@@ -114,7 +114,7 @@ export default function TourRequestModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-lg mx-auto">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">
           Request a tour
         </h2>

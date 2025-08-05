@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import Modal from "../../../components/Modal";
+import ChatModal from "../../../components/ChatModal";
 import { AiFillHeart, AiOutlineHeart } from "react-icons/ai";
 import { BsShieldCheck } from "react-icons/bs";
 import { Suspense } from "react";
@@ -17,7 +18,7 @@ const mockProfiles = [
     gender: "Female",
     email: "emma.chen@wustl.edu",
     phone: "(314) 555-0123",
-    image: "/images/default-profile.jpg",
+    image: "https://picsum.photos/200/200?random=100",
     bio: "Junior studying Computer Science. Love hiking, cooking, and Netflix. Looking for a clean, friendly roommate!",
     budget: { min: 800, max: 1200 },
     pets: "No",
@@ -38,7 +39,7 @@ const mockProfiles = [
     gender: "Male",
     email: "marcus.j@wustl.edu",
     phone: "(314) 555-0124",
-    image: "/images/default-profile.jpg",
+    image: "https://picsum.photos/200/200?random=101",
     bio: "Senior in Business. Play intramural basketball and love gaming. Pretty chill roommate!",
     budget: { min: 700, max: 1000 },
     pets: "No Preference",
@@ -59,7 +60,7 @@ const mockProfiles = [
     gender: "Female",
     email: "sarah.m@wustl.edu",
     phone: "(314) 555-0125",
-    image: "/images/default-profile.jpg",
+    image: "https://picsum.photos/200/200?random=102",
     bio: "Sophomore studying Biology. Pre-med student who loves yoga and organic food.",
     budget: { min: 900, max: 1300 },
     pets: "Yes",
@@ -78,25 +79,26 @@ const mockProfiles = [
 // Generate additional mock profiles to reach 30
 const generateMockProfiles = () => {
   const names = [
-    "Alex Taylor",
-    "Jordan Davis",
-    "Casey Brown",
-    "Riley Wilson",
-    "Avery Garcia",
-    "Cameron Lee",
-    "Morgan Smith",
-    "Quinn Johnson",
-    "Blake Miller",
-    "Taylor Brown",
-    "Sage Wilson",
-    "River Jones",
-    "Skylar Garcia",
-    "Rowan Martinez",
-    "Phoenix Anderson",
-    "Dakota White",
-    "Parker Thompson",
-    "Jamie Clark",
-    "Emery Lewis",
+    "Alex Rodriguez",
+    "Sam Thompson",
+    "Jordan Lee",
+    "Casey Chen",
+    "Taylor Kim",
+    "Morgan Davis",
+    "Avery Wilson",
+    "Riley Brown",
+    "Cameron Garcia",
+    "Quinn Martinez",
+    "Blake Anderson",
+    "Sage Johnson",
+    "River Williams",
+    "Skylar Jones",
+    "Rowan Miller",
+    "Phoenix Moore",
+    "Dakota Taylor",
+    "Parker Thomas",
+    "Jamie Jackson",
+    "Emery White",
     "Reese Walker",
     "Finley Hall",
     "Drew Allen",
@@ -137,7 +139,7 @@ const generateMockProfiles = () => {
     "Blake Watson",
     "Taylor Brooks",
   ];
-  const genders = ["Male", "Female", "Non-binary"];
+  const genders = ["Male", "Female", "Other"];
   const interests = [
     "Music",
     "Art",
@@ -158,14 +160,38 @@ const generateMockProfiles = () => {
 
   const additionalProfiles = [];
   for (let i = 4; i <= 61; i++) {
+    const selectedGender = genders[Math.floor(Math.random() * genders.length)];
+
+    // Assign image based on gender using placeholder service
+    let profileImage = "/images/default-profile.jpg";
+    if (selectedGender === "Male") {
+      // Use picsum photos with male-oriented random IDs
+      const malePhotoIds = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
+      const randomId =
+        malePhotoIds[Math.floor(Math.random() * malePhotoIds.length)];
+      profileImage = `https://picsum.photos/200/200?random=${randomId}`;
+    } else if (selectedGender === "Female") {
+      // Use picsum photos with female-oriented random IDs
+      const femalePhotoIds = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
+      const randomId =
+        femalePhotoIds[Math.floor(Math.random() * femalePhotoIds.length)];
+      profileImage = `https://picsum.photos/200/200?random=${randomId}`;
+    } else if (selectedGender === "Other") {
+      // Use neutral picsum photos
+      const otherPhotoIds = [21, 23, 25, 27, 29];
+      const randomId =
+        otherPhotoIds[Math.floor(Math.random() * otherPhotoIds.length)];
+      profileImage = `https://picsum.photos/200/200?random=${randomId}`;
+    }
+
     additionalProfiles.push({
       _id: i.toString(),
       name: names[i - 4] || `Student ${i}`,
       age: Math.floor(Math.random() * 4) + 18, // 18-21
-      gender: genders[Math.floor(Math.random() * genders.length)],
+      gender: selectedGender,
       email: `user${i}@wustl.edu`,
       phone: `(314) 555-0${i.toString().padStart(3, "0")}`,
-      image: "/images/default-profile.jpg",
+      image: profileImage,
       bio: `${
         Math.random() > 0.5
           ? "Sophomore"
@@ -220,11 +246,20 @@ export default function RoommateResults() {
 
 function RoommateResultsContent() {
   const searchParams = useSearchParams();
-  const [profiles] = useState(allProfiles);
-  const [filteredProfiles, setFilteredProfiles] = useState(allProfiles);
+  const [profiles, setProfiles] = useState(mockProfiles);
+  const [filteredProfiles, setFilteredProfiles] = useState(mockProfiles);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
   const [favorites, setFavorites] = useState(new Set());
+
+  // Generate additional profiles on client side only
+  useEffect(() => {
+    const additionalProfiles = generateMockProfiles();
+    const allProfiles = [...mockProfiles, ...additionalProfiles];
+    setProfiles(allProfiles);
+    setFilteredProfiles(allProfiles);
+  }, []);
 
   // Get filters from URL parameters
   const [filters, setFilters] = useState({
@@ -439,7 +474,7 @@ function RoommateResultsContent() {
                   <img
                     src={profile.image}
                     alt={profile.name}
-                    className="w-full h-48 object-cover"
+                    className="w-full h-64 object-cover"
                   />
                   <button
                     onClick={(e) => {
@@ -552,7 +587,7 @@ function RoommateResultsContent() {
                 {/* Profile Header with Image */}
                 <div className="flex gap-4">
                   {/* Profile Image */}
-                  <div className="w-24 h-24 flex-shrink-0">
+                  <div className="w-48 h-48 flex-shrink-0">
                     <img
                       src={selectedProfile.image}
                       alt={selectedProfile.name}
@@ -612,7 +647,13 @@ function RoommateResultsContent() {
                   <button className="bg-red-600 text-white py-3 px-4 rounded-lg text-base font-semibold hover:bg-red-700 transition">
                     Add Friend
                   </button>
-                  <button className="border border-red-600 text-red-600 py-3 px-4 rounded-lg text-base font-semibold hover:bg-red-50 transition">
+                  <button
+                    onClick={() => {
+                      setModalOpen(false);
+                      setChatModalOpen(true);
+                    }}
+                    className="border border-red-600 text-red-600 py-3 px-4 rounded-lg text-base font-semibold hover:bg-red-50 transition"
+                  >
                     Contact
                   </button>
                 </div>
@@ -721,6 +762,14 @@ function RoommateResultsContent() {
               </div>
             </Modal>
           )}
+
+          {/* Chat Modal */}
+          <ChatModal
+            isOpen={chatModalOpen}
+            onClose={() => setChatModalOpen(false)}
+            profile={selectedProfile}
+            currentUser="You"
+          />
         </div>
       </div>
     </>

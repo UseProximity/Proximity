@@ -114,6 +114,21 @@ const reviews = [
   },
 ];
 
+const mockLandlord = {
+  name: "John Smith",
+  age: 45,
+  gender: "Male",
+  numReviews: 4,
+  rating: 4,
+  image: "https://picsum.photos/200/200?random=101",
+  description:
+    "Experienced landlord with a passion for providing quality housing.",
+  role: "landlord",
+  favorites: [],
+  email: "john.smith@example.com",
+  phone: "+1234567890",
+};
+
 // Simple components
 const Card = ({ children, className = "", onClick }) => (
   <div
@@ -209,7 +224,7 @@ const StarRating = ({ rating, size = "sm" }) => {
 
 // Main Dashboard Component
 export default function ProximityDashboard() {
-  const [activeView, setActiveView] = useState("analytics");
+  const [activeView, setActiveView] = useState("profile");
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -239,10 +254,73 @@ export default function ProximityDashboard() {
         return "Settings";
       case "reviews":
         return "My Reviews";
+      case "profile":
+        return "My Profile";
+      case "analytics":
+        return "Analytics";
       default:
         return "Landlord Dashboard";
     }
   };
+
+  const Profile = () => (
+    <div className="bg-white p-8 rounded-lg shadow-lg mb-8">
+      <div className="flex flex-col md:flex-row gap-8">
+        {/* Profile Image */}
+        <div className="flex-shrink-0">
+          <img
+            src={mockLandlord.image}
+            alt={mockLandlord.name}
+            className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow-md"
+          />
+        </div>
+
+        {/* Profile Info */}
+        <div className="flex-1">
+          <h1 className="text-4xl font-bold text-gray-900">
+            {mockLandlord.name}
+          </h1>
+          <div className="text-yellow-500 text-xl mt-2">
+            {"★".repeat(mockLandlord.rating)}
+            <span className="text-gray-300">
+              {"★".repeat(5 - mockLandlord.rating)}
+            </span>
+          </div>
+          <p className="text-gray-500 mt-2 text-lg">0 active listings</p>
+          <p className="text-gray-600 text-base mt-4">
+            {mockLandlord.description}
+          </p>
+          <p className="text-gray-400 text-base mt-2">
+            {mockLandlord.age} years old • {mockLandlord.gender}
+          </p>
+          <p className="text-gray-500 text-base mt-2">
+            📞 {mockLandlord.phone} • ✉️ {mockLandlord.email}
+          </p>
+
+          {/* Additional Info */}
+          <div className="mt-6">
+            <h2 className="text-xl font-semibold text-gray-900">About Me</h2>
+            <p className="text-gray-600 mt-2">
+              I am an experienced landlord with a passion for providing quality
+              housing. I believe in maintaining open communication with my
+              tenants and ensuring their needs are met promptly.
+            </p>
+          </div>
+        </div>
+
+        {/* Edit Button */}
+        <div className="flex-shrink-0">
+          <Button
+            variant="default"
+            size="default"
+            className="w-full md:w-auto text-white bg-red-600 hover:bg-red-700"
+          >
+            Edit Profile
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 
   // Analytics Dashboard Content
   const AnalyticsDashboard = () => (
@@ -721,14 +799,12 @@ export default function ProximityDashboard() {
         return <PropertiesPage />;
       case "reviews":
         return <ReviewsPage />;
-      case "settings":
-        return (
-          <div className="p-8 text-center text-gray-500">
-            Settings page coming soon...
-          </div>
-        );
-      default:
+      case "profile":
+        return <Profile />;
+      case "analytics":
         return <AnalyticsDashboard />;
+      default:
+        return <Profile />;
     }
   };
 
@@ -762,6 +838,17 @@ export default function ProximityDashboard() {
                 Overview
               </h3>
               <div className="space-y-1">
+                <button
+                  onClick={() => handleNavigation("profile")}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                    activeView === "profile"
+                      ? "bg-red-50 text-red-700"
+                      : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <User className="h-4 w-4" />
+                  My Profile
+                </button>
                 <button
                   onClick={() => handleNavigation("analytics")}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${

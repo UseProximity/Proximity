@@ -9,6 +9,7 @@ import {
   Star,
   Plus,
   MapPin,
+  User,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 
@@ -48,6 +49,20 @@ const favoriteListings = [
     image: "/placeholder.svg?height=200&width=300&text=Cedar+Lane+Duplex",
   },
 ];
+
+const mockUser = {
+  name: "Samarth Hegde",
+  age: 19,
+  gender: "Male",
+  numReviews: 3,
+  rating: 4,
+  image: "https://picsum.photos/200/200?random=102",
+  description: "A passionate student looking for the best housing options.",
+  role: "student",
+  favorites: [],
+  email: "samarth.hedge.@example.com",
+  phone: "+1234567890",
+};
 
 // Simple components
 const Card = ({ children, className = "", onClick }) => (
@@ -111,7 +126,7 @@ const Button = ({
 
 // Main Dashboard Component
 export default function StudentDashboard() {
-  const [activeView, setActiveView] = useState("subleases");
+  const [activeView, setActiveView] = useState("profile");
 
   const handleNavigation = (key) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -124,12 +139,67 @@ export default function StudentDashboard() {
         return "My Subleases";
       case "favorites":
         return "My Favorite Listings";
-      case "settings":
-        return "Settings";
+      case "profile":
+        return "Profile";
       default:
         return "Student Dashboard";
     }
   };
+
+  const Profile = () => (
+    <div className="bg-white p-8 rounded-lg shadow-lg mb-8">
+      <div className="flex flex-col md:flex-row gap-8">
+        {/* Profile Image */}
+        <div className="flex-shrink-0">
+          <img
+            src={mockUser.image}
+            alt={mockUser.name}
+            className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow-md"
+          />
+        </div>
+
+        {/* Profile Info */}
+        <div className="flex-1">
+          <h1 className="text-4xl font-bold text-gray-900">{mockUser.name}</h1>
+          <div className="text-yellow-500 text-xl mt-2">
+            {"★".repeat(mockUser.rating)}
+            <span className="text-gray-300">
+              {"★".repeat(5 - mockUser.rating)}
+            </span>
+          </div>
+          <p className="text-gray-500 mt-2 text-lg">0 active listings</p>
+          <p className="text-gray-600 text-base mt-4">{mockUser.description}</p>
+          <p className="text-gray-400 text-base mt-2">
+            {mockUser.age} years old • {mockUser.gender}
+          </p>
+          <p className="text-gray-500 text-base mt-2">
+            📞 {mockUser.phone} • ✉️ {mockUser.email}
+          </p>
+
+          {/* Additional Info */}
+          <div className="mt-6">
+            <h2 className="text-xl font-semibold text-gray-900">About Me</h2>
+            <p className="text-gray-600 mt-2">
+              I am a student passionate about finding the best housing options
+              near campus. I enjoy connecting with others and exploring new
+              opportunities.
+            </p>
+          </div>
+        </div>
+
+        {/* Edit Button */}
+        <div className="flex-shrink-0">
+          <Button
+            variant="default"
+            size="default"
+            className="w-full md:w-auto text-white bg-red-600 hover:bg-red-700"
+          >
+            Edit Profile
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 
   const SubleasesSection = () => (
     <div className="space-y-6">
@@ -202,14 +272,8 @@ export default function StudentDashboard() {
         return <SubleasesSection />;
       case "favorites":
         return <FavoriteListingsSection />;
-      case "settings":
-        return (
-          <div className="p-8 text-center text-gray-500">
-            Settings page coming soon...
-          </div>
-        );
       default:
-        return <SubleasesSection />;
+        return <Profile />;
     }
   };
 
@@ -240,15 +304,15 @@ export default function StudentDashboard() {
               </h3>
               <div className="space-y-1">
                 <button
-                  onClick={() => handleNavigation("subleases")}
+                  onClick={() => handleNavigation("profile")}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "subleases"
+                    activeView === "favorites"
                       ? "bg-red-50 text-red-700"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <List className="h-4 w-4" />
-                  My Subleases
+                  <User className="h-4 w-4" />
+                  Profile
                 </button>
                 <button
                   onClick={() => handleNavigation("favorites")}
@@ -262,15 +326,15 @@ export default function StudentDashboard() {
                   My Favorite Listings
                 </button>
                 <button
-                  onClick={() => handleNavigation("settings")}
+                  onClick={() => handleNavigation("subleases")}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "settings"
+                    activeView === "subleases"
                       ? "bg-red-50 text-red-700"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <Settings className="h-4 w-4" />
-                  Settings
+                  <List className="h-4 w-4" />
+                  My Subleases
                 </button>
               </div>
             </div>

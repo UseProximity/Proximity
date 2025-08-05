@@ -2,7 +2,6 @@ import { Inter } from "next/font/google";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
-import { FavoritesProvider } from "@/context/FavoritesContext";
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -22,9 +21,7 @@ export default function RootLayout({ children }) {
         <div>
           <Toaster />
         </div>
-        <UserProvider>
-          <FavoritesProvider>{children}</FavoritesProvider>
-        </UserProvider>
+        <UserProvider>{children}</UserProvider>
       </body>
     </html>
   );

@@ -39,6 +39,13 @@ const UNIVERSITIES = [
     logo: "/universities/washu.jpeg",
   },
   { name: "Instituto Superior Técnico", logo: "/universities/ist.png" },
+  { name: "Harvard University", logo: "/universities/harvard.png" },
+  { name: "Stanford University", logo: "/universities/stanford.png" },
+  {
+    name: "Massachusetts Institute of Technology",
+    logo: "/universities/mit.png",
+  },
+  { name: "Brown University", logo: "/universities/brown.png" },
 ];
 
 export default function UniversityLogosCarousel() {

@@ -1,3 +1,43 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Completely prevent unwanted scrolling on form elements */
+html {
+  scroll-behavior: auto !important;
+}
+
+/* Disable scroll-into-view for all form elements */
+select,
+input,
+button,
+textarea {
+  scroll-margin: 0 !important;
+  scroll-behavior: auto !important;
+}
+
+select:focus,
+input:focus,
+button:focus,
+textarea:focus {
+  scroll-margin: 0 !important;
+  scroll-behavior: auto !important;
+}
+
+select:hover,
+input:hover,
+button:hover,
+textarea:hover {
+  scroll-margin: 0 !important;
+}
+
+/* Prevent any automatic scrolling */
+* {
+  scroll-behavior: auto !important;
+}
+
+/* Override any smooth scrolling */
+html,
+body {
+  scroll-behavior: auto !important;
+}

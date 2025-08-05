@@ -2,11 +2,50 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import HeartIcon from "@/components/HeartIcon";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
-export default function AvailableListings({ listings }) {
+function HeartIcon() {
+  const [isFavorite, setIsFavorite] = useState(false);
+
+  const handleClick = () => {
+    setIsFavorite(!isFavorite);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className="focus:outline-none p-1.5 hover:text-red-500 transition-all"
+      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+    >
+      {isFavorite ? (
+        // Filled Heart Icon
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="red"
+          viewBox="0 0 24 24"
+          className="h-6 w-6"
+        >
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </svg>
+      ) : (
+        // Unfilled Heart Icon
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          viewBox="0 0 24 24"
+          className="h-6 w-6"
+        >
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+export default function AvailableListings({ listings, onClearSearch }) {
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
@@ -30,9 +69,9 @@ export default function AvailableListings({ listings }) {
     };
   }, []);
 
-  // Prevent body scroll when more filters popup is open
+  // Prevent body scroll when filter dropdowns are open
   useEffect(() => {
-    if (showFilters === "more-filters") {
+    if (showFilters && showFilters !== false) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
@@ -109,6 +148,11 @@ export default function AvailableListings({ listings }) {
       laundry: [],
       security: [],
     });
+
+    // Also clear the search from the URL and reset filtered listings
+    if (onClearSearch) {
+      onClearSearch();
+    }
   };
 
   const filteredListings = listings.filter((listing) => {
@@ -1200,73 +1244,115 @@ export default function AvailableListings({ listings }) {
           </>
         )}
 
-        <div className="grid grid-cols-2 gap-6">
-          {filteredListings.map((listing) => (
-            <div
-              key={listing._id}
-              className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-indigo-200 transform hover:-translate-y-2 hover:scale-[1.02]"
-            >
-              <a href={`/browse/${listing._id}`}>
-                <div className="relative">
-                  <img
-                    src={listing.images[0]}
-                    alt=""
-                    className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-                <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-2xl text-black">
-                      ${listing.rent.toLocaleString()}
-                      <span className="text-sm font-normal">/month</span>
-                    </h3>
-                  </div>
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-emerald-700 font-semibold text-sm">
-                        {listing.bedrooms}
-                      </span>
-                      <span className="text-emerald-600 text-xs">bd</span>
-                    </div>
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-rose-700 font-semibold text-sm">
-                        {listing.bathrooms}
-                      </span>
-                      <span className="text-rose-600 text-xs">ba</span>
-                    </div>
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-amber-700 font-semibold text-sm">
-                        {listing.area}
-                      </span>
-                      <span className="text-amber-600 text-xs">sqft</span>
-                    </div>
-                  </div>
-                  <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <svg
-                      className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                      {listing.address}
-                    </p>
-                  </div>
-                </div>
-              </a>
-              <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2.5 shadow-xl border border-white/50">
-                <HeartIcon listingId={listing._id} />
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        {filteredListings.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+              <svg
+                className="w-12 h-12 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                />
+              </svg>
             </div>
-          ))}
-        </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">
+              No listings found
+            </h3>
+            <p className="text-gray-600 mb-6 max-w-md leading-relaxed">
+              We couldn&apos;t find any listings matching your criteria. Try
+              adjusting your filters or search terms.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleReset}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors duration-200 shadow-lg hover:shadow-xl"
+              >
+                Clear all filters
+              </button>
+              {onClearSearch && (
+                <button
+                  onClick={onClearSearch}
+                  className="px-6 py-3 bg-white hover:bg-gray-50 text-red-600 border-2 border-red-600 hover:border-red-700 font-semibold rounded-xl transition-colors duration-200 shadow-lg hover:shadow-xl"
+                >
+                  Clear search
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-6">
+            {filteredListings.map((listing) => (
+              <div
+                key={listing._id}
+                className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-indigo-200 transform hover:-translate-y-2 hover:scale-[1.02]"
+              >
+                <a href={`/browse/${listing._id}`}>
+                  <div className="relative">
+                    <img
+                      src={listing.images[0]}
+                      alt=""
+                      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  </div>
+                  <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-2xl text-black">
+                        ${listing.rent.toLocaleString()}
+                        <span className="text-sm font-normal">/month</span>
+                      </h3>
+                    </div>
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
+                        <span className="text-emerald-700 font-semibold text-sm">
+                          {listing.bedrooms}
+                        </span>
+                        <span className="text-emerald-600 text-xs">bd</span>
+                      </div>
+                      <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
+                        <span className="text-rose-700 font-semibold text-sm">
+                          {listing.bathrooms}
+                        </span>
+                        <span className="text-rose-600 text-xs">ba</span>
+                      </div>
+                      <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
+                        <span className="text-amber-700 font-semibold text-sm">
+                          {listing.area}
+                        </span>
+                        <span className="text-amber-600 text-xs">sqft</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <svg
+                        className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                        {listing.address}
+                      </p>
+                    </div>
+                  </div>
+                </a>
+                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
+                  <HeartIcon />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Map Section */}

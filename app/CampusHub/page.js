@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Modal from "../../components/Modal";
 import { AiFillStar } from "react-icons/ai";
@@ -62,7 +62,294 @@ const reviews = [
     content: "Super cozy and clean dorm, would recommend.",
     date: "July 2025",
   },
-  // Add more review entries here if needed
+  {
+    name: "Marcus",
+    classYear: 2026,
+    rating: 4,
+    dorm: "Dardick",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Study Floor"],
+    content:
+      "Great location and modern amenities. The rooms are a bit small but well-designed.",
+    date: "June 2025",
+  },
+  {
+    name: "Emma",
+    classYear: 2028,
+    rating: 5,
+    dorm: "Dardick",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Social Floor"],
+    content: "Love the community here! Close to dining and great study spaces.",
+    date: "May 2025",
+  },
+  {
+    name: "James",
+    classYear: 2027,
+    rating: 4,
+    dorm: "Dauten",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Quiet Floor"],
+    content:
+      "Perfect for studying, very quiet and clean. Great views from upper floors.",
+    date: "June 2025",
+  },
+  {
+    name: "Sarah",
+    classYear: 2026,
+    rating: 5,
+    dorm: "Eliot A",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Historic"],
+    content:
+      "Classic WashU experience! Beautiful architecture and great sense of community.",
+    date: "July 2025",
+  },
+  {
+    name: "Alex",
+    classYear: 2028,
+    rating: 4,
+    dorm: "Eliot A",
+    dormType: "Traditional Single",
+    tags: ["On-Campus", "Historic"],
+    content: "Love the traditional feel and central location on campus.",
+    date: "May 2025",
+  },
+  {
+    name: "Maya",
+    classYear: 2027,
+    rating: 5,
+    dorm: "Hurd",
+    dormType: "Modern Double",
+    tags: ["On-Campus", "New Building"],
+    content: "Brand new facilities with amazing amenities. Highly recommend!",
+    date: "June 2025",
+  },
+  {
+    name: "David",
+    classYear: 2026,
+    rating: 4,
+    dorm: "Koenig",
+    dormType: "Traditional Single",
+    tags: ["On-Campus", "Social Floor"],
+    content:
+      "Great social atmosphere and close to everything. Rooms are decent size.",
+    date: "July 2025",
+  },
+  {
+    name: "Rachel",
+    classYear: 2028,
+    rating: 5,
+    dorm: "Lee",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Quiet Floor"],
+    content: "Perfect for focused studying. Modern facilities and very clean.",
+    date: "May 2025",
+  },
+  {
+    name: "Tyler",
+    classYear: 2027,
+    rating: 4,
+    dorm: "Lien",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Study Floor"],
+    content: "Good location and solid amenities. Would live here again.",
+    date: "June 2025",
+  },
+  {
+    name: "Jessica",
+    classYear: 2026,
+    rating: 5,
+    dorm: "Park",
+    dormType: "Modern Double",
+    tags: ["On-Campus", "Social Floor"],
+    content:
+      "Amazing community and beautiful common areas. Best dorm experience!",
+    date: "July 2025",
+  },
+  {
+    name: "Chris",
+    classYear: 2028,
+    rating: 4,
+    dorm: "Umrath",
+    dormType: "Traditional Single",
+    tags: ["On-Campus", "Central Location"],
+    content: "Super convenient location. Easy access to classes and dining.",
+    date: "May 2025",
+  },
+  {
+    name: "Lauren",
+    classYear: 2027,
+    rating: 5,
+    dorm: "Eliot B",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Historic"],
+    content: "Love the historic charm and tight-knit community feel.",
+    date: "June 2025",
+  },
+  {
+    name: "Kevin",
+    classYear: 2026,
+    rating: 4,
+    dorm: "Gregg",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Quiet Floor"],
+    content:
+      "Great for studying and very peaceful. Modern renovations are nice.",
+    date: "July 2025",
+  },
+  {
+    name: "Ashley",
+    classYear: 2028,
+    rating: 5,
+    dorm: "Hitzeman",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Social Floor"],
+    content:
+      "Best social life on campus! Love my floormates and the atmosphere.",
+    date: "May 2025",
+  },
+  {
+    name: "Brandon",
+    classYear: 2027,
+    rating: 4,
+    dorm: "Liggett",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Study Floor"],
+    content: "Perfect for academics. Quiet environment and good study spaces.",
+    date: "June 2025",
+  },
+  {
+    name: "Megan",
+    classYear: 2026,
+    rating: 5,
+    dorm: "Mudd",
+    dormType: "Traditional Single",
+    tags: ["On-Campus", "Central Location"],
+    content:
+      "Great location and friendly community. Would definitely recommend.",
+    date: "July 2025",
+  },
+  {
+    name: "Nathan",
+    classYear: 2028,
+    rating: 4,
+    dorm: "Myers",
+    dormType: "Modern Double",
+    tags: ["On-Campus", "New Building"],
+    content: "Modern amenities and spacious rooms. Great common areas too.",
+    date: "May 2025",
+  },
+  {
+    name: "Olivia",
+    classYear: 2027,
+    rating: 5,
+    dorm: "Nemerov",
+    dormType: "Traditional Single",
+    tags: ["On-Campus", "Quiet Floor"],
+    content:
+      "Perfect for writers and artists. Very inspiring and peaceful environment.",
+    date: "June 2025",
+  },
+  {
+    name: "Jordan",
+    classYear: 2026,
+    rating: 4,
+    dorm: "Rutledge",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Historic"],
+    content:
+      "Classic dorm experience with great traditions and community events.",
+    date: "July 2025",
+  },
+  {
+    name: "Samantha",
+    classYear: 2028,
+    rating: 5,
+    dorm: "Shanedling",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Study Floor"],
+    content:
+      "Excellent for academics and personal growth. Very supportive community.",
+    date: "May 2025",
+  },
+  {
+    name: "Eric",
+    classYear: 2027,
+    rating: 4,
+    dorm: "Shepley",
+    dormType: "Traditional Double",
+    tags: ["On-Campus", "Social Floor"],
+    content:
+      "Great social atmosphere and convenient location. Really enjoyed living here.",
+    date: "June 2025",
+  },
+  {
+    name: "Amanda",
+    classYear: 2026,
+    rating: 5,
+    dorm: "SoFoHo",
+    dormType: "Modern Single",
+    tags: ["On-Campus", "Apartment Style"],
+    content:
+      "Best of both worlds - independence with campus community. Love the setup!",
+    date: "July 2025",
+  },
+  {
+    name: "Michael",
+    classYear: 2028,
+    rating: 4,
+    dorm: "Wheeler",
+    dormType: "Traditional Single",
+    tags: ["On-Campus", "Quiet Floor"],
+    content:
+      "Great for focused study and personal reflection. Very peaceful environment.",
+    date: "May 2025",
+  },
+  {
+    name: "Nicole",
+    classYear: 2027,
+    rating: 5,
+    dorm: "Greenway Apartments",
+    dormType: "Apartment Style",
+    tags: ["Off-Campus", "Independent Living"],
+    content:
+      "Perfect transition to independent living while staying connected to campus.",
+    date: "June 2025",
+  },
+  {
+    name: "Ryan",
+    classYear: 2026,
+    rating: 4,
+    dorm: "Millbrook",
+    dormType: "Apartment Style",
+    tags: ["Off-Campus", "Quiet"],
+    content:
+      "Great for upperclassmen. Good balance of independence and community.",
+    date: "July 2025",
+  },
+  {
+    name: "Hannah",
+    classYear: 2028,
+    rating: 5,
+    dorm: "University Drive",
+    dormType: "Apartment Style",
+    tags: ["Off-Campus", "Modern"],
+    content:
+      "Modern apartments with great amenities. Perfect for junior/senior year.",
+    date: "May 2025",
+  },
+  {
+    name: "Zach",
+    classYear: 2027,
+    rating: 4,
+    dorm: "Village East",
+    dormType: "Apartment Style",
+    tags: ["Off-Campus", "Social"],
+    content:
+      "Great community feel even though it's off-campus. Really enjoyed it.",
+    date: "June 2025",
+  },
 ];
 
 const dormImages = {};
@@ -82,6 +369,41 @@ export default function CampusHub() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDorm, setSelectedDorm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Prevent unwanted scrolling on filter interactions
+  useEffect(() => {
+    // Override scrollIntoView for all form elements
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (options) {
+      // Only allow scrollIntoView for non-form elements or when explicitly required
+      if (
+        this.tagName === "SELECT" ||
+        this.tagName === "INPUT" ||
+        this.tagName === "BUTTON"
+      ) {
+        return; // Do nothing for form elements
+      }
+      originalScrollIntoView.call(this, options);
+    };
+
+    return () => {
+      // Restore original scrollIntoView on cleanup
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    };
+  }, []);
+
+  // Prevent unwanted scrolling on filter interactions
+  const handleFilterFocus = (e) => {
+    e.target.scrollIntoView = () => {}; // Disable scrollIntoView
+  };
+
+  const handleFilterMouseEnter = (e) => {
+    e.target.scrollIntoView = () => {}; // Disable scrollIntoView
+  };
+
+  const handleFilterClick = (e) => {
+    e.target.scrollIntoView = () => {}; // Disable scrollIntoView
+  };
 
   const dormTypes = [
     "Traditional Single",
@@ -116,7 +438,7 @@ export default function CampusHub() {
   return (
     <>
       <Header />
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-6" style={{ scrollBehavior: "auto" }}>
         <h1 className="text-4xl font-bold text-center mb-2">
           Verified Reviews from WashU Students
         </h1>
@@ -124,11 +446,18 @@ export default function CampusHub() {
           Every review is written by real students who lived at the property.
         </p>
 
-        <div className="flex flex-wrap gap-4 justify-center mb-8">
+        <div
+          className="flex flex-wrap gap-4 justify-center mb-8"
+          style={{ scrollMargin: 0 }}
+        >
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="px-4 py-2 border rounded"
+            onFocus={handleFilterFocus}
+            onMouseEnter={handleFilterMouseEnter}
+            onClick={handleFilterClick}
+            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           >
             <option value="All">Select Dorm Type</option>
             {dormTypes.map((t) => (
@@ -141,7 +470,11 @@ export default function CampusHub() {
           <select
             value={selectedRating}
             onChange={(e) => setSelectedRating(e.target.value)}
-            className="px-4 py-2 border rounded"
+            onFocus={handleFilterFocus}
+            onMouseEnter={handleFilterMouseEnter}
+            onClick={handleFilterClick}
+            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           >
             <option value="All">All Ratings</option>
             {[5, 4, 3, 2, 1].map((r) => (
@@ -156,7 +489,11 @@ export default function CampusHub() {
             placeholder="Search keywords..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-4 py-2 border rounded"
+            onFocus={handleFilterFocus}
+            onMouseEnter={handleFilterMouseEnter}
+            onClick={handleFilterClick}
+            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           />
 
           <button
@@ -165,7 +502,10 @@ export default function CampusHub() {
               setSelectedType("All");
               setSearchQuery("");
             }}
-            className="px-4 py-2 bg-gray-200 rounded"
+            onFocus={handleFilterFocus}
+            onMouseEnter={handleFilterMouseEnter}
+            className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-colors"
+            style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           >
             Reset
           </button>
@@ -191,7 +531,6 @@ export default function CampusHub() {
                   height={192}
                   className="w-full h-48 object-cover rounded-t-lg"
                 />
-                {console.log(dormImages[dorm]?.[0])}
                 <div className="p-4">
                   <h2 className="text-lg font-bold">{dorm}</h2>
                   <p className="text-sm text-gray-600">{roomType}</p>
@@ -211,15 +550,16 @@ export default function CampusHub() {
               {/* Left side */}
               <div className="w-full md:w-2/3">
                 <h2 className="text-3xl font-bold mb-4">{selectedDorm.name}</h2>
-                <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="mb-6">
                   {dormImages[selectedDorm.name]?.map((img, idx) => (
                     <Image
                       key={idx}
                       src={img}
                       alt=""
-                      width={500}
-                      height={350}
-                      className="w-full h-[300px] md:h-[350px] object-cover rounded-lg"
+                      width={800}
+                      height={400}
+                      className="w-full h-[250px] md:h-[300px] object-cover rounded-lg"
+                      style={{ objectPosition: "center" }}
                     />
                   ))}
                 </div>
@@ -255,9 +595,10 @@ export default function CampusHub() {
                 <Image
                   src="/images/room-placeholder.jpeg"
                   alt="Dorm Setup"
-                  width={350}
-                  height={180}
-                  className="w-full h-44 object-cover rounded"
+                  width={400}
+                  height={300}
+                  className="w-full h-52 object-cover rounded"
+                  style={{ objectPosition: "center" }}
                 />
                 <div>
                   <h3 className="font-semibold mb-2 text-lg">
@@ -266,7 +607,7 @@ export default function CampusHub() {
                   <ul className="text-sm list-disc list-inside space-y-1">
                     <li>
                       <a
-                        href="https://www.amazon.com/dp/B01N5IB20Q"
+                        href="https://a.co/d/3sc3sdI"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 underline"
@@ -276,7 +617,7 @@ export default function CampusHub() {
                     </li>
                     <li>
                       <a
-                        href="https://www.amazon.com/dp/B09JPFMNMT"
+                        href="https://a.co/d/4cALohf"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 underline"
@@ -286,7 +627,7 @@ export default function CampusHub() {
                     </li>
                     <li>
                       <a
-                        href="https://www.amazon.com/dp/B081H3Y5NW"
+                        href="https://a.co/d/5MDxPZh"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 underline"

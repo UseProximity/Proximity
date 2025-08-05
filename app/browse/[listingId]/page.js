@@ -4,7 +4,46 @@ import { Header } from "@/components/Header";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import ConditionalButtons from "@/components/ConditionalButtons";
-import HeartIcon from "@/components/HeartIcon";
+
+function HeartIcon() {
+  const [isFavorite, setIsFavorite] = useState(false);
+
+  const handleClick = () => {
+    setIsFavorite(!isFavorite);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className="focus:outline-none rounded-full bg-white p-2 shadow-md border border-gray-300 hover:bg-gray-100 transition-all"
+      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+    >
+      {isFavorite ? (
+        // Filled Heart Icon
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="red"
+          viewBox="0 0 24 24"
+          className="h-6 w-6"
+        >
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </svg>
+      ) : (
+        // Unfilled Heart Icon
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          viewBox="0 0 24 24"
+          className="h-6 w-6"
+        >
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 export default function ListingDetails({ params }) {
   const [listing, setListing] = useState(null);
@@ -68,20 +107,31 @@ export default function ListingDetails({ params }) {
       <div className="bg-gray-100 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* Image + Gallery */}
+          {/* Back Button */}
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={() => window.history.back()}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg shadow-md transition-all"
+            >
+              ← Go Back
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="md:col-span-2">
+            <div className="relative md:col-span-2">
               <img
                 src={safeListing.images[0]}
                 alt={safeListing.address}
                 className="rounded-xl w-full h-[400px] object-cover shadow"
               />
+              <div className="absolute top-3 right-3">
+                <HeartIcon />
+              </div>
             </div>
             <div className="flex flex-col justify-center gap-3 bg-white p-6 rounded-xl shadow-md">
               <div className="flex justify-between items-center">
                 <div className="text-3xl font-bold text-gray-900">
                   ${safeListing.rent}
                 </div>
-                <HeartIcon listingId={safeListing._id} className="h-8 w-8" />
               </div>
               <div className="text-gray-700">{safeListing.address}</div>
               <div className="text-sm text-gray-500">
