@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import AvailableListings from "@/components/AvailableListings";
+import { Suspense } from "react";
 
 export default function Browse() {
   const [listings, setListings] = useState([]);
@@ -434,16 +435,18 @@ export default function Browse() {
   }
 
   return (
-    <>
-      <Header />
-      <div className="min-h-screen bg-gray-50">
-        <div className="flex flex-col md:flex-row h-screen">
-          <AvailableListings
-            listings={filteredListings}
-            onClearSearch={handleClearSearch}
-          />
+    <Suspense fallback={<div>Loading...</div>}>
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50">
+          <div className="flex flex-col md:flex-row h-screen">
+            <AvailableListings
+              listings={filteredListings}
+              onClearSearch={handleClearSearch}
+            />
+          </div>
         </div>
-      </div>
-    </>
+      </>
+    </Suspense>
   );
 }
