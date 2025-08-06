@@ -6,12 +6,14 @@ import { useState } from "react";
 import TourRequestModal from "./TourRequestModal";
 import ContactLandlordModal from "./ContactLandlordModal";
 import TourConfirmModal from "./TourConfirmModal";
+import ChatModal from "./ChatModal";
 
 export default function ConditionalButtons({ listing }) {
   const { role } = useUser();
   const [showTourModal, setShowTourModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
   const [tourData, setTourData] = useState(null);
 
   const handleTourRequest = () => {
@@ -20,6 +22,12 @@ export default function ConditionalButtons({ listing }) {
 
   const handleContactLandlord = () => {
     setShowContactModal(true);
+  };
+
+  const handleContactSubmit = (formData) => {
+    // Close the contact modal and open the chat modal
+    setShowContactModal(false);
+    setShowChatModal(true);
   };
 
   const handleTourConfirm = (data) => {
@@ -32,6 +40,7 @@ export default function ConditionalButtons({ listing }) {
     setShowTourModal(false);
     setShowContactModal(false);
     setShowConfirmModal(false);
+    setShowChatModal(false);
     setTourData(null);
   };
 
@@ -70,6 +79,7 @@ export default function ConditionalButtons({ listing }) {
       <ContactLandlordModal
         isOpen={showContactModal}
         onClose={() => setShowContactModal(false)}
+        onSubmit={handleContactSubmit}
         listing={listing}
       />
 
@@ -77,6 +87,19 @@ export default function ConditionalButtons({ listing }) {
         isOpen={showConfirmModal}
         onClose={closeAllModals}
         tourData={tourData}
+      />
+
+      <ChatModal
+        isOpen={showChatModal}
+        onClose={() => setShowChatModal(false)}
+        profile={{
+          name: listing?.owner?.name || "Landlord",
+          image: listing?.owner?.image || "/images/default-profile.jpg",
+          age: listing?.owner?.age || "Unknown",
+          gender: listing?.owner?.gender || "Unknown",
+        }}
+        currentUser="You"
+        conversationType="landlord"
       />
     </>
   );

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Home,
   Heart,
@@ -49,20 +49,6 @@ const favoriteListings = [
     image: "/placeholder.svg?height=200&width=300&text=Cedar+Lane+Duplex",
   },
 ];
-
-const mockUser = {
-  name: "Samarth Hegde",
-  age: 19,
-  gender: "Male",
-  numReviews: 3,
-  rating: 4,
-  image: "https://picsum.photos/200/200?random=102",
-  description: "A passionate student looking for the best housing options.",
-  role: "student",
-  favorites: [],
-  email: "samarth.hedge.@example.com",
-  phone: "+1234567890",
-};
 
 // Simple components
 const Card = ({ children, className = "", onClick }) => (
@@ -128,6 +114,25 @@ const Button = ({
 export default function StudentDashboard() {
   const [activeView, setActiveView] = useState("profile");
 
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    fetchUser();
+  }, []);
+
+  const fetchUser = async () => {
+    try {
+      const response = await fetch(`/api/getUser`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user: ${response.statusText}`);
+      }
+
+      setUser(await response.json());
+    } catch (error) {
+      console.error("Error fetching User:", error);
+    }
+  };
+
   const handleNavigation = (key) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
     setActiveView(key);
@@ -146,60 +151,70 @@ export default function StudentDashboard() {
     }
   };
 
-  const Profile = () => (
-    <div className="bg-white p-8 rounded-lg shadow-lg mb-8">
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Profile Image */}
-        <div className="flex-shrink-0">
-          <img
-            src={mockUser.image}
-            alt={mockUser.name}
-            className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow-md"
-          />
+  const Profile = () => {
+    if (!user) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading profile...</p>
         </div>
+      );
+    }
 
-        {/* Profile Info */}
-        <div className="flex-1">
-          <h1 className="text-4xl font-bold text-gray-900">{mockUser.name}</h1>
-          <div className="text-yellow-500 text-xl mt-2">
-            {"★".repeat(mockUser.rating)}
-            <span className="text-gray-300">
-              {"★".repeat(5 - mockUser.rating)}
-            </span>
+    return (
+      <div className="bg-white p-8 rounded-lg shadow-lg mb-8">
+        <div className="flex flex-col md:flex-row gap-8">
+          {/* Profile Image */}
+          <div className="flex-shrink-0">
+            <img
+              src={user.image}
+              alt={user.name}
+              className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow-md"
+            />
           </div>
-          <p className="text-gray-500 mt-2 text-lg">0 active listings</p>
-          <p className="text-gray-600 text-base mt-4">{mockUser.description}</p>
-          <p className="text-gray-400 text-base mt-2">
-            {mockUser.age} years old • {mockUser.gender}
-          </p>
-          <p className="text-gray-500 text-base mt-2">
-            📞 {mockUser.phone} • ✉️ {mockUser.email}
-          </p>
 
-          {/* Additional Info */}
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold text-gray-900">About Me</h2>
-            <p className="text-gray-600 mt-2">
-              I am a student passionate about finding the best housing options
-              near campus. I enjoy connecting with others and exploring new
-              opportunities.
+          {/* Profile Info */}
+          <div className="flex-1">
+            <h1 className="text-4xl font-bold text-gray-900">{user.name}</h1>
+            <div className="text-yellow-500 text-xl mt-2">
+              {"★".repeat(user.rating)}
+              <span className="text-gray-300">
+                {"★".repeat(5 - user.rating)}
+              </span>
+            </div>
+            <p className="text-gray-500 mt-2 text-lg">0 active listings</p>
+            <p className="text-gray-600 text-base mt-4">{user.description}</p>
+            <p className="text-gray-400 text-base mt-2">
+              {user.age} years old • {user.gender}
             </p>
-          </div>
-        </div>
+            <p className="text-gray-500 text-base mt-2">
+              📞 {user.phone} • ✉️ {user.email}
+            </p>
 
-        {/* Edit Button */}
-        <div className="flex-shrink-0">
-          <Button
-            variant="default"
-            size="default"
-            className="w-full md:w-auto text-white bg-red-600 hover:bg-red-700"
-          >
-            Edit Profile
-          </Button>
+            {/* Additional Info */}
+            <div className="mt-6">
+              <h2 className="text-xl font-semibold text-gray-900">About Me</h2>
+              <p className="text-gray-600 mt-2">
+                I am a student passionate about finding the best housing options
+                near campus. I enjoy connecting with others and exploring new
+                opportunities.
+              </p>
+            </div>
+          </div>
+
+          {/* Edit Button */}
+          <div className="flex-shrink-0">
+            <Button
+              variant="default"
+              size="default"
+              className="w-full md:w-auto text-white bg-red-600 hover:bg-red-700"
+            >
+              Edit Profile
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const SubleasesSection = () => (
     <div className="space-y-6">
@@ -238,33 +253,66 @@ export default function StudentDashboard() {
     </div>
   );
 
-  const FavoriteListingsSection = () => (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">My Favorite Listings</h2>
-      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {favoriteListings.map((listing) => (
-          <Card key={listing.id} className="hover:shadow-lg transition-shadow">
-            <div className="relative overflow-hidden">
-              <img
-                src={listing.image}
-                alt={listing.name}
-                className="w-full h-48 object-cover"
-              />
-            </div>
-            <CardHeader>
-              <CardTitle>{listing.name}</CardTitle>
-              <p className="text-sm text-gray-500">{listing.address}</p>
-            </CardHeader>
-            <CardContent>
-              <p className="text-lg font-bold text-gray-900">
-                ${listing.rent.toLocaleString()} /month
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+  const FavoriteListingsSection = () => {
+    if (!user) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading profile...</p>
+        </div>
+      );
+    }
+
+    if (!user.favoriteListings || user.favoriteListings.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          <p className="text-gray-500 text-lg">
+            You don&apos;t have any favorite listings yet.
+          </p>
+          <Button
+            variant="default"
+            size="default"
+            className="text-white bg-red-600 hover:bg-red-700"
+            onClick={() => (window.location.href = "/browse")}
+          >
+            Browse Listings
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-bold text-gray-900">
+          My Favorite Listings
+        </h2>
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {user.favoriteListings.map((listing) => (
+            <Card
+              key={listing.id}
+              className="hover:shadow-lg transition-shadow"
+            >
+              <div className="relative overflow-hidden">
+                <img
+                  src={listing.image}
+                  alt={listing.name}
+                  className="w-full h-48 object-cover"
+                />
+              </div>
+              <CardHeader>
+                <CardTitle>{listing.name}</CardTitle>
+                <p className="text-sm text-gray-500">{listing.address}</p>
+              </CardHeader>
+              <CardContent>
+                <p className="text-lg font-bold text-gray-900">
+                  ${listing.rent.toLocaleString()} /month
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderContent = () => {
     switch (activeView) {
@@ -272,6 +320,8 @@ export default function StudentDashboard() {
         return <SubleasesSection />;
       case "favorites":
         return <FavoriteListingsSection />;
+      case "profile":
+        return <Profile />;
       default:
         return <Profile />;
     }
@@ -306,7 +356,7 @@ export default function StudentDashboard() {
                 <button
                   onClick={() => handleNavigation("profile")}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "favorites"
+                    activeView === "profile"
                       ? "bg-red-50 text-red-700"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}

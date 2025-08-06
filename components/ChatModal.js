@@ -19,10 +19,14 @@ export default function ChatModal({
   onClose,
   profile,
   currentUser = "You",
+  conversationType = "roommate", // "roommate" or "landlord"
 }) {
   const [messages, setMessages] = useState([
     {
-      message: `Hi! I saw your roommate profile and I think we might be a good match. Would you like to chat about potentially being roommates?`,
+      message:
+        conversationType === "landlord"
+          ? `Hi! I'm interested in your property listing. Could we discuss the details?`
+          : `Hi! I saw your roommate profile and I think we might be a good match. Would you like to chat about potentially being roommates?`,
       sentTime: "just now",
       sender: currentUser,
       direction: "outgoing",
@@ -49,7 +53,8 @@ export default function ChatModal({
     // Simulate a response from the other person after a delay
     setTimeout(() => {
       setIsTyping(false);
-      const responses = [
+
+      const roommateResponses = [
         "Thanks for reaching out! I'd love to learn more about you.",
         "Hi! Yes, I'm definitely interested in finding a roommate. What year are you?",
         "Hey! I saw your profile too and you seem like a great match. When are you looking to move in?",
@@ -57,10 +62,23 @@ export default function ChatModal({
         "Hi there! I'm definitely open to chatting. What dorm or area were you thinking?",
       ];
 
+      const landlordResponses = [
+        "Hello! Thank you for your interest in the property. I'd be happy to answer any questions you have.",
+        "Hi there! Great to hear from you. What would you like to know about the listing?",
+        "Thanks for reaching out! I'm available to discuss the property details and answer any questions.",
+        "Hello! I appreciate your interest. When would you be looking to move in?",
+        "Hi! I'd be glad to help you with any questions about the rental. What specific information are you looking for?",
+      ];
+
+      const responses =
+        conversationType === "landlord" ? landlordResponses : roommateResponses;
+
       const responseMessage = {
         message: responses[Math.floor(Math.random() * responses.length)],
         direction: "incoming",
-        sender: profile?.name || "Roommate",
+        sender:
+          profile?.name ||
+          (conversationType === "landlord" ? "Landlord" : "Roommate"),
         sentTime: "just now",
       };
 

@@ -21,12 +21,12 @@ const WASHU_CAMPUS_CENTER = {
 // Function to fetch crime data from CrimeoMeter API
 const fetchCrimeData = async (lat, lng, range = 1) => {
   try {
-    console.log(
+    /*console.log(
       `🌐 Fetching crime data for coordinates: ${lat}, ${lng} with range: ${range}km`
-    );
+    );*/
 
     const url = `https://crimeometer.p.rapidapi.com/raw-data?lat=${lat}&lng=${lng}&range=${range}`;
-    console.log(`🔗 API URL: ${url}`);
+    //console.log(`🔗 API URL: ${url}`);
 
     const response = await fetch(url, {
       method: "GET",
@@ -36,24 +36,24 @@ const fetchCrimeData = async (lat, lng, range = 1) => {
       },
     });
 
-    console.log(`📡 Response status: ${response.status}`);
+    //console.log(`📡 Response status: ${response.status}`);
 
     if (!response.ok) {
-      console.error(`❌ HTTP error! status: ${response.status}`);
+      //console.error(`❌ HTTP error! status: ${response.status}`);
       const errorText = await response.text();
-      console.error(`❌ Error response body: ${errorText}`);
+      //console.error(`❌ Error response body: ${errorText}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log("📊 Crime data received:", data);
-    console.log(
+    //console.log("📊 Crime data received:", data);
+    /*console.log(
       "📈 Number of records:",
       data.crimes?.length || data.incidents?.length || 0
-    );
+    );*/
     return data;
   } catch (error) {
-    console.error("💥 Error fetching crime data:", error);
+    //console.error("💥 Error fetching crime data:", error);
     return null;
   }
 };
@@ -237,9 +237,10 @@ export default function MapView({
   const loadCrimeData = useCallback(async () => {
     setLoading(true);
     try {
+      /*
       console.log(
         "Attempting to fetch real crime data from Crimeometer API..."
-      );
+      );*/
       // Fetch crime data for WashU campus area
       const data = await fetchCrimeData(
         WASHU_CAMPUS_CENTER.latitude,
@@ -247,16 +248,16 @@ export default function MapView({
         2
       );
 
-      console.log("API Response:", data);
+      //console.log("API Response:", data);
 
       if (data && data.crimes && data.crimes.length > 0) {
-        console.log("✅ Using REAL crime data from API");
+        //console.log("✅ Using REAL crime data from API");
         const processedData = processCrimeDataForHeatmap(data);
         setCrimeData(processedData);
         setIsRealCrimeData(true);
       } else if (data && data.incidents && data.incidents.length > 0) {
         // Try alternative data structure
-        console.log("✅ Using REAL crime data from API (incidents format)");
+        //console.log("✅ Using REAL crime data from API (incidents format)");
         const processedData = data.incidents
           .map((incident) => ({
             lng: incident.longitude || incident.lng,
@@ -270,16 +271,16 @@ export default function MapView({
         setIsRealCrimeData(true);
       } else {
         // Use mock data if API fails or returns no data
-        console.log(
+        /*console.log(
           "⚠️ API returned no data, using MOCK crime data for demonstration"
-        );
+        );*/
         setCrimeData(mockCrimeData);
         setIsRealCrimeData(false);
       }
     } catch (error) {
-      console.error("❌ Error loading crime data from API:", error);
+      //console.error("❌ Error loading crime data from API:", error);
       // Use mock data as fallback
-      console.log("⚠️ Using MOCK crime data as fallback due to API error");
+      //console.log("⚠️ Using MOCK crime data as fallback due to API error");
       setCrimeData(mockCrimeData);
       setIsRealCrimeData(false);
     } finally {

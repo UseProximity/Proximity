@@ -1,7 +1,12 @@
 "use client";
 import React, { useState, useEffect } from "react";
 
-export default function ContactLandlordModal({ isOpen, onClose, listing }) {
+export default function ContactLandlordModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  listing,
+}) {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -51,8 +56,13 @@ export default function ContactLandlordModal({ isOpen, onClose, listing }) {
     e.preventDefault();
     // Here you would typically send the data to your backend
     console.log("Contact form submitted:", formData);
-    // Show success message or close modal
-    onClose();
+
+    // Call the onSubmit callback if provided, otherwise just close
+    if (onSubmit) {
+      onSubmit(formData);
+    } else {
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
