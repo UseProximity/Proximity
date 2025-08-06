@@ -7,6 +7,14 @@ import AvailableListings from "@/components/AvailableListings";
 import { Suspense } from "react";
 
 export default function Browse() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <BrowseContent />
+    </Suspense>
+  );
+}
+
+function BrowseContent() {
   const [listings, setListings] = useState([]);
   const [filteredListings, setFilteredListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -422,33 +430,29 @@ export default function Browse() {
 
   if (loading) {
     return (
-      <Suspense fallback={<div>Loading...</div>}>
-        <>
-          <Header />
-          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading listings...</p>
-            </div>
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading listings...</p>
           </div>
-        </>
-      </Suspense>
+        </div>
+      </>
     );
   }
 
   return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <>
-        <Header />
-        <div className="min-h-screen bg-gray-50">
-          <div className="flex flex-col md:flex-row h-screen">
-            <AvailableListings
-              listings={filteredListings}
-              onClearSearch={handleClearSearch}
-            />
-          </div>
+    <>
+      <Header />
+      <div className="min-h-screen bg-gray-50">
+        <div className="flex flex-col md:flex-row h-screen">
+          <AvailableListings
+            listings={filteredListings}
+            onClearSearch={handleClearSearch}
+          />
         </div>
-      </>
-    </Suspense>
+      </div>
+    </>
   );
 }

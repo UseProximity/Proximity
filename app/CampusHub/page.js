@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import Modal from "../../components/Modal";
+import ModalDorms from "../../components/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
 import { Header } from "@/components/Header";
 
@@ -544,7 +544,7 @@ export default function CampusHub() {
         </div>
 
         {/* Modal */}
-        <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}>
+        <ModalDorms isOpen={modalOpen} onClose={() => setModalOpen(false)}>
           {selectedDorm && (
             <div className="flex flex-col md:flex-row gap-6 w-full h-full overflow-y-auto">
               {/* Left side */}
@@ -640,7 +640,7 @@ export default function CampusHub() {
               </div>
             </div>
           )}
-        </Modal>
+        </ModalDorms>
       </div>
     </>
   );

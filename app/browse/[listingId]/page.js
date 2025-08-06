@@ -5,6 +5,26 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import ConditionalButtons from "@/components/ConditionalButtons";
 
+const reviews = [
+  {
+    name: "Emily R.",
+    rating: 5,
+    comment:
+      "Loved living here! The landlord was very responsive and the neighborhood felt safe and quiet. Highly recommend.",
+  },
+  {
+    name: "Jake T.",
+    rating: 1,
+    comment: "Shit Place.",
+  },
+  {
+    name: "Sophia L.",
+    rating: 4,
+    comment:
+      "Great place for students, close to everything. A few minor repairs needed during my stay, but they were fixed quickly.",
+  },
+];
+
 function HeartIcon() {
   const [isFavorite, setIsFavorite] = useState(false);
 
@@ -213,6 +233,23 @@ export default function ListingDetails({ params }) {
               Reviews For The Property
             </h2>
             <div className="space-y-4">
+              {reviews.map((review, index) => (
+                <div key={index} className="border-b pb-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-900">
+                      {review.name}
+                    </span>
+                    <span className="text-yellow-500">
+                      {"★".repeat(review.rating)}
+                      <span className="text-gray-300">
+                        {"★".repeat(5 - review.rating)}
+                      </span>
+                    </span>
+                  </div>
+                  <p className="text-gray-700 mt-1">{review.comment}</p>
+                </div>
+              ))}
+              {/* 
               {safeListing.reviews && safeListing.reviews.length > 0 ? (
                 safeListing.reviews.map((review, index) => (
                   <div key={index} className="border-b pb-4">
@@ -233,6 +270,7 @@ export default function ListingDetails({ params }) {
               ) : (
                 <p className="text-gray-500">No reviews yet</p>
               )}
+                          */}
             </div>
           </div>
         </div>
