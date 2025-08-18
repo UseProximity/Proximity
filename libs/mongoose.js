@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 import User from "@/models/User";
+import Listing from "@/models/Listing";
+import Review from "@/models/Review";
 
 const connectMongo = async () => {
   try {

@@ -5,21 +5,69 @@ import dynamic from "next/dynamic";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
-function HeartIcon() {
-  const [isFavorite, setIsFavorite] = useState(false);
+function HeartIcon({ listingId, initial = false }) {
+  const [isFavorite, setIsFavorite] = useState(initial);
+  const [pending, setPending] = useState(false);
 
-  const handleClick = () => {
-    setIsFavorite(!isFavorite);
+  // keep local state in sync when `initial` changes (e.g. after user fetch)
+  useEffect(() => {
+    setIsFavorite(initial);
+  }, [initial]);
+
+  const handleClick = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pending) return;
+
+    const prev = isFavorite;
+    const next = !prev;
+
+    // Optimistic UI
+    setIsFavorite(next);
+    setPending(true);
+
+    try {
+      const userId = "68877696221d6bb66c4c7c7d"; // TODO: replace with real user id/session
+      if (!userId) {
+        setIsFavorite(prev);
+        return;
+      }
+
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, userId }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || typeof data.favorited !== "boolean") {
+        // Roll back if server failed/invalid response
+        setIsFavorite(prev);
+        return;
+      }
+
+      // Snap to server truth
+      setIsFavorite(data.favorited);
+    } catch (err) {
+      console.error("Could not update favorites:", err);
+      setIsFavorite(prev); // Roll back on error
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
     <button
       onClick={handleClick}
-      className="focus:outline-none p-1.5 hover:text-red-500 transition-all"
+      disabled={pending}
+      aria-disabled={pending}
+      aria-busy={pending}
+      className="focus:outline-none p-1.5 hover:text-red-500 transition-all disabled:opacity-60"
       aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+      aria-pressed={isFavorite}
     >
       {isFavorite ? (
-        // Filled Heart Icon
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="red"
@@ -29,7 +77,6 @@ function HeartIcon() {
           <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
         </svg>
       ) : (
-        // Unfilled Heart Icon
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
@@ -49,6 +96,27 @@ export default function AvailableListings({ listings, onClearSearch }) {
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
+  const [user, setUser] = useState(null);
+
+  {
+    /* Retrieve the User like this for now FIX ME*/
+  }
+  useEffect(() => {
+    fetchUser();
+  }, []);
+
+  const fetchUser = async () => {
+    try {
+      const response = await fetch(`/api/getUser`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user: ${response.statusText}`);
+      }
+
+      setUser(await response.json());
+    } catch (error) {
+      console.error("Error fetching User:", error);
+    }
+  };
 
   // Close filter dropdowns when clicking outside
   useEffect(() => {
@@ -1290,16 +1358,15 @@ export default function AvailableListings({ listings, onClearSearch }) {
             {filteredListings.map((listing) => (
               <div
                 key={listing._id}
-                className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-indigo-200 transform hover:-translate-y-2 hover:scale-[1.02]"
+                className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
               >
                 <a href={`/browse/${listing._id}`}>
                   <div className="relative">
                     <img
                       src={listing.images[0]}
                       alt=""
-                      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-48 object-cover"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   </div>
                   <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
                     <div className="flex items-center justify-between mb-4">
@@ -1346,8 +1413,17 @@ export default function AvailableListings({ listings, onClearSearch }) {
                     </div>
                   </div>
                 </a>
+
+                <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
                 <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
-                  <HeartIcon />
+                  <HeartIcon
+                    listingId={listing._id}
+                    initial={Boolean(
+                      user?.favorites?.some(
+                        (f) => String((f && f._id) || f) === String(listing._id)
+                      ) || user?.favoritesIds?.includes(String(listing._id))
+                    )}
+                  />
                 </div>
               </div>
             ))}
