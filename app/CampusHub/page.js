@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import ModalDorms from "../../components/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
-import { Header } from "@/components/Header";
 
 const allDorms = [
   "Beaumont",
@@ -437,7 +436,6 @@ export default function CampusHub() {
 
   return (
     <>
-      <Header />
       <div className="max-w-7xl mx-auto p-6" style={{ scrollBehavior: "auto" }}>
         <h1 className="text-4xl font-bold text-center mb-2">
           Verified Reviews from WashU Students

@@ -1,4 +1,3 @@
-import { Header } from "@/components/Header";
 import connectMongo from "@/libs/mongoose";
 import Listing from "@/models/Listing";
 import User from "@/models/User";
@@ -45,7 +44,6 @@ export default async function Landlord({ params }) {
 
   return (
     <>
-      <Header />
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/*Landlord Recap */}
         <div className="bg-white p-6 rounded-lg shadow-md mb-8 flex items-center justify-between">

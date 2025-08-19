@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useUser } from "@/context/UserContext";
 import { useState } from "react";
 import TourRequestModal from "./TourRequestModal";
 import ContactLandlordModal from "./ContactLandlordModal";
 import TourConfirmModal from "./TourConfirmModal";
 import ChatModal from "./ChatModal";
 
-export default function ConditionalButtons({ listing }) {
-  const { role } = useUser();
+export default function ConditionalButtons({ listing, role }) {
   const [showTourModal, setShowTourModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);

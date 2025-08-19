@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Header } from "@/components/Header";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import ConditionalButtons from "@/components/ConditionalButtons";
@@ -96,7 +95,6 @@ export default function ListingDetails({ params }) {
   if (isLoading) {
     return (
       <>
-        <Header />
         <div className="bg-gray-100 min-h-screen">
           <div className="max-w-7xl mx-auto px-4 py-8">
             <div className="flex items-center justify-center py-20">
@@ -123,7 +121,6 @@ export default function ListingDetails({ params }) {
 
   return (
     <>
-      <Header />
       <div className="bg-gray-100 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* Image + Gallery */}

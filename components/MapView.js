@@ -242,11 +242,13 @@ export default function MapView({
         "Attempting to fetch real crime data from Crimeometer API..."
       );*/
       // Fetch crime data for WashU campus area
+      /*
       const data = await fetchCrimeData(
         WASHU_CAMPUS_CENTER.latitude,
         WASHU_CAMPUS_CENTER.longitude,
         2
-      );
+      );*/
+      const data = null; // Simulate API call for now
 
       //console.log("API Response:", data);
 

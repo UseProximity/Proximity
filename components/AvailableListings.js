@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
-function HeartIcon({ listingId, initial = false }) {
+function HeartIcon({ userId, listingId, initial = false }) {
   const [isFavorite, setIsFavorite] = useState(initial);
   const [pending, setPending] = useState(false);
 
@@ -17,18 +17,21 @@ function HeartIcon({ listingId, initial = false }) {
   const handleClick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (pending) return;
+    if (pending || userId == "") return; // TODO: handle user not logged in (maybe show login modal)
+    console.log("A passar");
 
     const prev = isFavorite;
     const next = !prev;
 
     // Optimistic UI
+    console.log("Optimistically setting favorite to:", next);
     setIsFavorite(next);
     setPending(true);
 
     try {
-      const userId = "68877696221d6bb66c4c7c7d"; // TODO: replace with real user id/session
       if (!userId) {
+        console.log("UserId:", userId);
+        console.log("User ID not available, rolling back favorite state");
         setIsFavorite(prev);
         return;
       }
@@ -92,21 +95,23 @@ function HeartIcon({ listingId, initial = false }) {
   );
 }
 
-export default function AvailableListings({ listings, onClearSearch }) {
+export default function AvailableListings({
+  session,
+  listings,
+  onClearSearch,
+}) {
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
   const [user, setUser] = useState(null);
 
-  {
-    /* Retrieve the User like this for now FIX ME*/
-  }
   useEffect(() => {
     fetchUser();
   }, []);
 
   const fetchUser = async () => {
     try {
+      if (!session) return;
       const response = await fetch(`/api/getUser`);
       if (!response.ok) {
         throw new Error(`Failed to fetch user: ${response.statusText}`);
@@ -1417,12 +1422,17 @@ export default function AvailableListings({ listings, onClearSearch }) {
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
                 <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
                   <HeartIcon
+                    userId={user?._id || ""}
                     listingId={listing._id}
-                    initial={Boolean(
-                      user?.favorites?.some(
-                        (f) => String((f && f._id) || f) === String(listing._id)
-                      ) || user?.favoritesIds?.includes(String(listing._id))
-                    )}
+                    initial={
+                      Boolean(user) &&
+                      Boolean(
+                        user?.favorites?.some(
+                          (f) =>
+                            String((f && f._id) || f) === String(listing._id)
+                        ) || user?.favoritesIds?.includes(String(listing._id))
+                      )
+                    }
                   />
                 </div>
               </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import axios from "axios";
-import { Header } from "@/components/Header";
 import { useState } from "react";
 import toast from "react-hot-toast";
 
@@ -75,7 +74,6 @@ export default function AddSubLease() {
 
   return (
     <>
-      <Header />
       <main className="max-w-2xl mx-auto p-6 mt-10">
         <h1 className="text-3xl font-bold text-red-600 mb-6">Add a Listing</h1>
         <form onSubmit={handleSubmit} className="space-y-6">

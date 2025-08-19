@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, useInView } from "framer-motion";
-import { Header } from "@/components/Header";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import {
   Lock,
@@ -985,7 +984,6 @@ function HeroSection() {
 export default function ProximityLandingPage() {
   return (
     <div className="min-h-screen bg-white">
-      <Header />
       <main>
         <HeroSection />
       </main>

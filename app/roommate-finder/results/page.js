@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Header } from "@/components/Header";
 import Modal from "../../../components/Modal";
 import ChatModal from "../../../components/ChatModal";
 import { AiFillHeart, AiOutlineHeart } from "react-icons/ai";
@@ -383,7 +382,6 @@ function RoommateResultsContent() {
 
   return (
     <>
-      <Header />
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-6">
           <div className="mb-8">

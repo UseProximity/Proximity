@@ -1,20 +1,11 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { useUser } from "@/context/UserContext";
 import Logo from "@/public/logo.png";
-import { usePathname, useRouter } from "next/navigation";
 import { Home, Plus, Search, User, Menu, Users } from "lucide-react";
+import ButtonAuth from "./ButtonAuth";
 
-export function Header() {
-  const { role, loginAs, logout } = useUser();
-  const router = useRouter();
-  const currentPath = usePathname();
-  const handleLogout = () => {
-    router.push("/");
-    logout();
-  };
+export function Header({ currentPath, role }) {
+  console.log("Header rendered with role:", role);
   return (
     <header className="bg-white border-b border-gray-200 px-4 py-1 sticky top-0 z-50 backdrop-blur-sm">
       <div className="flex items-center justify-between w-full mx-auto h-[64px]">
@@ -100,59 +91,7 @@ export function Header() {
           </nav>
         </div>
 
-        {/* Right: Auth Buttons */}
-        <div className="flex items-center gap-2">
-          {/* Mobile toggle */}
-          <button className="md:hidden text-gray-600 hover:text-gray-900">
-            <Menu className="h-5 w-5" />
-          </button>
-
-          {role ? (
-            <div className="hidden md:flex items-center gap-2">
-              <Link
-                href={
-                  role === "student"
-                    ? "/dashboard/student"
-                    : "/dashboard/landlord"
-                }
-              >
-                <button className="px-3 py-1.5 text-sm font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition">
-                  Dashboard
-                </button>
-              </Link>
-              <div className="flex items-center gap-1.5">
-                <div className="h-7 w-7 rounded-full bg-gray-200 flex items-center justify-center">
-                  <User className="h-3.5 w-3.5 text-gray-600" />
-                </div>
-                <div className="flex flex-col leading-none">
-                  <span className="text-sm font-medium capitalize">{role}</span>
-                  <span className="text-xs text-gray-500">Logged in</span>
-                </div>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 rounded-md"
-              >
-                Log out
-              </button>
-            </div>
-          ) : (
-            <div className="hidden md:flex items-center gap-2">
-              <button
-                onClick={() => loginAs("student")}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
-              >
-                Student Login
-              </button>
-              <button
-                onClick={() => loginAs("landlord")}
-                className="px-3 py-1.5 text-sm font-medium text-red-600 border border-red-600 hover:bg-red-50 rounded-md"
-              >
-                Landlord Login
-              </button>
-            </div>
-          )}
-        </div>
+        <ButtonAuth role={role} />
       </div>
     </header>
   );

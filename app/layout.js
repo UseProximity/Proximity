@@ -1,8 +1,9 @@
 import { Inter } from "next/font/google";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
-import { UserProvider } from "@/context/UserContext";
 import { Toaster } from "react-hot-toast";
+import { Header } from "@/components/Header";
+import { auth } from "@/auth";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -11,7 +12,8 @@ export const metadata = {
   description: "Find Housing Near Your University",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const session = await auth();
   return (
     <html lang="en" data-theme="">
       <head>
@@ -21,7 +23,8 @@ export default function RootLayout({ children }) {
         <div>
           <Toaster />
         </div>
-        <UserProvider>{children}</UserProvider>
+        <Header role={session?.user?.role} />
+        {children}
       </body>
     </html>
   );

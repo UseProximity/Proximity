@@ -29,7 +29,6 @@ import {
 import LeasingFunnel from "@/components/landlord-dashboard/leasing-funnel";
 import TrendIndicators from "@/components/landlord-dashboard/trend-indicators";
 import MarketComparisons from "@/components/landlord-dashboard/market-comparisons";
-import { Header } from "@/components/Header";
 
 // Mock data
 const properties = [
@@ -810,9 +809,6 @@ export default function ProximityDashboard() {
 
   return (
     <div className="w-full min-h-screen bg-gray-50 font-sans">
-      {/* Header */}
-      <Header />
-
       <div className="flex">
         {/* Sidebar */}
         <div
