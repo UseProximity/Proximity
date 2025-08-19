@@ -566,9 +566,7 @@ export default function MapView({
               listing._id
             )}'">
               <div style="position: relative; overflow: hidden;">
-                <img src="${
-                  listing.images?.[0] || "/images/default-property.jpg"
-                }" alt="Property image"
+                <img src="${listing.images?.[0]}" alt="Property image"
                   style="
                     width: 100%; 
                     height: 140px; 
