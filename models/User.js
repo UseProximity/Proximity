@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema(
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
     gender: { type: String, default: "unspecified" },
     image: { type: String },
+    listings: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
     name: { type: String },
     numReviews: { type: Number, default: 0 },
     phone: { type: String, default: "N/A" },

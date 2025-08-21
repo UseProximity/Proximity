@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 export default async function AddListingLayout({ children }) {
   const session = await auth();
 
-  if (!session || session.user.role !== "lanlord") {
+  if (!session || session.user.role !== "landlord") {
     redirect("/");
   }
 

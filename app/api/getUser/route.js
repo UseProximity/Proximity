@@ -2,6 +2,8 @@ import { auth } from "@/auth";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
 
+// ...existing imports...
+
 export async function GET() {
   try {
     const session = await auth();
@@ -17,6 +19,8 @@ export async function GET() {
         select:
           "address rent area bedrooms bathrooms leaseType images rating numReviews owner latitude longitude createdAt",
       })
+      .populate("favorites")
+      .populate("listings")
       .lean();
 
     if (!user) {
@@ -42,26 +46,39 @@ export async function GET() {
     }));
     const favoritesIds = safeFavorites.map((f) => f._id);
 
-    const favoriteListings =
-      safeFavorites.map((f) => ({
-        id: f._id,
-        name: f.address,
-        address: f.address,
-        rent: f.rent,
-        image: f.images?.[0] || "",
-      })) || [];
+    // Serialize populated listings
+    const safeListings = (user.listings || []).map((l) => ({
+      _id: l._id?.toString(),
+      address: l.address,
+      rent: l.rent,
+      area: l.area,
+      bedrooms: l.bedrooms,
+      bathrooms: l.bathrooms,
+      leaseType: l.leaseType,
+      images: Array.isArray(l.images) ? l.images : [],
+      rating: l.rating ?? 0,
+      numReviews: l.numReviews ?? 0,
+      owner: l.owner?.toString?.() || null,
+      latitude: l.latitude,
+      longitude: l.longitude,
+      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+    }));
+    const listingsIds = safeListings.map((l) => l._id);
 
     const safeUser = {
       ...user,
       _id: user._id.toString(),
       favorites: safeFavorites,
       favoritesIds,
-      favoriteListings,
+      listings: safeListings,
+      listingsIds,
       createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
       updatedAt: user.updatedAt ? new Date(user.updatedAt).toISOString() : null,
     };
 
-    return Response.json(safeUser);
+    return Response.json(safeUser, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (error) {
     console.error("Error fetching user:", error);
     return Response.json({ error: "Failed to fetch user" }, { status: 500 });

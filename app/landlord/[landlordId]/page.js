@@ -9,11 +9,11 @@ export default async function Landlord({ params }) {
 
   await connectMongo();
 
-  const landlord = await User.findById(decodeURIComponent(landlordId));
+  const landlord = await User.findById(decodeURIComponent(landlordId)).populate(
+    "listings"
+  );
 
   if (!landlord) notFound();
-
-  const landlordListings = await Listing.find({ owner: landlord._id });
 
   const reviews = [
     {
@@ -56,7 +56,7 @@ export default async function Landlord({ params }) {
               </span>
             </div>
             <p className="text-gray-500">
-              {landlordListings.length} active listings
+              {landlord.listings.length} active listings
             </p>
             <p className="text-gray-600 text-sm mt-1">{landlord.description}</p>
             <p className="text-gray-400 text-sm">
@@ -104,7 +104,7 @@ export default async function Landlord({ params }) {
           <div className="md:col-span-2">
             <h2 className="text-xl font-semibold mb-4">Listings</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {landlordListings.map((listing, index) => (
+              {landlord.listings.map((listing, index) => (
                 <Link
                   key={index}
                   href={`/browse/${encodeURIComponent(listing._id)}`}

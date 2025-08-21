@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import User from "@/models/User";
 import Listing from "@/models/Listing";
 import connectMongo from "@/libs/mongoose";
+import { auth } from "@/auth";
 
 export async function POST(req) {
   try {
-    await connectMongo();
-
     const body = await req.json();
 
     const {
@@ -20,7 +19,6 @@ export async function POST(req) {
       bathrooms,
       leaseType,
       images,
-      ownerId,
     } = body;
 
     // Validate required fields
@@ -33,8 +31,7 @@ export async function POST(req) {
       !area ||
       bedrooms === undefined ||
       bathrooms === undefined ||
-      !leaseType ||
-      !ownerId
+      !leaseType
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -42,9 +39,18 @@ export async function POST(req) {
       );
     }
 
+    const session = await auth();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ownerId = session?.user?.id;
+
+    await connectMongo();
+
     // Make sure the owner exists
-    const owner = await User.findById(ownerId);
-    if (!owner) {
+    if (!ownerId) {
       return NextResponse.json({ error: "Owner not found" }, { status: 404 });
     }
 
@@ -60,8 +66,13 @@ export async function POST(req) {
       bathrooms,
       leaseType,
       images: images || [],
-      owner: owner._id,
+      owner: ownerId,
     });
+
+    const user = await User.findById(ownerId);
+
+    user.listings.push(newListing._id);
+    await user.save();
 
     return NextResponse.json(
       { message: "Listing created successfully", listing: newListing },

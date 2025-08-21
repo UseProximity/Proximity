@@ -34,7 +34,7 @@ export default function AddSubLease() {
 
     setIsLoading(true);
 
-    // TO-DO from address get longitude and altitude coords
+    // TODO from address get longitude and altitude coords
 
     const dataToSend = {
       ...formData,

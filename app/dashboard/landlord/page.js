@@ -488,7 +488,46 @@ function AnalyticsDashboardSection() {
 }
 
 // Properties Page Content
-function PropertiesSection({ handlePropertySelect }) {
+function PropertiesSection({ user, handlePropertySelect }) {
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Loading properties...</p>
+      </div>
+    );
+  }
+
+  // Empty state when no properties
+  if (!user.listings || user.listings.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <div className="flex items-center justify-center h-12 w-12 rounded-full bg-red-50">
+          <Home className="h-6 w-6 text-red-600" />
+        </div>
+        <p className="text-gray-600 text-lg">
+          You don&apos;t have any properties yet.
+        </p>
+        <div className="flex gap-3">
+          <Button
+            variant="default"
+            className="text-white bg-red-600 hover:bg-red-700"
+            onClick={() => (window.location.href = "/add-listing")}
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
+            Add Listing
+          </Button>
+          <Button
+            variant="outline"
+            className="border-gray-300"
+            onClick={() => (window.location.href = "/browse")}
+          >
+            Browse Listings
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -500,17 +539,17 @@ function PropertiesSection({ handlePropertySelect }) {
         </div>
         <div className="flex items-center gap-4">
           <Badge variant="secondary" className="bg-green-100 text-green-800">
-            {properties.filter((p) => p.status === "Available").length}{" "}
-            Available
+            {user.listings.length} Available{" "}
+            {/*TODO: Fixed number for now, fix that */}
           </Badge>
           <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-            {properties.filter((p) => p.status === "Rented").length} Rented
+            0 Rented {/*TODO: Fixed number for now, fix that */}
           </Badge>
         </div>
       </div>
 
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {properties.map((property) => (
+        {user.listings.map((property) => (
           <Card
             key={property.id}
             className="hover:shadow-xl transition-all duration-300 cursor-pointer group border-0 shadow-md hover:scale-[1.02]"
@@ -522,18 +561,19 @@ function PropertiesSection({ handlePropertySelect }) {
               </div>
               <Badge
                 className={`absolute top-3 right-3 shadow-sm ${
-                  property.status === "Available"
-                    ? "bg-green-600"
-                    : "bg-blue-600"
+                  property.status !== "Available"
+                    ? "bg-blue-600"
+                    : "bg-green-600"
                 }`}
               >
-                {property.status}
+                Available {/*TODO fixed status for now, fix that */}
               </Badge>
             </div>
 
             <CardHeader className="pb-2">
               <CardTitle className="text-lg group-hover:text-red-600 transition-colors">
                 {property.name}
+                {/*TODO should a property have a name? Would is be easier for the landlord to manage? */}
               </CardTitle>
               <div className="flex items-center gap-1 text-sm text-gray-500">
                 <MapPin className="h-3 w-3" />
@@ -547,16 +587,20 @@ function PropertiesSection({ handlePropertySelect }) {
                   <div className="flex items-center gap-1">
                     <Bed className="h-3 w-3" />
                     <span className="font-medium">
-                      {property.beds === 0 ? "Studio" : `${property.beds} bed`}
+                      {property.beds === 0
+                        ? "Studio"
+                        : `${property.bedrooms} bed`}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Bath className="h-3 w-3" />
-                    <span className="font-medium">{property.baths} bath</span>
+                    <span className="font-medium">
+                      {property.bathrooms} bath
+                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Square className="h-3 w-3" />
-                    <span className="font-medium">{property.sqft} SF</span>
+                    <span className="font-medium">{property.area} SF</span>
                   </div>
                 </div>
               </div>
@@ -571,7 +615,7 @@ function PropertiesSection({ handlePropertySelect }) {
               <div className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-red-600" />
                 <span className="text-sm font-medium text-gray-700">
-                  {property.viewCount.toLocaleString()} views
+                  69 views {/*TODO fixed number of views for now, fix that */}
                 </span>
               </div>
 
@@ -590,7 +634,8 @@ function PropertiesSection({ handlePropertySelect }) {
                     }`}
                   >
                     {property.weeklyGrowth >= 0 ? "+" : ""}
-                    {property.weeklyGrowth}% this week
+                    -12.7% this week
+                    {/*TODO fixed weeklyGrowth for now, fix that */}
                   </span>
                 </div>
                 <div
@@ -601,7 +646,8 @@ function PropertiesSection({ handlePropertySelect }) {
                   }`}
                 >
                   {property.monthlyGrowth >= 0 ? "+" : ""}
-                  {property.monthlyGrowth}% monthly
+                  -1.2% monthly{" "}
+                  {/*TODO fixed monthlyGrowth for now, fix that */}
                 </div>
               </div>
             </CardContent>
@@ -820,7 +866,7 @@ function PropertyAnalyticsSection({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {selectedProperty?.viewCount}
+              69 {/*TODO fixed number of views for now, fix that */}
             </div>
             <div className="text-xs text-gray-500 mt-1">
               <span className="text-green-600 font-medium">
@@ -848,7 +894,7 @@ function PropertyAnalyticsSection({
             <Square className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{selectedProperty?.sqft}</div>
+            <div className="text-2xl font-bold">{selectedProperty?.area}</div>
             <div className="text-xs text-gray-500 mt-1">Square feet</div>
           </CardContent>
         </Card>
@@ -859,7 +905,9 @@ function PropertyAnalyticsSection({
             <MapPin className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{selectedProperty?.status}</div>
+            <div className="text-2xl font-bold">
+              Available{/*TODO: Fixed status for now */}
+            </div>
             <div className="text-xs text-gray-500 mt-1">Current status</div>
           </CardContent>
         </Card>
@@ -1024,7 +1072,10 @@ export default function ProximityDashboard() {
     switch (activeView) {
       case "properties":
         return (
-          <PropertiesSection handlePropertySelect={handlePropertySelect} />
+          <PropertiesSection
+            user={user}
+            handlePropertySelect={handlePropertySelect}
+          />
         );
       case "reviews":
         return <ReviewsSection />;

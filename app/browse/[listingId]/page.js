@@ -34,7 +34,7 @@ function HeartIcon() {
   return (
     <button
       onClick={handleClick}
-      className="focus:outline-none rounded-full bg-white p-2 shadow-md border border-gray-300 hover:bg-gray-100 transition-all"
+      className="focus:outline-none p-1.5 hover:text-red-500 transition-all disabled:opacity-60"
       aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
     >
       {isFavorite ? (
@@ -140,7 +140,8 @@ export default function ListingDetails({ params }) {
                 alt={safeListing.address}
                 className="rounded-xl w-full h-[400px] object-cover shadow"
               />
-              <div className="absolute top-3 right-3">
+              <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
+              <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
                 <HeartIcon />
               </div>
             </div>

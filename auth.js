@@ -48,6 +48,7 @@ const config = {
             favorites: [],
             gender: "unspecified",
             image: user.image ?? null,
+            listings: [],
             name:
               user.name || (user.email ? user.email.split("@")[0] : "New User"),
             numReviews: 0,

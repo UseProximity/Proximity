@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Home,
   Heart,
@@ -11,29 +12,16 @@ import {
   MapPin,
   User,
   Trash2,
+  TrendingUp,
+  TrendingDown,
+  Eye,
+  Square,
+  Bed,
+  Bath,
 } from "lucide-react";
 
-// Mock data
-const subleases = [
-  {
-    id: 1,
-    name: "Maple Street Apartment",
-    address: "123 Maple Street, College Town",
-    rent: 1200,
-    status: "Active",
-    image: "/placeholder.svg?height=200&width=300&text=Maple+Street+Apt",
-  },
-  {
-    id: 2,
-    name: "Oak Avenue House",
-    address: "456 Oak Avenue, University District",
-    rent: 1500,
-    status: "Pending",
-    image: "/placeholder.svg?height=200&width=300&text=Oak+Avenue+House",
-  },
-];
+// Components ------------------------------------------------------------------
 
-// Simple components
 const Card = ({ children, className = "", onClick }) => (
   <div
     className={`bg-white rounded-lg border border-gray-200 shadow-sm ${className}`}
@@ -93,6 +81,39 @@ const Button = ({
   );
 };
 
+const Badge = ({ children, variant = "default", className = "" }) => {
+  const variants = {
+    default: "bg-red-600 text-white",
+    secondary: "bg-gray-100 text-gray-900",
+    outline: "border border-gray-200 bg-white text-gray-900",
+  };
+
+  return (
+    <div
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${variants[variant]} ${className}`}
+    >
+      {children}
+    </div>
+  );
+};
+
+const StarRating = ({ rating, size = "sm" }) => {
+  const starSize = size === "lg" ? "h-5 w-5" : "h-4 w-4";
+
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`${starSize} ${
+            star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+          }`}
+        />
+      ))}
+    </div>
+  );
+};
+
 // Sections --------------------------------------------------------------------
 
 function ProfileSection({
@@ -138,7 +159,7 @@ function ProfileSection({
               </div>
               {/* TODO: had real sub leases count */}
               <p className="text-gray-500 mt-2 text-lg">
-                0 active sub-leases
+                {user.listings.length} active sub-leases
               </p>{" "}
               <p className="text-gray-400 text-base mt-2">
                 {user.age} years old • {user.gender}
@@ -276,37 +297,168 @@ function ProfileSection({
   );
 }
 
-function SubleasesSection() {
+function SubleasesSection({ user }) {
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Loading sub-leases...</p>
+      </div>
+    );
+  }
+
+  // If no subleases, show empty state
+  if (user?.listings.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <div className="flex items-center justify-center h-12 w-12 rounded-full bg-red-50">
+          <List className="h-6 w-6 text-red-600" />
+        </div>
+        <p className="text-gray-600 text-lg">
+          You don&apos;t have any sub-leases yet.
+        </p>
+        <div className="flex gap-3">
+          <Button
+            variant="default"
+            className="text-white bg-red-600 hover:bg-red-700"
+            onClick={() => (window.location.href = "/add-sub-lease")}
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
+            Add Sub-Lease
+          </Button>
+          <Button
+            variant="outline"
+            className="border-gray-300"
+            onClick={() => (window.location.href = "/browse")}
+          >
+            Browse Listings
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Case where the user actaul has subleases
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">My Subleases</h2>
-      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {subleases.map((sublease) => (
-          <Card key={sublease.id} className="hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Your Sub-Leases</h1>
+          <p className="text-gray-500">
+            Manage and view analytics for all your sub-leases.
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <Badge variant="secondary" className="bg-green-100 text-green-800">
+            {user.listings.length} Available{" "}
+            {/*TODO: Fixed number for now, fix that */}
+          </Badge>
+          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+            0 Rented {/*TODO: Fixed number for now, fix that */}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        {user.listings.map((property) => (
+          <Card
+            key={property.id}
+            className="hover:shadow-xl transition-all duration-300 cursor-pointer group border-0 shadow-md hover:scale-[1.02]"
+          >
             <div className="relative overflow-hidden">
-              <img
-                src={sublease.image}
-                alt={sublease.name}
-                className="w-full h-48 object-cover"
-              />
-              <div
-                className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold ${
-                  sublease.status === "Active"
-                    ? "bg-green-600 text-white"
-                    : "bg-yellow-500 text-white"
+              <div className="w-full h-48 bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center">
+                <Home className="h-16 w-16 text-red-400" />
+              </div>
+              <Badge
+                className={`absolute top-3 right-3 shadow-sm ${
+                  property.status !== "Available"
+                    ? "bg-blue-600"
+                    : "bg-green-600"
                 }`}
               >
-                {sublease.status}
-              </div>
+                Available {/*TODO fixed status for now, fix that */}
+              </Badge>
             </div>
-            <CardHeader>
-              <CardTitle>{sublease.name}</CardTitle>
-              <p className="text-sm text-gray-500">{sublease.address}</p>
+
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg group-hover:text-red-600 transition-colors">
+                {property.name}
+                {/*TODO should a property have a name? Would is be easier for the landlord to manage? */}
+              </CardTitle>
+              <div className="flex items-center gap-1 text-sm text-gray-500">
+                <MapPin className="h-3 w-3" />
+                <span className="truncate">{property.address}</span>
+              </div>
             </CardHeader>
-            <CardContent>
-              <p className="text-lg font-bold text-gray-900">
-                ${sublease.rent.toLocaleString()} /month
-              </p>
+
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-gray-600">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <Bed className="h-3 w-3" />
+                    <span className="font-medium">
+                      {property.beds === 0
+                        ? "Studio"
+                        : `${property.bedrooms} bed`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Bath className="h-3 w-3" />
+                    <span className="font-medium">
+                      {property.bathrooms} bath
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Square className="h-3 w-3" />
+                    <span className="font-medium">{property.area} SF</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xl font-bold text-gray-900">
+                ${property.rent.toLocaleString()}
+                <span className="text-sm font-normal text-gray-500">
+                  /month
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-red-600" />
+                <span className="text-sm font-medium text-gray-700">
+                  69 views {/*TODO fixed number of views for now, fix that */}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  {property.weeklyGrowth >= 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-red-600" />
+                  )}
+                  <span
+                    className={`text-sm font-medium ${
+                      property.weeklyGrowth >= 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {property.weeklyGrowth >= 0 ? "+" : ""}
+                    -12.7% this week
+                    {/*TODO fixed weeklyGrowth for now, fix that */}
+                  </span>
+                </div>
+                <div
+                  className={`text-sm font-medium ${
+                    property.monthlyGrowth >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {property.monthlyGrowth >= 0 ? "+" : ""}
+                  -1.2% monthly{" "}
+                  {/*TODO fixed monthlyGrowth for now, fix that */}
+                </div>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -324,6 +476,7 @@ function FavoriteListingsSection({ user, removingIds, handleRemoveFavorite }) {
     );
   }
 
+  // If no favorites, show empty state
   if (!user.favorites || user.favorites.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
@@ -342,6 +495,7 @@ function FavoriteListingsSection({ user, removingIds, handleRemoveFavorite }) {
     );
   }
 
+  // Case where the user has favorites
   return (
     <div className="space-y-6">
       <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -589,7 +743,7 @@ export default function StudentDashboard() {
   const renderContent = () => {
     switch (activeView) {
       case "subleases":
-        return <SubleasesSection />;
+        return <SubleasesSection user={user} />;
       case "favorites":
         return (
           <FavoriteListingsSection

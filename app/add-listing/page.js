@@ -45,7 +45,6 @@ export default function AddSubLease() {
       bathrooms: Number(formData.bathrooms),
       longitude: Number(formData.longitude),
       latitude: Number(formData.latitude),
-      ownerId: "68860dbc15d884a2dc96b79c", // TODO always giving a fixed owner id until auth resolved
     };
 
     try {
