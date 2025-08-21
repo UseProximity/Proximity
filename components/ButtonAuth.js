@@ -5,7 +5,7 @@ import Link from "next/link";
 import { signIn, signOut } from "next-auth/react";
 import { useState } from "react";
 
-export default function ButtonLogIn({ role }) {
+export default function ButtonAuth({ session }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignOut = () => {
@@ -13,6 +13,10 @@ export default function ButtonLogIn({ role }) {
     signOut({ callbackUrl: "/" });
     setIsLoading(false);
   };
+
+  const fullName = session?.user?.name?.trim() || "";
+  const displayName =
+    fullName.length > 18 ? `${fullName.slice(0, 18)}…` : fullName;
   return (
     <>
       {/* Right: Auth Buttons */}
@@ -22,11 +26,11 @@ export default function ButtonLogIn({ role }) {
           <Menu className="h-5 w-5" />
         </button>
 
-        {role ? (
+        {session?.user?.role ? (
           <div className="hidden md:flex items-center gap-2">
             <Link
               href={
-                role === "student"
+                session?.user?.role === "student"
                   ? "/dashboard/student"
                   : "/dashboard/landlord"
               }
@@ -40,7 +44,15 @@ export default function ButtonLogIn({ role }) {
                 <User className="h-3.5 w-3.5 text-gray-600" />
               </div>
               <div className="flex flex-col leading-none">
-                <span className="text-sm font-medium capitalize">{role}</span>
+                <span
+                  className="text-sm font-medium max-w-[8rem] sm:max-w-[12rem] truncate"
+                  title={fullName}
+                  aria-label={
+                    fullName ? `Logged in as ${fullName}` : "Logged in"
+                  }
+                >
+                  {displayName || "Account"}
+                </span>
                 <span className="text-xs text-gray-500">Logged in</span>
               </div>
             </div>

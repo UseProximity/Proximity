@@ -4,10 +4,9 @@ import Logo from "@/public/logo.png";
 import { Home, Plus, Search, User, Menu, Users } from "lucide-react";
 import ButtonAuth from "./ButtonAuth";
 
-export function Header({ currentPath, role }) {
-  console.log("Header rendered with role:", role);
+export function Header({ currentPath, session }) {
   return (
-    <header className="bg-white border-b border-gray-200 px-4 py-1 sticky top-0 z-50 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 px-4 py-1 border-b border-white/20 bg-white/70 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
       <div className="flex items-center justify-between w-full mx-auto h-[64px]">
         <div className="flex items-center gap-4">
           {/* Logo with fixed height */}
@@ -49,7 +48,7 @@ export function Header({ currentPath, role }) {
               <Home className="h-4 w-4" />
               On Campus Hub
             </Link>
-            {role === "landlord" && (
+            {session?.user?.role === "landlord" && (
               <Link
                 href="/add-listing"
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition ${
@@ -62,7 +61,7 @@ export function Header({ currentPath, role }) {
                 Add Listing
               </Link>
             )}
-            {role === "student" && (
+            {session?.user?.role === "student" && (
               <Link
                 href="/add-sub-lease"
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition ${
@@ -75,7 +74,7 @@ export function Header({ currentPath, role }) {
                 Sub-Lease
               </Link>
             )}
-            {role === "student" && (
+            {session?.user?.role === "student" && (
               <Link
                 href="/roommate-finder"
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-full shadow transition ${
@@ -91,7 +90,7 @@ export function Header({ currentPath, role }) {
           </nav>
         </div>
 
-        <ButtonAuth role={role} />
+        <ButtonAuth session={session} />
       </div>
     </header>
   );

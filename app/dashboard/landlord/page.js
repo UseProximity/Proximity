@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Calendar,
   BarChart3,
@@ -113,21 +113,6 @@ const reviews = [
   },
 ];
 
-const mockLandlord = {
-  name: "John Smith",
-  age: 45,
-  gender: "Male",
-  numReviews: 4,
-  rating: 4,
-  image: "https://picsum.photos/200/200?random=101",
-  description:
-    "Experienced landlord with a passion for providing quality housing.",
-  role: "landlord",
-  favorites: [],
-  email: "john.smith@example.com",
-  phone: "+1234567890",
-};
-
 // Simple components
 const Card = ({ children, className = "", onClick }) => (
   <div
@@ -221,108 +206,201 @@ const StarRating = ({ rating, size = "sm" }) => {
   );
 };
 
-// Main Dashboard Component
-export default function ProximityDashboard() {
-  const [activeView, setActiveView] = useState("profile");
-  const [selectedProperty, setSelectedProperty] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+// Sections --------------------------------------------------------------------
+function ProfileSection({
+  user,
+  isEditing,
+  form,
+  onChange,
+  saving,
+  cancelEdit,
+  saveProfile,
+  setIsEditing,
+}) {
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Loading profile...</p>
+      </div>
+    );
+  }
 
-  const handleNavigation = (key) => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    setActiveView(key);
-    setSelectedProperty(null);
-    setSidebarOpen(false);
-  };
-
-  const handlePropertySelect = (property) => {
-    setSelectedProperty(property);
-    setActiveView("property-analytics");
-  };
-
-  const handleBackToProperties = () => {
-    setSelectedProperty(null);
-    setActiveView("properties");
-  };
-
-  const getPageTitle = () => {
-    if (selectedProperty) return selectedProperty.name;
-    switch (activeView) {
-      case "properties":
-        return "Properties";
-      case "settings":
-        return "Settings";
-      case "reviews":
-        return "My Reviews";
-      case "profile":
-        return "My Profile";
-      case "analytics":
-        return "Analytics";
-      default:
-        return "Landlord Dashboard";
-    }
-  };
-
-  const Profile = () => (
+  return (
     <div className="bg-white p-8 rounded-lg shadow-lg mb-8">
       <div className="flex flex-col md:flex-row gap-8">
         {/* Profile Image */}
         <div className="flex-shrink-0">
           <img
-            src={mockLandlord.image}
-            alt={mockLandlord.name}
+            src={user.image}
+            alt={user.name}
             className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow-md"
           />
         </div>
 
         {/* Profile Info */}
         <div className="flex-1">
-          <h1 className="text-4xl font-bold text-gray-900">
-            {mockLandlord.name}
-          </h1>
-          <div className="text-yellow-500 text-xl mt-2">
-            {"★".repeat(mockLandlord.rating)}
-            <span className="text-gray-300">
-              {"★".repeat(5 - mockLandlord.rating)}
-            </span>
-          </div>
-          <p className="text-gray-500 mt-2 text-lg">0 active listings</p>
-          <p className="text-gray-600 text-base mt-4">
-            {mockLandlord.description}
-          </p>
-          <p className="text-gray-400 text-base mt-2">
-            {mockLandlord.age} years old • {mockLandlord.gender}
-          </p>
-          <p className="text-gray-500 text-base mt-2">
-            📞 {mockLandlord.phone} • ✉️ {mockLandlord.email}
-          </p>
+          {!isEditing ? (
+            <>
+              <div className="flex items-center flex-wrap gap-2">
+                <h1 className="text-4xl font-bold text-gray-900">
+                  {user.name}
+                </h1>
+                <Badge
+                  variant="secondary"
+                  className="bg-red-50 text-red-700 border border-red-200"
+                  aria-label="Account role: Landlord"
+                >
+                  Landlord
+                </Badge>
+              </div>
+              <div className="text-yellow-500 text-xl mt-2">
+                {"★".repeat(user.rating)}
+                <span className="text-gray-300">
+                  {"★".repeat(5 - user.rating)}
+                </span>
+              </div>
+              {/* TODO: had real sub leases count */}
+              <p className="text-gray-500 mt-2 text-lg">
+                0 active listings
+              </p>{" "}
+              <p className="text-gray-400 text-base mt-2">
+                {user.age} years old • {user.gender}
+              </p>
+              <p className="text-gray-500 text-base mt-2">
+                📞 {user.phone} • ✉️ {user.email}
+              </p>
+              {/* Additional Info */}
+              <div className="mt-6">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  About Me
+                </h2>
+                <p className="text-gray-600 mt-2">
+                  {user.description || "No description provided."}
+                </p>
+              </div>
+            </>
+          ) : (
+            // Edit form
+            <form
+              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveProfile();
+              }}
+            >
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Name
+                </label>
+                <input
+                  name="name"
+                  value={form.name}
+                  onChange={onChange}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="Your name"
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Phone
+                </label>
+                <input
+                  name="phone"
+                  value={form.phone == "N/A" ? "" : form.phone}
+                  onChange={onChange}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="+1 (555) 555-5555"
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Age
+                </label>
+                <input
+                  type="number"
+                  min="16"
+                  max="120"
+                  name="age"
+                  value={form.age}
+                  onChange={onChange}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Gender
+                </label>
+                <select
+                  name="gender"
+                  value={form.gender}
+                  onChange={onChange}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="unspecified">Unspecified</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Non-binary">Non-binary</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  About
+                </label>
+                <textarea
+                  name="description"
+                  value={form.description}
+                  onChange={onChange}
+                  rows={4}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="Tell others about yourself"
+                />
+              </div>
 
-          {/* Additional Info */}
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold text-gray-900">About Me</h2>
-            <p className="text-gray-600 mt-2">
-              I am an experienced landlord with a passion for providing quality
-              housing. I believe in maintaining open communication with my
-              tenants and ensuring their needs are met promptly.
-            </p>
-          </div>
+              <div className="col-span-1 md:col-span-2 flex gap-3 pt-2">
+                <Button
+                  type="submit"
+                  variant="default"
+                  className="text-white bg-red-600 hover:bg-red-700 disabled:opacity-70"
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save changes"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelEdit}
+                  className="border-gray-300"
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
         </div>
 
-        {/* Edit Button */}
+        {/* Actions */}
         <div className="flex-shrink-0">
-          <Button
-            variant="default"
-            size="default"
-            className="w-full md:w-auto text-white bg-red-600 hover:bg-red-700"
-          >
-            Edit Profile
-          </Button>
+          {!isEditing ? (
+            <Button
+              variant="default"
+              size="default"
+              className="w-full md:w-auto text-white bg-red-600 hover:bg-red-700"
+              onClick={() => setIsEditing(true)}
+            >
+              Edit Profile
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
   );
+}
 
-  // Analytics Dashboard Content
-  const AnalyticsDashboard = () => (
+function AnalyticsDashboardSection() {
+  return (
     <div className="space-y-6">
       {/* Listing Performance */}
       <div className="space-y-4 max-w-7xl mx-auto">
@@ -407,9 +485,11 @@ export default function ProximityDashboard() {
       <MarketComparisons />
     </div>
   );
+}
 
-  // Properties Page Content
-  const PropertiesPage = () => (
+// Properties Page Content
+function PropertiesSection({ handlePropertySelect }) {
+  return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -530,181 +610,186 @@ export default function ProximityDashboard() {
       </div>
     </div>
   );
+}
 
-  const ReviewsPage = () => {
-    const [selectedProperty, setSelectedProperty] = useState("All Properties");
-    const [selectedRating, setSelectedRating] = useState("All Ratings");
-    const [currentPage, setCurrentPage] = useState(1);
+function ReviewsSection() {
+  const [selectedProperty, setSelectedProperty] = useState("All Properties");
+  const [selectedRating, setSelectedRating] = useState("All Ratings");
+  const [currentPage, setCurrentPage] = useState(1);
 
-    const reviewsPerPage = 5;
+  const reviewsPerPage = 5;
 
-    // Mock data for rating distribution
-    const ratingDistribution = [
-      { stars: 5, count: 10 },
-      { stars: 4, count: 5 },
-      { stars: 3, count: 2 },
-      { stars: 2, count: 1 },
-      { stars: 1, count: 0 },
-    ];
+  // Mock data for rating distribution
+  const ratingDistribution = [
+    { stars: 5, count: 10 },
+    { stars: 4, count: 5 },
+    { stars: 3, count: 2 },
+    { stars: 2, count: 1 },
+    { stars: 1, count: 0 },
+  ];
 
-    // Filter reviews based on selected property and rating
-    const filteredReviews = reviews.filter((review) => {
-      const matchesProperty =
-        selectedProperty === "All Properties" ||
-        review.property === selectedProperty;
-      const matchesRating =
-        selectedRating === "All Ratings" ||
-        review.rating === parseInt(selectedRating);
-      return matchesProperty && matchesRating;
-    });
+  // Filter reviews based on selected property and rating
+  const filteredReviews = reviews.filter((review) => {
+    const matchesProperty =
+      selectedProperty === "All Properties" ||
+      review.property === selectedProperty;
+    const matchesRating =
+      selectedRating === "All Ratings" ||
+      review.rating === parseInt(selectedRating);
+    return matchesProperty && matchesRating;
+  });
 
-    // Paginate reviews
-    const startIndex = (currentPage - 1) * reviewsPerPage;
-    const paginatedReviews = filteredReviews.slice(
-      startIndex,
-      startIndex + reviewsPerPage
-    );
+  // Paginate reviews
+  const startIndex = (currentPage - 1) * reviewsPerPage;
+  const paginatedReviews = filteredReviews.slice(
+    startIndex,
+    startIndex + reviewsPerPage
+  );
 
-    return (
+  return (
+    <div className="space-y-6">
+      {/* Header Section */}
+      {/* Header Section */}
       <div className="space-y-6">
-        {/* Header Section */}
-        {/* Header Section */}
-        <div className="space-y-6">
-          <div className="flex flex-col items-center space-y-4">
-            {/* Average Rating and Total Reviews */}
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <Star className="h-6 w-6 text-yellow-400" />
-                <span className="text-2xl font-bold">
-                  {(
-                    reviews.reduce((sum, review) => sum + review.rating, 0) /
-                    reviews.length
-                  ).toFixed(1)}
-                </span>
-              </div>
-              <div className="text-sm text-gray-600">
-                <span className="font-bold">{reviews.length}</span> Reviews
-              </div>
+        <div className="flex flex-col items-center space-y-4">
+          {/* Average Rating and Total Reviews */}
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Star className="h-6 w-6 text-yellow-400" />
+              <span className="text-2xl font-bold">
+                {(
+                  reviews.reduce((sum, review) => sum + review.rating, 0) /
+                  reviews.length
+                ).toFixed(1)}
+              </span>
             </div>
-
-            {/* Enlarged Rating Distribution Chart */}
-            <div className="flex items-center gap-6">
-              {ratingDistribution.map((rating) => (
-                <div key={rating.stars} className="flex flex-col items-center">
-                  <span className="text-sm font-medium">{rating.stars}★</span>
-                  <div
-                    className="w-6 bg-red-600 rounded"
-                    style={{ height: `${rating.count * 15}px` }}
-                  ></div>
-                  <span className="text-xs text-gray-500">{rating.count}</span>
-                </div>
-              ))}
+            <div className="text-sm text-gray-600">
+              <span className="font-bold">{reviews.length}</span> Reviews
             </div>
           </div>
-        </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-4">
-          <select
-            value={selectedProperty}
-            onChange={(e) => setSelectedProperty(e.target.value)}
-            className="border rounded-lg px-4 py-2 text-sm"
-          >
-            <option>All Properties</option>
-            {properties.map((property) => (
-              <option key={property.id}>{property.name}</option>
-            ))}
-          </select>
-          <select
-            value={selectedRating}
-            onChange={(e) => setSelectedRating(e.target.value)}
-            className="border rounded-lg px-4 py-2 text-sm"
-          >
-            <option>All Ratings</option>
-            {[5, 4, 3, 2, 1].map((rating) => (
-              <option key={rating} value={rating}>
-                {rating} Stars
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Reviews List */}
-        <Card>
-          <CardContent className="p-6">
-            <div className="space-y-6 py-5">
-              {paginatedReviews.map((review) => (
+          {/* Enlarged Rating Distribution Chart */}
+          <div className="flex items-center gap-6">
+            {ratingDistribution.map((rating) => (
+              <div key={rating.stars} className="flex flex-col items-center">
+                <span className="text-sm font-medium">{rating.stars}★</span>
                 <div
-                  key={review.id}
-                  className="border-b border-gray-100 last:border-0 pb-6 last:pb-0"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-                      <User className="h-5 w-5" />
+                  className="w-6 bg-red-600 rounded"
+                  style={{ height: `${rating.count * 15}px` }}
+                ></div>
+                <span className="text-xs text-gray-500">{rating.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-4">
+        <select
+          value={selectedProperty}
+          onChange={(e) => setSelectedProperty(e.target.value)}
+          className="border rounded-lg px-4 py-2 text-sm"
+        >
+          <option>All Properties</option>
+          {properties.map((property) => (
+            <option key={property.id}>{property.name}</option>
+          ))}
+        </select>
+        <select
+          value={selectedRating}
+          onChange={(e) => setSelectedRating(e.target.value)}
+          className="border rounded-lg px-4 py-2 text-sm"
+        >
+          <option>All Ratings</option>
+          {[5, 4, 3, 2, 1].map((rating) => (
+            <option key={rating} value={rating}>
+              {rating} Stars
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Reviews List */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="space-y-6 py-5">
+            {paginatedReviews.map((review) => (
+              <div
+                key={review.id}
+                className="border-b border-gray-100 last:border-0 pb-6 last:pb-0"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-medium">{review.tenant}</h4>
+                      <StarRating rating={review.rating} />
+                      <span className="text-xs text-gray-500">
+                        {review.date}
+                      </span>
                     </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <h4 className="font-medium">{review.tenant}</h4>
-                        <StarRating rating={review.rating} />
-                        <span className="text-xs text-gray-500">
-                          {review.date}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-700">{review.comment}</p>
-                      <div className="text-xs text-gray-500">
-                        Property:{" "}
-                        <span className="font-medium">{review.property}</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <button className="flex items-center gap-1 hover:text-red-600">
-                          <MessageSquare className="h-3 w-3" />
-                          Reply
-                        </button>
-                      </div>
+                    <p className="text-sm text-gray-700">{review.comment}</p>
+                    <div className="text-xs text-gray-500">
+                      Property:{" "}
+                      <span className="font-medium">{review.property}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <button className="flex items-center gap-1 hover:text-red-600">
+                        <MessageSquare className="h-3 w-3" />
+                        Reply
+                      </button>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <span className="text-sm text-gray-600">
-            Page {currentPage} of{" "}
-            {Math.ceil(filteredReviews.length / reviewsPerPage)}
-          </span>
-          <button
-            onClick={() =>
-              setCurrentPage((prev) =>
-                Math.min(
-                  prev + 1,
-                  Math.ceil(filteredReviews.length / reviewsPerPage)
-                )
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+          disabled={currentPage === 1}
+          className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span className="text-sm text-gray-600">
+          Page {currentPage} of{" "}
+          {Math.ceil(filteredReviews.length / reviewsPerPage)}
+        </span>
+        <button
+          onClick={() =>
+            setCurrentPage((prev) =>
+              Math.min(
+                prev + 1,
+                Math.ceil(filteredReviews.length / reviewsPerPage)
               )
-            }
-            disabled={
-              currentPage === Math.ceil(filteredReviews.length / reviewsPerPage)
-            }
-            className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
+            )
+          }
+          disabled={
+            currentPage === Math.ceil(filteredReviews.length / reviewsPerPage)
+          }
+          className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50"
+        >
+          Next
+        </button>
       </div>
-    );
-  };
+    </div>
+  );
+}
 
-  // Property Analytics Content
-  const PropertyAnalytics = () => (
+// Property Analytics Content
+function PropertyAnalyticsSection({
+  handleBackToProperties,
+  selectedProperty,
+}) {
+  return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button
@@ -790,20 +875,175 @@ export default function ProximityDashboard() {
       <MarketComparisons />
     </div>
   );
+}
 
-  const renderContent = () => {
-    if (selectedProperty) return <PropertyAnalytics />;
+// End Sections --------------------------------------------------------------------
+
+// Main Dashboard Component
+export default function ProximityDashboard() {
+  const [activeView, setActiveView] = useState("profile");
+  const [selectedProperty, setSelectedProperty] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [user, setUser] = useState(null);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    description: "",
+    age: "",
+    gender: "unspecified",
+  });
+
+  useEffect(() => {
+    fetchUser();
+  }, []);
+
+  // keep form in sync when user loads
+  useEffect(() => {
+    if (!user) return;
+    setForm({
+      name: user.name || "",
+      phone: user.phone || "",
+      description: user.description || "",
+      age: user.age ?? "",
+      gender: user.gender || "unspecified",
+    });
+  }, [user]);
+
+  const fetchUser = async () => {
+    try {
+      const response = await fetch(`/api/getUser`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user: ${response.statusText}`);
+      }
+
+      setUser(await response.json());
+    } catch (error) {
+      console.error("Error fetching User:", error);
+    }
+  };
+
+  // helpers for form
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({
+      ...f,
+      // keep age as "" when empty, otherwise a number (don't collapse 0)
+      [name]: name === "age" ? (value === "" ? "" : Number(value)) : value,
+    }));
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    // reset to server values
+    if (user) {
+      setForm({
+        name: user.name || "",
+        phone: user.phone || "",
+        description: user.description || "",
+        age: user.age ?? "",
+        gender: user.gender || "unspecified",
+      });
+    }
+  };
+
+  const saveProfile = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/editProfile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          name: form.name?.trim(),
+          phone: form.phone?.trim(),
+          description: form.description?.trim(),
+          age: form.age ? Number(form.age) : null,
+          gender: form.gender || "unspecified",
+        }),
+      });
+      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      const updated = await res.json();
+      setUser(updated);
+      setIsEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert("Couldn't save your profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleNavigation = (key) => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setActiveView(key);
+    setSelectedProperty(null);
+    setSidebarOpen(false);
+  };
+
+  const handlePropertySelect = (property) => {
+    setSelectedProperty(property);
+    setActiveView("property-analytics");
+  };
+
+  const handleBackToProperties = () => {
+    setSelectedProperty(null);
+    setActiveView("properties");
+  };
+
+  const getPageTitle = () => {
+    if (selectedProperty) return selectedProperty.name;
     switch (activeView) {
       case "properties":
-        return <PropertiesPage />;
+        return "Properties";
+      case "settings":
+        return "Settings";
       case "reviews":
-        return <ReviewsPage />;
+        return "My Reviews";
       case "profile":
-        return <Profile />;
+        return "My Profile";
       case "analytics":
-        return <AnalyticsDashboard />;
+        return "Analytics";
       default:
-        return <Profile />;
+        return "Landlord Dashboard";
+    }
+  };
+
+  const renderContent = () => {
+    if (selectedProperty)
+      return (
+        <PropertyAnalyticsSection
+          handleBackToProperties={handleBackToProperties}
+          selectedProperty={selectedProperty}
+        />
+      );
+    switch (activeView) {
+      case "properties":
+        return (
+          <PropertiesSection handlePropertySelect={handlePropertySelect} />
+        );
+      case "reviews":
+        return <ReviewsSection />;
+      case "analytics":
+        return <AnalyticsDashboardSection />;
+      case "profile":
+      default:
+        return (
+          <ProfileSection
+            user={user}
+            isEditing={isEditing}
+            form={form}
+            onChange={onChange}
+            saving={saving}
+            cancelEdit={cancelEdit}
+            saveProfile={saveProfile}
+            setIsEditing={setIsEditing}
+          />
+        );
     }
   };
 

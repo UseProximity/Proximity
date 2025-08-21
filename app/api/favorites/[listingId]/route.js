@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
+import { auth } from "@/auth";
 
 export async function DELETE(_req, { params }) {
-  const userId = "68877696221d6bb66c4c7c7d"; // FIXME: derive from auth/session
-  const { listingId } = params || {};
-  if (!listingId) {
-    return NextResponse.json({ error: "listingId required" }, { status: 400 });
-  }
-
   try {
+    const { listingId } = params || {};
+
+    if (!listingId) {
+      return NextResponse.json(
+        { error: "listingId required" },
+        { status: 400 }
+      );
+    }
+
+    const session = await auth();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     await connectMongo();
-    await User.updateOne({ _id: userId }, { $pull: { favorites: listingId } });
+    await User.updateOne(
+      { _id: session?.user?.id },
+      { $pull: { favorites: listingId } }
+    );
     return NextResponse.json({ removed: true, listingId });
   } catch (err) {
     console.error("Remove favorite error:", err);

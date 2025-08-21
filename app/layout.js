@@ -23,7 +23,7 @@ export default async function RootLayout({ children }) {
         <div>
           <Toaster />
         </div>
-        <Header role={session?.user?.role} />
+        <Header session={session} />
         {children}
       </body>
     </html>
