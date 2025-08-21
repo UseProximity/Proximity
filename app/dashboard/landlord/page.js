@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Calendar,
   BarChart3,
@@ -488,7 +489,7 @@ function AnalyticsDashboardSection() {
 }
 
 // Properties Page Content
-function PropertiesSection({ user, handlePropertySelect }) {
+function PropertiesSection({ user, handlePropertySelect, router }) {
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -511,7 +512,7 @@ function PropertiesSection({ user, handlePropertySelect }) {
           <Button
             variant="default"
             className="text-white bg-red-600 hover:bg-red-700"
-            onClick={() => (window.location.href = "/add-listing")}
+            onClick={() => router.push("/add-listing")}
           >
             <Plus className="h-4 w-4 mr-1.5" />
             Add Listing
@@ -519,7 +520,7 @@ function PropertiesSection({ user, handlePropertySelect }) {
           <Button
             variant="outline"
             className="border-gray-300"
-            onClick={() => (window.location.href = "/browse")}
+            onClick={() => router.push("/browse")}
           >
             Browse Listings
           </Button>
@@ -944,6 +945,8 @@ export default function ProximityDashboard() {
     gender: "unspecified",
   });
 
+  const router = useRouter();
+
   useEffect(() => {
     fetchUser();
   }, []);
@@ -1075,6 +1078,7 @@ export default function ProximityDashboard() {
           <PropertiesSection
             user={user}
             handlePropertySelect={handlePropertySelect}
+            router={router}
           />
         );
       case "reviews":

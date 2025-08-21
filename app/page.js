@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { motion, useInView } from "framer-motion";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import {
@@ -393,6 +394,8 @@ function HeroSection() {
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
 
+  const router = useRouter();
+
   const phrases = useMemo(
     () => [
       "3 bed near the Loop with parking",
@@ -668,9 +671,9 @@ function HeroSection() {
       // Navigate to browse with search parameters
       const searchParams = new URLSearchParams();
       searchParams.set("search", result.searchQuery);
-      window.location.href = `${result.path}?${searchParams.toString()}`;
+      router.push(`${result.path}?${searchParams.toString()}`);
     } else {
-      window.location.href = result.path;
+      router.push(result.path);
     }
     setShowResults(false);
     setSearchQuery("");
@@ -710,18 +713,18 @@ function HeroSection() {
     if (isHousingQuery(searchQuery)) {
       const searchParams = new URLSearchParams();
       searchParams.set("search", searchQuery);
-      window.location.href = `/browse?${searchParams.toString()}`;
+      router.push(`/browse?${searchParams.toString()}`);
     } else {
       // Try to find a matching page
       const normalizedQuery = searchQuery.toLowerCase().trim();
       for (const [key, value] of Object.entries(searchMapping)) {
         if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
-          window.location.href = value.path;
+          router.push(value.path);
           return;
         }
       }
       // Default to browse if no match
-      window.location.href = "/browse";
+      router.push("/browse");
     }
   };
 
@@ -897,7 +900,7 @@ function HeroSection() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-lg mx-auto">
               <button
-                onClick={() => (window.location.href = "/browse")}
+                onClick={() => router.push("/browse")}
                 className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white px-6 py-3 rounded-xl font-semibold text-base shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
                 style={{
                   boxShadow: "0 10px 25px rgba(220, 38, 38, 0.3)",
@@ -921,7 +924,7 @@ function HeroSection() {
 
               <button
                 className="w-full sm:w-auto bg-white hover:bg-gray-50 text-red-600 border-2 border-red-600 hover:border-red-700 px-6 py-3 rounded-xl font-semibold text-base shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
-                onClick={() => (window.location.href = "/CampusHub")}
+                onClick={() => router.push("/CampusHub")}
                 style={{
                   backgroundColor: "#ffffff",
                   backgroundImage: "none",

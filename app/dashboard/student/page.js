@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Home,
@@ -93,23 +94,6 @@ const Badge = ({ children, variant = "default", className = "" }) => {
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${variants[variant]} ${className}`}
     >
       {children}
-    </div>
-  );
-};
-
-const StarRating = ({ rating, size = "sm" }) => {
-  const starSize = size === "lg" ? "h-5 w-5" : "h-4 w-4";
-
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star
-          key={star}
-          className={`${starSize} ${
-            star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-          }`}
-        />
-      ))}
     </div>
   );
 };
@@ -297,7 +281,7 @@ function ProfileSection({
   );
 }
 
-function SubleasesSection({ user }) {
+function SubleasesSection({ user, router }) {
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -320,7 +304,7 @@ function SubleasesSection({ user }) {
           <Button
             variant="default"
             className="text-white bg-red-600 hover:bg-red-700"
-            onClick={() => (window.location.href = "/add-sub-lease")}
+            onClick={() => router.push("/add-sub-lease")}
           >
             <Plus className="h-4 w-4 mr-1.5" />
             Add Sub-Lease
@@ -328,7 +312,7 @@ function SubleasesSection({ user }) {
           <Button
             variant="outline"
             className="border-gray-300"
-            onClick={() => (window.location.href = "/browse")}
+            onClick={() => router.push("/browse")}
           >
             Browse Listings
           </Button>
@@ -467,7 +451,12 @@ function SubleasesSection({ user }) {
   );
 }
 
-function FavoriteListingsSection({ user, removingIds, handleRemoveFavorite }) {
+function FavoriteListingsSection({
+  user,
+  removingIds,
+  handleRemoveFavorite,
+  router,
+}) {
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -487,7 +476,7 @@ function FavoriteListingsSection({ user, removingIds, handleRemoveFavorite }) {
           variant="default"
           size="default"
           className="text-white bg-red-600 hover:bg-red-700"
-          onClick={() => (window.location.href = "/browse")}
+          onClick={() => router.push("/browse")}
         >
           Browse Listings
         </Button>
@@ -595,6 +584,8 @@ export default function StudentDashboard() {
     age: "",
     gender: "unspecified",
   });
+
+  const router = useRouter();
 
   useEffect(() => {
     fetchUser();
@@ -743,11 +734,12 @@ export default function StudentDashboard() {
   const renderContent = () => {
     switch (activeView) {
       case "subleases":
-        return <SubleasesSection user={user} />;
+        return <SubleasesSection user={user} router={router} />;
       case "favorites":
         return (
           <FavoriteListingsSection
             user={user}
+            router={router}
             removingIds={removingIds}
             handleRemoveFavorite={handleRemoveFavorite}
           />
