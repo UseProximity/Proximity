@@ -31,66 +31,7 @@ import LeasingFunnel from "@/components/landlord-dashboard/leasing-funnel";
 import TrendIndicators from "@/components/landlord-dashboard/trend-indicators";
 import MarketComparisons from "@/components/landlord-dashboard/market-comparisons";
 
-// Mock data
-const properties = [
-  {
-    id: 1,
-    name: "Maple Street Apartment",
-    address: "123 Maple Street, College Town",
-    beds: 2,
-    baths: 1,
-    sqft: 850,
-    viewCount: 1247,
-    weeklyGrowth: 12.5,
-    monthlyGrowth: 8.3,
-    image: "/placeholder.svg?height=200&width=300&text=Maple+Street+Apt",
-    status: "Available",
-    rent: 1500,
-  },
-  {
-    id: 2,
-    name: "Oak Avenue House",
-    address: "456 Oak Avenue, University District",
-    beds: 3,
-    baths: 2,
-    sqft: 1200,
-    viewCount: 892,
-    weeklyGrowth: -3.2,
-    monthlyGrowth: 15.7,
-    image: "/placeholder.svg?height=200&width=300&text=Oak+Avenue+House",
-    status: "Rented",
-    rent: 2100,
-  },
-  {
-    id: 3,
-    name: "Pine Street Studio",
-    address: "789 Pine Street, Campus Area",
-    beds: 0,
-    baths: 1,
-    sqft: 450,
-    viewCount: 634,
-    weeklyGrowth: 8.9,
-    monthlyGrowth: -2.1,
-    image: "/placeholder.svg?height=200&width=300&text=Pine+Street+Studio",
-    status: "Available",
-    rent: 950,
-  },
-  {
-    id: 4,
-    name: "Cedar Lane Duplex",
-    address: "321 Cedar Lane, Student Housing",
-    beds: 4,
-    baths: 2,
-    sqft: 1600,
-    viewCount: 1523,
-    weeklyGrowth: 18.4,
-    monthlyGrowth: 22.6,
-    image: "/placeholder.svg?height=200&width=300&text=Cedar+Lane+Duplex",
-    status: "Available",
-    rent: 2800,
-  },
-];
-
+// Mock Reviews Data
 const reviews = [
   {
     id: 1,
@@ -100,7 +41,7 @@ const reviews = [
     comment:
       "Excellent landlord! Very responsive to maintenance requests and the property was exactly as described.",
     helpful: 12,
-    property: "Maple Street Apartment",
+    property: "Ronaldo",
   },
   {
     id: 2,
@@ -659,7 +600,7 @@ function PropertiesSection({ user, handlePropertySelect, router }) {
   );
 }
 
-function ReviewsSection() {
+function ReviewsSection({ user }) {
   const [selectedProperty, setSelectedProperty] = useState("All Properties");
   const [selectedRating, setSelectedRating] = useState("All Ratings");
   const [currentPage, setCurrentPage] = useState(1);
@@ -739,8 +680,10 @@ function ReviewsSection() {
           className="border rounded-lg px-4 py-2 text-sm"
         >
           <option>All Properties</option>
-          {properties.map((property) => (
-            <option key={property.id}>{property.name}</option>
+          {user.listings.map((property) => (
+            <option key={property._id}>
+              {property.name || property.address}
+            </option>
           ))}
         </select>
         <select
@@ -1082,7 +1025,7 @@ export default function ProximityDashboard() {
           />
         );
       case "reviews":
-        return <ReviewsSection />;
+        return <ReviewsSection user={user} />;
       case "analytics":
         return <AnalyticsDashboardSection />;
       case "profile":

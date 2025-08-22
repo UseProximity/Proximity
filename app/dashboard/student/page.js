@@ -493,7 +493,7 @@ function FavoriteListingsSection({
             key={listing._id}
             className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
           >
-            <a href={`/browse/${listing._id}`}>
+            <Link href={`/browse/${listing._id}`}>
               <div className="relative">
                 <img
                   src={listing.images[0]}
@@ -545,7 +545,7 @@ function FavoriteListingsSection({
                   </p>
                 </div>
               </div>
-            </a>
+            </Link>
             <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
 
             <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
