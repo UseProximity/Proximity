@@ -7,7 +7,6 @@ import ButtonAuth from "./ButtonAuth";
 export function Header({ currentPath, session }) {
   return (
     <header className="sticky top-0 z-50 px-4 py-1 border-b border-white/20 bg-white/70 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
-      <h1>Branch Test</h1>
       <div className="flex items-center justify-between w-full mx-auto h-[64px]">
         <div className="flex items-center gap-4">
           {/* Logo with fixed height */}
