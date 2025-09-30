@@ -35,7 +35,7 @@ export function Header({ currentPath, session }) {
               }`}
             >
               <Search className="h-4 w-4" />
-              Browse
+              Browse1
             </Link>
             <Link
               href="/CampusHub"
