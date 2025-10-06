@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { Header } from "@/components/Header";
 import { auth } from "@/auth";
+import ProfileCompletionModal from "@/components/ProfileCompletionModal";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,6 +25,7 @@ export default async function RootLayout({ children }) {
           <Toaster />
         </div>
         <Header session={session} />
+        <ProfileCompletionModal session={session} />
         {children}
       </body>
     </html>
