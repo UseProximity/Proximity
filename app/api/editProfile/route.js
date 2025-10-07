@@ -17,6 +17,8 @@ export async function PATCH(req) {
       phone: body.phone,
       description: body.description,
       gender: body.gender,
+      age: body.age,
+      profileComplete: body.profileComplete,
     };
 
     if (body.age !== undefined && body.age !== null) {
