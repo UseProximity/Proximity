@@ -2,8 +2,6 @@ import { auth } from "@/auth";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
 
-// ...existing imports...
-
 export async function GET() {
   try {
     const session = await auth();

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
+import Modal from "@/components/Modal";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -124,33 +125,8 @@ export default function AvailableListings({
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
   const [user, setUser] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false); // State for modal visibility
 
-  // Custom wheel event handler for filter dropdowns
-  const handleFilterDropdownWheel = (e) => {
-    // Always stop propagation to prevent parent scrolling
-    e.stopPropagation();
-
-    const dropdown = e.currentTarget;
-    const { scrollTop, scrollHeight, clientHeight } = dropdown;
-
-    // Check if we're at the top or bottom of the dropdown
-    const isAtTop = scrollTop <= 1;
-    const isAtBottom = scrollTop >= scrollHeight - clientHeight - 1;
-
-    // If scrolling up and at top, prevent default
-    if (e.deltaY < 0 && isAtTop) {
-      e.preventDefault();
-      return;
-    }
-
-    // If scrolling down and at bottom, prevent default
-    if (e.deltaY > 0 && isAtBottom) {
-      e.preventDefault();
-      return;
-    }
-
-    // Allow scrolling within the dropdown
-  };
   const fetchUser = useCallback(async () => {
     try {
       if (!session) return;
@@ -168,6 +144,21 @@ export default function AvailableListings({
   useEffect(() => {
     fetchUser();
   }, [fetchUser]);
+
+  // Custom wheel event handler for filter dropdowns
+  const handleFilterDropdownWheel = (e) => {
+    const dropdown = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = dropdown;
+
+    // Check if the dropdown is at the top or bottom
+    const isAtTop = scrollTop <= 0;
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight;
+
+    // Prevent scrolling the page when at the top or bottom of the dropdown
+    if ((e.deltaY < 0 && isAtTop) || (e.deltaY > 0 && isAtBottom)) {
+      e.preventDefault();
+    }
+  };
 
   // Close filter dropdowns when clicking outside
   useEffect(() => {
@@ -191,56 +182,17 @@ export default function AvailableListings({
   // Prevent page scroll when filter dropdowns are open
   useEffect(() => {
     if (showFilters && showFilters !== false) {
-      // Disable body scroll completely
-      const originalStyle = window.getComputedStyle(document.body).overflow;
+      // Disable body scroll by setting overflow to hidden
+      const originalStyle = document.body.style.overflow;
       document.body.style.overflow = "hidden";
 
-      // Prevent all wheel events on the document when filters are open
-      const handleWheel = (e) => {
-        // Always prevent wheel events when filter is open unless inside dropdown
-        const isInsideDropdown = e.target.closest(".filter-dropdown");
-        if (!isInsideDropdown) {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }
-      };
-
-      const handleKeyDown = (e) => {
-        // Prevent arrow keys and page up/down when filters are open
-        if ([32, 33, 34, 35, 36, 37, 38, 39, 40].indexOf(e.keyCode) > -1) {
-          const isInsideDropdown = e.target.closest(".filter-dropdown");
-          if (!isInsideDropdown) {
-            e.preventDefault();
-          }
-        }
-      };
-
-      // Add event listeners with capture phase to intercept early
-      document.addEventListener("wheel", handleWheel, {
-        passive: false,
-        capture: true,
-      });
-      document.addEventListener("touchmove", handleWheel, {
-        passive: false,
-        capture: true,
-      });
-      document.addEventListener("keydown", handleKeyDown, {
-        capture: true,
-      });
-
       return () => {
+        // Restore original overflow style when filters are closed
         document.body.style.overflow = originalStyle;
-        document.removeEventListener("wheel", handleWheel, { capture: true });
-        document.removeEventListener("touchmove", handleWheel, {
-          capture: true,
-        });
-        document.removeEventListener("keydown", handleKeyDown, {
-          capture: true,
-        });
       };
     }
   }, [showFilters]);
+
   const [filters, setFilters] = useState({
     minRent: "",
     maxRent: "",
@@ -1511,6 +1463,31 @@ export default function AvailableListings({
           </div>
         )}
       </div>
+
+      {isModalOpen && selectedListing && (
+        <Modal isOpen={isModalOpen} onClose={handleCloseModal}>
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">
+              {selectedListing.address}
+            </h2>
+            <img
+              src={selectedListing.images[0]}
+              alt={selectedListing.address}
+              className="w-full h-64 object-cover rounded-lg mb-4"
+            />
+            <p className="text-lg">
+              Rent: <strong>${selectedListing.rent.toLocaleString()}</strong>
+            </p>
+            <p className="text-lg">
+              Bedrooms: <strong>{selectedListing.bedrooms}</strong>
+            </p>
+            <p className="text-lg">
+              Bathrooms: <strong>{selectedListing.bathrooms}</strong>
+            </p>
+            <p className="text-gray-700 mt-4">{selectedListing.description}</p>
+          </div>
+        </Modal>
+      )}
 
       {/* Map Section */}
       <div className="md:w-1/2 w-full h-64 md:h-full relative">

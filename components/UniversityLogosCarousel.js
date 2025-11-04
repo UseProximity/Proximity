@@ -98,6 +98,7 @@ export default function UniversityLogosCarousel() {
             <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-white via-white/95 to-transparent z-10 pointer-events-none" />
 
             <div className="w-full overflow-hidden flex justify-center">
+              {/*This motion.div generates an error on the client console cause it generates a random position on each render FIX-ME*/}
               <motion.div
                 ref={containerRef}
                 className="flex items-center justify-center space-x-0 md:space-x-16"
