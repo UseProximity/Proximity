@@ -512,11 +512,8 @@ export default function MapView({
   );
 
   useEffect(() => {
+    // Initialize the map once on mount and clean it up on unmount.
     if (!mapContainerRef.current) return;
-
-    // Make functions available globally for popup buttons
-    window.showRouteToCampus = showRouteToCampus;
-    window.hideRoute = hideRoute;
 
     if (!mapRef.current) {
       mapRef.current = new mapboxgl.Map({
@@ -527,8 +524,30 @@ export default function MapView({
       });
       mapRef.current.addControl(new mapboxgl.NavigationControl());
     }
-    const map = mapRef.current;
 
+    // Expose route helpers
+    window.showRouteToCampus = showRouteToCampus;
+    window.hideRoute = hideRoute;
+
+    return () => {
+      // Remove global helpers
+      delete window.showRouteToCampus;
+      delete window.hideRoute;
+
+      // Only remove the map on unmount
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
+  // Separate effect: update markers and layers without recreating/removing the map itself.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Update markers: remove previous markers and add new ones
     if (map.markers) {
       map.markers.forEach((marker) => marker.remove());
     }
@@ -566,7 +585,9 @@ export default function MapView({
               listing._id
             )}'">
               <div style="position: relative; overflow: hidden;">
-                <img src="${listing.images?.[0]}" alt="Property image"
+                <img src="${
+                  listing.images.length == 0 ? "" : listing.images?.[0]
+                }" alt="Property image"
                   style="
                     width: 100%; 
                     height: 140px; 
@@ -904,22 +925,49 @@ export default function MapView({
     }
 
     return () => {
-      // Cleanup global functions
-      delete window.showRouteToCampus;
-      delete window.hideRoute;
-
-      map.remove();
-      mapRef.current = null;
+      // Cleanup only markers added by this effect. Do NOT remove the map instance here
+      if (map.markers) {
+        map.markers.forEach((marker) => marker.remove());
+        map.markers = [];
+      }
+      // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
     };
-  }, [
-    listings,
-    showHeatmap,
-    showCrimeMap,
-    heatmapData,
-    crimeHeatmapData,
-    showRouteToCampus,
-    hideRoute,
-  ]);
+  }, [listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
+
+  // Toggle handlers that preserve the current camera (center, zoom, pitch, bearing)
+  const handleToggleHeatmap = useCallback(() => {
+    const map = mapRef.current;
+    const center = map ? [map.getCenter().lng, map.getCenter().lat] : null;
+    const zoom = map ? map.getZoom() : null;
+    const pitch = map ? map.getPitch() : null;
+    const bearing = map ? map.getBearing() : null;
+
+    setShowHeatmap((v) => !v);
+
+    // Reapply camera to avoid map jumping to defaults
+    if (map && center) {
+      // schedule a frame so layer changes can apply but camera is restored immediately
+      requestAnimationFrame(() => {
+        map.jumpTo({ center, zoom, pitch, bearing });
+      });
+    }
+  }, []);
+
+  const handleToggleCrimeMap = useCallback(() => {
+    const map = mapRef.current;
+    const center = map ? [map.getCenter().lng, map.getCenter().lat] : null;
+    const zoom = map ? map.getZoom() : null;
+    const pitch = map ? map.getPitch() : null;
+    const bearing = map ? map.getBearing() : null;
+
+    setShowCrimeMap((v) => !v);
+
+    if (map && center) {
+      requestAnimationFrame(() => {
+        map.jumpTo({ center, zoom, pitch, bearing });
+      });
+    }
+  }, []);
   return (
     <div className="relative w-full h-full">
       {/* Filter Controls Row */}
@@ -927,13 +975,13 @@ export default function MapView({
         <div className="flex gap-2">
           <button
             className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={() => setShowHeatmap((v) => !v)}
+            onClick={handleToggleHeatmap}
           >
             {showHeatmap ? "Hide Heatmap" : "Show Heatmap"}
           </button>
           <button
             className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={() => setShowCrimeMap((v) => !v)}
+            onClick={handleToggleCrimeMap}
             disabled={loading}
           >
             {loading

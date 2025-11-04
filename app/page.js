@@ -170,6 +170,7 @@ function FeaturesOverview() {
           animate={isInView ? "visible" : "hidden"}
         >
           {FEATURES.map((feature, index) => (
+            // This motion.div generates an error on the client console cause it generates a random position on each render FIX-ME
             <motion.div
               key={feature.id}
               className="group relative"
