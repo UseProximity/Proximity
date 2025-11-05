@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
-import Modal from "@/components/Modal";
+import ModalListing from "@/components/AvailableListings/ModalListing";
+import ListingModalInfo from "@/components/AvailableListings/ListingModalInfo";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -39,7 +40,6 @@ function HeartIcon({ userId, listingId, initial = false }) {
     e.preventDefault();
     e.stopPropagation();
     if (pending || userId == "") return; // TODO: handle user not logged in (maybe show login modal)
-    console.log("A passar");
 
     const prev = isFavorite;
     const next = !prev;
@@ -125,7 +125,37 @@ export default function AvailableListings({
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
   const [user, setUser] = useState(null);
+
+  /* ------------- Variables and functions for Listing Modal -------------------------------------------*/
+
   const [isModalOpen, setIsModalOpen] = useState(false); // State for modal visibility
+  const [modalData, setModalData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleListingClick = async (listingId) => {
+    setIsLoading(true);
+    setIsModalOpen(true);
+
+    try {
+      const response = await fetch(`/api/listing/${listingId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setModalData(data);
+      } else {
+        console.error("Failed to fetch listing data");
+      }
+    } catch (error) {
+      console.error("Error fetching listing data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setModalData(null);
+  };
+  /* ---------------- End variables and fucntions for Listing Modal ------------------------------*/
 
   const fetchUser = useCallback(async () => {
     try {
@@ -1387,60 +1417,59 @@ export default function AvailableListings({
               <div
                 key={listing._id}
                 className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
+                onClick={() => handleListingClick(listing._id)}
               >
-                <a href={`/browse/${listing._id}`}>
-                  <div className="relative">
-                    <img
-                      src={listing.images[0]}
-                      alt=""
-                      className="w-full h-48 object-cover"
-                    />
+                <div className="relative">
+                  <img
+                    src={listing.images[0]}
+                    alt=""
+                    className="w-full h-48 object-cover"
+                  />
+                </div>
+                <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-2xl text-black">
+                      ${listing.rent.toLocaleString()}
+                      <span className="text-sm font-normal">/month</span>
+                    </h3>
                   </div>
-                  <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-2xl text-black">
-                        ${listing.rent.toLocaleString()}
-                        <span className="text-sm font-normal">/month</span>
-                      </h3>
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
+                      <span className="text-emerald-700 font-semibold text-sm">
+                        {listing.bedrooms}
+                      </span>
+                      <span className="text-emerald-600 text-xs">bd</span>
                     </div>
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
-                        <span className="text-emerald-700 font-semibold text-sm">
-                          {listing.bedrooms}
-                        </span>
-                        <span className="text-emerald-600 text-xs">bd</span>
-                      </div>
-                      <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
-                        <span className="text-rose-700 font-semibold text-sm">
-                          {listing.bathrooms}
-                        </span>
-                        <span className="text-rose-600 text-xs">ba</span>
-                      </div>
-                      <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
-                        <span className="text-amber-700 font-semibold text-sm">
-                          {listing.area}
-                        </span>
-                        <span className="text-amber-600 text-xs">sqft</span>
-                      </div>
+                    <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
+                      <span className="text-rose-700 font-semibold text-sm">
+                        {listing.bathrooms}
+                      </span>
+                      <span className="text-rose-600 text-xs">ba</span>
                     </div>
-                    <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <svg
-                        className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                        {listing.address}
-                      </p>
+                    <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
+                      <span className="text-amber-700 font-semibold text-sm">
+                        {listing.area}
+                      </span>
+                      <span className="text-amber-600 text-xs">sqft</span>
                     </div>
                   </div>
-                </a>
+                  <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
+                    <svg
+                      className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                      {listing.address}
+                    </p>
+                  </div>
+                </div>
 
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
                 <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
@@ -1462,32 +1491,22 @@ export default function AvailableListings({
             ))}
           </div>
         )}
+        {isModalOpen && (
+          <ModalListing isOpen={isModalOpen} onClose={handleCloseModal}>
+            {isLoading ? (
+              <div>Loading...</div>
+            ) : modalData ? (
+              <ListingModalInfo
+                HeartIcon={HeartIcon}
+                user={user}
+                listing={modalData}
+              />
+            ) : (
+              <div>Error loading listing</div>
+            )}
+          </ModalListing>
+        )}
       </div>
-
-      {isModalOpen && selectedListing && (
-        <Modal isOpen={isModalOpen} onClose={handleCloseModal}>
-          <div className="p-6">
-            <h2 className="text-2xl font-bold mb-4">
-              {selectedListing.address}
-            </h2>
-            <img
-              src={selectedListing.images[0]}
-              alt={selectedListing.address}
-              className="w-full h-64 object-cover rounded-lg mb-4"
-            />
-            <p className="text-lg">
-              Rent: <strong>${selectedListing.rent.toLocaleString()}</strong>
-            </p>
-            <p className="text-lg">
-              Bedrooms: <strong>{selectedListing.bedrooms}</strong>
-            </p>
-            <p className="text-lg">
-              Bathrooms: <strong>{selectedListing.bathrooms}</strong>
-            </p>
-            <p className="text-gray-700 mt-4">{selectedListing.description}</p>
-          </div>
-        </Modal>
-      )}
 
       {/* Map Section */}
       <div className="md:w-1/2 w-full h-64 md:h-full relative">
