@@ -15,7 +15,16 @@ export async function GET(req, { params }) {
       );
     }
 
-    const listing = await Listing.findById(listingId).populate("owner").lean();
+    const listing = await Listing.findById(listingId)
+      .populate("owner")
+      .populate({
+        path: "reviews",
+        populate: {
+          path: "reviewer",
+          select: "name image", // only fetch these 2 fields for speed
+        },
+      })
+      .lean();
 
     if (!listing) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ConditionalButtons from "@/components/ConditionalButtons";
+import ReviewsSection from "@/components/ReviewsSection";
 
 // Static Data
 const leaseTypeMap = {
@@ -9,27 +10,7 @@ const leaseTypeMap = {
   academic: "Academic Year",
 };
 
-const reviews = [
-  {
-    name: "Emily R.",
-    rating: 5,
-    comment:
-      "Loved living here! The landlord was very responsive and the neighborhood felt safe and quiet. Highly recommend.",
-  },
-  {
-    name: "Jake T.",
-    rating: 1,
-    comment: "Shit Place.",
-  },
-  {
-    name: "Sophia L.",
-    rating: 4,
-    comment:
-      "Great place for students, close to everything. A few minor repairs needed during my stay, but they were fixed quickly.",
-  },
-];
-
-export default function ListingModalInfo({ HeartIcon, user, listing }) {
+export default function ListingModalInfo({ HeartIcon, session, listing }) {
   return (
     <>
       <div className="bg-gray-100 min-h-screen">
@@ -45,14 +26,17 @@ export default function ListingModalInfo({ HeartIcon, user, listing }) {
               <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
               <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
                 <HeartIcon
-                  userId={user?._id || ""}
+                  session={session}
                   listingId={listing._id}
                   initial={
-                    Boolean(user) &&
+                    Boolean(session?.user) &&
                     Boolean(
-                      user?.favorites?.some(
+                      session?.user?.favorites?.some(
                         (f) => String((f && f._id) || f) === String(listing._id)
-                      ) || user?.favoritesIds?.includes(String(listing._id))
+                      ) ||
+                        session?.user?.favoritesIds?.includes(
+                          String(listing._id)
+                        )
                     )
                   }
                 />
@@ -132,30 +116,11 @@ export default function ListingModalInfo({ HeartIcon, user, listing }) {
             </p>
           </div>
 
-          {/* Reviews */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">
-              Reviews For The Property
-            </h2>
-            <div className="space-y-4">
-              {reviews.map((review, index) => (
-                <div key={index} className="border-b pb-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-900">
-                      {review.name}
-                    </span>
-                    <span className="text-yellow-500">
-                      {"★".repeat(review.rating)}
-                      <span className="text-gray-300">
-                        {"★".repeat(5 - review.rating)}
-                      </span>
-                    </span>
-                  </div>
-                  <p className="text-gray-700 mt-1">{review.comment}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ReviewsSection
+            reviews={listing.reviews}
+            session={session}
+            reviewedId={listing._id}
+          />
         </div>
       </div>
     </>

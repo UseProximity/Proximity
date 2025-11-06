@@ -55,6 +55,7 @@ const config = {
             phone: "N/A",
             profileComplete: false,
             rating: 0,
+            reviews: [],
             role: "student",
           },
         }

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import ModalListing from "@/components/AvailableListings/ModalListing";
 import ListingModalInfo from "@/components/AvailableListings/ListingModalInfo";
+import { signIn } from "next-auth/react";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -27,7 +28,7 @@ function FilterDropdownPortal({ children, isOpen }) {
   );
 }
 
-function HeartIcon({ userId, listingId, initial = false }) {
+function HeartIcon({ session, listingId, initial = false }) {
   const [isFavorite, setIsFavorite] = useState(initial);
   const [pending, setPending] = useState(false);
 
@@ -39,7 +40,11 @@ function HeartIcon({ userId, listingId, initial = false }) {
   const handleClick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (pending || userId == "") return; // TODO: handle user not logged in (maybe show login modal)
+    if (pending) return;
+
+    if (!session) {
+      signIn(undefined, { callbackUrl: "/browse" });
+    }
 
     const prev = isFavorite;
     const next = !prev;
@@ -50,8 +55,8 @@ function HeartIcon({ userId, listingId, initial = false }) {
     setPending(true);
 
     try {
-      if (!userId) {
-        console.log("UserId:", userId);
+      if (!session?.user?.id) {
+        console.log("UserId:", session?.user?.id);
         console.log("User ID not available, rolling back favorite state");
         setIsFavorite(prev);
         return;
@@ -60,7 +65,7 @@ function HeartIcon({ userId, listingId, initial = false }) {
       const res = await fetch("/api/favorites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, userId }),
+        body: JSON.stringify({ listingId, userId: session?.user?.id }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -124,7 +129,6 @@ export default function AvailableListings({
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
-  const [user, setUser] = useState(null);
 
   /* ------------- Variables and functions for Listing Modal -------------------------------------------*/
 
@@ -156,24 +160,6 @@ export default function AvailableListings({
     setModalData(null);
   };
   /* ---------------- End variables and fucntions for Listing Modal ------------------------------*/
-
-  const fetchUser = useCallback(async () => {
-    try {
-      if (!session) return;
-      const response = await fetch(`/api/getUser`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user: ${response.statusText}`);
-      }
-
-      setUser(await response.json());
-    } catch (error) {
-      console.error("Error fetching User:", error);
-    }
-  }, [session]);
-
-  useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
 
   // Custom wheel event handler for filter dropdowns
   const handleFilterDropdownWheel = (e) => {
@@ -1474,15 +1460,18 @@ export default function AvailableListings({
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
                 <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
                   <HeartIcon
-                    userId={user?._id || ""}
+                    session={session}
                     listingId={listing._id}
                     initial={
-                      Boolean(user) &&
+                      Boolean(session?.user) &&
                       Boolean(
-                        user?.favorites?.some(
+                        session?.user?.favorites?.some(
                           (f) =>
                             String((f && f._id) || f) === String(listing._id)
-                        ) || user?.favoritesIds?.includes(String(listing._id))
+                        ) ||
+                          session?.user?.favoritesIds?.includes(
+                            String(listing._id)
+                          )
                       )
                     }
                   />
@@ -1498,7 +1487,7 @@ export default function AvailableListings({
             ) : modalData ? (
               <ListingModalInfo
                 HeartIcon={HeartIcon}
-                user={user}
+                session={session}
                 listing={modalData}
               />
             ) : (
