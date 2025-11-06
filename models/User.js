@@ -13,10 +13,11 @@ const UserSchema = new mongoose.Schema(
     numReviews: { type: Number, default: 0 },
     phone: { type: String, default: "N/A" },
     profileComplete: { type: Boolean, default: false },
-    rating: { type: Number, default: 0, min: 0, max: 5 },
+    rating: { type: Number, default: 5, min: 1, max: 5 },
+    reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: "Review" }],
     role: { type: String, default: "student" },
   },
-  { timestamps: true } // correct place for timestamps
+  { timestamps: true }
 );
 
 export default mongoose.models.User || mongoose.model("User", UserSchema);

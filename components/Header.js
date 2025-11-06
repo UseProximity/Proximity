@@ -74,6 +74,7 @@ export function Header({ currentPath, session }) {
                 Sub-Lease
               </Link>
             )}
+            {/*
             {session?.user?.role === "student" && (
               <Link
                 href="/roommate-finder"
@@ -87,6 +88,7 @@ export function Header({ currentPath, session }) {
                 Roommates
               </Link>
             )}
+            */}
           </nav>
         </div>
 

@@ -23,7 +23,7 @@ function FeaturesOverview() {
     {
       id: 1,
       icon: Search,
-      title: "All Listings. One Platforms",
+      title: "All Listings. One Platform",
       description:
         "Access on-market, off-market, and student sublease listings—finally all in one place.",
       image: "/placeholder.svg?height=400&width=600&text=All+Listings",
@@ -141,16 +141,7 @@ function FeaturesOverview() {
     }),
   };
 
-  const floatingVariants = {
-    animate: {
-      y: [0, -4, 0],
-      transition: {
-        duration: 4,
-        repeat: Number.POSITIVE_INFINITY,
-        ease: "easeInOut",
-      },
-    },
-  };
+  // note: removed floatingVariants to disable the floating up/down animation
 
   const ref = useRef(null);
   const isInView = useInView(ref, {
@@ -170,7 +161,6 @@ function FeaturesOverview() {
           animate={isInView ? "visible" : "hidden"}
         >
           {FEATURES.map((feature, index) => (
-            // This motion.div generates an error on the client console cause it generates a random position on each render FIX-ME
             <motion.div
               key={feature.id}
               className="group relative"
@@ -191,103 +181,96 @@ function FeaturesOverview() {
                 perspective: "1000px",
               }}
             >
+              {/* Removed the floating wrapper — card content remains as-is */}
               <motion.div
-                variants={floatingVariants}
-                animate={isInView ? "animate" : ""}
+                className="w-full h-[220px] sm:h-[260px] md:h-[320px] rounded-lg sm:rounded-xl md:rounded-3xl overflow-hidden shadow-lg border border-gray-200 cursor-pointer relative"
                 style={{
-                  animationDelay: "0.7s",
+                  boxShadow:
+                    "0 8px 20px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04)",
+                  background:
+                    "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+                }}
+                whileHover={{
+                  boxShadow:
+                    "0 20px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.08)",
                 }}
               >
                 <motion.div
-                  className="w-full h-[220px] sm:h-[260px] md:h-[320px] rounded-lg sm:rounded-xl md:rounded-3xl overflow-hidden shadow-lg border border-gray-200 cursor-pointer relative"
+                  className="absolute -inset-1 rounded-lg sm:rounded-xl md:rounded-3xl opacity-0"
                   style={{
-                    boxShadow:
-                      "0 8px 20px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04)",
                     background:
-                      "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+                      "radial-gradient(circle at 50% 50%, rgba(220, 38, 38, 0.1) 0%, transparent 70%)",
+                    filter: "blur(20px)",
+                    zIndex: -1,
                   }}
                   whileHover={{
-                    boxShadow:
-                      "0 20px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.08)",
+                    opacity: 0.6,
+                    transition: { duration: 0.3 },
                   }}
-                >
-                  <motion.div
-                    className="absolute -inset-1 rounded-lg sm:rounded-xl md:rounded-3xl opacity-0"
-                    style={{
-                      background:
-                        "radial-gradient(circle at 50% 50%, rgba(220, 38, 38, 0.1) 0%, transparent 70%)",
-                      filter: "blur(20px)",
-                      zIndex: -1,
-                    }}
-                    whileHover={{
-                      opacity: 0.6,
-                      transition: { duration: 0.3 },
-                    }}
-                  />
+                />
 
-                  <div className="absolute inset-0">
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/80 via-gray-50/60 to-gray-100/40" />
-                  </div>
+                <div className="absolute inset-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/80 via-gray-50/60 to-gray-100/40" />
+                </div>
 
-                  <div className="relative z-10 p-2 sm:p-3 md:p-8 h-full flex flex-col">
-                    <div className="flex items-start mb-1 sm:mb-2 md:mb-4">
-                      <motion.div
-                        className="w-6 h-6 sm:w-8 sm:h-8 md:w-12 md:h-12 bg-red-600 rounded-md sm:rounded-lg md:rounded-xl flex items-center justify-center shadow-sm flex-shrink-0 mt-0.5"
-                        whileHover={{
-                          scale: 1.1,
-                          rotate: 5,
-                          transition: {
-                            type: "spring",
-                            stiffness: 400,
-                            damping: 20,
-                          },
-                        }}
-                      >
-                        <feature.icon className="w-3 h-3 sm:w-4 sm:h-4 md:w-6 md:h-6 text-white" />
-                      </motion.div>
+                <div className="relative z-10 p-2 sm:p-3 md:p-8 h-full flex flex-col">
+                  <div className="flex items-start mb-1 sm:mb-2 md:mb-4">
+                    <motion.div
+                      className="w-6 h-6 sm:w-8 sm:h-8 md:w-12 md:h-12 bg-red-600 rounded-md sm:rounded-lg md:rounded-xl flex items-center justify-center shadow-sm flex-shrink-0 mt-0.5"
+                      whileHover={{
+                        scale: 1.1,
+                        rotate: 5,
+                        transition: {
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 20,
+                        },
+                      }}
+                    >
+                      <feature.icon className="w-3 h-3 sm:w-4 sm:h-4 md:w-6 md:h-6 text-white" />
+                    </motion.div>
 
-                      <div className="ml-1.5 sm:ml-2 md:ml-4 flex-1">
-                        {feature.id === 1 ? (
-                          <motion.h3
-                            className="text-sm sm:text-base md:text-xl font-bold leading-tight text-gray-900 group-hover:text-red-600 transition-colors duration-300"
-                            whileHover={{ scale: 1.02 }}
-                          >
-                            <span className="sm:hidden">
-                              All Listings
-                              <br />
-                              One Platform
-                            </span>
-                            <span className="hidden sm:inline">
-                              {feature.title}
-                            </span>
-                          </motion.h3>
-                        ) : (
-                          <motion.h3
-                            className="text-sm sm:text-base md:text-xl font-bold leading-tight text-gray-900 group-hover:text-red-600 transition-colors duration-300 line-clamp-3"
-                            whileHover={{ scale: 1.02 }}
-                          >
+                    <div className="ml-1.5 sm:ml-2 md:ml-4 flex-1">
+                      {feature.id === 1 ? (
+                        <motion.h3
+                          className="text-sm sm:text-base md:text-xl font-bold leading-tight text-gray-900 group-hover:text-red-600 transition-colors duration-300"
+                          whileHover={{ scale: 1.02 }}
+                        >
+                          <span className="sm:hidden">
+                            All Listings
+                            <br />
+                            One Platform
+                          </span>
+                          <span className="hidden sm:inline">
                             {feature.title}
-                          </motion.h3>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm sm:text-base md:text-lg leading-relaxed text-gray-700 line-clamp-4">
-                        {feature.description}
-                      </p>
+                          </span>
+                        </motion.h3>
+                      ) : (
+                        <motion.h3
+                          className="text-sm sm:text-base md:text-xl font-bold leading-tight text-gray-900 group-hover:text-red-600 transition-colors duration-300 line-clamp-3"
+                          whileHover={{ scale: 1.02 }}
+                        >
+                          {feature.title}
+                        </motion.h3>
+                      )}
                     </div>
                   </div>
 
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-br from-red-50/0 to-red-50/0"
-                    whileHover={{
-                      background:
-                        "linear-gradient(135deg, rgba(220, 38, 38, 0.02) 0%, rgba(220, 38, 38, 0.01) 100%)",
-                      transition: { duration: 0.3 },
-                    }}
-                  />
-                </motion.div>
+                  <div className="flex-1">
+                    <p className="text-sm sm:text-base md:text-lg leading-relaxed text-gray-700 line-clamp-4">
+                      {feature.description}
+                    </p>
+                  </div>
+                </div>
+
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-br from-red-50/0 to-red-50/0"
+                  whileHover={{
+                    background:
+                      "linear-gradient(135deg, rgba(220, 38, 38, 0.02) 0%, rgba(220, 38, 38, 0.01) 100%)",
+                    transition: { duration: 0.3 },
+                  }}
+                />
               </motion.div>
 
               <motion.div

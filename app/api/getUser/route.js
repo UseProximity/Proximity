@@ -12,11 +12,6 @@ export async function GET() {
     await connectMongo();
 
     const user = await User.findById(session.user.id)
-      .populate({
-        path: "favorites",
-        select:
-          "address rent area bedrooms bathrooms leaseType images rating numReviews owner latitude longitude createdAt",
-      })
       .populate("favorites")
       .populate("listings")
       .lean();

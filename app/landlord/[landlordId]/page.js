@@ -1,39 +1,54 @@
 import connectMongo from "@/libs/mongoose";
-import Listing from "@/models/Listing";
 import User from "@/models/User";
+import { auth } from "@/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ReviewsSection from "@/components/ReviewsSection";
 
 export default async function Landlord({ params }) {
   const { landlordId } = params;
+  const session = await auth();
 
   await connectMongo();
 
-  const landlord = await User.findById(decodeURIComponent(landlordId)).populate(
-    "listings"
-  );
+  // Need to sanitize the data before to fix: RangeError: Maximum call stack size exceeded.
+  const landlordDoc = await User.findById(decodeURIComponent(landlordId))
+    .populate({
+      path: "listings",
+      // select fields you actually need to reduce payload
+      select: "address images rent bedrooms bathrooms area leaseType createdAt",
+    })
+    .populate({
+      path: "reviews",
+      populate: {
+        path: "reviewer",
+        select: "name image",
+      },
+      select: "rating comment reviewer createdAt",
+    })
+    .lean(); // <-- IMPORTANT: returns plain JS objects (no mongoose doc)
 
-  if (!landlord) notFound();
+  if (!landlordDoc) notFound();
 
-  const reviews = [
-    {
-      name: "Emily R.",
-      rating: 5,
-      comment:
-        "Loved living here! The landlord was very responsive and the neighborhood felt safe and quiet. Highly recommend.",
-    },
-    {
-      name: "Jake T.",
-      rating: 1,
-      comment: "Shit Place.",
-    },
-    {
-      name: "Sophia L.",
-      rating: 4,
-      comment:
-        "Great place for students, close to everything. A few minor repairs needed during my stay, but they were fixed quickly.",
-    },
-  ];
+  // sanitize: convert ObjectIds/dates to strings and keep only what you need
+  const landlord = {
+    ...landlordDoc,
+    _id: String(landlordDoc._id),
+    listings: (landlordDoc.listings || []).map((l) => ({
+      ...l,
+      _id: String(l._id),
+      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+    })),
+    reviews: (landlordDoc.reviews || []).map((r) => ({
+      _id: String(r._id),
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
+      reviewer: r.reviewer
+        ? { name: r.reviewer.name, image: r.reviewer.image || null }
+        : null,
+    })),
+  };
 
   const leaseTypeMap = {
     sublease: "Sub-Lease",
@@ -76,29 +91,12 @@ export default async function Landlord({ params }) {
         {/* Main Content: Reviews (Left) + Listings (Right) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Reviews */}
-          <div className="md:col-span-1 bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">
-              Reviews For {landlord.name}
-            </h2>
-            <div className="space-y-4">
-              {reviews.map((review, index) => (
-                <div key={index} className="border-b pb-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-900">
-                      {review.name}
-                    </span>
-                    <span className="text-yellow-500">
-                      {"★".repeat(review.rating)}
-                      <span className="text-gray-300">
-                        {"★".repeat(5 - review.rating)}
-                      </span>
-                    </span>
-                  </div>
-                  <p className="text-gray-700 mt-1">{review.comment}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ReviewsSection
+            reviews={landlord.reviews}
+            session={session}
+            landlordName={landlord.name}
+            reviewedId={landlord._id}
+          />
 
           {/* Listings */}
           <div className="md:col-span-2">
@@ -107,7 +105,7 @@ export default async function Landlord({ params }) {
               {landlord.listings.map((listing, index) => (
                 <Link
                   key={index}
-                  href={`/browse/${encodeURIComponent(listing._id)}`}
+                  href={`/browse/${encodeURIComponent(listing._id)}`} //FIX-ME this href doenst work anymore because of the modals
                 >
                   <div className="bg-white rounded-lg shadow-md overflow-hidden">
                     <img
