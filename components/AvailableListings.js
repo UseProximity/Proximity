@@ -56,7 +56,6 @@ function HeartIcon({ session, listingId, initial = false }) {
 
     try {
       if (!session?.user?.id) {
-        console.log("UserId:", session?.user?.id);
         console.log("User ID not available, rolling back favorite state");
         setIsFavorite(prev);
         return;
