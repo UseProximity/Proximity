@@ -16,7 +16,6 @@ export default function ProfileCompletionModal({ session }) {
 
   useEffect(() => {
     if (session?.user?.profileComplete === false) {
-      console.log(session);
       setIsOpen(true);
     }
   }, [session]);

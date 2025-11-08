@@ -201,9 +201,8 @@ function ProfileSection({
                   {"★".repeat(5 - user.rating)}
                 </span>
               </div>
-              {/* TODO: had real sub leases count */}
               <p className="text-gray-500 mt-2 text-lg">
-                0 active listings
+                {user.listings.length} active listings
               </p>{" "}
               <p className="text-gray-400 text-base mt-2">
                 {user.age} years old • {user.gender}
@@ -869,6 +868,102 @@ function PropertyAnalyticsSection({
   );
 }
 
+// Notification Section - Not in the sidebar
+function NotificationSection({
+  pendingReviews = [],
+  onApprove,
+  onReject,
+  loadingMap = {},
+}) {
+  if (!pendingReviews || pendingReviews.length === 0) {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-md text-center">
+        <div className="text-3xl mb-2">🔔</div>
+        <h3 className="text-lg font-semibold mb-1">No pending reviews</h3>
+        <p className="text-sm text-gray-500">
+          When a student leaves a review for you or one of your listings, it
+          will appear here for approval.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Pending Reviews</h2>
+
+      <div className="divide-y rounded-lg overflow-hidden bg-white border border-gray-100 shadow-sm">
+        {pendingReviews.map((r) => {
+          const id = r._id || r.id;
+          const reviewerName = r.reviewer?.name || "Anonymous";
+          const reviewerImage = r.reviewer?.image?.trim?.()
+            ? r.reviewer.image
+            : "/default-icons/default-user.png";
+          const isListing = !!r.listing;
+          const targetText = isListing
+            ? r.listing?.address || "A listing"
+            : "Your landlord profile";
+          const loading = !!loadingMap[id];
+
+          return (
+            <div
+              key={id}
+              className="flex items-center justify-between px-4 py-3"
+            >
+              <div className="flex items-center gap-3">
+                <img
+                  src={reviewerImage}
+                  alt={reviewerName}
+                  onError={(e) =>
+                    (e.currentTarget.src = "/default-icons/default-user.png")
+                  }
+                  className="w-10 h-10 rounded-full object-cover border"
+                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900">
+                      {reviewerName}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      left a review for
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {targetText}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    onApprove?.(id, isListing ? "listing" : "user")
+                  }
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-60"
+                >
+                  {loading ? "..." : "Accept"}
+                </button>
+
+                <button
+                  onClick={() => onReject?.(id, isListing ? "listing" : "user")}
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {loading ? "..." : "Decline"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // End Sections --------------------------------------------------------------------
 
 // Main Dashboard Component
@@ -877,6 +972,9 @@ export default function ProximityDashboard() {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
+
+  const [pendingReviews, setPendingReviews] = useState([]); // array of reviews (for notifications)
+  const [pendingLoading, setPendingLoading] = useState({}); // { reviewId: true }
 
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -918,6 +1016,67 @@ export default function ProximityDashboard() {
       console.error("Error fetching User:", error);
     }
   };
+
+  // notifications material ----------------------------------------
+  // For notification - fetch pending reviews when user loads
+  useEffect(() => {
+    if (!user) return; // wait until user is loaded
+    fetchPendingReviews();
+  }, [user]);
+
+  const fetchPendingReviews = async () => {
+    try {
+      const res = await fetch("/api/pendingReviews");
+      if (!res.ok) throw new Error("Failed to fetch pending reviews");
+      const data = await res.json();
+      setPendingReviews(data);
+    } catch (err) {
+      console.error("Error fetching pending reviews:", err);
+    }
+  };
+
+  // Generic handler used for approve/reject actions
+  const handlePendingAction = async (reviewId, reviewedType, action) => {
+    if (!reviewId) return;
+    if (pendingLoading[reviewId]) return; // already working
+
+    setPendingLoading((m) => ({ ...m, [reviewId]: true }));
+
+    try {
+      const res = await fetch("/api/pendingReviews", {
+        method: action === "approve" ? "PATCH" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewId, reviewedType }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Request failed: ${res.status} ${text}`);
+      }
+
+      // Optimistically remove the item from the list on success
+      setPendingReviews((prev) =>
+        prev.filter((p) => (p._id || p.id) !== reviewId)
+      );
+    } catch (err) {
+      console.error("Pending review action failed:", err);
+      alert("Could not complete the action. Please try again.");
+    } finally {
+      setPendingLoading((m) => {
+        const copy = { ...m };
+        delete copy[reviewId];
+        return copy;
+      });
+    }
+  };
+
+  // convenience wrappers
+  const approvePendingReview = (reviewId, reviewedType) =>
+    handlePendingAction(reviewId, reviewedType, "approve");
+  const rejectPendingReview = (reviewId, reviewedType) =>
+    handlePendingAction(reviewId, reviewedType, "reject");
+
+  // end notifications material  ----------------------------------------
 
   // helpers for form
   const onChange = (e) => {
@@ -1002,6 +1161,8 @@ export default function ProximityDashboard() {
         return "My Profile";
       case "analytics":
         return "Analytics";
+      case "notifications":
+        return "Notifications";
       default:
         return "Landlord Dashboard";
     }
@@ -1028,6 +1189,17 @@ export default function ProximityDashboard() {
         return <ReviewsSection user={user} />;
       case "analytics":
         return <AnalyticsDashboardSection />;
+      case "notifications":
+        return (
+          <NotificationSection
+            user={user}
+            pendingReviews={pendingReviews}
+            onApprove={approvePendingReview}
+            onReject={rejectPendingReview}
+            loadingMap={pendingLoading}
+          />
+        );
+
       case "profile":
       default:
         return (
@@ -1131,10 +1303,17 @@ export default function ProximityDashboard() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="hover:bg-red-50 hover:text-red-600"
+                className="hover:bg-red-50 hover:text-red-600 relative"
+                onClick={() => setActiveView("notifications")}
               >
                 <Bell className="h-4 w-4" />
+                {pendingReviews.length > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none rounded-full bg-red-600 text-white">
+                    {pendingReviews.length > 9 ? "9+" : pendingReviews.length}
+                  </span>
+                )}
               </Button>
+
               <Button
                 variant="ghost"
                 size="icon"

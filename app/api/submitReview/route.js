@@ -45,7 +45,7 @@ export async function POST(req) {
       // add this new review to the corresponding user's reviews array
       await User.updateOne(
         { _id: reviewedUserId },
-        { $push: { reviews: newReview._id }, $inc: { numReviews: 1 } }
+        { $push: { reviews: newReview._id } }
       );
     }
 
@@ -53,7 +53,7 @@ export async function POST(req) {
       // add this new review to the corresponding listing's reviews array
       await Listing.updateOne(
         { _id: listingId },
-        { $push: { reviews: newReview._id }, $inc: { numReviews: 1 } }
+        { $push: { reviews: newReview._id } }
       );
     }
 

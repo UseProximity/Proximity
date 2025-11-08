@@ -75,7 +75,7 @@ export default function ReviewsSection({
         </h2>
 
         {/*Case where there are no reviews yet*/}
-        {reviews.length === 0 ? (
+        {reviews.filter((r) => r.legitimacy).length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-10 text-gray-500">
             <div className="mb-3 text-5xl">📝</div>
             <h3 className="text-lg font-semibold text-gray-700 mb-1">
@@ -97,37 +97,38 @@ export default function ReviewsSection({
         ) : (
           <div className="space-y-4">
             {/*Case where there are reviews*/}
-            {reviews.map((review, index) => (
-              <div key={index} className="border-b pb-4">
-                {console.log(review)}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <img
-                      src={
-                        review.reviewer?.image &&
-                        review.reviewer.image.trim() !== ""
-                          ? review.reviewer.image
-                          : "/default-icons/default-user.png"
-                      }
-                      alt={review.reviewer?.name || "Anonymous"}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                    <span className="font-semibold text-gray-900">
-                      {review.reviewer?.name || "Anonymous"}
+            {reviews
+              .filter((r) => r.legitimacy)
+              .map((review, index) => (
+                <div key={index} className="border-b pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <img
+                        src={
+                          review.reviewer?.image &&
+                          review.reviewer.image.trim() !== ""
+                            ? review.reviewer.image
+                            : "/default-icons/default-user.png"
+                        }
+                        alt={review.reviewer?.name || "Anonymous"}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <span className="font-semibold text-gray-900">
+                        {review.reviewer?.name || "Anonymous"}
+                      </span>
+                    </div>
+                    <span className="text-yellow-500 text-sm sm:text-base">
+                      {"★".repeat(review.rating)}
+                      <span className="text-gray-300">
+                        {"★".repeat(5 - review.rating)}
+                      </span>
                     </span>
                   </div>
-                  <span className="text-yellow-500 text-sm sm:text-base">
-                    {"★".repeat(review.rating)}
-                    <span className="text-gray-300">
-                      {"★".repeat(5 - review.rating)}
-                    </span>
-                  </span>
+                  <p className="text-gray-700 mt-2 text-sm sm:text-base">
+                    {review.comment}
+                  </p>
                 </div>
-                <p className="text-gray-700 mt-2 text-sm sm:text-base">
-                  {review.comment}
-                </p>
-              </div>
-            ))}
+              ))}
           </div>
         )}
         {/* leave a review input area */}

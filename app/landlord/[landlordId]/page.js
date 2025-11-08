@@ -24,7 +24,7 @@ export default async function Landlord({ params }) {
         path: "reviewer",
         select: "name image",
       },
-      select: "rating comment reviewer createdAt",
+      select: "rating comment legitimacy reviewer createdAt",
     })
     .lean(); // <-- IMPORTANT: returns plain JS objects (no mongoose doc)
 
@@ -43,6 +43,7 @@ export default async function Landlord({ params }) {
       _id: String(r._id),
       rating: r.rating,
       comment: r.comment,
+      legitimacy: r.legitimacy,
       createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
       reviewer: r.reviewer
         ? { name: r.reviewer.name, image: r.reviewer.image || null }
