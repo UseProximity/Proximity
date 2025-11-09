@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not static
+
 import { auth } from "@/auth";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
