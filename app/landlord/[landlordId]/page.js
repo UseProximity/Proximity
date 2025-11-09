@@ -65,12 +65,16 @@ export default async function Landlord({ params }) {
         <div className="bg-white p-6 rounded-lg shadow-md mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">{landlord.name}</h1>
-            <div className="text-yellow-500 text-lg">
-              {"★".repeat(landlord.rating)}
-              <span className="text-gray-300">
-                {"★".repeat(5 - landlord.rating)}
-              </span>
-            </div>
+            {landlord.numReviews === 0 ? (
+              <p className="text-gray-500 text-sm italic">No ratings yet</p>
+            ) : (
+              <div className="text-yellow-500 text-lg">
+                {"★".repeat(landlord.rating)}
+                <span className="text-gray-300">
+                  {"★".repeat(5 - landlord.rating)}
+                </span>
+              </div>
+            )}
             <p className="text-gray-500">
               {landlord.listings.length} active listings
             </p>

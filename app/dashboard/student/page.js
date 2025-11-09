@@ -135,13 +135,16 @@ function ProfileSection({
           {!isEditing ? (
             <>
               <h1 className="text-4xl font-bold text-gray-900">{user.name}</h1>
-              <div className="text-yellow-500 text-xl mt-2">
-                {"★".repeat(user.rating)}
-                <span className="text-gray-300">
-                  {"★".repeat(5 - user.rating)}
-                </span>
-              </div>
-              {/* TODO: had real sub leases count */}
+              {user.numReviews === 0 ? (
+                <p className="text-gray-500 text-sm italic">No ratings yet</p>
+              ) : (
+                <div className="text-yellow-500 text-lg">
+                  {"★".repeat(user.rating)}
+                  <span className="text-gray-300">
+                    {"★".repeat(5 - user.rating)}
+                  </span>
+                </div>
+              )}
               <p className="text-gray-500 mt-2 text-lg">
                 {user.listings.length} active sub-leases
               </p>{" "}
