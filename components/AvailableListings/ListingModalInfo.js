@@ -63,12 +63,18 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
                     className="w-8 h-8 rounded-full object-cover"
                   />
                   <div>
-                    <div className="text-yellow-500 text-sm leading-tight">
-                      {"★".repeat(listing.owner.rating)}
-                      <span className="text-gray-300">
-                        {"★".repeat(5 - listing.owner.rating)}
-                      </span>
-                    </div>
+                    {listing.owner.numReviews === 0 ? (
+                      <p className="text-gray-500 text-sm italic">
+                        No ratings yet
+                      </p>
+                    ) : (
+                      <div className="text-yellow-500 text-lg">
+                        {"★".repeat(listing.owner.rating)}
+                        <span className="text-gray-300">
+                          {"★".repeat(5 - listing.owner.rating)}
+                        </span>
+                      </div>
+                    )}
                     <p className="text-xs text-gray-500">Landlord Rating</p>
                   </div>
                 </div>
