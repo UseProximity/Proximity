@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import ModalListing from "@/components/AvailableListings/ModalListing";
@@ -129,13 +130,18 @@ export default function AvailableListings({
   const [showFilters, setShowFilters] = useState(false); // can be false, 'price', 'beds-baths', 'home-type', or 'all'
   const filterRef = useRef(null);
 
+  const router = useRouter(); // both of these variables are for URL search params (when going from a different page to a specific listing here on browse)
+  const searchParams = useSearchParams();
+
   /* ------------- Variables and functions for Listing Modal -------------------------------------------*/
 
   const [isModalOpen, setIsModalOpen] = useState(false); // State for modal visibility
   const [modalData, setModalData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleListingClick = async (listingId) => {
+  // Modified handleListingClick: accepts updateUrl flag
+  const handleListingClick = async (listingId, updateUrl = true) => {
+    if (!listingId) return;
     setIsLoading(true);
     setIsModalOpen(true);
 
@@ -144,6 +150,12 @@ export default function AvailableListings({
       if (response.ok) {
         const data = await response.json();
         setModalData(data);
+
+        // only push the URL when this action originates locally
+        if (updateUrl) {
+          // adds a history entry so Back will return to previous page
+          router.push(`/browse?listing=${listingId}`);
+        }
       } else {
         console.error("Failed to fetch listing data");
       }
@@ -155,9 +167,32 @@ export default function AvailableListings({
   };
 
   const handleCloseModal = () => {
+    // remove the listing param without adding another history entry
+    router.replace("/browse");
     setIsModalOpen(false);
     setModalData(null);
   };
+
+  // Open modal if URL contains ?listing=ID
+  useEffect(() => {
+    const listingId = searchParams?.get("listing");
+    if (listingId) {
+      // avoid duplicate fetches if the modal already has that listing
+      if (!isModalOpen || modalData?._id !== listingId) {
+        // call but DO NOT update the URL (it's already in the URL)
+        handleListingClick(listingId, /* updateUrl */ false);
+      }
+    } else {
+      // if param removed and modal open, close it
+      if (isModalOpen) {
+        setIsModalOpen(false);
+        setModalData(null);
+      }
+    }
+    // Re-run when the query string changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams?.toString()]);
+
   /* ---------------- End variables and fucntions for Listing Modal ------------------------------*/
 
   // Custom wheel event handler for filter dropdowns
