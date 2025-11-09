@@ -110,7 +110,7 @@ export default async function Landlord({ params }) {
               {landlord.listings.map((listing, index) => (
                 <Link
                   key={index}
-                  href={`/browse/${encodeURIComponent(listing._id)}`} //FIX-ME this href doenst work anymore because of the modals
+                  href={`/browse?listing=${listing._id}`} //FIX-ME this href doenst work anymore because of the modals
                 >
                   <div className="bg-white rounded-lg shadow-md overflow-hidden">
                     <img
