@@ -21,6 +21,11 @@ export async function PATCH(req) {
       profileComplete: body.profileComplete,
     };
 
+    // only add role if it's explicitly provided
+    if (body.role !== undefined && body.role !== null) {
+      allowed.role = body.role;
+    }
+
     if (body.age !== undefined && body.age !== null) {
       const ageNum = Number(body.age);
       if (!Number.isNaN(ageNum))
