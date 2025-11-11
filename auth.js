@@ -1,6 +1,7 @@
 /*
 import NextAuth from "next-auth";
 import Resend from "next-auth/providers/resend";
+import Google from "next-auth/providers/google";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import clientPromise from "./libs/mongo";
 
@@ -10,6 +11,10 @@ const config = {
       apiKey: process.env.RESEND_KEY,
       from: "noreply@resend.bookecho.org",
       name: "Email",
+    }),
+    Google({
+      clientId: process.env.GOOGLE_ID,
+      clientSecret: process.env.GOOGLE_SECRET,
     }),
   ],
   adapter: MongoDBAdapter(clientPromise),
@@ -28,17 +33,19 @@ import User from "@/models/User";
 
 const config = {
   providers: [
+    /*
     Resend({
       apiKey: process.env.RESEND_KEY,
       from: "noreply@resend.bookecho.org",
       name: "Email",
-    }),
+    }),*/
     Google({
       clientId: process.env.GOOGLE_ID,
       clientSecret: process.env.GOOGLE_SECRET,
     }),
   ],
   adapter: MongoDBAdapter(clientPromise),
+  allowDangerousEmailAccountLinking: true,
   events: {
     async createUser({ user }) {
       // Runs once after adapter creates the user

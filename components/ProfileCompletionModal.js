@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
-import { set } from "mongoose";
 
 export default function ProfileCompletionModal({ session }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,11 +12,15 @@ export default function ProfileCompletionModal({ session }) {
     gender: "",
   });
   const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState(null);
 
   useEffect(() => {
     if (session?.user?.profileComplete === false) {
       setIsOpen(true);
     }
+
+    const params = new URLSearchParams(window.location.search);
+    setRole(params.get("role"));
   }, [session]);
 
   const handleInputChange = (e) => {
@@ -42,12 +45,14 @@ export default function ProfileCompletionModal({ session }) {
           age: Number(formData.age),
           gender: formData.gender,
           profileComplete: true,
+          role: role,
         }),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       const updated = await res.json();
       console.log("Profile updated:", updated);
       setIsOpen(false);
+      window.location.reload();
     } catch (e) {
       console.error(e);
       alert("Couldn't save your profile. Please try again.");

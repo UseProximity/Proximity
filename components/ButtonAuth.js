@@ -69,10 +69,21 @@ export default function ButtonAuth({ session }) {
         ) : (
           <div className="hidden md:flex items-center gap-2">
             <button
+              onClick={() =>
+                signIn("google", { callbackUrl: "/?role=student" })
+              }
               className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
-              onClick={() => signIn(undefined, { callbackUrl: "/" })}
             >
-              Login
+              Login as Student
+            </button>
+
+            <button
+              onClick={() =>
+                signIn("google", { callbackUrl: "/?role=landlord" })
+              }
+              className="px-3 py-1.5 text-sm font-medium text-white bg-gray-800 hover:bg-gray-900 rounded-md ml-2"
+            >
+              Login as Landlord
             </button>
           </div>
         )}
