@@ -344,31 +344,94 @@ export default function AvailableListings({
         WASHU_COORDS.lng
       );
       const maxDistance = parseFloat(filters.distance);
-      matchDistance = distance <= maxDistance;
+
+      // Round to 2 decimal places to match displayed distance
+      const roundedDistance = Math.round(distance * 100) / 100;
+      matchDistance = roundedDistance <= maxDistance;
+
+      console.log("Distance filter check:", {
+        address: listing.address,
+        rawDistance: distance,
+        roundedDistance: roundedDistance.toFixed(2),
+        maxDistance,
+        matchDistance,
+      });
     }
 
-    // Pet policy filter
-    let matchPetPolicy = true;
-    if (filters.petPolicy) {
-      // This would need to be implemented based on your listing data structure
-      // For now, we'll assume all listings match
-      matchPetPolicy = true;
+    // "I Want to Rent" filter - rentType
+    let matchRentType = true;
+    if (filters.rentType && filters.rentType.length > 0) {
+      const leaseTypeLower = listing.leaseType?.toLowerCase() || "";
+      const descriptionLower = listing.description?.toLowerCase() || "";
+
+      matchRentType = filters.rentType.some((type) => {
+        switch (type) {
+          case "entire":
+            return (
+              leaseTypeLower.includes("apartment") ||
+              leaseTypeLower.includes("house") ||
+              leaseTypeLower.includes("condo") ||
+              leaseTypeLower.includes("townhouse")
+            );
+          case "room":
+            return (
+              leaseTypeLower.includes("room") &&
+              !leaseTypeLower.includes("dorm")
+            );
+          case "dorm-room":
+            return (
+              leaseTypeLower.includes("dorm") ||
+              leaseTypeLower.includes("residence hall")
+            );
+          case "suite":
+            return leaseTypeLower.includes("suite");
+          case "no-sublets":
+            return (
+              !leaseTypeLower.includes("sublet") &&
+              !descriptionLower.includes("sublet")
+            );
+          case "sublets-only":
+            return (
+              leaseTypeLower.includes("sublet") ||
+              descriptionLower.includes("sublet")
+            );
+          case "move-in-specials":
+            return (
+              descriptionLower.includes("special") ||
+              descriptionLower.includes("deal")
+            );
+          case "on-campus":
+            return (
+              leaseTypeLower.includes("on-campus") ||
+              descriptionLower.includes("on campus")
+            );
+          case "university":
+            return (
+              leaseTypeLower.includes("university") ||
+              descriptionLower.includes("university housing")
+            );
+          default:
+            return true;
+        }
+      });
     }
 
-    // Amenities filter
-    let matchAmenities = true;
-    if (filters.amenities && filters.amenities.length > 0) {
-      // This would need to be implemented based on your listing data structure
-      // For now, we'll assume all listings match
-      matchAmenities = true;
-    }
+    // Lease Information filter - leaseInfo
+    let matchLeaseInfo = true;
+    if (filters.leaseInfo && filters.leaseInfo.length > 0) {
+      const leaseTypeLower = listing.leaseType?.toLowerCase() || "";
+      const descriptionLower = listing.description?.toLowerCase() || "";
 
-    // Move-in date filter
-    let matchMoveInDate = true;
-    if (filters.moveInDate) {
-      // This would need to be implemented based on your listing data structure
-      // For now, we'll assume all listings match
-      matchMoveInDate = true;
+      matchLeaseInfo = filters.leaseInfo.some((info) => {
+        const infoLower = info.toLowerCase();
+
+        // Normalize both strings (replace dashes with spaces)
+        const normalizedInfo = infoLower.replace(/-/g, " ");
+        const normalizedLeaseType = leaseTypeLower.replace(/-/g, " ");
+
+        // Check if lease type contains the filter value
+        return normalizedLeaseType.includes(normalizedInfo);
+      });
     }
 
     return (
@@ -381,9 +444,8 @@ export default function AvailableListings({
       matchMinArea &&
       matchMaxArea &&
       matchDistance &&
-      matchPetPolicy &&
-      matchAmenities &&
-      matchMoveInDate
+      matchRentType &&
+      matchLeaseInfo
     );
   });
 
@@ -401,13 +463,13 @@ export default function AvailableListings({
           />
         </div>
         {/* Filter Buttons Row */}
-        <div ref={filterRef} className="flex gap-3 mb-6">
+        <div ref={filterRef} className="flex gap-4 mb-6 w-full">
           <button
             onClick={(e) => {
               e.stopPropagation();
               setShowFilters(showFilters === "price" ? false : "price");
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <span>Price</span>
             <svg
@@ -432,32 +494,9 @@ export default function AvailableListings({
                 showFilters === "beds-baths" ? false : "beds-baths"
               );
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <span>Beds/baths</span>
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowFilters(showFilters === "home-type" ? false : "home-type");
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <span>Home type</span>
             <svg
               className="w-4 h-4"
               fill="none"
@@ -480,7 +519,7 @@ export default function AvailableListings({
                 showFilters === "more-filters" ? false : "more-filters"
               );
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <span>More filters</span>
             <svg
@@ -500,7 +539,7 @@ export default function AvailableListings({
 
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <svg
               className="w-4 h-4"
@@ -722,80 +761,6 @@ export default function AvailableListings({
           </div>
         </FilterDropdownPortal>
 
-        {/* Home Type Filter Dropdown */}
-        <FilterDropdownPortal isOpen={showFilters === "home-type"}>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-25 z-[100]"
-            onClick={() => setShowFilters(false)}
-          />
-          <div className="fixed inset-0 z-[101] flex items-start justify-start p-4 pt-32">
-            <div
-              className="filter-dropdown bg-white border border-gray-200 rounded-lg shadow-xl p-6 max-h-[80vh] overflow-y-auto"
-              style={{ width: "300px" }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              onWheel={handleFilterDropdownWheel}
-              onTouchMove={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Home Type
-              </h3>
-
-              <div className="space-y-3 mb-6">
-                {[
-                  "Apartment",
-                  "House",
-                  "Townhouse",
-                  "Condo",
-                  "Studio",
-                  "Dorm",
-                  "Residence Hall",
-                  "Suite-Style Dorm",
-                  "Traditional Dorm",
-                ].map((type) => (
-                  <label
-                    key={type}
-                    className="flex items-center"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mr-3 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-                      checked={filters.leaseType === type}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        setFilters({
-                          ...filters,
-                          leaseType: e.target.checked ? type : "",
-                        });
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    />
-                    <span className="text-gray-700">{type}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="flex justify-between">
-                <button
-                  onClick={handleReset}
-                  className="px-6 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  Reset
-                </button>
-                <button
-                  onClick={() => setShowFilters(false)}
-                  className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        </FilterDropdownPortal>
-
         {/* More Filters Dropdown */}
         <FilterDropdownPortal isOpen={showFilters === "more-filters"}>
           {/* Backdrop */}
@@ -888,65 +853,6 @@ export default function AvailableListings({
                   </div>
                 </div>
 
-                {/* Dorm Types */}
-                <div>
-                  <h4 className="text-base font-semibold text-gray-900 mb-3">
-                    Dorm Types
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {[
-                      {
-                        label: "Traditional Double",
-                        value: "traditional-double",
-                      },
-                      { label: "Modern Double", value: "modern-double" },
-                      {
-                        label: "Traditional Single",
-                        value: "traditional-single",
-                      },
-                      { label: "Modern Single", value: "modern-single" },
-                      { label: "Suite-Style", value: "suite-style" },
-                      { label: "Apartment-Style", value: "apartment-style" },
-                      { label: "Freshman Dorms", value: "freshman" },
-                      {
-                        label: "Upperclassman Dorms",
-                        value: "upperclassman",
-                      },
-                      { label: "Co-ed Dorms", value: "co-ed" },
-                      {
-                        label: "Single-Gender Dorms",
-                        value: "single-gender",
-                      },
-                    ].map((option) => (
-                      <label
-                        key={option.value}
-                        className="flex items-center space-x-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            filters.dormTypes?.includes(option.value) || false
-                          }
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            const currentTypes = filters.dormTypes || [];
-                            const newTypes = e.target.checked
-                              ? [...currentTypes, option.value]
-                              : currentTypes.filter((t) => t !== option.value);
-                            setFilters({ ...filters, dormTypes: newTypes });
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                        />
-                        <span className="text-gray-700 text-sm">
-                          {option.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Move-in Options */}
                 <div>
                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
@@ -997,7 +903,8 @@ export default function AvailableListings({
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
-                      { label: "12-Month Lease", value: "12-month" },
+                      { label: "9 Month Lease", value: "9 Month Lease" },
+                      { label: "12 Month Lease", value: "12-month" },
                       { label: "Fall Sublet", value: "fall-sublet" },
                       { label: "Short-Term Lease", value: "short-term" },
                       { label: "Semester Lease", value: "semester" },
@@ -1058,6 +965,7 @@ export default function AvailableListings({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                   >
                     <option value="">Any</option>
+                    <option value="0.3">Within 0.3 miles</option>
                     <option value="0.5">Within 0.5 miles</option>
                     <option value="1">Within 1 mile</option>
                     <option value="2">Within 2 miles</option>
@@ -1065,8 +973,8 @@ export default function AvailableListings({
                   </select>
                 </div>
 
-                {/* Transportation & Pets */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* COMMENTED OUT FOR FUTURE USE - Transportation & Pets */}
+                {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">
                       Transportation
@@ -1161,10 +1069,10 @@ export default function AvailableListings({
                       ))}
                     </div>
                   </div>
-                </div>
+                </div> */}
 
-                {/* Unit Features */}
-                <div>
+                {/* COMMENTED OUT FOR FUTURE USE - Unit Features */}
+                {/* <div>
                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
                     Unit Features
                   </h4>
@@ -1221,10 +1129,10 @@ export default function AvailableListings({
                       </label>
                     ))}
                   </div>
-                </div>
+                </div> */}
 
-                {/* Community Features */}
-                <div>
+                {/* COMMENTED OUT FOR FUTURE USE - Community Features */}
+                {/* <div>
                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
                     Community Features
                   </h4>
@@ -1278,10 +1186,10 @@ export default function AvailableListings({
                       </label>
                     ))}
                   </div>
-                </div>
+                </div> */}
 
-                {/* Laundry & Security */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* COMMENTED OUT FOR FUTURE USE - Laundry & Security */}
+                {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">
                       Laundry
@@ -1368,7 +1276,7 @@ export default function AvailableListings({
                       ))}
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
 
               {/* Footer */}

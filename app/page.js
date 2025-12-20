@@ -79,12 +79,20 @@ function FeaturesOverview() {
       { x: -300, y: 400 },
       { x: 500, y: 350 },
     ];
-    return (
-      positions[index] || {
-        x: Math.random() * 800 - 400,
-        y: Math.random() * 600 - 300,
-      }
-    );
+    if (positions[index]) return positions[index];
+    const seed = (index + 1) * 9301;
+    const seeded = (seed * 49297) % 233280;
+    const rand = seeded / 233280;
+    return {
+      x: rand * 800 - 400,
+      y: ((rand * 1.7) % 1) * 600 - 300,
+    };
+  };
+
+  const getSeededRotation = (index) => {
+    const seed = Math.sin(index + 1) * 10000;
+    const rand = seed - Math.floor(seed);
+    return rand * 360 - 180;
   };
 
   const containerVariants = {
@@ -106,7 +114,7 @@ function FeaturesOverview() {
         y: startPos.y,
         opacity: 0,
         scale: 0.3,
-        rotate: Math.random() * 360 - 180,
+        rotate: getSeededRotation(index),
       };
     },
     visible: (index) => ({
