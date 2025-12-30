@@ -120,9 +120,7 @@ export default function AddSubLease() {
       return;
     }
 
-    const imageFiles = files.filter((file) =>
-      file.type?.startsWith("image/")
-    );
+    const imageFiles = files.filter((file) => file.type?.startsWith("image/"));
 
     if (imageFiles.length !== files.length) {
       toast.error("Only image files are allowed");
@@ -219,24 +217,6 @@ export default function AddSubLease() {
     }
 
     try {
-      let uploadedImageUrls = [];
-
-      if (formData.images.length > 0) {
-        const uploadData = new FormData();
-        formData.images.forEach((file) => {
-          uploadData.append("files", file);
-        });
-
-        const uploadResponse = await axios.post("/api/upload", uploadData);
-        uploadedImageUrls = uploadResponse.data?.urls || [];
-
-        if (uploadedImageUrls.length === 0) {
-          toast.error("Image upload failed");
-          setIsLoading(false);
-          return;
-        }
-      }
-
       const dataToSend = {
         ...formData,
         rent: Number(formData.rent),
@@ -246,10 +226,27 @@ export default function AddSubLease() {
         longitude: Number(formData.longitude),
         latitude: Number(formData.latitude),
         leaseType: "sublease",
-        images: uploadedImageUrls,
+        images: [],
       };
 
-      await axios.post("/api/addListing", dataToSend);
+      const addResponse = await axios.post("/api/addListing", dataToSend);
+
+      if (formData.images.length > 0) {
+        const uploadData = new FormData();
+        formData.images.forEach((file) => {
+          uploadData.append("files", file);
+        });
+
+        uploadData.append("listingId", addResponse?.data?.listing?._id);
+        const uploadResponse = await axios.patch("/api/upload", uploadData);
+        const uploadedImageUrls = uploadResponse.data?.urls || [];
+
+        if (uploadedImageUrls.length === 0) {
+          toast.error("Image upload failed");
+          setIsLoading(false);
+          return;
+        }
+      }
       toast.success("Sub-Lease Added!");
 
       setFormData({
