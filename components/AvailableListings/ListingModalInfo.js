@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import ConditionalButtons from "@/components/ConditionalButtons";
 import ReviewsSection from "@/components/ReviewsSection";
@@ -11,20 +14,66 @@ const leaseTypeMap = {
 };
 
 export default function ListingModalInfo({ HeartIcon, session, listing }) {
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const images = Array.isArray(listing?.images)
+    ? listing.images.filter(Boolean)
+    : [];
+  const coverImage = images[0];
+  const hasGallery = images.length > 1;
+
   return (
     <>
       <div className="bg-gray-100 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* Image + Gallery */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="relative md:col-span-2">
-              <img
-                src={listing.images[0]}
-                alt={listing.address}
-                className="rounded-xl w-full h-[400px] object-cover shadow"
-              />
+            <div
+              className={`relative md:col-span-2 ${
+                hasGallery ? "cursor-pointer" : ""
+              }`}
+              onClick={() => {
+                if (hasGallery) {
+                  setIsGalleryOpen(true);
+                }
+              }}
+              role={hasGallery ? "button" : undefined}
+              tabIndex={hasGallery ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (!hasGallery) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setIsGalleryOpen(true);
+                }
+              }}
+            >
+              {coverImage ? (
+                <img
+                  src={coverImage}
+                  alt={listing.address}
+                  className="rounded-xl w-full h-[400px] object-cover shadow"
+                />
+              ) : (
+                <div className="rounded-xl w-full h-[400px] bg-gray-200 shadow flex items-center justify-center text-gray-500">
+                  No images available
+                </div>
+              )}
               <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
-              <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
+              {hasGallery && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsGalleryOpen(true);
+                  }}
+                  className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-md rounded-full px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-lg border border-white/60"
+                >
+                  See all {images.length} photos
+                </button>
+              )}
+              <div
+                className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <HeartIcon
                   session={session}
                   listingId={listing._id}
@@ -55,7 +104,6 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
 
               {/*Landlord profile and Rating Thing */}
               <Link href={`/landlord/${encodeURIComponent(listing.owner._id)}`}>
-                {/**FIX-ME make the url unique for each landlord (not using the name) */}
                 <div className="flex items-center gap-2 mt-1">
                   <img
                     src={listing.owner.image}
@@ -129,6 +177,42 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
           />
         </div>
       </div>
+      {isGalleryOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm overflow-y-auto"
+          onClick={() => setIsGalleryOpen(false)}
+        >
+          <div
+            className="max-w-6xl mx-auto px-6 py-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6 text-white">
+              <div className="text-lg font-semibold">
+                Photos ({images.length})
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGalleryOpen(false)}
+                className="text-white/80 hover:text-white text-2xl"
+                aria-label="Close photo gallery"
+              >
+                ×
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {images.map((src, index) => (
+                <img
+                  key={`${src}-${index}`}
+                  src={src}
+                  alt={`Listing photo ${index + 1}`}
+                  className="w-full h-64 object-cover rounded-lg shadow"
+                  loading="lazy"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -6,7 +6,7 @@ export async function GET(req, { params }) {
   try {
     await connectMongo();
 
-    const { listingId } = params;
+    const { listingId } = await params;
 
     if (!listingId) {
       return NextResponse.json(

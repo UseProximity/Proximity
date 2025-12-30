@@ -496,7 +496,7 @@ function PropertiesSection({ user, handlePropertySelect, router }) {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {user.listings.map((property) => (
           <Card
-            key={property.id}
+            key={property._id}
             className="hover:shadow-xl transition-all duration-300 cursor-pointer group border-0 shadow-md hover:scale-[1.02]"
             onClick={() => handlePropertySelect(property)}
           >
@@ -684,7 +684,7 @@ function ReviewsSection({ user }) {
         >
           <option>All Properties</option>
           {user.listings.map((property) => (
-            <option key={property._id}>
+            <option key={property._id || property.id}>
               {property.name || property.address}
             </option>
           ))}
@@ -707,9 +707,9 @@ function ReviewsSection({ user }) {
       <Card>
         <CardContent className="p-6">
           <div className="space-y-6 py-5">
-            {paginatedReviews.map((review) => (
+            {paginatedReviews.map((review, index) => (
               <div
-                key={review.id}
+                key={review.id || review._id || `${review.date}-${index}`}
                 className="border-b border-gray-100 last:border-0 pb-6 last:pb-0"
               >
                 <div className="flex items-start gap-4">

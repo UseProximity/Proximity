@@ -348,7 +348,7 @@ function SubleasesSection({ user, router }) {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {user.listings.map((property) => (
           <Card
-            key={property.id}
+            key={property._id}
             className="hover:shadow-xl transition-all duration-300 cursor-pointer group border-0 shadow-md hover:scale-[1.02]"
           >
             <div className="relative overflow-hidden">

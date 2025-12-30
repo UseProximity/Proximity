@@ -17,6 +17,7 @@ export default function AddSubLease() {
     bathrooms: "",
     images: [],
   });
+  const [imagePreviews, setImagePreviews] = useState([]);
 
   // Address autocomplete state
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -24,6 +25,7 @@ export default function AddSubLease() {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const addressTimeoutRef = useRef(null);
   const suggestionListRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Debounced address search using Mapbox Geocoding API
   const searchAddresses = useCallback(async (query) => {
@@ -93,10 +95,64 @@ export default function AddSubLease() {
     toast.success("Address selected and coordinates auto-filled!");
   };
 
+  const mergeUniqueFiles = (currentFiles, nextFiles) => {
+    const seen = new Set(
+      currentFiles.map(
+        (file) => `${file.name}-${file.size}-${file.lastModified}`
+      )
+    );
+    const merged = [...currentFiles];
+
+    nextFiles.forEach((file) => {
+      const key = `${file.name}-${file.size}-${file.lastModified}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(file);
+      }
+    });
+
+    return merged;
+  };
+
+  const handleImageFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const imageFiles = files.filter((file) =>
+      file.type?.startsWith("image/")
+    );
+
+    if (imageFiles.length !== files.length) {
+      toast.error("Only image files are allowed");
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      images: mergeUniqueFiles(prev.images, imageFiles),
+    }));
+  };
+
+  const handleImageChange = (e) => {
+    handleImageFiles(e.target.files);
+    e.target.value = "";
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleImageFiles(e.dataTransfer.files);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     if (name === "images") {
-      setFormData((prev) => ({ ...prev, images: [...files] }));
+      handleImageFiles(files);
     } else if (name === "address") {
       handleAddressChange(e);
     } else {
@@ -130,6 +186,22 @@ export default function AddSubLease() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!formData.images || formData.images.length === 0) {
+      setImagePreviews([]);
+      return;
+    }
+
+    const previewUrls = formData.images.map((file) =>
+      URL.createObjectURL(file)
+    );
+    setImagePreviews(previewUrls);
+
+    return () => {
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [formData.images]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -146,19 +218,37 @@ export default function AddSubLease() {
       return;
     }
 
-    const dataToSend = {
-      ...formData,
-      rent: Number(formData.rent),
-      area: Number(formData.area),
-      bedrooms: Number(formData.bedrooms),
-      bathrooms: Number(formData.bathrooms),
-      longitude: Number(formData.longitude),
-      latitude: Number(formData.latitude),
-      leaseType: "sublease",
-      ownerId: "68877696221d6bb66c4c7c7d", // TODO always giving a fixed student id until auth resolved
-    };
-
     try {
+      let uploadedImageUrls = [];
+
+      if (formData.images.length > 0) {
+        const uploadData = new FormData();
+        formData.images.forEach((file) => {
+          uploadData.append("files", file);
+        });
+
+        const uploadResponse = await axios.post("/api/upload", uploadData);
+        uploadedImageUrls = uploadResponse.data?.urls || [];
+
+        if (uploadedImageUrls.length === 0) {
+          toast.error("Image upload failed");
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      const dataToSend = {
+        ...formData,
+        rent: Number(formData.rent),
+        area: Number(formData.area),
+        bedrooms: Number(formData.bedrooms),
+        bathrooms: Number(formData.bathrooms),
+        longitude: Number(formData.longitude),
+        latitude: Number(formData.latitude),
+        leaseType: "sublease",
+        images: uploadedImageUrls,
+      };
+
       await axios.post("/api/addListing", dataToSend);
       toast.success("Sub-Lease Added!");
 
@@ -174,6 +264,9 @@ export default function AddSubLease() {
         leaseType: "",
         images: [],
       });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (e) {
       toast.error(e?.message);
       console.error(e);
@@ -353,18 +446,53 @@ export default function AddSubLease() {
           {/* Images */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Image URL
+              Images
             </label>
-            <input
-              type="text"
-              name="imageUrl"
-              value={formData.images[0] || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, images: [e.target.value] }))
-              }
-              placeholder="Enter an image URL"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              className="w-full border-2 border-dashed border-gray-300 rounded-md p-6 text-center cursor-pointer hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                name="images"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleImageChange}
+              />
+              <p className="text-sm text-gray-600">
+                Drag and drop images, or click to upload
+              </p>
+              <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP</p>
+            </div>
+
+            {imagePreviews.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {imagePreviews.map((src, index) => (
+                  <div
+                    key={`${src}-${index}`}
+                    className="aspect-square overflow-hidden rounded-md border border-gray-200"
+                  >
+                    <img
+                      src={src}
+                      alt={`Selected ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button

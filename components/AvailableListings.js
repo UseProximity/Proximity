@@ -972,311 +972,6 @@ export default function AvailableListings({
                     <option value="5">Within 5 miles</option>
                   </select>
                 </div>
-
-                {/* COMMENTED OUT FOR FUTURE USE - Transportation & Pets */}
-                {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                      Transportation
-                    </h4>
-                    <div className="space-y-2">
-                      {[
-                        {
-                          label: "Near Campus Shuttle Route",
-                          value: "shuttle",
-                        },
-                        { label: "Near Bus Stop", value: "bus" },
-                        { label: "Near Metro or Subway", value: "metro" },
-                        { label: "Garage Parking", value: "garage" },
-                        {
-                          label: "Private Shuttle to Campus",
-                          value: "private-shuttle",
-                        },
-                        { label: "Walk to Campus", value: "walk" },
-                      ].map((option) => (
-                        <label
-                          key={option.value}
-                          className="flex items-center space-x-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              filters.transportation?.includes(option.value) ||
-                              false
-                            }
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const currentTransport =
-                                filters.transportation || [];
-                              const newTransport = e.target.checked
-                                ? [...currentTransport, option.value]
-                                : currentTransport.filter(
-                                    (t) => t !== option.value
-                                  );
-                              setFilters({
-                                ...filters,
-                                transportation: newTransport,
-                              });
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                          />
-                          <span className="text-gray-700 text-sm">
-                            {option.label}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                      Pets
-                    </h4>
-                    <div className="space-y-2">
-                      {[
-                        { label: "Dogs", value: "dogs" },
-                        { label: "Cats", value: "cats" },
-                        { label: "Pets Allowed", value: "allowed" },
-                        { label: "Pets Not Allowed", value: "not-allowed" },
-                      ].map((option) => (
-                        <label
-                          key={option.value}
-                          className="flex items-center space-x-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              filters.pets?.includes(option.value) || false
-                            }
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const currentPets = filters.pets || [];
-                              const newPets = e.target.checked
-                                ? [...currentPets, option.value]
-                                : currentPets.filter((p) => p !== option.value);
-                              setFilters({ ...filters, pets: newPets });
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                          />
-                          <span className="text-gray-700 text-sm">
-                            {option.label}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div> */}
-
-                {/* COMMENTED OUT FOR FUTURE USE - Unit Features */}
-                {/* <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                    Unit Features
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      { label: "Air Conditioning", value: "ac" },
-                      { label: "Disability Accessible", value: "accessible" },
-                      { label: "Dishwasher", value: "dishwasher" },
-                      { label: "Storage Space", value: "storage" },
-                      { label: "Fireplace", value: "fireplace" },
-                      { label: "Furnished", value: "furnished" },
-                      { label: "Hardwood Floors", value: "hardwood" },
-                      { label: "High-Speed Internet", value: "internet" },
-                      { label: "Loft", value: "loft" },
-                      { label: "Outdoor Rec Space", value: "outdoor" },
-                      {
-                        label: "Patio, Balcony, Porch or Deck",
-                        value: "patio",
-                      },
-                      { label: "Smoke-Free", value: "smoke-free" },
-                      { label: "Utilities Included", value: "utilities" },
-                      { label: "Wheelchair Accessible", value: "wheelchair" },
-                    ].map((option) => (
-                      <label
-                        key={option.value}
-                        className="flex items-center space-x-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            filters.unitFeatures?.includes(option.value) ||
-                            false
-                          }
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            const currentFeatures = filters.unitFeatures || [];
-                            const newFeatures = e.target.checked
-                              ? [...currentFeatures, option.value]
-                              : currentFeatures.filter(
-                                  (f) => f !== option.value
-                                );
-                            setFilters({
-                              ...filters,
-                              unitFeatures: newFeatures,
-                            });
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                        />
-                        <span className="text-gray-700 text-sm">
-                          {option.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div> */}
-
-                {/* COMMENTED OUT FOR FUTURE USE - Community Features */}
-                {/* <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                    Community Features
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      { label: "Alcohol-Free", value: "alcohol-free" },
-                      { label: "Elevator", value: "elevator" },
-                      { label: "Family Friendly", value: "family" },
-                      { label: "Fitness Room", value: "fitness" },
-                      {
-                        label: "International Student Friendly",
-                        value: "international",
-                      },
-                      { label: "On-Campus Housing", value: "on-campus" },
-                      { label: "Pool", value: "pool" },
-                      { label: "Roommate Matching", value: "roommate" },
-                      { label: "Study Lounges", value: "study" },
-                      { label: "University Housing", value: "university" },
-                    ].map((option) => (
-                      <label
-                        key={option.value}
-                        className="flex items-center space-x-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            filters.communityFeatures?.includes(option.value) ||
-                            false
-                          }
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            const currentFeatures =
-                              filters.communityFeatures || [];
-                            const newFeatures = e.target.checked
-                              ? [...currentFeatures, option.value]
-                              : currentFeatures.filter(
-                                  (f) => f !== option.value
-                                );
-                            setFilters({
-                              ...filters,
-                              communityFeatures: newFeatures,
-                            });
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                        />
-                        <span className="text-gray-700 text-sm">
-                          {option.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div> */}
-
-                {/* COMMENTED OUT FOR FUTURE USE - Laundry & Security */}
-                {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                      Laundry
-                    </h4>
-                    <div className="space-y-2">
-                      {[
-                        { label: "Community Laundry", value: "community" },
-                        { label: "Washer/Dryer Hookups", value: "hookups" },
-                        { label: "Washer/Dryer In Unit", value: "in-unit" },
-                        { label: "Laundry Access", value: "access" },
-                      ].map((option) => (
-                        <label
-                          key={option.value}
-                          className="flex items-center space-x-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              filters.laundry?.includes(option.value) || false
-                            }
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const currentLaundry = filters.laundry || [];
-                              const newLaundry = e.target.checked
-                                ? [...currentLaundry, option.value]
-                                : currentLaundry.filter(
-                                    (l) => l !== option.value
-                                  );
-                              setFilters({ ...filters, laundry: newLaundry });
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                          />
-                          <span className="text-gray-700 text-sm">
-                            {option.label}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                      Security
-                    </h4>
-                    <div className="space-y-2">
-                      {[
-                        { label: "Courtesy Officer/Patrol", value: "patrol" },
-                        { label: "Gated Community", value: "gated" },
-                        { label: "Security System", value: "system" },
-                        { label: "Dead-Bolt Locks", value: "deadbolt" },
-                      ].map((option) => (
-                        <label
-                          key={option.value}
-                          className="flex items-center space-x-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              filters.security?.includes(option.value) || false
-                            }
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const currentSecurity = filters.security || [];
-                              const newSecurity = e.target.checked
-                                ? [...currentSecurity, option.value]
-                                : currentSecurity.filter(
-                                    (s) => s !== option.value
-                                  );
-                              setFilters({
-                                ...filters,
-                                security: newSecurity,
-                              });
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            className="rounded border-gray-300 text-red-500 focus:ring-red-500"
-                          />
-                          <span className="text-gray-700 text-sm">
-                            {option.label}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div> */}
               </div>
 
               {/* Footer */}
@@ -1341,85 +1036,100 @@ export default function AvailableListings({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-6">
-            {filteredListings.map((listing) => (
-              <div
-                key={listing._id}
-                className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
-                onClick={() => handleListingClick(listing._id)}
-              >
-                <div className="relative">
-                  <img
-                    src={listing.images[0]}
-                    alt=""
-                    className="w-full h-48 object-cover"
-                  />
-                </div>
-                <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-2xl text-black">
-                      ${listing.rent.toLocaleString()}
-                      <span className="text-sm font-normal">/month</span>
-                    </h3>
-                  </div>
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-emerald-700 font-semibold text-sm">
-                        {listing.bedrooms}
-                      </span>
-                      <span className="text-emerald-600 text-xs">bd</span>
-                    </div>
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-rose-700 font-semibold text-sm">
-                        {listing.bathrooms}
-                      </span>
-                      <span className="text-rose-600 text-xs">ba</span>
-                    </div>
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-amber-700 font-semibold text-sm">
-                        {listing.area}
-                      </span>
-                      <span className="text-amber-600 text-xs">sqft</span>
-                    </div>
-                  </div>
-                  <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <svg
-                      className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                      {listing.address}
-                    </p>
-                  </div>
-                </div>
+            {filteredListings.map((listing) => {
+              const imageUrl = listing.images?.[0];
+              const imageCount = listing.images?.length || 0;
 
-                <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
-                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
-                  <HeartIcon
-                    session={session}
-                    listingId={listing._id}
-                    initial={
-                      Boolean(session?.user) &&
-                      Boolean(
-                        session?.user?.favorites?.some(
-                          (f) =>
-                            String((f && f._id) || f) === String(listing._id)
-                        ) ||
-                          session?.user?.favoritesIds?.includes(
-                            String(listing._id)
-                          )
-                      )
-                    }
-                  />
+              return (
+                <div
+                  key={listing._id}
+                  className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
+                  onClick={() => handleListingClick(listing._id)}
+                >
+                  <div className="relative">
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={listing.address}
+                        className="w-full h-48 object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">
+                        No image
+                      </div>
+                    )}
+                    {imageCount > 1 && (
+                      <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                        See all {imageCount} photos
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-2xl text-black">
+                        ${listing.rent.toLocaleString()}
+                        <span className="text-sm font-normal">/month</span>
+                      </h3>
+                    </div>
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
+                        <span className="text-emerald-700 font-semibold text-sm">
+                          {listing.bedrooms}
+                        </span>
+                        <span className="text-emerald-600 text-xs">bd</span>
+                      </div>
+                      <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
+                        <span className="text-rose-700 font-semibold text-sm">
+                          {listing.bathrooms}
+                        </span>
+                        <span className="text-rose-600 text-xs">ba</span>
+                      </div>
+                      <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
+                        <span className="text-amber-700 font-semibold text-sm">
+                          {listing.area}
+                        </span>
+                        <span className="text-amber-600 text-xs">sqft</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <svg
+                        className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                        {listing.address}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
+                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
+                    <HeartIcon
+                      session={session}
+                      listingId={listing._id}
+                      initial={
+                        Boolean(session?.user) &&
+                        Boolean(
+                          session?.user?.favorites?.some(
+                            (f) =>
+                              String((f && f._id) || f) === String(listing._id)
+                          ) ||
+                            session?.user?.favoritesIds?.includes(
+                              String(listing._id)
+                            )
+                        )
+                      }
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {isModalOpen && (
