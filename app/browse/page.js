@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import BrowseContent from "@/components/BrowseContent";
+import BrowseContent from "@/components/show-listings/BrowseContent";
 import { auth } from "@/auth";
 
 export default async function Browse() {

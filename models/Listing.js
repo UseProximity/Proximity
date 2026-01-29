@@ -1,5 +1,16 @@
 import mongoose from "mongoose";
 
+const unitTypeSchema = new mongoose.Schema(
+  {
+    name: { type: String, trim: true, required: false },
+    rent: { type: Number, required: false },
+    area: { type: Number, required: false },
+    bedrooms: { type: Number, required: true },
+    bathrooms: { type: Number, required: true },
+  },
+  { _id: false }
+);
+
 const listingSchema = new mongoose.Schema({
   address: {
     type: String,
@@ -17,22 +28,7 @@ const listingSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  rent: {
-    type: Number,
-    required: true,
-  },
-  area: {
-    type: Number,
-    required: true,
-  },
-  bedrooms: {
-    type: Number,
-    required: true,
-  },
-  bathrooms: {
-    type: Number,
-    required: true,
-  },
+  unitTypes: { type: [unitTypeSchema], required: true },
   leaseType: {
     type: String,
     required: true,

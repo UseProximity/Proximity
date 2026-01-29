@@ -19,9 +19,16 @@ export default function ModalListing({ isOpen, onClose, children }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden"
+      onClick={onClose}
+    >
       <div
         className="bg-white shadow-2xl border border-gray-100 relative w-full max-w-6xl h-screen overflow-y-auto"
+        onClick={(e) => {
+          // Prevent click from bubbling to the overlay
+          e.stopPropagation();
+        }}
         onWheel={(e) => {
           // Prevent wheel events from bubbling up to parent elements (like the map)
           e.stopPropagation();

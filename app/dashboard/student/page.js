@@ -20,6 +20,11 @@ import {
   Bed,
   Bath,
 } from "lucide-react";
+import {
+  getAreaRangeLabel,
+  getRentRangeLabel,
+  getUnitValuesLabel,
+} from "@/utils/listingFormatters";
 
 // Components ------------------------------------------------------------------
 
@@ -383,26 +388,26 @@ function SubleasesSection({ user, router }) {
                   <div className="flex items-center gap-1">
                     <Bed className="h-3 w-3" />
                     <span className="font-medium">
-                      {property.beds === 0
-                        ? "Studio"
-                        : `${property.bedrooms} bed`}
+                      {getUnitValuesLabel(property.unitTypes, "bedrooms")} bed
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Bath className="h-3 w-3" />
                     <span className="font-medium">
-                      {property.bathrooms} bath
+                      {getUnitValuesLabel(property.unitTypes, "bathrooms")} bath
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Square className="h-3 w-3" />
-                    <span className="font-medium">{property.area} SF</span>
+                    <span className="font-medium">
+                      {getAreaRangeLabel(property.unitTypes)} SF
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="text-xl font-bold text-gray-900">
-                ${property.rent.toLocaleString()}
+                {getRentRangeLabel(property.unitTypes)}
                 <span className="text-sm font-normal text-gray-500">
                   /month
                 </span>
@@ -496,7 +501,7 @@ function FavoriteListingsSection({
             key={listing._id}
             className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
           >
-            <Link href={`/browse/${listing._id}`}>
+            <Link href={`/browse?listing=${listing._id}`}>
               <div className="relative">
                 <img
                   src={listing.images[0]}
@@ -507,26 +512,26 @@ function FavoriteListingsSection({
               <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-2xl text-black">
-                    ${listing.rent.toLocaleString()}
+                    {getRentRangeLabel(listing.unitTypes)}
                     <span className="text-sm font-normal">/month</span>
                   </h3>
                 </div>
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
                     <span className="text-emerald-700 font-semibold text-sm">
-                      {listing.bedrooms}
+                      {getUnitValuesLabel(listing.unitTypes, "bedrooms")}
                     </span>
                     <span className="text-emerald-600 text-xs">bd</span>
                   </div>
                   <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
                     <span className="text-rose-700 font-semibold text-sm">
-                      {listing.bathrooms}
+                      {getUnitValuesLabel(listing.unitTypes, "bathrooms")}
                     </span>
                     <span className="text-rose-600 text-xs">ba</span>
                   </div>
                   <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
                     <span className="text-amber-700 font-semibold text-sm">
-                      {listing.area}
+                      {getAreaRangeLabel(listing.unitTypes)}
                     </span>
                     <span className="text-amber-600 text-xs">sqft</span>
                   </div>

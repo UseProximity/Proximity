@@ -26,10 +26,7 @@ export async function GET() {
     const safeFavorites = (user.favorites || []).map((l) => ({
       _id: l._id?.toString(),
       address: l.address,
-      rent: l.rent,
-      area: l.area,
-      bedrooms: l.bedrooms,
-      bathrooms: l.bathrooms,
+      unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
       leaseType: l.leaseType,
       images: Array.isArray(l.images) ? l.images : [],
       rating: l.rating ?? 0,
@@ -45,10 +42,7 @@ export async function GET() {
     const safeListings = (user.listings || []).map((l) => ({
       _id: l._id?.toString(),
       address: l.address,
-      rent: l.rent,
-      area: l.area,
-      bedrooms: l.bedrooms,
-      bathrooms: l.bathrooms,
+      unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
       leaseType: l.leaseType,
       images: Array.isArray(l.images) ? l.images : [],
       rating: l.rating ?? 0,

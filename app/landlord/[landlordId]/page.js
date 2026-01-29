@@ -4,6 +4,11 @@ import { auth } from "@/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReviewsSection from "@/components/ReviewsSection";
+import {
+  getAreaRangeLabel,
+  getRentRangeLabel,
+  getUnitValuesLabel,
+} from "@/utils/listingFormatters";
 
 export default async function Landlord({ params }) {
   const { landlordId } = params;
@@ -16,7 +21,7 @@ export default async function Landlord({ params }) {
     .populate({
       path: "listings",
       // select fields you actually need to reduce payload
-      select: "address images rent bedrooms bathrooms area leaseType createdAt",
+      select: "address images unitTypes leaseType createdAt",
     })
     .populate({
       path: "reviews",
@@ -119,11 +124,15 @@ export default async function Landlord({ params }) {
                       className="w-full h-40 object-cover"
                     />
                     <div className="p-4">
-                      <h3 className="text-lg font-semibold">${listing.rent}</h3>
+                      <h3 className="text-lg font-semibold">
+                        {getRentRangeLabel(listing.unitTypes)}
+                      </h3>
                       <p className="text-gray-500">{listing.address}</p>
                       <p className="text-sm text-gray-400">
-                        {listing.bedrooms} Beds • {listing.bathrooms} Baths •{" "}
-                        {listing.area.toLocaleString()} Sq Ft
+                        {getUnitValuesLabel(listing.unitTypes, "bedrooms")} Beds
+                        {" • "}
+                        {getUnitValuesLabel(listing.unitTypes, "bathrooms")}{" "}
+                        Baths • {getAreaRangeLabel(listing.unitTypes)} Sq Ft
                       </p>
                       <p className="text-xs text-gray-400">
                         {leaseTypeMap[listing.leaseType] || listing.leaseType}

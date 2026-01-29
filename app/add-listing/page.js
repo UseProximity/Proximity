@@ -6,18 +6,21 @@ import toast from "react-hot-toast";
 
 export default function AddListing() {
   const [isLoading, setIsLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     address: "",
     longitude: "",
     latitude: "",
+    unitTypes: [],
     description: "",
-    rent: "",
-    area: "",
-    bedrooms: "",
-    bathrooms: "",
     leaseType: "",
     images: [],
   });
+
+  const [unitTypes, setUnitTypes] = useState([
+    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+  ]);
+
   const [imagePreviews, setImagePreviews] = useState([]);
 
   // Address autocomplete state
@@ -159,6 +162,25 @@ export default function AddListing() {
     }
   };
 
+  const handleUnitTypeChange = (index, field, value) => {
+    setUnitTypes((prev) =>
+      prev.map((unit, unitIndex) =>
+        unitIndex === index ? { ...unit, [field]: value } : unit
+      )
+    );
+  };
+
+  const handleAddUnitType = () => {
+    setUnitTypes((prev) => [
+      ...prev,
+      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+    ]);
+  };
+
+  const handleRemoveUnitType = (index) => {
+    setUnitTypes((prev) => prev.filter((_, unitIndex) => unitIndex !== index));
+  };
+
   // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -206,6 +228,11 @@ export default function AddListing() {
 
     if (isLoading) return;
 
+    if (unitTypes.some((unit) => !unit.bedrooms || !unit.bathrooms)) {
+      toast.error("All unit types require number of bedrooms and bathrooms.");
+      return;
+    }
+
     setIsLoading(true);
 
     // Coordinates are now automatically extracted from address selection
@@ -218,12 +245,20 @@ export default function AddListing() {
     }
 
     try {
-      const dataToSend = {
+      const updatedFormData = {
         ...formData,
-        rent: Number(formData.rent),
-        area: Number(formData.area),
-        bedrooms: Number(formData.bedrooms),
-        bathrooms: Number(formData.bathrooms),
+        unitTypes: unitTypes,
+      };
+
+      const dataToSend = {
+        ...updatedFormData,
+        unitTypes: unitTypes.map((unit) => ({
+          name: unit.name,
+          rent: unit.rent == "" ? undefined : Number(unit.rent),
+          area: unit.area == "" ? undefined : Number(unit.area),
+          bedrooms: Number(unit.bedrooms),
+          bathrooms: Number(unit.bathrooms),
+        })),
         longitude: Number(formData.longitude),
         latitude: Number(formData.latitude),
         images: [],
@@ -231,6 +266,8 @@ export default function AddListing() {
 
       const addResponse = await axios.post("/api/addListing", dataToSend);
 
+      // Only upload images (if any) after listing is created,
+      // because we need the listing ID for association
       if (formData.images.length > 0) {
         const uploadData = new FormData();
         formData.images.forEach((file) => {
@@ -247,6 +284,7 @@ export default function AddListing() {
           return;
         }
       }
+
       toast.success("Listing Added!");
 
       setFormData({
@@ -254,13 +292,13 @@ export default function AddListing() {
         longitude: "",
         latitude: "",
         description: "",
-        rent: "",
-        area: "",
-        bedrooms: "",
-        bathrooms: "",
+        unitTypes: [],
         leaseType: "",
         images: [],
       });
+      setUnitTypes([
+        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+      ]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -344,64 +382,125 @@ export default function AddListing() {
             )}
           </div>
 
-          {/* Rent */}
+          {/* Unit Types */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Rent ($)
-            </label>
-            <input
-              type="number"
-              name="rent"
-              required
-              value={formData.rent}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-
-          {/* Area */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Area (sq ft)
-            </label>
-            <input
-              type="number"
-              name="area"
-              required
-              value={formData.area}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-
-          {/* Bedrooms */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Bedrooms
-            </label>
-            <input
-              type="number"
-              name="bedrooms"
-              required
-              value={formData.bedrooms}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-
-          {/* Bathrooms */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Bathrooms
-            </label>
-            <input
-              type="number"
-              name="bathrooms"
-              required
-              value={formData.bathrooms}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Unit Types
+              </label>
+            </div>
+            <div className="space-y-4">
+              {unitTypes.map((unit, index) => (
+                <div
+                  key={`unit-${index}`}
+                  className="rounded-md border border-gray-200 p-4"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-gray-900">
+                      Unit Type {index + 1}
+                    </p>
+                    {unitTypes.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveUnitType(index)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Unit Label (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={unit.name}
+                        onChange={(e) =>
+                          handleUnitTypeChange(index, "name", e.target.value)
+                        }
+                        placeholder="e.g. Studio, 2BR Deluxe"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Rent ($)
+                      </label>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={unit.rent}
+                        onChange={(e) =>
+                          handleUnitTypeChange(index, "rent", e.target.value)
+                        }
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Area (sq ft)
+                      </label>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={unit.area}
+                        onChange={(e) =>
+                          handleUnitTypeChange(index, "area", e.target.value)
+                        }
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bedrooms
+                      </label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={unit.bedrooms}
+                        onChange={(e) =>
+                          handleUnitTypeChange(
+                            index,
+                            "bedrooms",
+                            e.target.value
+                          )
+                        }
+                        required={index === 0}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bathrooms
+                      </label>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={unit.bathrooms}
+                        onChange={(e) =>
+                          handleUnitTypeChange(
+                            index,
+                            "bathrooms",
+                            e.target.value
+                          )
+                        }
+                        required={index === 0}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleAddUnitType}
+              className="mt-4 inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:border-red-400 hover:text-red-600 transition"
+            >
+              + Add another unit type
+            </button>
           </div>
 
           {/* Description */}

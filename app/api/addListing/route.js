@@ -13,25 +13,22 @@ export async function POST(req) {
       longitude,
       latitude,
       description,
-      rent,
-      area,
-      bedrooms,
-      bathrooms,
+      unitTypes,
       leaseType,
       images,
     } = body;
 
+    console.log("Unit Types Received:", unitTypes);
+
     // Validate required fields
     if (
-      !address ||
+      !address?.trim() ||
       longitude === undefined ||
       latitude === undefined ||
-      !description ||
-      !rent ||
-      !area ||
-      bedrooms === undefined ||
-      bathrooms === undefined ||
-      !leaseType
+      !description?.trim() ||
+      !leaseType ||
+      !Array.isArray(unitTypes) ||
+      unitTypes.length === 0
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -39,20 +36,30 @@ export async function POST(req) {
       );
     }
 
-    const session = await auth();
+    const invalidUnit = unitTypes.some(
+      (unit) => unit.bedrooms === undefined || unit.bathrooms === undefined
+    );
 
+    if (invalidUnit) {
+      return NextResponse.json({ error: "Invalid unit type" }, { status: 400 });
+    }
+
+    console.log("All required fields are valid.");
+
+    const session = await auth();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const ownerId = session?.user?.id;
-
-    await connectMongo();
-
     // Make sure the owner exists
     if (!ownerId) {
       return NextResponse.json({ error: "Owner not found" }, { status: 404 });
     }
+
+    console.log("Authentication successful.");
+
+    await connectMongo();
 
     // Create New Listing
     const newListing = await Listing.create({
@@ -60,14 +67,13 @@ export async function POST(req) {
       longitude,
       latitude,
       description,
-      rent,
-      area,
-      bedrooms,
-      bathrooms,
+      unitTypes,
       leaseType,
       images: images || [],
       owner: ownerId,
     });
+
+    console.log("New listing created with ID:", newListing._id);
 
     const user = await User.findById(ownerId);
 

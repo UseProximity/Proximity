@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import {
+  getAreaRangeLabel,
+  getRentRangeLabel,
+  getUnitValuesLabel,
+} from "@/utils/listingFormatters";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -523,16 +528,35 @@ export default function MapView({
         zoom: 15.5, // Adjusted for optimal WashU view
       });
       mapRef.current.addControl(new mapboxgl.NavigationControl());
+
+      // Resize map after initialization to ensure proper fit
+      mapRef.current.once("load", () => {
+        if (mapRef.current) {
+          mapRef.current.resize();
+        }
+      });
     }
 
     // Expose route helpers
     window.showRouteToCampus = showRouteToCampus;
     window.hideRoute = hideRoute;
 
+    // Handle window resize
+    const handleResize = () => {
+      if (mapRef.current) {
+        mapRef.current.resize();
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+
     return () => {
       // Remove global helpers
       delete window.showRouteToCampus;
       delete window.hideRoute;
+
+      // Remove resize listener
+      window.removeEventListener("resize", handleResize);
 
       // Only remove the map on unmount
       if (mapRef.current) {
@@ -629,7 +653,7 @@ export default function MapView({
                     margin: 0;
                     line-height: 1.2;
                   ">
-                    $${listing.rent?.toLocaleString() || "N/A"}
+                    ${getRentRangeLabel(listing.unitTypes) || "N/A"}
                     <span style="font-size: 12px; font-weight: 400;">/month</span>
                   </h3>
                 </div>
@@ -651,7 +675,7 @@ export default function MapView({
                     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
                   ">
                     <span style="color: #047857; font-weight: 600; font-size: 12px;">${
-                      listing.bedrooms || 0
+                      getUnitValuesLabel(listing.unitTypes, "bedrooms") || 0
                     }</span>
                     <span style="color: #059669; font-size: 10px;">bd</span>
                   </div>
@@ -667,7 +691,7 @@ export default function MapView({
                     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
                   ">
                     <span style="color: #be185d; font-weight: 600; font-size: 12px;">${
-                      listing.bathrooms || 0
+                      getUnitValuesLabel(listing.unitTypes, "bathrooms") || 0
                     }</span>
                     <span style="color: #db2777; font-size: 10px;">ba</span>
                   </div>
@@ -683,7 +707,7 @@ export default function MapView({
                     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
                   ">
                     <span style="color: #d97706; font-weight: 600; font-size: 12px;">${
-                      listing.area || 0
+                      getAreaRangeLabel(listing.unitTypes) || 0
                     }</span>
                     <span style="color: #f59e0b; font-size: 10px;">sqft</span>
                   </div>

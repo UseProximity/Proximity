@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import AvailableListings from "@/components/AvailableListings";
+import AvailableListings from "@/components/show-listings/AvailableListings";
 
 export default function BrowseContent({ session }) {
   const [listings, setListings] = useState([]);
@@ -26,6 +26,20 @@ export default function BrowseContent({ session }) {
     };
 
     fetchListings();
+  }, []);
+
+  // Lock body scroll to prevent page dragging
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    const originalHeight = document.body.style.height;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.height = "100vh";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.height = originalHeight;
+    };
   }, []);
 
   useEffect(() => {
@@ -292,8 +306,11 @@ export default function BrowseContent({ session }) {
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50">
-        <div className="flex flex-col md:flex-row h-screen">
+      <div className="bg-gray-50">
+        <div
+          className="flex flex-col md:flex-row overflow-hidden"
+          style={{ height: "calc(100vh - 64px)" }}
+        >
           <AvailableListings
             session={session}
             listings={filteredListings}

@@ -30,6 +30,11 @@ import {
 import LeasingFunnel from "@/components/landlord-dashboard/leasing-funnel";
 import TrendIndicators from "@/components/landlord-dashboard/trend-indicators";
 import MarketComparisons from "@/components/landlord-dashboard/market-comparisons";
+import {
+  getAreaRangeLabel,
+  getRentRangeLabel,
+  getUnitValuesLabel,
+} from "@/utils/listingFormatters";
 
 // Mock Reviews Data
 const reviews = [
@@ -485,7 +490,6 @@ function PropertiesSection({ user, handlePropertySelect, router }) {
         <div className="flex items-center gap-4">
           <Badge variant="secondary" className="bg-green-100 text-green-800">
             {user.listings.length} Available{" "}
-            {/*TODO: Fixed number for now, fix that */}
           </Badge>
           <Badge variant="secondary" className="bg-blue-100 text-blue-800">
             0 Rented {/*TODO: Fixed number for now, fix that */}
@@ -532,26 +536,26 @@ function PropertiesSection({ user, handlePropertySelect, router }) {
                   <div className="flex items-center gap-1">
                     <Bed className="h-3 w-3" />
                     <span className="font-medium">
-                      {property.beds === 0
-                        ? "Studio"
-                        : `${property.bedrooms} bed`}
+                      {getUnitValuesLabel(property.unitTypes, "bedrooms")} bed
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Bath className="h-3 w-3" />
                     <span className="font-medium">
-                      {property.bathrooms} bath
+                      {getUnitValuesLabel(property.unitTypes, "bathrooms")} bath
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Square className="h-3 w-3" />
-                    <span className="font-medium">{property.area} SF</span>
+                    <span className="font-medium">
+                      {getAreaRangeLabel(property.unitTypes)} SF
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="text-xl font-bold text-gray-900">
-                ${property.rent.toLocaleString()}
+                {getRentRangeLabel(property.unitTypes)}
                 <span className="text-sm font-normal text-gray-500">
                   /month
                 </span>
