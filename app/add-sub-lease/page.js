@@ -261,14 +261,43 @@ export default function AddSubLease() {
       const addResponse = await axios.post("/api/addListing", dataToSend);
 
       if (formData.images.length > 0) {
-        const uploadData = new FormData();
-        formData.images.forEach((file) => {
-          uploadData.append("files", file);
-        });
+        const listingId = addResponse?.data?.listing?._id;
+        const MAX_BATCH_BYTES = 4 * 1024 * 1024; // stay under Vercel limit
+        const batches = [];
+        let currentBatch = [];
+        let currentBytes = 0;
 
-        uploadData.append("listingId", addResponse?.data?.listing?._id);
-        const uploadResponse = await axios.patch("/api/upload", uploadData);
-        const uploadedImageUrls = uploadResponse.data?.urls || [];
+        for (const file of formData.images) {
+          if (file.size > MAX_BATCH_BYTES) {
+            toast.error("One of the images is too large to upload.");
+            setIsLoading(false);
+            return;
+          }
+
+          if (currentBytes + file.size > MAX_BATCH_BYTES && currentBatch.length) {
+            batches.push(currentBatch);
+            currentBatch = [];
+            currentBytes = 0;
+          }
+
+          currentBatch.push(file);
+          currentBytes += file.size;
+        }
+
+        if (currentBatch.length) {
+          batches.push(currentBatch);
+        }
+
+        let uploadedImageUrls = [];
+        for (const batch of batches) {
+          const uploadData = new FormData();
+          batch.forEach((file) => uploadData.append("files", file));
+          uploadData.append("listingId", listingId);
+
+          const uploadResponse = await axios.patch("/api/upload", uploadData);
+          const batchUrls = uploadResponse.data?.urls || [];
+          uploadedImageUrls = uploadedImageUrls.concat(batchUrls);
+        }
 
         if (uploadedImageUrls.length === 0) {
           toast.error("Image upload failed");
