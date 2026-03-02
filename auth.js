@@ -9,7 +9,7 @@ const config = {
   providers: [
     Resend({
       apiKey: process.env.RESEND_KEY,
-      from: "noreply@resend.bookecho.org",
+      from: "noreply@resend.useproximity.org",
       name: "Email",
     }),
     Google({
@@ -36,7 +36,7 @@ const config = {
     /*
     Resend({
       apiKey: process.env.RESEND_KEY,
-      from: "noreply@resend.bookecho.org",
+      from: "noreply@resend.useproximity.org",
       name: "Email",
     }),*/
     Google({
