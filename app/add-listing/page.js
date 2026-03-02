@@ -282,7 +282,10 @@ export default function AddListing() {
             return;
           }
 
-          if (currentBytes + file.size > MAX_BATCH_BYTES && currentBatch.length) {
+          if (
+            currentBytes + file.size > MAX_BATCH_BYTES &&
+            currentBatch.length
+          ) {
             batches.push(currentBatch);
             currentBatch = [];
             currentBytes = 0;

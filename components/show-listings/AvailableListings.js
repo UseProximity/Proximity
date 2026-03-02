@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+
 import ModalListing from "@/components/show-listings/ModalListing";
 import ListingModalInfo from "@/components/show-listings/ListingModalInfo";
 import { signIn } from "next-auth/react";
@@ -37,13 +38,13 @@ function HeartIcon({ session, listingId, initial = false }) {
     const next = !prev;
 
     // Optimistic UI
-    console.log("Optimistically setting favorite to:", next);
+    // Optimistically setting favorite to: true/false
     setIsFavorite(next);
     setPending(true);
 
     try {
       if (!session?.user?.id) {
-        console.log("User ID not available, rolling back favorite state");
+        // User ID not available, rolling back favorite state
         setIsFavorite(prev);
         return;
       }
@@ -256,25 +257,21 @@ export default function AvailableListings({
       .toLowerCase()
       .includes(search.toLowerCase());
     const matchMinRent =
-      !filters.minRent ||
-      listing.unitTypes[0].rent >= Number(filters.unitTypes[0].minRent);
+      !filters.minRent || listing.unitTypes[0].rent >= Number(filters.minRent);
     const matchMaxRent =
-      !filters.maxRent ||
-      listing.unitTypes[0].rent <= Number(filters.unitTypes[0].maxRent);
+      !filters.maxRent || listing.unitTypes[0].rent <= Number(filters.maxRent);
     const matchBeds =
       !filters.bedrooms ||
-      listing.unitTypes[0].bedrooms >= Number(filters.unitTypes[0].bedrooms);
+      listing.unitTypes[0].bedrooms >= Number(filters.bedrooms);
     const matchBaths =
       !filters.bathrooms ||
-      listing.unitTypes[0].bathrooms >= Number(filters.unitTypes[0].bathrooms);
+      listing.unitTypes[0].bathrooms >= Number(filters.bathrooms);
     const matchLease =
       !filters.leaseType || listing.leaseType === filters.leaseType;
     const matchMinArea =
-      !filters.minArea ||
-      listing.unitTypes[0].area >= Number(filters.unitTypes[0].minArea);
+      !filters.minArea || listing.unitTypes[0].area >= Number(filters.minArea);
     const matchMaxArea =
-      !filters.maxArea ||
-      listing.unitTypes[0].area <= Number(filters.unitTypes[0].maxArea);
+      !filters.maxArea || listing.unitTypes[0].area <= Number(filters.maxArea);
 
     // Distance filter
     let matchDistance = true;
@@ -290,14 +287,6 @@ export default function AvailableListings({
       // Round to 2 decimal places to match displayed distance
       const roundedDistance = Math.round(distance * 100) / 100;
       matchDistance = roundedDistance <= maxDistance;
-
-      console.log("Distance filter check:", {
-        address: listing.address,
-        rawDistance: distance,
-        roundedDistance: roundedDistance.toFixed(2),
-        maxDistance,
-        matchDistance,
-      });
     }
 
     // "I Want to Rent" filter - rentType
