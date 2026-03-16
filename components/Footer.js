@@ -90,11 +90,11 @@ export default function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-14 pt-6 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-gray-600">
+        <div className="mt-8 pt-6 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">
             © 2025 Proximity. All rights reserved.
           </p>
-          <p className="text-xs text-gray-600">
+          <p className="text-sm text-gray-600">
             Made for students, by students.
           </p>
         </div>

@@ -17,7 +17,7 @@ import Link from "next/link";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
 
-const SIDE_MARGIN = "px-8 md:px-14 lg:px-20";
+const SIDE_MARGIN = "px-12 md:px-20 lg:px-28";
 
 // ─── Hero + Map (combined) ─────────────────────────────────────────────────────
 
@@ -72,31 +72,17 @@ function HeroMapSection() {
       <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
 
       {/* ── Left: Hero content ── */}
-      <div className={`relative z-40 flex-shrink-0 ${SIDE_MARGIN} py-24 lg:py-32 flex flex-col justify-center`}>
-
-        {/* Badge */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white border border-gray-200 rounded-full text-red-500 text-sm font-medium mb-7 self-start shadow-sm"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-          Student housing, simplified
-        </motion.div>
+      <div className={`relative z-40 flex-shrink-0 max-w-[720px] ${SIDE_MARGIN} py-20 lg:py-26 flex flex-col justify-center`}>
 
         {/* Headline */}
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.08 }}
-          className="text-5xl sm:text-6xl lg:text-[68px] font-black text-gray-900 leading-[0.93] tracking-tight mb-6"
+          className="text-5xl sm:text-6xl lg:text-[68px] font-bold text-gray-900 leading-[0.93] tracking-tight mb-6"
         >
-          Better apartments.
-          <br />
-          <span className="text-red-500">Honest reviews.</span>
-          <br />
-          Zero stress.
+          Find your perfect <span className="text-red-700">WashU</span> Housing
+          Now
         </motion.h1>
 
         {/* Sub-headline */}
@@ -136,28 +122,6 @@ function HeroMapSection() {
           </div>
         </motion.form>
 
-        {/* CTA buttons */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.32 }}
-          className="flex flex-col sm:flex-row gap-3 mb-12"
-        >
-          <Link
-            href="/browse"
-            className="group inline-flex items-center justify-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-xl transition-all duration-150 text-sm shadow-md"
-          >
-            Browse all listings
-            <ArrowRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" />
-          </Link>
-          <Link
-            href="/CampusHub"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-gray-700 hover:text-gray-900 font-semibold rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-150 text-sm shadow-sm"
-          >
-            Explore Campus Hub
-          </Link>
-        </motion.div>
-
         {/* Stats strip */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -171,7 +135,7 @@ function HeroMapSection() {
             { value: "1,200+", label: "Reviews" },
             { value: "100%", label: "Transparent" },
           ].map((stat) => (
-            <div key={stat.label} className="flex flex-col">
+            <div key={stat.label} className="mt-8 flex flex-col">
               <span className="text-2xl font-black text-gray-900">{stat.value}</span>
               <span className="text-xs text-gray-500 font-medium mt-0.5">{stat.label}</span>
             </div>
@@ -274,6 +238,7 @@ function HeroMapSection() {
         ))}
 
         {/* Floating listing card 1 */}
+        {/* TODO: Make the floating Listing card a component and reuse once I get real data for the map. */}
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
@@ -498,7 +463,7 @@ function ReviewsCarousel() {
   const dotIdx = ((pos - N_REVIEWS) % N_REVIEWS + N_REVIEWS) % N_REVIEWS;
 
   return (
-    <section ref={sectionRef} className="w-full py-20 md:py-28 bg-white overflow-hidden">
+    <section ref={sectionRef} className="w-full py-18 md:py-24 bg-white overflow-hidden">
 
       {/* Header */}
       <div className={`w-full ${SIDE_MARGIN}`}>
@@ -692,8 +657,6 @@ function PopularRentals() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (!loading && listings.length === 0) return null;
-
   return (
     <section ref={ref} className="w-full py-20 md:py-28 bg-gray-50/70">
       <div className={`w-full ${SIDE_MARGIN}`}>
@@ -766,11 +729,6 @@ function CollegesBand() {
         animate={isInView ? { opacity: 1 } : {}}
         transition={{ duration: 0.6 }}
       >
-        <div className={`text-center ${SIDE_MARGIN} mb-2`}>
-          <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">
-            Trusted by students at
-          </p>
-        </div>
         <UniversityLogosCarousel />
       </motion.div>
     </section>
@@ -785,7 +743,7 @@ function CTABand() {
   const router = useRouter();
 
   return (
-    <section ref={ref} className="w-full py-20 md:py-24 bg-gray-900">
+    <section ref={ref} className="w-full py-20 md:py-24 bg-red-700">
       <div className={`w-full ${SIDE_MARGIN} text-center`}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -795,20 +753,20 @@ function CTABand() {
           <h2 className="text-4xl md:text-5xl font-black text-white mb-4 leading-tight">
             Find your next place today.
           </h2>
-          <p className="text-lg text-gray-400 mb-8 max-w-lg mx-auto leading-relaxed">
+          <p className="text-lg text-red-100 mb-8 max-w-lg mx-auto leading-relaxed">
             Join thousands of students who found housing they actually love —
             without the chaos.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={() => router.push("/browse")}
-              className="px-8 py-4 bg-red-500 hover:bg-red-400 text-white font-bold rounded-xl transition-all duration-150 shadow-lg shadow-red-500/20 text-base"
+              className="px-8 py-4 bg-white hover:bg-red-50 text-red-500 font-bold rounded-xl transition-all duration-150 shadow-lg shadow-red-700/20 text-base"
             >
               Browse Listings
             </button>
             <button
               onClick={() => router.push("/CampusHub")}
-              className="px-8 py-4 bg-transparent hover:bg-white/8 text-white font-semibold rounded-xl transition-all duration-150 border border-white/20 hover:border-white/35 text-base"
+              className="px-8 py-4 bg-transparent hover:bg-white/10 text-white font-semibold rounded-xl transition-all duration-150 border border-white/40 hover:border-white/60 text-base"
             >
               Explore Campus Hub
             </button>
@@ -826,8 +784,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-white">
       <main>
         <HeroMapSection />
-        <ReviewsCarousel />
         <PopularRentals />
+        <ReviewsCarousel />
         <CollegesBand />
         <CTABand />
       </main>
