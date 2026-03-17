@@ -14,8 +14,7 @@ export const metadata = {
 };
 
 export default async function RootLayout({ children }) {
-  //const session = await auth();
-  const session = null; //TODO: Remove this line and uncomment the above line to enable authentication
+  const session = await auth();
   return (
     <html lang="en" data-theme="">
       <head>
