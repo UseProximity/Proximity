@@ -59,7 +59,7 @@ export function Header({ session }) {
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
-      <div className="max-w-[1600px] mx-auto flex items-center justify-between h-[104px] px-4 md:px-8">
+      <div className="w-full flex items-center justify-between h-[104px] px-8 md:px-12">
 
         {/* ── Left: Logo + Nav ── */}
         <div className={`flex items-center gap-10 flex-shrink-0 ${searchOpen ? "hidden md:flex" : ""}`}>
@@ -125,8 +125,18 @@ export function Header({ session }) {
                 <>
                   <Link
                     href={session.user.role === "landlord" ? "/dashboard/landlord" : "/dashboard/student"}
-                    className="px-5 py-2.5 text-[17px] font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all border border-gray-200"
+                    className={`flex items-center gap-2 px-5 py-2.5 text-[17px] font-medium rounded-xl transition-all border ${
+                      pathname.startsWith("/dashboard")
+                        ? "text-red-500 bg-red-50/80 border-red-200 hover:bg-red-100/70"
+                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-50 border-gray-200"
+                    }`}
                   >
+                    <Image
+                      src={pathname.startsWith("/dashboard") ? "/assets/profile-icon-1.svg" : "/assets/profile-icon.svg"}
+                      alt="Profile"
+                      width={20}
+                      height={20}
+                    />
                     Dashboard
                   </Link>
                   <button
@@ -211,8 +221,18 @@ export function Header({ session }) {
               <Link
                 href={session.user.role === "landlord" ? "/dashboard/landlord" : "/dashboard/student"}
                 onClick={() => setMobileMenuOpen(false)}
-                className="px-4 py-3 rounded-xl text-[17px] font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl text-[17px] font-medium transition-all ${
+                  pathname.startsWith("/dashboard")
+                    ? "text-red-500 bg-red-50/80"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
               >
+                <Image
+                  src={pathname.startsWith("/dashboard") ? "/assets/profile-icon-1.svg" : "/assets/profile-icon.svg"}
+                  alt="Profile"
+                  width={20}
+                  height={20}
+                />
                 Dashboard
               </Link>
               <button

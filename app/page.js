@@ -6,7 +6,6 @@ import { motion, useInView } from "framer-motion";
 import {
   Search,
   Star,
-  MapPin,
   ChevronLeft,
   ChevronRight,
   ArrowRight,
@@ -15,6 +14,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
+import { getRentRangeLabel } from "@/utils/listingFormatters";
 
 const HeroMapPreview = dynamic(() => import("@/components/HeroMapPreview"), { ssr: false });
 
@@ -67,7 +67,7 @@ function HeroMapSection() {
       <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
 
       {/* ── Left: Hero content ── */}
-      <div className={`relative z-40 flex-shrink-0 max-w-[900px] ${SIDE_MARGIN} py-20 lg:py-26 flex flex-col justify-center`}>
+      <div className={`relative z-40 flex-shrink-0 max-w-[900px] ${SIDE_MARGIN} pt-10 pb-20 lg:py-26 flex flex-col justify-center`}>
 
         {/* Headline */}
         <motion.h1
@@ -374,11 +374,15 @@ function ReviewsCarousel() {
 // ─── Popular Rentals ───────────────────────────────────────────────────────────
 
 function RentalCard({ listing, index, isInView }) {
-  const firstUnit = listing.unitTypes?.[0];
-  const price = firstUnit?.rent;
-  const beds = firstUnit?.bedrooms;
-  const baths = firstUnit?.bathrooms;
   const isMobile = useIsMobile();
+  const imageUrl = listing.images?.[0];
+  const imageCount = listing.images?.length || 0;
+  const [streetAddress, ...restParts] = listing.address.split(",");
+  const cityStateZip = restParts.join(",").trim();
+  const bedValues = listing.unitTypes.map((u) => u.bedrooms).filter(Number.isFinite);
+  const bathValues = listing.unitTypes.map((u) => u.bathrooms).filter(Number.isFinite);
+  const bedLabel = bedValues.length === 0 ? "N/A" : Math.min(...bedValues) === Math.max(...bedValues) ? String(Math.min(...bedValues)) : `${Math.min(...bedValues)}-${Math.max(...bedValues)}`;
+  const bathLabel = bathValues.length === 0 ? "N/A" : Math.min(...bathValues) === Math.max(...bathValues) ? String(Math.min(...bathValues)) : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
 
   const initial = isMobile
     ? { opacity: 0, x: index % 2 === 0 ? -40 : 40 }
@@ -391,44 +395,55 @@ function RentalCard({ listing, index, isInView }) {
       transition={{ duration: 0.5, delay: index * 0.07 }}
     >
       <Link href="/browse" className="group block">
-        <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
-          <div className="relative h-48 bg-gray-100 overflow-hidden">
-            {listing.images?.[0] ? (
+        <div className="relative bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
+          <div className="relative">
+            {imageUrl ? (
               <img
-                src={listing.images[0]}
+                src={imageUrl}
                 alt={listing.address}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                className="w-full aspect-video object-cover"
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                <MapPin className="h-8 w-8 text-gray-300" />
+              <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
+                No image
               </div>
             )}
-            {listing.rating > 0 && (
-              <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-semibold text-gray-900 shadow-sm">
-                <Star className="h-3 w-3 fill-red-400 text-red-400" />
-                {listing.rating.toFixed(1)}
+            {imageCount > 1 && (
+              <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                See all {imageCount} photos
               </div>
             )}
           </div>
-          <div className="p-4">
-            <p className="text-sm font-semibold text-gray-900 truncate mb-2">
-              {listing.address}
-            </p>
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-400">
-                {beds ? `${beds} bd` : ""}
-                {beds && baths ? " · " : ""}
-                {baths ? `${baths} ba` : ""}
+          <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-sm text-gray-900 leading-snug">
+                  {streetAddress}
+                </h3>
+                {cityStateZip && (
+                  <p className="text-xs text-gray-500 font-normal mt-0.5">
+                    {cityStateZip}
+                  </p>
+                )}
               </div>
-              {price ? (
-                <div className="text-sm font-bold text-gray-900">
-                  ${price.toLocaleString()}
-                  <span className="text-xs font-normal text-gray-400">/mo</span>
-                </div>
-              ) : null}
+              <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
+                {getRentRangeLabel(listing.unitTypes)}
+                <span className="text-xs font-normal">/mo</span>
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-auto pt-2">
+              <span className="text-gray-500 text-xs">
+                {bedLabel} bed{" | "}{bathLabel} bath
+                {listing.leaseType ? ` | ${listing.leaseType}` : ""}
+              </span>
+              {listing.owner?.name && (
+                <span className="text-gray-400 text-xs truncate ml-2">
+                  {listing.owner.name}
+                </span>
+              )}
             </div>
           </div>
+          <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
         </div>
       </Link>
     </motion.div>
@@ -438,7 +453,7 @@ function RentalCard({ listing, index, isInView }) {
 function SkeletonCard() {
   return (
     <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
-      <div className="h-48 bg-gray-100" />
+      <div className="h-64 bg-gray-100" />
       <div className="p-4 space-y-2.5">
         <div className="h-4 bg-gray-100 rounded-lg w-3/4" />
         <div className="h-3 bg-gray-100 rounded-lg w-1/2" />
@@ -599,7 +614,7 @@ export default function HomePage() {
         <HeroMapSection />
         <PopularRentals />
         <ReviewsCarousel />
-        <CollegesBand />
+        {/* <CollegesBand /> */}
         <CTABand />
       </main>
       <Footer />

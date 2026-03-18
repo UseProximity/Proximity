@@ -1,13 +1,60 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/show-listings/AvailableListings";
+import TopFilterBar from "@/components/show-listings/TopFilterBar";
+
+const WASHU_COORDS = { lat: 38.6496, lng: -90.3035 };
+
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 3959;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Approximate WashU shuttle stop locations for proximity filtering
+const SHUTTLE_STOPS = [
+  { lat: 38.6495, lng: -90.3145 }, // Skinker & Lindell
+  { lat: 38.6526, lng: -90.3067 }, // Delmar Loop
+  { lat: 38.648,  lng: -90.3035 }, // South campus
+];
+
+const DEFAULT_FILTERS = {
+  minRent: "",
+  maxRent: "",
+  bedrooms: "",        // min bedrooms
+  maxBedrooms: "",     // max bedrooms
+  bathrooms: "",       // min bathrooms
+  maxBathrooms: "",    // max bathrooms
+  leaseType: "",       // top-bar quick filter (home type string)
+  distance: "",        // distance to campus (miles)
+  distanceToShuttle: "", // distance to shuttle stop (miles)
+  moveInDate: "",
+  homeType: [],        // ['house','apartment','condo','townhouse','singleBedroom']
+  leaseAvailability: [], // ['semester','10-month','12-month']
+  amenities: [],       // ['gym','studyRooms','inUnitLaundry','freeParking','petsAllowed']
+  furnished: "",       // '' | 'furnished' | 'unfurnished'
+  utilitiesIncluded: false,
+  subleaseFriendly: false,
+  leaseStructure: "",  // '' | 'individual' | 'joint'
+  savedOnly: false,
+};
 
 export default function BrowseContent({ session }) {
   const [listings, setListings] = useState([]);
-  const [filteredListings, setFilteredListings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("search");
 
@@ -17,7 +64,6 @@ export default function BrowseContent({ session }) {
         const response = await fetch("/api/listings");
         const data = await response.json();
         setListings(data);
-        setFilteredListings(data);
       } catch (error) {
         console.error("Error fetching listings:", error);
       } finally {
@@ -27,6 +73,13 @@ export default function BrowseContent({ session }) {
 
     fetchListings();
   }, []);
+
+  // Initialize search from URL param on mount
+  useEffect(() => {
+    if (searchQuery) {
+      setSearch(searchQuery);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lock body scroll to prevent page dragging
   useEffect(() => {
@@ -42,282 +95,195 @@ export default function BrowseContent({ session }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (searchQuery && listings.length > 0) {
-      const filtered = listings.filter((listing) => {
-        const searchLower = searchQuery.toLowerCase().trim();
-
-        // Enhanced search parsing - break down the query into components
-        const parseSearchQuery = (query) => {
-          const criteria = {
-            bedrooms: null,
-            bathrooms: null,
-            maxPrice: null,
-            location: null,
-            amenities: [],
-            generalTerms: [],
-          };
-
-          // More flexible bedroom patterns
-          const bedroomPatterns = [
-            /(\d+)\s*(?:bed|bedroom|br|bdr)s?/gi,
-            /(\d+)\s*b[^a]/gi, // catches "3b" but not "3bath"
-            /(\d+)\s+bed/gi,
-            /(\d+)[-\s]*bedroom/gi,
-            /(\d+)[-\s]*bed/gi,
-          ];
-
-          for (const pattern of bedroomPatterns) {
-            const match = query.match(pattern);
-            if (match) {
-              criteria.bedrooms = parseInt(match[0].match(/\d+/)[0]);
-              break;
-            }
-          }
-
-          // More flexible bathroom patterns
-          const bathroomPatterns = [
-            /(\d+(?:\.\d+)?)\s*(?:bath|bathroom|ba)s?/g,
-            /(\d+(?:\.\d+)?)\s*ba[^c]/g, // catches "3ba" but not "back"
-          ];
-
-          for (const pattern of bathroomPatterns) {
-            const match = query.match(pattern);
-            if (match) {
-              criteria.bathrooms = parseFloat(
-                match[0].match(/\d+(?:\.\d+)?/)[0]
-              );
-              break;
-            }
-          }
-
-          // Enhanced price patterns
-          const pricePatterns = [
-            /under\s*\$?(\d+)/g,
-            /below\s*\$?(\d+)/g,
-            /less\s+than\s*\$?(\d+)/g,
-            /max\s*\$?(\d+)/g,
-            /\$(\d+)\s*(?:or\s+)?(?:less|under|below|max)/g,
-            /(\d+)\s*(?:dollar|bucks?)\s*(?:or\s+)?(?:less|under|below|max)/g,
-          ];
-
-          for (const pattern of pricePatterns) {
-            const match = query.match(pattern);
-            if (match) {
-              const priceStr = match[0].match(/\d+/)[0];
-              criteria.maxPrice = parseInt(priceStr);
-              break;
-            }
-          }
-
-          // Location patterns
-          const locationPatterns = [
-            /near\s+([^,]+?)(?:\s+(?:with|under|below|\d+)|$)/g,
-            /in\s+([^,]+?)(?:\s+(?:with|under|below|\d+)|$)/g,
-            /(?:close\s+to|by)\s+([^,]+?)(?:\s+(?:with|under|below|\d+)|$)/g,
-          ];
-
-          for (const pattern of locationPatterns) {
-            const match = query.match(pattern);
-            if (match) {
-              criteria.location = match[0]
-                .replace(/^(?:near|in|close\s+to|by)\s+/i, "")
-                .trim();
-              break;
-            }
-          }
-
-          // Amenity patterns
-          const amenityKeywords = [
-            "parking",
-            "garage",
-            "gym",
-            "fitness",
-            "pool",
-            "laundry",
-            "washer",
-            "dryer",
-            "dishwasher",
-            "ac",
-            "air conditioning",
-            "heating",
-            "balcony",
-            "patio",
-            "pet friendly",
-            "pets allowed",
-            "dog",
-            "cat",
-            "furnished",
-            "unfurnished",
-          ];
-
-          amenityKeywords.forEach((amenity) => {
-            if (query.includes(amenity)) {
-              criteria.amenities.push(amenity);
-            }
-          });
-
-          // Extract general terms (words not caught by specific patterns)
-          const words = query.split(/\s+/);
-          const usedWords = new Set();
-
-          // Mark words used in specific criteria
-          if (criteria.bedrooms) {
-            words.forEach((word, i) => {
-              if (
-                word.includes(criteria.bedrooms.toString()) ||
-                /bed|bedroom|br|bdr/.test(word)
-              ) {
-                usedWords.add(i);
-                if (i > 0) usedWords.add(i - 1); // number before
-                if (i < words.length - 1) usedWords.add(i + 1); // word after
-              }
-            });
-          }
-
-          if (criteria.bathrooms) {
-            words.forEach((word, i) => {
-              if (
-                word.includes(criteria.bathrooms.toString()) ||
-                /bath|bathroom|ba/.test(word)
-              ) {
-                usedWords.add(i);
-                if (i > 0) usedWords.add(i - 1);
-                if (i < words.length - 1) usedWords.add(i + 1);
-              }
-            });
-          }
-
-          if (criteria.maxPrice) {
-            words.forEach((word, i) => {
-              if (
-                word.includes(criteria.maxPrice.toString()) ||
-                /under|below|less|max|\$|dollar|buck/.test(word)
-              ) {
-                usedWords.add(i);
-                if (i > 0) usedWords.add(i - 1);
-                if (i < words.length - 1) usedWords.add(i + 1);
-              }
-            });
-          }
-
-          // Remaining words are general terms
-          words.forEach((word, i) => {
-            if (!usedWords.has(i) && word.length > 2) {
-              criteria.generalTerms.push(word);
-            }
-          });
-
-          return criteria;
-        };
-
-        const criteria = parseSearchQuery(searchLower);
-        let matches = true;
-
-        // Check bedrooms (exact match for better accuracy)
-        if (criteria.bedrooms !== null) {
-          matches = matches && listing.bedrooms === criteria.bedrooms;
-        }
-
-        // Check bathrooms (allow equal or greater)
-        if (criteria.bathrooms !== null) {
-          matches = matches && listing.bathrooms >= criteria.bathrooms;
-        }
-
-        // Check price
-        if (criteria.maxPrice !== null) {
-          matches = matches && listing.rent <= criteria.maxPrice;
-        }
-
-        // Check location
-        if (criteria.location) {
-          const location = criteria.location.toLowerCase();
-          matches =
-            matches &&
-            (listing.address.toLowerCase().includes(location) ||
-              listing.title.toLowerCase().includes(location) ||
-              listing.description.toLowerCase().includes(location));
-        }
-
-        // Check amenities
-        if (criteria.amenities.length > 0) {
-          const hasAmenities = criteria.amenities.every((amenity) => {
-            return (
-              listing.amenities?.some((a) =>
-                a.toLowerCase().includes(amenity)
-              ) ||
-              listing.description.toLowerCase().includes(amenity) ||
-              (amenity.includes("pet") && listing.petFriendly) ||
-              listing.title.toLowerCase().includes(amenity)
-            );
-          });
-          matches = matches && hasAmenities;
-        }
-
-        // Check general terms (fallback for unstructured search)
-        if (
-          criteria.generalTerms.length > 0 &&
-          !criteria.bedrooms &&
-          !criteria.bathrooms &&
-          !criteria.maxPrice &&
-          !criteria.location &&
-          criteria.amenities.length === 0
-        ) {
-          const hasGeneralTerms = criteria.generalTerms.some(
-            (term) =>
-              listing.title.toLowerCase().includes(term) ||
-              listing.address.toLowerCase().includes(term) ||
-              listing.description.toLowerCase().includes(term)
-          );
-          matches = matches && hasGeneralTerms;
-        }
-
-        return matches;
-      });
-
-      setFilteredListings(filtered);
-    } else {
-      setFilteredListings(listings);
-    }
-  }, [searchQuery, listings]);
-
   const handleClearSearch = () => {
-    // Clear the URL search params
     const url = new URL(window.location);
     url.searchParams.delete("search");
     window.history.replaceState({}, "", url);
-
-    // Reset filtered listings to show all listings
-    setFilteredListings(listings);
   };
+
+  const handleReset = () => {
+    setSearch("");
+    setFilters(DEFAULT_FILTERS);
+    handleClearSearch();
+  };
+
+  const filteredListings = useMemo(() => {
+    return listings.filter((listing) => {
+      const lt = listing.leaseType?.toLowerCase() || "";
+      const desc = listing.description?.toLowerCase() || "";
+      const amenitiesText = (listing.amenities || []).join(" ").toLowerCase();
+      const combined = desc + " " + amenitiesText;
+
+      // Search
+      const matchSearch = listing.address.toLowerCase().includes(search.toLowerCase());
+
+      // Price
+      const matchMinRent = !filters.minRent || listing.unitTypes[0].rent >= Number(filters.minRent);
+      const matchMaxRent = !filters.maxRent || listing.unitTypes[0].rent <= Number(filters.maxRent);
+
+      // Beds / baths (range)
+      const matchBeds =
+        (!filters.bedrooms    || listing.unitTypes[0].bedrooms >= Number(filters.bedrooms)) &&
+        (!filters.maxBedrooms || listing.unitTypes[0].bedrooms <= Number(filters.maxBedrooms));
+      const matchBaths =
+        (!filters.bathrooms    || listing.unitTypes[0].bathrooms >= Number(filters.bathrooms)) &&
+        (!filters.maxBathrooms || listing.unitTypes[0].bathrooms <= Number(filters.maxBathrooms));
+
+      // Top-bar Lease Type pill (home-type string match)
+      const matchLeaseType = !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
+
+      // Distance to campus
+      let matchDistance = true;
+      if (filters.distance && listing.latitude && listing.longitude) {
+        const d = calculateDistance(listing.latitude, listing.longitude, WASHU_COORDS.lat, WASHU_COORDS.lng);
+        matchDistance = Math.round(d * 100) / 100 <= parseFloat(filters.distance);
+      }
+
+      // Distance to nearest shuttle stop
+      let matchShuttle = true;
+      if (filters.distanceToShuttle && listing.latitude && listing.longitude) {
+        const threshold = parseFloat(filters.distanceToShuttle);
+        matchShuttle = SHUTTLE_STOPS.some((stop) => {
+          const d = calculateDistance(listing.latitude, listing.longitude, stop.lat, stop.lng);
+          return d <= threshold;
+        });
+      }
+
+      // Home type
+      let matchHomeType = true;
+      if (filters.homeType && filters.homeType.length > 0) {
+        matchHomeType = filters.homeType.some((type) => {
+          switch (type) {
+            case "house": return lt.includes("house");
+            case "apartment": return lt.includes("apartment");
+            case "condo": return lt.includes("condo");
+            case "townhouse": return lt.includes("townhouse");
+            case "singleBedroom": return listing.unitTypes[0]?.bedrooms === 1;
+            default: return true;
+          }
+        });
+      }
+
+      // Lease availability (semester / 10-month / 12-month)
+      let matchLeaseAvail = true;
+      if (filters.leaseAvailability && filters.leaseAvailability.length > 0) {
+        matchLeaseAvail = filters.leaseAvailability.some((avail) => {
+          switch (avail) {
+            case "semester": return lt.includes("semester") || desc.includes("semester");
+            case "10-month": return lt.includes("10") || desc.includes("10 month") || desc.includes("10-month");
+            case "12-month": return lt.includes("12") || lt.includes("year") || desc.includes("12 month") || desc.includes("12-month");
+            default: return true;
+          }
+        });
+      }
+
+      // Amenities (all selected must match)
+      let matchAmenities = true;
+      if (filters.amenities && filters.amenities.length > 0) {
+        matchAmenities = filters.amenities.every((amenity) => {
+          switch (amenity) {
+            case "gym":          return combined.includes("gym") || combined.includes("fitness");
+            case "studyRooms":   return combined.includes("study room") || combined.includes("study lounge");
+            case "inUnitLaundry":return combined.includes("in-unit laundry") || combined.includes("in unit laundry") || combined.includes("washer") || combined.includes("dryer");
+            case "freeParking":  return combined.includes("free parking") || combined.includes("parking included") || combined.includes("parking");
+            case "petsAllowed":  return combined.includes("pet") || listing.petFriendly;
+            case "dishwasher":   return combined.includes("dishwasher");
+            case "extraStorage": return combined.includes("storage") || combined.includes("extra storage");
+            case "fireplace":    return combined.includes("fireplace");
+            case "mailroom":     return combined.includes("mailroom");
+            case "pool":         return combined.includes("pool");
+            default: return true;
+          }
+        });
+      }
+
+      // Furnished
+      let matchFurnished = true;
+      if (filters.furnished === "furnished") {
+        matchFurnished = combined.includes("furnished") && !combined.includes("unfurnished");
+      } else if (filters.furnished === "unfurnished") {
+        matchFurnished = combined.includes("unfurnished") || !combined.includes("furnished");
+      }
+
+      // Utilities included
+      let matchUtilities = true;
+      if (filters.utilitiesIncluded) {
+        matchUtilities = combined.includes("utilities included") || combined.includes("utilities are included") || combined.includes("all utilities");
+      }
+
+      // Sublease friendly
+      let matchSublease = true;
+      if (filters.subleaseFriendly) {
+        matchSublease = lt.includes("subleas") || desc.includes("subleas") || desc.includes("subletting allowed");
+      }
+
+      // Lease structure
+      let matchLeaseStructure = true;
+      if (filters.leaseStructure === "individual") {
+        matchLeaseStructure = lt.includes("individual") || desc.includes("individual lease") || desc.includes("by the room");
+      } else if (filters.leaseStructure === "joint") {
+        matchLeaseStructure = lt.includes("joint") || desc.includes("joint lease") || desc.includes("whole unit");
+      }
+
+      const userFavorites = session?.user?.favorites || session?.user?.favoritesIds || [];
+      const matchSaved = !filters.savedOnly || userFavorites.some(
+        (f) => String((f && f._id) || f) === String(listing._id)
+      );
+
+      return (
+        matchSearch &&
+        matchMinRent &&
+        matchMaxRent &&
+        matchBeds &&
+        matchBaths &&
+        matchLeaseType &&
+        matchDistance &&
+        matchShuttle &&
+        matchHomeType &&
+        matchLeaseAvail &&
+        matchAmenities &&
+        matchFurnished &&
+        matchUtilities &&
+        matchSublease &&
+        matchLeaseStructure &&
+        matchSaved
+      );
+    });
+  }, [listings, search, filters]);
 
   if (loading) {
     return (
-      <>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading listings...</p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading listings...</p>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <div className="bg-gray-50">
-        <div
-          className="flex flex-col md:flex-row overflow-hidden"
-          style={{ height: "calc(100vh - 64px)" }}
-        >
-          <AvailableListings
-            session={session}
-            listings={filteredListings}
-            onClearSearch={handleClearSearch}
-          />
-        </div>
+    <div
+      className="bg-gray-50 flex flex-col"
+      style={{ height: "calc(100vh - 64px)" }}
+    >
+      <TopFilterBar
+        search={search}
+        setSearch={setSearch}
+        filters={filters}
+        setFilters={setFilters}
+        onReset={handleReset}
+      />
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
+        <AvailableListings
+          session={session}
+          listings={filteredListings}
+          filters={filters}
+          setFilters={setFilters}
+          handleReset={handleReset}
+          onClearSearch={handleClearSearch}
+        />
       </div>
-    </>
+    </div>
   );
 }

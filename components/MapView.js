@@ -80,148 +80,115 @@ const processCrimeDataForHeatmap = (crimeData) => {
     .filter((point) => point.lng && point.lat);
 };
 
-// Generate random scattered points for the heatmap
-const mockHeatmapPoints = [];
+// // Generate random scattered points for the heatmap
+// const mockHeatmapPoints = [];
 
-// Generate mock crime data points for testing - much more spread out like housing data
-const generateMockCrimeData = () => {
-  const crimePoints = [];
+// // Generate mock crime data points for testing - much more spread out like housing data
+// const generateMockCrimeData = () => {
+//   const crimePoints = [];
 
-  // Generate different density clusters randomly spread across the entire area
-  const crimeClusterTypes = [
-    // High intensity clusters (dark red areas)
-    { count: 12, weight: 1.0, spread: 0.002 },
-    { count: 10, weight: 0.9, spread: 0.0025 },
-    { count: 8, weight: 0.85, spread: 0.003 },
+//   // Generate different density clusters randomly spread across the entire area
+//   const crimeClusterTypes = [
+//     // High intensity clusters (dark red areas)
+//     { count: 12, weight: 1.0, spread: 0.002 },
+//     { count: 10, weight: 0.9, spread: 0.0025 },
+//     { count: 8, weight: 0.85, spread: 0.003 },
 
-    // Medium intensity clusters (orange/red areas)
-    { count: 15, weight: 0.7, spread: 0.004 },
-    { count: 12, weight: 0.6, spread: 0.005 },
-    { count: 10, weight: 0.5, spread: 0.006 },
+//     // Medium intensity clusters (orange/red areas)
+//     { count: 15, weight: 0.7, spread: 0.004 },
+//     { count: 12, weight: 0.6, spread: 0.005 },
+//     { count: 10, weight: 0.5, spread: 0.006 },
 
-    // Low intensity scattered points (yellow areas)
-    { count: 20, weight: 0.4, spread: 0.007 },
-    { count: 18, weight: 0.3, spread: 0.008 },
-    { count: 25, weight: 0.2, spread: 0.009 },
-    { count: 30, weight: 0.1, spread: 0.01 },
-  ];
+//     // Low intensity scattered points (yellow areas)
+//     { count: 20, weight: 0.4, spread: 0.007 },
+//     { count: 18, weight: 0.3, spread: 0.008 },
+//     { count: 25, weight: 0.2, spread: 0.009 },
+//     { count: 30, weight: 0.1, spread: 0.01 },
+//   ];
 
-  crimeClusterTypes.forEach((cluster) => {
-    for (let i = 0; i < cluster.count; i++) {
-      // Random center point for this cluster across the entire area
-      const centerLng = lngMin + Math.random() * (lngMax - lngMin);
-      const centerLat = latMin + Math.random() * (latMax - latMin);
+//   crimeClusterTypes.forEach((cluster) => {
+//     for (let i = 0; i < cluster.count; i++) {
+//       const centerLng = lngMin + Math.random() * (lngMax - lngMin);
+//       const centerLat = latMin + Math.random() * (latMax - latMin);
+//       const pointsInCluster = Math.floor(Math.random() * 6) + 3;
 
-      // Generate multiple points around this center
-      const pointsInCluster = Math.floor(Math.random() * 6) + 3; // 3-8 points per cluster
+//       for (let j = 0; j < pointsInCluster; j++) {
+//         const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
+//         const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
 
-      for (let j = 0; j < pointsInCluster; j++) {
-        const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
-        const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
+//         if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
+//           crimePoints.push({
+//             lng,
+//             lat,
+//             weight: cluster.weight * (0.8 + Math.random() * 0.4),
+//             type: ["theft","vandalism","assault","burglary","robbery","disturbance"][Math.floor(Math.random() * 6)],
+//             date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+//           });
+//         }
+//       }
+//     }
+//   });
 
-        // Keep points within bounds
-        if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
-          crimePoints.push({
-            lng,
-            lat,
-            weight: cluster.weight * (0.8 + Math.random() * 0.4), // Add weight variation
-            type: [
-              "theft",
-              "vandalism",
-              "assault",
-              "burglary",
-              "robbery",
-              "disturbance",
-            ][Math.floor(Math.random() * 6)],
-            date: new Date(
-              Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-          });
-        }
-      }
-    }
-  });
+//   for (let i = 0; i < 80; i++) {
+//     crimePoints.push({
+//       lng: lngMin + Math.random() * (lngMax - lngMin),
+//       lat: latMin + Math.random() * (latMax - latMin),
+//       weight: Math.random() * 0.6,
+//       type: ["theft","vandalism","minor incident","noise complaint"][Math.floor(Math.random() * 4)],
+//       date: new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString(),
+//     });
+//   }
 
-  // Add completely random scattered crime points across the entire area
-  for (let i = 0; i < 80; i++) {
-    crimePoints.push({
-      lng: lngMin + Math.random() * (lngMax - lngMin),
-      lat: latMin + Math.random() * (latMax - latMin),
-      weight: Math.random() * 0.6, // Random weights from 0 to 0.6
-      type: ["theft", "vandalism", "minor incident", "noise complaint"][
-        Math.floor(Math.random() * 4)
-      ],
-      date: new Date(
-        Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000
-      ).toISOString(),
-    });
-  }
+//   return crimePoints;
+// };
 
-  return crimePoints;
-};
+// const mockCrimeData = generateMockCrimeData();
 
-const mockCrimeData = generateMockCrimeData();
+// // Create a more random distribution
+// const generateRandomHeatmapPoints = () => {
+//   const points = [];
 
-// Create a more random distribution
-const generateRandomHeatmapPoints = () => {
-  const points = [];
+//   const clusters = [
+//     { count: 15, weight: 1.0, spread: 0.001 },
+//     { count: 12, weight: 0.9, spread: 0.0012 },
+//     { count: 10, weight: 0.85, spread: 0.0015 },
+//     { count: 20, weight: 0.6, spread: 0.002 },
+//     { count: 18, weight: 0.5, spread: 0.0025 },
+//     { count: 15, weight: 0.4, spread: 0.003 },
+//     { count: 30, weight: 0.3, spread: 0.004 },
+//     { count: 25, weight: 0.2, spread: 0.005 },
+//     { count: 40, weight: 0.1, spread: 0.006 },
+//   ];
 
-  // Generate different density clusters randomly spread across the area
-  const clusters = [
-    // High intensity clusters (red areas)
-    { count: 15, weight: 1.0, spread: 0.001 },
-    { count: 12, weight: 0.9, spread: 0.0012 },
-    { count: 10, weight: 0.85, spread: 0.0015 },
+//   clusters.forEach((cluster) => {
+//     for (let i = 0; i < cluster.count; i++) {
+//       const centerLng = lngMin + Math.random() * (lngMax - lngMin);
+//       const centerLat = latMin + Math.random() * (latMax - latMin);
+//       const pointsInCluster = Math.floor(Math.random() * 8) + 3;
 
-    // Medium intensity clusters (orange/yellow areas)
-    { count: 20, weight: 0.6, spread: 0.002 },
-    { count: 18, weight: 0.5, spread: 0.0025 },
-    { count: 15, weight: 0.4, spread: 0.003 },
+//       for (let j = 0; j < pointsInCluster; j++) {
+//         const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
+//         const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
 
-    // Low intensity scattered points (green areas)
-    { count: 30, weight: 0.3, spread: 0.004 },
-    { count: 25, weight: 0.2, spread: 0.005 },
-    { count: 40, weight: 0.1, spread: 0.006 },
-  ];
+//         if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
+//           points.push({ lng, lat, weight: cluster.weight * (0.7 + Math.random() * 0.6) });
+//         }
+//       }
+//     }
+//   });
 
-  clusters.forEach((cluster) => {
-    for (let i = 0; i < cluster.count; i++) {
-      // Random center point for this cluster
-      const centerLng = lngMin + Math.random() * (lngMax - lngMin);
-      const centerLat = latMin + Math.random() * (latMax - latMin);
+//   for (let i = 0; i < 50; i++) {
+//     points.push({
+//       lng: lngMin + Math.random() * (lngMax - lngMin),
+//       lat: latMin + Math.random() * (latMax - latMin),
+//       weight: Math.random() * 0.8,
+//     });
+//   }
 
-      // Generate points around this center with some randomness
-      const pointsInCluster = Math.floor(Math.random() * 8) + 3; // 3-10 points per cluster
+//   return points;
+// };
 
-      for (let j = 0; j < pointsInCluster; j++) {
-        const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
-        const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
-
-        // Keep points within bounds
-        if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
-          points.push({
-            lng,
-            lat,
-            weight: cluster.weight * (0.7 + Math.random() * 0.6), // Add some weight variation
-          });
-        }
-      }
-    }
-  });
-
-  // Add some completely random scattered points
-  for (let i = 0; i < 50; i++) {
-    points.push({
-      lng: lngMin + Math.random() * (lngMax - lngMin),
-      lat: latMin + Math.random() * (latMax - latMin),
-      weight: Math.random() * 0.8, // Random weights from 0 to 0.8
-    });
-  }
-
-  return points;
-};
-
-mockHeatmapPoints.push(...generateRandomHeatmapPoints());
+// mockHeatmapPoints.push(...generateRandomHeatmapPoints());
 
 export default function MapView({
   listings = [],
@@ -234,7 +201,7 @@ export default function MapView({
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showCrimeMap, setShowCrimeMap] = useState(false);
   const [activeRouteId, setActiveRouteId] = useState(null);
-  const [crimeData, setCrimeData] = useState(mockCrimeData); // Initialize with mock data
+  const [crimeData, setCrimeData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isRealCrimeData, setIsRealCrimeData] = useState(false);
 
@@ -247,13 +214,11 @@ export default function MapView({
         "Attempting to fetch real crime data from Crimeometer API..."
       );*/
       // Fetch crime data for WashU campus area
-      /*
       const data = await fetchCrimeData(
         WASHU_CAMPUS_CENTER.latitude,
         WASHU_CAMPUS_CENTER.longitude,
         2
-      );*/
-      const data = null; // Simulate API call for now
+      );
 
       //console.log("API Response:", data);
 
@@ -281,14 +246,12 @@ export default function MapView({
         /*console.log(
           "⚠️ API returned no data, using MOCK crime data for demonstration"
         );*/
-        setCrimeData(mockCrimeData);
+        setCrimeData([]);
         setIsRealCrimeData(false);
       }
     } catch (error) {
       //console.error("❌ Error loading crime data from API:", error);
-      // Use mock data as fallback
-      //console.log("⚠️ Using MOCK crime data as fallback due to API error");
-      setCrimeData(mockCrimeData);
+      setCrimeData([]);
       setIsRealCrimeData(false);
     } finally {
       setLoading(false);
@@ -483,18 +446,20 @@ export default function MapView({
   const heatmapData = useMemo(
     () => ({
       type: "FeatureCollection",
-      features: mockHeatmapPoints.map((pt) => ({
-        type: "Feature",
-        geometry: {
-          type: "Point",
-          coordinates: [pt.lng, pt.lat],
-        },
-        properties: {
-          weight: pt.weight,
-        },
-      })),
+      features: listings
+        .filter((l) => l.longitude && l.latitude)
+        .map((l) => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [l.longitude, l.latitude],
+          },
+          properties: {
+            weight: 1.0,
+          },
+        })),
     }),
-    []
+    [listings]
   );
 
   const crimeHeatmapData = useMemo(
@@ -588,7 +553,14 @@ export default function MapView({
         WASHU_CAMPUS_CENTER.longitude
       ).toFixed(1);
 
-      const marker = new mapboxgl.Marker({ color: "#ef4444" })
+      const starRating = Math.min(Math.max(Math.round(listing.rating || 5), 1), 5);
+      const markerEl = document.createElement("div");
+      markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
+      const markerImg = document.createElement("img");
+      markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+      markerImg.style.cssText = "width:100%;height:100%;";
+      markerEl.appendChild(markerImg);
+      const marker = new mapboxgl.Marker({ element: markerEl })
         .setLngLat([listing.longitude, listing.latitude])
         .setPopup(
           new mapboxgl.Popup({
@@ -787,6 +759,12 @@ export default function MapView({
           `)
         )
         .addTo(map);
+      marker.getPopup().on("open", () => {
+        markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;
+      });
+      marker.getPopup().on("close", () => {
+        markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+      });
       map.markers.push(marker);
     });
 

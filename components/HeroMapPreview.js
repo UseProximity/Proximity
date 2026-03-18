@@ -159,10 +159,21 @@ export default function HeroMapPreview({ listings = [] }) {
           </div>
         `);
 
-        const marker = new mapboxgl.Marker({ color: "#ef4444" })
+        const starRating = Math.min(Math.max(Math.round(listing.rating || 5), 1), 5);
+        const markerEl = document.createElement("div");
+        markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
+        const markerImg = document.createElement("img");
+        markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+        markerImg.style.cssText = "width:100%;height:100%;";
+        markerEl.appendChild(markerImg);
+
+        const marker = new mapboxgl.Marker({ element: markerEl })
           .setLngLat([listing.longitude, listing.latitude])
           .setPopup(popup)
           .addTo(map);
+
+        popup.on("open", () => { markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`; });
+        popup.on("close", () => { markerImg.src = `/assets/map-icons/map-${starRating}.svg`; });
 
         map._heroMarkers.push(marker);
       });
@@ -195,7 +206,7 @@ export default function HeroMapPreview({ listings = [] }) {
       <div
         ref={mapContainerRef}
         className="w-full h-full"
-        style={{ filter: "saturate(0.45) brightness(1.04)" }}
+        style={{  }}
       />
       <div
         className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"

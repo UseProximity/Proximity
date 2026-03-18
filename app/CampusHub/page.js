@@ -358,7 +358,7 @@ allDorms.forEach((dorm) => {
       .toLowerCase()
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9\-]/g, "");
-    dormImages[dorm] = [`/images/${imageName}.jpeg`];
+    dormImages[dorm] = [`/dorms/${imageName}.jpeg`];
   }
 });
 

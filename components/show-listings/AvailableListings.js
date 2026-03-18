@@ -7,7 +7,6 @@ import dynamic from "next/dynamic";
 import ModalListing from "@/components/show-listings/ModalListing";
 import ListingModalInfo from "@/components/show-listings/ListingModalInfo";
 import { signIn } from "next-auth/react";
-import ListingFilters from "@/components/show-listings/ListingFilters";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -111,12 +110,11 @@ function HeartIcon({ session, listingId, initial = false }) {
 export default function AvailableListings({
   session,
   listings,
+  filters,
+  setFilters,
+  handleReset,
   onClearSearch,
 }) {
-  // WashU coordinates for distance calculation
-  const WASHU_COORDS = { lat: 38.6496, lng: -90.3035 };
-
-  const [search, setSearch] = useState("");
 
   const router = useRouter(); // both of these variables are for URL search params (when going from a different page to a specific listing here on browse)
   const searchParams = useSearchParams();
@@ -181,228 +179,18 @@ export default function AvailableListings({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams?.toString()]);
 
-  /* ---------------- End variables and fucntions for Listing Modal ------------------------------*/
-
-  const [filters, setFilters] = useState({
-    minRent: "",
-    maxRent: "",
-    bedrooms: "",
-    bathrooms: "",
-    leaseType: "",
-    minArea: "",
-    maxArea: "",
-    distance: "",
-    moveInDate: "",
-    petPolicy: "",
-    amenities: [],
-    rentType: [],
-    moveInOption: "",
-    leaseInfo: [],
-    transportation: [],
-    pets: [],
-    unitFeatures: [],
-    communityFeatures: [],
-    laundry: [],
-    security: [],
-  });
-
-  // Calculate distance from listing to WashU campus
-  const calculateDistance = (lat1, lng1, lat2, lng2) => {
-    const R = 3959; // Earth's radius in miles
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLng = (lng2 - lng1) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) *
-        Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  const handleReset = () => {
-    setSearch("");
-    setFilters({
-      minRent: "",
-      maxRent: "",
-      bedrooms: "",
-      bathrooms: "",
-      leaseType: "",
-      minArea: "",
-      maxArea: "",
-      distance: "",
-      moveInDate: "",
-      petPolicy: "",
-      amenities: [],
-      rentType: [],
-      moveInOption: "",
-      leaseInfo: [],
-      transportation: [],
-      pets: [],
-      unitFeatures: [],
-      communityFeatures: [],
-      laundry: [],
-      security: [],
-    });
-
-    // Also clear the search from the URL and reset filtered listings
-    if (onClearSearch) {
-      onClearSearch();
-    }
-  };
-
-  const filteredListings = listings.filter((listing) => {
-    const matchSearch = listing.address
-      .toLowerCase()
-      .includes(search.toLowerCase());
-    const matchMinRent =
-      !filters.minRent || listing.unitTypes[0].rent >= Number(filters.minRent);
-    const matchMaxRent =
-      !filters.maxRent || listing.unitTypes[0].rent <= Number(filters.maxRent);
-    const matchBeds =
-      !filters.bedrooms ||
-      listing.unitTypes[0].bedrooms >= Number(filters.bedrooms);
-    const matchBaths =
-      !filters.bathrooms ||
-      listing.unitTypes[0].bathrooms >= Number(filters.bathrooms);
-    const matchLease =
-      !filters.leaseType || listing.leaseType === filters.leaseType;
-    const matchMinArea =
-      !filters.minArea || listing.unitTypes[0].area >= Number(filters.minArea);
-    const matchMaxArea =
-      !filters.maxArea || listing.unitTypes[0].area <= Number(filters.maxArea);
-
-    // Distance filter
-    let matchDistance = true;
-    if (filters.distance && listing.latitude && listing.longitude) {
-      const distance = calculateDistance(
-        listing.latitude,
-        listing.longitude,
-        WASHU_COORDS.lat,
-        WASHU_COORDS.lng
-      );
-      const maxDistance = parseFloat(filters.distance);
-
-      // Round to 2 decimal places to match displayed distance
-      const roundedDistance = Math.round(distance * 100) / 100;
-      matchDistance = roundedDistance <= maxDistance;
-    }
-
-    // "I Want to Rent" filter - rentType
-    let matchRentType = true;
-    if (filters.rentType && filters.rentType.length > 0) {
-      const leaseTypeLower = listing.leaseType?.toLowerCase() || "";
-      const descriptionLower = listing.description?.toLowerCase() || "";
-
-      matchRentType = filters.rentType.some((type) => {
-        switch (type) {
-          case "entire":
-            return (
-              leaseTypeLower.includes("apartment") ||
-              leaseTypeLower.includes("house") ||
-              leaseTypeLower.includes("condo") ||
-              leaseTypeLower.includes("townhouse")
-            );
-          case "room":
-            return (
-              leaseTypeLower.includes("room") &&
-              !leaseTypeLower.includes("dorm")
-            );
-          case "dorm-room":
-            return (
-              leaseTypeLower.includes("dorm") ||
-              leaseTypeLower.includes("residence hall")
-            );
-          case "suite":
-            return leaseTypeLower.includes("suite");
-          case "no-sublets":
-            return (
-              !leaseTypeLower.includes("sublet") &&
-              !descriptionLower.includes("sublet")
-            );
-          case "sublets-only":
-            return (
-              leaseTypeLower.includes("sublet") ||
-              descriptionLower.includes("sublet")
-            );
-          case "move-in-specials":
-            return (
-              descriptionLower.includes("special") ||
-              descriptionLower.includes("deal")
-            );
-          case "on-campus":
-            return (
-              leaseTypeLower.includes("on-campus") ||
-              descriptionLower.includes("on campus")
-            );
-          case "university":
-            return (
-              leaseTypeLower.includes("university") ||
-              descriptionLower.includes("university housing")
-            );
-          default:
-            return true;
-        }
-      });
-    }
-
-    // Lease Information filter - leaseInfo
-    let matchLeaseInfo = true;
-    if (filters.leaseInfo && filters.leaseInfo.length > 0) {
-      const leaseTypeLower = listing.leaseType?.toLowerCase() || "";
-      const descriptionLower = listing.description?.toLowerCase() || "";
-
-      matchLeaseInfo = filters.leaseInfo.some((info) => {
-        const infoLower = info.toLowerCase();
-
-        // Normalize both strings (replace dashes with spaces)
-        const normalizedInfo = infoLower.replace(/-/g, " ");
-        const normalizedLeaseType = leaseTypeLower.replace(/-/g, " ");
-
-        // Check if lease type contains the filter value
-        return normalizedLeaseType.includes(normalizedInfo);
-      });
-    }
-
-    return (
-      matchSearch &&
-      matchMinRent &&
-      matchMaxRent &&
-      matchBeds &&
-      matchBaths &&
-      matchLease &&
-      matchMinArea &&
-      matchMaxArea &&
-      matchDistance &&
-      matchRentType &&
-      matchLeaseInfo
-    );
-  });
-
   return (
     <>
       {/* Listings Section */}
       <div
-        className="md:w-1/2 w-full overflow-y-auto px-4 py-8"
+        className="w-full md:w-[40vw] md:shrink-0 overflow-y-auto px-4 py-4"
         style={{ height: "100%", minHeight: 0 }}
       >
-        <div className="flex flex-wrap items-center gap-4 mb-4">
-          <input
-            type="text"
-            placeholder="Search by street name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:border-red-600 transition-colors"
-          />
-        </div>
-        <ListingFilters
-          filters={filters}
-          setFilters={setFilters}
-          onReset={handleReset}
-        />
+        <p className="text-sm font-semibold text-gray-500 px-1 mb-4">
+          {listings.length} Listings Found
+        </p>
 
-        {filteredListings.length === 0 ? (
+        {listings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
               <svg
@@ -445,14 +233,20 @@ export default function AvailableListings({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-6">
-            {filteredListings.map((listing) => {
+            {listings.map((listing) => {
               const imageUrl = listing.images?.[0];
               const imageCount = listing.images?.length || 0;
+              const [streetAddress, ...restParts] = listing.address.split(",");
+              const cityStateZip = restParts.join(",").trim();
+              const bedValues = listing.unitTypes.map((u) => u.bedrooms).filter(Number.isFinite);
+              const bathValues = listing.unitTypes.map((u) => u.bathrooms).filter(Number.isFinite);
+              const bedLabel = bedValues.length === 0 ? "N/A" : Math.min(...bedValues) === Math.max(...bedValues) ? String(Math.min(...bedValues)) : `${Math.min(...bedValues)}-${Math.max(...bedValues)}`;
+              const bathLabel = bathValues.length === 0 ? "N/A" : Math.min(...bathValues) === Math.max(...bathValues) ? String(Math.min(...bathValues)) : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
 
               return (
                 <div
                   key={listing._id}
-                  className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200"
+                  className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200 flex flex-col"
                   onClick={() => handleListingClick(listing._id)}
                 >
                   <div className="relative">
@@ -460,10 +254,10 @@ export default function AvailableListings({
                       <img
                         src={imageUrl}
                         alt={listing.address}
-                        className="w-full h-48 object-cover"
+                        className="w-full aspect-video object-cover"
                       />
                     ) : (
-                      <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">
+                      <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
                         No image
                       </div>
                     )}
@@ -473,48 +267,35 @@ export default function AvailableListings({
                       </div>
                     )}
                   </div>
-                  <div className="p-5 bg-gradient-to-br from-gray-50/50 to-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-2xl text-black">
+                  <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-bold text-sm text-gray-900 leading-snug">
+                          {streetAddress}
+                        </h3>
+                        {cityStateZip && (
+                          <p className="text-xs text-gray-500 font-normal mt-0.5">
+                            {cityStateZip}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
                         {getRentRangeLabel(listing.unitTypes)}
-                        <span className="text-sm font-normal">/month</span>
-                      </h3>
+                        <span className="text-xs font-normal">/mo</span>
+                      </span>
                     </div>
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-red-50 border border-emerald-200 px-3 py-1.5 rounded-full shadow-sm">
-                        <span className="text-emerald-700 font-semibold text-sm">
-                          {getUnitValuesLabel(listing.unitTypes, "bedrooms")}
+                    <div className="flex items-center justify-between mt-auto pt-2">
+                      <span className="text-gray-500 text-xs">
+                        {bedLabel} bed
+                        {" | "}
+                        {bathLabel} bath
+                        {listing.leaseType ? ` | ${listing.leaseType}` : ""}
+                      </span>
+                      {listing.owner?.name && (
+                        <span className="text-gray-400 text-xs truncate ml-2">
+                          {listing.owner.name}
                         </span>
-                        <span className="text-emerald-600 text-xs">bd</span>
-                      </div>
-                      <div className="flex items-center space-x-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 px-3 py-1.5 rounded-full shadow-sm">
-                        <span className="text-rose-700 font-semibold text-sm">
-                          {getUnitValuesLabel(listing.unitTypes, "bathrooms")}
-                        </span>
-                        <span className="text-rose-600 text-xs">ba</span>
-                      </div>
-                      <div className="flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-1.5 rounded-full shadow-sm">
-                        <span className="text-amber-700 font-semibold text-sm">
-                          {getAreaRangeLabel(listing.unitTypes)}
-                        </span>
-                        <span className="text-amber-600 text-xs">sqft</span>
-                      </div>
-                    </div>
-                    <div className="flex items-start space-x-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <svg
-                        className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                        {listing.address}
-                      </p>
+                      )}
                     </div>
                   </div>
                   <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
@@ -560,11 +341,11 @@ export default function AvailableListings({
 
       {/* Map Section */}
       <div
-        className="md:w-1/2 w-full h-64 md:h-full relative"
+        className="flex-1 w-full h-64 md:h-full relative"
         style={{ position: "sticky", top: 0, height: "100%", minHeight: 0 }}
       >
         <MapView
-          listings={filteredListings}
+          listings={listings}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
