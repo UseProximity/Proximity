@@ -5,6 +5,7 @@ const UserSchema = new mongoose.Schema(
     age: { type: Number, default: 18 },
     description: { type: String, default: "" },
     email: { type: String, index: true }, // consider: unique: true
+    contacted: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
     gender: { type: String, default: "unspecified" },
     image: { type: String },

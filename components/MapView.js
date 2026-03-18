@@ -80,161 +80,130 @@ const processCrimeDataForHeatmap = (crimeData) => {
     .filter((point) => point.lng && point.lat);
 };
 
-// Generate random scattered points for the heatmap
-const mockHeatmapPoints = [];
+// // Generate random scattered points for the heatmap
+// const mockHeatmapPoints = [];
 
-// Generate mock crime data points for testing - much more spread out like housing data
-const generateMockCrimeData = () => {
-  const crimePoints = [];
+// // Generate mock crime data points for testing - much more spread out like housing data
+// const generateMockCrimeData = () => {
+//   const crimePoints = [];
 
-  // Generate different density clusters randomly spread across the entire area
-  const crimeClusterTypes = [
-    // High intensity clusters (dark red areas)
-    { count: 12, weight: 1.0, spread: 0.002 },
-    { count: 10, weight: 0.9, spread: 0.0025 },
-    { count: 8, weight: 0.85, spread: 0.003 },
+//   // Generate different density clusters randomly spread across the entire area
+//   const crimeClusterTypes = [
+//     // High intensity clusters (dark red areas)
+//     { count: 12, weight: 1.0, spread: 0.002 },
+//     { count: 10, weight: 0.9, spread: 0.0025 },
+//     { count: 8, weight: 0.85, spread: 0.003 },
 
-    // Medium intensity clusters (orange/red areas)
-    { count: 15, weight: 0.7, spread: 0.004 },
-    { count: 12, weight: 0.6, spread: 0.005 },
-    { count: 10, weight: 0.5, spread: 0.006 },
+//     // Medium intensity clusters (orange/red areas)
+//     { count: 15, weight: 0.7, spread: 0.004 },
+//     { count: 12, weight: 0.6, spread: 0.005 },
+//     { count: 10, weight: 0.5, spread: 0.006 },
 
-    // Low intensity scattered points (yellow areas)
-    { count: 20, weight: 0.4, spread: 0.007 },
-    { count: 18, weight: 0.3, spread: 0.008 },
-    { count: 25, weight: 0.2, spread: 0.009 },
-    { count: 30, weight: 0.1, spread: 0.01 },
-  ];
+//     // Low intensity scattered points (yellow areas)
+//     { count: 20, weight: 0.4, spread: 0.007 },
+//     { count: 18, weight: 0.3, spread: 0.008 },
+//     { count: 25, weight: 0.2, spread: 0.009 },
+//     { count: 30, weight: 0.1, spread: 0.01 },
+//   ];
 
-  crimeClusterTypes.forEach((cluster) => {
-    for (let i = 0; i < cluster.count; i++) {
-      // Random center point for this cluster across the entire area
-      const centerLng = lngMin + Math.random() * (lngMax - lngMin);
-      const centerLat = latMin + Math.random() * (latMax - latMin);
+//   crimeClusterTypes.forEach((cluster) => {
+//     for (let i = 0; i < cluster.count; i++) {
+//       const centerLng = lngMin + Math.random() * (lngMax - lngMin);
+//       const centerLat = latMin + Math.random() * (latMax - latMin);
+//       const pointsInCluster = Math.floor(Math.random() * 6) + 3;
 
-      // Generate multiple points around this center
-      const pointsInCluster = Math.floor(Math.random() * 6) + 3; // 3-8 points per cluster
+//       for (let j = 0; j < pointsInCluster; j++) {
+//         const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
+//         const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
 
-      for (let j = 0; j < pointsInCluster; j++) {
-        const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
-        const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
+//         if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
+//           crimePoints.push({
+//             lng,
+//             lat,
+//             weight: cluster.weight * (0.8 + Math.random() * 0.4),
+//             type: ["theft","vandalism","assault","burglary","robbery","disturbance"][Math.floor(Math.random() * 6)],
+//             date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+//           });
+//         }
+//       }
+//     }
+//   });
 
-        // Keep points within bounds
-        if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
-          crimePoints.push({
-            lng,
-            lat,
-            weight: cluster.weight * (0.8 + Math.random() * 0.4), // Add weight variation
-            type: [
-              "theft",
-              "vandalism",
-              "assault",
-              "burglary",
-              "robbery",
-              "disturbance",
-            ][Math.floor(Math.random() * 6)],
-            date: new Date(
-              Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-          });
-        }
-      }
-    }
-  });
+//   for (let i = 0; i < 80; i++) {
+//     crimePoints.push({
+//       lng: lngMin + Math.random() * (lngMax - lngMin),
+//       lat: latMin + Math.random() * (latMax - latMin),
+//       weight: Math.random() * 0.6,
+//       type: ["theft","vandalism","minor incident","noise complaint"][Math.floor(Math.random() * 4)],
+//       date: new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString(),
+//     });
+//   }
 
-  // Add completely random scattered crime points across the entire area
-  for (let i = 0; i < 80; i++) {
-    crimePoints.push({
-      lng: lngMin + Math.random() * (lngMax - lngMin),
-      lat: latMin + Math.random() * (latMax - latMin),
-      weight: Math.random() * 0.6, // Random weights from 0 to 0.6
-      type: ["theft", "vandalism", "minor incident", "noise complaint"][
-        Math.floor(Math.random() * 4)
-      ],
-      date: new Date(
-        Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000
-      ).toISOString(),
-    });
-  }
+//   return crimePoints;
+// };
 
-  return crimePoints;
-};
+// const mockCrimeData = generateMockCrimeData();
 
-const mockCrimeData = generateMockCrimeData();
+// // Create a more random distribution
+// const generateRandomHeatmapPoints = () => {
+//   const points = [];
 
-// Create a more random distribution
-const generateRandomHeatmapPoints = () => {
-  const points = [];
+//   const clusters = [
+//     { count: 15, weight: 1.0, spread: 0.001 },
+//     { count: 12, weight: 0.9, spread: 0.0012 },
+//     { count: 10, weight: 0.85, spread: 0.0015 },
+//     { count: 20, weight: 0.6, spread: 0.002 },
+//     { count: 18, weight: 0.5, spread: 0.0025 },
+//     { count: 15, weight: 0.4, spread: 0.003 },
+//     { count: 30, weight: 0.3, spread: 0.004 },
+//     { count: 25, weight: 0.2, spread: 0.005 },
+//     { count: 40, weight: 0.1, spread: 0.006 },
+//   ];
 
-  // Generate different density clusters randomly spread across the area
-  const clusters = [
-    // High intensity clusters (red areas)
-    { count: 15, weight: 1.0, spread: 0.001 },
-    { count: 12, weight: 0.9, spread: 0.0012 },
-    { count: 10, weight: 0.85, spread: 0.0015 },
+//   clusters.forEach((cluster) => {
+//     for (let i = 0; i < cluster.count; i++) {
+//       const centerLng = lngMin + Math.random() * (lngMax - lngMin);
+//       const centerLat = latMin + Math.random() * (latMax - latMin);
+//       const pointsInCluster = Math.floor(Math.random() * 8) + 3;
 
-    // Medium intensity clusters (orange/yellow areas)
-    { count: 20, weight: 0.6, spread: 0.002 },
-    { count: 18, weight: 0.5, spread: 0.0025 },
-    { count: 15, weight: 0.4, spread: 0.003 },
+//       for (let j = 0; j < pointsInCluster; j++) {
+//         const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
+//         const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
 
-    // Low intensity scattered points (green areas)
-    { count: 30, weight: 0.3, spread: 0.004 },
-    { count: 25, weight: 0.2, spread: 0.005 },
-    { count: 40, weight: 0.1, spread: 0.006 },
-  ];
+//         if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
+//           points.push({ lng, lat, weight: cluster.weight * (0.7 + Math.random() * 0.6) });
+//         }
+//       }
+//     }
+//   });
 
-  clusters.forEach((cluster) => {
-    for (let i = 0; i < cluster.count; i++) {
-      // Random center point for this cluster
-      const centerLng = lngMin + Math.random() * (lngMax - lngMin);
-      const centerLat = latMin + Math.random() * (latMax - latMin);
+//   for (let i = 0; i < 50; i++) {
+//     points.push({
+//       lng: lngMin + Math.random() * (lngMax - lngMin),
+//       lat: latMin + Math.random() * (latMax - latMin),
+//       weight: Math.random() * 0.8,
+//     });
+//   }
 
-      // Generate points around this center with some randomness
-      const pointsInCluster = Math.floor(Math.random() * 8) + 3; // 3-10 points per cluster
+//   return points;
+// };
 
-      for (let j = 0; j < pointsInCluster; j++) {
-        const lng = centerLng + (Math.random() - 0.5) * cluster.spread;
-        const lat = centerLat + (Math.random() - 0.5) * cluster.spread;
-
-        // Keep points within bounds
-        if (lng >= lngMin && lng <= lngMax && lat >= latMin && lat <= latMax) {
-          points.push({
-            lng,
-            lat,
-            weight: cluster.weight * (0.7 + Math.random() * 0.6), // Add some weight variation
-          });
-        }
-      }
-    }
-  });
-
-  // Add some completely random scattered points
-  for (let i = 0; i < 50; i++) {
-    points.push({
-      lng: lngMin + Math.random() * (lngMax - lngMin),
-      lat: latMin + Math.random() * (latMax - latMin),
-      weight: Math.random() * 0.8, // Random weights from 0 to 0.8
-    });
-  }
-
-  return points;
-};
-
-mockHeatmapPoints.push(...generateRandomHeatmapPoints());
+// mockHeatmapPoints.push(...generateRandomHeatmapPoints());
 
 export default function MapView({
   listings = [],
   filters,
   setFilters,
   handleReset,
+  onListingSelect,
+  selectedListingId,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showCrimeMap, setShowCrimeMap] = useState(false);
   const [activeRouteId, setActiveRouteId] = useState(null);
-  const [crimeData, setCrimeData] = useState(mockCrimeData); // Initialize with mock data
+  const [crimeData, setCrimeData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isRealCrimeData, setIsRealCrimeData] = useState(false);
 
@@ -247,13 +216,11 @@ export default function MapView({
         "Attempting to fetch real crime data from Crimeometer API..."
       );*/
       // Fetch crime data for WashU campus area
-      /*
       const data = await fetchCrimeData(
         WASHU_CAMPUS_CENTER.latitude,
         WASHU_CAMPUS_CENTER.longitude,
         2
-      );*/
-      const data = null; // Simulate API call for now
+      );
 
       //console.log("API Response:", data);
 
@@ -281,14 +248,12 @@ export default function MapView({
         /*console.log(
           "⚠️ API returned no data, using MOCK crime data for demonstration"
         );*/
-        setCrimeData(mockCrimeData);
+        setCrimeData([]);
         setIsRealCrimeData(false);
       }
     } catch (error) {
       //console.error("❌ Error loading crime data from API:", error);
-      // Use mock data as fallback
-      //console.log("⚠️ Using MOCK crime data as fallback due to API error");
-      setCrimeData(mockCrimeData);
+      setCrimeData([]);
       setIsRealCrimeData(false);
     } finally {
       setLoading(false);
@@ -434,67 +399,24 @@ export default function MapView({
     setActiveRouteId(null);
   }, []);
 
-  // Add custom CSS for popup styling
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.textContent = `
-      .custom-popup .mapboxgl-popup-content {
-        padding: 0 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-        border: 1px solid rgba(226, 232, 240, 0.8) !important;
-        background: #ffffff !important;
-        max-width: 280px !important;
-        overflow: hidden !important;
-      }
-      .custom-popup .mapboxgl-popup-tip {
-        border-top-color: #ffffff !important;
-      }
-      .custom-popup .mapboxgl-popup-close-button {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: rgba(255, 255, 255, 0.9);
-        color: #374151;
-        border: none;
-        border-radius: 50%;
-        width: 28px;
-        height: 28px;
-        font-size: 16px;
-        line-height: 1;
-        cursor: pointer;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-      }
-      .custom-popup .mapboxgl-popup-close-button:hover {
-        background: rgba(255, 255, 255, 1);
-        box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1);
-      }
-    `;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
 
   const heatmapData = useMemo(
     () => ({
       type: "FeatureCollection",
-      features: mockHeatmapPoints.map((pt) => ({
-        type: "Feature",
-        geometry: {
-          type: "Point",
-          coordinates: [pt.lng, pt.lat],
-        },
-        properties: {
-          weight: pt.weight,
-        },
-      })),
+      features: listings
+        .filter((l) => l.longitude && l.latitude)
+        .map((l) => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [l.longitude, l.latitude],
+          },
+          properties: {
+            weight: 1.0,
+          },
+        })),
     }),
-    []
+    [listings]
   );
 
   const crimeHeatmapData = useMemo(
@@ -588,205 +510,21 @@ export default function MapView({
         WASHU_CAMPUS_CENTER.longitude
       ).toFixed(1);
 
-      const marker = new mapboxgl.Marker({ color: "#ef4444" })
+      const starRating = Math.min(Math.max(Math.round(listing.rating || 5), 1), 5);
+      const markerEl = document.createElement("div");
+      markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
+      const markerImg = document.createElement("img");
+      markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+      markerImg.style.cssText = "width:100%;height:100%;";
+      markerEl.appendChild(markerImg);
+      const marker = new mapboxgl.Marker({ element: markerEl })
         .setLngLat([listing.longitude, listing.latitude])
-        .setPopup(
-          new mapboxgl.Popup({
-            offset: 25,
-            closeButton: true,
-            className: "custom-popup",
-            maxWidth: "240px",
-          }).setHTML(`
-            <div style="
-              width: 240px; 
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: #ffffff;
-              border-radius: 12px;
-              overflow: hidden;
-              cursor: pointer;
-              position: relative;
-            " onclick="window.location.href='/browse/${encodeURIComponent(
-              listing._id
-            )}'">
-              <div style="position: relative; overflow: hidden;">
-                <img src="${
-                  listing.images.length == 0 ? "" : listing.images?.[0]
-                }" alt="Property image"
-                  style="
-                    width: 100%; 
-                    height: 140px; 
-                    object-fit: cover;
-                  " />
-                <div style="
-                  position: absolute;
-                  top: 8px;
-                  left: 8px;
-                  background: rgba(0, 0, 0, 0.7);
-                  color: white;
-                  padding: 4px 8px;
-                  border-radius: 12px;
-                  font-size: 11px;
-                  font-weight: 600;
-                ">
-                  ${distanceToCampus} mi to campus
-                </div>
-                <div style="
-                  position: absolute;
-                  inset: 0;
-                  background: linear-gradient(to top, rgba(0,0,0,0.2) 0%, transparent 100%);
-                  opacity: 0;
-                  transition: opacity 0.3s ease;
-                " onmouseover="this.style.opacity = '1'" onmouseout="this.style.opacity = '0'"></div>
-              </div>
-              
-              <div style="padding: 16px; background: linear-gradient(135deg, rgba(249,250,251,0.5) 0%, #ffffff 100%);">
-                <div style="
-                  display: flex;
-                  align-items: center;
-                  justify-content: space-between;
-                  margin-bottom: 12px;
-                ">
-                  <h3 style="
-                    font-weight: 700; 
-                    font-size: 20px; 
-                    color: #000000;
-                    margin: 0;
-                    line-height: 1.2;
-                  ">
-                    ${getRentRangeLabel(listing.unitTypes) || "N/A"}
-                    <span style="font-size: 12px; font-weight: 400;">/month</span>
-                  </h3>
-                </div>
-                
-                <div style="
-                  display: flex; 
-                  align-items: center;
-                  gap: 8px; 
-                  margin-bottom: 12px;
-                ">
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 2px;
-                    background: linear-gradient(to right, #ecfdf5 0%, #fef2f2 100%);
-                    border: 1px solid #a7f3d0;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                  ">
-                    <span style="color: #047857; font-weight: 600; font-size: 12px;">${
-                      getUnitValuesLabel(listing.unitTypes, "bedrooms") || 0
-                    }</span>
-                    <span style="color: #059669; font-size: 10px;">bd</span>
-                  </div>
-                  
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 2px;
-                    background: linear-gradient(to right, #fdf2f8 0%, #fce7f3 100%);
-                    border: 1px solid #f9a8d4;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                  ">
-                    <span style="color: #be185d; font-weight: 600; font-size: 12px;">${
-                      getUnitValuesLabel(listing.unitTypes, "bathrooms") || 0
-                    }</span>
-                    <span style="color: #db2777; font-size: 10px;">ba</span>
-                  </div>
-                  
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 2px;
-                    background: linear-gradient(to right, #fffbeb 0%, #fef3c7 100%);
-                    border: 1px solid #fcd34d;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                  ">
-                    <span style="color: #d97706; font-weight: 600; font-size: 12px;">${
-                      getAreaRangeLabel(listing.unitTypes) || 0
-                    }</span>
-                    <span style="color: #f59e0b; font-size: 10px;">sqft</span>
-                  </div>
-                </div>
-                
-                <div style="
-                  display: flex;
-                  align-items: flex-start;
-                  gap: 6px;
-                  background: #f9fafb;
-                  border-radius: 8px;
-                  padding: 10px;
-                  border: 1px solid #f3f4f6;
-                  margin-bottom: 12px;
-                ">
-                  <svg style="
-                    width: 14px;
-                    height: 14px;
-                    color: #6366f1;
-                    margin-top: 2px;
-                    flex-shrink: 0;
-                  " fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
-                  </svg>
-                  <p style="
-                    font-size: 12px;
-                    color: #374151;
-                    line-height: 1.4;
-                    font-weight: 500;
-                    margin: 0;
-                  ">${listing.address || "Address not available"}</p>
-                </div>
-                
-                <button 
-                  id="route-btn-${listing._id}"
-                  onclick="event.stopPropagation(); 
-                    const isActive = this.getAttribute('data-active') === 'true';
-                    if (isActive) {
-                      window.hideRoute && window.hideRoute();
-                      this.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
-                      this.style.color = '#374151';
-                      this.innerHTML = '📍 Show Route to Campus';
-                      this.setAttribute('data-active', 'false');
-                    } else {
-                      window.showRouteToCampus && window.showRouteToCampus([${
-                        listing.longitude
-                      }, ${listing.latitude}], '${listing._id}');
-                      this.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
-                      this.style.color = 'white';
-                      this.innerHTML = 'Hide Route';
-                      this.setAttribute('data-active', 'true');
-                    }"
-                  data-active="false"
-                  style="
-                    width: 100%;
-                    padding: 10px 12px;
-                    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-                    color: #374151;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 6px;
-                  "
-                  onmouseover="if(this.getAttribute('data-active') === 'false') { this.style.background = 'linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%)'; }"
-                  onmouseout="if(this.getAttribute('data-active') === 'false') { this.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'; }"
-                >
-                  📍 Show Route to Campus
-                </button>
-              </div>
-            </div>
-          `)
-        )
         .addTo(map);
+      marker._listingId = listing._id;
+      marker._starRating = starRating;
+      markerEl.addEventListener("click", () => {
+        onListingSelect?.(listing);
+      });
       map.markers.push(marker);
     });
 
@@ -958,6 +696,19 @@ export default function MapView({
     };
   }, [listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
 
+  // Sync active marker icon when selectedListingId changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map?.markers) return;
+    map.markers.forEach((marker) => {
+      const img = marker.getElement().querySelector("img");
+      if (!img) return;
+      img.src = marker._listingId === selectedListingId
+        ? `/assets/map-icons/map-${marker._starRating}-a.svg`
+        : `/assets/map-icons/map-${marker._starRating}.svg`;
+    });
+  }, [selectedListingId]);
+
   // Toggle handlers that preserve the current camera (center, zoom, pitch, bearing)
   const handleToggleHeatmap = useCallback(() => {
     const map = mapRef.current;
@@ -994,84 +745,6 @@ export default function MapView({
   }, []);
   return (
     <div className="relative w-full h-full">
-      {/* Filter Controls Row */}
-      <div className="absolute z-10 top-4 left-4 right-4 flex items-center justify-start">
-        <div className="flex gap-2">
-          <button
-            className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={handleToggleHeatmap}
-          >
-            {showHeatmap ? "Hide Heatmap" : "Show Heatmap"}
-          </button>
-          <button
-            className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={handleToggleCrimeMap}
-            disabled={loading}
-          >
-            {loading
-              ? "Loading..."
-              : showCrimeMap
-              ? "Hide Crime Map"
-              : "Show Crime Map"}
-          </button>
-        </div>
-      </div>
-
-      {showHeatmap && (
-        <div
-          className="absolute z-10 top-20 left-4 bg-white px-4 py-3 rounded-lg shadow-lg border border-gray-200 text-sm flex flex-col gap-2"
-          style={{ minWidth: 160 }}
-        >
-          <div className="font-semibold text-gray-800 mb-1">
-            Housing Density
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-red-800 rounded-sm"></span>
-            Most Dense
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-orange-600 rounded-sm"></span>
-            Dense
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-yellow-400 rounded-sm"></span>
-            Moderate
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-green-500 rounded-sm"></span>
-            Open
-          </div>
-        </div>
-      )}
-
-      {showCrimeMap && (
-        <div
-          className="absolute z-10 left-4 bg-white px-4 py-3 rounded-lg shadow-lg border border-gray-200 text-sm flex flex-col gap-2"
-          style={{
-            minWidth: 160,
-            top: showHeatmap ? "280px" : "80px",
-          }}
-        >
-          <div className="font-semibold text-gray-800 mb-1">Crime Density</div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-red-900 rounded-sm"></span>
-            Very High
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-red-600 rounded-sm"></span>
-            High
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-orange-500 rounded-sm"></span>
-            Medium
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-yellow-400 rounded-sm"></span>
-            Low
-          </div>
-        </div>
-      )}
-
       <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );

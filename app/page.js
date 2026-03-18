@@ -6,16 +6,28 @@ import { motion, useInView } from "framer-motion";
 import {
   Search,
   Star,
-  MapPin,
   ChevronLeft,
   ChevronRight,
   ArrowRight,
-  Bed,
-  Bath,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
+import { getRentRangeLabel } from "@/utils/listingFormatters";
+
+const HeroMapPreview = dynamic(() => import("@/components/HeroMapPreview"), { ssr: false });
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
 
 const SIDE_MARGIN = "px-12 md:px-20 lg:px-28";
 
@@ -25,9 +37,6 @@ function HeroMapSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [previewListings, setPreviewListings] = useState([]);
   const router = useRouter();
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-40px" });
-
   useEffect(() => {
     fetch("/api/listings")
       .then((r) => r.json())
@@ -37,7 +46,7 @@ function HeroMapSection() {
           : Array.isArray(data?.listings)
           ? data.listings
           : [];
-        setPreviewListings(all.slice(0, 2));
+        setPreviewListings(all.slice(0, 15));
       })
       .catch(() => {});
   }, []);
@@ -48,38 +57,24 @@ function HeroMapSection() {
     router.push(q ? `/browse?search=${encodeURIComponent(q)}` : "/browse");
   };
 
-  const card1 = previewListings[0];
-  const card2 = previewListings[1];
-
-  const mapPins = [
-    { top: "18%", left: "20%", active: true },
-    { top: "40%", left: "55%", active: false },
-    { top: "63%", left: "28%", active: false },
-    { top: "26%", left: "72%", active: false },
-    { top: "54%", left: "80%", active: false },
-    { top: "74%", left: "62%", active: false },
-    { top: "12%", left: "46%", active: false },
-  ];
-
   const BG = "#f2f4f8";
 
   return (
     <section
-      ref={ref}
       className="relative overflow-hidden"
       style={{ background: BG }}
     >
       <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
 
       {/* ── Left: Hero content ── */}
-      <div className={`relative z-40 flex-shrink-0 max-w-[720px] ${SIDE_MARGIN} py-20 lg:py-26 flex flex-col justify-center`}>
+      <div className={`relative z-40 flex-shrink-0 max-w-[900px] ${SIDE_MARGIN} pt-10 pb-20 lg:py-26 flex flex-col justify-center`}>
 
         {/* Headline */}
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.08 }}
-          className="text-5xl sm:text-6xl lg:text-[68px] font-bold text-gray-900 leading-[0.93] tracking-tight mb-6"
+          className="text-5xl sm:text-6xl lg:text-[68px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
         >
           Find your perfect <span className="text-red-700">WashU</span> Housing
           Now
@@ -127,7 +122,7 @@ function HeroMapSection() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.46 }}
-          className="flex gap-8"
+          className="mt-8 grid grid-cols-2 gap-x-8 gap-y-5 sm:flex sm:gap-12"
         >
           {[
             { value: "500+", label: "Listings" },
@@ -135,224 +130,35 @@ function HeroMapSection() {
             { value: "1,200+", label: "Reviews" },
             { value: "100%", label: "Transparent" },
           ].map((stat) => (
-            <div key={stat.label} className="mt-8 flex flex-col">
-              <span className="text-2xl font-black text-gray-900">{stat.value}</span>
-              <span className="text-xs text-gray-500 font-medium mt-0.5">{stat.label}</span>
+            <div key={stat.label} className="flex flex-col items-center sm:items-start">
+              <span className="text-2xl font-black text-gray-900 whitespace-nowrap">{stat.value}</span>
+              <span className="text-xs text-gray-500 font-medium mt-0.5 whitespace-nowrap">{stat.label}</span>
             </div>
           ))}
         </motion.div>
       </div>
 
       {/* ── Right: Map ── */}
-      <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden pointer-events-none">
+      <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
 
-        {/* Map base */}
-        <div className="absolute inset-0" style={{ background: "#e7ecf3" }}>
-
-          {/* Horizontal roads */}
-          {[16, 30, 45, 60, 72, 85].map((pct, i) => (
-            <div
-              key={`h${pct}`}
-              className="absolute bg-white"
-              style={{
-                top: `${pct}%`,
-                left: 0,
-                right: 0,
-                height: i === 1 || i === 3 ? "3px" : "2px",
-                opacity: i === 1 || i === 3 ? 0.85 : 0.6,
-              }}
-            />
-          ))}
-
-          {/* Vertical roads */}
-          {[10, 26, 40, 54, 66, 78, 90].map((pct, i) => (
-            <div
-              key={`v${pct}`}
-              className="absolute bg-white"
-              style={{
-                left: `${pct}%`,
-                top: 0,
-                bottom: 0,
-                width: i === 1 || i === 4 ? "3px" : "2px",
-                opacity: i === 1 || i === 4 ? 0.85 : 0.6,
-              }}
-            />
-          ))}
-
-          {/* Block fills */}
-          {[
-            { t: "20%", l: "28%", w: "10%", h: "7%" },
-            { t: "33%", l: "42%", w: "10%", h: "9%" },
-            { t: "49%", l: "56%", w: "9%", h: "9%" },
-            { t: "13%", l: "13%", w: "11%", h: "5%" },
-            { t: "63%", l: "29%", w: "9%", h: "7%" },
-            { t: "20%", l: "68%", w: "10%", h: "7%" },
-            { t: "47%", l: "80%", w: "8%", h: "11%" },
-          ].map((b, i) => (
-            <div
-              key={i}
-              className="absolute rounded-sm"
-              style={{ top: b.t, left: b.l, width: b.w, height: b.h, background: "#dbe2ec" }}
-            />
-          ))}
-
-          {/* Street labels */}
-          <span className="absolute text-[9px] text-gray-400 font-medium select-none tracking-wide" style={{ top: "27%", left: "42%" }}>
-            Delmar Blvd
-          </span>
-          <span className="absolute text-[9px] text-gray-400 font-medium select-none tracking-wide" style={{ top: "57%", left: "53%" }}>
-            Forest Park Pkwy
-          </span>
-          <span className="absolute text-[9px] text-gray-400 font-medium select-none tracking-wide" style={{ top: "8%", left: "22%" }}>
-            Skinker Blvd
-          </span>
-          <span className="absolute text-[9px] text-gray-400 font-medium select-none tracking-wide uppercase" style={{ top: "38%", left: "60%" }}>
-            DELMAR LOOP
-          </span>
+        {/* Real Mapbox map, desaturated */}
+        <div className="absolute inset-0">
+          <HeroMapPreview listings={previewListings} />
         </div>
-
-        {/* Map pins */}
-        {mapPins.map((pin, i) => (
-          <motion.div
-            key={i}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={isInView ? { scale: 1, opacity: 1 } : {}}
-            transition={{
-              delay: 0.5 + i * 0.08,
-              type: "spring",
-              stiffness: 380,
-              damping: 22,
-            }}
-            className="absolute z-10"
-            style={{ top: pin.top, left: pin.left, transform: "translate(-50%, -50%)" }}
-          >
-            {pin.active ? (
-              <div className="relative">
-                <div className="w-[14px] h-[14px] rounded-full bg-red-500 shadow-lg shadow-red-400/40 ring-4 ring-red-100" />
-                <div className="absolute inset-0 w-[14px] h-[14px] rounded-full bg-red-400 animate-ping opacity-25" />
-              </div>
-            ) : (
-              <div className="w-3 h-3 rounded-full bg-red-400/60 shadow" />
-            )}
-          </motion.div>
-        ))}
-
-        {/* Floating listing card 1 */}
-        {/* TODO: Make the floating Listing card a component and reuse once I get real data for the map. */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.55, delay: 0.6 }}
-          className="absolute z-20 bg-white rounded-2xl overflow-hidden pointer-events-auto"
-          style={{
-            top: "7%",
-            left: "8%",
-            width: "250px",
-            boxShadow: "0 12px 40px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <div className="h-[120px] bg-gray-100 overflow-hidden">
-            {card1?.images?.[0] ? (
-              <img
-                src={card1.images[0]}
-                alt={card1.address}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                <MapPin className="h-7 w-7 text-gray-400" />
-              </div>
-            )}
-          </div>
-          <div className="p-3.5">
-            <div className="text-red-500 font-bold text-[15px] leading-tight mb-0.5">
-              {card1?.unitTypes?.[0]?.rent
-                ? `$${card1.unitTypes[0].rent.toLocaleString()}`
-                : "$2,800"}
-              <span className="text-gray-400 text-xs font-normal"> /month</span>
-            </div>
-            <div className="font-bold text-gray-900 text-sm truncate mb-0.5">
-              {card1?.address?.split(",")[0] || "Kingsbury Manor"}
-            </div>
-            <div className="text-xs text-gray-400 truncate mb-2.5">
-              {card1?.address || "St. Louis, MO"}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              {(card1?.unitTypes?.[0]?.bedrooms ?? 3) && (
-                <span className="flex items-center gap-1">
-                  <Bed className="h-3.5 w-3.5" />
-                  {card1?.unitTypes?.[0]?.bedrooms ?? 3}
-                </span>
-              )}
-              {(card1?.unitTypes?.[0]?.bathrooms ?? 2) && (
-                <span className="flex items-center gap-1">
-                  <Bath className="h-3.5 w-3.5" />
-                  {card1?.unitTypes?.[0]?.bathrooms ?? 2}
-                </span>
-              )}
-              <span className="flex items-center gap-1">
-                <MapPin className="h-3.5 w-3.5" />
-                0.4mi
-              </span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Floating listing card 2 */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.55, delay: 0.75 }}
-          className="absolute z-20 bg-white rounded-2xl overflow-hidden pointer-events-auto"
-          style={{
-            bottom: "10%",
-            right: "6%",
-            width: "210px",
-            boxShadow: "0 12px 40px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <div className="h-[95px] bg-gray-100 overflow-hidden">
-            {card2?.images?.[0] ? (
-              <img
-                src={card2.images[0]}
-                alt={card2.address}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
-                <MapPin className="h-6 w-6 text-gray-400" />
-              </div>
-            )}
-          </div>
-          <div className="p-3">
-            <div className="text-red-500 font-bold text-sm mb-0.5">
-              {card2?.unitTypes?.[0]?.rent
-                ? `$${card2.unitTypes[0].rent.toLocaleString()}`
-                : "$1,950"}
-              <span className="text-gray-400 text-xs font-normal"> /month</span>
-            </div>
-            <div className="font-bold text-gray-900 text-xs truncate mb-0.5">
-              {card2?.address?.split(",")[0] || "University Square"}
-            </div>
-            <div className="text-xs text-gray-400 truncate">
-              {card2?.address || "St. Louis, MO"}
-            </div>
-          </div>
-        </motion.div>
 
         {/* Left gradient — blends map into hero bg (desktop only) */}
         <div
-          className="hidden lg:block absolute left-0 top-0 bottom-0 w-56 z-30"
+          className="hidden lg:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
           style={{ background: `linear-gradient(to right, ${BG} 0%, transparent 100%)` }}
         />
         {/* Top gradient */}
         <div
-          className="absolute top-0 left-0 right-0 h-14 z-30"
+          className="absolute top-0 left-0 right-0 h-14 z-30 pointer-events-none"
           style={{ background: `linear-gradient(to bottom, ${BG} 0%, transparent 100%)` }}
         />
         {/* Bottom gradient */}
         <div
-          className="absolute bottom-0 left-0 right-0 h-20 z-30"
+          className="absolute bottom-0 left-0 right-0 h-20 z-30 pointer-events-none"
           style={{ background: `linear-gradient(to top, ${BG} 0%, transparent 100%)` }}
         />
       </div>
@@ -463,7 +269,7 @@ function ReviewsCarousel() {
   const dotIdx = ((pos - N_REVIEWS) % N_REVIEWS + N_REVIEWS) % N_REVIEWS;
 
   return (
-    <section ref={sectionRef} className="w-full py-18 md:py-24 bg-white overflow-hidden">
+    <section ref={sectionRef} className="w-full py-16 md:py-22 bg-white overflow-hidden">
 
       {/* Header */}
       <div className={`w-full ${SIDE_MARGIN}`}>
@@ -568,56 +374,76 @@ function ReviewsCarousel() {
 // ─── Popular Rentals ───────────────────────────────────────────────────────────
 
 function RentalCard({ listing, index, isInView }) {
-  const firstUnit = listing.unitTypes?.[0];
-  const price = firstUnit?.rent;
-  const beds = firstUnit?.bedrooms;
-  const baths = firstUnit?.bathrooms;
+  const isMobile = useIsMobile();
+  const imageUrl = listing.images?.[0];
+  const imageCount = listing.images?.length || 0;
+  const [streetAddress, ...restParts] = listing.address.split(",");
+  const cityStateZip = restParts.join(",").trim();
+  const bedValues = listing.unitTypes.map((u) => u.bedrooms).filter(Number.isFinite);
+  const bathValues = listing.unitTypes.map((u) => u.bathrooms).filter(Number.isFinite);
+  const bedLabel = bedValues.length === 0 ? "N/A" : Math.min(...bedValues) === Math.max(...bedValues) ? String(Math.min(...bedValues)) : `${Math.min(...bedValues)}-${Math.max(...bedValues)}`;
+  const bathLabel = bathValues.length === 0 ? "N/A" : Math.min(...bathValues) === Math.max(...bathValues) ? String(Math.min(...bathValues)) : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
+
+  const initial = isMobile
+    ? { opacity: 0, x: index % 2 === 0 ? -40 : 40 }
+    : { opacity: 0, y: 40 };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={isInView ? { opacity: 1, y: 0 } : {}}
+      initial={initial}
+      animate={isInView ? { opacity: 1, x: 0, y: 0 } : {}}
       transition={{ duration: 0.5, delay: index * 0.07 }}
     >
       <Link href="/browse" className="group block">
-        <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
-          <div className="relative h-48 bg-gray-100 overflow-hidden">
-            {listing.images?.[0] ? (
+        <div className="relative bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
+          <div className="relative">
+            {imageUrl ? (
               <img
-                src={listing.images[0]}
+                src={imageUrl}
                 alt={listing.address}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                className="w-full aspect-video object-cover"
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                <MapPin className="h-8 w-8 text-gray-300" />
+              <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
+                No image
               </div>
             )}
-            {listing.rating > 0 && (
-              <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-semibold text-gray-900 shadow-sm">
-                <Star className="h-3 w-3 fill-red-400 text-red-400" />
-                {listing.rating.toFixed(1)}
+            {imageCount > 1 && (
+              <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                See all {imageCount} photos
               </div>
             )}
           </div>
-          <div className="p-4">
-            <p className="text-sm font-semibold text-gray-900 truncate mb-2">
-              {listing.address}
-            </p>
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-400">
-                {beds ? `${beds} bd` : ""}
-                {beds && baths ? " · " : ""}
-                {baths ? `${baths} ba` : ""}
+          <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-sm text-gray-900 leading-snug">
+                  {streetAddress}
+                </h3>
+                {cityStateZip && (
+                  <p className="text-xs text-gray-500 font-normal mt-0.5">
+                    {cityStateZip}
+                  </p>
+                )}
               </div>
-              {price ? (
-                <div className="text-sm font-bold text-gray-900">
-                  ${price.toLocaleString()}
-                  <span className="text-xs font-normal text-gray-400">/mo</span>
-                </div>
-              ) : null}
+              <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
+                {getRentRangeLabel(listing.unitTypes)}
+                <span className="text-xs font-normal">/mo</span>
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-auto pt-2">
+              <span className="text-gray-500 text-xs">
+                {bedLabel} bed{" | "}{bathLabel} bath
+                {listing.leaseType ? ` | ${listing.leaseType}` : ""}
+              </span>
+              {listing.owner?.name && (
+                <span className="text-gray-400 text-xs truncate ml-2">
+                  {listing.owner.name}
+                </span>
+              )}
             </div>
           </div>
+          <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
         </div>
       </Link>
     </motion.div>
@@ -627,7 +453,7 @@ function RentalCard({ listing, index, isInView }) {
 function SkeletonCard() {
   return (
     <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
-      <div className="h-48 bg-gray-100" />
+      <div className="h-64 bg-gray-100" />
       <div className="p-4 space-y-2.5">
         <div className="h-4 bg-gray-100 rounded-lg w-3/4" />
         <div className="h-3 bg-gray-100 rounded-lg w-1/2" />
@@ -641,6 +467,8 @@ function PopularRentals() {
   const [loading, setLoading] = useState(true);
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-80px" });
+  const isMobile = useIsMobile();
+  const visibleListings = isMobile ? listings.slice(0, 3) : listings;
 
   useEffect(() => {
     fetch("/api/listings")
@@ -658,7 +486,7 @@ function PopularRentals() {
   }, []);
 
   return (
-    <section ref={ref} className="w-full py-20 md:py-28 bg-gray-50/70">
+    <section ref={ref} className="w-full pt-16 pb-8 md:py-22 bg-gray-50/70">
       <div className={`w-full ${SIDE_MARGIN}`}>
 
         {/* Section header */}
@@ -688,7 +516,7 @@ function PopularRentals() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-            : listings.map((listing, i) => (
+            : visibleListings.map((listing, i) => (
                 <RentalCard
                   key={listing._id}
                   listing={listing}
@@ -786,7 +614,7 @@ export default function HomePage() {
         <HeroMapSection />
         <PopularRentals />
         <ReviewsCarousel />
-        <CollegesBand />
+        {/* <CollegesBand /> */}
         <CTABand />
       </main>
       <Footer />

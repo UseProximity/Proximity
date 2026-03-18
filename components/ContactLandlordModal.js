@@ -52,12 +52,18 @@ export default function ContactLandlordModal({
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Here you would typically send the data to your backend
-    console.log("Contact form submitted:", formData);
 
-    // Call the onSubmit callback if provided, otherwise just close
+    // Persist contacted listing for dashboard tracking
+    if (listing?._id) {
+      fetch("/api/contacted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing._id }),
+      }).catch(() => {});
+    }
+
     if (onSubmit) {
       onSubmit(formData);
     } else {
