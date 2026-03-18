@@ -265,15 +265,17 @@ export default function BrowseContent({ session }) {
   return (
     <div
       className="bg-gray-50 flex flex-col"
-      style={{ height: "calc(100vh - 64px)" }}
+      style={{ height: "calc(100vh - 104px)" }}
     >
-      <TopFilterBar
-        search={search}
-        setSearch={setSearch}
-        filters={filters}
-        setFilters={setFilters}
-        onReset={handleReset}
-      />
+      <div className="hidden md:block">
+        <TopFilterBar
+          search={search}
+          setSearch={setSearch}
+          filters={filters}
+          setFilters={setFilters}
+          onReset={handleReset}
+        />
+      </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
         <AvailableListings
           session={session}
@@ -282,6 +284,8 @@ export default function BrowseContent({ session }) {
           setFilters={setFilters}
           handleReset={handleReset}
           onClearSearch={handleClearSearch}
+          search={search}
+          setSearch={setSearch}
         />
       </div>
     </div>

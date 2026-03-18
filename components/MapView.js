@@ -195,6 +195,8 @@ export default function MapView({
   filters,
   setFilters,
   handleReset,
+  onListingSelect,
+  selectedListingId,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -397,51 +399,6 @@ export default function MapView({
     setActiveRouteId(null);
   }, []);
 
-  // Add custom CSS for popup styling
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.textContent = `
-      .custom-popup .mapboxgl-popup-content {
-        padding: 0 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-        border: 1px solid rgba(226, 232, 240, 0.8) !important;
-        background: #ffffff !important;
-        max-width: 280px !important;
-        overflow: hidden !important;
-      }
-      .custom-popup .mapboxgl-popup-tip {
-        border-top-color: #ffffff !important;
-      }
-      .custom-popup .mapboxgl-popup-close-button {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: rgba(255, 255, 255, 0.9);
-        color: #374151;
-        border: none;
-        border-radius: 50%;
-        width: 28px;
-        height: 28px;
-        font-size: 16px;
-        line-height: 1;
-        cursor: pointer;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-      }
-      .custom-popup .mapboxgl-popup-close-button:hover {
-        background: rgba(255, 255, 255, 1);
-        box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1);
-      }
-    `;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
 
   const heatmapData = useMemo(
     () => ({
@@ -562,208 +519,11 @@ export default function MapView({
       markerEl.appendChild(markerImg);
       const marker = new mapboxgl.Marker({ element: markerEl })
         .setLngLat([listing.longitude, listing.latitude])
-        .setPopup(
-          new mapboxgl.Popup({
-            offset: 25,
-            closeButton: true,
-            className: "custom-popup",
-            maxWidth: "240px",
-          }).setHTML(`
-            <div style="
-              width: 240px; 
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: #ffffff;
-              border-radius: 12px;
-              overflow: hidden;
-              cursor: pointer;
-              position: relative;
-            " onclick="window.location.href='/browse/${encodeURIComponent(
-              listing._id
-            )}'">
-              <div style="position: relative; overflow: hidden;">
-                <img src="${
-                  listing.images.length == 0 ? "" : listing.images?.[0]
-                }" alt="Property image"
-                  style="
-                    width: 100%; 
-                    height: 140px; 
-                    object-fit: cover;
-                  " />
-                <div style="
-                  position: absolute;
-                  top: 8px;
-                  left: 8px;
-                  background: rgba(0, 0, 0, 0.7);
-                  color: white;
-                  padding: 4px 8px;
-                  border-radius: 12px;
-                  font-size: 11px;
-                  font-weight: 600;
-                ">
-                  ${distanceToCampus} mi to campus
-                </div>
-                <div style="
-                  position: absolute;
-                  inset: 0;
-                  background: linear-gradient(to top, rgba(0,0,0,0.2) 0%, transparent 100%);
-                  opacity: 0;
-                  transition: opacity 0.3s ease;
-                " onmouseover="this.style.opacity = '1'" onmouseout="this.style.opacity = '0'"></div>
-              </div>
-              
-              <div style="padding: 16px; background: linear-gradient(135deg, rgba(249,250,251,0.5) 0%, #ffffff 100%);">
-                <div style="
-                  display: flex;
-                  align-items: center;
-                  justify-content: space-between;
-                  margin-bottom: 12px;
-                ">
-                  <h3 style="
-                    font-weight: 700; 
-                    font-size: 20px; 
-                    color: #000000;
-                    margin: 0;
-                    line-height: 1.2;
-                  ">
-                    ${getRentRangeLabel(listing.unitTypes) || "N/A"}
-                    <span style="font-size: 12px; font-weight: 400;">/month</span>
-                  </h3>
-                </div>
-                
-                <div style="
-                  display: flex; 
-                  align-items: center;
-                  gap: 8px; 
-                  margin-bottom: 12px;
-                ">
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 2px;
-                    background: linear-gradient(to right, #ecfdf5 0%, #fef2f2 100%);
-                    border: 1px solid #a7f3d0;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                  ">
-                    <span style="color: #047857; font-weight: 600; font-size: 12px;">${
-                      getUnitValuesLabel(listing.unitTypes, "bedrooms") || 0
-                    }</span>
-                    <span style="color: #059669; font-size: 10px;">bd</span>
-                  </div>
-                  
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 2px;
-                    background: linear-gradient(to right, #fdf2f8 0%, #fce7f3 100%);
-                    border: 1px solid #f9a8d4;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                  ">
-                    <span style="color: #be185d; font-weight: 600; font-size: 12px;">${
-                      getUnitValuesLabel(listing.unitTypes, "bathrooms") || 0
-                    }</span>
-                    <span style="color: #db2777; font-size: 10px;">ba</span>
-                  </div>
-                  
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 2px;
-                    background: linear-gradient(to right, #fffbeb 0%, #fef3c7 100%);
-                    border: 1px solid #fcd34d;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                  ">
-                    <span style="color: #d97706; font-weight: 600; font-size: 12px;">${
-                      getAreaRangeLabel(listing.unitTypes) || 0
-                    }</span>
-                    <span style="color: #f59e0b; font-size: 10px;">sqft</span>
-                  </div>
-                </div>
-                
-                <div style="
-                  display: flex;
-                  align-items: flex-start;
-                  gap: 6px;
-                  background: #f9fafb;
-                  border-radius: 8px;
-                  padding: 10px;
-                  border: 1px solid #f3f4f6;
-                  margin-bottom: 12px;
-                ">
-                  <svg style="
-                    width: 14px;
-                    height: 14px;
-                    color: #6366f1;
-                    margin-top: 2px;
-                    flex-shrink: 0;
-                  " fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
-                  </svg>
-                  <p style="
-                    font-size: 12px;
-                    color: #374151;
-                    line-height: 1.4;
-                    font-weight: 500;
-                    margin: 0;
-                  ">${listing.address || "Address not available"}</p>
-                </div>
-                
-                <button 
-                  id="route-btn-${listing._id}"
-                  onclick="event.stopPropagation(); 
-                    const isActive = this.getAttribute('data-active') === 'true';
-                    if (isActive) {
-                      window.hideRoute && window.hideRoute();
-                      this.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
-                      this.style.color = '#374151';
-                      this.innerHTML = '📍 Show Route to Campus';
-                      this.setAttribute('data-active', 'false');
-                    } else {
-                      window.showRouteToCampus && window.showRouteToCampus([${
-                        listing.longitude
-                      }, ${listing.latitude}], '${listing._id}');
-                      this.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
-                      this.style.color = 'white';
-                      this.innerHTML = 'Hide Route';
-                      this.setAttribute('data-active', 'true');
-                    }"
-                  data-active="false"
-                  style="
-                    width: 100%;
-                    padding: 10px 12px;
-                    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-                    color: #374151;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 6px;
-                  "
-                  onmouseover="if(this.getAttribute('data-active') === 'false') { this.style.background = 'linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%)'; }"
-                  onmouseout="if(this.getAttribute('data-active') === 'false') { this.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'; }"
-                >
-                  📍 Show Route to Campus
-                </button>
-              </div>
-            </div>
-          `)
-        )
         .addTo(map);
-      marker.getPopup().on("open", () => {
-        markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;
-      });
-      marker.getPopup().on("close", () => {
-        markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+      marker._listingId = listing._id;
+      marker._starRating = starRating;
+      markerEl.addEventListener("click", () => {
+        onListingSelect?.(listing);
       });
       map.markers.push(marker);
     });
@@ -936,6 +696,19 @@ export default function MapView({
     };
   }, [listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
 
+  // Sync active marker icon when selectedListingId changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map?.markers) return;
+    map.markers.forEach((marker) => {
+      const img = marker.getElement().querySelector("img");
+      if (!img) return;
+      img.src = marker._listingId === selectedListingId
+        ? `/assets/map-icons/map-${marker._starRating}-a.svg`
+        : `/assets/map-icons/map-${marker._starRating}.svg`;
+    });
+  }, [selectedListingId]);
+
   // Toggle handlers that preserve the current camera (center, zoom, pitch, bearing)
   const handleToggleHeatmap = useCallback(() => {
     const map = mapRef.current;
@@ -972,84 +745,6 @@ export default function MapView({
   }, []);
   return (
     <div className="relative w-full h-full">
-      {/* Filter Controls Row */}
-      <div className="absolute z-10 top-4 left-4 right-4 flex items-center justify-start">
-        <div className="flex gap-2">
-          <button
-            className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={handleToggleHeatmap}
-          >
-            {showHeatmap ? "Hide Heatmap" : "Show Heatmap"}
-          </button>
-          <button
-            className="bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={handleToggleCrimeMap}
-            disabled={loading}
-          >
-            {loading
-              ? "Loading..."
-              : showCrimeMap
-              ? "Hide Crime Map"
-              : "Show Crime Map"}
-          </button>
-        </div>
-      </div>
-
-      {showHeatmap && (
-        <div
-          className="absolute z-10 top-20 left-4 bg-white px-4 py-3 rounded-lg shadow-lg border border-gray-200 text-sm flex flex-col gap-2"
-          style={{ minWidth: 160 }}
-        >
-          <div className="font-semibold text-gray-800 mb-1">
-            Housing Density
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-red-800 rounded-sm"></span>
-            Most Dense
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-orange-600 rounded-sm"></span>
-            Dense
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-yellow-400 rounded-sm"></span>
-            Moderate
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-green-500 rounded-sm"></span>
-            Open
-          </div>
-        </div>
-      )}
-
-      {showCrimeMap && (
-        <div
-          className="absolute z-10 left-4 bg-white px-4 py-3 rounded-lg shadow-lg border border-gray-200 text-sm flex flex-col gap-2"
-          style={{
-            minWidth: 160,
-            top: showHeatmap ? "280px" : "80px",
-          }}
-        >
-          <div className="font-semibold text-gray-800 mb-1">Crime Density</div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-red-900 rounded-sm"></span>
-            Very High
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-red-600 rounded-sm"></span>
-            High
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-orange-500 rounded-sm"></span>
-            Medium
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-4 h-3 bg-yellow-400 rounded-sm"></span>
-            Low
-          </div>
-        </div>
-      )}
-
       <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );
