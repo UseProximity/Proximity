@@ -1,12 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
-import ModalListing from "@/components/show-listings/ModalListing";
-import ListingModalInfo from "@/components/show-listings/ListingModalInfo";
-import { signIn } from "next-auth/react";
+import HeartIcon from "@/components/HeartIcon";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -26,79 +24,6 @@ import {
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
-function HeartIcon({ session, listingId, initial = false }) {
-  const [isFavorite, setIsFavorite] = useState(initial);
-  const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    setIsFavorite(initial);
-  }, [initial]);
-
-  const handleClick = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (pending) return;
-
-    if (!session) {
-      signIn(undefined, { callbackUrl: "/browse" });
-    }
-
-    const prev = isFavorite;
-    const next = !prev;
-
-    setIsFavorite(next);
-    setPending(true);
-
-    try {
-      if (!session?.user?.id) {
-        setIsFavorite(prev);
-        return;
-      }
-
-      const res = await fetch("/api/favorites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, userId: session?.user?.id }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || typeof data.favorited !== "boolean") {
-        setIsFavorite(prev);
-        return;
-      }
-
-      setIsFavorite(data.favorited);
-    } catch (err) {
-      console.error("Could not update favorites:", err);
-      setIsFavorite(prev);
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={pending}
-      aria-disabled={pending}
-      aria-busy={pending}
-      className="focus:outline-none p-1.5 hover:text-red-500 transition-all disabled:opacity-60"
-      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-      aria-pressed={isFavorite}
-    >
-      {isFavorite ? (
-        <svg xmlns="http://www.w3.org/2000/svg" fill="red" viewBox="0 0 24 24" className="h-6 w-6">
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-        </svg>
-      ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="h-6 w-6">
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-        </svg>
-      )}
-    </button>
-  );
-}
 
 function MapPopupCard({ listing, session, routeActive, onRouteToggle, onClose, onCardClick }) {
   return (
@@ -220,11 +145,6 @@ export default function AvailableListings({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  /* ── Modal state ── */
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalData, setModalData] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
   const [routeActive, setRouteActive] = useState(false);
@@ -259,49 +179,12 @@ export default function AvailableListings({
     }
   };
 
-  const handleListingClick = async (listingId, updateUrl = true) => {
+  const handleListingClick = (listingId) => {
     if (!listingId) return;
-    setIsLoading(true);
-    setIsModalOpen(true);
-
-    try {
-      const response = await fetch(`/api/listing/${listingId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setModalData(data);
-        if (updateUrl) {
-          router.push(`/browse?listing=${listingId}`);
-        }
-      } else {
-        console.error("Failed to fetch listing data");
-      }
-    } catch (error) {
-      console.error("Error fetching listing data:", error);
-    } finally {
-      setIsLoading(false);
-    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("listing", listingId);
+    router.push(`/browse?${params.toString()}`);
   };
-
-  const handleCloseModal = () => {
-    router.replace("/browse");
-    setIsModalOpen(false);
-    setModalData(null);
-  };
-
-  useEffect(() => {
-    const listingId = searchParams?.get("listing");
-    if (listingId) {
-      if (!isModalOpen || modalData?._id !== listingId) {
-        handleListingClick(listingId, false);
-      }
-    } else {
-      if (isModalOpen) {
-        setIsModalOpen(false);
-        setModalData(null);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams?.toString()]);
 
   const toggleMobileArray = (field, value) => {
     const arr = mobileDraft[field] || [];
@@ -788,18 +671,6 @@ export default function AvailableListings({
         )}
       </div>
 
-      {/* Listing detail modal (shared: desktop + mobile) */}
-      {isModalOpen && (
-        <ModalListing isOpen={isModalOpen} onClose={handleCloseModal}>
-          {isLoading ? (
-            <div>Loading...</div>
-          ) : modalData ? (
-            <ListingModalInfo HeartIcon={HeartIcon} session={session} listing={modalData} />
-          ) : (
-            <div>Error loading listing</div>
-          )}
-        </ModalListing>
-      )}
     </>
   );
 }

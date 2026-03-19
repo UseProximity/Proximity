@@ -136,6 +136,7 @@ export function Header({ session }) {
                       alt="Profile"
                       width={20}
                       height={20}
+                      className="w-5 h-5"
                     />
                     Dashboard
                   </Link>
@@ -232,6 +233,7 @@ export function Header({ session }) {
                   alt="Profile"
                   width={20}
                   height={20}
+                  className="w-5 h-5"
                 />
                 Dashboard
               </Link>

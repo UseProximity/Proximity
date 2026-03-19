@@ -19,6 +19,7 @@ export async function PATCH(req) {
       gender: body.gender,
       age: body.age,
       profileComplete: body.profileComplete,
+      ...(body.image !== undefined && { image: body.image }),
     };
 
     // only add role if it's explicitly provided
