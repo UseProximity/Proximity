@@ -177,9 +177,7 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
           onClick={(e) => { e.stopPropagation(); setShowFilters(showFilters === "more-filters" ? false : "more-filters"); }}
           className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-full text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
-          </svg>
+          <img src="/assets/filter-icon.svg" alt="" className="w-4 h-4" style={{ filter: 'brightness(0) opacity(0.65)' }} />
           <span>More Filters</span>
         </button>
 

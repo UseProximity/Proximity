@@ -89,7 +89,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
@@ -106,7 +106,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
           <div className="flex flex-col items-center gap-2">
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200 cursor-pointer group"
+              className="relative w-32 h-32 rounded-full overflow-hidden border-2 border-gray-200 cursor-pointer group"
             >
               {photoPreview ? (
                 <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
@@ -505,22 +505,22 @@ export default function StudentDashboardPage() {
                   <img
                     src={user.image}
                     alt={user.name}
-                    className="w-20 h-20 rounded-full object-cover border border-gray-200 shadow mb-4"
+                    className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow mb-4"
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mb-4">
+                  <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center mb-4">
                     <svg className="w-10 h-10 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
                     </svg>
                   </div>
                 )}
 
-                <h2 className="font-bold text-gray-900 text-base leading-tight">
+                <h2 className="font-bold text-gray-900 text-xl md:text-2xl leading-tight">
                   {user?.name || "—"}
                 </h2>
-                <p className="text-sm text-gray-500 mt-0.5 capitalize">{user.role || "Student"}</p>
+                <p className="text-base md:text-lg text-gray-500 mt-0.5 capitalize">{user.role || "Student"}</p>
                 {(user.age || (user.gender && user.gender !== "unspecified")) && (
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-sm md:text-base text-gray-400 mt-0.5">
                     {[
                       user.age ? `Age ${user.age}` : null,
                       user.gender && user.gender !== "unspecified" ? user.gender : null,
@@ -529,21 +529,21 @@ export default function StudentDashboardPage() {
                       .join(" · ")}
                   </p>
                 )}
-                <p className="text-xs text-gray-400 mt-0.5">Washington University in St. Louis</p>
+                <p className="text-sm md:text-base text-gray-400 mt-0.5">Washington University in St. Louis</p>
 
-                <div className="w-full border-t border-gray-100 mt-4 pt-4 flex justify-around text-sm">
+                <div className="w-full border-t border-gray-100 mt-4 pt-4 flex justify-around">
                   <div className="text-center">
-                    <p className="font-semibold text-gray-800">Joined {joinedYear}</p>
+                    <p className="font-semibold text-gray-800 text-sm md:text-base">Joined {joinedYear}</p>
                   </div>
                 </div>
-                <div className="w-full flex justify-around text-sm mt-3">
+                <div className="w-full flex justify-around mt-3">
                   <div className="text-center">
-                    <p className="font-semibold text-gray-800">{user?.numReviews ?? 0}</p>
-                    <p className="text-xs text-gray-400">Posts</p>
+                    <p className="font-semibold text-gray-800 text-sm md:text-base">{user?.numReviews ?? 0}</p>
+                    <p className="text-xs md:text-sm text-gray-400">Posts</p>
                   </div>
                   <div className="text-center">
-                    <p className="font-semibold text-gray-800">{user?.listings?.length ?? 0}</p>
-                    <p className="text-xs text-gray-400">Leases Signed</p>
+                    <p className="font-semibold text-gray-800 text-sm md:text-base">{user?.listings?.length ?? 0}</p>
+                    <p className="text-xs md:text-sm text-gray-400">Leases Signed</p>
                   </div>
                 </div>
               </div>

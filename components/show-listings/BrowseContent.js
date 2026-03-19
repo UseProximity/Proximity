@@ -264,8 +264,7 @@ export default function BrowseContent({ session }) {
 
   return (
     <div
-      className="bg-gray-50 flex flex-col"
-      style={{ height: "calc(100vh - 104px)" }}
+      className="bg-gray-50 flex flex-col h-[calc(100vh-83px)] md:h-[calc(100vh-104px)]"
     >
       <div className="hidden md:block">
         <TopFilterBar

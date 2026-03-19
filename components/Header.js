@@ -59,7 +59,7 @@ export function Header({ session }) {
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
-      <div className="w-full flex items-center justify-between h-[104px] px-8 md:px-12">
+      <div className="w-full flex items-center justify-between h-[83px] md:h-[104px] px-8 md:px-12">
 
         {/* ── Left: Logo + Nav ── */}
         <div className={`flex items-center gap-10 flex-shrink-0 ${searchOpen ? "hidden md:flex" : ""}`}>
