@@ -85,11 +85,11 @@ export function Header({ session }) {
         </div>
 
         {/* ── Right: Search + Auth + Hamburger ── */}
-        <div className={`flex items-center gap-2 ${searchOpen ? "flex-1" : ""}`}>
+        <div className="flex items-center gap-2">
 
           {/* Search */}
           {searchOpen ? (
-            <form onSubmit={submitSearch} className="flex flex-1 items-center gap-2">
+            <form onSubmit={submitSearch} className="flex items-center gap-2 w-[280px] md:w-[480px] max-w-[480px]">
               <input
                 ref={inputRef}
                 type="text"
@@ -119,8 +119,7 @@ export function Header({ session }) {
           )}
 
           {/* Auth buttons — desktop only */}
-          {!searchOpen && (
-            <div className="hidden md:flex items-center gap-2.5">
+          <div className="hidden md:flex items-center gap-2.5">
               {session?.user ? (
                 <>
                   <Link
@@ -186,7 +185,6 @@ export function Header({ session }) {
                 </>
               )}
             </div>
-          )}
 
           {/* Mobile hamburger */}
           {!searchOpen && (

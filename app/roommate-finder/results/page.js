@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Modal from "../../../components/Modal";
-import ChatModal from "../../../components/ChatModal";
+import { useChatContext } from "../../../components/chat/ChatContext";
 import { AiFillHeart, AiOutlineHeart } from "react-icons/ai";
 import { BsShieldCheck } from "react-icons/bs";
 import { Suspense } from "react";
@@ -249,8 +249,8 @@ function RoommateResultsContent() {
   const [filteredProfiles, setFilteredProfiles] = useState(mockProfiles);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [chatModalOpen, setChatModalOpen] = useState(false);
   const [favorites, setFavorites] = useState(new Set());
+  const { openConversation } = useChatContext();
 
   // Generate additional profiles on client side only
   useEffect(() => {
@@ -648,7 +648,10 @@ function RoommateResultsContent() {
                   <button
                     onClick={() => {
                       setModalOpen(false);
-                      setChatModalOpen(true);
+                      openConversation(
+                        { name: selectedProfile?.name, image: selectedProfile?.image },
+                        "roommate"
+                      );
                     }}
                     className="border border-red-600 text-red-600 py-3 px-4 rounded-lg text-base font-semibold hover:bg-red-50 transition"
                   >
@@ -761,13 +764,6 @@ function RoommateResultsContent() {
             </Modal>
           )}
 
-          {/* Chat Modal */}
-          <ChatModal
-            isOpen={chatModalOpen}
-            onClose={() => setChatModalOpen(false)}
-            profile={selectedProfile}
-            currentUser="You"
-          />
         </div>
       </div>
     </>

@@ -172,15 +172,6 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
           {CHEVRON}
         </button>
 
-        {/* More Filters pill */}
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowFilters(showFilters === "more-filters" ? false : "more-filters"); }}
-          className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-full text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
-        >
-          <img src="/assets/filter-icon.svg" alt="" className="w-4 h-4" style={{ filter: 'brightness(0) opacity(0.65)' }} />
-          <span>More Filters</span>
-        </button>
-
         {/* Saved / Favorites filter */}
         <button
           onClick={() => setFilters({ ...filters, savedOnly: !filters.savedOnly })}
@@ -190,6 +181,15 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 016.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z" />
           </svg>
           <span>Saved</span>
+        </button>
+
+        {/* More Filters pill */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowFilters(showFilters === "more-filters" ? false : "more-filters"); }}
+          className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-full text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+        >
+          <img src="/assets/filter-icon.svg" alt="" className="w-4 h-4" style={{ filter: 'brightness(0) opacity(0.65)' }} />
+          <span>More Filters</span>
         </button>
 
         {/* Clear All */}
@@ -249,6 +249,7 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
                 maxValue={filters.maxBedrooms || "5"}
                 onMinChange={(v) => setFilters({ ...filters, bedrooms: v === "0" ? "" : v })}
                 onMaxChange={(v) => setFilters({ ...filters, maxBedrooms: v === "5" ? "" : v })}
+                onSnapTo={(v) => setFilters({ ...filters, bedrooms: v === "0" ? "" : v, maxBedrooms: v === "5" ? "" : v })}
               />
             </div>
             <div className="flex justify-between">
@@ -274,6 +275,7 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
                 maxValue={filters.maxBathrooms || "4"}
                 onMinChange={(v) => setFilters({ ...filters, bathrooms: v === "1" ? "" : v })}
                 onMaxChange={(v) => setFilters({ ...filters, maxBathrooms: v === "4" ? "" : v })}
+                onSnapTo={(v) => setFilters({ ...filters, bathrooms: v === "1" ? "" : v, maxBathrooms: v === "4" ? "" : v })}
               />
             </div>
             <div className="flex justify-between">
@@ -421,6 +423,7 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
                       maxValue={draft.maxBedrooms || "5"}
                       onMinChange={(v) => setDraft({ ...draft, bedrooms: v === "0" ? "" : v })}
                       onMaxChange={(v) => setDraft({ ...draft, maxBedrooms: v === "5" ? "" : v })}
+                      onSnapTo={(v) => setDraft({ ...draft, bedrooms: v === "0" ? "" : v, maxBedrooms: v === "5" ? "" : v })}
                     />
                   </div>
 
@@ -433,12 +436,13 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
                       maxValue={draft.maxBathrooms || "4"}
                       onMinChange={(v) => setDraft({ ...draft, bathrooms: v === "1" ? "" : v })}
                       onMaxChange={(v) => setDraft({ ...draft, maxBathrooms: v === "4" ? "" : v })}
+                      onSnapTo={(v) => setDraft({ ...draft, bathrooms: v === "1" ? "" : v, maxBathrooms: v === "4" ? "" : v })}
                     />
                   </div>
 
-                  {/* Distance to Campus */}
+                  {/* Walking Distance to Campus */}
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm mb-3">Distance to Campus</p>
+                    <p className="font-semibold text-gray-900 text-sm mb-3">Walking Distance to Campus</p>
                     <StepSlider
                       steps={DIST_STEPS}
                       value={draft.distance || ""}
@@ -446,9 +450,9 @@ export default function TopFilterBar({ search, setSearch, filters, setFilters, o
                     />
                   </div>
 
-                  {/* Distance to Shuttle */}
+                  {/* Walking Distance to Shuttle */}
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm mb-3">Distance to Campus Shuttle</p>
+                    <p className="font-semibold text-gray-900 text-sm mb-3">Walking Distance to Shuttle</p>
                     <StepSlider
                       steps={SHTT_STEPS}
                       value={draft.distanceToShuttle || ""}

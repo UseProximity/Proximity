@@ -379,6 +379,7 @@ export default function StudentDashboardPage() {
   }, []);
 
   const user = {
+    _id:         dbUser?._id         ?? null,
     name:        dbUser?.name        ?? session?.user?.name  ?? null,
     email:       dbUser?.email       ?? session?.user?.email ?? null,
     image:       dbUser?.image       ?? session?.user?.image ?? null,
@@ -401,7 +402,9 @@ export default function StudentDashboardPage() {
     : user._id
     ? new Date(parseInt(user._id.substring(0, 8), 16) * 1000)
     : null;
-  const joinedYear = joinedDate ? joinedDate.getFullYear() : "—";
+  const joinedYear = joinedDate
+    ? joinedDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "—";
 
   const contactedPages = Math.max(1, Math.ceil(contacted.length / CARDS_PER_PAGE));
   const contactedVisible = contacted.slice(

@@ -547,7 +547,7 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
               {/* Distance to Campus */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                  Distance to Campus
+                  Walking Distance to Campus
                 </h4>
                 <select
                   value={filters.distance || ""}
@@ -560,11 +560,11 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
                   <option value="">Any</option>
-                  <option value="0.3">Within 0.3 miles</option>
-                  <option value="0.5">Within 0.5 miles</option>
-                  <option value="1">Within 1 mile</option>
-                  <option value="2">Within 2 miles</option>
-                  <option value="5">Within 5 miles</option>
+                  <option value="5">Within 5 min walk</option>
+                  <option value="10">Within 10 min walk</option>
+                  <option value="15">Within 15 min walk</option>
+                  <option value="20">Within 20 min walk</option>
+                  <option value="30">Within 30 min walk</option>
                 </select>
               </div>
 

@@ -483,6 +483,7 @@ export default function AvailableListings({
                     maxValue={mobileDraft.maxBedrooms || "5"}
                     onMinChange={(v) => setMobileDraft({ ...mobileDraft, bedrooms: v === "0" ? "" : v })}
                     onMaxChange={(v) => setMobileDraft({ ...mobileDraft, maxBedrooms: v === "5" ? "" : v })}
+                    onSnapTo={(v) => setMobileDraft({ ...mobileDraft, bedrooms: v === "0" ? "" : v, maxBedrooms: v === "5" ? "" : v })}
                   />
                 </div>
 
@@ -495,6 +496,7 @@ export default function AvailableListings({
                     maxValue={mobileDraft.maxBathrooms || "4"}
                     onMinChange={(v) => setMobileDraft({ ...mobileDraft, bathrooms: v === "1" ? "" : v })}
                     onMaxChange={(v) => setMobileDraft({ ...mobileDraft, maxBathrooms: v === "4" ? "" : v })}
+                    onSnapTo={(v) => setMobileDraft({ ...mobileDraft, bathrooms: v === "1" ? "" : v, maxBathrooms: v === "4" ? "" : v })}
                   />
                 </div>
 
@@ -628,9 +630,9 @@ export default function AvailableListings({
                   ))}
                 </div>
 
-                {/* Distance to Campus */}
+                {/* Walking Distance to Campus */}
                 <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">Distance to Campus</p>
+                  <p className="font-semibold text-gray-900 text-sm mb-3">Walking Distance to Campus</p>
                   <StepSlider
                     steps={DIST_STEPS}
                     value={mobileDraft.distance || ""}
@@ -638,9 +640,9 @@ export default function AvailableListings({
                   />
                 </div>
 
-                {/* Distance to Shuttle */}
+                {/* Walking Distance to Shuttle */}
                 <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">Distance to Campus Shuttle</p>
+                  <p className="font-semibold text-gray-900 text-sm mb-3">Walking Distance to Shuttle</p>
                   <StepSlider
                     steps={SHTT_STEPS}
                     value={mobileDraft.distanceToShuttle || ""}
