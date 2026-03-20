@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import ConditionalButtons from "@/components/ConditionalButtons";
 import ReviewsSection from "@/components/ReviewsSection";
 import {
   getAreaRangeLabel,
@@ -133,7 +132,7 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
                 </div>
               </Link>
 
-              <ConditionalButtons listing={listing} />
+              {/*<ConditionalButtons listing={listing} />*/}
             </div>
           </div>
 

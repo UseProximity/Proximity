@@ -7,12 +7,12 @@ export default function Modal({ isOpen, onClose, children }) {
     if (isOpen) {
       document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = "auto";
     }
 
     // Cleanup on unmount
     return () => {
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = "auto";
     };
   }, [isOpen]);
 
@@ -20,8 +20,15 @@ export default function Modal({ isOpen, onClose, children }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden p-2">
+      {/* Overlay */}
       <div
-        className="bg-white rounded-xl shadow-2xl border border-gray-100 relative w-full max-w-md mx-auto overflow-hidden"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div
+        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto overflow-hidden"
         onWheel={(e) => {
           // Prevent wheel events from bubbling up to parent elements (like the map)
           e.stopPropagation();
