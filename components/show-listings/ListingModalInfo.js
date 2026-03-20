@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import ReviewsSection from "@/components/ReviewsSection";
+import ButtonContactLandlord from "@/components/ButtonContactLandlord";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -25,6 +26,7 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
   const coverImage = images[0];
   const hasGallery = images.length > 1;
 
+  const landlordEmail = "simao.pina.ribeiro@gmail.com"; // Replace with dynamic email
   return (
     <>
       <div className="bg-gray-100 min-h-screen">
@@ -133,6 +135,7 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
               </Link>
 
               {/*<ConditionalButtons listing={listing} />*/}
+              <ButtonContactLandlord landlordEmail={landlordEmail} />
             </div>
           </div>
 
