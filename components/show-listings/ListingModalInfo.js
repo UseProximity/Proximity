@@ -26,7 +26,7 @@ export default function ListingModalInfo({ HeartIcon, session, listing }) {
   const coverImage = images[0];
   const hasGallery = images.length > 1;
 
-  const landlordEmail = "simao.pina.ribeiro@gmail.com"; // Replace with dynamic email
+  const landlordEmail = listing.owner.email;
   return (
     <>
       <div className="bg-gray-100 min-h-screen">
