@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import ModalDorms from "../../components/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
@@ -368,48 +368,7 @@ export default function CampusHub() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDorm, setSelectedDorm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-
-  // Prevent unwanted scrolling on filter interactions
-  useEffect(() => {
-    // Override scrollIntoView for all form elements
-    const originalScrollIntoView = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function (options) {
-      // Only allow scrollIntoView for non-form elements or when explicitly required
-      if (
-        this.tagName === "SELECT" ||
-        this.tagName === "INPUT" ||
-        this.tagName === "BUTTON"
-      ) {
-        return; // Do nothing for form elements
-      }
-      originalScrollIntoView.call(this, options);
-    };
-
-    return () => {
-      // Restore original scrollIntoView on cleanup
-      Element.prototype.scrollIntoView = originalScrollIntoView;
-    };
-  }, []);
-
-  // Prevent unwanted scrolling on filter interactions
-  const handleFilterFocus = (e) => {
-    e.target.scrollIntoView = () => {}; // Disable scrollIntoView
-  };
-
-  const handleFilterMouseEnter = (e) => {
-    e.target.scrollIntoView = () => {}; // Disable scrollIntoView
-  };
-
-  const handleFilterClick = (e) => {
-    e.target.scrollIntoView = () => {}; // Disable scrollIntoView
-  };
-
-  const dormTypes = [
-    "Traditional Single",
-    "Traditional Double",
-    "Modern Single",
-    "Modern Double",
-  ];
+  const cardRefs = useRef({});
 
   const dormGroups = reviews.reduce((acc, review) => {
     if (!acc[review.dorm]) acc[review.dorm] = [];
@@ -434,18 +393,92 @@ export default function CampusHub() {
     return matchesRating && matchesType && matchesSearch;
   });
 
+  // Card fade-up on scroll into view
+  useEffect(() => {
+    // Reset all cards to hidden whenever filteredDorms changes
+    Object.values(cardRefs.current).forEach((el) => {
+      if (el) {
+        el.style.opacity = "0";
+        el.style.transform = "translateY(24px)";
+      }
+    });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = "1";
+            entry.target.style.transform = "translateY(0)";
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    Object.values(cardRefs.current).forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [filteredDorms]);
+
+  // Prevent unwanted scrolling on filter interactions
+  useEffect(() => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function () {
+      if (
+        this.tagName === "SELECT" ||
+        this.tagName === "INPUT" ||
+        this.tagName === "BUTTON"
+      ) {
+        return;
+      }
+      originalScrollIntoView.call(this);
+    };
+    return () => {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    };
+  }, []);
+
+  const handleFilterFocus = (e) => { e.target.scrollIntoView = () => {}; };
+  const handleFilterMouseEnter = (e) => { e.target.scrollIntoView = () => {}; };
+  const handleFilterClick = (e) => { e.target.scrollIntoView = () => {}; };
+
+  const dormTypes = [
+    "Traditional Single",
+    "Traditional Double",
+    "Modern Single",
+    "Modern Double",
+  ];
+
   return (
     <>
-      <div className="max-w-7xl mx-auto p-6" style={{ scrollBehavior: "auto" }}>
-        <h1 className="text-4xl font-bold text-center mb-2">
-          Verified Reviews from WashU Students
-        </h1>
-        <p className="text-center text-gray-600 mb-6">
-          Every review is written by real students who lived at the property.
-        </p>
+      {/* ── Parallax Hero Banner ── */}
+      <div
+        className="relative h-72 flex items-center justify-center text-white text-center"
+        style={{
+          backgroundImage: "url('/dorms/beaumont.jpeg')",
+          backgroundAttachment: "fixed",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="relative z-10 px-4">
+          <p className="text-red-300 font-semibold text-sm uppercase tracking-widest mb-2">
+            Washington University in St. Louis
+          </p>
+          <h1 className="text-5xl font-bold mb-3">On Campus Hub</h1>
+          <p className="text-white/80 text-lg max-w-xl mx-auto">
+            Verified reviews from real WashU students who lived there.
+          </p>
+        </div>
+      </div>
 
+      <div className="max-w-7xl mx-auto p-6" style={{ scrollBehavior: "auto" }}>
         <div
-          className="flex flex-wrap gap-4 justify-center mb-8"
+          className="flex flex-wrap gap-4 justify-center mb-8 mt-6"
           style={{ scrollMargin: 0 }}
         >
           <select
@@ -454,14 +487,12 @@ export default function CampusHub() {
             onFocus={handleFilterFocus}
             onMouseEnter={handleFilterMouseEnter}
             onClick={handleFilterClick}
-            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent"
             style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           >
             <option value="All">Select Dorm Type</option>
             {dormTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
 
@@ -471,14 +502,12 @@ export default function CampusHub() {
             onFocus={handleFilterFocus}
             onMouseEnter={handleFilterMouseEnter}
             onClick={handleFilterClick}
-            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent"
             style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           >
             <option value="All">All Ratings</option>
             {[5, 4, 3, 2, 1].map((r) => (
-              <option key={r} value={r}>
-                {r} Stars
-              </option>
+              <option key={r} value={r}>{r} Stars</option>
             ))}
           </select>
 
@@ -490,7 +519,7 @@ export default function CampusHub() {
             onFocus={handleFilterFocus}
             onMouseEnter={handleFilterMouseEnter}
             onClick={handleFilterClick}
-            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent"
             style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           />
 
@@ -502,7 +531,7 @@ export default function CampusHub() {
             }}
             onFocus={handleFilterFocus}
             onMouseEnter={handleFilterMouseEnter}
-            className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-colors"
+            className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-colors"
             style={{ scrollMargin: 0, scrollBehavior: "auto" }}
           >
             Reset
@@ -510,13 +539,19 @@ export default function CampusHub() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {filteredDorms.map((dorm) => {
+          {filteredDorms.map((dorm, index) => {
             const dormReviews = dormGroups[dorm] || [];
             const roomType = dormReviews[0]?.dormType || "No reviews yet";
             return (
               <div
                 key={dorm}
-                className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg transition"
+                ref={(el) => (cardRefs.current[dorm] = el)}
+                className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg hover:-translate-y-1"
+                style={{
+                  opacity: 0,
+                  transform: "translateY(24px)",
+                  transition: `opacity 0.5s ease ${index * 40}ms, transform 0.5s ease ${index * 40}ms, box-shadow 0.2s ease`,
+                }}
                 onClick={() => {
                   setSelectedDorm({ name: dorm, reviews: dormReviews });
                   setModalOpen(true);
