@@ -20,7 +20,7 @@ export default async function RootLayout({ children }) {
   return (
     <html lang="en" data-theme="">
       <head>
-        <link rel="icon" href="/logo.png" type="image/png" />
+        <link rel="icon" href="/logo.svg" type="image/svg+xml" />
       </head>
       <body className={inter.className}>
         <div>

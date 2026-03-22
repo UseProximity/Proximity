@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Instagram } from "lucide-react";
-import Logo from "@/public/logo.png";
+const Logo = "/logo.svg";
 
 const NAV_COLS = [
   {

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import Logo from "@/public/logo.png";
+const Logo = "/logo.svg";
 import { Search, X, Menu } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
@@ -65,7 +65,7 @@ export function Header({ session }) {
         <div className={`flex items-center gap-10 flex-shrink-0 ${searchOpen ? "hidden md:flex" : ""}`}>
           <Link href="/" className="flex items-center gap-3 flex-shrink-0">
             <div className="h-[56px] w-auto">
-              <Image src={Logo} alt="Proximity" className="h-full w-auto object-contain" priority />
+              <Image src={Logo} alt="Proximity" width={56} height={56} className="h-full w-auto object-contain" priority />
             </div>
             <span className="text-[26px] font-bold text-gray-900 tracking-tight">Proximity</span>
           </Link>
