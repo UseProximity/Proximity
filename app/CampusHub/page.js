@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import ModalDorms from "../../components/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
@@ -390,6 +390,7 @@ export default function CampusHub() {
 
   const allTags = [...new Set(reviews.flatMap((r) => r.tags))].sort();
   const allDormTypes = [...new Set(reviews.map((r) => r.dormType))].sort();
+  const cardRefs = useRef({});
 
   const dormGroups = reviews.reduce((acc, review) => {
     if (!acc[review.dorm]) acc[review.dorm] = [];
@@ -608,16 +609,79 @@ export default function CampusHub() {
     </div>
   );
 
+  // Card fade-up on scroll into view
+  useEffect(() => {
+    // Reset all cards to hidden whenever filteredDorms changes
+    Object.values(cardRefs.current).forEach((el) => {
+      if (el) {
+        el.style.opacity = "0";
+        el.style.transform = "translateY(24px)";
+      }
+    });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = "1";
+            entry.target.style.transform = "translateY(0)";
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    Object.values(cardRefs.current).forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [filteredDorms]);
+
+  // Prevent unwanted scrolling on filter interactions
+  useEffect(() => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function () {
+      if (
+        this.tagName === "SELECT" ||
+        this.tagName === "INPUT" ||
+        this.tagName === "BUTTON"
+      ) {
+        return;
+      }
+      originalScrollIntoView.call(this);
+    };
+    return () => {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    };
+  }, []);
+
   return (
     <>
-      <div className="max-w-[1600px] mx-auto p-6">
-        <h1 className="text-4xl font-bold text-center mb-2 md:mb-6 md:mt-4">
-          Verified Reviews from WashU Students
-        </h1>
-        <p className="text-center text-gray-600 mb-2 md:mb-10">
-          Every review is written by real students who lived at the property.
-        </p>
+      {/* Parallax Hero Banner */}
+      <div
+        className="relative h-72 flex items-center justify-center text-white text-center"
+        style={{
+          backgroundImage: "url('/dorms/beaumont.jpeg')",
+          backgroundAttachment: "fixed",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="relative z-10 px-4">
+          <p className="text-red-300 font-semibold text-sm uppercase tracking-widest mb-2">
+            Washington University in St. Louis
+          </p>
+          <h1 className="text-5xl font-bold mb-3">On Campus Hub</h1>
+          <p className="text-white/80 text-lg max-w-xl mx-auto">
+            Verified reviews from real WashU students who lived there.
+          </p>
+        </div>
+      </div>
 
+      <div className="max-w-[1600px] mx-auto p-6">
         {/* Mobile sticky search + filter bar */}
         <div className="lg:hidden sticky top-[83px] z-40 bg-white/95 border-b border-gray-200 -mx-6 px-4 py-2 mb-4">
           <div className="flex items-center gap-2">
@@ -707,14 +771,20 @@ export default function CampusHub() {
                   ? "grid-cols-1 sm:grid-cols-2"
                   : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
               }`}>
-                {filteredDorms.map((dorm) => {
+                {filteredDorms.map((dorm, index) => {
                   const dormReviews = dormGroups[dorm] || [];
                   const roomType = dormReviews[0]?.dormType || "No reviews yet";
                   const mainTags = dormReviews[0]?.tags?.join(" · ") || "";
                   return (
                     <div
                       key={dorm}
-                      className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg transition"
+                      ref={(el) => (cardRefs.current[dorm] = el)}
+                      className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg hover:-translate-y-1"
+                      style={{
+                        opacity: 0,
+                        transform: "translateY(24px)",
+                        transition: `opacity 0.5s ease ${index * 40}ms, transform 0.5s ease ${index * 40}ms, box-shadow 0.2s ease`,
+                      }}
                       onClick={() => {
                         setSelectedDorm({ name: dorm, reviews: dormReviews });
                         setModalOpen(true);

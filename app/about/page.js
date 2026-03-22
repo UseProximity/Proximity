@@ -3,14 +3,14 @@ import Link from "next/link";
 import Footer from "@/components/Footer";
 
 export const metadata = {
-  title: "About the Founders | Proximity",
-  description: "Meet the team behind Proximity.",
+  title: "About the Founder | Proximity",
+  description: "Meet the man behind Proximity.",
 };
 
 const founders = [
   {
     name: "Ben Flicker",
-    role: "Co-Founder",
+    role: "Founder",
     bio: "Ben is a student at Washington University in St. Louis with a passion for making the off-campus housing search less painful. He built Proximity after experiencing firsthand how fragmented and frustrating the process was for students.",
     image: "/founders/flicker.jpeg",
     linkedin: "https://www.linkedin.com/in/benjaminflicker/", // update with real URL
@@ -27,10 +27,10 @@ export default function AboutPage() {
           The Team
         </p>
         <h1 className="text-5xl font-bold text-gray-900 mb-4">
-          Meet the Founders
+          Meet the Founder
         </h1>
         <p className="text-gray-500 text-lg max-w-xl mx-auto">
-          We're students who got tired of the housing search. So we fixed it.
+          I was a student who got tired of the housing search. So I fixed it.
         </p>
       </section>
 
@@ -42,7 +42,7 @@ export default function AboutPage() {
               key={founder.name}
               className="flex flex-col items-center text-center max-w-xs"
             >
-              <div className="relative w-48 h-48 rounded-full overflow-hidden shadow-lg mb-6 ring-4 ring-red-100">
+              <div className="relative w-80 h-80 rounded-full overflow-hidden shadow-lg mb-6 ring-4 ring-red-100">
                 <Image
                   src={founder.image}
                   alt={founder.name}
