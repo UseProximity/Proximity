@@ -36,8 +36,8 @@ const DEFAULT_FILTERS = {
   bathrooms: "",       // min bathrooms
   maxBathrooms: "",    // max bathrooms
   leaseType: "",       // top-bar quick filter (home type string)
-  distance: "",        // distance to campus (miles)
-  distanceToShuttle: "", // distance to shuttle stop (miles)
+  distance: "",        // walking time to campus (minutes)
+  distanceToShuttle: "", // walking time to shuttle stop (minutes)
   moveInDate: "",
   homeType: [],        // ['house','apartment','condo','townhouse','singleBedroom']
   leaseAvailability: [], // ['semester','10-month','12-month']
@@ -132,20 +132,21 @@ export default function BrowseContent({ session }) {
       // Top-bar Lease Type pill (home-type string match)
       const matchLeaseType = !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
 
-      // Distance to campus
+      // Walking time to campus (3 mph → 1 mile = 20 min)
       let matchDistance = true;
       if (filters.distance && listing.latitude && listing.longitude) {
+        const maxMiles = parseFloat(filters.distance) / 20;
         const d = calculateDistance(listing.latitude, listing.longitude, WASHU_COORDS.lat, WASHU_COORDS.lng);
-        matchDistance = Math.round(d * 100) / 100 <= parseFloat(filters.distance);
+        matchDistance = d <= maxMiles;
       }
 
-      // Distance to nearest shuttle stop
+      // Walking time to nearest shuttle stop
       let matchShuttle = true;
       if (filters.distanceToShuttle && listing.latitude && listing.longitude) {
-        const threshold = parseFloat(filters.distanceToShuttle);
+        const maxMiles = parseFloat(filters.distanceToShuttle) / 20;
         matchShuttle = SHUTTLE_STOPS.some((stop) => {
           const d = calculateDistance(listing.latitude, listing.longitude, stop.lat, stop.lng);
-          return d <= threshold;
+          return d <= maxMiles;
         });
       }
 
@@ -264,8 +265,7 @@ export default function BrowseContent({ session }) {
 
   return (
     <div
-      className="bg-gray-50 flex flex-col"
-      style={{ height: "calc(100vh - 104px)" }}
+      className="bg-gray-50 flex flex-col h-[calc(100vh-83px)] md:h-[calc(100vh-104px)]"
     >
       <div className="hidden md:block">
         <TopFilterBar

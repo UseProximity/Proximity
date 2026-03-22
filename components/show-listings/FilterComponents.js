@@ -139,7 +139,7 @@ export function StepSlider({ steps, value, onChange }) {
   );
 }
 
-export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxChange }) {
+export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxChange, onSnapTo }) {
   const lastIdx = steps.length - 1;
   const minIdx = minValue === "" ? 0       : Math.max(0, steps.findIndex((s) => s.value === minValue));
   const maxIdx = maxValue === "" ? lastIdx : Math.max(0, steps.findIndex((s) => s.value === maxValue));
@@ -174,7 +174,11 @@ export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxCh
       </div>
       <div className="flex justify-between mt-1">
         {steps.map((s, i) => (
-          <span key={i} className={`text-xs leading-none ${(i === minIdx || i === maxIdx) ? "text-red-500 font-semibold" : "text-gray-400"}`}>
+          <span
+            key={i}
+            onClick={() => onSnapTo ? onSnapTo(s.value) : (onMinChange(s.value), onMaxChange(s.value))}
+            className={`text-xs leading-none cursor-pointer select-none ${(i === minIdx || i === maxIdx) ? "text-red-500 font-semibold" : "text-gray-400 hover:text-red-400"}`}
+          >
             {s.label}
           </span>
         ))}
@@ -202,16 +206,16 @@ export const BATH_STEPS = [
 ];
 
 export const DIST_STEPS = [
-  { label: "0.25mi", value: "0.25" },
-  { label: "0.5mi",  value: "0.5"  },
-  { label: "1mi",    value: "1"    },
-  { label: "2mi",    value: "2"    },
-  { label: "5mi+",   value: "5"    },
+  { label: "5 min",  value: "5"  },
+  { label: "10 min", value: "10" },
+  { label: "15 min", value: "15" },
+  { label: "20 min", value: "20" },
+  { label: "30 min+", value: "30" },
 ];
 
 export const SHTT_STEPS = [
-  { label: "0.1mi",  value: "0.1"  },
-  { label: "0.25mi", value: "0.25" },
-  { label: "0.5mi",  value: "0.5"  },
-  { label: "1mi",    value: "1"    },
+  { label: "2 min",  value: "2"  },
+  { label: "5 min",  value: "5"  },
+  { label: "10 min", value: "10" },
+  { label: "20 min", value: "20" },
 ];

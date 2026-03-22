@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 
@@ -16,12 +17,33 @@ function EditProfileModal({ user, onClose, onSaved }) {
     phone:       user.phone       || "",
     description: user.description || "",
   });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState(null);
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(user.image || null);
+  const fileInputRef = useRef(null);
+
+  function formatPhone(raw) {
+    const digits = raw.replace(/\D/g, "").slice(0, 10);
+    if (digits.length <= 3) return digits.length ? `(${digits}` : "";
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "phone") {
+      setForm((prev) => ({ ...prev, phone: formatPhone(value) }));
+    } else {
+      setForm((prev) => ({ ...prev, [name]: value }));
+    }
+  }
+
+  function handlePhotoChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
   }
 
   async function handleSubmit(e) {
@@ -29,12 +51,23 @@ function EditProfileModal({ user, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
+      let imageUrl = user.image || null;
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("file", photoFile);
+        const uploadRes = await fetch("/api/uploadProfilePhoto", { method: "POST", body: fd });
+        if (!uploadRes.ok) throw new Error("Photo upload failed");
+        const uploadData = await uploadRes.json();
+        imageUrl = uploadData.url;
+      }
+
       const res = await fetch("/api/editProfile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
           age: form.age !== "" ? Number(form.age) : undefined,
+          ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
       if (!res.ok) {
@@ -56,7 +89,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
@@ -69,6 +102,44 @@ function EditProfileModal({ user, onClose, onSaved }) {
         <h2 className="text-lg font-bold text-gray-900 mb-5">Edit Profile</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Profile Picture */}
+          <div className="flex flex-col items-center gap-2">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="relative w-32 h-32 rounded-full overflow-hidden border-2 border-gray-200 cursor-pointer group"
+            >
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                  </svg>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+                </svg>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs text-red-500 font-semibold hover:text-red-600"
+            >
+              {photoPreview ? "Change Photo" : "Add Photo"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+          </div>
+
           {/* Name */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Name</label>
@@ -178,6 +249,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
 // ─── Shared listing card (same style as browse/popular) ──────────────────────
 
 function ListingCard({ listing, badge }) {
+  const pathname = usePathname();
   const [streetAddress, ...rest] = (listing.address || "").split(",");
   const cityStateZip = rest.join(",").trim();
   const bedValues = listing.unitTypes.map((u) => u.bedrooms).filter(Number.isFinite);
@@ -198,7 +270,7 @@ function ListingCard({ listing, badge }) {
   const imageCount = listing.images?.length || 0;
 
   return (
-    <Link href={`/browse?listing=${listing._id}`} className="group block">
+    <Link href={`${pathname}?listing=${listing._id}`} className="group block">
       <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
         <div className="relative">
           {imageUrl ? (
@@ -258,29 +330,56 @@ const CheckBadge = () => (
   </svg>
 );
 
+// ─── Icon SVGs (reused in both banner and sidebar) ────────────────────────────
+
+const BellIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+  </svg>
+);
+
+const ClockIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const CARDS_PER_PAGE = 2;
 
 export default function StudentDashboardPage() {
-  // useSession gives us instant name/image/email without waiting for the API
   const { data: session } = useSession();
   const [dbUser, setDbUser] = useState(null);
   const [contactedPage, setContactedPage] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+
+  const notifRef = useRef(null);
+  const activityRef = useRef(null);
 
   useEffect(() => {
     fetch("/api/getUser")
       .then((r) => r.json())
       .then((data) => {
-        // Only store if it's a real user record, not an error object
         if (!data?.error) setDbUser(data);
       })
       .catch(console.error);
   }, []);
 
-  // Merge: session is always available when logged in; dbUser adds DB fields
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
+      if (activityRef.current && !activityRef.current.contains(e.target)) setActivityOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   const user = {
+    _id:         dbUser?._id         ?? null,
     name:        dbUser?.name        ?? session?.user?.name  ?? null,
     email:       dbUser?.email       ?? session?.user?.email ?? null,
     image:       dbUser?.image       ?? session?.user?.image ?? null,
@@ -298,7 +397,14 @@ export default function StudentDashboardPage() {
 
   const contacted = user.contacted;
   const favorites = user.favorites;
-  const joinedYear = user.createdAt ? new Date(user.createdAt).getFullYear() : "—";
+  const joinedDate = user.createdAt
+    ? new Date(user.createdAt)
+    : user._id
+    ? new Date(parseInt(user._id.substring(0, 8), 16) * 1000)
+    : null;
+  const joinedYear = joinedDate
+    ? joinedDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "—";
 
   const contactedPages = Math.max(1, Math.ceil(contacted.length / CARDS_PER_PAGE));
   const contactedVisible = contacted.slice(
@@ -308,14 +414,79 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-screen-2xl mx-auto px-10 py-10">
+      <div className="max-w-screen-2xl mx-auto px-4 py-6 md:px-10 md:py-10">
 
-        {/* Title */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">My Account</h1>
+        {/* Title bar */}
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">My Account</h1>
+
+          {/* Banner icon dropdowns — mobile only */}
+          <div className="flex items-center gap-2 md:hidden">
+
+            {/* Recent Activity dropdown */}
+            <div ref={activityRef}>
+              <button
+                onClick={() => { setActivityOpen((o) => !o); setNotifOpen(false); }}
+                className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+                aria-label="Recent Activity"
+              >
+                <ClockIcon className="w-5 h-5" />
+              </button>
+              {activityOpen && (
+                <div className="fixed left-1/2 -translate-x-1/2 top-24 w-[80vw] bg-white rounded-xl border border-gray-200 shadow-lg z-40 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ClockIcon className="w-4 h-4 text-gray-700" />
+                      <h3 className="font-semibold text-gray-900 text-sm">Recent Activity</h3>
+                    </div>
+                    <button onClick={() => setActivityOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="text-center py-6 text-gray-400 text-sm">
+                    No recent activity
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notifications dropdown */}
+            <div ref={notifRef}>
+              <button
+                onClick={() => { setNotifOpen((o) => !o); setActivityOpen(false); }}
+                className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+                aria-label="Notifications"
+              >
+                <BellIcon className="w-5 h-5" />
+              </button>
+              {notifOpen && (
+                <div className="fixed left-1/2 -translate-x-1/2 top-24 w-[80vw] bg-white rounded-xl border border-gray-200 shadow-lg z-40 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <BellIcon className="w-4 h-4 text-gray-700" />
+                      <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
+                    </div>
+                    <button onClick={() => setNotifOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="text-center py-6 text-gray-400 text-sm">
+                    No new notifications
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="border-b border-gray-200 mb-8" />
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-[1fr_2.5fr] gap-10 items-start">
+        {/* Two-column layout — single column on mobile */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_2.5fr] gap-10 items-start">
 
           {/* ── LEFT COLUMN ── */}
           <div className="space-y-5">
@@ -337,22 +508,22 @@ export default function StudentDashboardPage() {
                   <img
                     src={user.image}
                     alt={user.name}
-                    className="w-20 h-20 rounded-full object-cover border border-gray-200 shadow mb-4"
+                    className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow mb-4"
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mb-4">
+                  <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center mb-4">
                     <svg className="w-10 h-10 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
                     </svg>
                   </div>
                 )}
 
-                <h2 className="font-bold text-gray-900 text-base leading-tight">
+                <h2 className="font-bold text-gray-900 text-xl md:text-2xl leading-tight">
                   {user?.name || "—"}
                 </h2>
-                <p className="text-sm text-gray-500 mt-0.5 capitalize">{user.role || "Student"}</p>
+                <p className="text-base md:text-lg text-gray-500 mt-0.5 capitalize">{user.role || "Student"}</p>
                 {(user.age || (user.gender && user.gender !== "unspecified")) && (
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-sm md:text-base text-gray-400 mt-0.5">
                     {[
                       user.age ? `Age ${user.age}` : null,
                       user.gender && user.gender !== "unspecified" ? user.gender : null,
@@ -361,32 +532,30 @@ export default function StudentDashboardPage() {
                       .join(" · ")}
                   </p>
                 )}
-                <p className="text-xs text-gray-400 mt-0.5">Washington University in St. Louis</p>
+                <p className="text-sm md:text-base text-gray-400 mt-0.5">Washington University in St. Louis</p>
 
-                <div className="w-full border-t border-gray-100 mt-4 pt-4 flex justify-around text-sm">
+                <div className="w-full border-t border-gray-100 mt-4 pt-4 flex justify-around">
                   <div className="text-center">
-                    <p className="font-semibold text-gray-800">Joined {joinedYear}</p>
+                    <p className="font-semibold text-gray-800 text-sm md:text-base">Joined {joinedYear}</p>
                   </div>
                 </div>
-                <div className="w-full flex justify-around text-sm mt-3">
+                <div className="w-full flex justify-around mt-3">
                   <div className="text-center">
-                    <p className="font-semibold text-gray-800">{user?.numReviews ?? 0}</p>
-                    <p className="text-xs text-gray-400">Posts</p>
+                    <p className="font-semibold text-gray-800 text-sm md:text-base">{user?.numReviews ?? 0}</p>
+                    <p className="text-xs md:text-sm text-gray-400">Posts</p>
                   </div>
                   <div className="text-center">
-                    <p className="font-semibold text-gray-800">{user?.listings?.length ?? 0}</p>
-                    <p className="text-xs text-gray-400">Leases Signed</p>
+                    <p className="font-semibold text-gray-800 text-sm md:text-base">{user?.listings?.length ?? 0}</p>
+                    <p className="text-xs md:text-sm text-gray-400">Leases Signed</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Notifications card */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            {/* Notifications card — desktop only */}
+            <div className="hidden md:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
-                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
+                <BellIcon className="w-4 h-4 text-gray-700" />
                 <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
               </div>
               <div className="text-center py-6 text-gray-400 text-sm">
@@ -394,9 +563,12 @@ export default function StudentDashboardPage() {
               </div>
             </div>
 
-            {/* Recent Activity card */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-              <h3 className="font-semibold text-gray-900 text-sm mb-4">Recent Activity</h3>
+            {/* Recent Activity card — desktop only */}
+            <div className="hidden md:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <ClockIcon className="w-4 h-4 text-gray-700" />
+                <h3 className="font-semibold text-gray-900 text-sm">Recent Activity</h3>
+              </div>
               <div className="text-center py-6 text-gray-400 text-sm">
                 No recent activity
               </div>
@@ -433,7 +605,7 @@ export default function StudentDashboardPage() {
                   <p className="text-sm text-gray-500 mb-4">
                     🎉 Congrats, you&apos;ve reached out to the leasing agent. Check your email and phone number for updates.
                   </p>
-                  <div className="grid grid-cols-2 gap-5 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
                     {contactedVisible.map((listing) => (
                       <ListingCard key={listing._id} listing={listing} badge={<CheckBadge />} />
                     ))}
@@ -494,7 +666,7 @@ export default function StudentDashboardPage() {
                   <p className="text-sm text-gray-500 mb-4">
                     Psst... Don&apos;t forget about these listings! Follow-up before they get signed!
                   </p>
-                  <div className="grid grid-cols-2 gap-5 mb-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
                     {favorites.slice(0, 4).map((listing) => (
                       <ListingCard key={listing._id} listing={listing} />
                     ))}
@@ -533,7 +705,6 @@ export default function StudentDashboardPage() {
           user={user}
           onClose={() => setEditOpen(false)}
           onSaved={(updated) => {
-            // Only merge profile fields — don't clobber populated favorites/listings/contacted
             setDbUser((prev) => ({
               ...prev,
               name:        updated.name,

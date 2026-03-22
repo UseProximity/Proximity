@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import { Header } from "@/components/Header";
 import { auth } from "@/auth";
 import ProfileCompletionModal from "@/components/ProfileCompletionModal";
+import GlobalListingModal from "@/components/GlobalListingModal";
 import Providers from "@/components/Providers";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -19,7 +20,7 @@ export default async function RootLayout({ children }) {
   return (
     <html lang="en" data-theme="">
       <head>
-        <link rel="icon" href="/logo.png" type="image/png" />
+        <link rel="icon" href="/logo.svg" type="image/svg+xml" />
       </head>
       <body className={inter.className}>
         <div>
@@ -28,6 +29,7 @@ export default async function RootLayout({ children }) {
         <Providers session={session}>
           <Header session={session} />
           <ProfileCompletionModal session={session} />
+          <GlobalListingModal />
           {children}
         </Providers>
       </body>
