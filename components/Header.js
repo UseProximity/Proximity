@@ -59,7 +59,7 @@ export function Header({ session }) {
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
-      <div className="w-full flex items-center justify-between h-[83px] md:h-[104px] px-8 md:px-12">
+      <div className="relative w-full flex items-center justify-between h-[83px] md:h-[104px] px-8 md:px-12">
 
         {/* ── Left: Logo + Nav ── */}
         <div className={`flex items-center gap-10 flex-shrink-0 ${searchOpen ? "hidden md:flex" : ""}`}>
@@ -84,6 +84,32 @@ export function Header({ session }) {
           </nav>
         </div>
 
+        {/* Mobile search bar — full width, positioned relative to wrapper */}
+        {searchOpen && (
+          <form
+            onSubmit={submitSearch}
+            className="md:hidden absolute left-8 right-8 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
+          >
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+              placeholder="Search addresses..."
+              className="flex-1 min-w-0 px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
+            />
+            <button
+              type="button"
+              onClick={closeSearch}
+              className="flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+              aria-label="Close search"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </form>
+        )}
+
         {/* ── Right: Search + Auth + Hamburger ── */}
         <div className="flex items-center gap-2">
 
@@ -95,7 +121,7 @@ export function Header({ session }) {
                 <div className="w-11 h-11 opacity-0 pointer-events-none" aria-hidden="true" />
                 <form
                   onSubmit={submitSearch}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2 w-[280px] md:w-[480px]"
+                  className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
                 >
                   <input
                     ref={inputRef}

@@ -367,6 +367,7 @@ function ReviewsCarousel() {
 
 function RentalCard({ listing, index, isInView }) {
   const isMobile = useIsMobile();
+  const router = useRouter();
   const imageUrl = listing.images?.[0];
   const imageCount = listing.images?.length || 0;
   const [streetAddress, ...restParts] = listing.address.split(",");
@@ -386,7 +387,7 @@ function RentalCard({ listing, index, isInView }) {
       animate={isInView ? { opacity: 1, x: 0, y: 0 } : {}}
       transition={{ duration: 0.5, delay: index * 0.07 }}
     >
-      <Link href="/browse" className="group block">
+      <div onClick={() => router.push(`/?listing=${listing._id}`)} className="group block cursor-pointer">
         <div className="relative bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
           <div className="relative">
             {imageUrl ? (
@@ -437,7 +438,7 @@ function RentalCard({ listing, index, isInView }) {
           </div>
           <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 }

@@ -41,3 +41,8 @@ html,
 body {
   scroll-behavior: auto !important;
 }
+
+/* Prevent overscroll/bounce past the footer on mobile */
+body {
+  overscroll-behavior-y: none;
+}

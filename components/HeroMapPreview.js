@@ -141,7 +141,7 @@ export default function HeroMapPreview({ listings = [] }) {
           className: "hero-popup",
           maxWidth: "220px",
         }).setHTML(`
-          <div style="width:220px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;">
+          <div data-listing-id="${listing._id}" style="width:220px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;">
             ${
               listing.images?.[0]
                 ? `<img src="${listing.images[0]}" alt="" style="width:100%;height:110px;object-fit:cover;display:block;" />`
@@ -172,7 +172,11 @@ export default function HeroMapPreview({ listings = [] }) {
           .setPopup(popup)
           .addTo(map);
 
-        popup.on("open", () => { markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`; });
+        popup.on("open", () => {
+          markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;
+          const el = popup.getElement()?.querySelector(`[data-listing-id="${listing._id}"]`);
+          if (el) el.onclick = () => router.push(`/browse?listing=${listing._id}`);
+        });
         popup.on("close", () => { markerImg.src = `/assets/map-icons/map-${starRating}.svg`; });
 
         map._heroMarkers.push(marker);

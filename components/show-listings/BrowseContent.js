@@ -53,11 +53,11 @@ const DEFAULT_FILTERS = {
 export default function BrowseContent({ session }) {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
-
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("search");
+
+  const [search, setSearch] = useState(searchQuery || "");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   useEffect(() => {
     const fetchListings = async () => {
@@ -74,13 +74,6 @@ export default function BrowseContent({ session }) {
 
     fetchListings();
   }, []);
-
-  // Initialize search from URL param on mount
-  useEffect(() => {
-    if (searchQuery) {
-      setSearch(searchQuery);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lock body scroll to prevent page dragging
   useEffect(() => {

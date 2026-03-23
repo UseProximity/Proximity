@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Phone, Mail, ThumbsUp, ThumbsDown, PersonStanding } from "lucide-react";
 import toast from "react-hot-toast";
@@ -22,14 +22,13 @@ const leaseTypeMap = {
   academic: "Academic Year",
 };
 
-// TODO: Replace with real walkability data from Google Maps Distance Matrix API
-// (or Mapbox Matrix API). For each place, compute walking duration from listing.latitude/longitude.
 const WASHU_PLACES = [
-  { name: "Olin Library", walkMin: 8 },
-  { name: "Siegle Hall", walkMin: 12 },
-  { name: "Schnucks (Grocery)", walkMin: 15 },
-  { name: "Danforth Campus Center", walkMin: 10 },
-  { name: "Athletic Complex", walkMin: 18 },
+  { name: "Olin Library",           lat: 38.64851503785516, lng: -90.30770757138812 },
+  { name: "Seigle Hall",            lat: 38.64901252229954, lng: -90.31234570424581 },
+  { name: "Schnucks (Grocery)",     lat: 38.633335917020425, lng: -90.31473611720082 },
+  { name: "Danforth University Center", lat: 38.64754193120054, lng: -90.31037361422699 },
+  { name: "Sumers Rec Center",       lat: 38.64933192571885, lng: -90.31472066027095 },
+  { name: "Village House", lat: 38.65056939432417, lng: -90.31405161268682 }
 ];
 
 const TABS = [
@@ -141,22 +140,31 @@ function MapTab({ listing }) {
 
 // ─── Tab: Places ─────────────────────────────────────────────────────────────
 
-function PlacesTab() {
+function PlacesTab({ walkTimes, walkLoading }) {
   return (
     <div>
-      <h2 className="text-lg font-semibold text-gray-900 mb-1">Nearby Places</h2>
-      <p className="text-xs text-gray-400 mb-4 italic">
-        Walk times are estimates — replace with real data from Google Maps Distance Matrix API.
-      </p>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Nearby Places</h2>
       <ul className="space-y-3">
-        {WASHU_PLACES.map((p) => (
+        {[...WASHU_PLACES]
+          .sort((a, b) => {
+            const aMin = walkTimes[a.name] ?? Infinity;
+            const bMin = walkTimes[b.name] ?? Infinity;
+            return aMin - bMin;
+          })
+          .map((p) => (
           <li
             key={p.name}
             className="flex items-center gap-3 text-gray-700 py-2 border-b border-gray-100 last:border-0"
           >
             <PersonStanding size={18} className="text-red-400 shrink-0" />
             <span className="flex-1">{p.name}</span>
-            <span className="text-sm text-gray-500 font-medium">~{p.walkMin} min walk</span>
+            <span className="text-sm text-gray-500 font-medium">
+              {walkLoading
+                ? "..."
+                : walkTimes[p.name] != null
+                ? `${walkTimes[p.name]} min walk`
+                : "N/A"}
+            </span>
           </li>
         ))}
       </ul>
@@ -476,6 +484,32 @@ export default function ListingModalInfo({ session, listing }) {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
 
+  // Walk times state
+  const [walkTimes, setWalkTimes] = useState({});
+  const [walkLoading, setWalkLoading] = useState(false);
+
+  useEffect(() => {
+    if (!listing?.latitude || !listing?.longitude) return;
+    setWalkLoading(true);
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    const origin = `${listing.longitude},${listing.latitude}`;
+    Promise.all(
+      WASHU_PLACES.map(async (place) => {
+        const dest = `${place.lng},${place.lat}`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${origin};${dest}?access_token=${token}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const seconds = data.routes?.[0]?.duration ?? null;
+        return { name: place.name, minutes: seconds != null ? Math.round(seconds / 60) : null };
+      })
+    ).then((results) => {
+      const map = {};
+      results.forEach(({ name, minutes }) => { map[name] = minutes; });
+      setWalkTimes(map);
+      setWalkLoading(false);
+    });
+  }, [listing?._id]);
+
   // Contact form state
   const [contactForm, setContactForm] = useState({
     firstName: "",
@@ -579,6 +613,11 @@ export default function ListingModalInfo({ session, listing }) {
         }),
       });
       if (res.ok) {
+        await fetch("/api/contacted", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing._id }),
+        });
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
@@ -749,7 +788,7 @@ export default function ListingModalInfo({ session, listing }) {
           <div className="bg-white rounded-xl shadow p-6">
             {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
             {activeTab === "map" && <MapTab listing={listing} />}
-            {activeTab === "places" && <PlacesTab />}
+            {activeTab === "places" && <PlacesTab walkTimes={walkTimes} walkLoading={walkLoading} />}
             {activeTab === "reviews" && (
               <ReviewsTab
                 legitimateReviews={legitimateReviews}
