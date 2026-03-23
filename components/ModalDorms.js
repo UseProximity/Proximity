@@ -19,15 +19,10 @@ export default function Modal({ isOpen, onClose, children }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl border border-gray-100 relative w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl max-h-[95vh] overflow-y-auto mx-auto" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
-        >
-          ×
-        </button>
-        <div className="p-6 w-full">{children}</div>
+    <div className="fixed inset-0 z-[60] flex items-start md:items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden p-4 pt-[91px] md:pt-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl border border-gray-100 flex flex-col w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl max-h-[calc(100dvh-107px)] md:max-h-[95vh] mx-auto" onClick={(e) => e.stopPropagation()}>
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 px-6 pb-6">{children}</div>
       </div>
     </div>
   );

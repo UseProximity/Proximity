@@ -858,13 +858,21 @@ export default function CampusHub() {
                 {/* ── Left: main content ── */}
                 <div className="w-full md:w-2/3 min-w-0">
 
-                  {/* Header */}
-                  <div className="mb-4">
-                    {dormType && (
-                      <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest mb-2">
-                        {dormType}
-                      </span>
-                    )}
+                  {/* Header — sticky on mobile so title stays visible while scrolling */}
+                  <div className="sticky md:static top-0 bg-white z-10 -mx-6 px-6 pt-4 pb-3 mb-1 rounded-t-xl">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      {dormType ? (
+                        <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest">
+                          {dormType}
+                        </span>
+                      ) : <span />}
+                      <button
+                        onClick={() => setModalOpen(false)}
+                        className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 shrink-0"
+                      >
+                        ×
+                      </button>
+                    </div>
                     <h2 className="text-2xl font-bold text-gray-900 leading-tight">{selectedDorm.name}</h2>
                     {avgRating && (
                       <div className="flex items-center gap-1.5 mt-1">
