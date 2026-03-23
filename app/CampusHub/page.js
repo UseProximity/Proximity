@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import ModalDorms from "../../components/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
+import { ExternalLink } from "lucide-react";
 
 const allDorms = [
   "Beaumont",
@@ -846,93 +847,125 @@ export default function CampusHub() {
 
         {/* Modal */}
         <ModalDorms isOpen={modalOpen} onClose={() => setModalOpen(false)}>
-          {selectedDorm && (
-            <div className="flex flex-col md:flex-row gap-6 w-full h-full overflow-y-auto">
-              {/* Left side */}
-              <div className="w-full md:w-2/3">
-                <h2 className="text-3xl font-bold mb-4">{selectedDorm.name}</h2>
-                <div className="mb-6">
-                  {dormImages[selectedDorm.name]?.map((img, idx) => (
-                    <Image
-                      key={idx}
-                      src={img}
-                      alt=""
-                      width={800}
-                      height={400}
-                      className="w-full h-[250px] md:h-[300px] object-cover rounded-lg"
-                      style={{ objectPosition: "center" }}
-                    />
-                  ))}
-                </div>
+          {selectedDorm && (() => {
+            const avgRating = selectedDorm.reviews.length
+              ? (selectedDorm.reviews.reduce((s, r) => s + r.rating, 0) / selectedDorm.reviews.length).toFixed(1)
+              : null;
+            const dormType = selectedDorm.reviews[0]?.dormType ?? null;
+            return (
+              <div className="flex flex-col md:flex-row gap-6 w-full">
 
-                {selectedDorm.reviews.length > 0 ? (
-                  <div className="space-y-4">
-                    {selectedDorm.reviews.map((r, idx) => (
-                      <div key={idx} className="bg-gray-100 p-4 rounded">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-semibold">
-                            {r.name}, Class of {r.classYear}
-                          </span>
-                          <div className="flex">
-                            {[...Array(r.rating)].map((_, i) => (
-                              <AiFillStar key={i} className="text-yellow-500" />
+                {/* ── Left: main content ── */}
+                <div className="w-full md:w-2/3 min-w-0">
+
+                  {/* Header */}
+                  <div className="mb-4">
+                    {dormType && (
+                      <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest mb-2">
+                        {dormType}
+                      </span>
+                    )}
+                    <h2 className="text-2xl font-bold text-gray-900 leading-tight">{selectedDorm.name}</h2>
+                    {avgRating && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <AiFillStar className="text-red-500 text-base" />
+                        <span className="text-sm font-semibold text-gray-800">{avgRating}</span>
+                        <span className="text-sm text-gray-400">({selectedDorm.reviews.length} review{selectedDorm.reviews.length !== 1 ? "s" : ""})</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Images */}
+                  {dormImages[selectedDorm.name]?.length > 0 && (
+                    <div className="mb-5 rounded-xl overflow-hidden">
+                      <Image
+                        src={dormImages[selectedDorm.name][0]}
+                        alt={selectedDorm.name}
+                        width={800}
+                        height={400}
+                        className="w-full h-[220px] md:h-[260px] object-cover"
+                        style={{ objectPosition: "center" }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Reviews */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-bold text-gray-900">Reviews</h3>
+                    {selectedDorm.reviews.length > 0 && (
+                      <span className="text-xs text-gray-400 font-medium">{selectedDorm.reviews.length} total</span>
+                    )}
+                  </div>
+
+                  {selectedDorm.reviews.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedDorm.reviews.map((r, idx) => (
+                        <div key={idx} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-bold text-red-500">{r.name[0]}</span>
+                              </div>
+                              <div>
+                                <span className="text-sm font-semibold text-gray-900">{r.name}</span>
+                                <span className="text-xs text-gray-400 ml-1.5">Class of {r.classYear}</span>
+                              </div>
+                            </div>
+                            <div className="flex gap-0.5 flex-shrink-0">
+                              {[1,2,3,4,5].map((s) => (
+                                <AiFillStar key={s} className={s <= r.rating ? "text-red-500" : "text-gray-200"} />
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-700 leading-relaxed mb-3">{r.content}</p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {r.tags.map((tag) => (
+                              <span key={tag} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+                                {tag}
+                              </span>
                             ))}
+                            <span className="ml-auto text-xs text-gray-400">{r.date}</span>
                           </div>
                         </div>
-                        <div className="text-gray-700 mb-1">{r.content}</div>
-                        <div className="text-xs text-gray-500">
-                          {r.dormType} • {r.tags.join(", ")} • Posted {r.date}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No reviews yet</p>
-                )}
-              </div>
-
-              {/* Right sidebar */}
-              <div className="w-full md:w-1/3 space-y-4">
-                <div>
-                  <h3 className="font-semibold mb-2 text-lg">
-                    Recommended Items
-                  </h3>
-                  <ul className="text-sm list-disc list-inside space-y-1">
-                    <li>
-                      <a
-                        href="https://a.co/d/3sc3sdI"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline"
-                      >
-                        Clip-on Fan
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                        href="https://a.co/d/4cALohf"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline"
-                      >
-                        LED Desk Lamp
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                        href="https://a.co/d/5MDxPZh"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline"
-                      >
-                        Mini Fridge
-                      </a>
-                    </li>
-                  </ul>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-gray-400 text-sm bg-gray-50 rounded-xl">
+                      No reviews yet for this dorm.
+                    </div>
+                  )}
                 </div>
+
+                {/* ── Right sidebar ── */}
+                <div className="w-full md:w-1/3 space-y-4 flex-shrink-0">
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">
+                      Dorm Essentials
+                    </h3>
+                    <div className="space-y-2">
+                      {[
+                        { label: "Clip-on Fan", href: "https://a.co/d/3sc3sdI" },
+                        { label: "LED Desk Lamp", href: "https://a.co/d/4cALohf" },
+                        { label: "Mini Fridge", href: "https://a.co/d/5MDxPZh" },
+                      ].map(({ label, href }) => (
+                        <a
+                          key={label}
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between gap-2 px-3 py-2.5 bg-white border border-gray-100 rounded-lg hover:border-red-200 hover:bg-red-50/40 transition-colors duration-150 group"
+                        >
+                          <span className="text-sm font-medium text-gray-700 group-hover:text-red-600 transition-colors">{label}</span>
+                          <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-red-400 flex-shrink-0 transition-colors" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
               </div>
-            </div>
-          )}
+            );
+          })()}
         </ModalDorms>
       </div>
     </>

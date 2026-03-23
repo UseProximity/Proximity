@@ -88,38 +88,47 @@ export function Header({ session }) {
         <div className="flex items-center gap-2">
 
           {/* Search */}
-          {searchOpen ? (
-            <form onSubmit={submitSearch} className="flex items-center gap-2 w-[280px] md:w-[480px] max-w-[480px]">
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Escape" && closeSearch()}
-                placeholder="Search addresses..."
-                className="flex-1 min-w-0 px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
-              />
+          <div className="relative flex-shrink-0">
+            {searchOpen ? (
+              <>
+                {/* Spacer keeps the close-button slot in flow so auth buttons don't shift */}
+                <div className="w-11 h-11 opacity-0 pointer-events-none" aria-hidden="true" />
+                <form
+                  onSubmit={submitSearch}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2 w-[280px] md:w-[480px]"
+                >
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+                    placeholder="Search addresses..."
+                    className="flex-1 min-w-0 px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={closeSearch}
+                    className="flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                    aria-label="Close search"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </form>
+              </>
+            ) : (
               <button
-                type="button"
-                onClick={closeSearch}
-                className="flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
-                aria-label="Close search"
+                onClick={() => setSearchOpen(true)}
+                className="p-2.5 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-xl transition-all duration-150"
+                aria-label="Search"
               >
-                <X className="h-6 w-6" />
+                <Search className="h-6 w-6" />
               </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="p-2.5 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-xl transition-all duration-150"
-              aria-label="Search"
-            >
-              <Search className="h-6 w-6" />
-            </button>
-          )}
+            )}
+          </div>
 
           {/* Auth buttons — desktop only */}
-          <div className="hidden md:flex items-center gap-2.5">
+          <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
               {session?.user ? (
                 <>
                   <Link

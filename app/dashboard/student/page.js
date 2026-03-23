@@ -8,10 +8,20 @@ import { getRentRangeLabel } from "@/utils/listingFormatters";
 
 // ─── Edit Profile Modal ────────────────────────────────────────────────────────
 
+function calcAge(birthday) {
+  if (!birthday) return null;
+  const dob = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 function EditProfileModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({
     name:        user.name        || "",
-    age:         user.age         || "",
+    birthday:    user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
     gender:      (user.gender || "unspecified").toLowerCase(),
     role:        (user.role   || "student").toLowerCase(),
     phone:       user.phone       || "",
@@ -66,7 +76,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          age: form.age !== "" ? Number(form.age) : undefined,
+          birthday: form.birthday || undefined,
           ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
@@ -152,16 +162,15 @@ function EditProfileModal({ user, onClose, onSaved }) {
             />
           </div>
 
-          {/* Age + Gender row */}
+          {/* Birthday + Gender row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Age</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Birthday</label>
               <input
-                type="number"
-                name="age"
-                min={13}
-                max={120}
-                value={form.age}
+                type="date"
+                name="birthday"
+                max={new Date().toISOString().split("T")[0]}
+                value={form.birthday}
                 onChange={handleChange}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
               />
@@ -388,7 +397,7 @@ export default function StudentDashboardPage() {
     listings:    dbUser?.listings    ?? [],
     favorites:   dbUser?.favorites   ?? [],
     contacted:   dbUser?.contacted   ?? [],
-    age:         dbUser?.age         ?? null,
+    birthday:    dbUser?.birthday     ?? null,
     gender:      dbUser?.gender      ?? null,
     role:        dbUser?.role        ?? "student",
     phone:       dbUser?.phone       ?? null,
@@ -522,10 +531,10 @@ export default function StudentDashboardPage() {
                   {user?.name || "—"}
                 </h2>
                 <p className="text-base md:text-lg text-gray-500 mt-0.5 capitalize">{user.role || "Student"}</p>
-                {(user.age || (user.gender && user.gender !== "unspecified")) && (
+                {(user.birthday || (user.gender && user.gender !== "unspecified")) && (
                   <p className="text-sm md:text-base text-gray-400 mt-0.5">
                     {[
-                      user.age ? `Age ${user.age}` : null,
+                      calcAge(user.birthday) != null ? `Age ${calcAge(user.birthday)}` : null,
                       user.gender && user.gender !== "unspecified" ? user.gender : null,
                     ]
                       .filter(Boolean)
@@ -708,7 +717,7 @@ export default function StudentDashboardPage() {
             setDbUser((prev) => ({
               ...prev,
               name:        updated.name,
-              age:         updated.age,
+              birthday:    updated.birthday,
               gender:      updated.gender,
               role:        updated.role,
               phone:       updated.phone,

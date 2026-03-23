@@ -17,7 +17,6 @@ export async function PATCH(req) {
       phone: body.phone,
       description: body.description,
       gender: body.gender,
-      age: body.age,
       profileComplete: body.profileComplete,
       ...(body.image !== undefined && { image: body.image }),
     };
@@ -27,10 +26,9 @@ export async function PATCH(req) {
       allowed.role = body.role;
     }
 
-    if (body.age !== undefined && body.age !== null) {
-      const ageNum = Number(body.age);
-      if (!Number.isNaN(ageNum))
-        allowed.age = Math.max(0, Math.min(120, ageNum));
+    if (body.birthday !== undefined && body.birthday !== null) {
+      const parsed = new Date(body.birthday);
+      if (!isNaN(parsed.getTime())) allowed.birthday = parsed;
     }
 
     await connectMongo();
