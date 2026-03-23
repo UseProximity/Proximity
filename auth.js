@@ -54,6 +54,7 @@ const config = {
         { _id: user.id },
         {
           $set: {
+            createdAt: new Date(),
             age: 18,
             description: "",
             email: user.email ?? null,

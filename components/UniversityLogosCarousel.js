@@ -102,7 +102,7 @@ export default function UniversityLogosCarousel() {
               <motion.div
                 ref={containerRef}
                 className="flex items-center justify-center space-x-0 md:space-x-16"
-                animate={{ x: [0, -(140 * UNIVERSITIES.length)] }}
+                animate={{ x: [0, (140 * UNIVERSITIES.length)] }}
                 transition={{
                   x: {
                     repeat: Infinity,

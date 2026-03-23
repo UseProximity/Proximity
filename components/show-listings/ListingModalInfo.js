@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import ReviewsSection from "@/components/ReviewsSection";
+import HeartIcon from "@/components/HeartIcon";
 import ButtonContactLandlord from "@/components/ButtonContactLandlord";
+
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -18,7 +20,7 @@ const leaseTypeMap = {
   academic: "Academic Year",
 };
 
-export default function ListingModalInfo({ HeartIcon, session, listing }) {
+export default function ListingModalInfo({ session, listing }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const images = Array.isArray(listing?.images)
     ? listing.images.filter(Boolean)

@@ -75,17 +75,17 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
   return (
     <>
       {/* Filter Buttons Row */}
-      <div ref={filterRef} className="flex gap-4 mb-6 w-full">
+      <div ref={filterRef} className="flex gap-2 sm:gap-4 mb-6 w-full">
         <button
           onClick={(e) => {
             e.stopPropagation();
             setShowFilters(showFilters === "price" ? false : "price");
           }}
-          className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-center gap-1.5 sm:gap-2 flex-1 px-2 sm:px-5 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
         >
           <span>Price</span>
           <svg
-            className="w-4 h-4"
+            className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -104,11 +104,11 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
             e.stopPropagation();
             setShowFilters(showFilters === "beds-baths" ? false : "beds-baths");
           }}
-          className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-center gap-1.5 sm:gap-2 flex-1 px-2 sm:px-5 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
         >
           <span>Beds/baths</span>
           <svg
-            className="w-4 h-4"
+            className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -129,11 +129,11 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
               showFilters === "more-filters" ? false : "more-filters"
             );
           }}
-          className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-center gap-1.5 sm:gap-2 flex-1 px-2 sm:px-5 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
         >
           <span>More filters</span>
           <svg
-            className="w-4 h-4"
+            className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -149,21 +149,8 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
 
         <button
           onClick={onReset}
-          className="flex items-center justify-center gap-2 flex-1 px-5 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-center gap-1.5 sm:gap-2 flex-1 px-2 sm:px-5 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
           <span>Clear All</span>
         </button>
       </div>
@@ -560,7 +547,7 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
               {/* Distance to Campus */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                  Distance to Campus
+                  Walking Distance to Campus
                 </h4>
                 <select
                   value={filters.distance || ""}
@@ -573,11 +560,11 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
                   <option value="">Any</option>
-                  <option value="0.3">Within 0.3 miles</option>
-                  <option value="0.5">Within 0.5 miles</option>
-                  <option value="1">Within 1 mile</option>
-                  <option value="2">Within 2 miles</option>
-                  <option value="5">Within 5 miles</option>
+                  <option value="5">Within 5 min walk</option>
+                  <option value="10">Within 10 min walk</option>
+                  <option value="15">Within 15 min walk</option>
+                  <option value="20">Within 20 min walk</option>
+                  <option value="30">Within 30 min walk</option>
                 </select>
               </div>
 
