@@ -38,6 +38,7 @@ const listingSchema = new mongoose.Schema({
       type: String,
     },
   ],
+  amenities: [{ type: String }],
   numReviews: {
     type: Number,
     default: 0,
