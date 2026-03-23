@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import ConditionalButtons from "@/components/ConditionalButtons";
 import ReviewsSection from "@/components/ReviewsSection";
 import HeartIcon from "@/components/HeartIcon";
+import ButtonContactLandlord from "@/components/ButtonContactLandlord";
+
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -27,6 +28,7 @@ export default function ListingModalInfo({ session, listing }) {
   const coverImage = images[0];
   const hasGallery = images.length > 1;
 
+  const landlordEmail = listing.owner.email;
   return (
     <>
       <div className="bg-gray-100 min-h-screen">
@@ -134,7 +136,8 @@ export default function ListingModalInfo({ session, listing }) {
                 </div>
               </Link>
 
-              <ConditionalButtons listing={listing} />
+              {/*<ConditionalButtons listing={listing} />*/}
+              <ButtonContactLandlord landlordEmail={landlordEmail} />
             </div>
           </div>
 

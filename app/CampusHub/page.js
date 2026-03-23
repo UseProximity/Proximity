@@ -414,9 +414,7 @@ export default function CampusHub() {
       );
     const matchesTags =
       selectedTags.length === 0 ||
-      dormReviews.some((r) =>
-        selectedTags.some((tag) => r.tags.includes(tag))
-      );
+      dormReviews.some((r) => selectedTags.some((tag) => r.tags.includes(tag)));
     return matchesRating && matchesType && matchesSearch && matchesTags;
   });
 
@@ -462,7 +460,10 @@ export default function CampusHub() {
         </div>
         <div className="space-y-2">
           {allDormTypes.map((type) => (
-            <label key={type} className="flex items-center gap-2 cursor-pointer group">
+            <label
+              key={type}
+              className="flex items-center gap-2 cursor-pointer group"
+            >
               <input
                 type="checkbox"
                 checked={selectedTypes.includes(type)}
@@ -549,7 +550,9 @@ export default function CampusHub() {
           {/* Tick labels */}
           <div className="flex justify-between mt-1">
             {[1, 2, 3, 4, 5].map((n) => (
-              <span key={n} className="text-xs text-gray-400">{n}★</span>
+              <span key={n} className="text-xs text-gray-400">
+                {n}★
+              </span>
             ))}
           </div>
         </div>
@@ -570,7 +573,10 @@ export default function CampusHub() {
         </div>
         <div className="space-y-2">
           {allTags.map((tag) => (
-            <label key={tag} className="flex items-center gap-2 cursor-pointer group">
+            <label
+              key={tag}
+              className="flex items-center gap-2 cursor-pointer group"
+            >
               <input
                 type="checkbox"
                 checked={selectedTags.includes(tag)}
@@ -696,7 +702,15 @@ export default function CampusHub() {
               onClick={() => setFiltersOpen(true)}
               className="relative flex items-center justify-center w-10 h-10 border border-gray-300 rounded-xl bg-white shrink-0"
             >
-              <img src="/assets/filter-icon.svg" alt="" style={{ width: '18px', height: '18px', filter: 'brightness(0) opacity(0.6)' }} />
+              <img
+                src="/assets/filter-icon.svg"
+                alt=""
+                style={{
+                  width: "18px",
+                  height: "18px",
+                  filter: "brightness(0) opacity(0.6)",
+                }}
+              />
               {activeFilterCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                   {activeFilterCount}
@@ -727,9 +741,7 @@ export default function CampusHub() {
                 </button>
               </div>
               {/* Scrollable content */}
-              <div className="overflow-y-auto flex-1 p-5">
-                {filterContent}
-              </div>
+              <div className="overflow-y-auto flex-1 p-5">{filterContent}</div>
               {/* Sticky footer */}
               <div className="shrink-0 border-t border-gray-100 px-5 py-4 flex gap-3">
                 <button
@@ -752,9 +764,7 @@ export default function CampusHub() {
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Sidebar – desktop only */}
           <div className="hidden lg:block w-64 shrink-0">
-            <div className="lg:sticky lg:top-6">
-              {filterSidebar}
-            </div>
+            <div className="lg:sticky lg:top-6">{filterSidebar}</div>
           </div>
 
           {/* Dorm grid */}
@@ -764,13 +774,15 @@ export default function CampusHub() {
                 No dorms match your filters.
               </p>
             ) : (
-              <div className={`grid gap-6 ${
-                filteredDorms.length === 1
-                  ? "grid-cols-1"
-                  : filteredDorms.length === 2
-                  ? "grid-cols-1 sm:grid-cols-2"
-                  : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-              }`}>
+              <div
+                className={`grid gap-6 ${
+                  filteredDorms.length === 1
+                    ? "grid-cols-1"
+                    : filteredDorms.length === 2
+                    ? "grid-cols-1 sm:grid-cols-2"
+                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                }`}
+              >
                 {filteredDorms.map((dorm, index) => {
                   const dormReviews = dormGroups[dorm] || [];
                   const roomType = dormReviews[0]?.dormType || "No reviews yet";
@@ -783,7 +795,11 @@ export default function CampusHub() {
                       style={{
                         opacity: 0,
                         transform: "translateY(24px)",
-                        transition: `opacity 0.5s ease ${index * 40}ms, transform 0.5s ease ${index * 40}ms, box-shadow 0.2s ease`,
+                        transition: `opacity 0.5s ease ${
+                          index * 40
+                        }ms, transform 0.5s ease ${
+                          index * 40
+                        }ms, box-shadow 0.2s ease`,
                       }}
                       onClick={() => {
                         setSelectedDorm({ name: dorm, reviews: dormReviews });
@@ -791,7 +807,9 @@ export default function CampusHub() {
                       }}
                     >
                       <Image
-                        src={dormImages[dorm]?.[0] || "/images/placeholder.jpeg"}
+                        src={
+                          dormImages[dorm]?.[0] || "/images/placeholder.jpeg"
+                        }
                         alt={dorm}
                         width={400}
                         height={192}
@@ -800,12 +818,18 @@ export default function CampusHub() {
                       <div className="p-4 space-y-1">
                         {/* Row 1: name + tags */}
                         <div className="flex justify-between items-baseline gap-2">
-                          <h2 className="text-lg font-bold leading-tight">{dorm}</h2>
-                          <p className="text-sm text-gray-600 text-right shrink-0">{mainTags}</p>
+                          <h2 className="text-lg font-bold leading-tight">
+                            {dorm}
+                          </h2>
+                          <p className="text-sm text-gray-600 text-right shrink-0">
+                            {mainTags}
+                          </p>
                         </div>
                         {/* Row 2: type + review count */}
                         <div className="flex justify-between items-baseline gap-2">
-                          <p className="text-sm text-gray-600 whitespace-nowrap">{roomType}</p>
+                          <p className="text-sm text-gray-600 whitespace-nowrap">
+                            {roomType}
+                          </p>
                           <p className="text-sm text-gray-500 shrink-0">
                             {dormReviews.length} review
                             {dormReviews.length !== 1 && "s"}
