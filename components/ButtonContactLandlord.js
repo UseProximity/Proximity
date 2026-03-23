@@ -1,20 +1,21 @@
 export default function ContactLandlordButton({ landlordEmail }) {
-  // FIXME - Put Ben text instead
-
   const subject = "Contacting Landlord - Proximity";
   const body = `Hi,
   
-  I'm interested in your property listed on Proximity.
-  
-  Could you share more details?
-  
-  Thanks!`;
+I'm interested in your property listed on Proximity.
+
+Could you share more details?
+
+Thanks!`;
+
+  const ccEmail = "info@useproximity.org";
 
   const handleClick = () => {
     const encodedSubject = encodeURIComponent(subject);
     const encodedBody = encodeURIComponent(body);
+    const encodedCc = encodeURIComponent(ccEmail);
 
-    window.location.href = `mailto:${landlordEmail}?subject=${encodedSubject}&body=${encodedBody}`;
+    window.location.href = `mailto:${landlordEmail}?cc=${encodedCc}&subject=${encodedSubject}&body=${encodedBody}`;
   };
 
   return (

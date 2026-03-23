@@ -50,11 +50,15 @@ export default function AboutPage() {
                   className="object-cover"
                 />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">{founder.name}</h2>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {founder.name}
+              </h2>
               <p className="text-red-500 font-medium text-sm mt-1 mb-4">
                 {founder.role}
               </p>
-              <p className="text-gray-500 text-base leading-relaxed">{founder.bio}</p>
+              <p className="text-gray-500 text-base leading-relaxed">
+                {founder.bio}
+              </p>
               {founder.linkedin && (
                 <Link
                   href={founder.linkedin}
@@ -75,7 +79,7 @@ export default function AboutPage() {
         <h2 className="text-3xl font-bold mb-3">Our Mission</h2>
         <p className="text-red-100 max-w-2xl mx-auto text-lg">
           Proximity exists to give every college student a stress-free path to
-          finding their next home — whether that's off-campus housing or a
+          finding their next home — whether that&apos;s off-campus housing or a
           campus roommate.
         </p>
         <Link
