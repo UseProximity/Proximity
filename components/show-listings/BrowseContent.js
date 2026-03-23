@@ -88,7 +88,7 @@ export default function BrowseContent({ session }) {
     const originalHeight = document.body.style.height;
 
     document.body.style.overflow = "hidden";
-    document.body.style.height = "100vh";
+    document.body.style.height = "100dvh";
 
     return () => {
       document.body.style.overflow = originalOverflow;
@@ -376,7 +376,7 @@ export default function BrowseContent({ session }) {
   }
 
   return (
-    <div className="bg-gray-50 flex flex-col h-[calc(100vh-83px)] md:h-[calc(100vh-104px)]">
+    <div className="bg-gray-50 flex flex-col h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)]">
       <div className="hidden md:block">
         <TopFilterBar
           search={search}

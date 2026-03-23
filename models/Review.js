@@ -44,6 +44,11 @@ const reviewSchema = new mongoose.Schema(
       required: true,
       default: false,
     },
+
+    // Per-category ratings (optional — only collected on new reviews)
+    communicationRating: { type: Number, min: 1, max: 5, default: null },
+    locationRating:      { type: Number, min: 1, max: 5, default: null },
+    valueRating:         { type: Number, min: 1, max: 5, default: null },
   },
   {
     timestamps: true,

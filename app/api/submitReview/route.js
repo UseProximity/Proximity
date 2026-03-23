@@ -13,7 +13,15 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { rating, comment, reviewedUserId, listingId } = body;
+    const {
+      rating,
+      comment,
+      reviewedUserId,
+      listingId,
+      communicationRating,
+      locationRating,
+      valueRating,
+    } = body;
 
     if (
       !rating ||
@@ -28,6 +36,16 @@ export async function POST(req) {
       );
     }
 
+    // Validate optional category ratings if provided
+    for (const [key, val] of Object.entries({ communicationRating, locationRating, valueRating })) {
+      if (val != null && (val < 1 || val > 5)) {
+        return NextResponse.json(
+          { error: `Invalid ${key}: must be between 1 and 5` },
+          { status: 400 }
+        );
+      }
+    }
+
     await connectMongo();
 
     const newReview = new Review({
@@ -37,6 +55,9 @@ export async function POST(req) {
       rating,
       comment: comment.trim(),
       legitimacy: false,
+      communicationRating: communicationRating ?? null,
+      locationRating: locationRating ?? null,
+      valueRating: valueRating ?? null,
     });
 
     await newReview.save();

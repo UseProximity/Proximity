@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const UserSchema = new mongoose.Schema(
   {
-    age: { type: Number, default: 18 },
+    birthday: { type: Date, default: null },
     description: { type: String, default: "" },
     email: { type: String, index: true }, // consider: unique: true
     contacted: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],

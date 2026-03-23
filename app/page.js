@@ -67,16 +67,16 @@ function HeroMapSection() {
       <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
 
       {/* ── Left: Hero content ── */}
-      <div className={`relative z-40 flex-shrink-0 max-w-[900px] ${SIDE_MARGIN} pt-10 pb-20 lg:py-26 flex flex-col justify-center`}>
+      <div className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 pb-20 lg:py-26 flex flex-col justify-center`}>
 
         {/* Headline */}
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.08 }}
-          className="text-5xl sm:text-6xl lg:text-[68px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
+          className="text-5xl sm:text-6xl lg:text-[56px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
         >
-          Find your perfect <span className="text-red-700">WashU</span> Housing
+          Find Your Perfect <span className="text-red-700">WashU</span> Housing
           Now
         </motion.h1>
 
@@ -117,25 +117,17 @@ function HeroMapSection() {
           </div>
         </motion.form>
 
-        {/* Stats strip */}
-        <motion.div
+        {/* Tagline */}
+        <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.46 }}
-          className="mt-8 grid grid-cols-2 gap-x-8 gap-y-5 sm:flex sm:gap-12"
+          className="mt-8 text-xl font-bold text-gray-800 leading-snug"
         >
-          {[
-            { value: "500+", label: "Listings" },
-            { value: "14+", label: "Universities" },
-            { value: "1,200+", label: "Reviews" },
-            { value: "100%", label: "Transparent" },
-          ].map((stat) => (
-            <div key={stat.label} className="flex flex-col items-center sm:items-start">
-              <span className="text-2xl font-black text-gray-900 whitespace-nowrap">{stat.value}</span>
-              <span className="text-xs text-gray-500 font-medium mt-0.5 whitespace-nowrap">{stat.label}</span>
-            </div>
-          ))}
-        </motion.div>
+          Better apartments.{" "}
+          <span className="text-red-600">Honest reviews.</span>{" "}
+          Zero stress.
+        </motion.p>
       </div>
 
       {/* ── Right: Map ── */}

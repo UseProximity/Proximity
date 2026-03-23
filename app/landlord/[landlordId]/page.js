@@ -10,6 +10,16 @@ import {
   getUnitValuesLabel,
 } from "@/utils/listingFormatters";
 
+function calcAge(birthday) {
+  if (!birthday) return null;
+  const dob = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 export default async function Landlord({ params }) {
   const { landlordId } = params;
   const session = await auth();
@@ -85,7 +95,7 @@ export default async function Landlord({ params }) {
             </p>
             <p className="text-gray-600 text-sm mt-1">{landlord.description}</p>
             <p className="text-gray-400 text-sm">
-              {landlord.age} years old • {landlord.gender}
+              {landlord.birthday ? `${calcAge(landlord.birthday)} years old` : null}{landlord.gender ? ` • ${landlord.gender}` : ""}
             </p>
             <p className="text-gray-500 text-sm mt-1">
               📞 {landlord.phone} • ✉️ {landlord.email}

@@ -1,6 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
-import { useChatContext } from "./ChatContext";
+import { useState } from "react";
 
 function TypingDots() {
   return (
@@ -206,63 +205,32 @@ function ConversationThread({ conv, onBack, onClose, onSend }) {
 }
 
 export default function ChatWidget() {
-  const { conversations, widgetOpen, setWidgetOpen, activeId, setActiveId, sendMessage } =
-    useChatContext();
-
-  const totalConvs = conversations.length;
-  const activeConv = conversations.find((c) => c.id === activeId) || null;
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-      {/* Panel */}
-      {widgetOpen && (
-        <div className="w-[360px] h-[480px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
-          {activeConv ? (
-            <ConversationThread
-              conv={activeConv}
-              onBack={() => setActiveId(null)}
-              onClose={() => setWidgetOpen(false)}
-              onSend={sendMessage}
-            />
-          ) : (
-            <ConversationList
-              conversations={conversations}
-              onSelect={(id) => setActiveId(id)}
-              onClose={() => setWidgetOpen(false)}
-            />
-          )}
+    // Hidden on mobile, visible on desktop only
+    <div className="hidden md:flex fixed bottom-8 right-8 z-50 flex-col items-end gap-3">
+      {/* "Coming soon" popover */}
+      {open && (
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 px-6 py-5 text-sm text-gray-600 font-medium">
+          Chat coming soon!
         </div>
       )}
 
-      {/* Floating button */}
+      {/* Floating button — larger on desktop */}
       <button
-        onClick={() => {
-          if (widgetOpen) {
-            setWidgetOpen(false);
-          } else {
-            setWidgetOpen(true);
-            if (!activeId && conversations.length === 1) {
-              setActiveId(conversations[0].id);
-            }
-          }
-        }}
-        className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center relative"
+        onClick={() => setOpen((v) => !v)}
+        className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
         aria-label="Open messages"
       >
-        {widgetOpen ? (
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+        {open ? (
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
           </svg>
         ) : (
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
           </svg>
-        )}
-        {/* Unread badge */}
-        {!widgetOpen && totalConvs > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white border-2 border-red-600 text-red-600 text-[10px] font-bold flex items-center justify-center">
-            {totalConvs}
-          </span>
         )}
       </button>
     </div>

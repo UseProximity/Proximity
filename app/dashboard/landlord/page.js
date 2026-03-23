@@ -36,6 +36,16 @@ import {
   getUnitValuesLabel,
 } from "@/utils/listingFormatters";
 
+function calcAge(birthday) {
+  if (!birthday) return null;
+  const dob = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 // Mock Reviews Data
 const reviews = [
   {
@@ -214,7 +224,7 @@ function ProfileSection({
                 {user.listings.length} active listings
               </p>{" "}
               <p className="text-gray-400 text-base mt-2">
-                {user.age} years old • {user.gender}
+                {calcAge(user.birthday) != null ? `${calcAge(user.birthday)} years old` : null}{user.gender ? ` • ${user.gender}` : ""}
               </p>
               <p className="text-gray-500 text-base mt-2">
                 📞 {user.phone} • ✉️ {user.email}
@@ -264,14 +274,13 @@ function ProfileSection({
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">
-                  Age
+                  Birthday
                 </label>
                 <input
-                  type="number"
-                  min="16"
-                  max="120"
-                  name="age"
-                  value={form.age}
+                  type="date"
+                  name="birthday"
+                  max={new Date().toISOString().split("T")[0]}
+                  value={form.birthday}
                   onChange={onChange}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
@@ -990,7 +999,7 @@ export default function ProximityDashboard() {
     name: "",
     phone: "",
     description: "",
-    age: "",
+    birthday: "",
     gender: "unspecified",
   });
 
@@ -1007,7 +1016,7 @@ export default function ProximityDashboard() {
       name: user.name || "",
       phone: user.phone || "",
       description: user.description || "",
-      age: user.age ?? "",
+      birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
       gender: user.gender || "unspecified",
     });
   }, [user]);
@@ -1089,11 +1098,7 @@ export default function ProximityDashboard() {
   // helpers for form
   const onChange = (e) => {
     const { name, value } = e.target;
-    setForm((f) => ({
-      ...f,
-      // keep age as "" when empty, otherwise a number (don't collapse 0)
-      [name]: name === "age" ? (value === "" ? "" : Number(value)) : value,
-    }));
+    setForm((f) => ({ ...f, [name]: value }));
   };
 
   const cancelEdit = () => {
@@ -1104,7 +1109,7 @@ export default function ProximityDashboard() {
         name: user.name || "",
         phone: user.phone || "",
         description: user.description || "",
-        age: user.age ?? "",
+        birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
         gender: user.gender || "unspecified",
       });
     }
@@ -1123,7 +1128,7 @@ export default function ProximityDashboard() {
           name: form.name?.trim(),
           phone: form.phone?.trim(),
           description: form.description?.trim(),
-          age: form.age ? Number(form.age) : null,
+          birthday: form.birthday || null,
           gender: form.gender || "unspecified",
         }),
       });

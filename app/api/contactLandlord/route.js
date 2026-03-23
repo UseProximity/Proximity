@@ -1,0 +1,138 @@
+import { NextResponse } from "next/server";
+import nodemailer from "nodemailer";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMAIL SETUP INSTRUCTIONS
+//
+// This route sends an email from info@useproximity.org to the landlord's email
+// when a prospective tenant submits the contact form on a listing page.
+//
+// You must set the following environment variables in your .env.local file:
+//
+//   EMAIL_HOST=...
+//   EMAIL_PORT=587
+//   EMAIL_USER=...
+//   EMAIL_PASS=...
+//
+// ─── OPTION A: Gmail App Password ────────────────────────────────────────────
+//
+//   1. The sending account (info@useproximity.org) must have 2-Step Verification
+//      enabled in Google Account settings.
+//   2. Go to: Google Account → Security → App Passwords
+//   3. Generate an app password for "Mail" / "Other (custom name)"
+//   4. Set env vars:
+//        EMAIL_HOST=smtp.gmail.com
+//        EMAIL_PORT=587
+//        EMAIL_USER=info@useproximity.org
+//        EMAIL_PASS=<the 16-character app password>
+//
+// ─── OPTION B: SendGrid ──────────────────────────────────────────────────────
+//
+//   1. Sign up at sendgrid.com and verify your sending domain (useproximity.org)
+//   2. Create an API key with "Mail Send" permissions
+//   3. Set env vars:
+//        EMAIL_HOST=smtp.sendgrid.net
+//        EMAIL_PORT=587
+//        EMAIL_USER=apikey
+//        EMAIL_PASS=<your SendGrid API key>
+//
+// ─── OPTION C: Resend (recommended for Next.js) ──────────────────────────────
+//
+//   Alternatively, replace this entire route with the Resend SDK:
+//     npm install resend
+//   Then use:
+//     import { Resend } from 'resend';
+//     const resend = new Resend(process.env.RESEND_API_KEY);
+//     await resend.emails.send({ from, to, subject, html });
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: Number(process.env.EMAIL_PORT) || 587,
+  secure: false, // true for port 465, false for 587 (STARTTLS)
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+export async function POST(req) {
+  try {
+    const body = await req.json();
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      message,
+      landlordEmail,
+      landlordName,
+      listingAddress,
+    } = body;
+
+    // Validate required fields
+    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !message?.trim() || !landlordEmail?.trim()) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Basic email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: "Invalid email address" },
+        { status: 400 }
+      );
+    }
+
+    const senderName = `${firstName.trim()} ${lastName.trim()}`;
+
+    const mailOptions = {
+      from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
+      to: landlordEmail,
+      replyTo: email,
+      subject: `New Inquiry for ${listingAddress || "Your Listing"} — Proximity`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #dc2626; margin-bottom: 4px;">New Listing Inquiry</h2>
+          <p style="color: #6b7280; margin-top: 0;">via <a href="https://useproximity.org">Proximity</a></p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+
+          <p><strong>Property:</strong> ${listingAddress || "N/A"}</p>
+          <p><strong>From:</strong> ${senderName}</p>
+          <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
+          ${phone ? `<p><strong>Phone:</strong> ${phone}</p>` : ""}
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+
+          <h3 style="margin-bottom: 8px;">Message</h3>
+          <p style="white-space: pre-wrap; color: #374151;">${message.trim()}</p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+          <p style="color: #9ca3af; font-size: 12px;">
+            This message was sent through Proximity. To reply, respond directly to
+            <a href="mailto:${email}">${email}</a>.
+          </p>
+        </div>
+      `,
+    };
+
+    // If email credentials are not configured, log and return success (dev mode)
+    if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn("[contactLandlord] Email env vars not set — skipping send in dev mode.");
+      console.log("[contactLandlord] Would have sent:", { to: landlordEmail, from: senderName, subject: mailOptions.subject });
+      return NextResponse.json({ ok: true, dev: true });
+    }
+
+    await transporter.sendMail(mailOptions);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("POST /api/contactLandlord failed:", error);
+    return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
+  }
+}
