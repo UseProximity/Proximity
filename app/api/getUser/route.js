@@ -16,6 +16,7 @@ export async function GET() {
     const user = await User.findById(session.user.id)
       .populate("favorites")
       .populate("listings")
+      .populate("contacted")
       .lean();
 
     if (!user) {
@@ -86,12 +87,47 @@ export async function GET() {
     }));
     const listingsIds = safeListings.map((l) => l._id);
 
+    // Serialize populated contacted
+    const safeContacted = (user.contacted || []).filter(Boolean).map((l) => ({
+      _id: l._id?.toString(),
+      address: l.address,
+      unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
+      leaseType: l.leaseType,
+      leaseTerm: l.leaseTerm,
+      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
+      homeType: l.homeType,
+      amenities: Array.isArray(l.amenities) ? l.amenities : [],
+      furnished: l.furnished,
+      utilitiesIncluded: l.utilitiesIncluded ?? false,
+      subleaseFriendly: l.subleaseFriendly ?? false,
+      distanceToCampusKm: l.distanceToCampusKm,
+      minRent: l.minRent,
+      maxRent: l.maxRent,
+      minBathrooms: l.minBathrooms,
+      maxBathrooms: l.maxBathrooms,
+      minBedrooms: l.minBedrooms,
+      maxBedrooms: l.maxBedrooms,
+      minArea: l.minArea,
+      maxArea: l.maxArea,
+      images: Array.isArray(l.images) ? l.images : [],
+      rating: l.rating ?? 0,
+      numReviews: l.numReviews ?? 0,
+      owner: l.owner?.toString?.() || null,
+      latitude: l.latitude,
+      longitude: l.longitude,
+      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+    }));
+
+    const contactedIds = safeContacted.map((l) => l._id);
+
     const safeUser = {
       ...user,
       _id: user._id.toString(),
       favorites: safeFavorites,
       favoritesIds,
       listings: safeListings,
+      contacted: safeContacted,
+      contactedIds,
       listingsIds,
       createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
       updatedAt: user.updatedAt ? new Date(user.updatedAt).toISOString() : null,
