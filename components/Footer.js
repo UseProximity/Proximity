@@ -9,8 +9,6 @@ const NAV_COLS = [
     links: [
       { label: "Browse Listings", href: "/browse" },
       { label: "On Campus Hub", href: "/CampusHub" },
-      { label: "Add a Sublease", href: "/add-sub-lease" },
-      { label: "Roommate Finder", href: "/roommate-finder" },
     ],
   },
   {
@@ -51,7 +49,7 @@ const SocialIcons = () => (
 export default function Footer() {
   return (
     <footer className="bg-gray-950 text-white">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-14 md:py-20">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-6 md:pt-10 md:pb-8">
 
         {/* ── Mobile: centered ── */}
         <div className="flex flex-col items-center text-center mb-12 md:hidden">
@@ -78,7 +76,7 @@ export default function Footer() {
                   ))}
                 </ul>
                 {col.social && (
-                  <div className="flex-1 flex items-center justify-center pt-6">
+                  <div className="mt-4 flex justify-center">
                     <SocialIcons />
                   </div>
                 )}
@@ -116,7 +114,7 @@ export default function Footer() {
                 ))}
               </ul>
               {col.social && (
-                <div className="flex-1 flex items-center justify-start pt-4">
+                <div className="mt-4">
                   <SocialIcons />
                 </div>
               )}
@@ -125,8 +123,8 @@ export default function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-8 pt-6 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">© 2025 Proximity. All rights reserved.</p>
+        <div className="mt-4 pt-4 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">© 2026 Proximity. All rights reserved.</p>
           <p className="text-sm text-gray-600">Made for students, by students.</p>
         </div>
       </div>

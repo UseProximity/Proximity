@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Phone, Mail, ThumbsUp, ThumbsDown, PersonStanding } from "lucide-react";
+import { Phone, Mail, ThumbsUp, ThumbsDown, PersonStanding, Bus } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/HeartIcon";
@@ -12,6 +12,7 @@ import {
   getRentRangeLabel,
   getUnitValuesLabel,
 } from "@/utils/listingFormatters";
+import { WASHU_PLACES } from "@/utils/washuPlaces";
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
@@ -22,17 +23,8 @@ const leaseTypeMap = {
   academic: "Academic Year",
 };
 
-const WASHU_PLACES = [
-  { name: "Olin Library",           lat: 38.64851503785516, lng: -90.30770757138812 },
-  { name: "Seigle Hall",            lat: 38.64901252229954, lng: -90.31234570424581 },
-  { name: "Schnucks (Grocery)",     lat: 38.633335917020425, lng: -90.31473611720082 },
-  { name: "Danforth University Center", lat: 38.64754193120054, lng: -90.31037361422699 },
-  { name: "Sumers Rec Center",       lat: 38.64933192571885, lng: -90.31472066027095 },
-  { name: "Village House", lat: 38.65056939432417, lng: -90.31405161268682 }
-];
-
 const TABS = [
-  { id: "amenities", label: "Amenities" },
+  { id: "amenities", label: "Overview" },
   { id: "map", label: "Map" },
   { id: "places", label: "Places" },
   { id: "reviews", label: "Reviews" },
@@ -118,7 +110,11 @@ function AmenitiesTab({ listing }) {
         </div>
       )}
       <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
-      <p className="text-gray-700 leading-relaxed">{listing.description}</p>
+      <div className="space-y-2">
+        {(listing.description || "").split(/\n+/).filter((p) => p.trim()).map((para, i) => (
+          <p key={i} className="text-gray-700 leading-relaxed">{para.trim()}</p>
+        ))}
+      </div>
     </div>
   );
 }
@@ -140,7 +136,7 @@ function MapTab({ listing }) {
 
 // ─── Tab: Places ─────────────────────────────────────────────────────────────
 
-function PlacesTab({ walkTimes, walkLoading }) {
+function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes }) {
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Nearby Places</h2>
@@ -168,6 +164,15 @@ function PlacesTab({ walkTimes, walkLoading }) {
           </li>
         ))}
       </ul>
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="flex items-center gap-3 text-gray-700 py-2">
+          <Bus size={18} className="text-red-400 shrink-0" />
+          <span className="flex-1">Nearest Shuttle Stop</span>
+          <span className="text-sm text-gray-500 font-medium">
+            {shuttleWalkMinutes != null ? `${shuttleWalkMinutes} min walk` : "N/A"}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -441,7 +446,7 @@ function ContactTab({
               type="tel"
               value={contactForm.phone}
               onChange={handleChange("phone")}
-              placeholder="(314) 555-0100"
+              placeholder="(123) 456-7890"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
             />
           </div>
@@ -484,31 +489,19 @@ export default function ListingModalInfo({ session, listing }) {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
 
-  // Walk times state
-  const [walkTimes, setWalkTimes] = useState({});
-  const [walkLoading, setWalkLoading] = useState(false);
-
-  useEffect(() => {
-    if (!listing?.latitude || !listing?.longitude) return;
-    setWalkLoading(true);
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    const origin = `${listing.longitude},${listing.latitude}`;
-    Promise.all(
-      WASHU_PLACES.map(async (place) => {
-        const dest = `${place.lng},${place.lat}`;
-        const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${origin};${dest}?access_token=${token}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        const seconds = data.routes?.[0]?.duration ?? null;
-        return { name: place.name, minutes: seconds != null ? Math.round(seconds / 60) : null };
-      })
-    ).then((results) => {
-      const map = {};
-      results.forEach(({ name, minutes }) => { map[name] = minutes; });
-      setWalkTimes(map);
-      setWalkLoading(false);
-    });
-  }, [listing?._id]);
+  // Walk times — read from pre-computed DB values (populated at listing creation)
+  const walkLoading = false;
+  const storedTimes = listing?.placeWalkMinutes;
+  const walkTimes = useMemo(() => {
+    if (!storedTimes) return {};
+    // storedTimes may be a Mongoose Map or a plain object depending on serialisation
+    if (typeof storedTimes.get === "function") {
+      const obj = {};
+      storedTimes.forEach((v, k) => { obj[k] = v; });
+      return obj;
+    }
+    return storedTimes;
+  }, [storedTimes]);
 
   // Contact form state
   const [contactForm, setContactForm] = useState({
@@ -788,7 +781,7 @@ export default function ListingModalInfo({ session, listing }) {
           <div className="bg-white rounded-xl shadow p-6">
             {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
             {activeTab === "map" && <MapTab listing={listing} />}
-            {activeTab === "places" && <PlacesTab walkTimes={walkTimes} walkLoading={walkLoading} />}
+            {activeTab === "places" && <PlacesTab walkTimes={walkTimes} walkLoading={walkLoading} shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null} />}
             {activeTab === "reviews" && (
               <ReviewsTab
                 legitimateReviews={legitimateReviews}

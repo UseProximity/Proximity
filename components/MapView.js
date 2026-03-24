@@ -190,6 +190,14 @@ const processCrimeDataForHeatmap = (crimeData) => {
 
 // mockHeatmapPoints.push(...generateRandomHeatmapPoints());
 
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function MapView({
   listings = [],
   filters,
@@ -197,6 +205,7 @@ export default function MapView({
   handleReset,
   onListingSelect,
   selectedListingId,
+  searchLocation = null,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -743,6 +752,40 @@ export default function MapView({
       });
     }
   }, []);
+
+  // Zoom to a searched address and show appropriate pin
+  const searchHandledRef = useRef(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !searchLocation) return;
+
+    const process = () => {
+      if (map._searchMarker) { map._searchMarker.remove(); map._searchMarker = null; }
+
+      const { lat, lng } = searchLocation;
+      const match = listings.find(
+        (l) => l.latitude && l.longitude && haversineMeters(lat, lng, l.latitude, l.longitude) <= 80
+      );
+
+      if (match) {
+        map.flyTo({ center: [lng, lat], zoom: 17, duration: 1000 });
+        const key = `${lat},${lng}`;
+        if (searchHandledRef.current !== key) {
+          searchHandledRef.current = key;
+          setTimeout(() => onListingSelect?.(match), 1100);
+        }
+      } else {
+        map.flyTo({ center: [lng, lat], zoom: 16, duration: 1000 });
+        const el = document.createElement("div");
+        el.style.cssText = "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
+        map._searchMarker = new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+      }
+    };
+
+    if (map.isStyleLoaded()) process();
+    else map.once("load", process);
+  }, [searchLocation, listings]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />

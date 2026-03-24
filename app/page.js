@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import AddressSearchInput from "@/components/AddressSearchInput";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
@@ -37,6 +38,7 @@ function HeroMapSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [previewListings, setPreviewListings] = useState([]);
   const router = useRouter();
+
   useEffect(() => {
     fetch("/api/listings")
       .then((r) => r.json())
@@ -57,6 +59,11 @@ function HeroMapSection() {
     router.push(q ? `/browse?search=${encodeURIComponent(q)}` : "/browse");
   };
 
+  const handleSuggestionSelect = (feature) => {
+    const [lng, lat] = feature.center;
+    router.push(`/browse?lat=${lat}&lng=${lng}`);
+  };
+
   const BG = "#f2f4f8";
 
   return (
@@ -67,7 +74,7 @@ function HeroMapSection() {
       <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
 
       {/* ── Left: Hero content ── */}
-      <div className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 pb-20 lg:py-26 flex flex-col justify-center`}>
+      <div className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 md:pb-8 pb-20 lg:py-26 flex flex-col justify-center`}>
 
         {/* Headline */}
         <motion.h1
@@ -85,10 +92,17 @@ function HeroMapSection() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.16 }}
+          className="text-[17px] text-gray-500 max-w-sm mb-2 leading-relaxed"
+        >
+          The only platform that actually understands what students care about.
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.16 }}
           className="text-[17px] text-gray-500 max-w-sm mb-8 leading-relaxed"
         >
-          The only platform built for students to discover, review, and secure
-          off-campus housing with full transparency.
+          Relevant filters, real peer reviews, and a streamlined search to help you secure off-campus housing with full transparency.
         </motion.p>
 
         {/* Search bar */}
@@ -101,12 +115,12 @@ function HeroMapSection() {
         >
           <div className="flex items-center bg-white rounded-xl border border-gray-200 focus-within:border-red-300 shadow-md shadow-black/[0.05] transition-all duration-200 p-1.5 gap-1">
             <Search className="ml-2.5 h-4 w-4 text-gray-400 flex-shrink-0" />
-            <input
-              type="text"
+            <AddressSearchInput
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search address or neighborhood..."
-              className="flex-1 px-2.5 py-2.5 text-sm bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400 min-w-0"
+              onSelectSuggestion={handleSuggestionSelect}
+              placeholder="Search address..."
+              className="w-full px-2.5 py-2.5 text-sm bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400"
             />
             <button
               type="submit"
@@ -122,7 +136,7 @@ function HeroMapSection() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.46 }}
-          className="mt-8 text-xl font-bold text-gray-800 leading-snug"
+          className="mt-4 text-xl font-bold text-gray-800 leading-snug"
         >
           Better apartments.{" "}
           <span className="text-red-600">Honest reviews.</span>{" "}
@@ -164,33 +178,48 @@ function HeroMapSection() {
 
 const REVIEWS = [
   {
-    text: "I found my apartment in two days. The landlord reviews saved me from renting from someone with a terrible reputation — something I never would have known otherwise.",
-    author: "Maya T.",
-    university: "Washington University in St. Louis",
+    text: "Proximity made the whole housing process easy and convenient. Ben Flicker responded very quickly with an option that fit our group's needs, and we are very satisfied with the property we decided to lease.",
+    author: "Felix Harari",
     rating: 5,
   },
   {
-    text: "The heatmaps are honestly the best feature. I could see exactly which neighborhoods had the most students and which were safer. Made the decision so much easier.",
-    author: "Jordan K.",
-    university: "University of Southern California",
+    text: "Before Proximity, our apartment search was a mess. We were late to sign a lease and completely lost in the process. We decided to give Proximity a shot and filled out the form on the website. We received a quick response, and a few days later, we were matched up with a great apartment for next semester. Overall made the process much less stressful and really saved us.",
+    author: "Jameson T",
     rating: 5,
   },
   {
-    text: "I subleased my apartment in 3 days. Way better than posting on Facebook groups and dealing with random people. Everyone here is a verified student.",
-    author: "Priya M.",
-    university: "Columbia University",
+    text: "I was scrambling to find housing that I would like and when I reached out to Proximity, they were quick to help me find a place that fit my needs, set me up with the landlord, and help me secure my lease. They were incredibly responsive, helpful, and kind.",
+    author: "Wyatt Ogle",
     rating: 5,
   },
   {
-    text: "Proximity showed me listings I couldn't find anywhere else. The rent comparison tool told me I was about to overpay by $300/month. Huge.",
-    author: "Alex R.",
-    university: "UCLA",
+    text: "As an on-campus student at WashU, I did not have much luck using the on-campus housing process and was unsure if a matching service would truly be able to find a place that fit my needs off-campus. When I completed the form, I received a response in a very timely manner that provided me with options that were within walking distance of campus and at a cost that was reasonable compared to what I had seen on-campus. The quickness of the response and how well the options were matched to what I was looking for made using this site far more effective than spending hours searching Google for listings nearby.",
+    author: "Benjamin Kudon",
     rating: 5,
   },
   {
-    text: "As an international student, finding housing was incredibly stressful. Proximity made the whole process transparent and I felt confident in my decision.",
-    author: "Chen W.",
-    university: "Penn State University",
+    text: "The on-campus housing process sucks, and I was seriously dreading my living conditions next year. I was worried about being stuck with the dregs of the off-campus housing, as I was certain I wouldn't get an on-campus assignment. Fortunately, Proximity helped me find a 9 room apartment for me and my friends and it is far nicer than my standards, I can't recommend it enough.",
+    author: "Spencer Gaukel",
+    rating: 5,
+  },
+  {
+    text: "Proximity made finding a triple for next year at LOCAL super easy. It matched all three of our preferences without the usual back-and-forth of coordinating, and helped weigh our options to find the perfect match. The process felt really smooth and straightforward.",
+    author: "Anonymous",
+    rating: 5,
+  },
+  {
+    text: "I got a really quick response that matched my needs exactly. I was able to find the best match to the spot I really needed and the platform was able to hit each priority that I listed.",
+    author: "Ethan",
+    rating: 5,
+  },
+  {
+    text: "The experience was very good and very smooth. It was very helpful and helped me find exactly what I needed with very quick response times. They actually listened to what I was looking for instead of just giving me anything.",
+    author: "Anonymous",
+    rating: 5,
+  },
+  {
+    text: "I could tell that they really cared about helping me find housing. All responses were extremely timely and helpful.",
+    author: "Sam Gornstein",
     rating: 5,
   },
 ];
@@ -324,7 +353,6 @@ function ReviewsCarousel() {
                 </p>
                 <div>
                   <div className="text-sm font-bold text-gray-900">{review.author}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{review.university}</div>
                 </div>
               </div>
             ))}
@@ -575,8 +603,7 @@ function CTABand() {
             Find your next place today.
           </h2>
           <p className="text-lg text-red-100 mb-8 max-w-lg mx-auto leading-relaxed">
-            Join thousands of students who found housing they actually love —
-            without the chaos.
+            Join WashU students who found housing they love.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
@@ -601,6 +628,14 @@ function CTABand() {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
+  useEffect(() => {
+    document.body.style.overflow = "";
+    document.body.style.height = "";
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.width = "";
+  }, []);
+
   return (
     <div className="min-h-screen bg-white">
       <main>

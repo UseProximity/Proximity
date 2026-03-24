@@ -145,6 +145,10 @@ export default function AvailableListings({
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const rawLat = parseFloat(searchParams.get("lat"));
+  const rawLng = parseFloat(searchParams.get("lng"));
+  const searchLocation = (!isNaN(rawLat) && !isNaN(rawLng)) ? { lat: rawLat, lng: rawLng } : null;
+
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
   const [routeActive, setRouteActive] = useState(false);
@@ -262,6 +266,7 @@ export default function AvailableListings({
           handleReset={handleReset}
           onListingSelect={setSelectedListing}
           selectedListingId={selectedListing?._id}
+          searchLocation={searchLocation}
         />
         {selectedListing && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
@@ -290,6 +295,7 @@ export default function AvailableListings({
             setMobileListingsOpen(false);
           }}
           selectedListingId={selectedListing?._id}
+          searchLocation={searchLocation}
         />
 
         {/* Map overlay card — shown when a pin is clicked and drawer is closed */}

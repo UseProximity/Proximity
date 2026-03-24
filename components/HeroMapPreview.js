@@ -8,64 +8,44 @@ import { getRentRangeLabel } from "@/utils/listingFormatters";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-// Euclidean distance between two listings (degrees — fine for relative comparison)
-function distBetween(a, b) {
-  const dlng = a.longitude - b.longitude;
-  const dlat = a.latitude - b.latitude;
-  return Math.sqrt(dlng * dlng + dlat * dlat);
+const CAMPUS_CENTER = [-90.3032, 38.6495];
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Find up to 3 listings that form the tightest cluster, return their centroid
-function findClusterCenter(listings) {
-  const valid = listings.filter((l) => l.longitude && l.latitude);
-  if (valid.length === 0) return null;
-  if (valid.length === 1) return { lng: valid[0].longitude, lat: valid[0].latitude };
+// Compute a bounding box over listings, excluding outliers beyond 2 std deviations
+function computeBoundsExcludingOutliers(listings) {
+  if (listings.length === 0) return null;
 
-  // Find the closest pair
-  let minDist = Infinity;
-  let pairIdx = [0, 1];
-  for (let i = 0; i < valid.length; i++) {
-    for (let j = i + 1; j < valid.length; j++) {
-      const d = distBetween(valid[i], valid[j]);
-      if (d < minDist) {
-        minDist = d;
-        pairIdx = [i, j];
-      }
-    }
-  }
+  const lats = listings.map((l) => l.latitude);
+  const lngs = listings.map((l) => l.longitude);
 
-  const a = valid[pairIdx[0]];
-  const b = valid[pairIdx[1]];
-  const midLng = (a.longitude + b.longitude) / 2;
-  const midLat = (a.latitude + b.latitude) / 2;
+  const meanLat = lats.reduce((s, v) => s + v, 0) / lats.length;
+  const meanLng = lngs.reduce((s, v) => s + v, 0) / lngs.length;
+  const stdLat = Math.sqrt(lats.reduce((s, v) => s + (v - meanLat) ** 2, 0) / lats.length);
+  const stdLng = Math.sqrt(lngs.reduce((s, v) => s + (v - meanLng) ** 2, 0) / lngs.length);
 
-  // Find the listing closest to the pair's midpoint (excluding the pair itself)
-  let thirdIdx = -1;
-  let minDistToMid = Infinity;
-  for (let i = 0; i < valid.length; i++) {
-    if (i === pairIdx[0] || i === pairIdx[1]) continue;
-    const dlng = valid[i].longitude - midLng;
-    const dlat = valid[i].latitude - midLat;
-    const d = Math.sqrt(dlng * dlng + dlat * dlat);
-    if (d < minDistToMid) {
-      minDistToMid = d;
-      thirdIdx = i;
-    }
-  }
+  const filtered = listings.filter(
+    (l) =>
+      Math.abs(l.latitude - meanLat) <= 2 * (stdLat || 1) &&
+      Math.abs(l.longitude - meanLng) <= 2 * (stdLng || 1)
+  );
 
-  const cluster = [a, b];
-  if (thirdIdx >= 0) cluster.push(valid[thirdIdx]);
-
-  return {
-    lng: cluster.reduce((s, l) => s + l.longitude, 0) / cluster.length,
-    lat: cluster.reduce((s, l) => s + l.latitude, 0) / cluster.length,
-  };
+  const pool = filtered.length > 0 ? filtered : listings;
+  return [
+    [Math.min(...pool.map((l) => l.longitude)), Math.min(...pool.map((l) => l.latitude))],
+    [Math.max(...pool.map((l) => l.longitude)), Math.max(...pool.map((l) => l.latitude))],
+  ];
 }
 
-export default function HeroMapPreview({ listings = [] }) {
+export default function HeroMapPreview({ listings = [], searchLocation = null }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const autoOpenedRef = useRef(false);
   const [showExplore, setShowExplore] = useState(false);
   const router = useRouter();
 
@@ -77,7 +57,7 @@ export default function HeroMapPreview({ listings = [] }) {
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v11",
-      center: [-90.3032, 38.6495],
+      center: CAMPUS_CENTER,
       zoom: 15.5,
       cooperativeGestures: isMobileDevice,
       locale: {
@@ -171,6 +151,7 @@ export default function HeroMapPreview({ listings = [] }) {
           .setLngLat([listing.longitude, listing.latitude])
           .setPopup(popup)
           .addTo(map);
+        marker._listing = listing;
 
         popup.on("open", () => {
           markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;
@@ -182,20 +163,30 @@ export default function HeroMapPreview({ listings = [] }) {
         map._heroMarkers.push(marker);
       });
 
-      // Fly to cluster centroid
-      const center = findClusterCenter(valid);
-      if (center) {
-        map.flyTo({ center: [center.lng, center.lat], zoom: 15.5, duration: 1200, essential: true });
+      // Zoom out from campus center to frame the majority of listings
+      const bounds = computeBoundsExcludingOutliers(valid);
+      if (bounds) {
+        const maxDeltaLng = Math.max(
+          Math.abs(CAMPUS_CENTER[0] - bounds[0][0]),
+          Math.abs(bounds[1][0] - CAMPUS_CENTER[0])
+        );
+        const maxDeltaLat = Math.max(
+          Math.abs(CAMPUS_CENTER[1] - bounds[0][1]),
+          Math.abs(bounds[1][1] - CAMPUS_CENTER[1])
+        );
+        const symBounds = [
+          [CAMPUS_CENTER[0] - maxDeltaLng, CAMPUS_CENTER[1] - maxDeltaLat],
+          [CAMPUS_CENTER[0] + maxDeltaLng, CAMPUS_CENTER[1] + maxDeltaLat],
+        ];
+        const camera = map.cameraForBounds(symBounds, { padding: 80, maxZoom: 15 });
+        map.flyTo({
+          center: CAMPUS_CENTER,
+          zoom: camera ? camera.zoom : 13,
+          duration: 1400,
+          essential: true,
+        });
       }
 
-      // Auto-open a popup on a random cluster marker, only once
-      if (!autoOpenedRef.current && map._heroMarkers.length > 0) {
-        autoOpenedRef.current = true;
-        const idx = Math.floor(Math.random() * map._heroMarkers.length);
-        setTimeout(() => {
-          map._heroMarkers[idx]?.togglePopup();
-        }, 1400);
-      }
     };
 
     if (map.isStyleLoaded()) {
@@ -204,6 +195,35 @@ export default function HeroMapPreview({ listings = [] }) {
       map.once("load", addMarkers);
     }
   }, [listings]);
+
+  // Zoom to a searched address and show appropriate pin
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !searchLocation) return;
+
+    const process = () => {
+      if (map._searchMarker) { map._searchMarker.remove(); map._searchMarker = null; }
+
+      const { lat, lng } = searchLocation;
+      const match = map._heroMarkers?.find((m) => {
+        const l = m._listing;
+        return l?.latitude && l?.longitude && haversineMeters(lat, lng, l.latitude, l.longitude) <= 80;
+      });
+
+      if (match) {
+        map.flyTo({ center: [lng, lat], zoom: 16, duration: 900 });
+        setTimeout(() => match.togglePopup(), 950);
+      } else {
+        map.flyTo({ center: [lng, lat], zoom: 14, duration: 900 });
+        const el = document.createElement("div");
+        el.style.cssText = "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
+        map._searchMarker = new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+      }
+    };
+
+    if (map.isStyleLoaded()) process();
+    else map.once("load", process);
+  }, [searchLocation]);
 
   return (
     <div className="relative w-full h-full">

@@ -41,6 +41,10 @@ export async function GET(req, { params }) {
           }
         : null,
       createdAt: listing.createdAt?.toISOString() || null,
+      placeWalkMinutes: listing.placeWalkMinutes instanceof Map
+        ? Object.fromEntries(listing.placeWalkMinutes)
+        : (listing.placeWalkMinutes ?? {}),
+      shuttleWalkMinutes: listing.shuttleWalkMinutes ?? null,
     };
 
     return NextResponse.json(safeListing);

@@ -51,6 +51,24 @@ const listingSchema = new mongoose.Schema({
   },
   reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: "Review" }],
 
+  campusWalkMinutes: {
+    type: Number,
+    default: null,
+  },
+
+  // Map of place name → walking minutes, e.g. { "Olin Library": 8, ... }
+  placeWalkMinutes: {
+    type: Map,
+    of: Number,
+    default: {},
+  },
+
+  // Minimum walking time (minutes) to any WashU shuttle stop
+  shuttleWalkMinutes: {
+    type: Number,
+    default: null,
+  },
+
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
