@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import ModalDorms from "../../components/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
-import { ExternalLink } from "lucide-react";
 
 const allDorms = [
   "Beaumont",
@@ -379,6 +378,14 @@ allDorms.forEach((dorm) => {
   }
 });
 
+const FORM_TAGS = [
+  "Quiet Floor", "Study Floor", "Social Floor",
+  "Historic", "New Building", "Central Location",
+  "Apartment Style", "Modern", "On-Campus", "Off-Campus",
+];
+
+const EMPTY_FORM = { name: "", classYear: "", rating: 0, tags: [], content: "" };
+
 export default function CampusHub() {
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [ratingMin, setRatingMin] = useState(1);
@@ -388,6 +395,56 @@ export default function CampusHub() {
   const [selectedDorm, setSelectedDorm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [dbReviews, setDbReviews] = useState([]);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [formSuccess, setFormSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!selectedDorm) return;
+    setDbReviews([]);
+    setShowReviewForm(false);
+    setForm(EMPTY_FORM);
+    setFormError(null);
+    setFormSuccess(false);
+    fetch(`/api/dormReviews?dorm=${encodeURIComponent(selectedDorm.name)}`)
+      .then((r) => r.json())
+      .then((data) => setDbReviews(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [selectedDorm]);
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    setFormError(null);
+    if (!form.name.trim() || !form.classYear || !form.rating || !form.content.trim()) {
+      setFormError("Please fill in all required fields.");
+      return;
+    }
+    setFormSubmitting(true);
+    try {
+      const res = await fetch("/api/dormReviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, dorm: selectedDorm.name }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Submission failed");
+      }
+      const newReview = await res.json();
+      setDbReviews((prev) => [newReview, ...prev]);
+      setFormSuccess(true);
+      setShowReviewForm(false);
+      setForm(EMPTY_FORM);
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
 
   const allTags = [...new Set(reviews.flatMap((r) => r.tags))].sort();
   const allDormTypes = [...new Set(reviews.map((r) => r.dormType))].sort();
@@ -848,67 +905,69 @@ export default function CampusHub() {
         {/* Modal */}
         <ModalDorms isOpen={modalOpen} onClose={() => setModalOpen(false)}>
           {selectedDorm && (() => {
-            const avgRating = selectedDorm.reviews.length
-              ? (selectedDorm.reviews.reduce((s, r) => s + r.rating, 0) / selectedDorm.reviews.length).toFixed(1)
+            const allReviews = [...selectedDorm.reviews, ...dbReviews];
+            const avgRating = allReviews.length
+              ? (allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length).toFixed(1)
               : null;
             const dormType = selectedDorm.reviews[0]?.dormType ?? null;
             return (
-              <div className="flex flex-col md:flex-row gap-6 w-full">
+              <div className="w-full">
 
-                {/* ── Left: main content ── */}
-                <div className="w-full md:w-2/3 min-w-0">
-
-                  {/* Header — sticky on mobile so title stays visible while scrolling */}
-                  <div className="sticky md:static top-0 bg-white z-10 -mx-6 px-6 pt-4 pb-3 mb-1 rounded-t-xl">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      {dormType ? (
-                        <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest">
-                          {dormType}
-                        </span>
-                      ) : <span />}
-                      <button
-                        onClick={() => setModalOpen(false)}
-                        className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 shrink-0"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900 leading-tight">{selectedDorm.name}</h2>
-                    {avgRating && (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <AiFillStar className="text-red-500 text-base" />
-                        <span className="text-sm font-semibold text-gray-800">{avgRating}</span>
-                        <span className="text-sm text-gray-400">({selectedDorm.reviews.length} review{selectedDorm.reviews.length !== 1 ? "s" : ""})</span>
-                      </div>
-                    )}
+                {/* Header */}
+                <div className="sticky md:static top-0 bg-white z-10 -mx-6 px-6 pt-4 pb-3 mb-1 rounded-t-xl">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    {dormType ? (
+                      <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest">
+                        {dormType}
+                      </span>
+                    ) : <span />}
+                    <button
+                      onClick={() => setModalOpen(false)}
+                      className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 shrink-0"
+                    >
+                      ×
+                    </button>
                   </div>
-
-                  {/* Images */}
-                  {dormImages[selectedDorm.name]?.length > 0 && (
-                    <div className="mb-5 rounded-xl overflow-hidden">
-                      <Image
-                        src={dormImages[selectedDorm.name][0]}
-                        alt={selectedDorm.name}
-                        width={800}
-                        height={400}
-                        className="w-full h-[220px] md:h-[260px] object-cover"
-                        style={{ objectPosition: "center" }}
-                      />
+                  <h2 className="text-2xl font-bold text-gray-900 leading-tight">{selectedDorm.name}</h2>
+                  {avgRating && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <AiFillStar className="text-red-500 text-base" />
+                      <span className="text-sm font-semibold text-gray-800">{avgRating}</span>
+                      <span className="text-sm text-gray-400">({allReviews.length} review{allReviews.length !== 1 ? "s" : ""})</span>
                     </div>
                   )}
+                </div>
 
-                  {/* Reviews */}
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-base font-bold text-gray-900">Reviews</h3>
-                    {selectedDorm.reviews.length > 0 && (
-                      <span className="text-xs text-gray-400 font-medium">{selectedDorm.reviews.length} total</span>
-                    )}
+                {/* Image */}
+                {dormImages[selectedDorm.name]?.length > 0 && (
+                  <div className="mb-5 rounded-xl overflow-hidden">
+                    <Image
+                      src={dormImages[selectedDorm.name][0]}
+                      alt={selectedDorm.name}
+                      width={800}
+                      height={400}
+                      className="w-full h-[220px] md:h-[260px] object-cover"
+                      style={{ objectPosition: "center" }}
+                    />
                   </div>
+                )}
 
-                  {selectedDorm.reviews.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedDorm.reviews.map((r, idx) => (
-                        <div key={idx} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                {/* Reviews */}
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-bold text-gray-900">Reviews</h3>
+                  {allReviews.length > 0 && (
+                    <span className="text-xs text-gray-400 font-medium">{allReviews.length} total</span>
+                  )}
+                </div>
+
+                {allReviews.length > 0 ? (
+                  <div className="space-y-3">
+                    {allReviews.map((r, idx) => {
+                      const dateLabel = r.date || (r.createdAt
+                        ? new Date(r.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+                        : "");
+                      return (
+                        <div key={r._id || idx} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
                           <div className="flex items-start justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2.5">
                               <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
@@ -932,43 +991,141 @@ export default function CampusHub() {
                                 {tag}
                               </span>
                             ))}
-                            <span className="ml-auto text-xs text-gray-400">{r.date}</span>
+                            <span className="ml-auto text-xs text-gray-400">{dateLabel}</span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="py-8 text-center text-gray-400 text-sm bg-gray-50 rounded-xl">
-                      No reviews yet for this dorm.
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-gray-400 text-sm bg-gray-50 rounded-xl">
+                    No reviews yet. Be the first to leave one!
+                  </div>
+                )}
+
+                {/* Add Review */}
+                <div className="mt-6">
+                  {formSuccess && (
+                    <div className="mb-3 px-4 py-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl">
+                      Thanks for your review!
                     </div>
                   )}
-                </div>
+                  {!showReviewForm ? (
+                    <button
+                      onClick={() => { setShowReviewForm(true); setFormSuccess(false); }}
+                      className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-semibold text-gray-500 hover:border-red-300 hover:text-red-500 transition-colors duration-150"
+                    >
+                      + Add a Review
+                    </button>
+                  ) : (
+                    <form onSubmit={handleFormSubmit} className="border border-gray-200 rounded-xl p-5 space-y-4 bg-gray-50">
+                      <h4 className="text-sm font-bold text-gray-900">Write a Review</h4>
 
-                {/* ── Right sidebar ── */}
-                <div className="w-full md:w-1/3 space-y-4 flex-shrink-0">
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">
-                      Dorm Essentials
-                    </h3>
-                    <div className="space-y-2">
-                      {[
-                        { label: "Clip-on Fan", href: "https://a.co/d/3sc3sdI" },
-                        { label: "LED Desk Lamp", href: "https://a.co/d/4cALohf" },
-                        { label: "Mini Fridge", href: "https://a.co/d/5MDxPZh" },
-                      ].map(({ label, href }) => (
-                        <a
-                          key={label}
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-between gap-2 px-3 py-2.5 bg-white border border-gray-100 rounded-lg hover:border-red-200 hover:bg-red-50/40 transition-colors duration-150 group"
+                      {/* Name + Class Year */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-600 mb-1 block">First Name *</label>
+                          <input
+                            type="text"
+                            value={form.name}
+                            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                            placeholder="e.g. Alex"
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-600 mb-1 block">Class Year *</label>
+                          <select
+                            value={form.classYear}
+                            onChange={(e) => setForm((f) => ({ ...f, classYear: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300"
+                          >
+                            <option value="">Select…</option>
+                            {[2025,2026,2027,2028,2029,2030].map((y) => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Rating */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Rating *</label>
+                        <div className="flex gap-1">
+                          {[1,2,3,4,5].map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setForm((f) => ({ ...f, rating: s }))}
+                              className="text-2xl transition-transform hover:scale-110"
+                            >
+                              <AiFillStar className={s <= form.rating ? "text-red-500" : "text-gray-200"} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Tags */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Tags</label>
+                        <div className="flex flex-wrap gap-2">
+                          {FORM_TAGS.map((tag) => {
+                            const active = form.tags.includes(tag);
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => setForm((f) => ({
+                                  ...f,
+                                  tags: active ? f.tags.filter((t) => t !== tag) : [...f.tags, tag],
+                                }))}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors duration-100 ${
+                                  active
+                                    ? "bg-red-500 text-white border-red-500"
+                                    : "bg-white text-gray-600 border-gray-200 hover:border-red-300"
+                                }`}
+                              >
+                                {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Review text */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Your Review *</label>
+                        <textarea
+                          value={form.content}
+                          onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+                          placeholder="Share your experience living here…"
+                          rows={3}
+                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300 resize-none"
+                        />
+                      </div>
+
+                      {formError && (
+                        <p className="text-xs text-red-500">{formError}</p>
+                      )}
+
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => { setShowReviewForm(false); setFormError(null); }}
+                          className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
                         >
-                          <span className="text-sm font-medium text-gray-700 group-hover:text-red-600 transition-colors">{label}</span>
-                          <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-red-400 flex-shrink-0 transition-colors" />
-                        </a>
-                      ))}
-                    </div>
-                  </div>
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={formSubmitting}
+                          className="px-5 py-2 text-sm font-semibold bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {formSubmitting ? "Submitting…" : "Submit Review"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
 
               </div>

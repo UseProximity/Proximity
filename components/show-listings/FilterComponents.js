@@ -115,7 +115,10 @@ export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
 }
 
 export function StepSlider({ steps, value, onChange }) {
-  const idx = value === "" ? 0 : Math.max(0, steps.findIndex((s) => s.value === value));
+  const lastIsAny = steps[steps.length - 1]?.value === "";
+  const idx = value === ""
+    ? (lastIsAny ? steps.length - 1 : 0)
+    : Math.max(0, steps.findIndex((s) => s.value === value));
   const pct = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
 
   return (
@@ -130,7 +133,11 @@ export function StepSlider({ steps, value, onChange }) {
       </div>
       <div className="flex justify-between mt-1">
         {steps.map((s, i) => (
-          <span key={i} className={`text-xs leading-none ${idx === i ? "text-red-500 font-semibold" : "text-gray-400"}`}>
+          <span
+            key={i}
+            onClick={() => onChange(s.value)}
+            className={`text-xs leading-none cursor-pointer select-none ${idx === i ? "text-red-500 font-semibold" : "text-gray-400 hover:text-red-400"}`}
+          >
             {s.label}
           </span>
         ))}
@@ -206,11 +213,12 @@ export const BATH_STEPS = [
 ];
 
 export const DIST_STEPS = [
-  { label: "5 min",  value: "5"  },
   { label: "10 min", value: "10" },
   { label: "15 min", value: "15" },
   { label: "20 min", value: "20" },
-  { label: "30 min+", value: "30" },
+  { label: "30 min", value: "30" },
+  { label: "45 min", value: "45" },
+  { label: "Any",    value: ""   },
 ];
 
 export const SHTT_STEPS = [
@@ -218,4 +226,5 @@ export const SHTT_STEPS = [
   { label: "5 min",  value: "5"  },
   { label: "10 min", value: "10" },
   { label: "20 min", value: "20" },
+  { label: "Any",    value: ""   },
 ];

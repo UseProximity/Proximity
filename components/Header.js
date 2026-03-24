@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 const Logo = "/logo.svg";
 import { Search, X, Menu } from "lucide-react";
+import AddressSearchInput from "@/components/AddressSearchInput";
 import { signIn, signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -44,6 +45,13 @@ export function Header({ session }) {
     setQuery("");
   };
 
+  const handleSuggestionSelect = (feature) => {
+    const [lng, lat] = feature.center;
+    router.push(`/browse?lat=${lat}&lng=${lng}`);
+    setSearchOpen(false);
+    setQuery("");
+  };
+
   const closeSearch = () => {
     setSearchOpen(false);
     setQuery("");
@@ -54,7 +62,7 @@ export function Header({ session }) {
   const navLinks = [
     { href: "/browse", label: "Browse Listings" },
     { href: "/CampusHub", label: "On Campus Hub" },
-    { href: "/about", label: "About Us" },
+    { href: "/about", label: "Meet the Founder" },
   ];
 
   return (
@@ -90,14 +98,14 @@ export function Header({ session }) {
             onSubmit={submitSearch}
             className="md:hidden absolute left-8 right-8 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
           >
-            <input
+            <AddressSearchInput
               ref={inputRef}
-              type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+              onSelectSuggestion={handleSuggestionSelect}
               placeholder="Search addresses..."
-              className="flex-1 min-w-0 px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
+              className="w-full px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
             />
             <button
               type="button"
@@ -123,14 +131,14 @@ export function Header({ session }) {
                   onSubmit={submitSearch}
                   className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
                 >
-                  <input
+                  <AddressSearchInput
                     ref={inputRef}
-                    type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+                    onSelectSuggestion={handleSuggestionSelect}
                     placeholder="Search addresses..."
-                    className="flex-1 min-w-0 px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
                   />
                   <button
                     type="button"

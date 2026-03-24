@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/show-listings/AvailableListings";
 import TopFilterBar from "@/components/show-listings/TopFilterBar";
-import { distance } from "framer-motion";
+import { WASHU_PLACES } from "@/utils/washuPlaces";
 
 const WASHU_COORDS = { lat: 38.6496, lng: -90.3035 };
 
@@ -21,13 +21,6 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
-
-// Approximate WashU shuttle stop locations for proximity filtering
-const SHUTTLE_STOPS = [
-  { lat: 38.6495, lng: -90.3145 }, // Skinker & Lindell
-  { lat: 38.6526, lng: -90.3067 }, // Delmar Loop
-  { lat: 38.648, lng: -90.3035 }, // South campus
-];
 
 const DEFAULT_FILTERS = {
   minRent: "",
@@ -135,43 +128,35 @@ export default function BrowseContent({ session }) {
       const matchLeaseType =
         !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
 
-      // Walking time to campus (3 mph → 1 mile = 20 min)
+      // Walking distance to campus — use the minimum walk time among all
+      // non-grocery WashU places stored in placeWalkMinutes, fall back to
+      // campusWalkMinutes, then straight-line approximation.
       let matchDistance = true;
-      if (filters.distance && listing?.walkingDistanceToCampus) {
-        matchDistance = filters.distance >= listing?.walkingDistanceToCampus;
+      if (filters.distance) {
+        const maxMinutes = parseFloat(filters.distance);
+        const pwm = listing.placeWalkMinutes;
+        const nonGroceryMins = WASHU_PLACES.filter(
+          (p) => p.name !== "Schnucks (Grocery)"
+        )
+          .map((p) => pwm?.[p.name])
+          .filter((m) => m != null);
+        if (nonGroceryMins.length > 0) {
+          matchDistance = Math.min(...nonGroceryMins) <= maxMinutes;
+        } else if (listing.campusWalkMinutes != null) {
+          matchDistance = listing.campusWalkMinutes <= maxMinutes;
+        } else {
+          matchDistance = false;
+        }
       }
-      /*
-      if (filters.distance && listing.latitude && listing.longitude) {
-        const maxMiles = parseFloat(filters.distance) / 20;
-        const d = calculateDistance(
-          listing.latitude,
-          listing.longitude,
-          WASHU_COORDS.lat,
-          WASHU_COORDS.lng
-        );
-        matchDistance = d <= maxMiles;
-      }
-        */
-      // Walking time to nearest shuttle stop
+
+      // Walking time to nearest shuttle stop (use pre-computed DB value)
       let matchShuttle = true;
-      if (filters.distanceToShuttle && listing?.walkingDistanceToShuttle) {
+      if (filters.distanceToShuttle) {
+        const maxMinutes = parseFloat(filters.distanceToShuttle);
         matchShuttle =
-          filters.distanceToShuttle >= listing?.walkingDistanceToShuttle;
+          listing.shuttleWalkMinutes != null &&
+          listing.shuttleWalkMinutes <= maxMinutes;
       }
-      /*
-      if (filters.distanceToShuttle && listing.latitude && listing.longitude) {
-        const maxMiles = parseFloat(filters.distanceToShuttle) / 20;
-        matchShuttle = SHUTTLE_STOPS.some((stop) => {
-          const d = calculateDistance(
-            listing.latitude,
-            listing.longitude,
-            stop.lat,
-            stop.lng
-          );
-          return d <= maxMiles;
-        });
-      }
-        */
 
       // Home type
       let matchHomeType = true;

@@ -93,29 +93,36 @@ export async function POST(req) {
     const mailOptions = {
       from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
       to: landlordEmail,
+      cc: email,
       replyTo: email,
-      subject: `New Inquiry for ${listingAddress || "Your Listing"} — Proximity`,
+      subject: `New Inquiry: ${listingAddress || "Your Listing"} — via Proximity`,
       html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-          <h2 style="color: #dc2626; margin-bottom: 4px;">New Listing Inquiry</h2>
-          <p style="color: #6b7280; margin-top: 0;">via <a href="https://useproximity.org">Proximity</a></p>
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
+          <p>Hi ${landlordName || "there"},</p>
 
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+          <p>You've received a new inquiry about your listing at <strong>${listingAddress || "your property"}</strong> through Proximity.</p>
 
-          <p><strong>Property:</strong> ${listingAddress || "N/A"}</p>
-          <p><strong>From:</strong> ${senderName}</p>
-          <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
-          ${phone ? `<p><strong>Phone:</strong> ${phone}</p>` : ""}
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
 
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+          <p style="margin: 6px 0;"><strong>From:</strong> ${senderName}</p>
+          <p style="margin: 6px 0;"><strong>Email:</strong> <a href="mailto:${email}" style="color: #dc2626;">${email}</a></p>
+          <p style="margin: 6px 0;"><strong>Phone:</strong> ${phone?.trim() || "Not provided"}</p>
 
-          <h3 style="margin-bottom: 8px;">Message</h3>
-          <p style="white-space: pre-wrap; color: #374151;">${message.trim()}</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
 
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+          <p style="margin-bottom: 8px;"><strong>Message:</strong></p>
+          <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${message.trim()}"</p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+
+          <p>You can reply directly to this email to respond to ${firstName.trim()}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
+
+          <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
           <p style="color: #9ca3af; font-size: 12px;">
-            This message was sent through Proximity. To reply, respond directly to
-            <a href="mailto:${email}">${email}</a>.
+            You're receiving this because your property is listed on Proximity. Questions? Contact us at
+            <a href="mailto:info@useproximity.org" style="color: #9ca3af;">info@useproximity.org</a>
           </p>
         </div>
       `,
