@@ -32,57 +32,42 @@ function calculateDistanceMiles(lat1, lng1, lat2, lng2) {
 }
 
 // Approximate walking time in minutes
-// Assumes ~3 mph walking speed => ~20 min per mile
+// Assumes ~3 mph walking speed => 1 mile ≈ 20 minutes
 function milesToWalkingMinutes(miles) {
   return Math.round(miles * 20);
 }
 
-async function migrateListings() {
+async function migrateListingsToNewSchema() {
   try {
+    if (!process.env.MONGO_URI) {
+      throw new Error("MONGO_URI is missing from .env.local");
+    }
+
     await mongoose.connect(process.env.MONGO_URI);
     console.log("Connected to MongoDB");
 
     const listings = await Listing.find();
+    console.log(`Found ${listings.length} listings`);
 
     for (const listing of listings) {
       let changed = false;
 
-      // -----------------------------
-      // Migrate old leaseType values
-      // -----------------------------
-      const oldLeaseType = listing.leaseType;
-
-      if (!listing.leaseStructure) {
-        if (oldLeaseType === "individual" || oldLeaseType === "joint") {
-          listing.leaseStructure = oldLeaseType;
-          changed = true;
-        } else {
-          listing.leaseStructure = "individual";
-          changed = true;
-        }
-      }
-
-      if (!listing.leaseAvailability) {
-        if (oldLeaseType === "twelve") {
-          listing.leaseAvailability = "12_month";
-          changed = true;
-        } else if (oldLeaseType === "academic") {
-          listing.leaseAvailability = "semester";
-          changed = true;
-        } else if (oldLeaseType === "nine") {
-          listing.leaseAvailability = "10_month";
-          changed = true;
-        }
-      }
-
-      if (oldLeaseType === "sublease" && listing.subleaseFriendly !== true) {
-        listing.subleaseFriendly = true;
+      // ---------------------------------
+      // 1. Force new lease fields
+      // ---------------------------------
+      if (listing.leaseStructure !== "individual") {
+        listing.leaseStructure = "individual";
         changed = true;
       }
 
-      // -----------------------------
-      // Compute derived unit fields
-      // -----------------------------
+      if (listing.leaseAvailability !== "semester") {
+        listing.leaseAvailability = "semester";
+        changed = true;
+      }
+
+      // ---------------------------------
+      // 2. Compute derived min/max fields
+      // ---------------------------------
       const unitTypes = Array.isArray(listing.unitTypes)
         ? listing.unitTypes
         : [];
@@ -160,9 +145,9 @@ async function migrateListings() {
         changed = true;
       }
 
-      // -----------------------------
-      // Compute campus / shuttle walking times
-      // -----------------------------
+      // ---------------------------------
+      // 3. Compute walking minutes
+      // ---------------------------------
       const latitude = Number(listing.latitude);
       const longitude = Number(listing.longitude);
 
@@ -195,6 +180,14 @@ async function migrateListings() {
         }
       }
 
+      // ---------------------------------
+      // 4. Remove old field
+      // ---------------------------------
+      if (listing.leaseType !== undefined) {
+        listing.leaseType = undefined;
+        changed = true;
+      }
+
       if (changed) {
         await listing.save();
         console.log(`Updated listing ${listing._id}`);
@@ -209,4 +202,4 @@ async function migrateListings() {
   }
 }
 
-migrateListings();
+migrateListingsToNewSchema();
