@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 export default async function Browse() {
   const session = await auth();
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<div></div>}>
       <BrowseContent session={session} />
     </Suspense>
   );
