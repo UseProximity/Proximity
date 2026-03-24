@@ -194,7 +194,7 @@ const REVIEWS = [
   },
   {
     text: "As an on-campus student at WashU, I did not have much luck using the on-campus housing process and was unsure if a matching service would truly be able to find a place that fit my needs off-campus. When I completed the form, I received a response in a very timely manner that provided me with options that were within walking distance of campus and at a cost that was reasonable compared to what I had seen on-campus. The quickness of the response and how well the options were matched to what I was looking for made using this site far more effective than spending hours searching Google for listings nearby.",
-    author: "Benjamin Kudon",
+    author: "Benjamin K",
     rating: 5,
   },
   {
@@ -219,7 +219,12 @@ const REVIEWS = [
   },
   {
     text: "I could tell that they really cared about helping me find housing. All responses were extremely timely and helpful.",
-    author: "Sam Gornstein",
+    author: "Sam",
+    rating: 5,
+  },
+  {
+    text: "I was skeptical of the housing match service, but after searching unsuccessfully for a few days I decied to give it a try. It took me a few minutes and I received 2 personalized options in under 2 hours. I told them I liked LOCAL, they connected me with the leasing team, and I signed my lease the next day. ",
+    author: "Marvin Z",
     rating: 5,
   },
 ];

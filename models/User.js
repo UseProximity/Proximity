@@ -16,6 +16,7 @@ const UserSchema = new mongoose.Schema(
     profileComplete: { type: Boolean, default: false },
     rating: { type: Number, default: 0, min: 0, max: 5 },
     reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: "Review" }],
+    referralSource: { type: String, default: "" },
     role: { type: String, default: "student" },
   },
   { timestamps: true }

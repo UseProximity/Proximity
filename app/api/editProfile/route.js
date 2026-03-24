@@ -18,6 +18,7 @@ export async function PATCH(req) {
       description: body.description,
       gender: body.gender,
       profileComplete: body.profileComplete,
+      ...(body.referralSource !== undefined && { referralSource: body.referralSource }),
       ...(body.image !== undefined && { image: body.image }),
     };
 

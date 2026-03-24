@@ -46,6 +46,9 @@ const config = {
   ],
   adapter: MongoDBAdapter(clientPromise),
   allowDangerousEmailAccountLinking: true,
+  pages: {
+    error: "/",
+  },
   events: {
     async createUser({ user }) {
       // Runs once after adapter creates the user
@@ -68,6 +71,7 @@ const config = {
             phone: "N/A",
             profileComplete: false,
             rating: 0,
+            referralSource: "",
             reviews: [],
             role: "student",
           },

@@ -317,6 +317,25 @@ function ProfileSection({
                 />
               </div>
 
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  How&apos;d you find us?
+                </label>
+                <select
+                  name="referralSource"
+                  value={form.referralSource}
+                  onChange={onChange}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="">Not specified</option>
+                  <option value="Social Media">Social Media</option>
+                  <option value="A Friend">A Friend</option>
+                  <option value="Colleague">Colleague</option>
+                  <option value="On Campus">On Campus</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
               <div className="col-span-1 md:col-span-2 flex gap-3 pt-2">
                 <Button
                   type="submit"
@@ -1001,6 +1020,7 @@ export default function ProximityDashboard() {
     description: "",
     birthday: "",
     gender: "unspecified",
+    referralSource: "",
   });
 
   const router = useRouter();
@@ -1018,6 +1038,7 @@ export default function ProximityDashboard() {
       description: user.description || "",
       birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
       gender: user.gender || "unspecified",
+      referralSource: user.referralSource || "",
     });
   }, [user]);
 
@@ -1111,6 +1132,7 @@ export default function ProximityDashboard() {
         description: user.description || "",
         birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
         gender: user.gender || "unspecified",
+        referralSource: user.referralSource || "",
       });
     }
   };
@@ -1130,6 +1152,7 @@ export default function ProximityDashboard() {
           description: form.description?.trim(),
           birthday: form.birthday || null,
           gender: form.gender || "unspecified",
+          referralSource: form.referralSource || "",
         }),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);

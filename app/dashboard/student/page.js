@@ -20,12 +20,13 @@ function calcAge(birthday) {
 
 function EditProfileModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({
-    name:        user.name        || "",
-    birthday:    user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
-    gender:      (user.gender || "unspecified").toLowerCase(),
-    role:        (user.role   || "student").toLowerCase(),
-    phone:       user.phone       || "",
-    description: user.description || "",
+    name:           user.name           || "",
+    birthday:       user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
+    gender:         (user.gender || "unspecified").toLowerCase(),
+    role:           (user.role   || "student").toLowerCase(),
+    phone:          user.phone          || "",
+    description:    user.description    || "",
+    referralSource: user.referralSource || "",
   });
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState(null);
@@ -229,6 +230,24 @@ function EditProfileModal({ user, onClose, onSaved }) {
               placeholder="Tell landlords a bit about yourself…"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
             />
+          </div>
+
+          {/* How'd you find us */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">How&apos;d you find us?</label>
+            <select
+              name="referralSource"
+              value={form.referralSource}
+              onChange={handleChange}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+            >
+              <option value="">Not specified</option>
+              <option value="Social Media">Social Media</option>
+              <option value="A Friend">A Friend</option>
+              <option value="Colleague">Colleague</option>
+              <option value="On Campus">On Campus</option>
+              <option value="Other">Other</option>
+            </select>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}

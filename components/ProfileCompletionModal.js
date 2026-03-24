@@ -10,6 +10,7 @@ export default function ProfileCompletionModal({ session }) {
     lastName: "",
     birthday: "",
     gender: "",
+    referralSource: "",
   });
   const [saving, setSaving] = useState(false);
   const [role, setRole] = useState(null);
@@ -29,7 +30,7 @@ export default function ProfileCompletionModal({ session }) {
   };
 
   const isFormValid =
-    formData.firstName && formData.lastName && formData.birthday && formData.gender;
+    formData.firstName && formData.lastName && formData.birthday && formData.gender && formData.referralSource;
 
   const handleSave = async () => {
     try {
@@ -44,6 +45,7 @@ export default function ProfileCompletionModal({ session }) {
           name: `${formData.firstName?.trim()} ${formData.lastName?.trim()}`,
           birthday: formData.birthday,
           gender: formData.gender,
+          referralSource: formData.referralSource,
           profileComplete: true,
           role: role,
         }),
@@ -147,6 +149,30 @@ export default function ProfileCompletionModal({ session }) {
               <option value="">Select your gender</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          {/* How'd you find us */}
+          <div>
+            <label
+              htmlFor="referralSource"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              How&apos;d you find us?
+            </label>
+            <select
+              id="referralSource"
+              name="referralSource"
+              value={formData.referralSource}
+              onChange={handleInputChange}
+              className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+            >
+              <option value="" disabled>Select one…</option>
+              <option value="Social Media">Social Media</option>
+              <option value="A Friend">A Friend</option>
+              <option value="Colleague">Colleague</option>
+              <option value="On Campus">On Campus</option>
               <option value="Other">Other</option>
             </select>
           </div>
