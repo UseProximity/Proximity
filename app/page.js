@@ -17,7 +17,9 @@ import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 
-const HeroMapPreview = dynamic(() => import("@/components/HeroMapPreview"), { ssr: false });
+const HeroMapPreview = dynamic(() => import("@/components/HeroMapPreview"), {
+  ssr: false,
+});
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -67,108 +69,110 @@ function HeroMapSection() {
   const BG = "#f2f4f8";
 
   return (
-    <section
-      className="relative overflow-hidden"
-      style={{ background: BG }}
-    >
+    <section className="relative overflow-hidden" style={{ background: BG }}>
       <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
-
-      {/* ── Left: Hero content ── */}
-      <div className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 md:pb-8 pb-20 lg:py-26 flex flex-col justify-center`}>
-
-        {/* Headline */}
-        <motion.h1
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.08 }}
-          className="text-5xl sm:text-6xl lg:text-[56px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
+        {/* ── Left: Hero content ── */}
+        <div
+          className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 md:pb-8 pb-20 lg:py-26 flex flex-col justify-center`}
         >
-          Find Your Perfect <span className="text-red-700">WashU</span> Housing
-          Now
-        </motion.h1>
+          {/* Headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.08 }}
+            className="text-5xl sm:text-6xl lg:text-[56px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
+          >
+            Find Your Perfect <span className="text-red-700">WashU</span>{" "}
+            Housing Now
+          </motion.h1>
 
-        {/* Sub-headline */}
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.16 }}
-          className="text-[17px] text-gray-500 max-w-sm mb-2 leading-relaxed"
-        >
-          The only platform that actually understands what students care about.
-        </motion.p>
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.16 }}
-          className="text-[17px] text-gray-500 max-w-sm mb-8 leading-relaxed"
-        >
-          Relevant filters, real peer reviews, and a streamlined search to help you secure off-campus housing with full transparency.
-        </motion.p>
+          {/* Sub-headline */}
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.16 }}
+            className="text-[17px] text-gray-500 max-w-sm mb-2 leading-relaxed"
+          >
+            The only platform that actually understands what students care
+            about.
+          </motion.p>
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.16 }}
+            className="text-[17px] text-gray-500 max-w-sm mb-8 leading-relaxed"
+          >
+            Relevant filters, real peer reviews, and a streamlined search to
+            help you secure off-campus housing with full transparency.
+          </motion.p>
 
-        {/* Search bar */}
-        <motion.form
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.24 }}
-          onSubmit={handleSearch}
-          className="relative max-w-md mb-5"
-        >
-          <div className="flex items-center bg-white rounded-xl border border-gray-200 focus-within:border-red-300 shadow-md shadow-black/[0.05] transition-all duration-200 p-1.5 gap-1">
-            <Search className="ml-2.5 h-4 w-4 text-gray-400 flex-shrink-0" />
-            <AddressSearchInput
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onSelectSuggestion={handleSuggestionSelect}
-              placeholder="Search address..."
-              className="w-full px-2.5 py-2.5 text-sm bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400"
-            />
-            <button
-              type="submit"
-              className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg text-sm transition-all duration-150 flex-shrink-0"
-            >
-              Search
-            </button>
-          </div>
-        </motion.form>
+          {/* Search bar */}
+          <motion.form
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.24 }}
+            onSubmit={handleSearch}
+            className="relative max-w-md mb-5"
+          >
+            <div className="flex items-center bg-white rounded-xl border border-gray-200 focus-within:border-red-300 shadow-md shadow-black/[0.05] transition-all duration-200 p-1.5 gap-1">
+              <Search className="ml-2.5 h-4 w-4 text-gray-400 flex-shrink-0" />
+              <AddressSearchInput
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onSelectSuggestion={handleSuggestionSelect}
+                placeholder="Search address..."
+                className="w-full px-2.5 py-2.5 text-sm bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg text-sm transition-all duration-150 flex-shrink-0"
+              >
+                Search
+              </button>
+            </div>
+          </motion.form>
 
-        {/* Tagline */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.46 }}
-          className="mt-4 text-xl font-bold text-gray-800 leading-snug"
-        >
-          Better apartments.{" "}
-          <span className="text-red-600">Honest reviews.</span>{" "}
-          Zero stress.
-        </motion.p>
-      </div>
-
-      {/* ── Right: Map ── */}
-      <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
-
-        {/* Real Mapbox map, desaturated */}
-        <div className="absolute inset-0">
-          <HeroMapPreview listings={previewListings} />
+          {/* Tagline */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.46 }}
+            className="mt-4 text-xl font-bold text-gray-800 leading-snug"
+          >
+            Better apartments.{" "}
+            <span className="text-red-600">Honest reviews.</span> Zero stress.
+          </motion.p>
         </div>
 
-        {/* Left gradient — blends map into hero bg (desktop only) */}
-        <div
-          className="hidden lg:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
-          style={{ background: `linear-gradient(to right, ${BG} 0%, transparent 100%)` }}
-        />
-        {/* Top gradient */}
-        <div
-          className="absolute top-0 left-0 right-0 h-14 z-30 pointer-events-none"
-          style={{ background: `linear-gradient(to bottom, ${BG} 0%, transparent 100%)` }}
-        />
-        {/* Bottom gradient */}
-        <div
-          className="absolute bottom-0 left-0 right-0 h-20 z-30 pointer-events-none"
-          style={{ background: `linear-gradient(to top, ${BG} 0%, transparent 100%)` }}
-        />
-      </div>
+        {/* ── Right: Map ── */}
+        <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
+          {/* Real Mapbox map, desaturated */}
+          <div className="absolute inset-0">
+            <HeroMapPreview listings={previewListings} />
+          </div>
 
+          {/* Left gradient — blends map into hero bg (desktop only) */}
+          <div
+            className="hidden lg:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
+            style={{
+              background: `linear-gradient(to right, ${BG} 0%, transparent 100%)`,
+            }}
+          />
+          {/* Top gradient */}
+          <div
+            className="absolute top-0 left-0 right-0 h-14 z-30 pointer-events-none"
+            style={{
+              background: `linear-gradient(to bottom, ${BG} 0%, transparent 100%)`,
+            }}
+          />
+          {/* Bottom gradient */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-20 z-30 pointer-events-none"
+            style={{
+              background: `linear-gradient(to top, ${BG} 0%, transparent 100%)`,
+            }}
+          />
+        </div>
       </div>
     </section>
   );
@@ -278,13 +282,19 @@ function ReviewsCarousel() {
     return () => clearTimeout(t);
   }, [skipAnim]);
 
-  const goNext = () => { setSkipAnim(false); setPos((p) => p + 1); };
+  const goNext = () => {
+    setSkipAnim(false);
+    setPos((p) => p + 1);
+  };
   const goPrev = () => {
     setSkipAnim(false);
     setPos((p) => {
       const next = p - 1;
       if (next < N_REVIEWS) {
-        setTimeout(() => { setSkipAnim(true); setPos(N_REVIEWS * 2 - 1); }, 550);
+        setTimeout(() => {
+          setSkipAnim(true);
+          setPos(N_REVIEWS * 2 - 1);
+        }, 550);
       }
       return next;
     });
@@ -292,11 +302,13 @@ function ReviewsCarousel() {
 
   const centerOffset = containerW > 0 ? (containerW - CARD_W) / 2 : 0;
   const x = -(pos * STEP) + centerOffset;
-  const dotIdx = ((pos - N_REVIEWS) % N_REVIEWS + N_REVIEWS) % N_REVIEWS;
+  const dotIdx = (((pos - N_REVIEWS) % N_REVIEWS) + N_REVIEWS) % N_REVIEWS;
 
   return (
-    <section ref={sectionRef} className="w-full py-16 md:py-22 bg-white overflow-hidden">
-
+    <section
+      ref={sectionRef}
+      className="w-full py-16 md:py-22 bg-white overflow-hidden"
+    >
       {/* Header */}
       <div className={`w-full ${SIDE_MARGIN}`}>
         <motion.div
@@ -343,7 +355,10 @@ function ReviewsCarousel() {
               >
                 <div className="flex gap-1 mb-3.5">
                   {Array.from({ length: review.rating }).map((_, j) => (
-                    <Star key={j} className="h-4 w-4 fill-red-400 text-red-400" />
+                    <Star
+                      key={j}
+                      className="h-4 w-4 fill-red-400 text-red-400"
+                    />
                   ))}
                 </div>
                 <p
@@ -357,7 +372,9 @@ function ReviewsCarousel() {
                   &ldquo;{review.text}&rdquo;
                 </p>
                 <div>
-                  <div className="text-sm font-bold text-gray-900">{review.author}</div>
+                  <div className="text-sm font-bold text-gray-900">
+                    {review.author}
+                  </div>
                 </div>
               </div>
             ))}
@@ -405,10 +422,24 @@ function RentalCard({ listing, index, isInView }) {
   const imageCount = listing.images?.length || 0;
   const [streetAddress, ...restParts] = listing.address.split(",");
   const cityStateZip = restParts.join(",").trim();
-  const bedValues = listing.unitTypes.map((u) => u.bedrooms).filter(Number.isFinite);
-  const bathValues = listing.unitTypes.map((u) => u.bathrooms).filter(Number.isFinite);
-  const bedLabel = bedValues.length === 0 ? "N/A" : Math.min(...bedValues) === Math.max(...bedValues) ? String(Math.min(...bedValues)) : `${Math.min(...bedValues)}-${Math.max(...bedValues)}`;
-  const bathLabel = bathValues.length === 0 ? "N/A" : Math.min(...bathValues) === Math.max(...bathValues) ? String(Math.min(...bathValues)) : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
+  const bedValues = listing.unitTypes
+    .map((u) => u.bedrooms)
+    .filter(Number.isFinite);
+  const bathValues = listing.unitTypes
+    .map((u) => u.bathrooms)
+    .filter(Number.isFinite);
+  const bedLabel =
+    bedValues.length === 0
+      ? "N/A"
+      : Math.min(...bedValues) === Math.max(...bedValues)
+      ? String(Math.min(...bedValues))
+      : `${Math.min(...bedValues)}-${Math.max(...bedValues)}`;
+  const bathLabel =
+    bathValues.length === 0
+      ? "N/A"
+      : Math.min(...bathValues) === Math.max(...bathValues)
+      ? String(Math.min(...bathValues))
+      : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
 
   const initial = isMobile
     ? { opacity: 0, x: index % 2 === 0 ? -40 : 40 }
@@ -420,7 +451,10 @@ function RentalCard({ listing, index, isInView }) {
       animate={isInView ? { opacity: 1, x: 0, y: 0 } : {}}
       transition={{ duration: 0.5, delay: index * 0.07 }}
     >
-      <div onClick={() => router.push(`/?listing=${listing._id}`)} className="group block cursor-pointer">
+      <div
+        onClick={() => router.push(`/?listing=${listing._id}`)}
+        className="group block cursor-pointer"
+      >
         <div className="relative bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
           <div className="relative">
             {imageUrl ? (
@@ -459,8 +493,11 @@ function RentalCard({ listing, index, isInView }) {
             </div>
             <div className="flex items-center justify-between mt-auto pt-2">
               <span className="text-gray-500 text-xs">
-                {bedLabel} bed{" | "}{bathLabel} bath
-                {listing.leaseType ? ` | ${listing.leaseType}` : ""}
+                {bedLabel} bed{" | "}
+                {bathLabel} bath
+                {listing.leaseAvailability
+                  ? ` | ${listing.leaseAvailability}`
+                  : ""}
               </span>
               {listing.owner?.name && (
                 <span className="text-gray-400 text-xs truncate ml-2">
@@ -514,7 +551,6 @@ function PopularRentals() {
   return (
     <section ref={ref} className="w-full pt-16 pb-8 md:py-22 bg-gray-50/70">
       <div className={`w-full ${SIDE_MARGIN}`}>
-
         {/* Section header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

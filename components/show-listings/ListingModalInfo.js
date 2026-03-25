@@ -30,7 +30,7 @@ const leaseAvailabilityMap = {
 };
 
 const AmenitiesMap = {
-  "in-unit laundry": "In-Unit Laundry",
+  in_unit_laundry: "In-Unit Laundry",
   ac_heating: "AC/Heating",
   mailroom: "Mailroom",
   pets_allowed: "Pets Allowed",
@@ -471,7 +471,7 @@ function ContactTab({
             Listing by
           </p>
           <Link
-            href={`/landlord/${encodeURIComponent(owner._id)}`}
+            href="#" // FIXME: Link to landlord profile when implemented
             className="text-lg font-semibold text-gray-900 hover:text-red-600 transition"
           >
             {owner.name}
@@ -822,7 +822,7 @@ export default function ListingModalInfo({ session, listing }) {
               <p className="text-sm text-gray-500 mt-2">
                 Listed by{" "}
                 <Link
-                  href={`/landlord/${encodeURIComponent(listing.owner._id)}`}
+                  href="#" // FIXME: Link to landlord profile when implemented
                   className="font-semibold text-gray-800 hover:text-red-600 transition"
                 >
                   {listing.owner.name}
