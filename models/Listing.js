@@ -69,6 +69,30 @@ const listingSchema = new mongoose.Schema({
     default: null,
   },
 
+  // Direct contact info — used for listings without a platform owner account
+  contactEmail: { type: String, default: null },
+  contactPhone: { type: String, default: null },
+  contactName:  { type: String, default: null },
+
+  // Lease & unit metadata
+  leaseAvailability: { type: String, default: null },  // "semester" | "10-month" | "12-month"
+  leaseStructure:    { type: String, default: null },  // "individual" | "joint"
+  homeType:          { type: String, default: "apartment" }, // "house" | "apartment" | "condo" | "townhouse"
+  furnished:         { type: Boolean, default: false },
+  moveInDate:        { type: String, default: null },
+  utilitiesIncluded: { type: Boolean, default: false },
+  subleaseFriendly:  { type: Boolean, default: false },
+
+  // Computed aggregates from unitTypes
+  minRent:      { type: Number, default: null },
+  maxRent:      { type: Number, default: null },
+  minBedrooms:  { type: Number, default: null },
+  maxBedrooms:  { type: Number, default: null },
+  minBathrooms: { type: Number, default: null },
+  maxBathrooms: { type: Number, default: null },
+  minArea:      { type: Number, default: null },
+  maxArea:      { type: Number, default: null },
+
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -79,5 +103,7 @@ const listingSchema = new mongoose.Schema({
   },
 });
 
+const collection = process.env.LISTINGS_COLLECTION || "listings";
+
 export default mongoose.models.Listing ||
-  mongoose.model("Listing", listingSchema);
+  mongoose.model("Listing", listingSchema, collection);
