@@ -174,63 +174,7 @@ function HeroMapSection() {
   );
 }
 
-// ─── Reviews Carousel ──────────────────────────────────────────────────────────
 
-const REVIEWS = [
-  {
-    text: "Proximity made the whole housing process easy and convenient. Ben Flicker responded very quickly with an option that fit our group's needs, and we are very satisfied with the property we decided to lease.",
-    author: "Felix Harari",
-    rating: 5,
-  },
-  {
-    text: "Before Proximity, our apartment search was a mess. We were late to sign a lease and completely lost in the process. We decided to give Proximity a shot and filled out the form on the website. We received a quick response, and a few days later, we were matched up with a great apartment for next semester. Overall made the process much less stressful and really saved us.",
-    author: "Jameson T",
-    rating: 5,
-  },
-  {
-    text: "I was scrambling to find housing that I would like and when I reached out to Proximity, they were quick to help me find a place that fit my needs, set me up with the landlord, and help me secure my lease. They were incredibly responsive, helpful, and kind.",
-    author: "Wyatt Ogle",
-    rating: 5,
-  },
-  {
-    text: "As an on-campus student at WashU, I did not have much luck using the on-campus housing process and was unsure if a matching service would truly be able to find a place that fit my needs off-campus. When I completed the form, I received a response in a very timely manner that provided me with options that were within walking distance of campus and at a cost that was reasonable compared to what I had seen on-campus. The quickness of the response and how well the options were matched to what I was looking for made using this site far more effective than spending hours searching Google for listings nearby.",
-    author: "Benjamin K",
-    rating: 5,
-  },
-  {
-    text: "The on-campus housing process sucks, and I was seriously dreading my living conditions next year. I was worried about being stuck with the dregs of the off-campus housing, as I was certain I wouldn't get an on-campus assignment. Fortunately, Proximity helped me find a 9 room apartment for me and my friends and it is far nicer than my standards, I can't recommend it enough.",
-    author: "Spencer Gaukel",
-    rating: 5,
-  },
-  {
-    text: "Proximity made finding a triple for next year at LOCAL super easy. It matched all three of our preferences without the usual back-and-forth of coordinating, and helped weigh our options to find the perfect match. The process felt really smooth and straightforward.",
-    author: "Anonymous",
-    rating: 5,
-  },
-  {
-    text: "I got a really quick response that matched my needs exactly. I was able to find the best match to the spot I really needed and the platform was able to hit each priority that I listed.",
-    author: "Ethan",
-    rating: 5,
-  },
-  {
-    text: "The experience was very good and very smooth. It was very helpful and helped me find exactly what I needed with very quick response times. They actually listened to what I was looking for instead of just giving me anything.",
-    author: "Anonymous",
-    rating: 5,
-  },
-  {
-    text: "I could tell that they really cared about helping me find housing. All responses were extremely timely and helpful.",
-    author: "Sam",
-    rating: 5,
-  },
-  {
-    text: "I was skeptical of the housing match service, but after searching unsuccessfully for a few days I decied to give it a try. It took me a few minutes and I received 2 personalized options in under 2 hours. I told them I liked LOCAL, they connected me with the leasing team, and I signed my lease the next day. ",
-    author: "Marvin Z",
-    rating: 5,
-  },
-];
-
-const N_REVIEWS = REVIEWS.length;
-const REVIEW_TRACK = [...REVIEWS, ...REVIEWS, ...REVIEWS];
 const CARD_W = 300;
 const GAP = 20;
 const STEP = CARD_W + GAP;
@@ -240,9 +184,25 @@ function ReviewsCarousel() {
   const trackRef = useRef(null);
   const isInView = useInView(sectionRef, { once: true, margin: "-80px" });
 
-  const [pos, setPos] = useState(N_REVIEWS);
+  const [reviews, setReviews] = useState([]);
+  const [pos, setPos] = useState(0);
   const [skipAnim, setSkipAnim] = useState(false);
   const [containerW, setContainerW] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/testimonials")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setReviews(data);
+          setPos(data.length);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const n = reviews.length;
+  const reviewTrack = n > 0 ? [...reviews, ...reviews, ...reviews] : [];
 
   useEffect(() => {
     const el = trackRef.current;
@@ -255,22 +215,22 @@ function ReviewsCarousel() {
   }, []);
 
   useEffect(() => {
+    if (n === 0) return;
     const t = setInterval(() => {
       setSkipAnim(false);
       setPos((p) => p + 1);
     }, 4500);
     return () => clearInterval(t);
-  }, []);
+  }, [n]);
 
   useEffect(() => {
-    if (pos >= N_REVIEWS * 2) {
-      const t = setTimeout(() => {
-        setSkipAnim(true);
-        setPos((p) => p - N_REVIEWS);
-      }, 550);
-      return () => clearTimeout(t);
-    }
-  }, [pos]);
+    if (n === 0 || pos < n * 2) return;
+    const t = setTimeout(() => {
+      setSkipAnim(true);
+      setPos((p) => p - n);
+    }, 550);
+    return () => clearTimeout(t);
+  }, [pos, n]);
 
   useEffect(() => {
     if (!skipAnim) return;
@@ -283,8 +243,8 @@ function ReviewsCarousel() {
     setSkipAnim(false);
     setPos((p) => {
       const next = p - 1;
-      if (next < N_REVIEWS) {
-        setTimeout(() => { setSkipAnim(true); setPos(N_REVIEWS * 2 - 1); }, 550);
+      if (next < n) {
+        setTimeout(() => { setSkipAnim(true); setPos(n * 2 - 1); }, 550);
       }
       return next;
     });
@@ -292,7 +252,7 @@ function ReviewsCarousel() {
 
   const centerOffset = containerW > 0 ? (containerW - CARD_W) / 2 : 0;
   const x = -(pos * STEP) + centerOffset;
-  const dotIdx = ((pos - N_REVIEWS) % N_REVIEWS + N_REVIEWS) % N_REVIEWS;
+  const dotIdx = n > 0 ? ((pos - n) % n + n) % n : 0;
 
   return (
     <section ref={sectionRef} className="w-full py-16 md:py-22 bg-white overflow-hidden">
@@ -335,7 +295,7 @@ function ReviewsCarousel() {
                 : { type: "spring", stiffness: 55, damping: 20, mass: 1 }
             }
           >
-            {REVIEW_TRACK.map((review, i) => (
+            {reviewTrack.map((review, i) => (
               <div
                 key={i}
                 style={{ width: CARD_W, flexShrink: 0 }}
@@ -374,7 +334,7 @@ function ReviewsCarousel() {
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div className="flex gap-2">
-            {REVIEWS.map((_, i) => (
+            {reviews.map((_, i) => (
               <div
                 key={i}
                 className={`h-1.5 rounded-full transition-all duration-300 ${

@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import DormReview from "@/models/DormReview";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const dorm = searchParams.get("dorm");
-  if (!dorm) {
-    return NextResponse.json({ error: "Missing dorm param" }, { status: 400 });
-  }
   await connectMongo();
-  const reviews = await DormReview.find({ dorm }).sort({ createdAt: -1 }).lean();
+  const query = dorm ? { dorm } : {};
+  const reviews = await DormReview.find(query).sort({ createdAt: -1 }).lean();
   return NextResponse.json(reviews);
 }
 
