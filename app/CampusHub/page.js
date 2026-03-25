@@ -40,343 +40,39 @@ const allDorms = [
   "Village & Lopata House",
 ];
 
-const reviews = [
-  {
-    name: "Adrian",
-    classYear: 2028,
-    rating: 5,
-    dorm: "Beaumont",
-    dormType: "Modern Double",
-    tags: ["On-Campus", "Quiet Floor"],
-    content: "Spacious dorm, great natural light, but noisy at night.",
-    date: "July 2025",
-  },
-  {
-    name: "Sophie",
-    classYear: 2027,
-    rating: 5,
-    dorm: "Danforth",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Quiet Floor"],
-    content: "Super cozy and clean dorm, would recommend.",
-    date: "July 2025",
-  },
-  {
-    name: "Marcus",
-    classYear: 2026,
-    rating: 4,
-    dorm: "Dardick",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Study Floor"],
-    content:
-      "Great location and modern amenities. The rooms are a bit small but well-designed.",
-    date: "June 2025",
-  },
-  {
-    name: "Emma",
-    classYear: 2028,
-    rating: 5,
-    dorm: "Dardick",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Social Floor"],
-    content: "Love the community here! Close to dining and great study spaces.",
-    date: "May 2025",
-  },
-  {
-    name: "James",
-    classYear: 2027,
-    rating: 4,
-    dorm: "Dauten",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Quiet Floor"],
-    content:
-      "Perfect for studying, very quiet and clean. Great views from upper floors.",
-    date: "June 2025",
-  },
-  {
-    name: "Sarah",
-    classYear: 2026,
-    rating: 5,
-    dorm: "Eliot A",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Historic"],
-    content:
-      "Classic WashU experience! Beautiful architecture and great sense of community.",
-    date: "July 2025",
-  },
-  {
-    name: "Alex",
-    classYear: 2028,
-    rating: 4,
-    dorm: "Eliot A",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Historic"],
-    content: "Love the traditional feel and central location on campus.",
-    date: "May 2025",
-  },
-  {
-    name: "Maya",
-    classYear: 2027,
-    rating: 5,
-    dorm: "Hurd",
-    dormType: "Modern Double",
-    tags: ["On-Campus", "New Building"],
-    content: "Brand new facilities with amazing amenities. Highly recommend!",
-    date: "June 2025",
-  },
-  {
-    name: "David",
-    classYear: 2026,
-    rating: 4,
-    dorm: "Koenig",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Social Floor"],
-    content:
-      "Great social atmosphere and close to everything. Rooms are decent size.",
-    date: "July 2025",
-  },
-  {
-    name: "Rachel",
-    classYear: 2028,
-    rating: 5,
-    dorm: "Lee",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Quiet Floor"],
-    content: "Perfect for focused studying. Modern facilities and very clean.",
-    date: "May 2025",
-  },
-  {
-    name: "Tyler",
-    classYear: 2027,
-    rating: 4,
-    dorm: "Lien",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Study Floor"],
-    content: "Good location and solid amenities. Would live here again.",
-    date: "June 2025",
-  },
-  {
-    name: "Jessica",
-    classYear: 2026,
-    rating: 5,
-    dorm: "Park",
-    dormType: "Modern Double",
-    tags: ["On-Campus", "Social Floor"],
-    content:
-      "Amazing community and beautiful common areas. Best dorm experience!",
-    date: "July 2025",
-  },
-  {
-    name: "Chris",
-    classYear: 2028,
-    rating: 4,
-    dorm: "Umrath",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Central Location"],
-    content: "Super convenient location. Easy access to classes and dining.",
-    date: "May 2025",
-  },
-  {
-    name: "Lauren",
-    classYear: 2027,
-    rating: 5,
-    dorm: "Eliot B",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Historic"],
-    content: "Love the historic charm and tight-knit community feel.",
-    date: "June 2025",
-  },
-  {
-    name: "Kevin",
-    classYear: 2026,
-    rating: 4,
-    dorm: "Gregg",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Quiet Floor"],
-    content:
-      "Great for studying and very peaceful. Modern renovations are nice.",
-    date: "July 2025",
-  },
-  {
-    name: "Ashley",
-    classYear: 2028,
-    rating: 5,
-    dorm: "Hitzeman",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Social Floor"],
-    content:
-      "Best social life on campus! Love my floormates and the atmosphere.",
-    date: "May 2025",
-  },
-  {
-    name: "Brandon",
-    classYear: 2027,
-    rating: 4,
-    dorm: "Liggett",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Study Floor"],
-    content: "Perfect for academics. Quiet environment and good study spaces.",
-    date: "June 2025",
-  },
-  {
-    name: "Megan",
-    classYear: 2026,
-    rating: 5,
-    dorm: "Mudd",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Central Location"],
-    content:
-      "Great location and friendly community. Would definitely recommend.",
-    date: "July 2025",
-  },
-  {
-    name: "Nathan",
-    classYear: 2028,
-    rating: 4,
-    dorm: "Myers",
-    dormType: "Modern Double",
-    tags: ["On-Campus", "New Building"],
-    content: "Modern amenities and spacious rooms. Great common areas too.",
-    date: "May 2025",
-  },
-  {
-    name: "Olivia",
-    classYear: 2027,
-    rating: 5,
-    dorm: "Nemerov",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Quiet Floor"],
-    content:
-      "Perfect for writers and artists. Very inspiring and peaceful environment.",
-    date: "June 2025",
-  },
-  {
-    name: "Jordan",
-    classYear: 2026,
-    rating: 4,
-    dorm: "Rutledge",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Historic"],
-    content:
-      "Classic dorm experience with great traditions and community events.",
-    date: "July 2025",
-  },
-  {
-    name: "Samantha",
-    classYear: 2028,
-    rating: 5,
-    dorm: "Shanedling",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Study Floor"],
-    content:
-      "Excellent for academics and personal growth. Very supportive community.",
-    date: "May 2025",
-  },
-  {
-    name: "Eric",
-    classYear: 2027,
-    rating: 4,
-    dorm: "Shepley",
-    dormType: "Traditional Double",
-    tags: ["On-Campus", "Social Floor"],
-    content:
-      "Great social atmosphere and convenient location. Really enjoyed living here.",
-    date: "June 2025",
-  },
-  {
-    name: "Amanda",
-    classYear: 2026,
-    rating: 5,
-    dorm: "SoFoHo",
-    dormType: "Modern Single",
-    tags: ["On-Campus", "Apartment Style"],
-    content:
-      "Best of both worlds - independence with campus community. Love the setup!",
-    date: "July 2025",
-  },
-  {
-    name: "Michael",
-    classYear: 2028,
-    rating: 4,
-    dorm: "Wheeler",
-    dormType: "Traditional Single",
-    tags: ["On-Campus", "Quiet Floor"],
-    content:
-      "Great for focused study and personal reflection. Very peaceful environment.",
-    date: "May 2025",
-  },
-  {
-    name: "Nicole",
-    classYear: 2027,
-    rating: 5,
-    dorm: "Greenway Apartments",
-    dormType: "Apartment Style",
-    tags: ["Off-Campus", "Independent Living"],
-    content:
-      "Perfect transition to independent living while staying connected to campus.",
-    date: "June 2025",
-  },
-  {
-    name: "Ryan",
-    classYear: 2026,
-    rating: 4,
-    dorm: "Millbrook",
-    dormType: "Apartment Style",
-    tags: ["Off-Campus", "Quiet"],
-    content:
-      "Great for upperclassmen. Good balance of independence and community.",
-    date: "July 2025",
-  },
-  {
-    name: "Hannah",
-    classYear: 2028,
-    rating: 5,
-    dorm: "University Drive",
-    dormType: "Apartment Style",
-    tags: ["Off-Campus", "Modern"],
-    content:
-      "Modern apartments with great amenities. Perfect for junior/senior year.",
-    date: "May 2025",
-  },
-  {
-    name: "Zach",
-    classYear: 2027,
-    rating: 4,
-    dorm: "Village East",
-    dormType: "Apartment Style",
-    tags: ["Off-Campus", "Social"],
-    content:
-      "Great community feel even though it's off-campus. Really enjoyed it.",
-    date: "June 2025",
-  },
+const CANONICAL_ROOM_TYPES = [
+  "Modern Single",
+  "Modern Double",
+  "Modern Triple",
+  "Traditional Single",
+  "Traditional Double",
+  "Traditional Triple",
+  "Apartment Style",
 ];
 
-const dormImageOverrides = {
-  "Greenway Apartments": "greenway.jpeg",
-  "University Drive": "universityDrive.jpeg",
-  "Village East": null,
-  "Rosedale Apartments": null,
-  "The Lofts": null,
-  "Washington Ave Apartments": null,
-  "520 Kingsland": null,
-  "Village & Lopata House": null,
-};
-
-const dormImages = {};
-allDorms.forEach((dorm) => {
-  if (dorm && typeof dorm === "string") {
-    if (dorm in dormImageOverrides) {
-      const file = dormImageOverrides[dorm];
-      dormImages[dorm] = file ? [`/dorms/${file}`] : [];
-    } else {
-      const imageName = dorm
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9\-]/g, "");
-      dormImages[dorm] = [`/dorms/${imageName}.jpeg`];
-    }
+function normalizeRoomType(raw) {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  for (const canonical of CANONICAL_ROOM_TYPES) {
+    if (s === canonical.toLowerCase()) return canonical;
   }
-});
+  // partial matches
+  if (s.includes("apartment")) return "Apartment Style";
+  if (s.includes("suite")) return "Suite";
+  if (s.includes("modern") && s.includes("triple")) return "Modern Triple";
+  if (s.includes("modern") && s.includes("single")) return "Modern Single";
+  if (s.includes("modern") && s.includes("double")) return "Modern Double";
+  if (s.includes("traditional") && s.includes("triple"))
+    return "Traditional Triple";
+  if (s.includes("traditional") && s.includes("single"))
+    return "Traditional Single";
+  if (s.includes("traditional") && s.includes("double"))
+    return "Traditional Double";
+  if (s.includes("triple")) return "Modern Triple";
+  if (s.includes("single")) return "Modern Single";
+  if (s.includes("double")) return "Modern Double";
+  return null;
+}
 
 const FORM_TAGS = [
   "Quiet Floor",
@@ -409,12 +105,32 @@ export default function CampusHub() {
   const [modalOpen, setModalOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const [allReviews, setAllReviews] = useState([]);
   const [dbReviews, setDbReviews] = useState([]);
+  const [dormMeta, setDormMeta] = useState({});
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [formSuccess, setFormSuccess] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/dormReviews")
+      .then((r) => r.json())
+      .then((data) => setAllReviews(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    fetch("/api/dorms")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        const map = {};
+        data.forEach((d) => {
+          map[d.name] = d;
+        });
+        setDormMeta(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!selectedDorm) return;
@@ -454,6 +170,7 @@ export default function CampusHub() {
       }
       const newReview = await res.json();
       setDbReviews((prev) => [newReview, ...prev]);
+      setAllReviews((prev) => [newReview, ...prev]);
       setFormSuccess(true);
       setShowReviewForm(false);
       setForm(EMPTY_FORM);
@@ -464,11 +181,13 @@ export default function CampusHub() {
     }
   };
 
-  const allTags = [...new Set(reviews.flatMap((r) => r.tags))].sort();
-  const allDormTypes = [...new Set(reviews.map((r) => r.dormType))].sort();
+  const allTags = [...new Set(allReviews.flatMap((r) => r.tags))].sort();
+  const allDormTypes = CANONICAL_ROOM_TYPES.filter((type) =>
+    Object.values(dormMeta).some((d) => d.roomTypes?.includes(type))
+  );
   const cardRefs = useRef({});
 
-  const dormGroups = reviews.reduce((acc, review) => {
+  const dormGroups = allReviews.reduce((acc, review) => {
     if (!acc[review.dorm]) acc[review.dorm] = [];
     acc[review.dorm].push(review);
     return acc;
@@ -481,7 +200,7 @@ export default function CampusHub() {
       dormReviews.some((r) => r.rating >= ratingMin && r.rating <= ratingMax);
     const matchesType =
       selectedTypes.length === 0 ||
-      dormReviews.some((r) => selectedTypes.includes(r.dormType));
+      selectedTypes.some((t) => dormMeta[dorm]?.roomTypes?.includes(t));
     const matchesSearch =
       searchQuery === "" ||
       dorm.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -703,11 +422,14 @@ export default function CampusHub() {
 
     const observer = new IntersectionObserver(
       (entries) => {
+        let batchIndex = 0;
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
+            entry.target.style.transitionDelay = `${batchIndex * 40}ms`;
             entry.target.style.opacity = "1";
             entry.target.style.transform = "translateY(0)";
             observer.unobserve(entry.target);
+            batchIndex++;
           }
         });
       },
@@ -745,7 +467,7 @@ export default function CampusHub() {
       <div
         className="relative h-72 flex items-center justify-center text-white text-center"
         style={{
-          backgroundImage: "url('/dorms/beaumont.jpeg')",
+          backgroundImage: "url('/dorms/danforth.png')",
           backgroundAttachment: "fixed",
           backgroundSize: "cover",
           backgroundPosition: "center",
@@ -844,38 +566,36 @@ export default function CampusHub() {
           </div>
 
           {/* Dorm grid */}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0 w-full overflow-hidden">
             {filteredDorms.length === 0 ? (
               <p className="text-center text-gray-500 mt-12">
                 No dorms match your filters.
               </p>
             ) : (
-              <div
-                className={`grid gap-6 ${
-                  filteredDorms.length === 1
-                    ? "grid-cols-1"
-                    : filteredDorms.length === 2
-                    ? "grid-cols-1 sm:grid-cols-2"
-                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                }`}
-              >
+              <div className="flex flex-wrap gap-6">
                 {filteredDorms.map((dorm, index) => {
                   const dormReviews = dormGroups[dorm] || [];
-                  const roomType = dormReviews[0]?.dormType || "No reviews yet";
-                  const mainTags = dormReviews[0]?.tags?.join(" · ") || "";
+                  const dbRoomTypes = dormMeta[dorm]?.roomTypes;
+                  const roomType = dbRoomTypes?.length
+                    ? dbRoomTypes.join(" · ")
+                    : "—";
+                  const rawTags =
+                    dormMeta[dorm]?.tags || dormReviews[0]?.tags || [];
+                  const mainTags =
+                    rawTags.length > 2
+                      ? rawTags.slice(0, 2).join(" · ") +
+                        ` +${rawTags.length - 2}`
+                      : rawTags.join(" · ");
                   return (
                     <div
                       key={dorm}
                       ref={(el) => (cardRefs.current[dorm] = el)}
-                      className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg hover:-translate-y-1"
+                      className="bg-white rounded-lg shadow cursor-pointer hover:shadow-lg hover:-translate-y-1 w-full max-w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] overflow-hidden"
                       style={{
                         opacity: 0,
                         transform: "translateY(24px)",
-                        transition: `opacity 0.5s ease ${
-                          index * 40
-                        }ms, transform 0.5s ease ${
-                          index * 40
-                        }ms, box-shadow 0.2s ease`,
+                        transition:
+                          "opacity 0.5s ease, transform 0.5s ease, box-shadow 0.2s ease",
                       }}
                       onClick={() => {
                         setSelectedDorm({ name: dorm, reviews: dormReviews });
@@ -884,7 +604,9 @@ export default function CampusHub() {
                     >
                       <Image
                         src={
-                          dormImages[dorm]?.[0] || "/images/placeholder.jpeg"
+                          dormMeta[dorm]?.image
+                            ? `/dorms/${dormMeta[dorm].image}`
+                            : "/images/placeholder.jpeg"
                         }
                         alt={dorm}
                         width={400}
@@ -897,13 +619,13 @@ export default function CampusHub() {
                           <h2 className="text-lg font-bold leading-tight">
                             {dorm}
                           </h2>
-                          <p className="text-sm text-gray-600 text-right shrink-0">
+                          <p className="text-sm text-gray-600 text-right shrink-0 whitespace-nowrap">
                             {mainTags}
                           </p>
                         </div>
                         {/* Row 2: type + review count */}
                         <div className="flex justify-between items-baseline gap-2">
-                          <p className="text-sm text-gray-600 whitespace-nowrap">
+                          <p className="text-sm text-gray-600 truncate min-w-0">
                             {roomType}
                           </p>
                           <p className="text-sm text-gray-500 shrink-0">
@@ -924,14 +646,26 @@ export default function CampusHub() {
         <ModalDorms isOpen={modalOpen} onClose={() => setModalOpen(false)}>
           {selectedDorm &&
             (() => {
-              const allReviews = [...selectedDorm.reviews, ...dbReviews];
-              const avgRating = allReviews.length
+              const seen = new Set();
+              const modalReviews = [
+                ...selectedDorm.reviews,
+                ...dbReviews,
+              ].filter((r) => {
+                const id = String(r._id);
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+              });
+              const avgRating = modalReviews.length
                 ? (
-                    allReviews.reduce((s, r) => s + r.rating, 0) /
-                    allReviews.length
+                    modalReviews.reduce((s, r) => s + r.rating, 0) /
+                    modalReviews.length
                   ).toFixed(1)
                 : null;
-              const dormType = selectedDorm.reviews[0]?.dormType ?? null;
+              const dbModalTypes = dormMeta[selectedDorm.name]?.roomTypes;
+              const dormType = dbModalTypes?.length
+                ? dbModalTypes.join(" · ")
+                : null;
               return (
                 <div className="w-full">
                   {/* Header */}
@@ -961,8 +695,8 @@ export default function CampusHub() {
                           {avgRating}
                         </span>
                         <span className="text-sm text-gray-400">
-                          ({allReviews.length} review
-                          {allReviews.length !== 1 ? "s" : ""})
+                          ({modalReviews.length} review
+                          {modalReviews.length !== 1 ? "s" : ""})
                         </span>
                       </div>
                     )}
@@ -987,16 +721,16 @@ export default function CampusHub() {
                     <h3 className="text-base font-bold text-gray-900">
                       Reviews
                     </h3>
-                    {allReviews.length > 0 && (
+                    {modalReviews.length > 0 && (
                       <span className="text-xs text-gray-400 font-medium">
-                        {allReviews.length} total
+                        {modalReviews.length} total
                       </span>
                     )}
                   </div>
 
-                  {allReviews.length > 0 ? (
+                  {modalReviews.length > 0 ? (
                     <div className="space-y-3">
-                      {allReviews.map((r, idx) => {
+                      {modalReviews.map((r, idx) => {
                         const dateLabel =
                           r.date ||
                           (r.createdAt
