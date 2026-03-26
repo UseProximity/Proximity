@@ -116,7 +116,7 @@ async function updateDB(uri, label) {
   await client.connect();
   const db = client.db();
   const listings = await db
-    .collection("parsed-listings")
+    .collection("listings")
     .find({ latitude: { $exists: true, $ne: null }, longitude: { $exists: true, $ne: null } })
     .project({ _id: 1, latitude: 1, longitude: 1 })
     .toArray();

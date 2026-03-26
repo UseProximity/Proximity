@@ -76,10 +76,17 @@ function StarRow({ label, value, onChange, readOnly = false }) {
   );
 }
 
+function decodeHtml(str) {
+  if (typeof document === "undefined" || !str) return str;
+  const el = document.createElement("textarea");
+  el.innerHTML = str;
+  return el.value;
+}
+
 function AmenityPill({ label }) {
   return (
     <span className="inline-block bg-gray-100 text-gray-700 text-sm font-medium px-3 py-1 rounded-full border border-gray-200">
-      {label}
+      {decodeHtml(label)}
     </span>
   );
 }
@@ -95,8 +102,23 @@ function StatCell({ label, value }) {
 
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
+const AMENITY_LABELS = {
+  "DISHWASHER":     "Dishwasher",
+  "EXTRA STORAGE":  "Extra Storage",
+  "IN-UNIT LAUNDRY": "In-Unit Laundry",
+  "FIREPLACE":      "Fireplace",
+  "FREE PARKING": "Private Parking",
+  "MAILROOM":       "Mailroom",
+  "POOL":           "Pool",
+  "PETS ALLOWED": "Pets Allowed",
+  "STUDY ROOMS":  "Study Rooms",
+  "GYM":            "Gym / Fitness",
+};
+
 function AmenitiesTab({ listing }) {
-  const amenities = listing.amenities || [];
+  const amenities = (listing.amenities || [])
+    .filter((a) => AMENITY_LABELS[a])
+    .map((a) => AMENITY_LABELS[a]);
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
@@ -111,7 +133,7 @@ function AmenitiesTab({ listing }) {
       )}
       <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
       <div className="space-y-2">
-        {(listing.description || "").split(/\n+/).filter((p) => p.trim()).map((para, i) => (
+        {decodeHtml(listing.description || "").split(/\n+/).filter((p) => p.trim()).map((para, i) => (
           <p key={i} className="text-gray-700 leading-relaxed">{para.trim()}</p>
         ))}
       </div>
