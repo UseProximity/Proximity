@@ -13,7 +13,14 @@ export default function AddListing() {
     latitude: "",
     unitTypes: [],
     description: "",
-    leaseType: "",
+    leaseStructure: "",
+    leaseAvailability: "",
+    moveInDate: "",
+    homeType: "",
+    amenities: [],
+    furnished: "",
+    utilitiesIncluded: false,
+    subleaseFriendly: false,
     images: [],
   });
 
@@ -22,6 +29,44 @@ export default function AddListing() {
   ]);
 
   const [imagePreviews, setImagePreviews] = useState([]);
+
+  const leaseStructureOptions = [
+    { value: "individual", label: "Individual" },
+    { value: "joint", label: "Joint" },
+  ];
+
+  const leaseAvailabilityOptions = [
+    { value: "10_month", label: "10 Month" },
+    { value: "12_month", label: "12 Month" },
+    { value: "semester", label: "Semester" },
+  ];
+
+  const homeTypeOptions = [
+    { value: "apartment", label: "Apartment" },
+    { value: "house", label: "House" },
+    { value: "studio", label: "Studio" },
+    { value: "townhouse", label: "Townhouse" },
+    { value: "single_room", label: "Single Room" },
+    { value: "condo", label: "Condo" },
+  ];
+
+  const amenityOptions = [
+    { value: "dishwasher", label: "Dishwasher" },
+    { value: "in_unit_laundry", label: "In-unit Laundry" },
+    { value: "ac_heating", label: "AC / Heating" },
+    { value: "mailroom", label: "Mailroom" },
+    { value: "pets_allowed", label: "Pets Allowed" },
+    { value: "extra_storage", label: "Extra Storage" },
+    { value: "fireplace", label: "Fireplace" },
+    { value: "private_parking", label: "Private Parking" },
+    { value: "pool", label: "Pool" },
+    { value: "study_room", label: "Study Room" },
+  ];
+
+  const furnishedOptions = [
+    { value: "furnished", label: "Furnished" },
+    { value: "unfurnished", label: "Unfurnished" },
+  ];
 
   // Address autocomplete state
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -162,6 +207,23 @@ export default function AddListing() {
     }
   };
 
+  const handleCheckboxChange = (e) => {
+    const { name, checked } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: checked }));
+  };
+
+  const handleAmenityToggle = (amenity) => {
+    setFormData((prev) => {
+      const next = new Set(prev.amenities || []);
+      if (next.has(amenity)) {
+        next.delete(amenity);
+      } else {
+        next.add(amenity);
+      }
+      return { ...prev, amenities: Array.from(next) };
+    });
+  };
+
   const handleUnitTypeChange = (index, field, value) => {
     setUnitTypes((prev) =>
       prev.map((unit, unitIndex) =>
@@ -235,6 +297,12 @@ export default function AddListing() {
 
     setIsLoading(true);
 
+    if (!formData.leaseStructure) {
+      toast.error("Please select a lease structure.");
+      setIsLoading(false);
+      return;
+    }
+
     // Coordinates are now automatically extracted from address selection
     if (!formData.longitude || !formData.latitude) {
       toast.error(
@@ -261,6 +329,10 @@ export default function AddListing() {
         })),
         longitude: Number(formData.longitude),
         latitude: Number(formData.latitude),
+        moveInDate: formData.moveInDate || undefined,
+        amenities: formData.amenities || [],
+        utilitiesIncluded: !!formData.utilitiesIncluded,
+        subleaseFriendly: !!formData.subleaseFriendly,
         images: [],
       };
 
@@ -325,7 +397,14 @@ export default function AddListing() {
         latitude: "",
         description: "",
         unitTypes: [],
-        leaseType: "",
+        leaseStructure: "",
+        leaseAvailability: "",
+        moveInDate: "",
+        homeType: "",
+        amenities: [],
+        furnished: "",
+        utilitiesIncluded: false,
+        subleaseFriendly: false,
         images: [],
       });
       setUnitTypes([
@@ -550,24 +629,150 @@ export default function AddListing() {
             />
           </div>
 
-          {/* Lease Type */}
+          {/* Lease Structure */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lease Type
+              Lease Structure
             </label>
             <select
-              name="leaseType"
-              value={formData.leaseType}
+              name="leaseStructure"
+              value={formData.leaseStructure}
               onChange={handleChange}
               required
               className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100"
             >
-              <option value="">--Select Lease Type--</option>
-              <option value="twelve">12 Month Lease</option>
-              <option value="nine">9 Month Lease</option>
-              <option value="academic">Academic Year</option>
-              <option value="sublease">Sub-Lease</option>
+              <option value="">--Select Lease Structure--</option>
+              {leaseStructureOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
+          </div>
+
+          {/* Lease Availability */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Lease Availability
+            </label>
+            <select
+              name="leaseAvailability"
+              value={formData.leaseAvailability}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100"
+            >
+              <option value="">--Select Lease Availability--</option>
+              {leaseAvailabilityOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Move-In Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Move-in Date
+            </label>
+            <input
+              type="date"
+              name="moveInDate"
+              value={formData.moveInDate}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+
+          {/* Home Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Home Type
+            </label>
+            <select
+              name="homeType"
+              value={formData.homeType}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100"
+            >
+              <option value="">--Select Home Type--</option>
+              {homeTypeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Furnished */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Furnished
+            </label>
+            <select
+              name="furnished"
+              value={formData.furnished}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100"
+            >
+              <option value="">--Select Furnishing--</option>
+              {furnishedOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Amenities */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Amenities
+            </label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {amenityOptions.map((amenity) => (
+                <label
+                  key={amenity.value}
+                  className="flex items-center gap-2 text-sm text-gray-700"
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.amenities.includes(amenity.value)}
+                    onChange={() => handleAmenityToggle(amenity.value)}
+                    className="h-4 w-4"
+                  />
+                  {amenity.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Utilities Included */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                name="utilitiesIncluded"
+                checked={formData.utilitiesIncluded}
+                onChange={handleCheckboxChange}
+                className="h-4 w-4"
+              />
+              Utilities Included
+            </label>
+          </div>
+
+          {/* Sublease Friendly */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                name="subleaseFriendly"
+                checked={formData.subleaseFriendly}
+                onChange={handleCheckboxChange}
+                className="h-4 w-4"
+              />
+              Sublease Friendly
+            </label>
           </div>
 
           {/* Images */}
