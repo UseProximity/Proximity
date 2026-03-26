@@ -91,6 +91,15 @@ const SHUTTLE_STOPS = [
   { name: "Whitaker Hall",                     lat: 38.6491496, lng: -90.3036366 },
 ];
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 async function fetchWalkMinutes(lat, lng, destLat, destLng) {
   const origin = `${lng},${lat}`;
   const dest = `${destLng},${destLat}`;
@@ -107,7 +116,7 @@ async function updateDB(uri, label) {
   await client.connect();
   const db = client.db();
   const listings = await db
-    .collection("listings")
+    .collection("parsed-listings")
     .find({ latitude: { $exists: true, $ne: null }, longitude: { $exists: true, $ne: null } })
     .project({ _id: 1, latitude: 1, longitude: 1 })
     .toArray();
@@ -129,9 +138,11 @@ async function updateDB(uri, label) {
       );
       const placeWalkMinutes = Object.fromEntries(placeResults.filter(([, m]) => m != null));
 
-      const shuttleTimes = await Promise.all(
-        SHUTTLE_STOPS.map((s) => fetchWalkMinutes(lat, lng, s.lat, s.lng))
-      );
+      // Only call Mapbox for the 5 nearest stops by straight-line distance
+      const nearest5 = [...SHUTTLE_STOPS]
+        .sort((a, b) => haversineKm(lat, lng, a.lat, a.lng) - haversineKm(lat, lng, b.lat, b.lng))
+        .slice(0, 5);
+      const shuttleTimes = await Promise.all(nearest5.map((s) => fetchWalkMinutes(lat, lng, s.lat, s.lng)));
       const validShuttle = shuttleTimes.filter((m) => m != null);
       const shuttleWalkMinutes = validShuttle.length > 0 ? Math.min(...validShuttle) : null;
 
@@ -140,7 +151,8 @@ async function updateDB(uri, label) {
         { $set: { campusWalkMinutes, placeWalkMinutes, shuttleWalkMinutes } }
       );
 
-      console.log(`  ✓ ${listing._id} — campus: ${campusWalkMinutes}min, shuttle: ${shuttleWalkMinutes}min`);
+      const flag = (campusWalkMinutes == null || shuttleWalkMinutes == null) ? " ⚠️ null" : "";
+      console.log(`  ✓ ${listing._id} (${lat}, ${lng}) — campus: ${campusWalkMinutes}min, shuttle: ${shuttleWalkMinutes}min${flag}`);
       updated++;
     } catch (err) {
       console.error(`  ✗ ${listing._id} — ${err.message}`);

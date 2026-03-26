@@ -703,10 +703,10 @@ export default function CampusHub() {
                   </div>
 
                   {/* Image */}
-                  {dormImages[selectedDorm.name]?.length > 0 && (
+                  {dormMeta[selectedDorm.name]?.image && (
                     <div className="mb-5 rounded-xl overflow-hidden">
                       <Image
-                        src={dormImages[selectedDorm.name][0]}
+                        src={`/dorms/${dormMeta[selectedDorm.name].image}`}
                         alt={selectedDorm.name}
                         width={800}
                         height={400}

@@ -1,4 +1,3 @@
-/*
 import mongoose from "mongoose";
 
 const unitTypeSchema = new mongoose.Schema(
@@ -69,6 +68,30 @@ const listingSchema = new mongoose.Schema({
     default: null,
   },
 
+  // Direct contact info — used for listings without a platform owner account
+  contactEmail: { type: String, default: null },
+  contactPhone: { type: String, default: null },
+  contactName: { type: String, default: null },
+
+  // Lease & unit metadata
+  leaseAvailability: { type: String, default: null }, // "semester" | "10-month" | "12-month"
+  leaseStructure: { type: String, default: null }, // "individual" | "joint"
+  homeType: { type: String, default: "apartment" }, // "house" | "apartment" | "condo" | "townhouse"
+  furnished: { type: Boolean, default: false },
+  moveInDate: { type: String, default: null },
+  utilitiesIncluded: { type: Boolean, default: false },
+  subleaseFriendly: { type: Boolean, default: false },
+
+  // Computed aggregates from unitTypes
+  minRent: { type: Number, default: null },
+  maxRent: { type: Number, default: null },
+  minBedrooms: { type: Number, default: null },
+  maxBedrooms: { type: Number, default: null },
+  minBathrooms: { type: Number, default: null },
+  maxBathrooms: { type: Number, default: null },
+  minArea: { type: Number, default: null },
+  maxArea: { type: Number, default: null },
+
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -79,179 +102,7 @@ const listingSchema = new mongoose.Schema({
   },
 });
 
-export default mongoose.models.Listing ||
-  mongoose.model("Listing", listingSchema);
-*/
-
-import mongoose from "mongoose";
-
-const unitTypeSchema = new mongoose.Schema(
-  {
-    name: { type: String, trim: true },
-    rent: { type: Number, min: 0 },
-    area: { type: Number, min: 0 },
-    bedrooms: { type: Number, required: true, min: 0 },
-    bathrooms: { type: Number, required: true, min: 0 },
-  },
-  { _id: false }
-);
-
-const listingSchema = new mongoose.Schema({
-  address: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-  longitude: {
-    type: Number,
-    required: true,
-  },
-  latitude: {
-    type: Number,
-    required: true,
-  },
-  description: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-
-  unitTypes: {
-    type: [unitTypeSchema],
-    required: true,
-  },
-
-  leaseStructure: {
-    type: String,
-    enum: ["individual", "joint"],
-    required: true,
-  },
-
-  leaseAvailability: {
-    type: String,
-    enum: ["10_month", "12_month", "semester"],
-  },
-
-  moveInDate: {
-    type: Date,
-  },
-
-  homeType: {
-    type: String,
-    enum: ["apartment", "house", "studio", "townhouse", "single_room", "condo"],
-  },
-
-  amenities: [
-    {
-      type: String,
-      enum: [
-        "dishwasher",
-        "in_unit_laundry",
-        "ac_heating",
-        "mailroom",
-        "pets_allowed",
-        "extra_storage",
-        "fireplace",
-        "private_parking",
-        "pool",
-        "study_room",
-      ],
-    },
-  ],
-
-  furnished: {
-    type: String,
-    enum: ["furnished", "unfurnished"],
-  },
-
-  utilitiesIncluded: {
-    type: Boolean,
-    default: false,
-  },
-
-  subleaseFriendly: {
-    type: Boolean,
-    default: false,
-  },
-
-  walkingDistanceToCampus: {
-    type: Number,
-    min: 0,
-  },
-
-  walkingDistanceToShuttle: {
-    type: Number,
-    min: 0,
-  },
-
-  minRent: {
-    type: Number,
-    min: 0,
-  },
-
-  maxRent: {
-    type: Number,
-    min: 0,
-  },
-
-  minBathrooms: {
-    type: Number,
-    min: 0,
-  },
-
-  maxBathrooms: {
-    type: Number,
-    min: 0,
-  },
-
-  minBedrooms: {
-    type: Number,
-    min: 0,
-  },
-
-  maxBedrooms: {
-    type: Number,
-    min: 0,
-  },
-
-  minArea: {
-    type: Number,
-    min: 0,
-  },
-
-  maxArea: {
-    type: Number,
-    min: 0,
-  },
-
-  images: [{ type: String }],
-
-  numReviews: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-
-  rating: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 5,
-  },
-
-  reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: "Review" }],
-
-  owner: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
-
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+const collection = process.env.LISTINGS_COLLECTION || "listings";
 
 export default mongoose.models.Listing ||
-  mongoose.model("Listing", listingSchema);
+  mongoose.model("Listing", listingSchema, collection);

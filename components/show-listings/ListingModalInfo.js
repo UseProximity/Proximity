@@ -456,32 +456,35 @@ function ContactTab({
   return (
     <div className="max-w-xl">
       {/* Landlord info */}
-      <div className="flex items-center gap-4 mb-6">
-        <img
-          src={
-            owner.image?.trim()
-              ? owner.image
-              : "/default-icons/default-user.png"
-          }
-          alt={owner.name}
-          className="w-14 h-14 rounded-full object-cover ring-2 ring-gray-100"
-        />
-        <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">
-            Listing by
-          </p>
-          <Link
-            href="#" // FIXME: Link to landlord profile when implemented
-            className="text-lg font-semibold text-gray-900 hover:text-red-600 transition"
-          >
-            {owner.name}
-          </Link>
+      {owner && (
+        <div className="flex items-center gap-4 mb-6">
+          <img
+            src={
+              owner.image?.trim()
+                ? owner.image
+                : "/default-icons/default-user.png"
+            }
+            alt={owner.name}
+            className="w-14 h-14 rounded-full object-cover ring-2 ring-gray-100"
+          />
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide">
+              Listing by
+            </p>
+            <Link
+              href={`/landlord/${encodeURIComponent(owner._id)}`}
+              className="text-lg font-semibold text-gray-900 hover:text-red-600 transition"
+            >
+              {owner.name}
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
 
       {contactSent ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
-          Your message was sent! {owner.name} will be in touch soon.
+          Your message was sent!
+          {owner ? ` ${owner.name} will be in touch soon.` : ""}
         </div>
       ) : (
         <form onSubmit={handleContactSubmit} className="space-y-3">
@@ -705,8 +708,8 @@ export default function ListingModalInfo({ session, listing }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...contactForm,
-          landlordEmail: listing.owner.email,
-          landlordName: listing.owner.name,
+          landlordEmail: listing.contactEmail ?? listing.owner?.email,
+          landlordName: listing.contactName ?? listing.owner?.name,
           listingAddress: listing.address,
         }),
       });
@@ -819,31 +822,38 @@ export default function ListingModalInfo({ session, listing }) {
               {cityStateZip && (
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
               )}
-              <p className="text-sm text-gray-500 mt-2">
-                Listed by{" "}
-                <Link
-                  href="#" // FIXME: Link to landlord profile when implemented
-                  className="font-semibold text-gray-800 hover:text-red-600 transition"
-                >
-                  {listing.owner.name}
-                </Link>
-              </p>
+              {listing.owner && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Listed by{" "}
+                  <Link
+                    href={`/landlord/${encodeURIComponent(listing.owner._id)}`}
+                    className="font-semibold text-gray-800 hover:text-red-600 transition"
+                  >
+                    {listing.owner.name}
+                  </Link>
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-2 text-sm text-gray-600 shrink-0">
               <span className="flex items-center gap-2">
                 <Phone size={15} className="text-gray-400" />
-                {listing.owner.phone && listing.owner.phone !== "N/A"
-                  ? listing.owner.phone
+                {(listing.contactPhone ?? listing.owner?.phone) &&
+                (listing.contactPhone ?? listing.owner?.phone) !== "N/A"
+                  ? listing.contactPhone ?? listing.owner?.phone
                   : "Not provided"}
               </span>
               <span className="flex items-center gap-2">
                 <Mail size={15} className="text-gray-400" />
-                <a
-                  href={`mailto:${listing.owner.email}`}
-                  className="hover:text-red-600 transition"
-                >
-                  {listing.owner.email}
-                </a>
+                {(listing.contactEmail ?? listing.owner?.email) && (
+                  <a
+                    href={`mailto:${
+                      listing.contactEmail ?? listing.owner?.email
+                    }`}
+                    className="hover:text-red-600 transition"
+                  >
+                    {listing.contactEmail ?? listing.owner?.email}
+                  </a>
+                )}
               </span>
             </div>
           </div>
