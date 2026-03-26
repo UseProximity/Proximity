@@ -1,10 +1,10 @@
 export const getRentRangeLabel = (unitTypes = []) => {
   const rents = unitTypes
     .map((unit) => Number(unit?.rent))
-    .filter((rent) => Number.isFinite(rent));
+    .filter((rent) => Number.isFinite(rent) && rent > 0);
 
   if (rents.length === 0) {
-    return "N/A";
+    return "TBD";
   }
 
   const minRent = Math.min(...rents);
@@ -33,10 +33,10 @@ export const getUnitValuesLabel = (unitTypes = [], field) => {
 export const getAreaRangeLabel = (unitTypes = []) => {
   const areas = unitTypes
     .map((unit) => Number(unit?.area))
-    .filter((area) => Number.isFinite(area));
+    .filter((area) => Number.isFinite(area) && area > 0);
 
   if (areas.length === 0) {
-    return "N/A";
+    return "TBD";
   }
 
   const minArea = Math.min(...areas);

@@ -53,10 +53,6 @@ const TABS = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseAddress(addressStr) {
-  const match = addressStr?.match(
-    /^(.+?\s(?:St|Ave|Dr|Blvd|Rd|Ln|Way|Ct|Pl|Pkwy|Terr?|Cir|Loop|Trail|Trl)\b\.?)\s*,?\s*(.+)$/i
-  );
-  if (match) return { street: match[1].trim(), cityStateZip: match[2].trim() };
   const ci = addressStr?.indexOf(",") ?? -1;
   if (ci !== -1)
     return {
@@ -101,10 +97,17 @@ function StarRow({ label, value, onChange, readOnly = false }) {
   );
 }
 
+function decodeHtml(str) {
+  if (typeof document === "undefined" || !str) return str;
+  const el = document.createElement("textarea");
+  el.innerHTML = str;
+  return el.value;
+}
+
 function AmenityPill({ label }) {
   return (
     <span className="inline-block bg-gray-100 text-gray-700 text-sm font-medium px-3 py-1 rounded-full border border-gray-200">
-      {AmenitiesMap[label]}
+      {decodeHtml(label)}
     </span>
   );
 }
@@ -120,8 +123,23 @@ function StatCell({ label, value }) {
 
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
+const AMENITY_LABELS = {
+  DISHWASHER: "Dishwasher",
+  "EXTRA STORAGE": "Extra Storage",
+  "IN-UNIT LAUNDRY": "In-Unit Laundry",
+  FIREPLACE: "Fireplace",
+  "FREE PARKING": "Private Parking",
+  MAILROOM: "Mailroom",
+  POOL: "Pool",
+  "PETS ALLOWED": "Pets Allowed",
+  "STUDY ROOMS": "Study Rooms",
+  GYM: "Gym / Fitness",
+};
+
 function AmenitiesTab({ listing }) {
-  const amenities = listing.amenities || [];
+  const amenities = (listing.amenities || [])
+    .filter((a) => AMENITY_LABELS[a])
+    .map((a) => AMENITY_LABELS[a]);
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
@@ -138,7 +156,7 @@ function AmenitiesTab({ listing }) {
       )}
       <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
       <div className="space-y-2">
-        {(listing.description || "")
+        {decodeHtml(listing.description || "")
           .split(/\n+/)
           .filter((p) => p.trim())
           .map((para, i) => (
@@ -209,6 +227,48 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes }) {
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Auth Gate ───────────────────────────────────────────────────────────────
+
+function SignInPrompt({ message }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center gap-6">
+      <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-7 w-7 text-red-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.8}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+          />
+        </svg>
+      </div>
+      <div>
+        <p className="text-gray-800 font-semibold text-base mb-1">{message}</p>
+        <p className="text-gray-400 text-sm">
+          Create a free account or sign in to continue.
+        </p>
+      </div>
+      <button
+        onClick={() => signIn("google", { callbackUrl: window.location.href })}
+        className="flex items-center gap-3 bg-white border border-gray-200 shadow-sm hover:shadow-md text-gray-700 text-sm font-medium px-5 py-2.5 rounded-lg transition"
+      >
+        <img
+          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+          alt="Google"
+          className="w-5 h-5"
+        />
+        Continue with Google
+      </button>
     </div>
   );
 }
@@ -701,6 +761,10 @@ export default function ListingModalInfo({ session, listing }) {
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
+    if (!session) {
+      signIn(undefined, { callbackUrl: window.location.href });
+      return;
+    }
     setContactLoading(true);
     try {
       const res = await fetch("/api/contactLandlord", {
@@ -735,7 +799,7 @@ export default function ListingModalInfo({ session, listing }) {
       <div className="bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* ── Photo Grid ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 h-[400px] overflow-hidden rounded-xl">
+          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 h-[400px] overflow-hidden rounded-xl">
             {/* Main image — 2/3 width */}
             <div
               className="md:col-span-2 relative cursor-pointer h-full overflow-hidden rounded-l-xl"
@@ -806,17 +870,22 @@ export default function ListingModalInfo({ session, listing }) {
                 ) : (
                   <div className="w-full h-full bg-gray-300" />
                 )}
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full">
-                    View All {images.length > 0 ? `(${images.length})` : ""}
-                  </span>
-                </div>
               </div>
             </div>
+
+            {/* Always-visible "See all photos" button */}
+            {images.length > 0 && (
+              <button
+                onClick={() => setIsGalleryOpen(true)}
+                className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
+              >
+                See all photos ({images.length})
+              </button>
+            )}
           </div>
 
           {/* ── Header Info ── */}
-          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{street}</h1>
               {cityStateZip && (
@@ -834,28 +903,17 @@ export default function ListingModalInfo({ session, listing }) {
                 </p>
               )}
             </div>
-            <div className="flex flex-col gap-2 text-sm text-gray-600 shrink-0">
-              <span className="flex items-center gap-2">
-                <Phone size={15} className="text-gray-400" />
-                {(listing.contactPhone ?? listing.owner?.phone) &&
-                (listing.contactPhone ?? listing.owner?.phone) !== "N/A"
-                  ? listing.contactPhone ?? listing.owner?.phone
-                  : "Not provided"}
-              </span>
-              <span className="flex items-center gap-2">
-                <Mail size={15} className="text-gray-400" />
-                {(listing.contactEmail ?? listing.owner?.email) && (
-                  <a
-                    href={`mailto:${
-                      listing.contactEmail ?? listing.owner?.email
-                    }`}
-                    className="hover:text-red-600 transition"
-                  >
-                    {listing.contactEmail ?? listing.owner?.email}
-                  </a>
-                )}
-              </span>
-            </div>
+            <button
+              onClick={() => {
+                setActiveTab("contact");
+                document
+                  .getElementById("listing-tabs")
+                  ?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="shrink-0 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+            >
+              Contact Manager
+            </button>
           </div>
 
           {/* ── Stats Bar ── */}
@@ -890,7 +948,10 @@ export default function ListingModalInfo({ session, listing }) {
           </div>
 
           {/* ── Sticky Tab Bar ── */}
-          <div className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 px-4">
+          <div
+            id="listing-tabs"
+            className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 px-4"
+          >
             <nav className="flex overflow-x-auto max-w-7xl mx-auto">
               {TABS.map((tab) => (
                 <button
@@ -920,7 +981,10 @@ export default function ListingModalInfo({ session, listing }) {
                 shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
               />
             )}
-            {activeTab === "reviews" && (
+            {activeTab === "reviews" && !session && (
+              <SignInPrompt message="Sign in to view and leave reviews." />
+            )}
+            {activeTab === "reviews" && session && (
               <ReviewsTab
                 legitimateReviews={legitimateReviews}
                 overallAvg={overallAvg}
@@ -946,7 +1010,10 @@ export default function ListingModalInfo({ session, listing }) {
                 handleReviewSubmit={handleReviewSubmit}
               />
             )}
-            {activeTab === "contact" && (
+            {activeTab === "contact" && !session && (
+              <SignInPrompt message="Sign in to contact the property manager." />
+            )}
+            {activeTab === "contact" && session && (
               <ContactTab
                 listing={listing}
                 contactForm={contactForm}
