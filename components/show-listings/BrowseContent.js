@@ -195,7 +195,7 @@ export default function BrowseContent({ session }) {
                 lt.includes("10") ||
                 desc.includes("10 month") ||
                 desc.includes("10-month") ||
-                listing?.leaseAvailability === "10_month"
+                listing?.leaseAvailability === "10-month"
               );
             case "12-month":
               return (
@@ -203,7 +203,7 @@ export default function BrowseContent({ session }) {
                 lt.includes("year") ||
                 desc.includes("12 month") ||
                 desc.includes("12-month") ||
-                listing?.leaseAvailability === "12_month"
+                listing?.leaseAvailability === "12-month"
               );
             default:
               return true;
