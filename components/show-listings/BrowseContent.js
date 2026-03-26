@@ -22,25 +22,24 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-
 const DEFAULT_FILTERS = {
   minRent: "",
   maxRent: "",
-  bedrooms: "",        // min bedrooms
-  maxBedrooms: "",     // max bedrooms
-  bathrooms: "",       // min bathrooms
-  maxBathrooms: "",    // max bathrooms
-  leaseType: "",       // top-bar quick filter (home type string)
-  distance: "",        // walking time to campus (minutes)
+  bedrooms: "", // min bedrooms
+  maxBedrooms: "", // max bedrooms
+  bathrooms: "", // min bathrooms
+  maxBathrooms: "", // max bathrooms
+  leaseType: "", // top-bar quick filter (home type string)
+  distance: "", // walking time to campus (minutes)
   distanceToShuttle: "", // walking time to shuttle stop (minutes)
   moveInDate: "",
-  homeType: [],        // ['house','apartment','condo','townhouse','singleBedroom']
+  homeType: [], // ['house','apartment','condo','townhouse','singleBedroom']
   leaseAvailability: [], // ['semester','10-month','12-month']
-  amenities: [],       // ['gym','studyRooms','inUnitLaundry','freeParking','petsAllowed']
-  furnished: "",       // '' | 'furnished' | 'unfurnished'
+  amenities: [], // ['pool','studyRooms','inUnitLaundry','freeParking','petsAllowed']
+  furnished: "", // '' | 'furnished' | 'unfurnished'
   utilitiesIncluded: false,
   subleaseFriendly: false,
-  leaseStructure: "",  // '' | 'individual' | 'joint'
+  leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
 };
 
@@ -97,28 +96,37 @@ export default function BrowseContent({ session }) {
 
   const filteredListings = useMemo(() => {
     return listings.filter((listing) => {
-      const lt = listing.leaseType?.toLowerCase() || "";
-      const desc = listing.description?.toLowerCase() || "";
-      const amenitiesText = (listing.amenities || []).join(" ").toLowerCase();
+      const lt = listing?.homeType?.toLowerCase() || "";
+      const desc = listing?.description?.toLowerCase() || "";
+      const amenitiesText = (listing?.amenities || []).join(" ").toLowerCase();
       const combined = desc + " " + amenitiesText;
 
       // Search
-      const matchSearch = listing.address.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = listing?.address
+        .toLowerCase()
+        .includes(search.toLowerCase());
 
       // Price
-      const matchMinRent = !filters.minRent || listing.unitTypes[0].rent >= Number(filters.minRent);
-      const matchMaxRent = !filters.maxRent || listing.unitTypes[0].rent <= Number(filters.maxRent);
+      const matchMinRent =
+        !filters.minRent || listing?.maxRent >= Number(filters.minRent);
+      const matchMaxRent =
+        !filters.maxRent || listing?.minRent <= Number(filters.maxRent);
 
       // Beds / baths (range)
       const matchBeds =
-        (!filters.bedrooms    || listing.unitTypes[0].bedrooms >= Number(filters.bedrooms)) &&
-        (!filters.maxBedrooms || listing.unitTypes[0].bedrooms <= Number(filters.maxBedrooms));
+        (!filters.bedrooms ||
+          listing?.maxBedrooms >= Number(filters.bedrooms)) &&
+        (!filters.maxBedrooms ||
+          listing?.minBedrooms <= Number(filters.maxBedrooms));
       const matchBaths =
-        (!filters.bathrooms    || listing.unitTypes[0].bathrooms >= Number(filters.bathrooms)) &&
-        (!filters.maxBathrooms || listing.unitTypes[0].bathrooms <= Number(filters.maxBathrooms));
+        (!filters.bathrooms ||
+          listing?.maxBathrooms >= Number(filters.bathrooms)) &&
+        (!filters.maxBathrooms ||
+          listing?.minBathrooms <= Number(filters.maxBathrooms));
 
       // Top-bar Lease Type pill (home-type string match)
-      const matchLeaseType = !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
+      const matchLeaseType =
+        !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
 
       // Walking distance to campus — use the minimum walk time among all
       // non-grocery WashU places stored in placeWalkMinutes, fall back to
@@ -127,8 +135,9 @@ export default function BrowseContent({ session }) {
       if (filters.distance) {
         const maxMinutes = parseFloat(filters.distance);
         const pwm = listing.placeWalkMinutes;
-        const nonGroceryMins = WASHU_PLACES
-          .filter((p) => p.name !== "Schnucks (Grocery)")
+        const nonGroceryMins = WASHU_PLACES.filter(
+          (p) => p.name !== "Schnucks (Grocery)"
+        )
           .map((p) => pwm?.[p.name])
           .filter((m) => m != null);
         if (nonGroceryMins.length > 0) {
@@ -144,7 +153,9 @@ export default function BrowseContent({ session }) {
       let matchShuttle = true;
       if (filters.distanceToShuttle) {
         const maxMinutes = parseFloat(filters.distanceToShuttle);
-        matchShuttle = listing.shuttleWalkMinutes != null && listing.shuttleWalkMinutes <= maxMinutes;
+        matchShuttle =
+          listing.shuttleWalkMinutes != null &&
+          listing.shuttleWalkMinutes <= maxMinutes;
       }
 
       // Home type
@@ -152,12 +163,18 @@ export default function BrowseContent({ session }) {
       if (filters.homeType && filters.homeType.length > 0) {
         matchHomeType = filters.homeType.some((type) => {
           switch (type) {
-            case "house": return lt.includes("house");
-            case "apartment": return lt.includes("apartment");
-            case "condo": return lt.includes("condo");
-            case "townhouse": return lt.includes("townhouse");
-            case "singleBedroom": return listing.unitTypes[0]?.bedrooms === 1;
-            default: return true;
+            case "house":
+              return lt.includes("house");
+            case "apartment":
+              return lt.includes("apartment");
+            case "condo":
+              return lt.includes("condo");
+            case "townhouse":
+              return lt.includes("townhouse");
+            case "singleBedroom":
+              return listing?.minBedrooms === 1;
+            default:
+              return true;
           }
         });
       }
@@ -167,10 +184,29 @@ export default function BrowseContent({ session }) {
       if (filters.leaseAvailability && filters.leaseAvailability.length > 0) {
         matchLeaseAvail = filters.leaseAvailability.some((avail) => {
           switch (avail) {
-            case "semester": return lt.includes("semester") || desc.includes("semester");
-            case "10-month": return lt.includes("10") || desc.includes("10 month") || desc.includes("10-month");
-            case "12-month": return lt.includes("12") || lt.includes("year") || desc.includes("12 month") || desc.includes("12-month");
-            default: return true;
+            case "semester":
+              return (
+                lt.includes("semester") ||
+                desc.includes("semester") ||
+                listing?.leaseAvailability === "semester"
+              );
+            case "10-month":
+              return (
+                lt.includes("10") ||
+                desc.includes("10 month") ||
+                desc.includes("10-month") ||
+                listing?.leaseAvailability === "10_month"
+              );
+            case "12-month":
+              return (
+                lt.includes("12") ||
+                lt.includes("year") ||
+                desc.includes("12 month") ||
+                desc.includes("12-month") ||
+                listing?.leaseAvailability === "12_month"
+              );
+            default:
+              return true;
           }
         });
       }
@@ -180,17 +216,49 @@ export default function BrowseContent({ session }) {
       if (filters.amenities && filters.amenities.length > 0) {
         matchAmenities = filters.amenities.every((amenity) => {
           switch (amenity) {
-            case "gym":          return combined.includes("gym") || combined.includes("fitness");
-            case "studyRooms":   return combined.includes("study room") || combined.includes("study lounge");
-            case "inUnitLaundry":return combined.includes("in-unit laundry") || combined.includes("in unit laundry") || combined.includes("washer") || combined.includes("dryer");
-            case "freeParking":  return combined.includes("free parking") || combined.includes("parking included") || combined.includes("parking");
-            case "petsAllowed":  return combined.includes("pet") || listing.petFriendly;
-            case "dishwasher":   return combined.includes("dishwasher");
-            case "extraStorage": return combined.includes("storage") || combined.includes("extra storage");
-            case "fireplace":    return combined.includes("fireplace");
-            case "mailroom":     return combined.includes("mailroom");
-            case "pool":         return combined.includes("pool");
-            default: return true;
+            case "gym":
+              return combined.includes("gym") || combined.includes("fitness");
+            case "studyRooms":
+              return (
+                combined.includes("study room") ||
+                combined.includes("study lounge") ||
+                combined.includes("study_room")
+              );
+            case "inUnitLaundry":
+              return (
+                combined.includes("in-unit laundry") ||
+                combined.includes("in unit laundry") ||
+                combined.includes("washer") ||
+                combined.includes("dryer") ||
+                combined.includes("in_unit_laundry")
+              );
+            case "freeParking":
+              return (
+                combined.includes("free parking") ||
+                combined.includes("parking included") ||
+                combined.includes("parking") ||
+                combined.includes("private_parking")
+              );
+            case "petsAllowed":
+              return (
+                combined.includes("pet") || combined.includes("pets_allowed")
+              );
+            case "dishwasher":
+              return combined.includes("dishwasher");
+            case "extraStorage":
+              return (
+                combined.includes("storage") ||
+                combined.includes("extra storage") ||
+                combined.includes("extra_storage")
+              );
+            case "fireplace":
+              return combined.includes("fireplace");
+            case "mailroom":
+              return combined.includes("mailroom");
+            case "pool":
+              return combined.includes("pool");
+            default:
+              return true;
           }
         });
       }
@@ -198,35 +266,60 @@ export default function BrowseContent({ session }) {
       // Furnished
       let matchFurnished = true;
       if (filters.furnished === "furnished") {
-        matchFurnished = combined.includes("furnished") && !combined.includes("unfurnished");
+        matchFurnished =
+          (combined.includes("furnished") &&
+            !combined.includes("unfurnished")) ||
+          listing?.furnished === "furnished";
       } else if (filters.furnished === "unfurnished") {
-        matchFurnished = combined.includes("unfurnished") || !combined.includes("furnished");
+        matchFurnished =
+          combined.includes("unfurnished") ||
+          !combined.includes("furnished") ||
+          listing?.furnished === "unfurnished";
       }
 
       // Utilities included
       let matchUtilities = true;
       if (filters.utilitiesIncluded) {
-        matchUtilities = combined.includes("utilities included") || combined.includes("utilities are included") || combined.includes("all utilities");
+        matchUtilities =
+          combined.includes("utilities included") ||
+          combined.includes("utilities are included") ||
+          combined.includes("all utilities") ||
+          listing?.utilitiesIncluded === true;
       }
 
       // Sublease friendly
       let matchSublease = true;
       if (filters.subleaseFriendly) {
-        matchSublease = lt.includes("subleas") || desc.includes("subleas") || desc.includes("subletting allowed");
+        matchSublease =
+          lt.includes("subleas") ||
+          desc.includes("subleas") ||
+          desc.includes("subletting allowed") ||
+          listing?.subleaseFriendly === true;
       }
 
       // Lease structure
       let matchLeaseStructure = true;
       if (filters.leaseStructure === "individual") {
-        matchLeaseStructure = lt.includes("individual") || desc.includes("individual lease") || desc.includes("by the room");
+        matchLeaseStructure =
+          lt.includes("individual") ||
+          desc.includes("individual lease") ||
+          desc.includes("by the room") ||
+          listing?.leaseStructure === "individual";
       } else if (filters.leaseStructure === "joint") {
-        matchLeaseStructure = lt.includes("joint") || desc.includes("joint lease") || desc.includes("whole unit");
+        matchLeaseStructure =
+          lt.includes("joint") ||
+          desc.includes("joint lease") ||
+          desc.includes("whole unit") ||
+          listing?.leaseStructure === "joint";
       }
 
-      const userFavorites = session?.user?.favorites || session?.user?.favoritesIds || [];
-      const matchSaved = !filters.savedOnly || userFavorites.some(
-        (f) => String((f && f._id) || f) === String(listing._id)
-      );
+      const userFavorites =
+        session?.user?.favorites || session?.user?.favoritesIds || [];
+      const matchSaved =
+        !filters.savedOnly ||
+        userFavorites.some(
+          (f) => String((f && f._id) || f) === String(listing._id)
+        );
 
       return (
         matchSearch &&
@@ -261,9 +354,7 @@ export default function BrowseContent({ session }) {
   }
 
   return (
-    <div
-      className="bg-gray-50 flex flex-col h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)]"
-    >
+    <div className="bg-gray-50 flex flex-col h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)]">
       <div className="hidden md:block">
         <TopFilterBar
           search={search}

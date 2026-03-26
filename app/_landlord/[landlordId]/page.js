@@ -95,7 +95,10 @@ export default async function Landlord({ params }) {
             </p>
             <p className="text-gray-600 text-sm mt-1">{landlord.description}</p>
             <p className="text-gray-400 text-sm">
-              {landlord.birthday ? `${calcAge(landlord.birthday)} years old` : null}{landlord.gender ? ` • ${landlord.gender}` : ""}
+              {landlord.birthday
+                ? `${calcAge(landlord.birthday)} years old`
+                : null}
+              {landlord.gender ? ` • ${landlord.gender}` : ""}
             </p>
             <p className="text-gray-500 text-sm mt-1">
               📞 {landlord.phone} • ✉️ {landlord.email}
@@ -141,7 +144,10 @@ export default async function Landlord({ params }) {
                       <p className="text-sm text-gray-400">
                         {getUnitValuesLabel(listing.unitTypes, "bedrooms")} Beds
                         {" • "}
-                        {getUnitValuesLabel(listing.unitTypes, "bathrooms")}{" "}
+                        {getUnitValuesLabel(
+                          listing.unitTypes,
+                          "bathrooms"
+                        )}{" "}
                         Baths • {getAreaRangeLabel(listing.unitTypes)} Sq Ft
                       </p>
                       <p className="text-xs text-gray-400">

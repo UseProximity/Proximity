@@ -177,8 +177,8 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
             <div className="mb-6">
               <div className="flex items-end justify-center h-24 space-x-1 mb-4">
                 {[
-                  2, 4, 6, 8, 12, 15, 18, 20, 16, 14, 12, 10, 8, 6, 4, 3, 2,
-                  1, 1, 1,
+                  2, 4, 6, 8, 12, 15, 18, 20, 16, 14, 12, 10, 8, 6, 4, 3, 2, 1,
+                  1, 1,
                 ].map((height, index) => (
                   <div
                     key={index}
@@ -305,9 +305,7 @@ export default function ListingFilters({ filters, setFilters, onReset }) {
             </div>
 
             <div className="mb-6">
-              <h4 className="text-md font-medium text-gray-900 mb-3">
-                Baths
-              </h4>
+              <h4 className="text-md font-medium text-gray-900 mb-3">Baths</h4>
               <div className="grid grid-cols-7 gap-2">
                 {["Any", "1+", "1.5+", "2+", "2.5+", "3+", "4+"].map(
                   (option) => (

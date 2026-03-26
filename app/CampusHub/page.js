@@ -40,7 +40,6 @@ const allDorms = [
   "Village & Lopata House",
 ];
 
-
 const CANONICAL_ROOM_TYPES = [
   "Modern Single",
   "Modern Double",
@@ -63,9 +62,12 @@ function normalizeRoomType(raw) {
   if (s.includes("modern") && s.includes("triple")) return "Modern Triple";
   if (s.includes("modern") && s.includes("single")) return "Modern Single";
   if (s.includes("modern") && s.includes("double")) return "Modern Double";
-  if (s.includes("traditional") && s.includes("triple")) return "Traditional Triple";
-  if (s.includes("traditional") && s.includes("single")) return "Traditional Single";
-  if (s.includes("traditional") && s.includes("double")) return "Traditional Double";
+  if (s.includes("traditional") && s.includes("triple"))
+    return "Traditional Triple";
+  if (s.includes("traditional") && s.includes("single"))
+    return "Traditional Single";
+  if (s.includes("traditional") && s.includes("double"))
+    return "Traditional Double";
   if (s.includes("triple")) return "Modern Triple";
   if (s.includes("single")) return "Modern Single";
   if (s.includes("double")) return "Modern Double";
@@ -73,12 +75,25 @@ function normalizeRoomType(raw) {
 }
 
 const FORM_TAGS = [
-  "Quiet Floor", "Study Floor", "Social Floor",
-  "Historic", "New Building", "Central Location",
-  "Apartment Style", "Modern", "On-Campus", "Off-Campus",
+  "Quiet Floor",
+  "Study Floor",
+  "Social Floor",
+  "Historic",
+  "New Building",
+  "Central Location",
+  "Apartment Style",
+  "Modern",
+  "On-Campus",
+  "Off-Campus",
 ];
 
-const EMPTY_FORM = { name: "", classYear: "", rating: 0, tags: [], content: "" };
+const EMPTY_FORM = {
+  name: "",
+  classYear: "",
+  rating: 0,
+  tags: [],
+  content: "",
+};
 
 export default function CampusHub() {
   const [selectedTypes, setSelectedTypes] = useState([]);
@@ -109,7 +124,9 @@ export default function CampusHub() {
       .then((data) => {
         if (!Array.isArray(data)) return;
         const map = {};
-        data.forEach((d) => { map[d.name] = d; });
+        data.forEach((d) => {
+          map[d.name] = d;
+        });
         setDormMeta(map);
       })
       .catch(() => {});
@@ -131,7 +148,12 @@ export default function CampusHub() {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!form.name.trim() || !form.classYear || !form.rating || !form.content.trim()) {
+    if (
+      !form.name.trim() ||
+      !form.classYear ||
+      !form.rating ||
+      !form.content.trim()
+    ) {
       setFormError("Please fill in all required fields.");
       return;
     }
@@ -557,10 +579,13 @@ export default function CampusHub() {
                   const roomType = dbRoomTypes?.length
                     ? dbRoomTypes.join(" · ")
                     : "—";
-                  const rawTags = dormMeta[dorm]?.tags || dormReviews[0]?.tags || [];
-                  const mainTags = rawTags.length > 2
-                    ? rawTags.slice(0, 2).join(" · ") + ` +${rawTags.length - 2}`
-                    : rawTags.join(" · ");
+                  const rawTags =
+                    dormMeta[dorm]?.tags || dormReviews[0]?.tags || [];
+                  const mainTags =
+                    rawTags.length > 2
+                      ? rawTags.slice(0, 2).join(" · ") +
+                        ` +${rawTags.length - 2}`
+                      : rawTags.join(" · ");
                   return (
                     <div
                       key={dorm}
@@ -569,7 +594,8 @@ export default function CampusHub() {
                       style={{
                         opacity: 0,
                         transform: "translateY(24px)",
-                        transition: "opacity 0.5s ease, transform 0.5s ease, box-shadow 0.2s ease",
+                        transition:
+                          "opacity 0.5s ease, transform 0.5s ease, box-shadow 0.2s ease",
                       }}
                       onClick={() => {
                         setSelectedDorm({ name: dorm, reviews: dormReviews });
@@ -618,240 +644,335 @@ export default function CampusHub() {
 
         {/* Modal */}
         <ModalDorms isOpen={modalOpen} onClose={() => setModalOpen(false)}>
-          {selectedDorm && (() => {
-            const seen = new Set();
-            const modalReviews = [...selectedDorm.reviews, ...dbReviews].filter((r) => {
-              const id = String(r._id);
-              if (seen.has(id)) return false;
-              seen.add(id);
-              return true;
-            });
-            const avgRating = modalReviews.length
-              ? (modalReviews.reduce((s, r) => s + r.rating, 0) / modalReviews.length).toFixed(1)
-              : null;
-            const dbModalTypes = dormMeta[selectedDorm.name]?.roomTypes;
-            const dormType = dbModalTypes?.length ? dbModalTypes.join(" · ") : null;
-            return (
-              <div className="w-full">
-
-                {/* Header */}
-                <div className="sticky md:static top-0 bg-white z-10 -mx-6 px-6 pt-4 pb-3 mb-1 rounded-t-xl">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    {dormType ? (
-                      <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest">
-                        {dormType}
-                      </span>
-                    ) : <span />}
-                    <button
-                      onClick={() => setModalOpen(false)}
-                      className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 shrink-0"
-                    >
-                      ×
-                    </button>
+          {selectedDorm &&
+            (() => {
+              const seen = new Set();
+              const modalReviews = [
+                ...selectedDorm.reviews,
+                ...dbReviews,
+              ].filter((r) => {
+                const id = String(r._id);
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+              });
+              const avgRating = modalReviews.length
+                ? (
+                    modalReviews.reduce((s, r) => s + r.rating, 0) /
+                    modalReviews.length
+                  ).toFixed(1)
+                : null;
+              const dbModalTypes = dormMeta[selectedDorm.name]?.roomTypes;
+              const dormType = dbModalTypes?.length
+                ? dbModalTypes.join(" · ")
+                : null;
+              return (
+                <div className="w-full">
+                  {/* Header */}
+                  <div className="sticky md:static top-0 bg-white z-10 -mx-6 px-6 pt-4 pb-3 mb-1 rounded-t-xl">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      {dormType ? (
+                        <span className="inline-block px-2.5 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest">
+                          {dormType}
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                      <button
+                        onClick={() => setModalOpen(false)}
+                        className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 shrink-0"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+                      {selectedDorm.name}
+                    </h2>
+                    {avgRating && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <AiFillStar className="text-red-500 text-base" />
+                        <span className="text-sm font-semibold text-gray-800">
+                          {avgRating}
+                        </span>
+                        <span className="text-sm text-gray-400">
+                          ({modalReviews.length} review
+                          {modalReviews.length !== 1 ? "s" : ""})
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 leading-tight">{selectedDorm.name}</h2>
-                  {avgRating && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <AiFillStar className="text-red-500 text-base" />
-                      <span className="text-sm font-semibold text-gray-800">{avgRating}</span>
-                      <span className="text-sm text-gray-400">({modalReviews.length} review{modalReviews.length !== 1 ? "s" : ""})</span>
+
+                  {/* Image */}
+                  {dormMeta[selectedDorm.name]?.image && (
+                    <div className="mb-5 rounded-xl overflow-hidden">
+                      <Image
+                        src={`/dorms/${dormMeta[selectedDorm.name].image}`}
+                        alt={selectedDorm.name}
+                        width={800}
+                        height={400}
+                        className="w-full h-[220px] md:h-[260px] object-cover"
+                        style={{ objectPosition: "center" }}
+                      />
                     </div>
                   )}
-                </div>
 
-                {/* Image */}
-                {dormMeta[selectedDorm.name]?.image && (
-                  <div className="mb-5 rounded-xl overflow-hidden">
-                    <Image
-                      src={`/dorms/${dormMeta[selectedDorm.name].image}`}
-                      alt={selectedDorm.name}
-                      width={800}
-                      height={400}
-                      className="w-full h-[220px] md:h-[260px] object-cover"
-                      style={{ objectPosition: "center" }}
-                    />
+                  {/* Reviews */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-bold text-gray-900">
+                      Reviews
+                    </h3>
+                    {modalReviews.length > 0 && (
+                      <span className="text-xs text-gray-400 font-medium">
+                        {modalReviews.length} total
+                      </span>
+                    )}
                   </div>
-                )}
 
-                {/* Reviews */}
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-base font-bold text-gray-900">Reviews</h3>
-                  {modalReviews.length > 0 && (
-                    <span className="text-xs text-gray-400 font-medium">{modalReviews.length} total</span>
-                  )}
-                </div>
-
-                {modalReviews.length > 0 ? (
-                  <div className="space-y-3">
-                    {modalReviews.map((r, idx) => {
-                      const dateLabel = r.date || (r.createdAt
-                        ? new Date(r.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-                        : "");
-                      return (
-                        <div key={r._id || idx} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-bold text-red-500">{r.name[0]}</span>
+                  {modalReviews.length > 0 ? (
+                    <div className="space-y-3">
+                      {modalReviews.map((r, idx) => {
+                        const dateLabel =
+                          r.date ||
+                          (r.createdAt
+                            ? new Date(r.createdAt).toLocaleDateString(
+                                "en-US",
+                                { month: "long", year: "numeric" }
+                              )
+                            : "");
+                        return (
+                          <div
+                            key={r._id || idx}
+                            className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-bold text-red-500">
+                                    {r.name[0]}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-semibold text-gray-900">
+                                    {r.name}
+                                  </span>
+                                  <span className="text-xs text-gray-400 ml-1.5">
+                                    Class of {r.classYear}
+                                  </span>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-sm font-semibold text-gray-900">{r.name}</span>
-                                <span className="text-xs text-gray-400 ml-1.5">Class of {r.classYear}</span>
+                              <div className="flex gap-0.5 flex-shrink-0">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <AiFillStar
+                                    key={s}
+                                    className={
+                                      s <= r.rating
+                                        ? "text-red-500"
+                                        : "text-gray-200"
+                                    }
+                                  />
+                                ))}
                               </div>
                             </div>
-                            <div className="flex gap-0.5 flex-shrink-0">
-                              {[1,2,3,4,5].map((s) => (
-                                <AiFillStar key={s} className={s <= r.rating ? "text-red-500" : "text-gray-200"} />
+                            <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                              {r.content}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {r.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full"
+                                >
+                                  {tag}
+                                </span>
                               ))}
+                              <span className="ml-auto text-xs text-gray-400">
+                                {dateLabel}
+                              </span>
                             </div>
                           </div>
-                          <p className="text-sm text-gray-700 leading-relaxed mb-3">{r.content}</p>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {r.tags.map((tag) => (
-                              <span key={tag} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
-                                {tag}
-                              </span>
-                            ))}
-                            <span className="ml-auto text-xs text-gray-400">{dateLabel}</span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-gray-400 text-sm bg-gray-50 rounded-xl">
+                      No reviews yet. Be the first to leave one!
+                    </div>
+                  )}
+
+                  {/* Add Review */}
+                  <div className="mt-6">
+                    {formSuccess && (
+                      <div className="mb-3 px-4 py-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl">
+                        Thanks for your review!
+                      </div>
+                    )}
+                    {!showReviewForm ? (
+                      <button
+                        onClick={() => {
+                          setShowReviewForm(true);
+                          setFormSuccess(false);
+                        }}
+                        className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-semibold text-gray-500 hover:border-red-300 hover:text-red-500 transition-colors duration-150"
+                      >
+                        + Add a Review
+                      </button>
+                    ) : (
+                      <form
+                        onSubmit={handleFormSubmit}
+                        className="border border-gray-200 rounded-xl p-5 space-y-4 bg-gray-50"
+                      >
+                        <h4 className="text-sm font-bold text-gray-900">
+                          Write a Review
+                        </h4>
+
+                        {/* Name + Class Year */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                              First Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={form.name}
+                              onChange={(e) =>
+                                setForm((f) => ({ ...f, name: e.target.value }))
+                              }
+                              placeholder="e.g. Alex"
+                              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                              Class Year *
+                            </label>
+                            <select
+                              value={form.classYear}
+                              onChange={(e) =>
+                                setForm((f) => ({
+                                  ...f,
+                                  classYear: e.target.value,
+                                }))
+                              }
+                              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300"
+                            >
+                              <option value="">Select…</option>
+                              {[2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
+                                <option key={y} value={y}>
+                                  {y}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-gray-400 text-sm bg-gray-50 rounded-xl">
-                    No reviews yet. Be the first to leave one!
-                  </div>
-                )}
 
-                {/* Add Review */}
-                <div className="mt-6">
-                  {formSuccess && (
-                    <div className="mb-3 px-4 py-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl">
-                      Thanks for your review!
-                    </div>
-                  )}
-                  {!showReviewForm ? (
-                    <button
-                      onClick={() => { setShowReviewForm(true); setFormSuccess(false); }}
-                      className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-semibold text-gray-500 hover:border-red-300 hover:text-red-500 transition-colors duration-150"
-                    >
-                      + Add a Review
-                    </button>
-                  ) : (
-                    <form onSubmit={handleFormSubmit} className="border border-gray-200 rounded-xl p-5 space-y-4 bg-gray-50">
-                      <h4 className="text-sm font-bold text-gray-900">Write a Review</h4>
-
-                      {/* Name + Class Year */}
-                      <div className="grid grid-cols-2 gap-3">
+                        {/* Rating */}
                         <div>
-                          <label className="text-xs font-semibold text-gray-600 mb-1 block">First Name *</label>
-                          <input
-                            type="text"
-                            value={form.name}
-                            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                            placeholder="e.g. Alex"
-                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300"
+                          <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                            Rating *
+                          </label>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() =>
+                                  setForm((f) => ({ ...f, rating: s }))
+                                }
+                                className="text-2xl transition-transform hover:scale-110"
+                              >
+                                <AiFillStar
+                                  className={
+                                    s <= form.rating
+                                      ? "text-red-500"
+                                      : "text-gray-200"
+                                  }
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Tags */}
+                        <div>
+                          <label className="text-xs font-semibold text-gray-600 mb-2 block">
+                            Tags
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {FORM_TAGS.map((tag) => {
+                              const active = form.tags.includes(tag);
+                              return (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() =>
+                                    setForm((f) => ({
+                                      ...f,
+                                      tags: active
+                                        ? f.tags.filter((t) => t !== tag)
+                                        : [...f.tags, tag],
+                                    }))
+                                  }
+                                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors duration-100 ${
+                                    active
+                                      ? "bg-red-500 text-white border-red-500"
+                                      : "bg-white text-gray-600 border-gray-200 hover:border-red-300"
+                                  }`}
+                                >
+                                  {tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Review text */}
+                        <div>
+                          <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                            Your Review *
+                          </label>
+                          <textarea
+                            value={form.content}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                content: e.target.value,
+                              }))
+                            }
+                            placeholder="Share your experience living here…"
+                            rows={3}
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300 resize-none"
                           />
                         </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600 mb-1 block">Class Year *</label>
-                          <select
-                            value={form.classYear}
-                            onChange={(e) => setForm((f) => ({ ...f, classYear: e.target.value }))}
-                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300"
+
+                        {formError && (
+                          <p className="text-xs text-red-500">{formError}</p>
+                        )}
+
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowReviewForm(false);
+                              setFormError(null);
+                            }}
+                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
                           >
-                            <option value="">Select…</option>
-                            {[2025,2026,2027,2028,2029,2030].map((y) => (
-                              <option key={y} value={y}>{y}</option>
-                            ))}
-                          </select>
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={formSubmitting}
+                            className="px-5 py-2 text-sm font-semibold bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {formSubmitting ? "Submitting…" : "Submit Review"}
+                          </button>
                         </div>
-                      </div>
-
-                      {/* Rating */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Rating *</label>
-                        <div className="flex gap-1">
-                          {[1,2,3,4,5].map((s) => (
-                            <button
-                              key={s}
-                              type="button"
-                              onClick={() => setForm((f) => ({ ...f, rating: s }))}
-                              className="text-2xl transition-transform hover:scale-110"
-                            >
-                              <AiFillStar className={s <= form.rating ? "text-red-500" : "text-gray-200"} />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Tags */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Tags</label>
-                        <div className="flex flex-wrap gap-2">
-                          {FORM_TAGS.map((tag) => {
-                            const active = form.tags.includes(tag);
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() => setForm((f) => ({
-                                  ...f,
-                                  tags: active ? f.tags.filter((t) => t !== tag) : [...f.tags, tag],
-                                }))}
-                                className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors duration-100 ${
-                                  active
-                                    ? "bg-red-500 text-white border-red-500"
-                                    : "bg-white text-gray-600 border-gray-200 hover:border-red-300"
-                                }`}
-                              >
-                                {tag}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Review text */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Your Review *</label>
-                        <textarea
-                          value={form.content}
-                          onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                          placeholder="Share your experience living here…"
-                          rows={3}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-red-300 resize-none"
-                        />
-                      </div>
-
-                      {formError && (
-                        <p className="text-xs text-red-500">{formError}</p>
-                      )}
-
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          type="button"
-                          onClick={() => { setShowReviewForm(false); setFormError(null); }}
-                          className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={formSubmitting}
-                          className="px-5 py-2 text-sm font-semibold bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          {formSubmitting ? "Submitting…" : "Submit Review"}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                      </form>
+                    )}
+                  </div>
                 </div>
-
-              </div>
-            );
-          })()}
+              );
+            })()}
         </ModalDorms>
       </div>
     </>

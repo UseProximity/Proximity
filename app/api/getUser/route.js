@@ -13,40 +13,14 @@ export async function GET() {
 
     await connectMongo();
 
-    // Try by id first, fall back to email lookup (handles adapter ID format mismatches)
-    let user = null;
-    try {
-      user = await User.findById(session.user.id)
-        .populate("favorites")
-        .populate("listings")
-        .populate("contacted")
-        .lean();
-    } catch (_) {
-      // id may not be a valid ObjectId in some adapter configs
-    }
+    const user = await User.findById(session.user.id)
+      .populate("favorites")
+      .populate("listings")
+      .populate("contacted")
+      .lean();
 
-    if (!user && session.user.email) {
-      user = await User.findOne({ email: session.user.email })
-        .populate("favorites")
-        .populate("listings")
-        .populate("contacted")
-        .lean();
-    }
-
-    // If we still have no Mongoose record, return the session data so the UI
-    // at least renders the user's name/image/email.
     if (!user) {
-      return Response.json({
-        _id: session.user.id ?? null,
-        name: session.user.name ?? null,
-        email: session.user.email ?? null,
-        image: session.user.image ?? null,
-        favorites: [],
-        listings: [],
-        contacted: [],
-        favoritesIds: [],
-        listingsIds: [],
-      }, { headers: { "Cache-Control": "no-store" } });
+      return Response.json({ error: "User not found" }, { status: 404 });
     }
 
     // Serialize populated favorites
@@ -54,7 +28,23 @@ export async function GET() {
       _id: l._id?.toString(),
       address: l.address,
       unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-      leaseType: l.leaseType,
+      leaseAvailability: l.leaseAvailability,
+      leaseStructure: l.leaseStructure,
+      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
+      homeType: l.homeType,
+      amenities: Array.isArray(l.amenities) ? l.amenities : [],
+      furnished: l.furnished,
+      utilitiesIncluded: l.utilitiesIncluded ?? false,
+      subleaseFriendly: l.subleaseFriendly ?? false,
+      distanceToCampusKm: l.distanceToCampusKm,
+      minRent: l.minRent,
+      maxRent: l.maxRent,
+      minBathrooms: l.minBathrooms,
+      maxBathrooms: l.maxBathrooms,
+      minBedrooms: l.minBedrooms,
+      maxBedrooms: l.maxBedrooms,
+      minArea: l.minArea,
+      maxArea: l.maxArea,
       images: Array.isArray(l.images) ? l.images : [],
       rating: l.rating ?? 0,
       numReviews: l.numReviews ?? 0,
@@ -70,7 +60,23 @@ export async function GET() {
       _id: l._id?.toString(),
       address: l.address,
       unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-      leaseType: l.leaseType,
+      leaseAvailability: l.leaseAvailability,
+      leaseStructure: l.leaseStructure,
+      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
+      homeType: l.homeType,
+      amenities: Array.isArray(l.amenities) ? l.amenities : [],
+      furnished: l.furnished,
+      utilitiesIncluded: l.utilitiesIncluded ?? false,
+      subleaseFriendly: l.subleaseFriendly ?? false,
+      distanceToCampusKm: l.distanceToCampusKm,
+      minRent: l.minRent,
+      maxRent: l.maxRent,
+      minBathrooms: l.minBathrooms,
+      maxBathrooms: l.maxBathrooms,
+      minBedrooms: l.minBedrooms,
+      maxBedrooms: l.maxBedrooms,
+      minArea: l.minArea,
+      maxArea: l.maxArea,
       images: Array.isArray(l.images) ? l.images : [],
       rating: l.rating ?? 0,
       numReviews: l.numReviews ?? 0,
@@ -81,11 +87,28 @@ export async function GET() {
     }));
     const listingsIds = safeListings.map((l) => l._id);
 
-    const safeContacted = (user.contacted || []).map((l) => ({
+    // Serialize populated contacted
+    const safeContacted = (user.contacted || []).filter(Boolean).map((l) => ({
       _id: l._id?.toString(),
       address: l.address,
       unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-      leaseType: l.leaseType,
+      leaseAvailability: l.leaseAvailability,
+      leaseStructure: l.leaseStructure,
+      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
+      homeType: l.homeType,
+      amenities: Array.isArray(l.amenities) ? l.amenities : [],
+      furnished: l.furnished,
+      utilitiesIncluded: l.utilitiesIncluded ?? false,
+      subleaseFriendly: l.subleaseFriendly ?? false,
+      distanceToCampusKm: l.distanceToCampusKm,
+      minRent: l.minRent,
+      maxRent: l.maxRent,
+      minBathrooms: l.minBathrooms,
+      maxBathrooms: l.maxBathrooms,
+      minBedrooms: l.minBedrooms,
+      maxBedrooms: l.maxBedrooms,
+      minArea: l.minArea,
+      maxArea: l.maxArea,
       images: Array.isArray(l.images) ? l.images : [],
       rating: l.rating ?? 0,
       numReviews: l.numReviews ?? 0,
@@ -95,14 +118,17 @@ export async function GET() {
       createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
     }));
 
+    const contactedIds = safeContacted.map((l) => l._id);
+
     const safeUser = {
       ...user,
       _id: user._id.toString(),
       favorites: safeFavorites,
       favoritesIds,
       listings: safeListings,
-      listingsIds,
       contacted: safeContacted,
+      contactedIds,
+      listingsIds,
       createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
       updatedAt: user.updatedAt ? new Date(user.updatedAt).toISOString() : null,
     };
