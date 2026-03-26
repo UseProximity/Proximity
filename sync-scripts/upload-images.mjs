@@ -1,20 +1,30 @@
 /**
- * Uploads listing images from public/listing-pics/ to Cloudflare R2.
+ * upload-images.mjs
+ * Uploads listing images from local folders to Cloudflare R2.
  *
- * Directory structure:
- *   public/listing-pics/
- *     7515-forsyth-blvd/
- *       photo1.jpg
- *       photo2.jpg
+ * What it syncs:
+ *   public/listing-pics/{address-slug}/*.jpg|png|webp|gif
+ *   → Cloudflare R2 bucket (LISTINGS_COLLECTION env → bucket name)
+ *   Each subfolder becomes a key prefix in R2: "{slug}/{filename}"
+ *   Files already in R2 are skipped (duplicate-safe).
+ *   Name a file "main.*" to pin it as the cover photo when synced.
  *
- * The subfolder name becomes the R2 key prefix (address slug).
+ * Backend touched:
+ *   - Cloudflare R2 bucket (R2_BUCKET_NAME in .env.local)
+ *     Dev:  "proximity"       (R2_BUCKET_NAME)
+ *     Prod: "proximity-prod"  (change R2_BUCKET_NAME or run sync-r2-images --prod)
  *
  * Usage:
- *   node scripts/upload-images.mjs           # upload all folders
- *   node scripts/upload-images.mjs --dry-run # preview without uploading
+ *   node sync-scripts/upload-images.mjs            # upload all, skip existing
+ *   node sync-scripts/upload-images.mjs --dry-run  # preview without uploading
+ *
+ * Typical workflow:
+ *   1. Add photos to public/listing-pics/{address-slug}/
+ *   2. node sync-scripts/upload-images.mjs
+ *   3. node sync-scripts/sync-r2-images.mjs [--prod]
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { resolve, join, extname } from "path";
 
@@ -26,7 +36,8 @@ const envVars = Object.fromEntries(
     .filter((l) => l.includes("=") && !l.startsWith("#"))
     .map((l) => {
       const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+      const raw = l.slice(i + 1).trim().replace(/^["']([^"']*)["'].*$/, "$1").replace(/\s+#.*$/, "");
+      return [l.slice(0, i).trim(), raw];
     })
 );
 
@@ -75,6 +86,19 @@ function toAddressSlug(name) {
     .replace(/^-+|-+$/g, "");
 }
 
+async function listExistingR2Keys() {
+  const keys = new Set();
+  let continuationToken;
+  do {
+    const res = await r2.send(
+      new ListObjectsV2Command({ Bucket: BUCKET, ContinuationToken: continuationToken })
+    );
+    for (const obj of res.Contents || []) keys.add(obj.Key);
+    continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (continuationToken);
+  return keys;
+}
+
 async function main() {
   let slugFolders;
   try {
@@ -96,6 +120,10 @@ async function main() {
   if (isDryRun) {
     console.log("[DRY RUN] No files will be uploaded.\n");
   }
+
+  console.log("Fetching existing R2 keys...");
+  const existingKeys = isDryRun ? new Set() : await listExistingR2Keys();
+  if (!isDryRun) console.log(`  ${existingKeys.size} files already in R2\n`);
 
   let totalUploaded = 0;
   let totalSkipped = 0;
@@ -125,6 +153,12 @@ async function main() {
       if (isDryRun) {
         console.log(`  [dry-run] would upload → ${key}`);
         totalUploaded++;
+        continue;
+      }
+
+      if (existingKeys.has(key)) {
+        console.log(`  [skip] ${key} — already in R2`);
+        totalSkipped++;
         continue;
       }
 

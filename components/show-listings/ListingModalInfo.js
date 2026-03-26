@@ -34,10 +34,6 @@ const TABS = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseAddress(addressStr) {
-  const match = addressStr?.match(
-    /^(.+?\s(?:St|Ave|Dr|Blvd|Rd|Ln|Way|Ct|Pl|Pkwy|Terr?|Cir|Loop|Trail|Trl)\b\.?)\s*,?\s*(.+)$/i
-  );
-  if (match) return { street: match[1].trim(), cityStateZip: match[2].trim() };
   const ci = addressStr?.indexOf(",") ?? -1;
   if (ci !== -1)
     return {
@@ -652,7 +648,7 @@ export default function ListingModalInfo({ session, listing }) {
         <div className="max-w-7xl mx-auto px-4 py-8">
 
           {/* ── Photo Grid ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 h-[400px] overflow-hidden rounded-xl">
+          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 h-[400px] overflow-hidden rounded-xl">
             {/* Main image — 2/3 width */}
             <div
               className="md:col-span-2 relative cursor-pointer h-full overflow-hidden rounded-l-xl"
@@ -720,13 +716,18 @@ export default function ListingModalInfo({ session, listing }) {
                 ) : (
                   <div className="w-full h-full bg-gray-300" />
                 )}
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full">
-                    View All {images.length > 0 ? `(${images.length})` : ""}
-                  </span>
                 </div>
-              </div>
             </div>
+
+            {/* Always-visible "See all photos" button */}
+            {images.length > 0 && (
+              <button
+                onClick={() => setIsGalleryOpen(true)}
+                className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
+              >
+                See all photos ({images.length})
+              </button>
+            )}
           </div>
 
           {/* ── Header Info ── */}

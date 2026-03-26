@@ -1,10 +1,22 @@
 /**
- * Updates campusWalkMinutes, placeWalkMinutes, and shuttleWalkMinutes
- * for all listings in both dev and prod databases.
+ * update-walk-times.mjs
+ * Recomputes walking times to campus, key places, and shuttle stops for all listings.
  *
- * Usage: node scripts/update-walk-times.mjs
+ * What it syncs:
+ *   Mapbox Directions API (walking routes)
+ *   → MongoDB listings.campusWalkMinutes, listings.placeWalkMinutes, listings.shuttleWalkMinutes
+ *   Runs against BOTH dev and prod databases in sequence.
+ *   Only processes listings that have latitude/longitude set.
  *
- * Reads MONGO_URI, MONGO_URI_PROD, and NEXT_PUBLIC_MAPBOX_TOKEN from .env.local
+ * Backend touched:
+ *   - Mapbox Directions API (NEXT_PUBLIC_MAPBOX_TOKEN) — one request per listing per destination
+ *   - MongoDB dev cluster  (MONGO_URI)      → "listings" collection — updates walk time fields
+ *   - MongoDB prod cluster (MONGO_URI_PROD) → "listings" collection — updates walk time fields
+ *
+ * Usage:
+ *   node sync-scripts/update-walk-times.mjs          # updates dev + prod
+ *
+ * To update prod only, use update-walk-times-prod.mjs.
  */
 
 import { MongoClient } from "mongodb";

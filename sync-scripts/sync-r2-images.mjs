@@ -1,14 +1,25 @@
 /**
- * Syncs images from Cloudflare R2 to MongoDB listing records.
+ * sync-r2-images.mjs
+ * Syncs Cloudflare R2 image folders to MongoDB listing records.
  *
- * R2 folders are named by address slug (e.g. "7515-forsyth-blvd").
- * This script matches each folder to a listing by slugifying the listing's
- * street address, then replaces listing.images with the R2 public URLs.
+ * What it syncs:
+ *   Cloudflare R2 bucket (top-level folder prefixes by address slug)
+ *   → MongoDB listings collection (listing.images[] field)
+ *   Matches R2 folders to listings by slugified street address.
+ *   Files named "main.*" are pinned as images[0] (cover photo).
+ *   Listings whose images array is already up to date are skipped.
+ *
+ * Backend touched:
+ *   - Cloudflare R2 bucket  (read-only — lists folders/keys)
+ *   - MongoDB listings collection (writes listing.images[])
+ *     Dev:  MONGO_URI       → "listings" collection in dev cluster
+ *     Prod: MONGO_URI_PROD  → "listings" collection in prod cluster
  *
  * Usage:
- *   node scripts/sync-r2-images.mjs             # sync to dev DB
- *   node scripts/sync-r2-images.mjs --prod       # sync to prod DB
- *   node scripts/sync-r2-images.mjs --dry-run    # preview without writing
+ *   node sync-scripts/sync-r2-images.mjs             # sync to dev DB
+ *   node sync-scripts/sync-r2-images.mjs --prod       # sync to prod DB
+ *   node sync-scripts/sync-r2-images.mjs --dry-run    # preview matches, no writes
+ *   node sync-scripts/sync-r2-images.mjs --prod --dry-run
  */
 
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
@@ -24,7 +35,8 @@ const envVars = Object.fromEntries(
     .filter((l) => l.includes("=") && !l.startsWith("#"))
     .map((l) => {
       const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+      const raw = l.slice(i + 1).trim().replace(/^["']([^"']*)["'].*$/, "$1").replace(/\s+#.*$/, "");
+      return [l.slice(0, i).trim(), raw];
     })
 );
 
@@ -47,24 +59,22 @@ const r2 = new S3Client({
   },
 });
 
-// Trailing words stripped before slugifying (same logic as upload-images.mjs).
+// Words stripped before generating the loose address key.
 const NOISE_WORDS = /\b(pictures?|photos?|pics?|images?)\b/gi;
-const STREET_SUFFIXES =
-  /\b(ave\.?|avenue|st\.?|street|blvd\.?|boulevard|rd\.?|road|dr\.?|drive|ln\.?|lane|way|ct\.?|court|pl\.?|place|pkwy\.?|parkway|terr?\.?|terrace|cir\.?|circle|loop|trl\.?|trail)\s*$/i;
 
 /**
- * Convert an address string to a canonical slug.
- *   "6042 Kingsbury Ave, St. Louis, MO" → "6042-kingsbury"
- *   "7515 Forsyth Blvd, Clayton, MO"   → "7515-forsyth"
+ * Convert an address-like string to a loose canonical key.
+ *   "6042 Kingsbury Ave, St. Louis, MO"            → "6042-kingsbury"
+ *   "6651 Kingsbury Blvd\nAPT 1W, Saint Louis..."  → "6651-kingsbury"
+ *   "7515-forsyth-blvd"                            → "7515-forsyth"
  */
-function addressToSlug(address) {
-  return address
-    .split(",")[0]
+function toAddressMatchKey(addressLike) {
+  const tokens = addressLike
     .replace(NOISE_WORDS, "")
-    .replace(STREET_SUFFIXES, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .match(/[a-z0-9]+/g);
+
+  return (tokens || []).slice(0, 2).join("-");
 }
 
 /** List all top-level folder prefixes in the R2 bucket. */
@@ -124,11 +134,11 @@ async function main() {
     .find({}, { projection: { _id: 1, address: 1, images: 1 } })
     .toArray();
 
-  // Build slug → listing map
+  // Build loose address key → listing map
   const slugMap = new Map();
   for (const listing of allListings) {
     if (listing.address) {
-      const slug = addressToSlug(listing.address);
+      const slug = toAddressMatchKey(listing.address);
       slugMap.set(slug, listing);
     }
   }
@@ -145,10 +155,12 @@ async function main() {
   let matched = 0;
   let unmatched = 0;
   let updated = 0;
+  let skipped = 0;
 
   for (const prefix of r2Folders) {
     const slug = prefix.replace(/\/$/, ""); // strip trailing slash
-    const listing = slugMap.get(slug);
+    const matchKey = toAddressMatchKey(slug);
+    const listing = slugMap.get(matchKey);
 
     if (!listing) {
       console.log(`[no match] ${slug}`);
@@ -157,13 +169,25 @@ async function main() {
     }
 
     const keys = await listR2Objects(prefix);
-    const urls = keys.map((key) => `${R2_PUBLIC_BASE_URL}/${key}`);
+    // Put any file named "main.*" first, rest stay in alphabetical order
+    const mainKey = keys.find((k) => /\/main\.[^/]+$/.test(k));
+    const sortedKeys = mainKey ? [mainKey, ...keys.filter((k) => k !== mainKey)] : keys;
+    const urls = sortedKeys.map((key) => `${R2_PUBLIC_BASE_URL}/${key}`);
     matched++;
 
     if (isDryRun) {
       console.log(
         `[dry-run]  ${slug} → "${listing.address}" (${urls.length} image${urls.length !== 1 ? "s" : ""})`
       );
+      continue;
+    }
+
+    const existing = listing.images || [];
+    const unchanged =
+      existing.length === urls.length && urls.every((u, i) => u === existing[i]);
+    if (unchanged) {
+      console.log(`[skip]     ${slug} → "${listing.address}" (no change)`);
+      skipped++;
       continue;
     }
 
@@ -178,7 +202,7 @@ async function main() {
   }
 
   console.log(
-    `\nDone. ${matched} matched, ${unmatched} unmatched${isDryRun ? "" : `, ${updated} updated`}.`
+    `\nDone. ${matched} matched, ${unmatched} unmatched${isDryRun ? "" : `, ${updated} updated, ${skipped} skipped (no change)`}.`
   );
 
   await mongoClient.close();
