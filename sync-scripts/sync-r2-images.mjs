@@ -72,9 +72,13 @@ function toAddressMatchKey(addressLike) {
   const tokens = addressLike
     .replace(NOISE_WORDS, "")
     .toLowerCase()
-    .match(/[a-z0-9]+/g);
+    .match(/[a-z0-9]+/g) || [];
 
-  return (tokens || []).slice(0, 2).join("-");
+  // Skip a leading building name (e.g. "LOCAL on Delmar, 6650 Delmar Blvd")
+  // by jumping to the first purely numeric token (the street number).
+  const numIdx = tokens.findIndex((t) => /^\d+$/.test(t));
+  const start = numIdx >= 0 ? numIdx : 0;
+  return tokens.slice(start, start + 2).join("-");
 }
 
 /** List all top-level folder prefixes in the R2 bucket. */

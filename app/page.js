@@ -48,7 +48,7 @@ function HeroMapSection() {
           : Array.isArray(data?.listings)
           ? data.listings
           : [];
-        setPreviewListings(all.slice(0, 15));
+        setPreviewListings(all);
       })
       .catch(() => {});
   }, []);
