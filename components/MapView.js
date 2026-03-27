@@ -206,6 +206,7 @@ export default function MapView({
   onListingSelect,
   selectedListingId,
   searchLocation = null,
+  isActive = true,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -448,6 +449,7 @@ export default function MapView({
   );
 
   useEffect(() => {
+    if (!isActive) return;
     // Initialize the map once on mount and clean it up on unmount.
     if (!mapContainerRef.current) return;
 
@@ -468,7 +470,7 @@ export default function MapView({
       });
     }
 
-    // Expose route helpers
+    // Expose route helpers (only for the active/visible map)
     window.showRouteToCampus = showRouteToCampus;
     window.hideRoute = hideRoute;
 
@@ -495,10 +497,11 @@ export default function MapView({
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [isActive, showRouteToCampus, hideRoute]);
 
   // Separate effect: update markers and layers without recreating/removing the map itself.
   useEffect(() => {
+    if (!isActive) return;
     const map = mapRef.current;
     if (!map) return;
 
@@ -703,10 +706,11 @@ export default function MapView({
       }
       // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
     };
-  }, [listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
+  }, [isActive, listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
 
   // Sync active marker icon when selectedListingId changes
   useEffect(() => {
+    if (!isActive) return;
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
@@ -716,7 +720,7 @@ export default function MapView({
         ? `/assets/map-icons/map-${marker._starRating}-a.svg`
         : `/assets/map-icons/map-${marker._starRating}.svg`;
     });
-  }, [selectedListingId]);
+  }, [isActive, selectedListingId]);
 
   // Toggle handlers that preserve the current camera (center, zoom, pitch, bearing)
   const handleToggleHeatmap = useCallback(() => {
@@ -756,6 +760,7 @@ export default function MapView({
   // Zoom to a searched address and show appropriate pin
   const searchHandledRef = useRef(null);
   useEffect(() => {
+    if (!isActive) return;
     const map = mapRef.current;
     if (!map || !searchLocation) return;
 
@@ -784,7 +789,7 @@ export default function MapView({
 
     if (map.isStyleLoaded()) process();
     else map.once("load", process);
-  }, [searchLocation, listings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, searchLocation, listings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative w-full h-full">
