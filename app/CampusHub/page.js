@@ -83,8 +83,6 @@ const FORM_TAGS = [
   "Central Location",
   "Apartment Style",
   "Modern",
-  "On-Campus",
-  "Off-Campus",
 ];
 
 const EMPTY_FORM = {
