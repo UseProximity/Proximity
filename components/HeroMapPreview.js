@@ -102,7 +102,7 @@ export default function HeroMapPreview({
         box-shadow: 0 20px 40px rgba(0,0,0,0.15) !important;
         border: 1px solid rgba(226,232,240,0.8) !important;
         overflow: hidden !important;
-        max-width: 220px !important;
+        max-width: 160px !important;
       }
       .hero-popup .mapboxgl-popup-tip { border-top-color: #ffffff !important; }
       .hero-popup .mapboxgl-popup-close-button { display: none !important; }
@@ -141,22 +141,22 @@ export default function HeroMapPreview({
           offset: 25,
           closeButton: false,
           className: "hero-popup",
-          maxWidth: "220px",
+          maxWidth: "160px",
         }).setHTML(`
           <div data-listing-id="${
             listing._id
-          }" style="width:220px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;">
+          }" style="width:160px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;">
             ${
               listing.images?.[0]
-                ? `<img src="${listing.images[0]}" alt="" style="width:100%;height:110px;object-fit:cover;display:block;" />`
-                : `<div style="width:100%;height:110px;background:#e5e7eb;"></div>`
+                ? `<img src="${listing.images[0]}" alt="" style="width:100%;height:80px;object-fit:cover;display:block;" />`
+                : `<div style="width:100%;height:80px;background:#e5e7eb;"></div>`
             }
-            <div style="padding:12px 14px 14px;">
-              <div style="font-weight:700;font-size:16px;color:#111;line-height:1.2;">
-                ${rentHtml || "N/A"}
+            <div style="padding:8px 10px 10px;">
+              <div style="font-weight:700;font-size:12px;color:#111;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${listing.address ? listing.address.split(",")[0] : ""}
               </div>
-              <div style="font-size:12px;color:#6b7280;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${listing.address || ""}
+              <div style="font-weight:700;font-size:12px;color:#ef4444;margin-top:2px;">
+                ${rentHtml || "N/A"}
               </div>
             </div>
           </div>
