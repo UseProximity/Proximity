@@ -92,6 +92,10 @@ const listingSchema = new mongoose.Schema({
   minArea: { type: Number, default: null },
   maxArea: { type: Number, default: null },
 
+  // Engagement metrics
+  numClicks: { type: Number, default: 0, min: 0 },
+  numSaves: { type: Number, default: 0, min: 0 },
+
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
