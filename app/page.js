@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -182,6 +183,57 @@ const CARD_W = 300;
 const GAP = 20;
 const STEP = CARD_W + GAP;
 
+function ReviewCard({ review, onSeeMore }) {
+  const textRef = useRef(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    setIsTruncated(el.scrollHeight > el.clientHeight);
+  }, [review.text]);
+
+  return (
+    <div
+      style={{ width: CARD_W, flexShrink: 0 }}
+      className="bg-white border border-gray-150 rounded-2xl p-5 shadow-[0_2px_16px_rgba(0,0,0,0.07)]"
+    >
+      <div className="flex gap-1 mb-3.5">
+        {Array.from({ length: review.rating }).map((_, j) => (
+          <Star key={j} className="h-4 w-4 fill-red-400 text-red-400" />
+        ))}
+      </div>
+      <div className="relative mb-5">
+        <p
+          ref={textRef}
+          className="text-gray-600 text-sm leading-relaxed overflow-hidden"
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 4,
+            WebkitBoxOrient: "vertical",
+          }}
+        >
+          &ldquo;{review.text}&rdquo;
+        </p>
+        {isTruncated && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSeeMore(review);
+            }}
+            className="absolute bottom-0 right-0 text-xs text-red-500 font-medium hover:underline bg-white pl-2"
+          >
+            see more
+          </button>
+        )}
+      </div>
+      <div>
+        <div className="text-sm font-bold text-gray-900">{review.author}</div>
+      </div>
+    </div>
+  );
+}
+
 function ReviewsCarousel() {
   const sectionRef = useRef(null);
   const trackRef = useRef(null);
@@ -191,6 +243,7 @@ function ReviewsCarousel() {
   const [pos, setPos] = useState(0);
   const [skipAnim, setSkipAnim] = useState(false);
   const [containerW, setContainerW] = useState(0);
+  const [selectedReview, setSelectedReview] = useState(null);
 
   useEffect(() => {
     fetch("/api/testimonials")
@@ -218,13 +271,13 @@ function ReviewsCarousel() {
   }, []);
 
   useEffect(() => {
-    if (n === 0) return;
+    if (n === 0 || selectedReview) return;
     const t = setInterval(() => {
       setSkipAnim(false);
       setPos((p) => p + 1);
     }, 4500);
     return () => clearInterval(t);
-  }, [n]);
+  }, [n, selectedReview]);
 
   useEffect(() => {
     if (n === 0 || pos < n * 2) return;
@@ -307,35 +360,11 @@ function ReviewsCarousel() {
             }
           >
             {reviewTrack.map((review, i) => (
-              <div
+              <ReviewCard
                 key={i}
-                style={{ width: CARD_W, flexShrink: 0 }}
-                className="bg-white border border-gray-150 rounded-2xl p-5 shadow-[0_2px_16px_rgba(0,0,0,0.07)]"
-              >
-                <div className="flex gap-1 mb-3.5">
-                  {Array.from({ length: review.rating }).map((_, j) => (
-                    <Star
-                      key={j}
-                      className="h-4 w-4 fill-red-400 text-red-400"
-                    />
-                  ))}
-                </div>
-                <p
-                  className="text-gray-600 text-sm leading-relaxed mb-5 overflow-hidden"
-                  style={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 4,
-                    WebkitBoxOrient: "vertical",
-                  }}
-                >
-                  &ldquo;{review.text}&rdquo;
-                </p>
-                <div>
-                  <div className="text-sm font-bold text-gray-900">
-                    {review.author}
-                  </div>
-                </div>
-              </div>
+                review={review}
+                onSeeMore={setSelectedReview}
+              />
             ))}
           </motion.div>
         </div>
@@ -368,6 +397,38 @@ function ReviewsCarousel() {
           </button>
         </div>
       </motion.div>
+
+      {/* Review modal */}
+      {selectedReview && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedReview(null)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-[0_8px_40px_rgba(0,0,0,0.18)] relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedReview(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex gap-1 mb-3.5">
+              {Array.from({ length: selectedReview.rating }).map((_, j) => (
+                <Star key={j} className="h-4 w-4 fill-red-400 text-red-400" />
+              ))}
+            </div>
+            <p className="text-gray-600 text-sm leading-relaxed mb-5">
+              &ldquo;{selectedReview.text}&rdquo;
+            </p>
+            <div className="text-sm font-bold text-gray-900">
+              {selectedReview.author}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

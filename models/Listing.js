@@ -81,6 +81,7 @@ const listingSchema = new mongoose.Schema({
   moveInDate: { type: String, default: null },
   utilitiesIncluded: { type: Boolean, default: false },
   subleaseFriendly: { type: Boolean, default: false },
+  unavailable: { type: Boolean, default: false },
 
   // Computed aggregates from unitTypes
   minRent: { type: Number, default: null },

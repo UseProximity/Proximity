@@ -107,14 +107,19 @@ function ListingCard({ listing, session, onCardClick }) {
           <img
             src={imageUrl}
             alt={listing.address}
-            className="w-full aspect-video object-cover"
+            className={`w-full aspect-video object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
           />
         ) : (
           <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
             No image
           </div>
         )}
-        {imageCount > 1 && (
+        {listing.unavailable && (
+          <div className="absolute top-3 left-3 bg-gray-800/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+            Unavailable
+          </div>
+        )}
+        {imageCount > 1 && !listing.unavailable && (
           <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
             See all {imageCount} photos
           </div>
@@ -132,7 +137,7 @@ function ListingCard({ listing, session, onCardClick }) {
               </p>
             )}
           </div>
-          <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
+          <span className={`font-bold text-sm whitespace-nowrap flex-shrink-0 ${listing.unavailable ? "text-gray-400" : "text-red-500"}`}>
             {getRentRangeLabel(listing.unitTypes)}
             {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
               <span className="text-xs font-normal">/mo</span>

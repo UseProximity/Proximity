@@ -1,0 +1,56 @@
+/**
+ * Paste one or more documents here
+ */
+[
+{
+  "address": "University Square, 605 Leland Ave, University City, MO 63130",
+  "description": "Experience luxury living at University Square, a prime option for WashU students in the Delmar Loop. This 7-story building features an on-site Starbucks and an entire floor dedicated to amenities designed for the way you live, study, and recharge. Be among the first to enjoy a fully furnished, newly gut-renovated apartment that blends style, comfort, and convenience. Newly Gut Renovated & Fully Furnished. Amenities include: Fitness center, Private individual and group study rooms, Tenant lounge, Game room, Theater Room.",
+  "unitTypes": [
+    {
+      "name": "PARIS (3BR / 1BA)",
+      "rent": null,
+      "area": null,
+      "bedrooms": 3,
+      "bathrooms": 1
+    },
+    {
+      "name": "MADRID (3BR / 1BA)",
+      "rent": null,
+      "area": null,
+      "bedrooms": 3,
+      "bathrooms": 1
+    },
+    {
+      "name": "ROME (2BR + Office / 1BA)",
+      "rent": null,
+      "area": null,
+      "bedrooms": 2,
+      "bathrooms": 1
+    }
+  ],
+  "leaseStructure": "joint",
+  "leaseAvailability": "12-month",
+  "homeType": "apartment",
+  "contactEmail": "leasing@clocktowercompany.com",
+  "contactPhone": "586-666-1217",
+  "contactName": null,
+  "amenities": [
+    "GYM",
+    "STUDY ROOMS",
+    "DISHWASHER",
+    "IN UNIT LAUNDRY"
+  ],
+  "utilitiesIncluded": false,
+  "subleaseFriendly": false,
+  "minRent": null,
+  "maxRent": null,
+  "minBathrooms": 1,
+  "maxBathrooms": 1,
+  "minBedrooms": 2,
+  "maxBedrooms": 3,
+  "images": [],
+  "numReviews": 0,
+  "rating": 0,
+  "reviews": []
+}
+]

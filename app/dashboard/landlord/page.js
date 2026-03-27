@@ -466,7 +466,31 @@ function AnalyticsDashboardSection() {
 }
 
 // Properties Page Content
-function PropertiesSection({ user, handlePropertySelect, router }) {
+function PropertiesSection({ user, setUser, handlePropertySelect, router }) {
+  const [togglingId, setTogglingId] = useState(null);
+
+  async function handleToggleUnavailable(e, property) {
+    e.stopPropagation();
+    setTogglingId(property._id);
+    try {
+      const res = await fetch(`/api/listing/${property._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unavailable: !property.unavailable }),
+      });
+      if (res.ok) {
+        const { unavailable } = await res.json();
+        setUser((prev) => ({
+          ...prev,
+          listings: prev.listings.map((l) =>
+            l._id === property._id ? { ...l, unavailable } : l
+          ),
+        }));
+      }
+    } finally {
+      setTogglingId(null);
+    }
+  }
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -517,10 +541,10 @@ function PropertiesSection({ user, handlePropertySelect, router }) {
         </div>
         <div className="flex items-center gap-4">
           <Badge variant="secondary" className="bg-green-100 text-green-800">
-            {user.listings.length} Available{" "}
+            {user.listings.filter((l) => !l.unavailable).length} Available
           </Badge>
-          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-            0 Rented {/*TODO: Fixed number for now, fix that */}
+          <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+            {user.listings.filter((l) => l.unavailable).length} Unavailable
           </Badge>
         </div>
       </div>
@@ -533,18 +557,27 @@ function PropertiesSection({ user, handlePropertySelect, router }) {
             onClick={() => handlePropertySelect(property)}
           >
             <div className="relative overflow-hidden">
-              <div className="w-full h-48 bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center">
-                <Home className="h-16 w-16 text-red-400" />
+              <div className={`w-full h-48 bg-gradient-to-br flex items-center justify-center ${property.unavailable ? "from-gray-100 to-gray-200" : "from-red-100 to-red-200"}`}>
+                <Home className={`h-16 w-16 ${property.unavailable ? "text-gray-400" : "text-red-400"}`} />
               </div>
               <Badge
                 className={`absolute top-3 right-3 shadow-sm ${
-                  property.status !== "Available"
-                    ? "bg-blue-600"
-                    : "bg-green-600"
+                  property.unavailable ? "bg-gray-500" : "bg-green-600"
                 }`}
               >
-                Available {/*TODO fixed status for now, fix that */}
+                {property.unavailable ? "Unavailable" : "Available"}
               </Badge>
+              <button
+                onClick={(e) => handleToggleUnavailable(e, property)}
+                disabled={togglingId === property._id}
+                className="absolute bottom-3 left-3 bg-white/90 hover:bg-white text-xs font-semibold px-2.5 py-1 rounded-full shadow transition disabled:opacity-50"
+              >
+                {togglingId === property._id
+                  ? "Saving…"
+                  : property.unavailable
+                  ? "Mark Available"
+                  : "Mark Unavailable"}
+              </button>
             </div>
 
             <CardHeader className="pb-2">
@@ -1217,6 +1250,7 @@ export default function ProximityDashboard() {
         return (
           <PropertiesSection
             user={user}
+            setUser={setUser}
             handlePropertySelect={handlePropertySelect}
             router={router}
           />

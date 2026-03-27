@@ -115,7 +115,7 @@ function AmenityPill({ label }) {
 function StatCell({ label, value }) {
   return (
     <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-      <div className="text-lg font-semibold text-gray-900">{value}</div>
+      <div className="text-lg font-semibold text-gray-900 break-words">{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
     </div>
   );
@@ -885,6 +885,12 @@ export default function ListingModalInfo({ session, listing }) {
           </div>
 
           {/* ── Header Info ── */}
+          {listing.unavailable && (
+            <div className="bg-gray-100 border border-gray-300 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-gray-600 text-sm font-medium">
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+              This listing is currently unavailable
+            </div>
+          )}
           <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{street}</h1>
@@ -910,7 +916,11 @@ export default function ListingModalInfo({ session, listing }) {
                   .getElementById("listing-tabs")
                   ?.scrollIntoView({ behavior: "smooth" });
               }}
-              className="shrink-0 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+              className={`shrink-0 text-sm font-semibold px-4 py-2 rounded-lg transition ${
+                listing.unavailable
+                  ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
+                  : "bg-red-600 hover:bg-red-700 text-white"
+              }`}
             >
               Contact Manager
             </button>
@@ -919,8 +929,22 @@ export default function ListingModalInfo({ session, listing }) {
           {/* ── Stats Bar ── */}
           <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
             <StatCell
-              label="/ mo"
-              value={getRentRangeLabel(listing.unitTypes)}
+              label={(() => {
+                const label = getRentRangeLabel(listing.unitTypes);
+                return label === "Contact for Pricing" ? "" : "/ mo";
+              })()}
+              value={(() => {
+                const label = getRentRangeLabel(listing.unitTypes);
+                const dashIdx = label.indexOf("-");
+                if (dashIdx === -1) return label;
+                return (
+                  <>
+                    <span className="whitespace-nowrap">{label.slice(0, dashIdx + 1)}</span>
+                    <wbr />
+                    <span className="whitespace-nowrap">{label.slice(dashIdx + 1)}</span>
+                  </>
+                );
+              })()}
             />
             <StatCell
               label="Beds"

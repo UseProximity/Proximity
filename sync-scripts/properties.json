@@ -2,1335 +2,1863 @@
  * Paste one or more documents here
  */
 [
-{
-  "address": "6650 Delmar Blvd, St. Louis, MO 63130",
-  "description": "Brand new building. Per-bedroom leasing available. Roommate matching offered. High amenity. Furnished units only. 1-bed: ~$1,049/person · 2-bed: $1,344–$1,375/person · 3-bed: contact LOCAL.",
-  "unitTypes": [
-    {
-      "name": "C1",
-      "rent": 2750,
-      "area": 735,
-      "bedrooms": 2,
-      "bathrooms": 2
-    },
-    {
-      "name": "C2",
-      "rent": 2688,
-      "area": 728,
-      "bedrooms": 2,
-      "bathrooms": 2
-    },
-    {
-      "name": "C3",
-      "rent": 2688,
-      "area": 754,
-      "bedrooms": 2,
-      "bathrooms": 2
-    },
-    {
-      "name": "C4",
-      "rent": 2750,
-      "area": 773,
-      "bedrooms": 2,
-      "bathrooms": 2
-    },
-    {
-      "name": "1BR Studio/Suite (example)",
-      "rent": 1049,
-      "area": 520,
-      "bedrooms": 1,
-      "bathrooms": 1
-    },
-    {
-      "name": "A1 & A2 (Studio)",
-      "rent": null,
-      "area": null,
-      "bedrooms": 0,
-      "bathrooms": 1
-    },
-    {
-      "name": "B1, B1 Type A & B2 (1BR)",
-      "rent": null,
-      "area": null,
-      "bedrooms": 1,
-      "bathrooms": 1
-    },
-    {
-      "name": "C2 Type A (2BR/2BA)",
-      "rent": 2688,
-      "area": 728,
-      "bedrooms": 2,
-      "bathrooms": 2
-    },
-    {
-      "name": "D1�D9 & ALT layouts (3BR)",
-      "rent": null,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "individual",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "info@localondelmar.com",
-  "contactPhone": "314-492-1300",
-  "contactName": "Nathan Hebenstreit",
-  "amenities": [
-    "POOL",
-    "GYM",
-    "STUDY ROOMS",
-    "MAILROOM",
-    "EXTRA STORAGE",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1049,
-  "maxRent": 2750,
-  "minBathrooms": 1,
-  "maxBathrooms": 2,
-  "minBedrooms": 0,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6040 Kingsbury Ave, St. Louis, MO 63112",
-  "description": "Managed by Manor RE. Multiple units available at different dates. Long-established WashU landlord. Semester lease flexibility possible.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 2)",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 3)",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 4)",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1395,
-  "maxRent": 1395,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6042 Kingsbury Ave, St. Louis, MO 63112",
-  "description": "Managed by Manor RE. Multiple units available at different dates. Long-established WashU landlord. Semester lease flexibility possible.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 2)",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 3)",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 4)",
-      "rent": 1395,
-      "area": 550,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1395,
-  "maxRent": 1395,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "727 Leland Ave, University City, MO 63130",
-  "description": "Professionally managed. Right in heart of WashU student zone.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 1995,
-      "area": 1330,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": "Andy",
-  "amenities": [
-    "FREE PARKING",
-    "IN UNIT LAUNDRY",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1995,
-  "maxRent": 1995,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6044 Washington Blvd, St. Louis, MO 63112",
-  "description": "Flexible lease terms available. One block south of Loop.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 1995,
-      "area": 1200,
-      "bedrooms": 3,
-      "bathrooms": 1
-    },
-    {
-      "name": "3BR / 1BA (Unit 2)",
-      "rent": 1995,
-      "area": 1200,
-      "bedrooms": 3,
-      "bathrooms": 1
-    },
-    {
-      "name": "3BR / 1BA (Unit 3)",
-      "rent": 1995,
-      "area": 1200,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1995,
-  "maxRent": 1995,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "7325 Lindell Blvd, St. Louis, MO 63130",
-  "description": "Next to Colleen's Cafe. Quieter, less student-dense area. Significantly more space than most 2-beds.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA",
-      "rent": 2000,
-      "area": 1500,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "mimi@stlrentalservicesandsales.com",
-  "contactPhone": "314-609-2829",
-  "contactName": "Mimi Mackey",
-  "amenities": [
-    "STUDY ROOMS",
-    "EXTRA STORAGE",
-    "IN UNIT LAUNDRY",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2000,
-  "maxRent": 2000,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "7337 Dartmouth Ave, University City, MO 63130",
-  "description": "Professionally managed by Evernest. Lawn care included.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA",
-      "rent": 1145,
-      "area": 1050,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "homeType": "apartment",
-  "contactEmail": null,
-  "contactPhone": "608-566-6162",
-  "contactName": "Tetsuro Wakatsuki",
-  "amenities": [
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1145,
-  "maxRent": 1145,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "735 Interdrive, University City, MO 63130",
-  "description": "Furnished. Water/sewer/trash included. Available immediately.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA (Furnished)",
-      "rent": 1995,
-      "area": 1450,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": null,
-  "amenities": [
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1995,
-  "maxRent": 1995,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "7350 Lindell Blvd, St. Louis, MO 63130",
-  "description": "Above Colleen's Cookies. International students welcome. Keyless entry.",
-  "unitTypes": [
-    {
-      "name": "Studio",
-      "rent": 1000,
-      "area": null,
-      "bedrooms": 0,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "homeType": "apartment",
-  "contactEmail": "mimi@stlrentalservicesandsales.com",
-  "contactPhone": "314-609-2829",
-  "contactName": "Mimi Mackey",
-  "amenities": [],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1000,
-  "maxRent": 1000,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 0,
-  "maxBedrooms": 0,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "718 Limit Ave, University City, MO",
-  "description": "Owner is licensed MO broker. ALL utilities included in rent (water/sewer/trash/internet/electric/gas). Fully furnished.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA (Furnished)",
-      "rent": 3200,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "lauren@mosaic314.com",
-  "contactPhone": "314-974-0721",
-  "contactName": "Leslie Johnson",
-  "amenities": [
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 3200,
-  "maxRent": 3200,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "725 Interdrive, University City, MO 63130",
-  "description": "4+ bedroom Mosaic unit. ALL utilities included. Fully furnished. Note: different address from 735 Interdrive (separate property).",
-  "unitTypes": [
-    {
-      "name": "4BR / 2BA",
-      "rent": 3600,
-      "area": null,
-      "bedrooms": 4,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "lauren@mosaic314.com",
-  "contactPhone": "314-974-0721",
-  "contactName": "Leslie Johnson",
-  "amenities": [
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 3600,
-  "maxRent": 3600,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 4,
-  "maxBedrooms": 4,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "733 Heman Ave, University City, MO 63130",
-  "description": "3-family building in the Loop. Community living/dining/kitchen space.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 1500,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "mimi@stlrentalservicesandsales.com",
-  "contactPhone": "314-609-2829",
-  "contactName": "Mimi Mackey",
-  "amenities": [
-    "EXTRA STORAGE"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1500,
-  "maxRent": 1500,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "7326 Lindell Blvd, University City, MO 63130",
-  "description": "? NOTE: This property was submitted by STL Rental as 'unit 2' of 733 Heman � it is actually a SEPARATE property at a different address. Very close to WashU campus (Lindell & Forsyth). 2nd floor unit.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA (2nd floor)",
-      "rent": 2200,
-      "area": null,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "mimi@stlrentalservicesandsales.com",
-  "contactPhone": "314-609-2829",
-  "contactName": "Mimi Mackey",
-  "amenities": [
-    "IN UNIT LAUNDRY"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2200,
-  "maxRent": 2200,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6044 Kingsbury Ave, St. Louis, MO 63112",
-  "description": "? NOTE: Submitted by STL Rental as 'unit 3' of 733 Heman � actually a SEPARATE property. Different from 6040-42 Kingsbury (Manor RE). Charming 3BR walkable to campus.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 2400,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "house",
-  "contactEmail": "mimi@stlrentalservicesandsales.com",
-  "contactPhone": "314-609-2829",
-  "contactName": "Mimi Mackey",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2400,
-  "maxRent": 2400,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6219 Rosebury Ave, St. Louis, MO 63105",
-  "description": "QUIET building � caters specifically to students who value quiet academic environment. Directly owner-operated. Wydown-Skinker (63105). Sewer utility included. Smart tech upgrade available. Close to med campus.",
-  "unitTypes": [
-    {
-      "name": "Unit 6219 3S � 2BR/2BA (3rd floor)",
-      "rent": 2395,
-      "area": 1000,
-      "bedrooms": 2,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "rr@demunrent.com",
-  "contactPhone": "314-825-3471",
-  "contactName": "Daniel Lee",
-  "amenities": [
-    "EXTRA STORAGE",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2395,
-  "maxRent": 2395,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6221 Rosebury Ave, St. Louis, MO 63105",
-  "description": "QUIET building � caters specifically to students who value quiet academic environment. Directly owner-operated. Wydown-Skinker (63105). Sewer utility included. Smart tech upgrade available. Close to med campus.",
-  "unitTypes": [
-    {
-      "name": "Unit 6221 2E � 2BR/2BA (2nd floor)",
-      "rent": 2395,
-      "area": 1000,
-      "bedrooms": 2,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "rr@demunrent.com",
-  "contactPhone": "314-825-3471",
-  "contactName": "Daniel Lee",
-  "amenities": [
-    "EXTRA STORAGE",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2395,
-  "maxRent": 2395,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "1173 Moorlands Ave, Richmond Heights, MO",
-  "description": "$40 application fee (background + credit check). Screening applies to all Dabby properties. Ideal Richmond Heights location. Further from main campus but closer to med campus direction.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA (Unit 1, rehabbed)",
-      "rent": 1600,
-      "area": null,
-      "bedrooms": 2,
-      "bathrooms": 1
-    },
-    {
-      "name": "2BR / 1BA (Unit 2, rehabbed)",
-      "rent": 1600,
-      "area": null,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "kary@thedabby.com",
-  "contactPhone": "314-441-6585",
-  "contactName": "Kary Spiegel",
-  "amenities": [
-    "IN UNIT LAUNDRY"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1600,
-  "maxRent": 1600,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6707 Bartmer Ave, University City, MO 63130",
-  "description": "Two units at same address. 2nd floor. Great value for 3BR.",
-  "unitTypes": [
-    {
-      "name": "3BR (Unit 1, 2nd floor)",
-      "rent": 1390,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    },
-    {
-      "name": "3BR (Unit 2, 2nd floor)",
-      "rent": 1390,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "deidre43@icloud.com",
-  "contactPhone": "314-691-3189",
-  "contactName": "Deidre Lewis",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1390,
-  "maxRent": 1390,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6008 Washington Blvd, St. Louis, MO 63112",
-  "description": "Manor RE portfolio. 1.5-bath units � rare at this price point. See manorrealestate.com/residential/apartments-for-rent/",
-  "unitTypes": [
-    {
-      "name": "3BR / 1.5BA",
-      "rent": 2295,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1.5
-    },
-    {
-      "name": "3BR / 1.5BA (Unit 2)",
-      "rent": 2295,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1.5
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2295,
-  "maxRent": 2295,
-  "minBathrooms": 1.5,
-  "maxBathrooms": 1.5,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6010 Washington Blvd, St. Louis, MO 63112",
-  "description": "Manor RE portfolio. 1.5-bath units � rare at this price point. See manorrealestate.com/residential/apartments-for-rent/",
-  "unitTypes": [
-    {
-      "name": "3BR / 1.5BA",
-      "rent": 2295,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1.5
-    },
-    {
-      "name": "3BR / 1.5BA (Unit 2)",
-      "rent": 2295,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1.5
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2295,
-  "maxRent": 2295,
-  "minBathrooms": 1.5,
-  "maxBathrooms": 1.5,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6025 Kingsbury Ave, St. Louis, MO 63112",
-  "description": "Manor RE portfolio. 2-bath 3BR � more bathrooms than most at this price. Adjacent to 6023 Kingsbury.",
-  "unitTypes": [
-    {
-      "name": "3BR / 2BA",
-      "rent": 2195,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2195,
-  "maxRent": 2195,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6023 Kingsbury Ave, St. Louis, MO 63112",
-  "description": "Manor RE portfolio. 2-bath 3BR. Adjacent to 6025 Kingsbury.",
-  "unitTypes": [
-    {
-      "name": "3BR / 2BA",
-      "rent": 2195,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "apartments@manorrealestate.com",
-  "contactPhone": "314-647-6611",
-  "contactName": "Manor RE",
-  "amenities": [],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2195,
-  "maxRent": 2195,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6766 Corbitt Ave #1, University City, MO",
-  "description": "2-year lease required. Pets welcome (small dogs + cats). W/D included.",
-  "unitTypes": [
-    {
-      "name": "3BR (unit #1)",
-      "rent": 1550,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "jadetsui@sbcglobal.net",
-  "contactPhone": "314-780-0780",
-  "contactName": "Jade Tsui",
-  "amenities": [
-    "IN UNIT LAUNDRY",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 1550,
-  "maxRent": 1550,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6805 Washington Ave, University City, MO 63130",
-  "description": "Quiet building policy. $40 credit check/application fee per person. Shown by appointment only. Water/sewer/trash included. Tenant pays gas+electric. NO DOGS.",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 2175,
-      "area": null,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "michael@byroncompany.com",
-  "contactPhone": "314-725-5757",
-  "contactName": null,
-  "amenities": [
-    "DISHWASHER",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2175,
-  "maxRent": 2175,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "7453 Delmar Blvd Floor 1, Saint Louis, MO 63130",
-  "description": "No smoking. No pets. $600 deposit. Water/sewer/trash/yard care/maintenance included. Price not listed � contact landlord.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA",
-      "rent": null,
-      "area": 1500,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "homeType": "apartment",
-  "contactEmail": "amlak1196@hotmail.com",
-  "contactPhone": "+1 (314) 412-1196",
-  "contactName": null,
-  "amenities": [
-    "DISHWASHER",
-    "EXTRA STORAGE",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": null,
-  "maxRent": null,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "7463 Delmar Blvd #2W, Saint Louis, MO 63130",
-  "description": "No smoking. No pets. $600 deposit. Water/sewer/trash/yard care/maintenance included. Price not listed � contact landlord.",
-  "unitTypes": [
-    {
-      "name": "2BR / 1BA",
-      "rent": null,
-      "area": 1000,
-      "bedrooms": 2,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "homeType": "apartment",
-  "contactEmail": "amlak1196@hotmail.com",
-  "contactPhone": "+1 (314) 412-1196",
-  "contactName": null,
-  "amenities": [
-    "DISHWASHER",
-    "EXTRA STORAGE",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": null,
-  "maxRent": null,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "5803 Waterman Blvd Unit 1E, St. Louis, MO 63112",
-  "description": "No pets. No security deposit. $75/person background check. Verifiable gross monthly income of $10,000 required. Across from Forest Park.",
-  "unitTypes": [
-    {
-      "name": "2BR / 2BA",
-      "rent": 1850,
-      "area": 1432,
-      "bedrooms": 2,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "homeType": "apartment",
-  "contactEmail": "mark.westlock@mvpmstl.com",
-  "contactPhone": "(314) 328-6793",
-  "contactName": "Mark Westlock",
-  "amenities": [
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1850,
-  "maxRent": 1850,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 2,
-  "maxBedrooms": 2,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "8400 Delmar Blvd, St. Louis, MO 63124",
-  "description": "Built 2023. Studios�3BR available. Flexible leases 3�48 months. Furnished units available. Up to 2 months free (subject to T&C). $50 app fee, $100 permit fee, $400 booking fee. Utilities not included.",
-  "unitTypes": [
-    {
-      "name": "Studio",
-      "rent": 1300,
-      "area": null,
-      "bedrooms": 0,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "homeType": "apartment",
-  "contactEmail": null,
-  "contactPhone": "(314) 332-1739",
-  "contactName": null,
-  "amenities": [
-    "IN UNIT LAUNDRY",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1300,
-  "maxRent": 1300,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 0,
-  "maxBedrooms": 0,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6249 Northwood Ave APT 2, Saint Louis, MO 63105",
-  "description": "No pets. Non-smoking. 1,850 sqft. Building pays water/sewer/trash/hot water. Tenant pays gas/electric. Not in Clayton School District. Fireplace non-functioning. Zillow: https://www.zillow.com/homedetails/2099153766_zpid/",
-  "unitTypes": [
-    {
-      "name": "3BR / 2BA",
-      "rent": 2395,
-      "area": 1850,
-      "bedrooms": 3,
-      "bathrooms": 2
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": "Andy",
-  "amenities": [
-    "DISHWASHER",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2395,
-  "maxRent": 2395,
-  "minBathrooms": 2,
-  "maxBathrooms": 2,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "710 Westgate Ave #1, Saint Louis, MO 63130",
-  "description": "Cats, small dogs OK. Non-smoking. 1,564 sqft. Building pays water/sewer/trash. Built 1925. Zillow: https://www.zillow.com/homedetails/2106043558_zpid/",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 2100,
-      "area": 1564,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": "Andy",
-  "amenities": [
-    "DISHWASHER",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 2100,
-  "maxRent": 2100,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "739 Leland Ave #1, Saint Louis, MO 63130",
-  "description": "Non-smoking. 1,450 sqft. Zillow: https://www.zillow.com/homedetails/2100305364_zpid/",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 1995,
-      "area": 1450,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": "Andy",
-  "amenities": [
-    "DISHWASHER",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING",
-    "PETS ALLOWED"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 1995,
-  "maxRent": 1995,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6651 Kingsbury Blvd APT 1W, Saint Louis, MO 63130",
-  "description": "No pets. Non-smoking. 1,400 sqft. Lease June 1, 2026 � May 31, 2027. Zillow: https://www.zillow.com/homedetails/2099891168_zpid/",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 3294,
-      "area": 1400,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": "Andy",
-  "amenities": [
-    "DISHWASHER",
-    "IN UNIT LAUNDRY",
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 3294,
-  "maxRent": 3294,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "6629 Kingsbury Blvd APT 2W, Saint Louis, MO 63130",
-  "description": "No pets. 1,744 sqft. Building pays water/sewer/trash/hot water. South facing � lots of natural light. Zillow: https://www.zillow.com/homedetails/2086856664_zpid/",
-  "unitTypes": [
-    {
-      "name": "3BR / 1BA",
-      "rent": 3000,
-      "area": 1744,
-      "bedrooms": 3,
-      "bathrooms": 1
-    }
-  ],
-  "leaseStructure": "joint",
-  "leaseAvailability": "12-month",
-  "homeType": "apartment",
-  "contactEmail": "robertsrealty@gmail.com",
-  "contactPhone": null,
-  "contactName": "Andy",
-  "amenities": [
-    "FREE PARKING"
-  ],
-  "utilitiesIncluded": true,
-  "subleaseFriendly": false,
-  "minRent": 3000,
-  "maxRent": 3000,
-  "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 3,
-  "maxBedrooms": 3,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-},
-{
-  "address": "608 Kingsland Ave, St. Louis, MO 63130",
-  "description": "4BR/4BA suites; 12 units total (4 per floor). Per-bedroom or whole-suite leases accepted.",
-  "unitTypes": [
-    {
-      "name": "4BR / 4BA Suite",
-      "rent": 4000,
-      "area": null,
-      "bedrooms": 4,
-      "bathrooms": 4
-    },
-    {
-      "name": "4BR / 4BA Suite",
-      "rent": 4800,
-      "area": null,
-      "bedrooms": 4,
-      "bathrooms": 4
-    },
-    {
-      "name": "4BR / 4BA Suite",
-      "rent": null,
-      "area": null,
-      "bedrooms": 4,
-      "bathrooms": 4
-    }
-  ],
-  "leaseStructure": "individual",
-  "leaseAvailability": "semester",
-  "homeType": "apartment",
-  "contactEmail": "leasing@clocktowercompany.com",
-  "contactPhone": null,
-  "contactName": null,
-  "amenities": [
-    "POOL",
-    "IN UNIT LAUNDRY"
-  ],
-  "utilitiesIncluded": false,
-  "subleaseFriendly": false,
-  "minRent": 4000,
-  "maxRent": 4800,
-  "minBathrooms": 4,
-  "maxBathrooms": 4,
-  "minBedrooms": 4,
-  "maxBedrooms": 4,
-  "images": [],
-  "numReviews": 0,
-  "rating": 0,
-  "reviews": []
-}
+  {
+    "address": "6650 Delmar Blvd, St. Louis, MO 63130",
+    "description": "Brand new luxury building in The Delmar Loop with rooftop pool, hot tub, 24/7 fitness center, sauna, meditation rooms, study lounges, fire pits, co-working spaces, bike storage, package lockers, and co-living support. Per-bedroom leasing available — roommate matching offered. Fully furnished throughout. 2BR units: $1,344–$1,375/person/mo; 1BR suites: ~$1,049/person/mo; studios and 3BR suites also available (contact for pricing). Smart TV, stainless appliances, and hardwood-style plank floors in every unit. Private bathrooms in all 2BR+ layouts.",
+    "unitTypes": [
+      {
+        "name": "C1",
+        "rent": 2750,
+        "area": 735,
+        "bedrooms": 2,
+        "bathrooms": 2
+      },
+      {
+        "name": "C2",
+        "rent": 2688,
+        "area": 728,
+        "bedrooms": 2,
+        "bathrooms": 2
+      },
+      {
+        "name": "C3",
+        "rent": 2688,
+        "area": 754,
+        "bedrooms": 2,
+        "bathrooms": 2
+      },
+      {
+        "name": "C4",
+        "rent": 2750,
+        "area": 773,
+        "bedrooms": 2,
+        "bathrooms": 2
+      },
+      {
+        "name": "1BR Studio/Suite (example)",
+        "rent": 1049,
+        "area": 520,
+        "bedrooms": 1,
+        "bathrooms": 1
+      },
+      {
+        "name": "A1 & A2 (Studio)",
+        "rent": null,
+        "area": null,
+        "bedrooms": 0,
+        "bathrooms": 1
+      },
+      {
+        "name": "B1, B1 Type A & B2 (1BR)",
+        "rent": null,
+        "area": null,
+        "bedrooms": 1,
+        "bathrooms": 1
+      },
+      {
+        "name": "C2 Type A (2BR/2BA)",
+        "rent": 2688,
+        "area": 728,
+        "bedrooms": 2,
+        "bathrooms": 2
+      },
+      {
+        "name": "D1–D9 & ALT layouts (3BR)",
+        "rent": null,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "individual",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "info@localondelmar.com",
+    "contactPhone": "314-492-1300",
+    "contactName": "Nathan Hebenstreit",
+    "amenities": [
+      "POOL",
+      "GYM",
+      "STUDY ROOMS",
+      "MAILROOM",
+      "EXTRA STORAGE",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1049,
+    "maxRent": 2750,
+    "minBathrooms": 1,
+    "maxBathrooms": 2,
+    "minBedrooms": 0,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL bathroom.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL bedroom.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL gym 2.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL gym.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL inside 2.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL inside.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL living room.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL rooftop 2.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL rooftop.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6650-delmar/LOCAL sauna.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6040 Kingsbury Ave, St. Louis, MO 63112",
+    "description": "Managed by Manor Real Estate, a long-established WashU-area landlord. 2BR/1BA units at 550 sqft — $698/person/mo with water, sewer, and trash included. Multiple units available at staggered dates (now through August 2026). Semester, academic-year, 12-month, and 2-year lease options available.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 2)",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 3)",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 4)",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1395,
+    "maxRent": 1395,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 Kingsbury Ave outside.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave bathroom.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave inside 1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave inside 2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave inside 3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave inside 4.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave inside 5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave inside 6.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave kitchen 2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave kitchen 3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave kitchen.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-42 kingsbury ave outside 2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6040-kingsbury/6040-6042-Kingsbury Floor plan.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6042 Kingsbury Ave, St. Louis, MO 63112",
+    "description": "Managed by Manor Real Estate, a long-established WashU-area landlord. 2BR/1BA units at 550 sqft — $698/person/mo with water, sewer, and trash included. Multiple units available at staggered dates (now through August 2026). Semester, academic-year, 12-month, and 2-year lease options available.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 2)",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 3)",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 4)",
+        "rent": 1395,
+        "area": 550,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1395,
+    "maxRent": 1395,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 Kingsbury Ave outside.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave bathroom.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave inside 1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave inside 2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave inside 3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave inside 4.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave inside 5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave inside 6.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave kitchen 2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave kitchen 3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave kitchen.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-42 kingsbury ave outside 2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6042-kingsbury/6040-6042-Kingsbury Floor plan.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "727 Leland Ave, University City, MO 63130",
+    "description": "Professionally managed by Roberts Realty, right in the heart of the WashU student zone and on the WashU shuttle route. 3BR/1BA at 1,330 sqft — $665/person/mo. Large balcony off two bedrooms, gourmet kitchen with granite countertops and stainless appliances, hardwood floors, double-pane windows, central AC, free on-site laundry, off-street parking, secured entry, and fenced yard. Cats and small dogs welcome.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 1995,
+        "area": 1330,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": "Andy",
+    "amenities": [
+      "FREE PARKING",
+      "IN UNIT LAUNDRY",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1995,
+    "maxRent": 1995,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/0ed13394cf08e8bee89725ce4a953693-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/221cf17bebbe323b1a9adc4b6e7d41bf-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/2b600dcccd8582e8f4de24bd5dae4f16-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/2f2eca729f0c96d38a43a2464a7363cc-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/5b82a693fa463527d119b98f71807e0b-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/5d10e140d96d0b7034016dfcb8fdad5c-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/6a4fee91c9c31dd66a62a3cf084b0d79-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/73d6f748608f33b8b5b37e708466eaf4-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/76dbf0fad996af219f406a481d13ef39-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/a189da288703815d163616eb2cd71482-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/a39c0de3b4b838daef5d97b529d00d0a-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/a91f7378e564d9516ae07cfc9dcb33a0-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/b8fec9fd4148cd3b199bcbb0feae2e18-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/c861cefc09f5e37a5a5e67eeb3b83de4-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/d033a72de9e4ed9c6463de0eaa532577-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/d205de2ebbe389bad6d1fd89430333ad-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/dcdba9e1ede41f7782658c1f2b5b750d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/df82291540037ecc24d7e241297f9f70-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/eb1a4334bef8ceff46310be47a4bb261-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/727-leland/f46f74898389fd974c8f149018bea24f-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6044 Washington Blvd, St. Louis, MO 63112",
+    "description": "Manor Real Estate portfolio property one block south of the Loop. 3BR/1BA at 1,200 sqft — $665/person/mo with sewer included. Flexible lease terms: 12-month, 2-year, academic year, and semester options available. Multiple units with staggered availability (May and August 2026).",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 1995,
+        "area": 1200,
+        "bedrooms": 3,
+        "bathrooms": 1
+      },
+      {
+        "name": "3BR / 1BA (Unit 2)",
+        "rent": 1995,
+        "area": 1200,
+        "bedrooms": 3,
+        "bathrooms": 1
+      },
+      {
+        "name": "3BR / 1BA (Unit 3)",
+        "rent": 1995,
+        "area": 1200,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1995,
+    "maxRent": 1995,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-005-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-006-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-007-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-008-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-009-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-010-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-011-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-012-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-013-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-015-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-016-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-washington/Kristi-Foster-018.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "7325 Lindell Blvd, St. Louis, MO 63130",
+    "description": "Spacious 2BR/1BA at ~1,500 sqft — one of the largest 2-bedrooms in the WashU area — $1,000/person/mo with water, sewer, trash, and in-unit W/D included. Granite countertops, updated appliances, large eat-in kitchen, separate dining and study rooms, fenced backyard, and basement storage. Next to Colleen's Cafe. Quieter, less student-dense area than the Loop. Cats and small dogs welcome.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA",
+        "rent": 2000,
+        "area": 1500,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "mimi@stlrentalservicesandsales.com",
+    "contactPhone": "314-609-2829",
+    "contactName": "Mimi Mackey",
+    "amenities": [
+      "STUDY ROOMS",
+      "EXTRA STORAGE",
+      "IN UNIT LAUNDRY",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2000,
+    "maxRent": 2000,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd bathroom.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd enterence.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside 2.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside 3.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside 4.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside 5.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside 6.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside 7.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd inside.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7325-lindell/ 7325 Lindell Blvd kitchen.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "7337 Dartmouth Ave, University City, MO 63130",
+    "description": "Professionally managed by Evernest. 2BR/1BA at 1,050 sqft — $573/person/mo. In-unit laundry hookups and garage parking included. Lawn care included in rent.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA",
+        "rent": 1145,
+        "area": 1050,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "homeType": "apartment",
+    "contactEmail": null,
+    "contactPhone": "608-566-6162",
+    "contactName": "Tetsuro Wakatsuki",
+    "amenities": [
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1145,
+    "maxRent": 1145,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth bathroom 1 .webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth fridge.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 1.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 2.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 3.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 4.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 5.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 6.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth inside 7.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth kitchen 2.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth kitchen 3.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7337-dartmouth/7337 Dartmouth kitchen.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "735 Interdrive, University City, MO 63130",
+    "description": "Fully furnished 3BR/1BA at 1,450 sqft — $665/person/mo with water, sewer, and trash included. Everything pictured in the listing is included. Stainless appliances, hardwood floors, new carpet in bedrooms, central AC/heat, free on-site laundry, and off-street parking. No pets. Available immediately. Tenant pays gas and electric.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA (Furnished)",
+        "rent": 1995,
+        "area": 1450,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": null,
+    "amenities": [
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1995,
+    "maxRent": 1995,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/06136ff2dac5c7c604ce1577c5b9421e-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/0f2772b6e2fa5885af66953fe2afa635-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/2f3225d2e2c13891f2d1e9d0a62afe38-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/37c6922b273ce3421349b4a8c19fa1e0-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/3814b90147888e6dbafc532d189c9dd3-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/43b77fdb02a2cb29b66c7db1f5e5b95f-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/4f4007a729a04688f0613924fc39cad4-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/5153eac7ae207ff98404a939e4ba4149-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/542b425800120d8662a467e9984d8c90-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/5c7b4fe67e25a6c0886ba8d5007642fa-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/954e2f3882e9a7a7ab5caaa465fa02a5-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/abc9d0fc2bfe5106907ef0c89fc8ae03-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/c8888d104f5e21db11eb4027c40b1c66-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/cf3c1d17e067eb139dc4c3de162efa55-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/d613ffca03216acd1c8b2cfd654f96dc-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/f84a465995de4acc3a34de46a55d6542-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/735-interdrive/fe8f298852cfbe5a5324e5af88d5c919-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "7350 Lindell Blvd, St. Louis, MO 63130",
+    "description": "Private studio unit above Colleen's Cookies — $1,000/mo. Secure building with keyless entry. One of the closest listings to WashU campus (~8-min walk). International students welcome. Contact STL Rental to verify utilities and square footage.",
+    "unitTypes": [
+      {
+        "name": "Studio",
+        "rent": 1000,
+        "area": null,
+        "bedrooms": 0,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "homeType": "apartment",
+    "contactEmail": "mimi@stlrentalservicesandsales.com",
+    "contactPhone": "314-609-2829",
+    "contactName": "Mimi Mackey",
+    "amenities": [],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1000,
+    "maxRent": 1000,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 0,
+    "maxBedrooms": 0,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 202-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 202-10.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 202-5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 202-6.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 202-8.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 203-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/7350 Lindell Blvd Unit 303-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/IMG_0240.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7350-lindell/Screenshot 2026-03-24 at 2.39.21 PM.png"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "718 Limit Ave, University City, MO",
+    "description": "Fully furnished 3BR/1BA Mosaic property — $1,067/person/mo all-in with ALL utilities included (water, sewer, trash, internet, electric, and gas). Renovated open-concept chef's kitchen with quartz island and stainless appliances, large backyard, free in-unit laundry, secured front and back access, and 24/7 on-site maintenance. Owner is a licensed Missouri broker.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA (Furnished)",
+        "rent": 3200,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "lauren@mosaic314.com",
+    "contactPhone": "314-974-0721",
+    "contactName": "Leslie Johnson",
+    "amenities": [
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 3200,
+    "maxRent": 3200,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/1111954b-9528-4052-81f4-57ae6777ab7f-collov-ai_20250828124058_sz6fci.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/1d28686d-bee5-4ab8-b01d-c5459a23e937-3e8963d8ac95450ee1ec57027d7a51af-rentals_large_1200_1200.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/2dfae5c1-bb92-42a1-a267-cda5ebdb95fc-8-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/575d3e20-5254-4b59-aca2-699fbf08ebde-22-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/64406fc5-78d4-4540-9e95-9d56346b45fa-a294fca99a73892c889b98d974b7237a-rentals_large_1200_1200.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/7a0d2f34-169f-489a-bd50-e7ab7d6206d6-26-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/7d7d1db6-a03d-4241-8a4c-e323010cf99d-13-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/a5e438e2-5476-4d10-ba1d-c9dbcea19f40-32-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/a6b72800-5b33-491f-ace9-d9cce45939b9-9-web-or-mls-729-westgate-ave.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/a80a9395-ee25-42c6-b0c2-11912a394b4c-23-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/fbd049be-1052-40c9-9c90-bbd045e6e11e-14-web-or-mls-718-limit-ave-2s.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/718-limit/ff29856d-0b99-44d8-9700-fae7b003554f-Living-room-cropped.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "725 Interdrive, University City, MO 63130",
+    "description": "Fully furnished 4BR/2BA Mosaic property — $900/person/mo (4 people) all-in with ALL utilities included (water, sewer, trash, internet, electric, and gas). Renovated open-concept chef's kitchen with quartz island and stainless appliances, double vanity bathroom, large backyard, completely updated building systems (new furnace, AC, plumbing, electric, and roof), secured front and back access, and 24/7 on-site maintenance. Note: separate property from 735 Interdrive. Availability TBD — confirm with Mosaic.",
+    "unitTypes": [
+      {
+        "name": "4BR / 2BA",
+        "rent": 3600,
+        "area": null,
+        "bedrooms": 4,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "lauren@mosaic314.com",
+    "contactPhone": "314-974-0721",
+    "contactName": "Leslie Johnson",
+    "amenities": [
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 3600,
+    "maxRent": 3600,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 4,
+    "maxBedrooms": 4,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/22-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/2cebc3e9-6d9c-45d0-a22f-88a295d0bbb0-725-interdrive-3.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/32-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/3d01befc-a027-4fcd-bda7-74a1992f95dd-44-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/3d626882-c7a7-4d01-899f-7a311cf2a0ba-725-beddroom-2.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/44-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/4ae4ba62-8038-46cf-a2bf-091d029e5783-725-interdrive-batghroom.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/57fd036b-158f-433b-8537-6c11f142e22f-30-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/725 beddroom 2.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/725 dining room.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/725 interdrive 3.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/725 interdrive batghroom.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/725 interdrive kitchen.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/881dd6d0fad229df2a7f3390398eda17-rentals_large_1200_1200.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/89f09cf2-e9a4-4159-be8d-8a0adcad7357-721-interdrive-4.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/b92bd5d6-23e4-4254-b3ed-57e9bbdb83e6-22-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/c4337845-9af5-4ecf-ac49-84ed530f857a-32-web-or-mls-725-interdrive-unit-1-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/d0564590-0ad1-4935-bc4d-64888c824d86-725-dining-room.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/d7ec1265-7e5b-4d0a-93d9-d606967bf27c-725-interdrive-kitchen.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/725-interdrive/fc17e3a1-6e53-4928-9e4d-8dcedff734e1-881dd6d0fad229df2a7f3390398eda17-rentals_large_1200_1200.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "733 Heman Ave, University City, MO 63130",
+    "description": "3-family building in the Loop — $500/person/mo with lawn care, snow removal, and sewer included. Community living, dining, and kitchen spaces shared across the building. Covered outdoor patio, free basement storage locker per unit, and direct access to the WashU bus line. Walking distance to restaurants, bars, and grocery.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 1500,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "mimi@stlrentalservicesandsales.com",
+    "contactPhone": "314-609-2829",
+    "contactName": "Mimi Mackey",
+    "amenities": [
+      "EXTRA STORAGE"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1500,
+    "maxRent": 1500,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/main.png",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/10-web-or-mls-_DSC2088.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/11-web-or-mls-_DSC2093.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/12-web-or-mls-_DSC2098.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/13-web-or-mls-_DSC2103.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/14-web-or-mls-_DSC2108.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/15-web-or-mls-_DSC2113.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/16-web-or-mls-_DSC2118.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/17-web-or-mls-_DSC2123.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/18-web-or-mls-_DSC2128.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/19-web-or-mls-_DSC2133.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/20-web-or-mls-_DSC2139.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/21-web-or-mls-_DSC2143.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/23-web-or-mls-_DSC2153.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/24-web-or-mls-_DSC2159.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/25-web-or-mls-_DSC2163.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/26-web-or-mls-_DSC2168.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/27-web-or-mls-_DSC2170.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/7-web-or-mls-_DSC2183.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/8-web-or-mls-_DSC2078.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/733-heman/9-web-or-mls-_DSC2083.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "7326 Lindell Blvd, University City, MO 63130",
+    "description": "Spacious 2BR/1BA 2nd-floor unit at Lindell & Forsyth — very close to WashU campus — $1,100/person/mo with lawn care, snow removal, and sewer included. Private in-unit W/D, separate dining room, bonus home office room, large backyard great for BBQs, and lots of natural light. Note: listed by landlord alongside 733 Heman Ave but is a fully separate property.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA (2nd floor)",
+        "rent": 2200,
+        "area": null,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "mimi@stlrentalservicesandsales.com",
+    "contactPhone": "314-609-2829",
+    "contactName": "Mimi Mackey",
+    "amenities": [
+      "IN UNIT LAUNDRY"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2200,
+    "maxRent": 2200,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6044 Kingsbury Ave, St. Louis, MO 63112",
+    "description": "Charming 3BR/1BA walkable to campus — $800/person/mo with lawn care, snow removal, and sewer included. Generous-sized bedrooms, spacious living and dining room combo, and a beautiful kitchen. Available June 1, 2026. Note: different property from 6040–42 Kingsbury (Manor RE) despite the similar address.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 2400,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "house",
+    "contactEmail": "mimi@stlrentalservicesandsales.com",
+    "contactPhone": "314-609-2829",
+    "contactName": "Mimi Mackey",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2400,
+    "maxRent": 2400,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/main.png",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0240.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0243.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0245.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0250.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0251.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0253.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_0857.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_1683.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_1684.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_1686.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_1689.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_1692.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_1694.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6044-kingsbury/IMG_2545.jpeg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6219 Rosebury Ave, St. Louis, MO 63105",
+    "description": "Owner-operated quiet building tailored to academic-focused students — $1,198/person/mo (3rd floor 2BR/2BA, 1,000 sqft) with sewer, free basement storage, and bike storage included (heated garage parking +$175/mo). 12\"+ double-wythe masonry walls and concrete sub-floors deliver excellent sound isolation. 2025 Wi-Fi-enabled Bosch/LG/GE Profile appliances, private courtyard, smart automation upgrades available. 250 ft from Forest Park, close to med campus. Pet-friendly. Academic year and 12-month leases available.",
+    "unitTypes": [
+      {
+        "name": "Unit 6219 3S — 2BR/2BA (3rd floor)",
+        "rent": 2395,
+        "area": 1000,
+        "bedrooms": 2,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "rr@demunrent.com",
+    "contactPhone": "314-825-3471",
+    "contactName": "Daniel Lee",
+    "amenities": [
+      "EXTRA STORAGE",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2395,
+    "maxRent": 2395,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/main.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-1-a2c2dc9.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-10.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-11-fd6b952.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-12.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-13.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-14.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-15.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-16.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-4.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-6.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-7.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-8.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6219-rosebury/6219--1S-CL-9.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6221 Rosebury Ave, St. Louis, MO 63105",
+    "description": "Owner-operated quiet building tailored to academic-focused students — $1,198/person/mo (2nd floor 2BR/2BA, 1,000 sqft) with sewer, free basement storage, and bike storage included (heated garage parking +$175/mo). 12\"+ double-wythe masonry walls and concrete sub-floors deliver excellent sound isolation. 2025 Wi-Fi-enabled Bosch/LG/GE Profile appliances, private courtyard, smart automation upgrades available. 250 ft from Forest Park, close to med campus. Pet-friendly. Academic year and 12-month leases available.",
+    "unitTypes": [
+      {
+        "name": "Unit 6221 2E — 2BR/2BA (2nd floor)",
+        "rent": 2395,
+        "area": 1000,
+        "bedrooms": 2,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "rr@demunrent.com",
+    "contactPhone": "314-825-3471",
+    "contactName": "Daniel Lee",
+    "amenities": [
+      "EXTRA STORAGE",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2395,
+    "maxRent": 2395,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/main.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-1.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-10.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-11-4674152.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-12.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-13.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-14.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-15.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-16.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-17.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-18-c37399c.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-19.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-4.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-6-03af655.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-7.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-8.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6221-rosebury/6221--2E-CL-9.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "1173 Moorlands Ave, Richmond Heights, MO",
+    "description": "Just-rehabbed duplex in Richmond Heights — $800/person/mo. Two 2BR/1BA units available simultaneously from April 1, 2026. New appliances, modern bathroom, in-unit stacked laundry, new kitchens, closets, paint, flooring, and windows with lots of natural light. Charming character throughout. Further from main campus but closer to the med campus direction. $40 application fee (background + credit check) required.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA (Unit 1, rehabbed)",
+        "rent": 1600,
+        "area": null,
+        "bedrooms": 2,
+        "bathrooms": 1
+      },
+      {
+        "name": "2BR / 1BA (Unit 2, rehabbed)",
+        "rent": 1600,
+        "area": null,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "kary@thedabby.com",
+    "contactPhone": "314-441-6585",
+    "contactName": "Kary Spiegel",
+    "amenities": [
+      "IN UNIT LAUNDRY"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1600,
+    "maxRent": 1600,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/main.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/14c5be28-f829-41ef-b1e7-cdd2fb5e66c2.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/804b82ee-c71b-4441-82a5-ea69c2f1a462.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/87d2b4cf-1e09-477a-8716-ab5cba08621b.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/a9f160bf-3c25-4c81-95cc-546458b81ac9.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/e448ba49-1909-42ca-b1dd-e2a29b8ba227.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/e92c6429-325d-4c4c-86e8-dd07b0fc92c3.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/f34623f6-33f7-495f-977e-2720d22ff0f8.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/1173-moorlands/f8e54758-2ea2-4c70-802b-67399e111b5b.jpeg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6707 Bartmer Ave, University City, MO 63130",
+    "description": "Excellent-value 3BR at $463/person/mo — two 2nd-floor units available at the same address. Hardwood floors, front and back porch, updated unit with appliances included. Sewer and lawn care included. Academic year and 12-month lease options available.",
+    "unitTypes": [
+      {
+        "name": "3BR (Unit 1, 2nd floor)",
+        "rent": 1390,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      },
+      {
+        "name": "3BR (Unit 2, 2nd floor)",
+        "rent": 1390,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "deidre43@icloud.com",
+    "contactPhone": "314-691-3189",
+    "contactName": "Deidre Lewis",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1390,
+    "maxRent": 1390,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6008 Washington Blvd, St. Louis, MO 63112",
+    "description": "Manor Real Estate portfolio property in Skinker-DeBaliviere. 3BR/1.5BA — the half-bath is a rare feature at this price point — $765/person/mo with sewer included. Flexible lease options: 12-month, 2-year, academic year, and semester. Available May 31, 2026. See manorrealestate.com for full details.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1.5BA",
+        "rent": 2295,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1.5
+      },
+      {
+        "name": "3BR / 1.5BA (Unit 2)",
+        "rent": 2295,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1.5
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2295,
+    "maxRent": 2295,
+    "minBathrooms": 1.5,
+    "maxBathrooms": 1.5,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-10.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-11.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-12.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-13.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-14.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-15.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-16.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-17.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-18.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-19.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-20.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-22.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-23.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-24.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-6.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-8.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6008-washington/6008-Washington-Blvd-9.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6010 Washington Blvd, St. Louis, MO 63112",
+    "description": "Manor Real Estate portfolio property in Skinker-DeBaliviere. 3BR/1.5BA — the half-bath is a rare feature at this price point — $765/person/mo with sewer included. Flexible lease options: 12-month, 2-year, academic year, and semester. Available May 31, 2026. See manorrealestate.com for full details.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1.5BA",
+        "rent": 2295,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1.5
+      },
+      {
+        "name": "3BR / 1.5BA (Unit 2)",
+        "rent": 2295,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1.5
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2295,
+    "maxRent": 2295,
+    "minBathrooms": 1.5,
+    "maxBathrooms": 1.5,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-10.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-11.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-12.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-13.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-14.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-15.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-16.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-17.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-18.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-19.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-20.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-22.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-23.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-24.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-5.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-6.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-8.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6010-washington/6008-Washington-Blvd-9.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6025 Kingsbury Ave, St. Louis, MO 63112",
+    "description": "Manor Real Estate portfolio property in Skinker-DeBaliviere. 3BR/2BA — two full bathrooms for a 3BR is rare at this price — $732/person/mo with sewer included. Flexible lease options: 12-month, 2-year, academic year, and semester. Available May 31, 2026. Adjacent to 6023 Kingsbury (same management).",
+    "unitTypes": [
+      {
+        "name": "3BR / 2BA",
+        "rent": 2195,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2195,
+    "maxRent": 2195,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-004-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-005-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-006-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-007-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-008-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-009-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-010-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-011-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-012-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-013-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-014-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-015-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-016-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-017-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6025-kingsbury/Kristi-Foster-018-2.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6023 Kingsbury Ave, St. Louis, MO 63112",
+    "description": "Manor Real Estate portfolio property in Skinker-DeBaliviere. 3BR/2BA — two full bathrooms for a 3BR — $732/person/mo with sewer included. Flexible lease options: 12-month, 2-year, academic year, and semester. Available May 31, 2026. Adjacent to 6025 Kingsbury (same management).",
+    "unitTypes": [
+      {
+        "name": "3BR / 2BA",
+        "rent": 2195,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "apartments@manorrealestate.com",
+    "contactPhone": "314-647-6611",
+    "contactName": "Manor RE",
+    "amenities": [],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2195,
+    "maxRent": 2195,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-004-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-005-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-006-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-007-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-008-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-009-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-010-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-011-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-012-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-013-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-014-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-015-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-016-3.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-017-2.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6023-kingsbury/Kristi-Foster-018-2.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6766 Corbitt Ave #1, University City, MO",
+    "description": "3BR unit #1 at $517/person/mo with washer and dryer included in unit. Pets welcome — small dogs and cats OK. Note: 2-year lease required. Available immediately.",
+    "unitTypes": [
+      {
+        "name": "3BR (unit #1)",
+        "rent": 1550,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "jadetsui@sbcglobal.net",
+    "contactPhone": "314-780-0780",
+    "contactName": "Jade Tsui",
+    "amenities": [
+      "IN UNIT LAUNDRY",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 1550,
+    "maxRent": 1550,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6805 Washington Ave, University City, MO 63130",
+    "description": "Quiet building policy enforced — ideal for focused students. 3BR/1BA at $725/person/mo with water, sewer, and trash included (tenant pays gas and electric). Beautiful hardwood floors, sunroom, dining room, central AC, dishwasher, intercom entry, cable/DSL ready, and off-street parking. $40/person credit check fee. Shown by appointment only. Cats welcome — NO DOGS. Available August 14, 2026.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 2175,
+        "area": null,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "michael@byroncompany.com",
+    "contactPhone": "314-725-5757",
+    "contactName": null,
+    "amenities": [
+      "DISHWASHER",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2175,
+    "maxRent": 2175,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/main.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_2914-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5329-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5438-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5454-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5457-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5458-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5459-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5463-scaled.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6805-washington/IMG_5498-scaled.jpg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "7453 Delmar Blvd Floor 1, Saint Louis, MO 63130",
+    "description": "Spacious 2BR/1BA at 1,500 sqft with private attached garage (remote access). Hardwood floors, central AC/heat, in-unit W/D, dishwasher, disposal, LED lighting, wood blinds, and ample closet and storage space. Water, sewer, trash, yard care, and maintenance all included. No smoking, no pets. $600 deposit. Price not listed — contact landlord directly.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA",
+        "rent": null,
+        "area": 1500,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "homeType": "apartment",
+    "contactEmail": "amlak1196@hotmail.com",
+    "contactPhone": "+1 (314) 412-1196",
+    "contactName": null,
+    "amenities": [
+      "DISHWASHER",
+      "EXTRA STORAGE",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": null,
+    "maxRent": null,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/0b90f6eeeae2b75bbb144baf49a510b7-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/164a57e3872c9d6fc4a9de54bcb1b3f4-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/384f23b8c058d67b3baceb9673d892a7-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/71f94e5ac6f67bf50a642e8ab69c1609-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/86542c97d1ddc6459681681ceb845e65-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/e7d41b8299c2398802758edf2180202c-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7453-delmar/f99213cac124b111a17504281de62431-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "7463 Delmar Blvd #2W, Saint Louis, MO 63130",
+    "description": "2BR/1BA unit #2W with private attached garage (remote access). Hardwood floors, central AC, in-unit W/D, gas stove, dishwasher, disposal, LED lighting, wood blinds, and ample storage. Water, sewer, trash, yard care, and maintenance all included. No smoking, no pets. $600 deposit. Available April 1, 2026. Price not listed — contact landlord directly.",
+    "unitTypes": [
+      {
+        "name": "2BR / 1BA",
+        "rent": null,
+        "area": 1000,
+        "bedrooms": 2,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "homeType": "apartment",
+    "contactEmail": "amlak1196@hotmail.com",
+    "contactPhone": "+1 (314) 412-1196",
+    "contactName": null,
+    "amenities": [
+      "DISHWASHER",
+      "EXTRA STORAGE",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": null,
+    "maxRent": null,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/10a5b9d651d83450c560f6d470d1bd7f-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/2fafa9c1272744d90c4d658ba44a1267-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/397220869f223f79971d49dd50a3050e-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/3d28982cf9ae2ae47d490cc23937808b-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/5aa1c2c6c292aed83de18d90ff9dd2a4-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/64389590b21f0de98dc6e7a88ba5fd4d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/8069655ac5f9149551c557085b10269c-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/9281a28b568ccc1d92850d8c4028224f-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/ab78581b6003269ec0295dc61726b4b5-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/aee94f3844c0feffad1c40b63e1c8048-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/bd529df042dd52c7acd601cec2743ab1-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/c4703ca8bf0771e76ef86dd040d2cad6-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/e1e8962923bb93ce7dbbd2cbc6df6bd3-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/7463-delmar/fca67fe40e29d053e6388e888ed81fda-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "5803 Waterman Blvd Unit 1E, St. Louis, MO 63112",
+    "description": "2BR/2BA at 1,432 sqft across from Forest Park — $925/person/mo. Granite countertops, in-unit stackable W/D, sunroom, carport, and a 50\" TV included at move-in. No security deposit required. No pets. $75/person background check. Verifiable gross monthly household income of $10,000 required.",
+    "unitTypes": [
+      {
+        "name": "2BR / 2BA",
+        "rent": 1850,
+        "area": 1432,
+        "bedrooms": 2,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "homeType": "apartment",
+    "contactEmail": "mark.westlock@mvpmstl.com",
+    "contactPhone": "(314) 328-6793",
+    "contactName": "Mark Westlock",
+    "amenities": [
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1850,
+    "maxRent": 1850,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 2,
+    "maxBedrooms": 2,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/04ccaed3d53d2aa6c8207c30b00a2090-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/155f537aa0a6218ec3456fd68e7d1b93-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/2742175eaa48dd19da88dfe08a09e8da-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/4027388e797fd5407b0f0eafa229e0c6-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/54403698c0d7eef834013557ac4cc887-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/5d35c1213510c69a7ad85b2cc62b0a8e-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/67be0d5a531fe1311a46ab16a9fa2a3f-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/6b91bf0821240f0688739a116bf42b73-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/7098c8ddd514c0e8dd0368ca122a1106-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/729ef1b341086714f109876d171e30ad-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/7c41a212206a577f9b38814f38b75645-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/8b5bf728e1e9c89a6a1e5b556d6f3a4d-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/8cdec34780f95d193df7df7e48838816-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/8e38be88ff8504a61563b5e08b41b409-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/914b0272102e07f7a6f9ea375618ab2c-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/941ded7dbd524b7ac092a5ff0bded358-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/a0169592c69ed98a79e3de0eb5ed97fe-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/c15cf19eaeae5cfd8e70867a8e3a4d73-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/ee0497d943c25c83aaac9682d0be0af7-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/f6a8ebb5aeb63aad25bcdf375e38f5b0-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/5803-waterman/fc8bbcfe20a94a41f5d9111cbfd9bc66-cc_ft_1536.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "8400 Delmar Blvd, St. Louis, MO 63124",
+    "description": "Built 2023 luxury complex — 251 units across 6 stories. Studios to 3BRs available: studios ~$1,300–$1,775/mo, 1BRs ~$1,775–$2,325/mo (contact for current pricing). Flexible leases 3–48 months. Furnished units available. Smart fridges, smart locks, built-in speakers, valet trash, in-unit laundry, and private patio or balcony in every unit. Up to 2 months free (subject to terms). Pets welcome — dogs and cats, $40/mo per pet (max 2 each, $400 one-time fee). Utilities not included. $50 app fee, $100 permit fee, $400 booking fee.",
+    "unitTypes": [
+      {
+        "name": "Studio",
+        "rent": 1300,
+        "area": null,
+        "bedrooms": 0,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "homeType": "apartment",
+    "contactEmail": null,
+    "contactPhone": "(314) 332-1739",
+    "contactName": null,
+    "amenities": [
+      "IN UNIT LAUNDRY",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1300,
+    "maxRent": 1300,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 0,
+    "maxBedrooms": 0,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/main.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-01.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-03.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-04.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-05.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-06.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-07.jpeg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/8400-delmar/interior-08.jpeg"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6249 Northwood Ave APT 2, Saint Louis, MO 63105",
+    "description": "Generous 3BR/2BA at 1,850 sqft in DeMun/Clayton — $798/person/mo. Building pays water, sewer, trash, and hot water (tenant pays gas and electric). Hardwood floors, central AC, ceiling fan, dishwasher, double-pane windows, private balcony, secured entry, fenced yard, dining room, sunroom, and private W/D in basement. No pets, non-smoking. Note: not in Clayton School District; fireplace is non-functioning.",
+    "unitTypes": [
+      {
+        "name": "3BR / 2BA",
+        "rent": 2395,
+        "area": 1850,
+        "bedrooms": 3,
+        "bathrooms": 2
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": "Andy",
+    "amenities": [
+      "DISHWASHER",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2395,
+    "maxRent": 2395,
+    "minBathrooms": 2,
+    "maxBathrooms": 2,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/273de7529669e4b7ab076cf507ddab72-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/318847f1e68f1ddc2d739259e0966da5-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/39ad7d61679a539f22bc7e10b84af0ed-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/439fb6db3afd827f6e9ee5196c30357f-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/4590e2e161ace77994356e994b005a95-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/51c568384103e7fb3ba73b6a78baafef-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/5cdb7a7ed58e8d5a2bcb0cd038559a08-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/695f70f0979210fb2449635a9aeb9c74-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/82a24281f4ea13bb0907a9de18c31083-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/948b4669ffb62f199174dcee2fc21c9a-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/9e25617674c462d0af8dc56c81477bec-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/ad3d25316fe6f2b300eb50b5cc8656b9-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/af3c224598d3e5b24ab921f99513d21a-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/b6a3493a401c2e47d3e4ad7d5d5998ea-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/c3adff0d2ead656091a1aafa84e07815-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/d066c4539535408a4a2bebdaa697daa1-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/d2f6ed6492c8182581c9f487b2ab298a-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/d8fd9d8266636dcb9d637039b6128458-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/de53cf83d6827bcacf8bd1d6f9d511da-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/eb8c7cfa0d4f219c1beb6f58fd7eca06-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/f6a2a0689ecc0eea8b91ad3b276b1fcc-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6249-northwood/ff0ca5f14d6d3ffa7329ddc179ba73e2-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "710 Westgate Ave #1, Saint Louis, MO 63130",
+    "description": "Classic 1925 building — 3BR/1BA at 1,564 sqft — $700/person/mo. Building pays water, sewer, and trash (tenant pays gas and electric). Updated kitchen with quartz counters, under-cabinet lighting, and stainless appliances. Hardwood floors, central AC, dishwasher, double-pane windows, in-unit W/D, secured entry, dining room, and off-street rear parking. Cats and small dogs welcome. Non-smoking. Available immediately.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 2100,
+        "area": 1564,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": "Andy",
+    "amenities": [
+      "DISHWASHER",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 2100,
+    "maxRent": 2100,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/01c1cf0f9ff41eeb579411c1343aaeba-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/06c859477efc45e23cad47b3e27b64e9-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/073698e513daab215a6b5aebdd029336-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/09b9b38655715d54f59c51db38cc557f-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/17205f35ce5217e7c8aa130d7eaf2610-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/1b23df4ee6c27f014ec187ad64cfdcbe-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/2878691608148d5b0f3657f6a0c63e5e-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/30dce2ddc2ad5cbbae1844e8bd485f02-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/3b29ce0fdd3637f7bd52bda0b80c299d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/43ec274e00d4df496a0b7bc6baf7bf2b-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/445ad9463ccfc0c861db63f727a4ebf2-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/4776a02752f08dde68fa97404c91d1de-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/5d0f6f0a2091092f2eaf770bdfa34bf3-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/618b0460e089cc10033b915ab37794da-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/7752960dccc7d7344512985026491f62-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/7d76b46cc612ff3a050e0355e5769fc7-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/7e001368ec78310f2855568da67dff72-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/7e789fd4ccd1712a1c21db7ec7ced5cc-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/88eacf939ab36764c28fe900ed7f0561-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/8d4eed7667d3c2063fbafcaf8ed34a15-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/959978c8e33ce2cf23ff5b5d71f60c63-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/a02ab6887725d8730db26dc381244b32-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/a3212eb3f56cf11afb46bd993a0252cb-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/a48273011bcf310eebc28bce5444cef7-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/b7514115d0738c27252886e3b2a4cf7d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/ce840f5fa80a430e9815e7e128e3bc6b-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/e41006a9b4bc826361e3561453991eee-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/e55772147755bc968dff5b0c86c1920c-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/f68aec3e3d752740ce9f8f9a74d2ca3b-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/710-westgate/ffede0657d22b06f1b7b6339c5bb08ab-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "739 Leland Ave #1, Saint Louis, MO 63130",
+    "description": "3BR/1BA at 1,450 sqft in the University City Loop — $665/person/mo. Hardwood floors, central AC, ceiling fan, dishwasher, microwave, double-pane windows, and breakfast nook. Free shared laundry in the basement and off-street parking included. Pets under 45 lbs welcome ($250 deposit + $40/mo pet rent). Non-smoking. Available June 1, 2026.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 1995,
+        "area": 1450,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": "Andy",
+    "amenities": [
+      "DISHWASHER",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING",
+      "PETS ALLOWED"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 1995,
+    "maxRent": 1995,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/14e0b711f04185575b25f84dc60a241e-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/180bf8f6307223b00b3d86f52d643885-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/1c4137e5b9209561e28438b76e09dcb9-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/1f1ddaf1d15748988e78b14dcc33ebce-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/257e611e2b24ecc91c1e47fbb6797b7b-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/3b3a869b565508d91d13be871a9bfd0f-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/42418c6ec3dcbceaf7c82c9e59b4b918-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/49ff5076eed31cfaa708a49f76a6708d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/5240949fc3f27bb240ee82a84f91dfac-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/9af932268789dee7309f982d13bfdbf3-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/9ea0292a0a9884107806d44db1299ccd-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/a21246fbc978ec6b24cd5b84eef4211f-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/ac5f5f4f6d579e668a181e69294e407d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/dbbdad2b36dafdf3d17687ade922b65a-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/f654e8fb85131fb8eaf8e1fb01c5b39e-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/739-leland/f931de59dd4c2841562df3047f284bf4-cc_ft_1536.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6651 Kingsbury Blvd APT 1W, Saint Louis, MO 63130",
+    "description": "3BR/1BA at 1,400 sqft in the University City Loop — $1,098/person/mo. In-unit W/D, off-street parking, hardwood floors, central AC, ceiling fan, dishwasher, microwave, double-pane windows, and dining room. No pets, non-smoking. Fixed lease term: June 1, 2026 – May 31, 2027.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 3294,
+        "area": 1400,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": "Andy",
+    "amenities": [
+      "DISHWASHER",
+      "IN UNIT LAUNDRY",
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 3294,
+    "maxRent": 3294,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/05ca12d8c5c922001b5ec630f51bf56e-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/26cd24cdd1080b796d0c55e3887e6096-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/2cbd9ff6675a3c569ebd5ae6725f4283-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/3c9f567623ec8bc2ada3b3cfe32688ee-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/43c984478f3e2db75e9ea03b9205aa51-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/45438f5d2ddfa0c56a47a5aff8fbee36-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/4f54b06dc6e78d43d841b644c1b90067-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/50812db5d391b5f3e042d6b788aabd87-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/57d27543837a549b28c72254436433a0-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/5a837f560a1f4f4ef979721d6fbad15b-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/6081b2e7111cc88789be21b774bf1b3e-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/6375ef6b3e0e3401a742609eda99bb74-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/75b73a1339ad501ab583f35dd538268b-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/76397cab1f214e54061419fe3363878b-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/7fc56406ba2dda6e25ddae761bb0b004-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/81ecc7e8b70e5752c40fe43b7147f315-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/858646275ab742921d07fd75cd8f8593-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/a28a770ff480b3fdeef67e61f3b63873-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/b4c2cd33feb5c721c72b8cd7bae647bb-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/baaa7994b58b32b981f3026299f6b01a-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/c24580fb6faa4c63c2acf10bc6a24758-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/c3c9365f176a0dc96833a49c01fa2daf-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/dcccd85f653212109236dd9f8012f56d-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/ea0ab537702f8dd4cc5d4d0d71388b89-cc_ft_1536.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/ee0f41ce81ea1b81cfbcd5538fa2d337-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/eefee74a90c649823b13c8438fe9414c-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/f2cf96c465e2a345b8e6d0c716df1e31-cc_ft_768.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6651-kingsbury/fc57135778dca512aac4d739f4b427f6-cc_ft_768.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "6629 Kingsbury Blvd APT 2W, Saint Louis, MO 63130",
+    "description": "Large 3BR/1BA at 1,744 sqft in the University City Loop — $1,000/person/mo. Building pays water, sewer, trash, and hot water (tenant pays gas and electric). South-facing unit with lots of natural light. Free shared laundry in basement, off-street parking, and hardwood floors. No pets. Available June 1, 2026.",
+    "unitTypes": [
+      {
+        "name": "3BR / 1BA",
+        "rent": 3000,
+        "area": 1744,
+        "bedrooms": 3,
+        "bathrooms": 1
+      }
+    ],
+    "leaseStructure": "joint",
+    "leaseAvailability": "12-month",
+    "homeType": "apartment",
+    "contactEmail": "robertsrealty@gmail.com",
+    "contactPhone": null,
+    "contactName": "Andy",
+    "amenities": [
+      "FREE PARKING"
+    ],
+    "utilitiesIncluded": true,
+    "subleaseFriendly": false,
+    "minRent": 3000,
+    "maxRent": 3000,
+    "minBathrooms": 1,
+    "maxBathrooms": 1,
+    "minBedrooms": 3,
+    "maxBedrooms": 3,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/6629-kingsbury/main.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  },
+  {
+    "address": "608 Kingsland Ave, St. Louis, MO 63130",
+    "description": "Boutique 4BR/4BA suite building — 12 units total (4 per floor). Each bedroom has a private ensuite bath with floor-to-ceiling marble and rain shower, personal kitchenette, and individual climate control. Shared chef's kitchen with granite countertops and stainless appliances, resident lounges (TV, bar seating, ping pong, pool table), landscaped courtyard, large balconies on every floor, and sound-insulated windows. Pricing: $1,000/person/mo (12-month), $1,200/person/mo (10-month), or $9,900/person for semester lease. Per-bedroom or whole-suite leases accepted. Campus shuttle stop at the doorstep.",
+    "unitTypes": [
+      {
+        "name": "4BR / 4BA Suite",
+        "rent": 4000,
+        "area": null,
+        "bedrooms": 4,
+        "bathrooms": 4
+      },
+      {
+        "name": "4BR / 4BA Suite",
+        "rent": 4800,
+        "area": null,
+        "bedrooms": 4,
+        "bathrooms": 4
+      },
+      {
+        "name": "4BR / 4BA Suite",
+        "rent": null,
+        "area": null,
+        "bedrooms": 4,
+        "bathrooms": 4
+      }
+    ],
+    "leaseStructure": "individual",
+    "leaseAvailability": "semester",
+    "homeType": "apartment",
+    "contactEmail": "leasing@clocktowercompany.com",
+    "contactPhone": null,
+    "contactName": null,
+    "amenities": [
+      "POOL",
+      "IN UNIT LAUNDRY"
+    ],
+    "utilitiesIncluded": false,
+    "subleaseFriendly": false,
+    "minRent": 4000,
+    "maxRent": 4800,
+    "minBathrooms": 4,
+    "maxBathrooms": 4,
+    "minBedrooms": 4,
+    "maxBedrooms": 4,
+    "images": [
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/main.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/07457ea7-b798-45bd-b9b7-67fce534b0be-King_s_Court_Interior_Rendering-min.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/0bef19b3-0c56-464a-afd3-7d0fb7ea1d82-DGCourtyardRender-min.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/10-web-or-mls-_DSC3394.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/11-web-or-mls-_DSC3364.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/12-web-or-mls-_DSC3389.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/13-web-or-mls-_DSC3384.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/17-web-or-mls-_DSC3309.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/19-web-or-mls-_DSC3319.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/26-web-or-mls-_DSC3315.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/29-web-or-mls-_DSC3409.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/3f6d3601-b8ab-4792-a938-70e4e591f6e4-Bar.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/4-web-or-mls-_DSC3339_9211a7ec-5685-49f3-8092-91ba61bfe4e9.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/74172e88-17a4-45f6-ae07-c0a6d8c916bf-13-web-or-mls-081_2e23f690-b9b5-43b6-8102-3012d5f50560.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/79d9e12f-69d1-436d-bb65-2f5f1fc5e1f5-DG_Tenant_Lounge_Render-min.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/9-web-or-mls-_DSC3344.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/Delmar-Gardens-Building_003.jpg",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/b6eb2c3c-0151-4b07-8e9b-2595087e6953-USQ-London_Bath_1.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/dd277122-3218-414f-8ff8-da7b506c6ae7-DG_Large_Living_Render-min.webp",
+      "https://pub-276d677779ec4fc39f91bfa91c066415.r2.dev/608-kingsland/f7a95fd2-06f8-4a51-a84d-70809f839824-King_s_Court_Floorplan_Rendering-min.webp"
+    ],
+    "numReviews": 0,
+    "rating": 0,
+    "reviews": []
+  }
 ]
