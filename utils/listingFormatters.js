@@ -17,6 +17,25 @@ export const getRentRangeLabel = (unitTypes = []) => {
   return `$${minRent.toLocaleString()}-$${maxRent.toLocaleString()}`;
 };
 
+export const getRentRangeDisplay = (unitTypes = []) => {
+  const rents = unitTypes
+    .map((unit) => Number(unit?.rent))
+    .filter((rent) => Number.isFinite(rent) && rent > 0);
+
+  if (rents.length === 0) {
+    return { label: "Contact for Pricing", hasPrice: false };
+  }
+
+  const minRent = Math.min(...rents);
+  const maxRent = Math.max(...rents);
+  const label =
+    minRent === maxRent
+      ? `$${minRent.toLocaleString()}`
+      : `$${minRent.toLocaleString()}-$${maxRent.toLocaleString()}`;
+
+  return { label, hasPrice: true };
+};
+
 export const getUnitValuesLabel = (unitTypes = [], field) => {
   const values = unitTypes
     .map((unit) => Number(unit?.[field]))

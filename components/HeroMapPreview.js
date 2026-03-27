@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useRouter } from "next/navigation";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { getRentRangeDisplay } from "@/utils/listingFormatters";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -132,6 +132,11 @@ export default function HeroMapPreview({
       const valid = listings.filter((l) => l.longitude && l.latitude);
 
       valid.forEach((listing) => {
+        const rentDisplay = getRentRangeDisplay(listing.unitTypes);
+        const rentHtml = rentDisplay.hasPrice
+          ? `${rentDisplay.label}<span style="font-size:11px;font-weight:400;color:#9ca3af;"> /mo</span>`
+          : rentDisplay.label;
+
         const popup = new mapboxgl.Popup({
           offset: 25,
           closeButton: false,
@@ -148,16 +153,7 @@ export default function HeroMapPreview({
             }
             <div style="padding:12px 14px 14px;">
               <div style="font-weight:700;font-size:16px;color:#111;line-height:1.2;">
-                ${getRentRangeLabel(listing.unitTypes) || "N/A"}
-                ${
-                  getRentRangeLabel(listing.unitTypes) !==
-                    "Contact for Pricing" && (
-                    <span style="font-size:11px;font-weight:400;color:#9ca3af;">
-                      {" "}
-                      /mo
-                    </span>
-                  )
-                }
+                ${rentHtml || "N/A"}
               </div>
               <div style="font-size:12px;color:#6b7280;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                 ${listing.address || ""}
