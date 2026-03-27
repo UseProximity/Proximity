@@ -4,7 +4,7 @@ export const getRentRangeLabel = (unitTypes = []) => {
     .filter((rent) => Number.isFinite(rent) && rent > 0);
 
   if (rents.length === 0) {
-    return "TBD";
+    return "Contact for Pricing";
   }
 
   const minRent = Math.min(...rents);

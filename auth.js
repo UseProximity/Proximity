@@ -78,6 +78,18 @@ const config = {
         }
       );
     },
+    async signIn({ user, profile, account }) {
+      // Keep profile image in sync for Google sign-ins
+      if (account?.provider !== "google") return;
+      const image =
+        user?.image || profile?.picture || profile?.image || null;
+      if (!image) return;
+      await connectMongo();
+      await User.updateOne(
+        { _id: user.id },
+        { $set: { image } }
+      );
+    },
   },
 };
 

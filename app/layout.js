@@ -21,6 +21,18 @@ export default async function RootLayout({ children }) {
     <html lang="en" data-theme="">
       <head>
         <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "Proximity",
+              alternateName: "useproximity.org",
+              url: "https://useproximity.org/",
+            }),
+          }}
+        />
       </head>
       <body className={inter.className}>
         <div>

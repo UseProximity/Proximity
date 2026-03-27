@@ -12,9 +12,13 @@ const CAMPUS_CENTER = [-90.3032, 38.6495];
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -27,8 +31,12 @@ function computeBoundsExcludingOutliers(listings) {
 
   const meanLat = lats.reduce((s, v) => s + v, 0) / lats.length;
   const meanLng = lngs.reduce((s, v) => s + v, 0) / lngs.length;
-  const stdLat = Math.sqrt(lats.reduce((s, v) => s + (v - meanLat) ** 2, 0) / lats.length);
-  const stdLng = Math.sqrt(lngs.reduce((s, v) => s + (v - meanLng) ** 2, 0) / lngs.length);
+  const stdLat = Math.sqrt(
+    lats.reduce((s, v) => s + (v - meanLat) ** 2, 0) / lats.length
+  );
+  const stdLng = Math.sqrt(
+    lngs.reduce((s, v) => s + (v - meanLng) ** 2, 0) / lngs.length
+  );
 
   const filtered = listings.filter(
     (l) =>
@@ -38,12 +46,21 @@ function computeBoundsExcludingOutliers(listings) {
 
   const pool = filtered.length > 0 ? filtered : listings;
   return [
-    [Math.min(...pool.map((l) => l.longitude)), Math.min(...pool.map((l) => l.latitude))],
-    [Math.max(...pool.map((l) => l.longitude)), Math.max(...pool.map((l) => l.latitude))],
+    [
+      Math.min(...pool.map((l) => l.longitude)),
+      Math.min(...pool.map((l) => l.latitude)),
+    ],
+    [
+      Math.max(...pool.map((l) => l.longitude)),
+      Math.max(...pool.map((l) => l.latitude)),
+    ],
   ];
 }
 
-export default function HeroMapPreview({ listings = [], searchLocation = null }) {
+export default function HeroMapPreview({
+  listings = [],
+  searchLocation = null,
+}) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [showExplore, setShowExplore] = useState(false);
@@ -121,7 +138,9 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
           className: "hero-popup",
           maxWidth: "220px",
         }).setHTML(`
-          <div data-listing-id="${listing._id}" style="width:220px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;">
+          <div data-listing-id="${
+            listing._id
+          }" style="width:220px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;">
             ${
               listing.images?.[0]
                 ? `<img src="${listing.images[0]}" alt="" style="width:100%;height:110px;object-fit:cover;display:block;" />`
@@ -130,7 +149,15 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
             <div style="padding:12px 14px 14px;">
               <div style="font-weight:700;font-size:16px;color:#111;line-height:1.2;">
                 ${getRentRangeLabel(listing.unitTypes) || "N/A"}
-                <span style="font-size:11px;font-weight:400;color:#9ca3af;"> /mo</span>
+                ${
+                  getRentRangeLabel(listing.unitTypes) !==
+                    "Contact for Pricing" && (
+                    <span style="font-size:11px;font-weight:400;color:#9ca3af;">
+                      {" "}
+                      /mo
+                    </span>
+                  )
+                }
               </div>
               <div style="font-size:12px;color:#6b7280;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                 ${listing.address || ""}
@@ -139,7 +166,10 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
           </div>
         `);
 
-        const starRating = Math.min(Math.max(Math.round(listing.rating || 5), 1), 5);
+        const starRating = Math.min(
+          Math.max(Math.round(listing.rating || 5), 1),
+          5
+        );
         const markerEl = document.createElement("div");
         markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
         const markerImg = document.createElement("img");
@@ -155,10 +185,15 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
 
         popup.on("open", () => {
           markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;
-          const el = popup.getElement()?.querySelector(`[data-listing-id="${listing._id}"]`);
-          if (el) el.onclick = () => router.push(`/browse?listing=${listing._id}`);
+          const el = popup
+            .getElement()
+            ?.querySelector(`[data-listing-id="${listing._id}"]`);
+          if (el)
+            el.onclick = () => router.push(`/browse?listing=${listing._id}`);
         });
-        popup.on("close", () => { markerImg.src = `/assets/map-icons/map-${starRating}.svg`; });
+        popup.on("close", () => {
+          markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+        });
 
         map._heroMarkers.push(marker);
       });
@@ -178,7 +213,10 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
           [CAMPUS_CENTER[0] - maxDeltaLng, CAMPUS_CENTER[1] - maxDeltaLat],
           [CAMPUS_CENTER[0] + maxDeltaLng, CAMPUS_CENTER[1] + maxDeltaLat],
         ];
-        const camera = map.cameraForBounds(symBounds, { padding: 80, maxZoom: 15 });
+        const camera = map.cameraForBounds(symBounds, {
+          padding: 80,
+          maxZoom: 15,
+        });
         map.flyTo({
           center: CAMPUS_CENTER,
           zoom: camera ? camera.zoom : 13,
@@ -186,7 +224,6 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
           essential: true,
         });
       }
-
     };
 
     if (map.isStyleLoaded()) {
@@ -202,12 +239,19 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
     if (!map || !searchLocation) return;
 
     const process = () => {
-      if (map._searchMarker) { map._searchMarker.remove(); map._searchMarker = null; }
+      if (map._searchMarker) {
+        map._searchMarker.remove();
+        map._searchMarker = null;
+      }
 
       const { lat, lng } = searchLocation;
       const match = map._heroMarkers?.find((m) => {
         const l = m._listing;
-        return l?.latitude && l?.longitude && haversineMeters(lat, lng, l.latitude, l.longitude) <= 80;
+        return (
+          l?.latitude &&
+          l?.longitude &&
+          haversineMeters(lat, lng, l.latitude, l.longitude) <= 80
+        );
       });
 
       if (match) {
@@ -216,8 +260,11 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
       } else {
         map.flyTo({ center: [lng, lat], zoom: 14, duration: 900 });
         const el = document.createElement("div");
-        el.style.cssText = "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
-        map._searchMarker = new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+        el.style.cssText =
+          "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
+        map._searchMarker = new mapboxgl.Marker({ element: el })
+          .setLngLat([lng, lat])
+          .addTo(map);
       }
     };
 
@@ -227,16 +274,14 @@ export default function HeroMapPreview({ listings = [], searchLocation = null })
 
   return (
     <div className="relative w-full h-full">
-      <div
-        ref={mapContainerRef}
-        className="w-full h-full"
-        style={{  }}
-      />
+      <div ref={mapContainerRef} className="w-full h-full" style={{}} />
       <div
         className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"
         style={{
           opacity: showExplore ? 1 : 0,
-          transform: `translateX(-50%) translateY(${showExplore ? "0" : "12px"})`,
+          transform: `translateX(-50%) translateY(${
+            showExplore ? "0" : "12px"
+          })`,
           pointerEvents: showExplore ? "auto" : "none",
         }}
       >

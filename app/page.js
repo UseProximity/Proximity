@@ -447,7 +447,10 @@ function RentalCard({ listing, index, isInView }) {
               </div>
               <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
                 {getRentRangeLabel(listing.unitTypes)}
-                <span className="text-xs font-normal">/mo</span>
+                {getRentRangeLabel(listing.unitTypes) !==
+                  "Contact for Pricing" && (
+                  <span className="text-xs font-normal">/mo</span>
+                )}
               </span>
             </div>
             <div className="flex items-center justify-between mt-auto pt-2">

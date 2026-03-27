@@ -398,7 +398,10 @@ function ListingCard({ listing, badge }) {
             </div>
             <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
               {getRentRangeLabel(listing.unitTypes)}
-              <span className="text-xs font-normal">/mo</span>
+              {getRentRangeLabel(listing.unitTypes) !==
+                "Contact for Pricing" && (
+                <span className="text-xs font-normal">/mo</span>
+              )}
             </span>
           </div>
           <div className="mt-auto pt-2">
