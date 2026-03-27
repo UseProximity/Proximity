@@ -193,25 +193,35 @@ export default function CampusHub() {
     return acc;
   }, {});
 
-  const filteredDorms = allDorms.filter((dorm) => {
-    const dormReviews = dormGroups[dorm] || [];
-    const matchesRating =
-      dormReviews.length === 0 ||
-      dormReviews.some((r) => r.rating >= ratingMin && r.rating <= ratingMax);
-    const matchesType =
-      selectedTypes.length === 0 ||
-      selectedTypes.some((t) => dormMeta[dorm]?.roomTypes?.includes(t));
-    const matchesSearch =
-      searchQuery === "" ||
-      dorm.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dormReviews.some((r) =>
-        r.content.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    const matchesTags =
-      selectedTags.length === 0 ||
-      dormReviews.some((r) => selectedTags.some((tag) => r.tags.includes(tag)));
-    return matchesRating && matchesType && matchesSearch && matchesTags;
-  });
+  const filteredDorms = allDorms
+    .filter((dorm) => {
+      const dormReviews = dormGroups[dorm] || [];
+      const matchesRating =
+        dormReviews.length === 0 ||
+        dormReviews.some((r) => r.rating >= ratingMin && r.rating <= ratingMax);
+      const matchesType =
+        selectedTypes.length === 0 ||
+        selectedTypes.some((t) => dormMeta[dorm]?.roomTypes?.includes(t));
+      const matchesSearch =
+        searchQuery === "" ||
+        dorm.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        dormReviews.some((r) =>
+          r.content.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      const matchesTags =
+        selectedTags.length === 0 ||
+        dormReviews.some((r) =>
+          selectedTags.some((tag) => r.tags.includes(tag))
+        );
+      return matchesRating && matchesType && matchesSearch && matchesTags;
+    })
+    // Sort by number of reviews (desc), then by name for stable ordering
+    .sort((a, b) => {
+      const aCount = dormGroups[a]?.length || 0;
+      const bCount = dormGroups[b]?.length || 0;
+      if (bCount !== aCount) return bCount - aCount;
+      return a.localeCompare(b);
+    });
 
   const handleReset = () => {
     setSelectedTypes([]);
