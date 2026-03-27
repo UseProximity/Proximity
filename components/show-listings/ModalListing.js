@@ -47,7 +47,7 @@ export default function ModalListing({ isOpen, onClose, children }) {
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-[calc(env(safe-area-inset-top)+1.25rem)] right-[calc(env(safe-area-inset-right)+1.25rem)] text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>
