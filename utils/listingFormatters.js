@@ -55,7 +55,7 @@ export const getAreaRangeLabel = (unitTypes = []) => {
     .filter((area) => Number.isFinite(area) && area > 0);
 
   if (areas.length === 0) {
-    return "TBD";
+    return "-";
   }
 
   const minArea = Math.min(...areas);
@@ -67,3 +67,4 @@ export const getAreaRangeLabel = (unitTypes = []) => {
 
   return `${minArea.toLocaleString()}-${maxArea.toLocaleString()}`;
 };
+;

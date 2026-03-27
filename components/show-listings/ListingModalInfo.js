@@ -121,19 +121,69 @@ function StatCell({ label, value }) {
   );
 }
 
+function LeaseStatCell({ leaseAvailability }) {
+  const [open, setOpen] = useState(false);
+  // Normalise to array — works with legacy string values too
+  const types = Array.isArray(leaseAvailability)
+    ? leaseAvailability
+    : leaseAvailability
+    ? [leaseAvailability]
+    : [];
+  const labels = types.map((t) => leaseAvailabilityMap[t] || t);
+  const isFlexible = labels.length > 1;
+
+  return (
+    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
+      <div className="text-lg font-semibold text-gray-900 break-words">
+        {isFlexible ? (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1 hover:text-red-600 transition"
+          >
+            Flexible
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        ) : (
+          labels[0] || "—"
+        )}
+      </div>
+      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+      {isFlexible && open && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+          {labels.map((l) => (
+            <div key={l} className="px-3 py-1.5 text-sm text-gray-700 whitespace-nowrap">
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
 const AMENITY_LABELS = {
-  DISHWASHER: "Dishwasher",
+  "DISHWASHER": "Dishwasher",
   "EXTRA STORAGE": "Extra Storage",
   "IN-UNIT LAUNDRY": "In-Unit Laundry",
-  FIREPLACE: "Fireplace",
+  "FIREPLACE": "Fireplace",
   "FREE PARKING": "Private Parking",
-  MAILROOM: "Mailroom",
-  POOL: "Pool",
+  "MAILROOM": "Mailroom",
+  "POOL": "Pool",
   "PETS ALLOWED": "Pets Allowed",
   "STUDY ROOMS": "Study Rooms",
-  GYM: "Gym / Fitness",
+  "GYM": "Gym / Fitness",
+  "FURNISHED": "Furnished",
 };
 
 function AmenitiesTab({ listing }) {
@@ -959,13 +1009,7 @@ export default function ListingModalInfo({ session, listing }) {
               label="Sq Ft"
               value={getAreaRangeLabel(listing.unitTypes)}
             />
-            <StatCell
-              label="Lease"
-              value={
-                leaseAvailabilityMap[listing.leaseAvailability] ||
-                listing.leaseAvailability
-              }
-            />
+            <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
             <StatCell
               label="Rating"
               value={overallAvg ? `★ ${overallAvg}` : "—"}

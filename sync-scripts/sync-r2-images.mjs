@@ -63,6 +63,15 @@ const r2 = new S3Client({
 const NOISE_WORDS = /\b(pictures?|photos?|pics?|images?)\b/gi;
 
 /**
+ * Manual overrides for R2 folders whose names can't be auto-matched to a
+ * listing address. Maps R2 folder slug → listing address string.
+ * The address string is run through toAddressMatchKey() to find the listing.
+ */
+const FOLDER_OVERRIDES = {
+  "6659-kingsbury": "Five-Nine, Kingsbury Ave, University City, MO 63130",
+};
+
+/**
  * Convert an address-like string to a loose canonical key.
  *   "6042 Kingsbury Ave, St. Louis, MO"            → "6042-kingsbury"
  *   "6651 Kingsbury Blvd\nAPT 1W, Saint Louis..."  → "6651-kingsbury"
@@ -163,7 +172,8 @@ async function main() {
 
   for (const prefix of r2Folders) {
     const slug = prefix.replace(/\/$/, ""); // strip trailing slash
-    const matchKey = toAddressMatchKey(slug);
+    const overrideAddress = FOLDER_OVERRIDES[slug];
+    const matchKey = toAddressMatchKey(overrideAddress ?? slug);
     const listing = slugMap.get(matchKey);
 
     if (!listing) {

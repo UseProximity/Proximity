@@ -29,14 +29,8 @@ const allDorms = [
   "Shepley",
   "SoFoHo",
   "Wheeler",
-  "Greenway Apartments",
   "Millbrook",
-  "University Drive",
   "Village East",
-  "Rosedale Apartments",
-  "The Lofts",
-  "Washington Ave Apartments",
-  "520 Kingsland",
   "Village & Lopata House",
 ];
 

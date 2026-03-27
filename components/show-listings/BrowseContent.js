@@ -349,6 +349,11 @@ export default function BrowseContent({ session }) {
         matchMoveInDate &&
         matchSaved
       );
+    }).sort((a, b) => {
+      const aHasImages = a.images?.length > 0;
+      const bHasImages = b.images?.length > 0;
+      if (aHasImages === bHasImages) return 0;
+      return aHasImages ? -1 : 1;
     });
   }, [listings, search, filters]);
 
