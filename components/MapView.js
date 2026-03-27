@@ -190,6 +190,26 @@ const processCrimeDataForHeatmap = (crimeData) => {
 
 // mockHeatmapPoints.push(...generateRandomHeatmapPoints());
 
+function computeBoundsExcludingOutliers(listings) {
+  if (listings.length === 0) return null;
+  const lats = listings.map((l) => l.latitude);
+  const lngs = listings.map((l) => l.longitude);
+  const meanLat = lats.reduce((s, v) => s + v, 0) / lats.length;
+  const meanLng = lngs.reduce((s, v) => s + v, 0) / lngs.length;
+  const stdLat = Math.sqrt(lats.reduce((s, v) => s + (v - meanLat) ** 2, 0) / lats.length);
+  const stdLng = Math.sqrt(lngs.reduce((s, v) => s + (v - meanLng) ** 2, 0) / lngs.length);
+  const filtered = listings.filter(
+    (l) =>
+      Math.abs(l.latitude - meanLat) <= 2 * (stdLat || 1) &&
+      Math.abs(l.longitude - meanLng) <= 2 * (stdLng || 1)
+  );
+  const pool = filtered.length > 0 ? filtered : listings;
+  return [
+    [Math.min(...pool.map((l) => l.longitude)), Math.min(...pool.map((l) => l.latitude))],
+    [Math.max(...pool.map((l) => l.longitude)), Math.max(...pool.map((l) => l.latitude))],
+  ];
+}
+
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -213,6 +233,7 @@ export default function MapView({
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showCrimeMap, setShowCrimeMap] = useState(false);
   const [activeRouteId, setActiveRouteId] = useState(null);
+  const hasFitRef = useRef(false);
   const [crimeData, setCrimeData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isRealCrimeData, setIsRealCrimeData] = useState(false);
@@ -539,6 +560,40 @@ export default function MapView({
       });
       map.markers.push(marker);
     });
+
+    // On first load, zoom to fit the cluster of listings
+    if (!hasFitRef.current && listings.length > 0) {
+      hasFitRef.current = true;
+      const valid = listings.filter((l) => l.longitude && l.latitude);
+      const bounds = computeBoundsExcludingOutliers(valid);
+      if (bounds) {
+        const campusLng = WASHU_CAMPUS_CENTER.longitude;
+        const campusLat = WASHU_CAMPUS_CENTER.latitude;
+        const maxDeltaLng = Math.max(
+          Math.abs(campusLng - bounds[0][0]),
+          Math.abs(bounds[1][0] - campusLng)
+        );
+        const maxDeltaLat = Math.max(
+          Math.abs(campusLat - bounds[0][1]),
+          Math.abs(bounds[1][1] - campusLat)
+        );
+        const symBounds = [
+          [campusLng - maxDeltaLng, campusLat - maxDeltaLat],
+          [campusLng + maxDeltaLng, campusLat + maxDeltaLat],
+        ];
+        const doFit = () => {
+          const camera = map.cameraForBounds(symBounds, { padding: 80, maxZoom: 15 });
+          map.flyTo({
+            center: [campusLng, campusLat],
+            zoom: camera ? camera.zoom : 13,
+            duration: 1400,
+            essential: true,
+          });
+        };
+        if (map.isStyleLoaded()) doFit();
+        else map.once("load", doFit);
+      }
+    }
 
     const addHeatmap = () => {
       if (!map.getSource("houses-heatmap")) {

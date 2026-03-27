@@ -1,29 +1,149 @@
-/**
- * Paste one or more documents here
- */
 [
 {
-  "address": "University Square, 605 Leland Ave, University City, MO 63130",
-  "description": "Experience luxury living at University Square, a prime option for WashU students in the Delmar Loop. This 7-story building features an on-site Starbucks and an entire floor dedicated to amenities designed for the way you live, study, and recharge. Be among the first to enjoy a fully furnished, newly gut-renovated apartment that blends style, comfort, and convenience. Newly Gut Renovated & Fully Furnished. Amenities include: Fitness center, Private individual and group study rooms, Tenant lounge, Game room, Theater Room.",
+  "address": "Five-Nine, Kingsbury Ave, University City, MO 63130",
+  "description": "GUT-RENOVATED & FULLY FURNISHED\n\nFIVE-NINE is the quintessential WashU off-campus apartment building. The building features four 3-bedroom apartments (12 beds total). Find your Kingsbury address complete with a 6-foot fenced backyard, picnic table, hammock, and fire pit.\n\nINCLUDED FURNITURE — (3) Beds · (3) Mattresses · (3) Dressers · (3) Desks with Chairs · (1) Couch · (1) Coffee Table · (1) End Table · (1) TV Cabinet · (1) Dining Table with (4) Chairs · (3) Bar Stools\n\nIN-UNIT FREE LAUNDRY — Say goodbye to the coins and the dark, dingy basement. Say hello to modern convenience and a full wardrobe.\n\nMODERN KITCHEN — Black Pearl Granite Countertops, Large Breakfast Bar, and Stainless-Steel Appliances, including a Dishwasher and Microwave. The dining table right off the kitchen is the perfect place to host your next dinner party.\n\nMODERN BATHROOM — New Porcelain Tile, Plumbing, Fixtures, and High-Pressure Rain Shower.\n\nHARDWOOD FLOORS — Most new construction these days pass off cheap vinyl floors with wood prints as luxury. We stay true to our historic neighborhood and build with natural materials whenever possible.\n\nCENTRAL HEAT/AC & NEW INSULATED WINDOWS — Stay comfortable throughout the year. We rebuilt this historic building from the inside out to modern standards of comfort.",
+  "unitTypes": [
+    { "name": "3BR / 1BA", "rent": null, "area": null, "bedrooms": 3, "bathrooms": 1 }
+  ],
+  "leaseStructure": "joint",
+  "leaseAvailability": "12_month",
+  "homeType": "apartment",
+  "contactEmail": "leasing@clocktowercompany.com",
+  "contactPhone": null,
+  "contactName": null,
+  "amenities": ["in_unit_laundry", "ac_heating", "dishwasher"],
+  "utilitiesIncluded": false,
+  "subleaseFriendly": false
+},
+{
+  "address": "5622 Delmar Blvd, St. Louis, MO 63112",
+  "description": "Experience life in one of St. Louis's most historic buildings, the once coveted Delmonte Theater & Hotel. This urban retreat features a completely re-envisioned modern design around stunning historic architecture. Studio–2BR units available, including unique street-level loft apartments.",
   "unitTypes": [
     {
-      "name": "PARIS (3BR / 1BA)",
-      "rent": null,
-      "area": null,
-      "bedrooms": 3,
+      "name": "1BR / 1BA",
+      "rent": 1280,
+      "area": 675,
+      "bedrooms": 1,
       "bathrooms": 1
     },
     {
-      "name": "MADRID (3BR / 1BA)",
+      "name": "1BR / 1BA Loft",
       "rent": null,
-      "area": null,
-      "bedrooms": 3,
+      "area": 670,
+      "bedrooms": 1,
       "bathrooms": 1
     },
     {
-      "name": "ROME (2BR + Office / 1BA)",
+      "name": "2BR / 1BA",
       "rent": null,
-      "area": null,
+      "area": 870,
+      "bedrooms": 2,
+      "bathrooms": 1
+    },
+    {
+      "name": "2BR / 2BA",
+      "rent": 1680,
+      "area": 930,
+      "bedrooms": 2,
+      "bathrooms": 2
+    }
+  ],
+  "leaseStructure": "joint",
+  "leaseAvailability": "12-month",
+  "homeType": "apartment",
+  "contactEmail": "Delmonte@keeleyproperties.com",
+  "contactPhone": "314-465-5635",
+  "contactName": null,
+  "amenities": [
+    "GYM",
+    "IN UNIT LAUNDRY",
+    "FREE PARKING"
+  ],
+  "utilitiesIncluded": false,
+  "subleaseFriendly": false,
+  "minRent": 1280,
+  "maxRent": 1680,
+  "minBathrooms": 1,
+  "maxBathrooms": 2,
+  "minBedrooms": 1,
+  "maxBedrooms": 2,
+  "images": [],
+  "numReviews": 0,
+  "rating": 0,
+  "reviews": []
+},
+{
+  "address": "5904 Enright Ave, St. Louis, MO 63112",
+  "description": "Echo is a historic gem built in 1926 and added to the National Register of Historic Places in 2005. Thoughtfully designed 1- and 2-bedroom apartment homes with garage parking, fitness center, and on-site management. Pet friendly.",
+  "unitTypes": [
+    {
+      "name": "1BR / 1BA",
+      "rent": 950,
+      "area": 660,
+      "bedrooms": 1,
+      "bathrooms": 1
+    },
+    {
+      "name": "2BR / 1BA",
+      "rent": 1050,
+      "area": 820,
+      "bedrooms": 2,
+      "bathrooms": 1
+    },
+    {
+      "name": "2BR / 2BA",
+      "rent": null,
+      "area": 1070,
+      "bedrooms": 2,
+      "bathrooms": 2
+    }
+  ],
+  "leaseStructure": "joint",
+  "leaseAvailability": "12-month",
+  "homeType": "apartment",
+  "contactEmail": "echo@keeleyproperties.com",
+  "contactPhone": "314-435-2725",
+  "contactName": null,
+  "amenities": [
+    "GYM",
+    "FREE PARKING",
+    "PETS ALLOWED"
+  ],
+  "utilitiesIncluded": false,
+  "subleaseFriendly": false,
+  "minRent": 950,
+  "maxRent": 1075,
+  "minBathrooms": 1,
+  "maxBathrooms": 2,
+  "minBedrooms": 1,
+  "maxBedrooms": 2,
+  "images": [],
+  "numReviews": 0,
+  "rating": 0,
+  "reviews": []
+},
+{
+  "address": "625 N. Euclid Ave, St. Louis, MO 63108",
+  "description": "Boutique apartment residence offering studio and two-bedroom loft-style apartments with soaring ceilings and exposed brick. Amenities include hot tub & steam room, clubroom & lounge, fitness center, and garage parking.",
+  "unitTypes": [
+    {
+      "name": "Studio / 1BA",
+      "rent": 1170,
+      "area": 500,
+      "bedrooms": 0,
+      "bathrooms": 1
+    },
+    {
+      "name": "2BR / 2BA",
+      "rent": 2030,
+      "area": 1300,
+      "bedrooms": 2,
+      "bathrooms": 2
+    },
+    {
+      "name": "2BR / 1BA (Penthouse)",
+      "rent": 3120,
+      "area": 1126,
       "bedrooms": 2,
       "bathrooms": 1
     }
@@ -31,26 +151,110 @@
   "leaseStructure": "joint",
   "leaseAvailability": "12-month",
   "homeType": "apartment",
-  "contactEmail": "leasing@clocktowercompany.com",
-  "contactPhone": "586-666-1217",
+  "contactEmail": "loftsateuclid@keeleyproperties.com",
+  "contactPhone": "314-685-8550",
   "contactName": null,
   "amenities": [
+    "POOL",
     "GYM",
-    "STUDY ROOMS",
-    "DISHWASHER",
-    "IN UNIT LAUNDRY"
+    "FREE PARKING"
   ],
   "utilitiesIncluded": false,
   "subleaseFriendly": false,
-  "minRent": null,
-  "maxRent": null,
+  "minRent": 1170,
+  "maxRent": 3120,
   "minBathrooms": 1,
-  "maxBathrooms": 1,
-  "minBedrooms": 2,
+  "maxBathrooms": 2,
+  "minBedrooms": 0,
+  "maxBedrooms": 2,
+  "images": [],
+  "numReviews": 0,
+  "rating": 0,
+  "reviews": []
+},
+{
+  "address": "4500 Swan Ave, St. Louis, MO 63110",
+  "description": "Terra at the Grove is an urban oasis for those who love the city and the outdoors. Modern studio, 1-, and 2-bedroom apartment homes with in-unit laundry, a 52,000 sqft courtyard, resort-style pool, fitness & yoga studio, and garage parking.",
+  "unitTypes": [
+    {
+      "name": "Studio / 1BA",
+      "rent": 1350,
+      "area": 540,
+      "bedrooms": 0,
+      "bathrooms": 1
+    },
+    {
+      "name": "1BR / 1BA",
+      "rent": 1450,
+      "area": 675,
+      "bedrooms": 1,
+      "bathrooms": 1
+    },
+    {
+      "name": "2BR / 2BA",
+      "rent": 2200,
+      "area": 882,
+      "bedrooms": 2,
+      "bathrooms": 2
+    }
+  ],
+  "leaseStructure": "joint",
+  "leaseAvailability": "12-month",
+  "homeType": "apartment",
+  "contactEmail": "info@terra-stl.com",
+  "contactPhone": "314-328-9020",
+  "contactName": null,
+  "amenities": [
+    "POOL",
+    "GYM",
+    "IN UNIT LAUNDRY",
+    "FREE PARKING"
+  ],
+  "utilitiesIncluded": false,
+  "subleaseFriendly": false,
+  "minRent": 1350,
+  "maxRent": 2235,
+  "minBathrooms": 1,
+  "maxBathrooms": 2,
+  "minBedrooms": 0,
+  "maxBedrooms": 2,
+  "images": [],
+  "numReviews": 0,
+  "rating": 0,
+  "reviews": []
+},
+{
+  "address": "5394 Pershing Ave, St. Louis, MO 63112",
+  "description": "3-bedroom, 2-bath apartment managed by STL Rental Services. Secure building with off-street parking and in-unit laundry.",
+  "unitTypes": [
+    {
+      "name": "3BR / 2BA",
+      "rent": 2595,
+      "area": null,
+      "bedrooms": 3,
+      "bathrooms": 2
+    }
+  ],
+  "leaseStructure": "joint",
+  "leaseAvailability": "12-month",
+  "homeType": "apartment",
+  "contactEmail": "mimi@stlrentalservicesandsales.com",
+  "contactPhone": "314-609-2829",
+  "contactName": "Mimi Mackey",
+  "amenities": [
+    "IN UNIT LAUNDRY",
+    "FREE PARKING"
+  ],
+  "utilitiesIncluded": false,
+  "subleaseFriendly": false,
+  "minRent": 2595,
+  "maxRent": 2595,
+  "minBathrooms": 2,
+  "maxBathrooms": 2,
+  "minBedrooms": 3,
   "maxBedrooms": 3,
   "images": [],
   "numReviews": 0,
   "rating": 0,
   "reviews": []
-}
-]
+}]

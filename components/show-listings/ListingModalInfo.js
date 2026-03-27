@@ -670,8 +670,9 @@ export default function ListingModalInfo({ session, listing }) {
   const [contactSent, setContactSent] = useState(false);
 
   // Images
+  const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
   const images = Array.isArray(listing?.images)
-    ? listing.images.filter(Boolean)
+    ? listing.images.filter(Boolean).map(sanitizeUrl)
     : [];
   const coverImage = images[0];
   const secondImage = images[1] || images[0] || null;

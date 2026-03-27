@@ -203,32 +203,30 @@ function ReviewCard({ review, onSeeMore }) {
           <Star key={j} className="h-4 w-4 fill-red-400 text-red-400" />
         ))}
       </div>
-      <div className="relative mb-5">
-        <p
-          ref={textRef}
-          className="text-gray-600 text-sm leading-relaxed overflow-hidden"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 4,
-            WebkitBoxOrient: "vertical",
-          }}
-        >
-          &ldquo;{review.text}&rdquo;
-        </p>
+      <p
+        ref={textRef}
+        className="text-gray-600 text-sm leading-relaxed overflow-hidden mb-5"
+        style={{
+          display: "-webkit-box",
+          WebkitLineClamp: 4,
+          WebkitBoxOrient: "vertical",
+        }}
+      >
+        &ldquo;{review.text}&rdquo;
+      </p>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-bold text-gray-900">{review.author}</div>
         {isTruncated && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onSeeMore(review);
             }}
-            className="absolute bottom-0 right-0 text-xs text-red-500 font-medium hover:underline bg-white pl-2"
+            className="text-xs text-gray-400 font-medium hover:underline"
           >
             see more
           </button>
         )}
-      </div>
-      <div>
-        <div className="text-sm font-bold text-gray-900">{review.author}</div>
       </div>
     </div>
   );

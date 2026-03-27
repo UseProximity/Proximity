@@ -176,7 +176,10 @@ async function main() {
     // Put any file named "main.*" first, rest stay in alphabetical order
     const mainKey = keys.find((k) => /\/main\.[^/]+$/.test(k));
     const sortedKeys = mainKey ? [mainKey, ...keys.filter((k) => k !== mainKey)] : keys;
-    const urls = sortedKeys.map((key) => `${R2_PUBLIC_BASE_URL}/${key}`);
+    const urls = sortedKeys.map((key) => {
+      const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+      return `${R2_PUBLIC_BASE_URL}/${encodedKey}`;
+    });
     matched++;
 
     if (isDryRun) {
