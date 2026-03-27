@@ -90,9 +90,12 @@ export default function AboutPage() {
       <section className="bg-red-500 text-white text-center px-6 py-16">
         <h2 className="text-3xl font-bold mb-3">Our Mission</h2>
         <p className="text-red-100 max-w-2xl mx-auto text-lg">
-          Proximity exists to give every college student a stress-free path to
-          finding their next home — whether that&apos;s off-campus housing or a
-          campus roommate.
+          Every other platform treats student housing like an afterthought,
+          dropping a campus pin on a regular housing map and calling it a day.
+          We&apos;re building something better: a platform designed for
+          students, by students, around the things that actually matter. Peer
+          reviews, relevant filters, and a search that makes finding your next
+          home effortless.
         </p>
         <Link
           href="/browse"

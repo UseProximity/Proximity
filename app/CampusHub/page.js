@@ -391,7 +391,7 @@ export default function CampusHub() {
   const filterSidebar = (
     <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-6">
       {/* Search + Reset — desktop only */}
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2">
         <input
           type="text"
           placeholder="Search dorms or keywords..."
@@ -401,7 +401,7 @@ export default function CampusHub() {
         />
         <button
           onClick={handleReset}
-          className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
+          className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
         >
           Reset
         </button>

@@ -313,6 +313,7 @@ export default function BrowseContent({ session }) {
           listing?.leaseStructure === "joint";
       }
 
+      // Favorites / saved listings
       const userFavorites =
         session?.user?.favorites || session?.user?.favoritesIds || [];
       const matchSaved =
@@ -320,6 +321,14 @@ export default function BrowseContent({ session }) {
         userFavorites.some(
           (f) => String((f && f._id) || f) === String(listing._id)
         );
+
+      // Move in Date
+      let matchMoveInDate = true;
+      if (filters.moveInDate) {
+        const desiredDate = new Date(filters.moveInDate);
+        const listingMoveInDate = new Date(listing.moveInDate);
+        matchMoveInDate = listingMoveInDate <= desiredDate;
+      }
 
       return (
         matchSearch &&
@@ -337,6 +346,7 @@ export default function BrowseContent({ session }) {
         matchUtilities &&
         matchSublease &&
         matchLeaseStructure &&
+        matchMoveInDate &&
         matchSaved
       );
     });
