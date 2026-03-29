@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import connectMongo from "@/libs/mongoose";
 import Listing from "@/models/Listing";
+import { serializePlaceWalkMinutes } from "@/utils/listingFormatters";
+import mongoose from "mongoose";
 
 export async function GET(req, { params }) {
   try {
@@ -10,19 +12,23 @@ export async function GET(req, { params }) {
     const { listingId } = await params;
 
     if (!listingId) {
-      return NextResponse.json(
-        { error: "Missing listing ID" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
+    }
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return NextResponse.json({ error: "Invalid listing ID" }, { status: 400 });
     }
 
-    const listing = await Listing.findById(listingId)
+    const listing = await Listing.findByIdAndUpdate(
+      listingId,
+      { $inc: { numClicks: 1 } },
+      { new: true }
+    )
       .populate("owner")
       .populate({
         path: "reviews",
         populate: {
           path: "reviewer",
-          select: "name image", // only fetch these 2 fields for speed
+          select: "name image",
         },
       })
       .lean();
@@ -42,9 +48,7 @@ export async function GET(req, { params }) {
           }
         : null,
       createdAt: listing.createdAt?.toISOString() || null,
-      placeWalkMinutes: listing.placeWalkMinutes instanceof Map
-        ? Object.fromEntries(listing.placeWalkMinutes)
-        : (listing.placeWalkMinutes ?? {}),
+      placeWalkMinutes: serializePlaceWalkMinutes(listing.placeWalkMinutes),
       shuttleWalkMinutes: listing.shuttleWalkMinutes ?? null,
     };
 
@@ -69,10 +73,10 @@ export async function PATCH(req, { params }) {
 
     const { listingId } = await params;
     if (!listingId) {
-      return NextResponse.json(
-        { error: "Missing listing ID" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
+    }
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return NextResponse.json({ error: "Invalid listing ID" }, { status: 400 });
     }
 
     const listing = await Listing.findById(listingId);

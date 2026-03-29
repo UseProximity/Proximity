@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
+import mongoose from "mongoose";
 
 // POST /api/contacted — add a listing to the user's contacted list (idempotent)
 export async function POST(req) {
@@ -13,6 +14,9 @@ export async function POST(req) {
     const { listingId } = await req.json();
     if (!listingId) {
       return Response.json({ error: "listingId required" }, { status: 400 });
+    }
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return Response.json({ error: "Invalid listingId" }, { status: 400 });
     }
 
     await connectMongo();

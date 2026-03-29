@@ -1,39 +1,31 @@
-export const getRentRangeLabel = (unitTypes = []) => {
+// ─── Private helpers ─────────────────────────────────────────────────────────
+
+function computeRentRange(unitTypes) {
   const rents = unitTypes
     .map((unit) => Number(unit?.rent))
     .filter((rent) => Number.isFinite(rent) && rent > 0);
+  if (rents.length === 0) return null;
+  return { min: Math.min(...rents), max: Math.max(...rents) };
+}
 
-  if (rents.length === 0) {
-    return "Contact for Pricing";
-  }
+function formatRentRange(min, max) {
+  return min === max
+    ? `$${min.toLocaleString()}`
+    : `$${min.toLocaleString()}-$${max.toLocaleString()}`;
+}
 
-  const minRent = Math.min(...rents);
-  const maxRent = Math.max(...rents);
+// ─── Exports ──────────────────────────────────────────────────────────────────
 
-  if (minRent === maxRent) {
-    return `$${minRent.toLocaleString()}`;
-  }
-
-  return `$${minRent.toLocaleString()}-$${maxRent.toLocaleString()}`;
+export const getRentRangeLabel = (unitTypes = []) => {
+  const range = computeRentRange(unitTypes);
+  if (!range) return "Contact for Pricing";
+  return formatRentRange(range.min, range.max);
 };
 
 export const getRentRangeDisplay = (unitTypes = []) => {
-  const rents = unitTypes
-    .map((unit) => Number(unit?.rent))
-    .filter((rent) => Number.isFinite(rent) && rent > 0);
-
-  if (rents.length === 0) {
-    return { label: "Contact for Pricing", hasPrice: false };
-  }
-
-  const minRent = Math.min(...rents);
-  const maxRent = Math.max(...rents);
-  const label =
-    minRent === maxRent
-      ? `$${minRent.toLocaleString()}`
-      : `$${minRent.toLocaleString()}-$${maxRent.toLocaleString()}`;
-
-  return { label, hasPrice: true };
+  const range = computeRentRange(unitTypes);
+  if (!range) return { label: "Contact for Pricing", hasPrice: false };
+  return { label: formatRentRange(range.min, range.max), hasPrice: true };
 };
 
 export const getUnitValuesLabel = (unitTypes = [], field) => {
@@ -67,4 +59,19 @@ export const getAreaRangeLabel = (unitTypes = []) => {
 
   return `${minArea.toLocaleString()}-${maxArea.toLocaleString()}`;
 };
-;
+
+// Converts a Mongoose Map (or plain object) to a plain JS object.
+export function serializePlaceWalkMinutes(pwm) {
+  if (pwm instanceof Map) return Object.fromEntries(pwm);
+  return pwm ?? {};
+}
+
+export function calcAge(birthday) {
+  if (!birthday) return null;
+  const dob = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}

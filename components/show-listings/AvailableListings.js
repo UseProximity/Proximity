@@ -76,8 +76,10 @@ function MapPopupCard({
 function ListingCard({ listing, session, onCardClick }) {
   const imageUrl = listing.images?.[0];
   const imageCount = listing.images?.length || 0;
-  const [streetAddress, ...restParts] = listing.address.split(",");
-  const cityStateZip = restParts.join(",").trim();
+  const title = listing.title || listing.address.split(",")[0].trim();
+  const cityStateZip = listing.title
+    ? listing.address
+    : listing.address.replace(/^[^,]+,\s*/, "");
   const bedValues = listing.unitTypes
     .map((u) => u.bedrooms)
     .filter(Number.isFinite);
@@ -129,7 +131,7 @@ function ListingCard({ listing, session, onCardClick }) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="font-bold text-sm text-gray-900 leading-snug">
-              {streetAddress}
+              {title}
             </h3>
             {cityStateZip && (
               <p className="text-xs text-gray-500 font-normal mt-0.5">

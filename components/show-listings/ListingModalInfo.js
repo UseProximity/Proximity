@@ -121,69 +121,34 @@ function StatCell({ label, value }) {
   );
 }
 
-function LeaseStatCell({ leaseAvailability }) {
-  const [open, setOpen] = useState(false);
-  // Normalise to array — works with legacy string values too
-  const types = Array.isArray(leaseAvailability)
-    ? leaseAvailability
-    : leaseAvailability
-    ? [leaseAvailability]
-    : [];
-  const labels = types.map((t) => leaseAvailabilityMap[t] || t);
-  const isFlexible = labels.length > 1;
-
-  return (
-    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
-      <div className="text-lg font-semibold text-gray-900 break-words">
-        {isFlexible ? (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="inline-flex items-center gap-1 hover:text-red-600 transition"
-          >
-            Flexible
-            <svg
-              className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.5}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        ) : (
-          labels[0] || "—"
-        )}
-      </div>
-      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-      {isFlexible && open && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
-          {labels.map((l) => (
-            <div key={l} className="px-3 py-1.5 text-sm text-gray-700 whitespace-nowrap">
-              {l}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
 const AMENITY_LABELS = {
-  "DISHWASHER": "Dishwasher",
-  "EXTRA STORAGE": "Extra Storage",
+  // canonical snake_case
+  "dishwasher":      "Dishwasher",
+  "in_unit_laundry": "In-Unit Laundry",
+  "ac_heating":      "AC / Heating",
+  "mailroom":        "Mailroom",
+  "pets_allowed":    "Pets Allowed",
+  "extra_storage":   "Extra Storage",
+  "fireplace":       "Fireplace",
+  "private_parking": "Private Parking",
+  "pool":            "Pool",
+  "study_room":      "Study Rooms",
+  "gym":             "Gym / Fitness",
+  // legacy ALL_CAPS (old DB records)
+  "DISHWASHER":      "Dishwasher",
+  "EXTRA STORAGE":   "Extra Storage",
   "IN-UNIT LAUNDRY": "In-Unit Laundry",
-  "FIREPLACE": "Fireplace",
-  "FREE PARKING": "Private Parking",
-  "MAILROOM": "Mailroom",
-  "POOL": "Pool",
-  "PETS ALLOWED": "Pets Allowed",
-  "STUDY ROOMS": "Study Rooms",
-  "GYM": "Gym / Fitness",
-  "FURNISHED": "Furnished",
+  "IN UNIT LAUNDRY": "In-Unit Laundry",
+  "FIREPLACE":       "Fireplace",
+  "FREE PARKING":    "Private Parking",
+  "MAILROOM":        "Mailroom",
+  "POOL":            "Pool",
+  "PETS ALLOWED":    "Pets Allowed",
+  "STUDY ROOMS":     "Study Rooms",
+  "GYM":             "Gym / Fitness",
+  "FURNISHED":       "Furnished",
 };
 
 function AmenitiesTab({ listing }) {
@@ -729,7 +694,8 @@ export default function ListingModalInfo({ session, listing }) {
   const thirdImage = images[2] || images[1] || images[0] || null;
 
   // Address
-  const { street, cityStateZip } = parseAddress(listing.address);
+  const { street, cityStateZip: parsedCityStateZip } = parseAddress(listing.address);
+  const cityStateZip = listing.title ? listing.address : parsedCityStateZip;
 
   // Reviews
   const legitimateReviews = (listing.reviews || [])
@@ -944,7 +910,7 @@ export default function ListingModalInfo({ session, listing }) {
           )}
           <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{street}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{listing.title || street}</h1>
               {cityStateZip && (
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
               )}
@@ -1009,7 +975,13 @@ export default function ListingModalInfo({ session, listing }) {
               label="Sq Ft"
               value={getAreaRangeLabel(listing.unitTypes)}
             />
-            <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
+            <StatCell
+              label="Lease"
+              value={
+                leaseAvailabilityMap[listing.leaseAvailability] ||
+                listing.leaseAvailability
+              }
+            />
             <StatCell
               label="Rating"
               value={overallAvg ? `★ ${overallAvg}` : "—"}

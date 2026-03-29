@@ -4,19 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 
 // ─── Edit Profile Modal ────────────────────────────────────────────────────────
-
-function calcAge(birthday) {
-  if (!birthday) return null;
-  const dob = new Date(birthday);
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const m = today.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-  return age;
-}
 
 function EditProfileModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -256,6 +246,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
             >
               <option value="student">Student</option>
               <option value="landlord">Landlord</option>
+              {user.role === "super" && <option value="super">Super</option>}
             </select>
           </div>
 
@@ -337,8 +328,10 @@ function EditProfileModal({ user, onClose, onSaved }) {
 
 function ListingCard({ listing, badge }) {
   const pathname = usePathname();
-  const [streetAddress, ...rest] = (listing.address || "").split(",");
-  const cityStateZip = rest.join(",").trim();
+  const title = listing.title || (listing.address || "").split(",")[0].trim();
+  const cityStateZip = listing.title
+    ? (listing.address || "")
+    : (listing.address || "").replace(/^[^,]+,\s*/, "");
   const bedValues = listing.unitTypes
     .map((u) => u.bedrooms)
     .filter(Number.isFinite);
@@ -390,7 +383,7 @@ function ListingCard({ listing, badge }) {
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-bold text-sm text-gray-900 leading-snug">
-                {streetAddress}
+                {title}
               </h3>
               {cityStateZip && (
                 <p className="text-xs text-gray-500 mt-0.5">{cityStateZip}</p>
@@ -775,6 +768,19 @@ export default function StudentDashboardPage() {
                 No recent activity
               </div>
             </div>
+
+            {/* Admin Dashboard link — super only */}
+            {user.role === "super" && (
+              <a
+                href="/dashboard/admin"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block bg-gray-900 hover:bg-gray-800 transition-colors rounded-xl border border-gray-700 shadow-sm p-5 text-center"
+              >
+                <p className="font-semibold text-white text-sm">Admin Dashboard</p>
+                <p className="text-xs text-gray-400 mt-1">Opens in new tab</p>
+              </a>
+            )}
           </div>
 
           {/* ── RIGHT COLUMN ── */}

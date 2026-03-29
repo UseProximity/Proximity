@@ -625,23 +625,18 @@ export default function TopFilterBar({
                   <FilterSection title="Amenities">
                     <div className="grid grid-cols-2 gap-y-2 gap-x-4">
                       {[
-                        { label: "Dishwasher", value: "dishwasher" },
-                        { label: "Extra Storage", value: "extraStorage" },
-                        { label: "In-Unit Laundry", value: "inUnitLaundry" },
-                        { label: "Fireplace", value: "fireplace" },
-                        { label: "AC/Heating", value: "gym" },
-                        { label: "Private Parking", value: "freeParking" },
-                        { label: "Mailroom", value: "mailroom" },
-                        { label: "Pool", value: "pool" },
-                        { label: "Pets Allowed", value: "petsAllowed" },
-                        { label: "Study Rooms", value: "studyRooms" },
-                        { label: "Gym / Fitness", value: "gym" },
-                      ]
-                        .filter(
-                          (o, i, arr) =>
-                            arr.findIndex((x) => x.value === o.value) === i
-                        )
-                        .map((opt) => (
+                        { label: "Dishwasher",      value: "dishwasher"      },
+                        { label: "In-Unit Laundry", value: "in_unit_laundry" },
+                        { label: "AC / Heating",    value: "ac_heating"      },
+                        { label: "Mailroom",        value: "mailroom"        },
+                        { label: "Pets Allowed",    value: "pets_allowed"    },
+                        { label: "Extra Storage",   value: "extra_storage"   },
+                        { label: "Fireplace",       value: "fireplace"       },
+                        { label: "Private Parking", value: "private_parking" },
+                        { label: "Pool",            value: "pool"            },
+                        { label: "Study Rooms",     value: "study_room"      },
+                        { label: "Gym / Fitness",   value: "gym"             },
+                      ].map((opt) => (
                           <label
                             key={opt.value}
                             className="flex items-center gap-2 cursor-pointer"

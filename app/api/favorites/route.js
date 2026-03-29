@@ -7,29 +7,23 @@ import { auth } from "@/auth";
 
 export async function POST(req) {
   try {
-    const { listingId, userId } = await req.json();
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { listingId } = await req.json();
 
     if (!listingId) {
-      return NextResponse.json(
-        { error: "listingId required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
     if (!mongoose.Types.ObjectId.isValid(listingId)) {
       return NextResponse.json({ error: "Invalid listingId" }, { status: 400 });
     }
 
-    const session = await auth();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     await connectMongo();
 
-    const user = await User.findById(userId).select("_id");
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+    const userId = session.user.id;
 
     const removeResult = await User.updateOne(
       { _id: userId, favorites: listingId },
