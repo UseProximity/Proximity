@@ -6,6 +6,31 @@ import connectMongo from "@/libs/mongoose";
 import { auth } from "@/auth";
 import mongoose from "mongoose";
 
+// Mirrors getModel() in app/api/admin/[table]/route.js exactly.
+async function getListingModel(db) {
+  if (!db || db === "default") {
+    await connectMongo();
+    return Listing;
+  }
+
+  const uri = db === "dev" ? process.env.MONGO_URI_DEV : process.env.MONGO_URI_PROD;
+  if (!uri) {
+    await connectMongo();
+    return Listing;
+  }
+
+  const cacheKey = `_mongooseAdmin_${db}`;
+  if (!global[cacheKey] || global[cacheKey].readyState === 0) {
+    global[cacheKey] = mongoose.createConnection(uri, {
+      bufferCommands: false,
+      maxPoolSize: 5,
+    });
+    await global[cacheKey].asPromise();
+  }
+  const conn = global[cacheKey];
+  return conn.models["Listing"] || conn.model("Listing", Listing.schema);
+}
+
 export async function PATCH(req) {
   try {
     const session = await auth();
@@ -15,6 +40,10 @@ export async function PATCH(req) {
 
     const formData = await req.formData();
     const listingId = formData.get("listingId");
+    const db = formData.get("db") || "dev";
+    const bucket = db === "prod"
+      ? (process.env.R2_BUCKET_NAME_PROD || process.env.R2_BUCKET_NAME)
+      : process.env.R2_BUCKET_NAME;
     let files = formData.getAll("files");
 
     if (!listingId) {
@@ -33,9 +62,8 @@ export async function PATCH(req) {
       return Response.json({ error: "No files" }, { status: 400 });
     }
 
-    await connectMongo();
-
-    const listing = await Listing.findById(listingId);
+    const ListingModel = await getListingModel(db);
+    const listing = await ListingModel.findById(listingId);
     if (!listing) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
@@ -43,9 +71,7 @@ export async function PATCH(req) {
     // Only the listing owner or a super user may upload
     const isOwner = listing.owner && String(listing.owner) === String(session.user.id);
     if (!isOwner) {
-      const { default: User } = await import("@/models/User");
-      const currentUser = await User.findById(session.user.id).select("role").lean();
-      if (!currentUser || currentUser.role !== "super") {
+      if (session.user.role !== "super") {
         return Response.json({ error: "Forbidden" }, { status: 403 });
       }
     }
@@ -63,14 +89,17 @@ export async function PATCH(req) {
 
         await r2.send(
           new PutObjectCommand({
-            Bucket: process.env.R2_BUCKET_NAME,
+            Bucket: bucket,
             Key: key,
             Body: buffer,
             ContentType: file.type,
           })
         );
 
-        return `${process.env.R2_PUBLIC_BASE_URL}/${key}`;
+        const publicBase = db === "prod"
+          ? (process.env.R2_PUBLIC_BASE_URL_prod || process.env.R2_PUBLIC_BASE_URL)
+          : process.env.R2_PUBLIC_BASE_URL;
+        return `${publicBase}/${key}`;
       })
     );
 
@@ -80,8 +109,8 @@ export async function PATCH(req) {
       return Response.json({ error: "No valid files" }, { status: 400 });
     }
 
-    listing.images = listing.images.concat(urls);
-    await listing.save();
+    const updatedImages = listing.images.concat(urls);
+    await ListingModel.findByIdAndUpdate(listingId, { $set: { images: updatedImages } }, { strict: false });
 
     return Response.json({ urls, url: urls[0] });
   } catch (error) {
