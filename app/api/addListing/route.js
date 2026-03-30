@@ -136,7 +136,7 @@ export async function POST(req) {
       leaseStructure: leaseStructure ?? null,
       homeType: homeType ?? "apartment",
       amenities: amenities ?? [],
-      utilitiesIncluded: utilitiesIncluded ?? false,
+      utilitiesIncluded: utilitiesIncluded ?? [],
       subleaseFriendly: subleaseFriendly ?? false,
       furnished: furnished ?? false,
       moveInDate: moveInDate ?? null,

@@ -1,8 +1,19 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function HeroSection() {
+  const [query, setQuery] = useState("");
+  const router = useRouter();
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    router.push(`/browse?search=${encodeURIComponent(query.trim())}`);
+  };
+
   // Typing animation for search bar placeholder
   const phrases = [
     "Read honest WashU student reviews",
@@ -44,10 +55,13 @@ export function HeroSection() {
               </p>
             </div>
             {/* Minimalist Search Bar */}
-            <form className="w-full flex items-center justify-end py-4">
+            <form onSubmit={handleSearch} className="w-full flex items-center justify-end py-4">
               <div className="relative w-full max-w-2xl">
                 <input
                   type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search by title or address..."
                   className="w-full rounded-xl border border-gray-300 px-8 py-5 text-lg font-semibold text-gray-900 shadow focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all pr-16 placeholder:text-lg placeholder:font-normal"
                   autoComplete="off"
                   style={{

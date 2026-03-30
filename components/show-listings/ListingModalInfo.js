@@ -172,13 +172,25 @@ function AmenitiesTab({ listing }) {
       <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
       <div className="space-y-2">
         {decodeHtml(listing.description || "")
-          .split(/\n+/)
-          .filter((p) => p.trim())
-          .map((para, i) => (
-            <p key={i} className="text-gray-700 leading-relaxed">
-              {para.trim()}
-            </p>
-          ))}
+          .split("\n")
+          .map((line, i) => {
+            if (line.trim() === "<br>") {
+              return <br key={i} />;
+            }
+            if (line.startsWith("#")) {
+              return (
+                <p key={i} className="text-gray-700 leading-relaxed font-bold">
+                  {line.replace(/^#+\s*/, "")}
+                </p>
+              );
+            }
+            if (!line.trim()) return null;
+            return (
+              <p key={i} className="text-gray-700 leading-relaxed">
+                {line}
+              </p>
+            );
+          })}
       </div>
     </div>
   );

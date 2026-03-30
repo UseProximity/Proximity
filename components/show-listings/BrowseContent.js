@@ -86,9 +86,11 @@ export default function BrowseContent({ session }) {
       const combined = desc + " " + amenitiesText;
 
       // Search
-      const matchSearch = listing?.address
-        .toLowerCase()
-        .includes(search.toLowerCase());
+      const q = search.toLowerCase();
+      const matchSearch =
+        !q ||
+        listing?.address?.toLowerCase().includes(q) ||
+        listing?.title?.toLowerCase().includes(q);
 
       // Price
       const matchMinRent =
@@ -233,7 +235,7 @@ export default function BrowseContent({ session }) {
           combined.includes("utilities included") ||
           combined.includes("utilities are included") ||
           combined.includes("all utilities") ||
-          listing?.utilitiesIncluded === true;
+          (Array.isArray(listing?.utilitiesIncluded) && listing.utilitiesIncluded.length > 0);
       }
 
       // Sublease friendly
