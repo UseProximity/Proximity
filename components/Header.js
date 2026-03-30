@@ -104,7 +104,7 @@ export function Header({ session }) {
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && closeSearch()}
               onSelectSuggestion={handleSuggestionSelect}
-              placeholder="Search addresses..."
+              placeholder="Search by title or address..."
               className="w-full px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
             />
             <button
@@ -137,7 +137,7 @@ export function Header({ session }) {
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Escape" && closeSearch()}
                     onSelectSuggestion={handleSuggestionSelect}
-                    placeholder="Search addresses..."
+                    placeholder="Search by title or address..."
                     className="w-full px-4 py-2.5 text-[17px] bg-gray-50 border border-gray-200 focus:border-red-300 focus:bg-white rounded-xl outline-none transition-all duration-200"
                   />
                   <button

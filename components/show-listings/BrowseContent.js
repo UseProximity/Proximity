@@ -86,9 +86,11 @@ export default function BrowseContent({ session }) {
       const combined = desc + " " + amenitiesText;
 
       // Search
-      const matchSearch = listing?.address
-        .toLowerCase()
-        .includes(search.toLowerCase());
+      const q = search.toLowerCase();
+      const matchSearch =
+        !q ||
+        listing?.address?.toLowerCase().includes(q) ||
+        listing?.title?.toLowerCase().includes(q);
 
       // Price
       const matchMinRent =
