@@ -173,7 +173,7 @@ export default function CampusHub() {
     }
   };
 
-  const allTags = [...new Set(allReviews.flatMap((r) => r.tags))].sort();
+  const allTags = [...new Set(allReviews.flatMap((r) => r.tags))].filter((t) => t !== "Off-Campus").sort();
   const allDormTypes = CANONICAL_ROOM_TYPES.filter((type) =>
     Object.values(dormMeta).some((d) => d.roomTypes?.includes(type))
   );
