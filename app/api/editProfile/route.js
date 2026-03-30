@@ -22,17 +22,24 @@ export async function PATCH(req) {
       ...(body.image !== undefined && { image: body.image }),
     };
 
-    // only add role if it's explicitly provided
-    if (body.role !== undefined && body.role !== null) {
-      allowed.role = body.role;
-    }
-
     if (body.birthday !== undefined && body.birthday !== null) {
       const parsed = new Date(body.birthday);
       if (!isNaN(parsed.getTime())) allowed.birthday = parsed;
     }
 
     await connectMongo();
+
+    // Only allow role changes if provided; super can only be set if already super
+    if (body.role !== undefined && body.role !== null) {
+      if (body.role === "super") {
+        const currentUser = await User.findById(session.user.id).select("role").lean();
+        if (currentUser?.role !== "super") {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+      }
+      allowed.role = body.role;
+    }
+
     const updated = await User.findByIdAndUpdate(
       session.user.id,
       { $set: allowed },

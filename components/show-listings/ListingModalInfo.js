@@ -115,57 +115,8 @@ function AmenityPill({ label }) {
 function StatCell({ label, value }) {
   return (
     <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-      <div className="text-lg font-semibold text-gray-900 break-words">{value}</div>
+      <div className="text-sm sm:text-lg font-semibold text-gray-900 break-words">{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-    </div>
-  );
-}
-
-function LeaseStatCell({ leaseAvailability }) {
-  const [open, setOpen] = useState(false);
-  // Normalise to array — works with legacy string values too
-  const types = Array.isArray(leaseAvailability)
-    ? leaseAvailability
-    : leaseAvailability
-    ? [leaseAvailability]
-    : [];
-  const labels = types.map((t) => leaseAvailabilityMap[t] || t);
-  const isFlexible = labels.length > 1;
-
-  return (
-    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
-      <div className="text-lg font-semibold text-gray-900 break-words">
-        {isFlexible ? (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="inline-flex items-center gap-1 hover:text-red-600 transition"
-          >
-            Flexible
-            <svg
-              className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.5}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        ) : (
-          labels[0] || "—"
-        )}
-      </div>
-      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-      {isFlexible && open && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
-          {labels.map((l) => (
-            <div key={l} className="px-3 py-1.5 text-sm text-gray-700 whitespace-nowrap">
-              {l}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -173,17 +124,31 @@ function LeaseStatCell({ leaseAvailability }) {
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
 const AMENITY_LABELS = {
-  "DISHWASHER": "Dishwasher",
-  "EXTRA STORAGE": "Extra Storage",
+  // canonical snake_case
+  "dishwasher":      "Dishwasher",
+  "in_unit_laundry": "In-Unit Laundry",
+  "ac_heating":      "AC / Heating",
+  "mailroom":        "Mailroom",
+  "pets_allowed":    "Pets Allowed",
+  "extra_storage":   "Extra Storage",
+  "fireplace":       "Fireplace",
+  "private_parking": "Private Parking",
+  "pool":            "Pool",
+  "study_room":      "Study Rooms",
+  "gym":             "Gym / Fitness",
+  // legacy ALL_CAPS (old DB records)
+  "DISHWASHER":      "Dishwasher",
+  "EXTRA STORAGE":   "Extra Storage",
   "IN-UNIT LAUNDRY": "In-Unit Laundry",
-  "FIREPLACE": "Fireplace",
-  "FREE PARKING": "Private Parking",
-  "MAILROOM": "Mailroom",
-  "POOL": "Pool",
-  "PETS ALLOWED": "Pets Allowed",
-  "STUDY ROOMS": "Study Rooms",
-  "GYM": "Gym / Fitness",
-  "FURNISHED": "Furnished",
+  "IN UNIT LAUNDRY": "In-Unit Laundry",
+  "FIREPLACE":       "Fireplace",
+  "FREE PARKING":    "Private Parking",
+  "MAILROOM":        "Mailroom",
+  "POOL":            "Pool",
+  "PETS ALLOWED":    "Pets Allowed",
+  "STUDY ROOMS":     "Study Rooms",
+  "GYM":             "Gym / Fitness",
+  "FURNISHED":       "Furnished",
 };
 
 function AmenitiesTab({ listing }) {
@@ -729,7 +694,8 @@ export default function ListingModalInfo({ session, listing }) {
   const thirdImage = images[2] || images[1] || images[0] || null;
 
   // Address
-  const { street, cityStateZip } = parseAddress(listing.address);
+  const { street, cityStateZip: parsedCityStateZip } = parseAddress(listing.address);
+  const cityStateZip = listing.title ? listing.address : parsedCityStateZip;
 
   // Reviews
   const legitimateReviews = (listing.reviews || [])
@@ -850,20 +816,20 @@ export default function ListingModalInfo({ session, listing }) {
       <div className="bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* ── Photo Grid ── */}
-          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 h-[400px] overflow-hidden rounded-xl">
-            {/* Main image — 2/3 width */}
+          <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
+            {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
-              className="md:col-span-2 relative cursor-pointer h-full overflow-hidden rounded-l-xl"
+              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:max-w-[65%]"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
                 <img
                   src={coverImage}
                   alt={listing.address}
-                  className="w-full h-full object-cover"
+                  className="w-full h-auto md:w-auto md:h-full block"
                 />
               ) : (
-                <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
+                <div className="w-full aspect-[4/3] md:aspect-auto md:h-full md:w-[400px] bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
                   No photos available
                 </div>
               )}
@@ -890,11 +856,11 @@ export default function ListingModalInfo({ session, listing }) {
               </div>
             </div>
 
-            {/* Two stacked thumbnails — 1/3 width, hidden on mobile */}
-            <div className="hidden md:flex flex-col gap-2 h-full">
+            {/* Two stacked thumbnails — fill remaining width, desktop only */}
+            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
               {/* Top thumbnail */}
               <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl"
+                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {secondImage ? (
@@ -907,9 +873,9 @@ export default function ListingModalInfo({ session, listing }) {
                   <div className="w-full h-full bg-gray-200" />
                 )}
               </div>
-              {/* Bottom thumbnail with "View All" overlay */}
+              {/* Bottom thumbnail */}
               <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl"
+                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl bg-gray-100"
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {thirdImage ? (
@@ -944,7 +910,7 @@ export default function ListingModalInfo({ session, listing }) {
           )}
           <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{street}</h1>
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">{listing.title || street}</h1>
               {cityStateZip && (
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
               )}
@@ -1009,7 +975,13 @@ export default function ListingModalInfo({ session, listing }) {
               label="Sq Ft"
               value={getAreaRangeLabel(listing.unitTypes)}
             />
-            <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
+            <StatCell
+              label="Lease"
+              value={
+                leaseAvailabilityMap[listing.leaseAvailability] ||
+                listing.leaseAvailability
+              }
+            />
             <StatCell
               label="Rating"
               value={overallAvg ? `★ ${overallAvg}` : "—"}
@@ -1119,13 +1091,13 @@ export default function ListingModalInfo({ session, listing }) {
                 ×
               </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
               {images.map((src, index) => (
                 <img
                   key={`${src}-${index}`}
                   src={src}
                   alt={`Listing photo ${index + 1}`}
-                  className="w-full h-64 object-cover rounded-lg shadow"
+                  className="w-full h-auto rounded-lg shadow mb-4 break-inside-avoid block"
                   loading="lazy"
                 />
               ))}

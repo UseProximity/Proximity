@@ -1,5 +1,6 @@
 import Listing from "@/models/Listing";
 import connectMongo from "@/libs/mongoose";
+import { serializePlaceWalkMinutes } from "@/utils/listingFormatters";
 
 export async function GET() {
   try {
@@ -15,9 +16,7 @@ export async function GET() {
       owner: listing.owner ? { _id: listing.owner._id?.toString(), name: listing.owner.name } : null,
       createdAt: listing.createdAt?.toISOString() || null,
       updatedAt: listing.updatedAt?.toISOString() || null,
-      placeWalkMinutes: listing.placeWalkMinutes instanceof Map
-        ? Object.fromEntries(listing.placeWalkMinutes)
-        : (listing.placeWalkMinutes ?? {}),
+      placeWalkMinutes: serializePlaceWalkMinutes(listing.placeWalkMinutes),
       shuttleWalkMinutes: listing.shuttleWalkMinutes ?? null,
     }));
 

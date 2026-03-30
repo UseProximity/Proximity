@@ -34,17 +34,8 @@ import {
   getAreaRangeLabel,
   getRentRangeLabel,
   getUnitValuesLabel,
+  calcAge,
 } from "@/utils/listingFormatters";
-
-function calcAge(birthday) {
-  if (!birthday) return null;
-  const dob = new Date(birthday);
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const m = today.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-  return age;
-}
 
 // Mock Reviews Data
 const reviews = [

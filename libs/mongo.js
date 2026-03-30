@@ -18,8 +18,6 @@ let clientPromise;
 
 if (process.env.NODE_ENV === "development") {
   let globalWithMongo = global;
-  globalWithMongo._mongoClientPromise = undefined;
-
   if (!globalWithMongo._mongoClientPromise) {
     client = new MongoClient(uri, options);
     globalWithMongo._mongoClientPromise = client.connect();

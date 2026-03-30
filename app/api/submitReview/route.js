@@ -4,6 +4,7 @@ import connectMongo from "@/libs/mongoose";
 import Review from "@/models/Review";
 import User from "@/models/User";
 import Listing from "@/models/Listing";
+import mongoose from "mongoose";
 
 export async function POST(req) {
   try {
@@ -23,17 +24,18 @@ export async function POST(req) {
       valueRating,
     } = body;
 
-    if (
-      !rating ||
-      rating < 1 ||
-      rating > 5 ||
-      !comment ||
-      comment.trim().length < 5
-    ) {
-      return NextResponse.json(
-        { error: "Invalid rating or comment" },
-        { status: 400 }
-      );
+    if (!rating || rating < 1 || rating > 5 || !comment || comment.trim().length < 5) {
+      return NextResponse.json({ error: "Invalid rating or comment" }, { status: 400 });
+    }
+
+    if (!reviewedUserId && !listingId) {
+      return NextResponse.json({ error: "Must provide reviewedUserId or listingId" }, { status: 400 });
+    }
+    if (reviewedUserId && !mongoose.Types.ObjectId.isValid(reviewedUserId)) {
+      return NextResponse.json({ error: "Invalid reviewedUserId" }, { status: 400 });
+    }
+    if (listingId && !mongoose.Types.ObjectId.isValid(listingId)) {
+      return NextResponse.json({ error: "Invalid listingId" }, { status: 400 });
     }
 
     // Validate optional category ratings if provided
@@ -63,19 +65,10 @@ export async function POST(req) {
     await newReview.save();
 
     if (reviewedUserId) {
-      // add this new review to the corresponding user's reviews array
-      await User.updateOne(
-        { _id: reviewedUserId },
-        { $push: { reviews: newReview._id } }
-      );
+      await User.updateOne({ _id: reviewedUserId }, { $push: { reviews: newReview._id } });
     }
-
     if (listingId) {
-      // add this new review to the corresponding listing's reviews array
-      await Listing.updateOne(
-        { _id: listingId },
-        { $push: { reviews: newReview._id } }
-      );
+      await Listing.updateOne({ _id: listingId }, { $push: { reviews: newReview._id } });
     }
 
     return NextResponse.json(newReview);

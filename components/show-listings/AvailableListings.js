@@ -76,8 +76,10 @@ function MapPopupCard({
 function ListingCard({ listing, session, onCardClick }) {
   const imageUrl = listing.images?.[0];
   const imageCount = listing.images?.length || 0;
-  const [streetAddress, ...restParts] = listing.address.split(",");
-  const cityStateZip = restParts.join(",").trim();
+  const title = listing.title || listing.address.split(",")[0].trim();
+  const cityStateZip = listing.title
+    ? listing.address
+    : listing.address.replace(/^[^,]+,\s*/, "");
   const bedValues = listing.unitTypes
     .map((u) => u.bedrooms)
     .filter(Number.isFinite);
@@ -129,7 +131,7 @@ function ListingCard({ listing, session, onCardClick }) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="font-bold text-sm text-gray-900 leading-snug">
-              {streetAddress}
+              {title}
             </h3>
             {cityStateZip && (
               <p className="text-xs text-gray-500 font-normal mt-0.5">
@@ -226,7 +228,8 @@ export default function AvailableListings({
   const [routeActive, setRouteActive] = useState(false);
 
   /* ── Mobile UI state ── */
-  const [mobileListingsOpen, setMobileListingsOpen] = useState(false);
+  // "closed" = just bottom tab, "peek" = half-screen on load, "open" = full drawer
+  const [drawerState, setDrawerState] = useState("peek");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [mobileDraft, setMobileDraft] = useState(filters);
 
@@ -386,7 +389,7 @@ export default function AvailableListings({
           handleReset={handleReset}
           onListingSelect={(listing) => {
             setSelectedListing(listing);
-            setMobileListingsOpen(false);
+            setDrawerState("closed");
           }}
           selectedListingId={selectedListing?._id}
           searchLocation={searchLocation}
@@ -394,7 +397,7 @@ export default function AvailableListings({
         />
 
         {/* Map overlay card — shown when a pin is clicked and drawer is closed */}
-        {selectedListing && !mobileListingsOpen && (
+        {selectedListing && drawerState === "closed" && (
           <div className="absolute bottom-20 left-4 right-4 z-10 pointer-events-auto">
             <MapPopupCard
               listing={selectedListing}
@@ -458,9 +461,9 @@ export default function AvailableListings({
         </div>
 
         {/* Bottom: Arrow-up tab (full width, always visible when drawer is closed) */}
-        {!mobileListingsOpen && (
+        {drawerState === "closed" && (
           <button
-            onClick={() => setMobileListingsOpen(true)}
+            onClick={() => setDrawerState("open")}
             className="absolute bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl py-3 z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] flex items-center justify-center active:bg-gray-50"
             aria-label="View listings"
           >
@@ -469,23 +472,30 @@ export default function AvailableListings({
         )}
 
         {/* Tap-on-map backdrop to close listings drawer */}
-        {mobileListingsOpen && (
+        {drawerState === "open" && (
           <div
             className="absolute inset-0 z-[15]"
-            onClick={() => setMobileListingsOpen(false)}
+            onClick={() => setDrawerState("closed")}
           />
         )}
 
-        {/* Listings drawer (slides up from bottom) */}
+        {/* Listings drawer — 3 states: closed, peek (half), open (full) */}
         <div
-          className={`absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl z-20 flex flex-col transition-transform duration-300 ease-out ${
-            mobileListingsOpen ? "translate-y-0" : "translate-y-full"
-          }`}
-          style={{ maxHeight: "80vh" }}
+          className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl z-20 flex flex-col transition-transform duration-300 ease-out"
+          style={{
+            maxHeight: "80vh",
+            transform:
+              drawerState === "open"
+                ? "translateY(0)"
+                : drawerState === "peek"
+                ? "translateY(calc(100% - 45vh))"
+                : "translateY(100%)",
+          }}
         >
-          {/* Sticky header – swipe down to close */}
+          {/* Sticky header – tap to expand, swipe down to minimize */}
           <div
             className="flex-shrink-0 bg-white rounded-t-3xl sticky top-0 z-10"
+            onClick={() => { if (drawerState !== "open") setDrawerState("open"); }}
             onTouchStart={(e) => {
               e.currentTarget._touchStartY = e.touches[0].clientY;
             }}
@@ -493,7 +503,7 @@ export default function AvailableListings({
               const delta =
                 e.changedTouches[0].clientY -
                 (e.currentTarget._touchStartY || 0);
-              if (delta > 50) setMobileListingsOpen(false);
+              if (delta > 50) setDrawerState("closed");
             }}
           >
             {/* Drag handle */}
@@ -519,7 +529,7 @@ export default function AvailableListings({
                     listing={listing}
                     session={session}
                     onCardClick={(id) => {
-                      setMobileListingsOpen(false);
+                      setDrawerState("closed");
                       handleListingClick(id);
                     }}
                   />

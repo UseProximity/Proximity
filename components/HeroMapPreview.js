@@ -129,7 +129,10 @@ export default function HeroMapPreview({
       if (map._heroMarkers) map._heroMarkers.forEach((m) => m.remove());
       map._heroMarkers = [];
 
-      const valid = listings.filter((l) => l.longitude && l.latitude);
+      // Sort north-first so southern pins are added last and render on top
+      const valid = [...listings]
+        .filter((l) => l.longitude && l.latitude)
+        .sort((a, b) => b.latitude - a.latitude);
 
       valid.forEach((listing) => {
         const rentDisplay = getRentRangeDisplay(listing.unitTypes);

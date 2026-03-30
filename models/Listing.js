@@ -12,6 +12,10 @@ const unitTypeSchema = new mongoose.Schema(
 );
 
 const listingSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    default: null,
+  },
   address: {
     type: String,
     required: true,
@@ -49,11 +53,6 @@ const listingSchema = new mongoose.Schema({
     max: 5,
   },
   reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: "Review" }],
-
-  campusWalkMinutes: {
-    type: Number,
-    default: null,
-  },
 
   // Map of place name → walking minutes, e.g. { "Olin Library": 8, ... }
   placeWalkMinutes: {
@@ -93,13 +92,28 @@ const listingSchema = new mongoose.Schema({
   minArea: { type: Number, default: null },
   maxArea: { type: Number, default: null },
 
-  // Engagement metrics
+  amenities: [{ type: String }],
+
   numClicks: { type: Number, default: 0, min: 0 },
   numSaves: { type: Number, default: 0, min: 0 },
 
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
+  },
+  landlord: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+    validate: {
+      validator: async function (userId) {
+        if (userId == null) return true;
+        const User = mongoose.model("User");
+        const user = await User.findById(userId).select("role").lean();
+        return user && (user.role === "landlord" || user.role === "super");
+      },
+      message: "Landlord must be a user with role 'landlord' or 'super'.",
+    },
   },
   createdAt: {
     type: Date,
