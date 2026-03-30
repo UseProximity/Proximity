@@ -14,14 +14,9 @@ export async function GET() {
 
     await connectMongo();
 
-    // 1️⃣ Find all listings owned by this user
-    const userListings = await Listing.find({ owner: session.user.id }).select(
-      "_id"
-    );
+    const userListings = await Listing.find({ owner: session.user.id }).select("_id");
     const listingIds = userListings.map((l) => l._id);
 
-    // 2️⃣ Find reviews that are pending legitimacy
-    // and are either about this user OR about one of their listings
     const pendingReviews = await Review.find({
       legitimacy: false,
       $or: [
@@ -40,6 +35,21 @@ export async function GET() {
   }
 }
 
+// Verify the current user is allowed to act on this review (owns the listing or is the reviewed user)
+async function verifyReviewOwnership(reviewId, userId) {
+  const review = await Review.findById(reviewId).lean();
+  if (!review) return { error: "Review not found", status: 404 };
+
+  if (review.listing) {
+    const listing = await Listing.findById(review.listing).select("owner").lean();
+    if (listing && String(listing.owner) === String(userId)) return { review };
+  }
+  if (review.reviewedUser && String(review.reviewedUser) === String(userId)) {
+    return { review };
+  }
+  return { error: "Forbidden", status: 403 };
+}
+
 export async function PATCH(request) {
   try {
     const session = await auth();
@@ -50,26 +60,17 @@ export async function PATCH(request) {
     const { reviewId, reviewedType } = await request.json();
 
     if (reviewedType !== "user" && reviewedType !== "listing") {
-      return NextResponse.json(
-        { error: "Invalid reviewedType" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid reviewedType" }, { status: 400 });
     }
 
     await connectMongo();
 
-    // Update the review's legitimacy to true
-    const review = await Review.findByIdAndUpdate(
-      reviewId,
-      { legitimacy: true },
-      { new: true } // return the updated document with legitimacy set to true
-    );
+    const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
+    if (error) return NextResponse.json({ error }, { status });
 
-    if (!review) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
-    }
+    review.legitimacy = true;
+    await Review.findByIdAndUpdate(reviewId, { legitimacy: true });
 
-    // If the review is for a listing, update the listing's rating and numReviews
     if (reviewedType === "listing" && review.listing) {
       const listing = await Listing.findById(review.listing);
       if (listing) {
@@ -81,7 +82,6 @@ export async function PATCH(request) {
         await listing.save();
       }
     } else if (reviewedType === "user" && review.reviewedUser) {
-      // If the review is for a user, update the user's rating and numReviews
       const user = await User.findById(review.reviewedUser);
       if (user) {
         user.numReviews += 1;
@@ -109,39 +109,24 @@ export async function DELETE(request) {
     const { reviewId, reviewedType } = await request.json();
 
     if (reviewedType !== "user" && reviewedType !== "listing") {
-      return NextResponse.json(
-        { error: "Invalid reviewedType" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid reviewedType" }, { status: 400 });
     }
 
     await connectMongo();
 
-    // Delete the review
-    const review = await Review.findByIdAndDelete(reviewId);
+    const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
+    if (error) return NextResponse.json({ error }, { status });
 
-    if (!review) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
-    }
+    await Review.findByIdAndDelete(reviewId);
 
-    // If the review was for a listing, delete it from the listing's reviews array only (no need to update rating/numReviews cause legitimacy was false)
     if (reviewedType === "listing" && review.listing) {
-      const listing = await Listing.findById(review.listing);
-      if (listing) {
-        listing.reviews.pull(review._id);
-        await listing.save();
-      }
+      await Listing.findByIdAndUpdate(review.listing, { $pull: { reviews: review._id } });
     } else if (reviewedType === "user" && review.reviewedUser) {
-      // If the review was for a user, delete it from the user's reviews array only (no need to update rating/numReviews cause legitimacy was false)
-      const user = await User.findById(review.reviewedUser);
-      if (user) {
-        user.reviews.pull(review._id);
-        await user.save();
-      }
+      await User.findByIdAndUpdate(review.reviewedUser, { $pull: { reviews: review._id } });
     }
     return NextResponse.json({});
   } catch (error) {
-    console.error("Error updating review legitimacy:", error);
+    console.error("Error deleting review:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

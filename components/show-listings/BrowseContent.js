@@ -6,22 +6,6 @@ import AvailableListings from "@/components/show-listings/AvailableListings";
 import TopFilterBar from "@/components/show-listings/TopFilterBar";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 
-const WASHU_COORDS = { lat: 38.6496, lng: -90.3035 };
-
-function calculateDistance(lat1, lng1, lat2, lng2) {
-  const R = 3959;
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLng = (lng2 - lng1) * (Math.PI / 180);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) *
-      Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
 const DEFAULT_FILTERS = {
   minRent: "",
   maxRent: "",
@@ -129,8 +113,7 @@ export default function BrowseContent({ session }) {
         !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
 
       // Walking distance to campus — use the minimum walk time among all
-      // non-grocery WashU places stored in placeWalkMinutes, fall back to
-      // campusWalkMinutes, then straight-line approximation.
+      // non-grocery WashU places stored in placeWalkMinutes.
       let matchDistance = true;
       if (filters.distance) {
         const maxMinutes = parseFloat(filters.distance);
@@ -140,13 +123,7 @@ export default function BrowseContent({ session }) {
         )
           .map((p) => pwm?.[p.name])
           .filter((m) => m != null);
-        if (nonGroceryMins.length > 0) {
-          matchDistance = Math.min(...nonGroceryMins) <= maxMinutes;
-        } else if (listing.campusWalkMinutes != null) {
-          matchDistance = listing.campusWalkMinutes <= maxMinutes;
-        } else {
-          matchDistance = false;
-        }
+        matchDistance = nonGroceryMins.length > 0 && Math.min(...nonGroceryMins) <= maxMinutes;
       }
 
       // Walking time to nearest shuttle stop (use pre-computed DB value)
@@ -214,52 +191,24 @@ export default function BrowseContent({ session }) {
       // Amenities (all selected must match)
       let matchAmenities = true;
       if (filters.amenities && filters.amenities.length > 0) {
+        // Maps canonical snake_case filter value → all accepted DB values (snake_case + legacy ALL_CAPS)
+        const AMENITY_ALIASES = {
+          dishwasher:      ["dishwasher", "DISHWASHER"],
+          in_unit_laundry: ["in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
+          ac_heating:      ["ac_heating"],
+          mailroom:        ["mailroom", "MAILROOM"],
+          pets_allowed:    ["pets_allowed", "PETS ALLOWED"],
+          extra_storage:   ["extra_storage", "EXTRA STORAGE"],
+          fireplace:       ["fireplace", "FIREPLACE"],
+          private_parking: ["private_parking", "FREE PARKING"],
+          pool:            ["pool", "POOL"],
+          study_room:      ["study_room", "STUDY ROOMS"],
+          gym:             ["gym", "GYM"],
+        };
+        const arr = listing.amenities || [];
         matchAmenities = filters.amenities.every((amenity) => {
-          switch (amenity) {
-            case "gym":
-              return combined.includes("gym") || combined.includes("fitness");
-            case "studyRooms":
-              return (
-                combined.includes("study room") ||
-                combined.includes("study lounge") ||
-                combined.includes("study_room")
-              );
-            case "inUnitLaundry":
-              return (
-                combined.includes("in-unit laundry") ||
-                combined.includes("in unit laundry") ||
-                combined.includes("washer") ||
-                combined.includes("dryer") ||
-                combined.includes("in_unit_laundry")
-              );
-            case "freeParking":
-              return (
-                combined.includes("free parking") ||
-                combined.includes("parking included") ||
-                combined.includes("parking") ||
-                combined.includes("private_parking")
-              );
-            case "petsAllowed":
-              return (
-                combined.includes("pet") || combined.includes("pets_allowed")
-              );
-            case "dishwasher":
-              return combined.includes("dishwasher");
-            case "extraStorage":
-              return (
-                combined.includes("storage") ||
-                combined.includes("extra storage") ||
-                combined.includes("extra_storage")
-              );
-            case "fireplace":
-              return combined.includes("fireplace");
-            case "mailroom":
-              return combined.includes("mailroom");
-            case "pool":
-              return combined.includes("pool");
-            default:
-              return true;
-          }
+          const aliases = AMENITY_ALIASES[amenity] ?? [amenity];
+          return aliases.some((v) => arr.includes(v));
         });
       }
 

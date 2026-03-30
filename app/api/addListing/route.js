@@ -3,30 +3,7 @@ import User from "@/models/User";
 import Listing from "@/models/Listing";
 import connectMongo from "@/libs/mongoose";
 import { auth } from "@/auth";
-import { WASHU_PLACES, CAMPUS, SHUTTLE_STOPS } from "@/utils/washuPlaces";
-
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-async function fetchWalkMinutes(lat, lng, destLat, destLng) {
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  const origin = `${lng},${lat}`;
-  const dest = `${destLng},${destLat}`;
-  const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${origin};${dest}?access_token=${token}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  const seconds = data.routes?.[0]?.duration ?? null;
-  return seconds != null ? Math.round(seconds / 60) : null;
-}
+import { fetchAllWalkTimes } from "@/utils/walkTimes";
 
 async function geocodeAddress(address) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -40,55 +17,6 @@ async function geocodeAddress(address) {
   return { latitude: lat, longitude: lng };
 }
 
-async function fetchAllWalkTimes(latitude, longitude) {
-  try {
-    const campusWalkMinutes = await fetchWalkMinutes(
-      latitude,
-      longitude,
-      CAMPUS.lat,
-      CAMPUS.lng
-    );
-
-    const placeResults = await Promise.all(
-      WASHU_PLACES.map(async (place) => {
-        const minutes = await fetchWalkMinutes(
-          latitude,
-          longitude,
-          place.lat,
-          place.lng
-        );
-        return [place.name, minutes];
-      })
-    );
-    const placeWalkMinutes = Object.fromEntries(
-      placeResults.filter(([, m]) => m != null)
-    );
-
-    // Only check the 5 nearest stops to avoid rate limiting
-    const nearest5 = [...SHUTTLE_STOPS]
-      .sort(
-        (a, b) =>
-          haversineKm(latitude, longitude, a.lat, a.lng) -
-          haversineKm(latitude, longitude, b.lat, b.lng)
-      )
-      .slice(0, 5);
-    const shuttleTimes = await Promise.all(
-      nearest5.map((s) => fetchWalkMinutes(latitude, longitude, s.lat, s.lng))
-    );
-    const validShuttle = shuttleTimes.filter((m) => m != null);
-    const shuttleWalkMinutes =
-      validShuttle.length > 0 ? Math.min(...validShuttle) : null;
-
-    return { campusWalkMinutes, placeWalkMinutes, shuttleWalkMinutes };
-  } catch (err) {
-    console.error("[walkTimes] Failed to fetch walk times:", err?.message);
-    return {
-      campusWalkMinutes: null,
-      placeWalkMinutes: {},
-      shuttleWalkMinutes: null,
-    };
-  }
-}
 
 export async function POST(req) {
   try {
@@ -124,8 +52,6 @@ export async function POST(req) {
       maxArea,
     } = body;
 
-    console.log("Unit Types Received:", unitTypes);
-
     // Validate required fields
     if (
       !address?.trim() ||
@@ -147,8 +73,6 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid unit type" }, { status: 400 });
     }
 
-    console.log("All required fields are valid.");
-
     // Allow import script to bypass auth using a shared secret
     const importSecret = process.env.IMPORT_SECRET;
     const providedSecret = req.headers.get("x-import-secret");
@@ -167,8 +91,6 @@ export async function POST(req) {
       }
     }
 
-    console.log("Authentication successful.");
-
     await connectMongo();
 
     // Geocode address if lat/lng not provided
@@ -184,15 +106,21 @@ export async function POST(req) {
       }
       resolvedLat = coords.latitude;
       resolvedLng = coords.longitude;
-      console.log(`Geocoded "${address}" → ${resolvedLat}, ${resolvedLng}`);
     }
 
     // Calculate real walking times to campus + all WashU places + shuttle stops via Mapbox
-    const { campusWalkMinutes, placeWalkMinutes, shuttleWalkMinutes } =
-      await fetchAllWalkTimes(resolvedLat, resolvedLng);
+    let placeWalkMinutes = {};
+    let shuttleWalkMinutes = null;
+    try {
+      ({ placeWalkMinutes, shuttleWalkMinutes } = await fetchAllWalkTimes(resolvedLat, resolvedLng));
+    } catch (err) {
+      console.error("[walkTimes] Failed to fetch walk times:", err?.message);
+    }
 
     // Create New Listing
+    const autoTitle = address.split(",")[0].trim();
     const newListing = await Listing.create({
+      title: autoTitle,
       address,
       longitude: resolvedLng,
       latitude: resolvedLat,
@@ -201,7 +129,6 @@ export async function POST(req) {
       leaseType: leaseType || "standard",
       images: images || [],
       owner: ownerId || undefined,
-      campusWalkMinutes,
       placeWalkMinutes,
       shuttleWalkMinutes,
       // Extra fields
@@ -225,8 +152,6 @@ export async function POST(req) {
       minArea: minArea ?? null,
       maxArea: maxArea ?? null,
     });
-
-    console.log("New listing created with ID:", newListing._id);
 
     if (ownerId) {
       const user = await User.findById(ownerId);

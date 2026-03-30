@@ -4,6 +4,38 @@ import { auth } from "@/auth";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
 
+function serializeListing(l) {
+  return {
+    _id: l._id?.toString(),
+    address: l.address,
+    unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
+    leaseAvailability: l.leaseAvailability,
+    leaseStructure: l.leaseStructure,
+    moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
+    homeType: l.homeType,
+    amenities: Array.isArray(l.amenities) ? l.amenities : [],
+    furnished: l.furnished,
+    utilitiesIncluded: l.utilitiesIncluded ?? false,
+    subleaseFriendly: l.subleaseFriendly ?? false,
+    distanceToCampusKm: l.distanceToCampusKm,
+    minRent: l.minRent,
+    maxRent: l.maxRent,
+    minBathrooms: l.minBathrooms,
+    maxBathrooms: l.maxBathrooms,
+    minBedrooms: l.minBedrooms,
+    maxBedrooms: l.maxBedrooms,
+    minArea: l.minArea,
+    maxArea: l.maxArea,
+    images: Array.isArray(l.images) ? l.images : [],
+    rating: l.rating ?? 0,
+    numReviews: l.numReviews ?? 0,
+    owner: l.owner?.toString?.() || null,
+    latitude: l.latitude,
+    longitude: l.longitude,
+    createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+  };
+}
+
 export async function GET() {
   try {
     const session = await auth();
@@ -23,100 +55,13 @@ export async function GET() {
       return Response.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Serialize populated favorites
-    const safeFavorites = (user.favorites || []).map((l) => ({
-      _id: l._id?.toString(),
-      address: l.address,
-      unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-      leaseAvailability: l.leaseAvailability,
-      leaseStructure: l.leaseStructure,
-      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
-      homeType: l.homeType,
-      amenities: Array.isArray(l.amenities) ? l.amenities : [],
-      furnished: l.furnished,
-      utilitiesIncluded: l.utilitiesIncluded ?? false,
-      subleaseFriendly: l.subleaseFriendly ?? false,
-      distanceToCampusKm: l.distanceToCampusKm,
-      minRent: l.minRent,
-      maxRent: l.maxRent,
-      minBathrooms: l.minBathrooms,
-      maxBathrooms: l.maxBathrooms,
-      minBedrooms: l.minBedrooms,
-      maxBedrooms: l.maxBedrooms,
-      minArea: l.minArea,
-      maxArea: l.maxArea,
-      images: Array.isArray(l.images) ? l.images : [],
-      rating: l.rating ?? 0,
-      numReviews: l.numReviews ?? 0,
-      owner: l.owner?.toString?.() || null,
-      latitude: l.latitude,
-      longitude: l.longitude,
-      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
-    }));
+    const safeFavorites = (user.favorites || []).map(serializeListing);
     const favoritesIds = safeFavorites.map((f) => f._id);
 
-    // Serialize populated listings
-    const safeListings = (user.listings || []).map((l) => ({
-      _id: l._id?.toString(),
-      address: l.address,
-      unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-      leaseAvailability: l.leaseAvailability,
-      leaseStructure: l.leaseStructure,
-      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
-      homeType: l.homeType,
-      amenities: Array.isArray(l.amenities) ? l.amenities : [],
-      furnished: l.furnished,
-      utilitiesIncluded: l.utilitiesIncluded ?? false,
-      subleaseFriendly: l.subleaseFriendly ?? false,
-      distanceToCampusKm: l.distanceToCampusKm,
-      minRent: l.minRent,
-      maxRent: l.maxRent,
-      minBathrooms: l.minBathrooms,
-      maxBathrooms: l.maxBathrooms,
-      minBedrooms: l.minBedrooms,
-      maxBedrooms: l.maxBedrooms,
-      minArea: l.minArea,
-      maxArea: l.maxArea,
-      images: Array.isArray(l.images) ? l.images : [],
-      rating: l.rating ?? 0,
-      numReviews: l.numReviews ?? 0,
-      owner: l.owner?.toString?.() || null,
-      latitude: l.latitude,
-      longitude: l.longitude,
-      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
-    }));
+    const safeListings = (user.listings || []).map(serializeListing);
     const listingsIds = safeListings.map((l) => l._id);
 
-    // Serialize populated contacted
-    const safeContacted = (user.contacted || []).filter(Boolean).map((l) => ({
-      _id: l._id?.toString(),
-      address: l.address,
-      unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-      leaseAvailability: l.leaseAvailability,
-      leaseStructure: l.leaseStructure,
-      moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
-      homeType: l.homeType,
-      amenities: Array.isArray(l.amenities) ? l.amenities : [],
-      furnished: l.furnished,
-      utilitiesIncluded: l.utilitiesIncluded ?? false,
-      subleaseFriendly: l.subleaseFriendly ?? false,
-      distanceToCampusKm: l.distanceToCampusKm,
-      minRent: l.minRent,
-      maxRent: l.maxRent,
-      minBathrooms: l.minBathrooms,
-      maxBathrooms: l.maxBathrooms,
-      minBedrooms: l.minBedrooms,
-      maxBedrooms: l.maxBedrooms,
-      minArea: l.minArea,
-      maxArea: l.maxArea,
-      images: Array.isArray(l.images) ? l.images : [],
-      rating: l.rating ?? 0,
-      numReviews: l.numReviews ?? 0,
-      owner: l.owner?.toString?.() || null,
-      latitude: l.latitude,
-      longitude: l.longitude,
-      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
-    }));
+    const safeContacted = (user.contacted || []).filter(Boolean).map(serializeListing);
 
     const contactedIds = safeContacted.map((l) => l._id);
 
