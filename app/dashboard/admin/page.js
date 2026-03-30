@@ -38,7 +38,7 @@ const SCHEMAS = {
     { key: "leaseStructure",   label: "Lease Structure",   type: "enum",    options: ["individual", "joint"] },
     { key: "moveInDate",       label: "Move-in Date",      type: "text"     },
     { key: "furnished",        label: "Furnished",         type: "boolean"  },
-    { key: "utilitiesIncluded",label: "Utilities Included",type: "boolean"  },
+    { key: "utilitiesIncluded",label: "Utilities Included",type: "multi-enum", options: ["water", "sewer", "trash", "internet", "electric", "gas", "hotWater", "yardCare"] },
     { key: "subleaseFriendly", label: "Sublease Friendly", type: "boolean"  },
     { key: "unavailable",      label: "Unavailable",       type: "boolean"  },
     { key: "minRent",          label: "Min Rent",          type: "number"   },

@@ -78,7 +78,10 @@ const listingSchema = new mongoose.Schema({
   homeType: { type: String, default: "apartment" }, // "house" | "apartment" | "condo" | "townhouse"
   furnished: { type: Boolean, default: false },
   moveInDate: { type: String, default: null },
-  utilitiesIncluded: { type: Boolean, default: false },
+  utilitiesIncluded: {
+    type: [{ type: String, enum: ["water", "sewer", "trash", "internet", "electric", "gas", "hotWater", "yardCare"] }],
+    default: [],
+  },
   subleaseFriendly: { type: Boolean, default: false },
   unavailable: { type: Boolean, default: false },
 

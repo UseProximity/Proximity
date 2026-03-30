@@ -15,7 +15,7 @@ function serializeListing(l) {
     homeType: l.homeType,
     amenities: Array.isArray(l.amenities) ? l.amenities : [],
     furnished: l.furnished,
-    utilitiesIncluded: l.utilitiesIncluded ?? false,
+    utilitiesIncluded: Array.isArray(l.utilitiesIncluded) ? l.utilitiesIncluded : [],
     subleaseFriendly: l.subleaseFriendly ?? false,
     distanceToCampusKm: l.distanceToCampusKm,
     minRent: l.minRent,

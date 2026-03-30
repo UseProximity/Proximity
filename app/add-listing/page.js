@@ -19,7 +19,7 @@ export default function AddListing() {
     homeType: "",
     amenities: [],
     furnished: "",
-    utilitiesIncluded: false,
+    utilitiesIncluded: [],
     subleaseFriendly: false,
     images: [],
   });
@@ -331,7 +331,7 @@ export default function AddListing() {
         latitude: Number(formData.latitude),
         moveInDate: formData.moveInDate || undefined,
         amenities: formData.amenities || [],
-        utilitiesIncluded: !!formData.utilitiesIncluded,
+        utilitiesIncluded: Array.isArray(formData.utilitiesIncluded) ? formData.utilitiesIncluded : [],
         subleaseFriendly: !!formData.subleaseFriendly,
         images: [],
       };
@@ -403,7 +403,7 @@ export default function AddListing() {
         homeType: "",
         amenities: [],
         furnished: "",
-        utilitiesIncluded: false,
+        utilitiesIncluded: [],
         subleaseFriendly: false,
         images: [],
       });
@@ -749,16 +749,39 @@ export default function AddListing() {
 
           {/* Utilities Included */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <input
-                type="checkbox"
-                name="utilitiesIncluded"
-                checked={formData.utilitiesIncluded}
-                onChange={handleCheckboxChange}
-                className="h-4 w-4"
-              />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Utilities Included
             </label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: "water", label: "Water" },
+                { value: "sewer", label: "Sewer" },
+                { value: "trash", label: "Trash" },
+                { value: "internet", label: "Internet" },
+                { value: "electric", label: "Electric" },
+                { value: "gas", label: "Gas" },
+                { value: "hotWater", label: "Hot Water" },
+                { value: "yardCare", label: "Yard Care" },
+              ].map((utility) => (
+                <label key={utility.value} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.utilitiesIncluded.includes(utility.value)}
+                    onChange={(e) => {
+                      const current = formData.utilitiesIncluded || [];
+                      setFormData({
+                        ...formData,
+                        utilitiesIncluded: e.target.checked
+                          ? [...current, utility.value]
+                          : current.filter((u) => u !== utility.value),
+                      });
+                    }}
+                    className="h-4 w-4"
+                  />
+                  {utility.label}
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Sublease Friendly */}

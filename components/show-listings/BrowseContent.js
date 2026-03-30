@@ -233,7 +233,7 @@ export default function BrowseContent({ session }) {
           combined.includes("utilities included") ||
           combined.includes("utilities are included") ||
           combined.includes("all utilities") ||
-          listing?.utilitiesIncluded === true;
+          (Array.isArray(listing?.utilitiesIncluded) && listing.utilitiesIncluded.length > 0);
       }
 
       // Sublease friendly
