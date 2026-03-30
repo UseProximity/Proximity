@@ -627,14 +627,43 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
     setUploading(true);
     setPanelError(null);
     try {
-      const fd = new FormData();
-      fd.append("listingId", listingId);
-      fd.append("db", db || "dev");
-      for (const f of files) fd.append("files", f);
-      const res = await fetch("/api/upload", { method: "PATCH", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setImages((prev) => [...prev, ...(data.urls || [])]);
+      // Step 1: get presigned PUT URLs from the server
+      const presignRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId,
+          db: db || "dev",
+          files: files.map((f) => ({ name: f.name, type: f.type })),
+        }),
+      });
+      const presignData = await presignRes.json();
+      if (!presignRes.ok) throw new Error(presignData.error || `Presign failed (HTTP ${presignRes.status})`);
+
+      // Step 2: upload each file directly to R2 (bypasses Vercel size limit)
+      await Promise.all(
+        presignData.presigned.map(({ uploadUrl }, i) =>
+          fetch(uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": files[i].type },
+            body: files[i],
+          }).then((r) => {
+            if (!r.ok) throw new Error(`R2 upload failed for "${files[i].name}" (HTTP ${r.status})`);
+          })
+        )
+      );
+
+      // Step 3: tell the server which URLs were successfully uploaded
+      const publicUrls = presignData.presigned.map((p) => p.publicUrl);
+      const confirmRes = await fetch("/api/upload", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, db: db || "dev", urls: publicUrls }),
+      });
+      const confirmData = await confirmRes.json();
+      if (!confirmRes.ok) throw new Error(confirmData.error || `Failed to save images (HTTP ${confirmRes.status})`);
+
+      setImages((prev) => [...prev, ...publicUrls]);
     } catch (e) {
       setPanelError(e.message);
     } finally {
