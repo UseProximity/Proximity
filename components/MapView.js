@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { useRouter } from "next/navigation";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -227,13 +228,15 @@ export default function MapView({
   selectedListingId,
   searchLocation = null,
   isActive = true,
+  heroMode = false,
 }) {
+  const router = useRouter();
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showExplore, setShowExplore] = useState(false);
   const [showCrimeMap, setShowCrimeMap] = useState(false);
   const [activeRouteId, setActiveRouteId] = useState(null);
-  const hasFitRef = useRef(false);
   const [crimeData, setCrimeData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isRealCrimeData, setIsRealCrimeData] = useState(false);
@@ -479,9 +482,11 @@ export default function MapView({
         container: mapContainerRef.current,
         style: "mapbox://styles/mapbox/streets-v11",
         center: [-90.3035, 38.6495],
-        zoom: 15.5, // Adjusted for optimal WashU view
+        zoom: 15.5,
       });
-      mapRef.current.addControl(new mapboxgl.NavigationControl());
+      if (!heroMode) {
+        mapRef.current.addControl(new mapboxgl.NavigationControl());
+      }
 
       // Resize map after initialization to ensure proper fit
       mapRef.current.once("load", () => {
@@ -491,9 +496,20 @@ export default function MapView({
       });
     }
 
-    // Expose route helpers (only for the active/visible map)
-    window.showRouteToCampus = showRouteToCampus;
-    window.hideRoute = hideRoute;
+    if (!heroMode) {
+      // Expose route helpers (only for the active/visible map)
+      window.showRouteToCampus = showRouteToCampus;
+      window.hideRoute = hideRoute;
+    }
+
+    // Hero mode: show Explore button on first user interaction
+    const container = mapContainerRef.current;
+    const onUserInput = heroMode ? () => setShowExplore(true) : null;
+    if (heroMode && onUserInput) {
+      container.addEventListener("mousedown", onUserInput, { once: true });
+      container.addEventListener("touchstart", onUserInput, { once: true });
+      container.addEventListener("wheel", onUserInput, { once: true });
+    }
 
     // Handle window resize
     const handleResize = () => {
@@ -505,9 +521,14 @@ export default function MapView({
     window.addEventListener("resize", handleResize);
 
     return () => {
-      // Remove global helpers
-      delete window.showRouteToCampus;
-      delete window.hideRoute;
+      if (!heroMode) {
+        delete window.showRouteToCampus;
+        delete window.hideRoute;
+      } else if (onUserInput) {
+        container.removeEventListener("mousedown", onUserInput);
+        container.removeEventListener("touchstart", onUserInput);
+        container.removeEventListener("wheel", onUserInput);
+      }
 
       // Remove resize listener
       window.removeEventListener("resize", handleResize);
@@ -518,7 +539,7 @@ export default function MapView({
         mapRef.current = null;
       }
     };
-  }, [isActive, showRouteToCampus, hideRoute]);
+  }, [isActive, heroMode, showRouteToCampus, hideRoute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Separate effect: update markers and layers without recreating/removing the map itself.
   useEffect(() => {
@@ -532,16 +553,11 @@ export default function MapView({
     }
     map.markers = [];
 
-    listings.forEach((listing) => {
-      if (!listing.longitude || !listing.latitude) return;
+    // Sort north-first so southern pins are added last and render on top
+    const sortedListings = [...listings].sort((a, b) => b.latitude - a.latitude);
 
-      // Calculate distance to campus
-      const distanceToCampus = calculateDistance(
-        listing.latitude,
-        listing.longitude,
-        WASHU_CAMPUS_CENTER.latitude,
-        WASHU_CAMPUS_CENTER.longitude
-      ).toFixed(1);
+    sortedListings.forEach((listing) => {
+      if (!listing.longitude || !listing.latitude) return;
 
       const starRating = Math.min(Math.max(Math.round(listing.rating || 5), 1), 5);
       const markerEl = document.createElement("div");
@@ -555,15 +571,18 @@ export default function MapView({
         .addTo(map);
       marker._listingId = listing._id;
       marker._starRating = starRating;
-      markerEl.addEventListener("click", () => {
-        onListingSelect?.(listing);
-      });
+      if (!heroMode) {
+        markerEl.addEventListener("click", () => {
+          onListingSelect?.(listing);
+        });
+      } else {
+        markerEl.style.cursor = "default";
+      }
       map.markers.push(marker);
     });
 
-    // On first load, zoom to fit the cluster of listings
-    if (!hasFitRef.current && listings.length > 0) {
-      hasFitRef.current = true;
+    // Zoom to fit all visible listings whenever the listings set changes
+    if (listings.length > 0) {
       const valid = listings.filter((l) => l.longitude && l.latitude);
       const bounds = computeBoundsExcludingOutliers(valid);
       if (bounds) {
@@ -763,9 +782,9 @@ export default function MapView({
     };
   }, [isActive, listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
 
-  // Sync active marker icon when selectedListingId changes
+  // Sync active marker icon when selectedListingId changes (browse mode only)
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || heroMode) return;
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
@@ -849,6 +868,23 @@ export default function MapView({
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
+      {heroMode && (
+        <div
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"
+          style={{
+            opacity: showExplore ? 1 : 0,
+            transform: `translateX(-50%) translateY(${showExplore ? "0" : "12px"})`,
+            pointerEvents: showExplore ? "auto" : "none",
+          }}
+        >
+          <button
+            onClick={() => router.push("/browse")}
+            className="px-6 py-3 bg-white text-gray-900 font-semibold text-sm rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 hover:shadow-xl transition-all duration-150"
+          >
+            Explore Map
+          </button>
+        </div>
+      )}
     </div>
   );
 }
