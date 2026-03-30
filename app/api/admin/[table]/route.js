@@ -95,3 +95,51 @@ export async function PATCH(req, { params }) {
   if (!updated) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json(JSON.parse(JSON.stringify(updated)));
 }
+
+export async function POST(req, { params }) {
+  const session = await requireSuper();
+  if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
+
+  const { table } = await params;
+  const db = new URL(req.url).searchParams.get("db") || "default";
+  const Model = await getModel(table, db);
+  if (!Model) return Response.json({ error: "Unknown table or DB not configured" }, { status: 404 });
+
+  try {
+    const body = await req.json();
+    const { fields } = body;
+
+    // Listings go through the addListing pipeline (validation, geocoding, walk times)
+    if (table.toLowerCase() === "listings") {
+      const importSecret = process.env.IMPORT_SECRET;
+      if (!importSecret) {
+        return Response.json({ error: "IMPORT_SECRET env var not configured" }, { status: 500 });
+      }
+      const origin = new URL(req.url).origin;
+      const listingRes = await fetch(`${origin}/api/addListing`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-import-secret": importSecret,
+        },
+        body: JSON.stringify(fields || {}),
+      });
+      const listingData = await listingRes.json();
+      if (!listingRes.ok) {
+        return Response.json({ error: listingData.error || "Failed to create listing" }, { status: listingRes.status });
+      }
+      return Response.json(listingData.listing, { status: 201 });
+    }
+
+    // Strip immutable / auto-managed fields
+    const { _id, __v, createdAt, updatedAt, ...safeFields } = fields || {};
+
+    const doc = new Model(safeFields);
+    await doc.save();
+
+    return Response.json(JSON.parse(JSON.stringify(doc.toObject())), { status: 201 });
+  } catch (err) {
+    console.error(`[admin POST] table=${table}`, err);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

@@ -18,7 +18,7 @@ import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 
-const HeroMapPreview = dynamic(() => import("@/components/HeroMapPreview"), {
+const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
 });
 
@@ -149,7 +149,7 @@ function HeroMapSection() {
         <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
           {/* Real Mapbox map, desaturated */}
           <div className="absolute inset-0">
-            <HeroMapPreview listings={previewListings} />
+            <MapView listings={previewListings} heroMode={true} />
           </div>
 
           {/* Left gradient — blends map into hero bg (desktop only) */}

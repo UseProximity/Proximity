@@ -23,35 +23,22 @@ export default function ModalListing({ isOpen, onClose, children }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden"
+      className="fixed inset-0 z-[60] flex items-start md:items-center justify-center bg-black/60 backdrop-blur-sm overflow-hidden p-4 pt-[91px] md:pt-4"
       onClick={onClose}
     >
       <div
-        className="bg-white shadow-2xl border border-gray-100 relative w-full max-w-6xl h-screen overflow-y-auto"
-        onClick={(e) => {
-          // Prevent click from bubbling to the overlay
-          e.stopPropagation();
-        }}
-        onWheel={(e) => {
-          // Prevent wheel events from bubbling up to parent elements (like the map)
-          e.stopPropagation();
-        }}
-        onTouchMove={(e) => {
-          // Prevent touch scrolling from affecting the background
-          e.stopPropagation();
-        }}
-        onScroll={(e) => {
-          // Prevent scroll events from bubbling up
-          e.stopPropagation();
-        }}
+        className="bg-white rounded-xl shadow-2xl border border-gray-100 relative flex flex-col w-full max-w-6xl max-h-[calc(100dvh-107px)] md:max-h-[95vh]"
+        onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-[calc(env(safe-area-inset-top)+3.25rem)] right-[calc(env(safe-area-inset-right)+1.25rem)] sm:top-3 sm:right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl z-10 w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-600 hover:bg-white/80 text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>
-        <div className="w-full p-6 pt-[calc(env(safe-area-inset-top)+4rem)] sm:pt-6">
+        <div className="w-full px-6 pb-6 overflow-y-auto flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

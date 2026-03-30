@@ -1,6 +1,107 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import AddressSearchInput from "@/components/AddressSearchInput";
+
+// ─── UnitTypesSelector ────────────────────────────────────────────────────────
+// Lets the user enter beds/baths to build a list of unit types in #BR / #BA format.
+
+function UnitTypesSelector({ value, onChange }) {
+  const [beds, setBeds] = useState("");
+  const [baths, setBaths] = useState("");
+
+  const units = Array.isArray(value) ? value : [];
+
+  function unitLabel(u) {
+    return `${u.bedrooms}BR / ${u.bathrooms}BA`;
+  }
+
+  function addUnit() {
+    const b = Number(beds);
+    const ba = Number(baths);
+    if (beds === "" || baths === "" || isNaN(b) || isNaN(ba) || b < 0 || ba < 0) return;
+    onChange([...units, { name: `${b}BR / ${ba}BA`, bedrooms: b, bathrooms: ba, rent: null, area: null }]);
+    setBeds("");
+    setBaths("");
+  }
+
+  function removeUnit(idx) {
+    onChange(units.filter((_, i) => i !== idx));
+  }
+
+  function updateField(idx, key, val) {
+    const next = [...units];
+    next[idx] = { ...next[idx], [key]: val === "" ? null : Number(val) };
+    onChange(next);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Add a unit type */}
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min="0"
+          placeholder="Beds"
+          value={beds}
+          onChange={(e) => setBeds(e.target.value)}
+          className="w-16 px-2 py-0.5 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
+        />
+        <span className="text-xs text-gray-400">BR /</span>
+        <input
+          type="number"
+          min="0"
+          placeholder="Baths"
+          value={baths}
+          onChange={(e) => setBaths(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addUnit())}
+          className="w-16 px-2 py-0.5 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
+        />
+        <span className="text-xs text-gray-400">BA</span>
+        <button
+          type="button"
+          onClick={addUnit}
+          disabled={beds === "" || baths === ""}
+          className="px-2.5 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          + Add
+        </button>
+      </div>
+
+      {/* Added unit types with rent/area inputs */}
+      {units.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {units.map((u, idx) => (
+            <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1">
+              <span className="font-medium text-gray-700 min-w-[80px]">{unitLabel(u)}</span>
+              <input
+                type="number"
+                placeholder="Rent ($)"
+                value={u.rent ?? ""}
+                onChange={(e) => updateField(idx, "rent", e.target.value)}
+                className="w-24 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400"
+              />
+              <input
+                type="number"
+                placeholder="Area (sqft)"
+                value={u.area ?? ""}
+                onChange={(e) => updateField(idx, "area", e.target.value)}
+                className="w-24 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400"
+              />
+              <button
+                type="button"
+                onClick={() => removeUnit(idx)}
+                className="ml-auto text-gray-400 hover:text-red-500 text-sm leading-none"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 // type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum"
@@ -9,8 +110,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 const SCHEMAS = {
   users: [
     { key: "_id",            label: "ID",              type: "id"       },
-    { key: "name",           label: "Name",            type: "text"     },
-    { key: "email",          label: "Email",           type: "text"     },
+    { key: "name",           label: "Name",            type: "text",    required: true  },
+    { key: "email",          label: "Email",           type: "text",    required: true  },
     { key: "role",           label: "Role",            type: "enum",    options: ["student", "landlord", "super"] },
     { key: "phone",          label: "Phone",           type: "text"     },
     { key: "gender",         label: "Gender",          type: "enum",    options: ["unspecified", "male", "female", "other"] },
@@ -31,7 +132,7 @@ const SCHEMAS = {
   listings: [
     { key: "_id",              label: "ID",                type: "id"       },
     { key: "title",            label: "Title",             type: "text"     },
-    { key: "address",          label: "Address",           type: "text"     },
+    { key: "address",          label: "Address",           type: "text",    required: true  },
     { key: "homeType",         label: "Home Type",         type: "enum",    options: ["apartment", "house", "condo", "townhouse"] },
     { key: "leaseType",        label: "Lease Type",        type: "enum",    options: ["standard", "sublease"] },
     { key: "leaseAvailability",label: "Lease Availability",type: "enum",    options: ["semester", "10-month", "12-month"] },
@@ -59,10 +160,10 @@ const SCHEMAS = {
     { key: "contactEmail",     label: "Contact Email",     type: "text"     },
     { key: "contactPhone",     label: "Contact Phone",     type: "text"     },
     { key: "contactName",      label: "Contact Name",      type: "text"     },
-    { key: "description",      label: "Description",       type: "text"     },
+    { key: "description",      label: "Description",       type: "text",    required: true  },
     { key: "owner",            label: "Owner ID",          type: "text"     },
     { key: "landlord",         label: "Landlord ID",       type: "text"     },
-    { key: "unitTypes",        label: "Unit Types",        type: "json"     },
+    { key: "unitTypes",        label: "Unit Types",        type: "json",    required: true  },
     { key: "images",           label: "Images",            type: "json"     },
     { key: "reviews",          label: "Reviews",           type: "json"     },
     { key: "placeWalkMinutes", label: "Place Walk Times",  type: "json"     },
@@ -71,11 +172,11 @@ const SCHEMAS = {
   ],
   reviews: [
     { key: "_id",                label: "ID",             type: "id"       },
-    { key: "reviewer",           label: "Reviewer ID",    type: "text"     },
+    { key: "reviewer",           label: "Reviewer ID",    type: "text",    required: true  },
     { key: "reviewedUser",       label: "Reviewed User",  type: "text"     },
     { key: "listing",            label: "Listing ID",     type: "text"     },
-    { key: "rating",             label: "Rating",         type: "number"   },
-    { key: "comment",            label: "Comment",        type: "text"     },
+    { key: "rating",             label: "Rating",         type: "number",  required: true  },
+    { key: "comment",            label: "Comment",        type: "text",    required: true  },
     { key: "legitimacy",         label: "Verified",       type: "boolean"  },
     { key: "communicationRating",label: "Communication",  type: "number"   },
     { key: "locationRating",     label: "Location",       type: "number"   },
@@ -85,7 +186,7 @@ const SCHEMAS = {
   ],
   dorms: [
     { key: "_id",        label: "ID",          type: "id"       },
-    { key: "name",       label: "Name",        type: "text"     },
+    { key: "name",       label: "Name",        type: "text",    required: true  },
     { key: "description",label: "Description", type: "text"     },
     { key: "image",      label: "Image URL",   type: "text"     },
     { key: "roomTypes",  label: "Room Types",  type: "json"     },
@@ -95,21 +196,21 @@ const SCHEMAS = {
   ],
   dormreviews: [
     { key: "_id",      label: "ID",          type: "id"       },
-    { key: "name",     label: "Author Name", type: "text"     },
-    { key: "classYear",label: "Class Year",  type: "number"   },
-    { key: "rating",   label: "Rating",      type: "number"   },
-    { key: "dorm",     label: "Dorm",        type: "text"     },
+    { key: "name",     label: "Author Name", type: "text",    required: true  },
+    { key: "classYear",label: "Class Year",  type: "number",  required: true  },
+    { key: "rating",   label: "Rating",      type: "number",  required: true  },
+    { key: "dorm",     label: "Dorm",        type: "text",    required: true  },
     { key: "dormType", label: "Room Type",   type: "text"     },
     { key: "tags",     label: "Tags",        type: "json"     },
-    { key: "content",  label: "Content",     type: "text"     },
+    { key: "content",  label: "Content",     type: "text",    required: true  },
     { key: "createdAt",label: "Created",     type: "readonly" },
     { key: "updatedAt",label: "Updated",     type: "readonly" },
   ],
   testimonials: [
     { key: "_id",      label: "ID",     type: "id"       },
-    { key: "text",     label: "Text",   type: "text"     },
-    { key: "author",   label: "Author", type: "text"     },
-    { key: "rating",   label: "Rating", type: "number"   },
+    { key: "text",     label: "Text",   type: "text",    required: true  },
+    { key: "author",   label: "Author", type: "text",    required: true  },
+    { key: "rating",   label: "Rating", type: "number",  required: true  },
     { key: "createdAt",label: "Created",type: "readonly" },
     { key: "updatedAt",label: "Updated",type: "readonly" },
   ],
@@ -397,6 +498,10 @@ export default function AdminDashboard() {
   const [visibleColumns, setVisibleColumns] = useState(() => new Set(SCHEMAS["users"].map((f) => f.key)));
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const colPickerRef = useRef(null);
+  const [addRowOpen, setAddRowOpen] = useState(false);
+  const [addRowFields, setAddRowFields] = useState({});
+  const [addRowError, setAddRowError] = useState(null);
+  const [addRowSaving, setAddRowSaving] = useState(false);
 
   const schema = SCHEMAS[activeTable] || [];
   const visibleSchema = schema.filter((f) => visibleColumns.has(f.key));
@@ -435,6 +540,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadTable(activeTable, activeDb);
   }, [activeTable, activeDb, loadTable]);
+
+  useEffect(() => {
+    if (addRowOpen) {
+      setAddRowOpen(false);
+      setAddRowFields({});
+      setAddRowError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTable]);
 
   function cellString(row, key) {
     const v = row[key];
@@ -499,6 +613,46 @@ export default function AdminDashboard() {
 
   const pendingCount = Object.keys(pendingChanges).length;
 
+  function openAddRow() {
+    const initial = {};
+    for (const f of schema) {
+      if (f.type === "id" || f.type === "readonly") continue;
+      if (f.type === "boolean") initial[f.key] = false;
+      else if (f.type === "multi-enum") initial[f.key] = [];
+      else if (activeTable === "listings" && f.key === "unitTypes") initial[f.key] = [];
+      else initial[f.key] = "";
+    }
+    setAddRowFields(initial);
+    setAddRowError(null);
+    setAddRowSaving(false);
+    setAddRowOpen(true);
+  }
+
+  async function handleAddRowSubmit(e) {
+    e.preventDefault();
+    setAddRowSaving(true);
+    setAddRowError(null);
+    try {
+      const res = await fetch(`/api/admin/${activeTable}?db=${activeDb}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: addRowFields }),
+      });
+      if (res.status === 201) {
+        setAddRowOpen(false);
+        setAddRowFields({});
+        loadTable(activeTable, activeDb);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setAddRowError(data.error || `Error ${res.status}`);
+      }
+    } catch (err) {
+      setAddRowError(err.message || "Request failed");
+    } finally {
+      setAddRowSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -531,6 +685,12 @@ export default function AdminDashboard() {
               {pendingCount} row{pendingCount !== 1 ? "s" : ""} with unsaved changes
             </span>
           )}
+          <button
+            onClick={openAddRow}
+            className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded font-medium"
+          >
+            + Add Row
+          </button>
           <button
             onClick={() => { setPendingChanges({}); setSaveStatus(null); }}
             disabled={pendingCount === 0}
@@ -711,6 +871,95 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Add Row Modal */}
+      {addRowOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-800 capitalize">
+                Add {activeTable} Row
+              </h2>
+              <button
+                type="button"
+                onClick={() => setAddRowOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleAddRowSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+                {schema
+                  .filter((f) => f.type !== "id" && f.type !== "readonly")
+                  .map((f) => (
+                    <div key={f.key} className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        {f.label}
+                        {f.required && <span className="ml-0.5 text-red-500">*</span>}
+                        <span className="ml-1 text-gray-400 font-normal">({f.type})</span>
+                      </label>
+                      {activeTable === "listings" && f.key === "address" ? (
+                        <AddressSearchInput
+                          value={addRowFields.address || ""}
+                          onChange={(e) =>
+                            setAddRowFields((prev) => ({ ...prev, address: e.target.value }))
+                          }
+                          onSelectSuggestion={(feature) => {
+                            const [lng, lat] = feature.center;
+                            setAddRowFields((prev) => ({
+                              ...prev,
+                              address: feature.place_name,
+                              latitude: lat,
+                              longitude: lng,
+                            }));
+                          }}
+                          placeholder="Start typing an address…"
+                          className="w-full px-2 py-0.5 rounded text-xs border border-gray-300 hover:border-gray-400 focus:border-blue-400 focus:outline-none"
+                        />
+                      ) : activeTable === "listings" && f.key === "unitTypes" ? (
+                        <UnitTypesSelector
+                          value={addRowFields.unitTypes}
+                          onChange={(v) => setAddRowFields((prev) => ({ ...prev, unitTypes: v }))}
+                        />
+                      ) : (
+                        <FieldInput
+                          fieldDef={f}
+                          value={addRowFields[f.key]}
+                          pendingValue={undefined}
+                          onChange={(v) =>
+                            setAddRowFields((prev) => ({ ...prev, [f.key]: v }))
+                          }
+                        />
+                      )}
+                    </div>
+                  ))}
+              </div>
+              {addRowError && (
+                <p className="mx-5 mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                  {addRowError}
+                </p>
+              )}
+              <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddRowOpen(false)}
+                  className="px-4 py-1.5 text-sm text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addRowSaving}
+                  className="px-4 py-1.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {addRowSaving ? "Creating…" : "Create Row"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

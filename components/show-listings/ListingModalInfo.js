@@ -115,7 +115,7 @@ function AmenityPill({ label }) {
 function StatCell({ label, value }) {
   return (
     <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-      <div className="text-lg font-semibold text-gray-900 break-words">{value}</div>
+      <div className="text-sm sm:text-lg font-semibold text-gray-900 break-words">{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
     </div>
   );
@@ -816,20 +816,20 @@ export default function ListingModalInfo({ session, listing }) {
       <div className="bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* ── Photo Grid ── */}
-          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 h-[400px] overflow-hidden rounded-xl">
-            {/* Main image — 2/3 width */}
+          <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
+            {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
-              className="md:col-span-2 relative cursor-pointer h-full overflow-hidden rounded-l-xl"
+              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:max-w-[65%]"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
                 <img
                   src={coverImage}
                   alt={listing.address}
-                  className="w-full h-full object-cover"
+                  className="w-full h-auto md:w-auto md:h-full block"
                 />
               ) : (
-                <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
+                <div className="w-full aspect-[4/3] md:aspect-auto md:h-full md:w-[400px] bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
                   No photos available
                 </div>
               )}
@@ -856,11 +856,11 @@ export default function ListingModalInfo({ session, listing }) {
               </div>
             </div>
 
-            {/* Two stacked thumbnails — 1/3 width, hidden on mobile */}
-            <div className="hidden md:flex flex-col gap-2 h-full">
+            {/* Two stacked thumbnails — fill remaining width, desktop only */}
+            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
               {/* Top thumbnail */}
               <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl"
+                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {secondImage ? (
@@ -873,9 +873,9 @@ export default function ListingModalInfo({ session, listing }) {
                   <div className="w-full h-full bg-gray-200" />
                 )}
               </div>
-              {/* Bottom thumbnail with "View All" overlay */}
+              {/* Bottom thumbnail */}
               <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl"
+                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl bg-gray-100"
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {thirdImage ? (
@@ -910,7 +910,7 @@ export default function ListingModalInfo({ session, listing }) {
           )}
           <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{listing.title || street}</h1>
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">{listing.title || street}</h1>
               {cityStateZip && (
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
               )}
@@ -1091,13 +1091,13 @@ export default function ListingModalInfo({ session, listing }) {
                 ×
               </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
               {images.map((src, index) => (
                 <img
                   key={`${src}-${index}`}
                   src={src}
                   alt={`Listing photo ${index + 1}`}
-                  className="w-full h-64 object-cover rounded-lg shadow"
+                  className="w-full h-auto rounded-lg shadow mb-4 break-inside-avoid block"
                   loading="lazy"
                 />
               ))}
