@@ -162,8 +162,11 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, dev: true });
     }
 
-    await transporter.sendMail(landlordMailOptions);
-    await transporter.sendMail(studentConfirmationOptions);
+    const landlordInfo = await transporter.sendMail(landlordMailOptions);
+    console.log(`[contactLandlord] Landlord email sent to ${landlordEmail} — messageId: ${landlordInfo.messageId}`);
+
+    const studentInfo = await transporter.sendMail(studentConfirmationOptions);
+    console.log(`[contactLandlord] Student confirmation sent to ${email} — messageId: ${studentInfo.messageId}`);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
