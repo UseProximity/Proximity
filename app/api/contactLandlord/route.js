@@ -90,10 +90,9 @@ export async function POST(req) {
 
     const senderName = `${firstName.trim()} ${lastName.trim()}`;
 
-    const mailOptions = {
+    const landlordMailOptions = {
       from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
       to: landlordEmail,
-      cc: email,
       replyTo: email,
       subject: `New Inquiry: ${listingAddress || "Your Listing"} — via Proximity`,
       html: `
@@ -128,14 +127,46 @@ export async function POST(req) {
       `,
     };
 
+    const studentConfirmationOptions = {
+      from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
+      to: email,
+      subject: `We got your message about ${listingAddress || "the listing"}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
+          <p>Hi ${firstName.trim()},</p>
+
+          <p>Thanks for reaching out! Your message about <strong>${listingAddress || "the listing"}</strong> has been received, and the landlord will be in touch with you shortly.</p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+
+          <p style="margin-bottom: 8px; color: #6b7280;"><strong>Your message:</strong></p>
+          <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${message.trim()}"</p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+
+          <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+          <p style="color: #9ca3af; font-size: 12px;">
+            You're receiving this because you submitted an inquiry on Proximity. Questions? Contact us at
+            <a href="mailto:info@useproximity.org" style="color: #9ca3af;">info@useproximity.org</a>
+          </p>
+        </div>
+      `,
+    };
+
     // If email credentials are not configured, log and return success (dev mode)
     if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn("[contactLandlord] Email env vars not set — skipping send in dev mode.");
-      console.log("[contactLandlord] Would have sent:", { to: landlordEmail, from: senderName, subject: mailOptions.subject });
+      console.log("[contactLandlord] Would have sent:", { to: landlordEmail, from: senderName, subject: landlordMailOptions.subject });
       return NextResponse.json({ ok: true, dev: true });
     }
 
-    await transporter.sendMail(mailOptions);
+    const landlordInfo = await transporter.sendMail(landlordMailOptions);
+    console.log(`[contactLandlord] Landlord email sent to ${landlordEmail} — messageId: ${landlordInfo.messageId}`);
+
+    const studentInfo = await transporter.sendMail(studentConfirmationOptions);
+    console.log(`[contactLandlord] Student confirmation sent to ${email} — messageId: ${studentInfo.messageId}`);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
