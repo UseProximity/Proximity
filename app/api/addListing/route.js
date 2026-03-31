@@ -50,6 +50,7 @@ export async function POST(req) {
       maxBathrooms,
       minArea,
       maxArea,
+      title,
     } = body;
 
     // Validate required fields
@@ -118,9 +119,8 @@ export async function POST(req) {
     }
 
     // Create New Listing
-    const autoTitle = address.split(",")[0].trim();
     const newListing = await Listing.create({
-      title: autoTitle,
+      title: title?.trim() || null,
       address,
       longitude: resolvedLng,
       latitude: resolvedLat,

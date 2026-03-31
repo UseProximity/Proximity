@@ -696,6 +696,46 @@ export default function ListingModalInfo({ session, listing }) {
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSent, setContactSent] = useState(false);
 
+  // Unit selector — sorted ascending by beds, then baths, then disambiguation index
+  const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
+
+  // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
+  // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
+  const sortedUnits = useMemo(() => {
+    const units = listing.unitTypes ?? [];
+    const isStudio = (u) => (u.bedrooms ?? 0) === 0;
+    // Build base labels in original order for stable disambiguation numbering
+    const baseLabelOf = units.map((u) => {
+      if (isStudio(u)) return "Studio";
+      const beds = u.bedrooms != null ? `${u.bedrooms} Bed` : "? Bed";
+      const baths = u.bathrooms != null ? `${u.bathrooms} Bath` : "? Bath";
+      return `${beds} / ${baths}`;
+    });
+    const counts = {};
+    for (const lbl of baseLabelOf) counts[lbl] = (counts[lbl] || 0) + 1;
+    const counters = {};
+    const labels = baseLabelOf.map((lbl) => {
+      if (counts[lbl] > 1) {
+        counters[lbl] = (counters[lbl] || 0) + 1;
+        return { base: lbl, num: counters[lbl], label: `${lbl} (${counters[lbl]})` };
+      }
+      return { base: lbl, num: 0, label: lbl };
+    });
+    return units
+      .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
+      .sort((a, b) => {
+        const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
+        if (bedDiff !== 0) return bedDiff;
+        // Studios: don't sort by baths, only by dup number
+        if (isStudio(a.unit)) return a.num - b.num;
+        const bathDiff = (a.unit.bathrooms ?? 0) - (b.unit.bathrooms ?? 0);
+        if (bathDiff !== 0) return bathDiff;
+        return a.num - b.num;
+      });
+  }, [listing.unitTypes]);
+
+  const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
+
   // Images
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
   const images = Array.isArray(listing?.images)
@@ -955,15 +995,38 @@ export default function ListingModalInfo({ session, listing }) {
             </button>
           </div>
 
+          {/* ── Unit Selector ── */}
+          {sortedUnits.length > 0 && (
+            <div className="bg-white rounded-xl shadow px-6 py-3 mb-4 flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-gray-500 font-medium shrink-0">Unit</span>
+              <div className="flex flex-wrap gap-2">
+                {sortedUnits.map(({ origIdx, label }, sortedIdx) => (
+                  <button
+                    key={origIdx}
+                    type="button"
+                    onClick={() => setSelectedUnitIdx(sortedIdx)}
+                    className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+                      selectedUnitIdx === sortedIdx
+                        ? "bg-red-600 text-white"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Stats Bar ── */}
           <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
             <StatCell
-              label={(() => {
+              label="/ mo"
+              value={selectedUnit ? (
+                selectedUnit.rent != null ? `$${selectedUnit.rent.toLocaleString()}` : "TBD"
+              ) : (() => {
                 const label = getRentRangeLabel(listing.unitTypes);
-                return label === "Contact for Pricing" ? "" : "/ mo";
-              })()}
-              value={(() => {
-                const label = getRentRangeLabel(listing.unitTypes);
+                if (label === "Contact for Pricing") return "TBD";
                 const dashIdx = label.indexOf("-");
                 if (dashIdx === -1) return label;
                 return (
@@ -977,15 +1040,15 @@ export default function ListingModalInfo({ session, listing }) {
             />
             <StatCell
               label="Beds"
-              value={getUnitValuesLabel(listing.unitTypes, "bedrooms")}
+              value={selectedUnit ? (selectedUnit.bedrooms != null ? String(selectedUnit.bedrooms) : "—") : getUnitValuesLabel(listing.unitTypes, "bedrooms")}
             />
             <StatCell
               label="Baths"
-              value={getUnitValuesLabel(listing.unitTypes, "bathrooms")}
+              value={selectedUnit ? (selectedUnit.bathrooms != null ? String(selectedUnit.bathrooms) : "—") : getUnitValuesLabel(listing.unitTypes, "bathrooms")}
             />
             <StatCell
               label="Sq Ft"
-              value={getAreaRangeLabel(listing.unitTypes)}
+              value={selectedUnit ? (selectedUnit.area ? selectedUnit.area.toLocaleString() : "—") : getAreaRangeLabel(listing.unitTypes)}
             />
             <StatCell
               label="Lease"

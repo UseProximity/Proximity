@@ -1,24 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { auth } from "@/auth";
-import mongoose from "mongoose";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
-import Listing from "@/models/Listing";
-import Review from "@/models/Review";
-import Dorm from "@/models/Dorm";
-import DormReview from "@/models/DormReview";
-import Testimonial from "@/models/Testimonial";
+import supabase from "@/libs/supabase";
 
-// Base model definitions — used for both the default connection and named DB connections
-const MODEL_DEFS = {
-  users:        { name: "User",        model: User        },
-  listings:     { name: "Listing",     model: Listing     },
-  reviews:      { name: "Review",      model: Review      },
-  dorms:        { name: "Dorm",        model: Dorm        },
-  dormreviews:  { name: "DormReview",  model: DormReview  },
-  testimonials: { name: "Testimonial", model: Testimonial },
-};
+const VALID_TABLES = new Set([
+  "users",
+  "listings",
+  "listing_units",
+  "reviews",
+  "dorms",
+  "dorm_reviews",
+  "testimonials",
+]);
 
 async function requireSuper() {
   const session = await auth();
@@ -26,47 +19,19 @@ async function requireSuper() {
   return session;
 }
 
-// Returns a Mongoose model bound to the requested DB connection.
-// "default" (or no param) uses the shared connectMongo connection.
-// "dev" uses MONGO_URI_DEV, "prod" uses MONGO_URI_PROD.
-async function getModel(table, db) {
-  const def = MODEL_DEFS[table.toLowerCase()];
-  if (!def) return null;
-
-  if (!db || db === "default") {
-    await connectMongo();
-    return def.model;
-  }
-
-  const uri = db === "dev" ? process.env.MONGO_URI_DEV : process.env.MONGO_URI_PROD;
-  if (!uri) return null;
-
-  // Cache a separate connection per db label
-  const cacheKey = `_mongooseAdmin_${db}`;
-  if (!global[cacheKey] || global[cacheKey].readyState === 0) {
-    global[cacheKey] = mongoose.createConnection(uri, {
-      bufferCommands: false,
-      maxPoolSize: 5,
-    });
-    await global[cacheKey].asPromise();
-  }
-  const conn = global[cacheKey];
-
-  // Re-use or register the model on this connection
-  return conn.models[def.name] || conn.model(def.name, def.model.schema);
-}
-
 export async function GET(req, { params }) {
   const session = await requireSuper();
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  const db = new URL(req.url).searchParams.get("db") || "default";
-  const Model = await getModel(table, db);
-  if (!Model) return Response.json({ error: "Unknown table or DB not configured" }, { status: 404 });
+  if (!VALID_TABLES.has(table)) {
+    return Response.json({ error: "Unknown table" }, { status: 404 });
+  }
 
-  const rows = await Model.find({}).lean().limit(1000);
-  return Response.json(JSON.parse(JSON.stringify(rows)));
+  const { data, error } = await supabase.from(table).select("*").limit(1000);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  return Response.json(data);
 }
 
 export async function PATCH(req, { params }) {
@@ -74,26 +39,35 @@ export async function PATCH(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  const db = new URL(req.url).searchParams.get("db") || "default";
-  const Model = await getModel(table, db);
-  if (!Model) return Response.json({ error: "Unknown table or DB not configured" }, { status: 404 });
+  if (!VALID_TABLES.has(table)) {
+    return Response.json({ error: "Unknown table" }, { status: 404 });
+  }
 
   const body = await req.json();
   const { id, updates } = body;
-  if (!id) return Response.json({ error: "Missing id" }, { status: 400 });
-  if (!mongoose.Types.ObjectId.isValid(id)) return Response.json({ error: "Invalid id" }, { status: 400 });
+  if (!id || typeof id !== "string" || id.trim() === "") {
+    return Response.json({ error: "Missing or invalid id" }, { status: 400 });
+  }
 
-  // Strip immutable fields
-  const { _id, __v, createdAt, updatedAt, ...safeUpdates } = updates || {};
+  // Strip immutable / auto-managed fields
+  const { id: _id, created_at, updated_at, mongo_id, ...safeUpdates } = updates || {};
 
-  const updated = await Model.findByIdAndUpdate(
-    id,
-    { $set: safeUpdates },
-    { new: true, lean: true, strict: false }
-  );
+  if (Object.keys(safeUpdates).length === 0) {
+    return Response.json({ error: "No updatable fields provided" }, { status: 400 });
+  }
 
-  if (!updated) return Response.json({ error: "Not found" }, { status: 404 });
-  return Response.json(JSON.parse(JSON.stringify(updated)));
+  const { data, error } = await supabase
+    .from(table)
+    .update(safeUpdates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error(`[admin PATCH] table=${table} id=${id}`, error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+  return Response.json(data);
 }
 
 export async function POST(req, { params }) {
@@ -101,45 +75,95 @@ export async function POST(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  const db = new URL(req.url).searchParams.get("db") || "default";
-  const Model = await getModel(table, db);
-  if (!Model) return Response.json({ error: "Unknown table or DB not configured" }, { status: 404 });
+  if (!VALID_TABLES.has(table)) {
+    return Response.json({ error: "Unknown table" }, { status: 404 });
+  }
 
   try {
     const body = await req.json();
     const { fields } = body;
 
-    // Listings go through the addListing pipeline (validation, geocoding, walk times)
-    if (table.toLowerCase() === "listings") {
-      const importSecret = process.env.IMPORT_SECRET;
-      if (!importSecret) {
-        return Response.json({ error: "IMPORT_SECRET env var not configured" }, { status: 500 });
+    // Strip immutable / auto-managed fields
+    const { id: _id, created_at, updated_at, mongo_id, ...safeFields } = fields || {};
+
+    // Listings: geocode if lat/lng missing, then insert directly into Supabase
+    if (table === "listings") {
+      if (!safeFields.address?.trim()) {
+        return Response.json({ error: "address is required" }, { status: 400 });
       }
-      const origin = new URL(req.url).origin;
-      const listingRes = await fetch(`${origin}/api/addListing`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-import-secret": importSecret,
-        },
-        body: JSON.stringify(fields || {}),
-      });
-      const listingData = await listingRes.json();
-      if (!listingRes.ok) {
-        return Response.json({ error: listingData.error || "Failed to create listing" }, { status: listingRes.status });
+
+      if (safeFields.latitude == null || safeFields.longitude == null) {
+        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+        if (token) {
+          const encoded = encodeURIComponent(safeFields.address);
+          const geoRes = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=1&country=US`
+          );
+          const geoData = await geoRes.json();
+          const feature = geoData.features?.[0];
+          if (feature) {
+            const [lng, lat] = feature.center;
+            safeFields.latitude = lat;
+            safeFields.longitude = lng;
+          }
+        }
       }
-      return Response.json(listingData.listing, { status: 201 });
+
     }
 
-    // Strip immutable / auto-managed fields
-    const { _id, __v, createdAt, updatedAt, ...safeFields } = fields || {};
+    // Convert empty strings to null so numeric/text columns don't get ""
+    // Keep array columns as [] (not null) to satisfy NOT NULL constraints
+    const ARRAY_COLUMNS = new Set(["images", "utilities_included", "amenities", "tags"]);
+    for (const [k, v] of Object.entries(safeFields)) {
+      if (v === "") safeFields[k] = ARRAY_COLUMNS.has(k) ? [] : null;
+    }
 
-    const doc = new Model(safeFields);
-    await doc.save();
+    const { data, error } = await supabase
+      .from(table)
+      .insert(safeFields)
+      .select()
+      .single();
 
-    return Response.json(JSON.parse(JSON.stringify(doc.toObject())), { status: 201 });
+    if (error) {
+      const detail = [error.message, error.details, error.hint].filter(Boolean).join(" | ");
+      return Response.json({ error: detail }, { status: 500 });
+    }
+    return Response.json(data, { status: 201 });
   } catch (err) {
     console.error(`[admin POST] table=${table}`, err);
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+export async function DELETE(req, { params }) {
+  const session = await requireSuper();
+  if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
+
+  const { table } = await params;
+  if (!VALID_TABLES.has(table)) {
+    return Response.json({ error: "Unknown table" }, { status: 404 });
+  }
+
+  let id;
+  const url = new URL(req.url);
+  const queryId = url.searchParams.get("id");
+  if (queryId) {
+    id = queryId;
+  } else {
+    try {
+      const body = await req.json();
+      id = body.id;
+    } catch {
+      // no body
+    }
+  }
+
+  if (!id || typeof id !== "string" || id.trim() === "") {
+    return Response.json({ error: "Missing or invalid id" }, { status: 400 });
+  }
+
+  const { error } = await supabase.from(table).delete().eq("id", id);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  return Response.json({ success: true });
 }

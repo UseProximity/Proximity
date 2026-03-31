@@ -1,45 +1,53 @@
 import { NextResponse } from "next/server";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
-import Listing from "@/models/Listing";
-import mongoose from "mongoose";
+import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
 
 export async function DELETE(_req, { params }) {
   try {
     const { listingId } = params || {};
 
-    if (!listingId) {
-      return NextResponse.json(
-        { error: "listingId required" },
-        { status: 400 }
-      );
-    }
-    if (!mongoose.Types.ObjectId.isValid(listingId)) {
-      return NextResponse.json({ error: "Invalid listingId" }, { status: 400 });
+    if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
+      return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
 
     const session = await auth();
-
-    if (!session) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await connectMongo();
-    const removeResult = await User.updateOne(
-      { _id: session?.user?.id, favorites: listingId },
-      { $pull: { favorites: listingId } }
-    );
-    if (removeResult.modifiedCount > 0) {
-      await Listing.updateOne(
-        { _id: listingId, numSaves: { $gt: 0 } },
-        { $inc: { numSaves: -1 } }
-      );
+    const userId = session.user.id;
+
+    const { data: existing } = await supabase
+      .from("user_favorites")
+      .select("user_id")
+      .eq("user_id", userId)
+      .eq("listing_id", listingId)
+      .maybeSingle();
+
+    if (!existing) {
+      return NextResponse.json({ removed: false, listingId });
     }
-    return NextResponse.json({
-      removed: removeResult.modifiedCount > 0,
-      listingId,
-    });
+
+    await supabase
+      .from("user_favorites")
+      .delete()
+      .eq("user_id", userId)
+      .eq("listing_id", listingId);
+
+    // Decrement num_saves
+    const { data: listing } = await supabase
+      .from("listings")
+      .select("num_saves")
+      .eq("id", listingId)
+      .single();
+    if (listing && listing.num_saves > 0) {
+      await supabase
+        .from("listings")
+        .update({ num_saves: listing.num_saves - 1 })
+        .eq("id", listingId);
+    }
+
+    return NextResponse.json({ removed: true, listingId });
   } catch (err) {
     console.error("Remove favorite error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
