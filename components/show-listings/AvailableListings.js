@@ -611,11 +611,25 @@ export default function AvailableListings({
                       placeholder="Search location or home"
                       value={search || ""}
                       onChange={(e) => setSearch && setSearch(e.target.value)}
+                      onBlur={() => {
+                        const url = new URL(window.location);
+                        if (search) {
+                          url.searchParams.set("search", search);
+                        } else {
+                          url.searchParams.delete("search");
+                        }
+                        window.history.replaceState({}, "", url);
+                      }}
                       className="flex-1 outline-none text-sm bg-transparent text-gray-700 placeholder-gray-400"
                     />
                     {search && (
                       <button
-                        onClick={() => setSearch && setSearch("")}
+                        onClick={() => {
+                          setSearch && setSearch("");
+                          const url = new URL(window.location);
+                          url.searchParams.delete("search");
+                          window.history.replaceState({}, "", url);
+                        }}
                         className="text-gray-400 hover:text-gray-600"
                       >
                         <svg
