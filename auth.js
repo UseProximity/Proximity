@@ -4,6 +4,7 @@ import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import clientPromise from "./libs/mongo";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
+import supabase from "@/libs/supabase";
 
 const config = {
   providers: [
@@ -16,6 +17,29 @@ const config = {
   allowDangerousEmailAccountLinking: true,
   pages: {
     error: "/",
+  },
+  callbacks: {
+    async session({ session, user }) {
+      // Populate role and Supabase ID into the session.
+      // Look up by email so this works regardless of ID format differences
+      // between MongoDB (ObjectId) and Supabase (UUID).
+      if (session?.user?.email) {
+        const { data: sbUser } = await supabase
+          .from("users")
+          .select("id, role")
+          .eq("email", session.user.email)
+          .single();
+        if (sbUser) {
+          session.user.id = sbUser.id;
+          session.user.role = sbUser.role ?? "student";
+        } else {
+          // Fallback: keep adapter id, default role
+          session.user.id = user?.id ?? session.user.id;
+          session.user.role = "student";
+        }
+      }
+      return session;
+    },
   },
   events: {
     async createUser({ user }) {

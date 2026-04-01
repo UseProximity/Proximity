@@ -37,22 +37,22 @@ function serializeListing(l) {
 export async function GET() {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
+    if (!session?.user?.email) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = session.user.id;
-
-    // Fetch user row
+    // Look up by email — reliable across MongoDB↔Supabase ID format differences
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("*")
-      .eq("id", userId)
+      .eq("email", session.user.email)
       .single();
 
     if (userError || !user) {
       return Response.json({ error: "User not found" }, { status: 404 });
     }
+
+    const userId = user.id;
 
     // Fetch favorites via user_favorites join → listings
     const { data: favoritesRows } = await supabase

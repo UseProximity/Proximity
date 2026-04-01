@@ -827,7 +827,7 @@ function ImageManagerPanel({ listingId, initialImages, dbTarget, isProd, onClose
           {images.map((url, idx) => (
             <div key={url + idx} className="flex items-center gap-3 p-2 border border-gray-200 rounded-lg bg-white hover:bg-gray-50">
               <img
-                src={url}
+                src={`/_next/image?url=${encodeURIComponent(url)}&w=128&q=15`}
                 alt={`img-${idx}`}
                 className="w-16 h-12 object-cover rounded border border-gray-200 flex-shrink-0"
                 onError={(e) => { e.target.style.display = "none"; }}
