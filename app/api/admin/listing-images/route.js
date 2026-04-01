@@ -1,58 +1,33 @@
 // app/api/admin/listing-images/route.js
 import { DeleteObjectCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/libs/r2";
-import Listing from "@/models/Listing";
-import connectMongo from "@/libs/mongoose";
+import { getSupabaseClient } from "@/libs/supabase";
 import { auth } from "@/auth";
-import mongoose from "mongoose";
 
-// Mirrors getModel() in app/api/admin/[table]/route.js exactly.
-// dev  → MONGO_URI_DEV  (via cached connection)
-// prod → MONGO_URI_PROD (via cached connection)
-// default/missing → connectMongo() (MONGO_URI)
-async function getListingModel(db) {
-  if (!db || db === "default") {
-    await connectMongo();
-    return Listing;
-  }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  const uri = db === "dev" ? process.env.MONGO_URI_DEV : process.env.MONGO_URI_PROD;
-  if (!uri) {
-    // Fall back to default connection if the env var isn't set
-    await connectMongo();
-    return Listing;
-  }
-
-  const cacheKey = `_mongooseAdmin_${db}`;
-  if (!global[cacheKey] || global[cacheKey].readyState === 0) {
-    global[cacheKey] = mongoose.createConnection(uri, {
-      bufferCommands: false,
-      maxPoolSize: 5,
-    });
-    await global[cacheKey].asPromise();
-  }
-  const conn = global[cacheKey];
-  return conn.models["Listing"] || conn.model("Listing", Listing.schema);
+function isValidId(id) {
+  return typeof id === "string" && UUID_RE.test(id);
 }
 
-// Returns the R2 bucket name for the given db.
-// Env vars: R2_BUCKET_NAME (dev), R2_BUCKET_NAME_PROD (prod)
+function isProdBucket(db) {
+  if (db === "prod") return true;
+  if (!db && process.env.NODE_ENV === "production") return true;
+  return false;
+}
+
 function getBucket(db) {
-  return db === "prod"
+  return isProdBucket(db)
     ? (process.env.R2_BUCKET_NAME_PROD || process.env.R2_BUCKET_NAME)
     : process.env.R2_BUCKET_NAME;
 }
 
-// Returns the R2 public base URL for the given db.
-// Env vars: R2_PUBLIC_BASE_URL (dev), R2_PUBLIC_BASE_URL_prod (prod)
 function getPublicBaseUrl(db) {
-  return db === "prod"
+  return isProdBucket(db)
     ? (process.env.R2_PUBLIC_BASE_URL_prod || process.env.R2_PUBLIC_BASE_URL)
     : process.env.R2_PUBLIC_BASE_URL;
 }
 
-// Extract the R2 object key from a stored public URL using the db-appropriate base URL.
-// sync-r2-images.mjs URL-encodes filenames per-segment, so decode the key.
 function getKeyFromUrl(url, db) {
   const base = getPublicBaseUrl(db);
   if (!base || !url) return null;
@@ -83,19 +58,26 @@ export async function PATCH(req) {
 
     const body = await req.json();
     const { listingId, db } = body;
+    const headerTarget = req.headers.get("x-db-target");
+    const dbTarget = (db === "prod" || db === "dev") ? db : (headerTarget === "prod" || headerTarget === "dev") ? headerTarget : undefined;
+    const supabase = getSupabaseClient(dbTarget);
     console.log("[listing-images PATCH] listingId:", listingId, "db:", db, "bodyKeys:", Object.keys(body));
 
     if (!listingId) {
       return Response.json({ error: "Missing listingId" }, { status: 400 });
     }
-    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+    if (!isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
     }
 
-    const ListingModel = await getListingModel(db);
-    const listing = await ListingModel.findById(listingId);
-    if (!listing) {
-      console.log("[listing-images PATCH] listing not found in db:", db);
+    const { data: listing, error: fetchError } = await supabase
+      .from("listings")
+      .select("id, images")
+      .eq("id", listingId)
+      .single();
+
+    if (fetchError || !listing) {
+      console.log("[listing-images PATCH] listing not found:", listingId);
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
@@ -127,8 +109,8 @@ export async function PATCH(req) {
       );
 
       const newUrl = buildPublicUrl(newKey, db);
-      const renamedImages = listing.images.map((u) => (u === body.oldUrl ? newUrl : u));
-      await ListingModel.findByIdAndUpdate(listingId, { $set: { images: renamedImages } }, { strict: false });
+      const renamedImages = (listing.images || []).map((u) => (u === body.oldUrl ? newUrl : u));
+      await supabase.from("listings").update({ images: renamedImages }).eq("id", listingId);
       console.log("[listing-images PATCH] rename done:", newUrl);
       return Response.json({ newUrl });
     }
@@ -136,7 +118,7 @@ export async function PATCH(req) {
     // Reorder
     if (Array.isArray(body.images)) {
       console.log("[listing-images PATCH] reorder count:", body.images.length);
-      await ListingModel.findByIdAndUpdate(listingId, { $set: { images: body.images } }, { strict: false });
+      await supabase.from("listings").update({ images: body.images }).eq("id", listingId);
       return Response.json({ images: body.images });
     }
 
@@ -159,19 +141,26 @@ export async function DELETE(req) {
 
     const body = await req.json();
     const { listingId, imageUrl, db } = body;
+    const headerTarget = req.headers.get("x-db-target");
+    const dbTarget = (db === "prod" || db === "dev") ? db : (headerTarget === "prod" || headerTarget === "dev") ? headerTarget : undefined;
+    const supabase = getSupabaseClient(dbTarget);
     console.log("[listing-images DELETE] listingId:", listingId, "db:", db);
 
     if (!listingId || !imageUrl) {
       return Response.json({ error: "Missing listingId or imageUrl" }, { status: 400 });
     }
-    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+    if (!isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
     }
 
-    const ListingModel = await getListingModel(db);
-    const listing = await ListingModel.findById(listingId);
-    if (!listing) {
-      console.log("[listing-images DELETE] listing not found in db:", db);
+    const { data: listing, error: fetchError } = await supabase
+      .from("listings")
+      .select("id, images")
+      .eq("id", listingId)
+      .single();
+
+    if (fetchError || !listing) {
+      console.log("[listing-images DELETE] listing not found:", listingId);
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
@@ -193,8 +182,8 @@ export async function DELETE(req) {
       console.log("[listing-images DELETE] could not resolve R2 key, skipping R2 delete");
     }
 
-    const remainingImages = listing.images.filter((u) => u !== imageUrl);
-    await ListingModel.findByIdAndUpdate(listingId, { $set: { images: remainingImages } }, { strict: false });
+    const remainingImages = (listing.images || []).filter((u) => u !== imageUrl);
+    await supabase.from("listings").update({ images: remainingImages }).eq("id", listingId);
     console.log("[listing-images DELETE] done, remaining:", remainingImages.length);
     return Response.json({ images: remainingImages });
   } catch (error) {

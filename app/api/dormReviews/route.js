@@ -1,16 +1,44 @@
 import { NextResponse } from "next/server";
-import connectMongo from "@/libs/mongoose";
-import DormReview from "@/models/DormReview";
+import supabase from "@/libs/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const dorm = searchParams.get("dorm");
-  await connectMongo();
-  const query = dorm ? { dorm } : {};
-  const reviews = await DormReview.find(query).sort({ createdAt: -1 }).lean();
-  return NextResponse.json(reviews);
+  const dormName = searchParams.get("dorm");
+
+  let query = supabase
+    .from("dorm_reviews")
+    .select("*, dorms(name)")
+    .order("created_at", { ascending: false });
+
+  if (dormName) {
+    // Resolve dorm name → id first; dot-path filtering on joined tables is not supported in PostgREST
+    const { data: dormRecord } = await supabase
+      .from("dorms")
+      .select("id")
+      .eq("name", dormName)
+      .maybeSingle();
+
+    if (!dormRecord) {
+      return NextResponse.json([]);
+    }
+
+    query = supabase
+      .from("dorm_reviews")
+      .select("*, dorms(name)")
+      .eq("dorm_id", dormRecord.id)
+      .order("created_at", { ascending: false });
+  }
+
+  const { data: reviews, error } = await query;
+
+  if (error) {
+    console.error("GET /api/dormReviews failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+
+  return NextResponse.json(reviews || []);
 }
 
 export async function POST(req) {
@@ -28,16 +56,36 @@ export async function POST(req) {
       return NextResponse.json({ error: "Review too short" }, { status: 400 });
     }
 
-    await connectMongo();
-    const review = await DormReview.create({
-      name: name.trim(),
-      classYear: Number(classYear),
-      rating,
-      dorm,
-      dormType,
-      tags: Array.isArray(tags) ? tags : [],
-      content: content.trim(),
-    });
+    // Resolve dorm name → dorm_id
+    const { data: dormRecord, error: dormError } = await supabase
+      .from("dorms")
+      .select("id")
+      .eq("name", dorm)
+      .single();
+
+    if (dormError || !dormRecord) {
+      return NextResponse.json({ error: "Dorm not found" }, { status: 404 });
+    }
+
+    const { data: review, error: insertError } = await supabase
+      .from("dorm_reviews")
+      .insert({
+        dorm_id: dormRecord.id,
+        reviewer_name: name.trim(),
+        class_year: Number(classYear),
+        rating,
+        dorm_type: dormType,
+        tags: Array.isArray(tags) ? tags : [],
+        content: content.trim(),
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("POST /api/dormReviews failed:", insertError);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+
     return NextResponse.json(review, { status: 201 });
   } catch (e) {
     console.error("POST /api/dormReviews failed:", e);

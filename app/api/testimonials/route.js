@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
-import connectMongo from "@/libs/mongoose";
-import Testimonial from "@/models/Testimonial";
+import supabase from "@/libs/supabase";
 
 export async function GET() {
-  await connectMongo();
-  const testimonials = await Testimonial.find().sort({ createdAt: 1 }).lean();
-  return NextResponse.json(testimonials);
+  const { data: testimonials, error } = await supabase
+    .from("testimonials")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("GET /api/testimonials failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+
+  return NextResponse.json(testimonials || []);
 }

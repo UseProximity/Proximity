@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import User from "@/models/User";
-import Listing from "@/models/Listing";
-import connectMongo from "@/libs/mongoose";
+import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 
@@ -92,8 +90,6 @@ export async function POST(req) {
       }
     }
 
-    await connectMongo();
-
     // Geocode address if lat/lng not provided
     let resolvedLat = latitude;
     let resolvedLng = longitude;
@@ -118,45 +114,66 @@ export async function POST(req) {
       console.error("[walkTimes] Failed to fetch walk times:", err?.message);
     }
 
-    // Create New Listing
-    const newListing = await Listing.create({
-      title: title?.trim() || null,
-      address,
-      longitude: resolvedLng,
-      latitude: resolvedLat,
-      description,
-      unitTypes,
-      leaseType: leaseType || "standard",
-      images: images || [],
-      owner: ownerId || undefined,
-      placeWalkMinutes,
-      shuttleWalkMinutes,
-      // Extra fields
-      leaseAvailability: leaseAvailability ?? null,
-      leaseStructure: leaseStructure ?? null,
-      homeType: homeType ?? "apartment",
-      amenities: amenities ?? [],
-      utilitiesIncluded: utilitiesIncluded ?? [],
-      subleaseFriendly: subleaseFriendly ?? false,
-      furnished: furnished ?? false,
-      moveInDate: moveInDate ?? null,
-      contactEmail: contactEmail ?? null,
-      contactPhone: contactPhone ?? null,
-      contactName: contactName ?? null,
-      minRent: minRent ?? null,
-      maxRent: maxRent ?? null,
-      minBedrooms: minBedrooms ?? null,
-      maxBedrooms: maxBedrooms ?? null,
-      minBathrooms: minBathrooms ?? null,
-      maxBathrooms: maxBathrooms ?? null,
-      minArea: minArea ?? null,
-      maxArea: maxArea ?? null,
-    });
+    // Insert listing row into Supabase
+    const { data: newListing, error: listingError } = await supabase
+      .from("listings")
+      .insert({
+        landlord_id: ownerId || null,
+        title: title?.trim() || null,
+        address,
+        longitude: resolvedLng,
+        latitude: resolvedLat,
+        description,
+        lease_type: leaseType || "standard",
+        images: images || [],
+        place_walk_minutes: placeWalkMinutes,
+        shuttle_walk_minutes: shuttleWalkMinutes,
+        // Extra fields
+        lease_structure: leaseStructure ?? null,
+        home_type: homeType ?? "apartment",
+        amenities: amenities ?? [],
+        utilities_included: utilitiesIncluded ?? [],
+        sublease_friendly: subleaseFriendly ?? false,
+        furnished: furnished ?? false,
+        move_in_date: moveInDate ?? null,
+        contact_email: contactEmail ?? null,
+        contact_phone: contactPhone ?? null,
+        contact_name: contactName ?? null,
+      })
+      .select()
+      .single();
 
-    if (ownerId) {
-      const user = await User.findById(ownerId);
-      user.listings.push(newListing._id);
-      await user.save();
+    if (listingError) {
+      console.error("Error creating listing:", listingError.message);
+      return NextResponse.json({ error: listingError.message }, { status: 500 });
+    }
+
+    // Insert each unit type row into listing_units
+    if (unitTypes.length > 0) {
+      const unitRows = unitTypes.map((unit) => ({
+        listing_id: newListing.id,
+        bedrooms: unit.bedrooms,
+        bathrooms: unit.bathrooms,
+        rent: unit.rent ?? null,
+        area: unit.area ?? null,
+        furnished: unit.furnished ?? furnished ?? false,
+        utilities_included: unit.utilitiesIncluded ?? utilitiesIncluded ?? [],
+        lease_availability: unit.leaseAvailability ?? leaseAvailability ?? null,
+        lease_structure: unit.leaseStructure ?? leaseStructure ?? null,
+        move_in_date: unit.moveInDate ?? moveInDate ?? null,
+        sublease_friendly: unit.subleaseFriendly ?? subleaseFriendly ?? false,
+        amenities: unit.amenities ?? amenities ?? [],
+        unavailable: unit.unavailable ?? false,
+      }));
+
+      const { error: unitsError } = await supabase
+        .from("listing_units")
+        .insert(unitRows);
+
+      if (unitsError) {
+        console.error("Error creating listing units:", unitsError.message);
+        return NextResponse.json({ error: unitsError.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json(

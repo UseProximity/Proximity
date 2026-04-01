@@ -1,7 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import { auth } from "@/auth";
-import supabase from "@/libs/supabase";
+import { getSupabaseClient } from "@/libs/supabase";
+
+function getDbTarget(req) {
+  const header = req.headers.get("x-db-target");
+  return header === "prod" || header === "dev" ? header : undefined;
+}
 
 const VALID_TABLES = new Set([
   "users",
@@ -28,6 +33,7 @@ export async function GET(req, { params }) {
     return Response.json({ error: "Unknown table" }, { status: 404 });
   }
 
+  const supabase = getSupabaseClient(getDbTarget(req));
   const { data, error } = await supabase.from(table).select("*").limit(1000);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
@@ -43,6 +49,7 @@ export async function PATCH(req, { params }) {
     return Response.json({ error: "Unknown table" }, { status: 404 });
   }
 
+  const supabase = getSupabaseClient(getDbTarget(req));
   const body = await req.json();
   const { id, updates } = body;
   if (!id || typeof id !== "string" || id.trim() === "") {
@@ -78,6 +85,8 @@ export async function POST(req, { params }) {
   if (!VALID_TABLES.has(table)) {
     return Response.json({ error: "Unknown table" }, { status: 404 });
   }
+
+  const supabase = getSupabaseClient(getDbTarget(req));
 
   try {
     const body = await req.json();
@@ -144,6 +153,7 @@ export async function DELETE(req, { params }) {
     return Response.json({ error: "Unknown table" }, { status: 404 });
   }
 
+  const supabase = getSupabaseClient(getDbTarget(req));
   let id;
   const url = new URL(req.url);
   const queryId = url.searchParams.get("id");

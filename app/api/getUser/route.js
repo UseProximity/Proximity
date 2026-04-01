@@ -1,38 +1,36 @@
 export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not static
 
 import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
+import supabase from "@/libs/supabase";
 
 function serializeListing(l) {
   return {
-    _id: l._id?.toString(),
+    _id: l.id?.toString(),
+    id: l.id,
     address: l.address,
-    unitTypes: Array.isArray(l.unitTypes) ? l.unitTypes : [],
-    leaseAvailability: l.leaseAvailability,
-    leaseStructure: l.leaseStructure,
-    moveInDate: l.moveInDate ? new Date(l.moveInDate).toISOString() : null,
-    homeType: l.homeType,
+    unitTypes: Array.isArray(l.listing_units) ? l.listing_units : [],
+    moveInDate: l.move_in_date ? new Date(l.move_in_date).toISOString() : null,
+    homeType: l.home_type,
     amenities: Array.isArray(l.amenities) ? l.amenities : [],
     furnished: l.furnished,
-    utilitiesIncluded: Array.isArray(l.utilitiesIncluded) ? l.utilitiesIncluded : [],
-    subleaseFriendly: l.subleaseFriendly ?? false,
-    distanceToCampusKm: l.distanceToCampusKm,
-    minRent: l.minRent,
-    maxRent: l.maxRent,
-    minBathrooms: l.minBathrooms,
-    maxBathrooms: l.maxBathrooms,
-    minBedrooms: l.minBedrooms,
-    maxBedrooms: l.maxBedrooms,
-    minArea: l.minArea,
-    maxArea: l.maxArea,
+    utilitiesIncluded: Array.isArray(l.utilities_included) ? l.utilities_included : [],
+    subleaseFriendly: l.sublease_friendly ?? false,
+    distanceToCampusKm: l.distance_to_campus_km,
+    minRent: l.min_rent,
+    maxRent: l.max_rent,
+    minBathrooms: l.min_bathrooms,
+    maxBathrooms: l.max_bathrooms,
+    minBedrooms: l.min_bedrooms,
+    maxBedrooms: l.max_bedrooms,
+    minArea: l.min_area,
+    maxArea: l.max_area,
     images: Array.isArray(l.images) ? l.images : [],
     rating: l.rating ?? 0,
-    numReviews: l.numReviews ?? 0,
-    owner: l.owner?.toString?.() || null,
+    numReviews: l.num_reviews ?? 0,
+    owner: l.landlord_id?.toString?.() || null,
     latitude: l.latitude,
     longitude: l.longitude,
-    createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+    createdAt: l.created_at ? new Date(l.created_at).toISOString() : null,
   };
 }
 
@@ -43,39 +41,65 @@ export async function GET() {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await connectMongo();
+    const userId = session.user.id;
 
-    const user = await User.findById(session.user.id)
-      .populate("favorites")
-      .populate("listings")
-      .populate("contacted")
-      .lean();
+    // Fetch user row
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", userId)
+      .single();
 
-    if (!user) {
+    if (userError || !user) {
       return Response.json({ error: "User not found" }, { status: 404 });
     }
 
-    const safeFavorites = (user.favorites || []).map(serializeListing);
+    // Fetch favorites via user_favorites join → listings
+    const { data: favoritesRows } = await supabase
+      .from("user_favorites")
+      .select("listings(*)")
+      .eq("user_id", userId);
+
+    const favoritesListings = (favoritesRows || [])
+      .map((r) => r.listings)
+      .filter(Boolean);
+
+    // Fetch user's own listings
+    const { data: ownListings } = await supabase
+      .from("listings")
+      .select("*")
+      .eq("landlord_id", userId);
+
+    // Fetch contacted listings via user_contacted join → listings
+    const { data: contactedRows } = await supabase
+      .from("user_contacted")
+      .select("listings(*)")
+      .eq("user_id", userId);
+
+    const contactedListings = (contactedRows || [])
+      .map((r) => r.listings)
+      .filter(Boolean);
+
+    const safeFavorites = favoritesListings.map(serializeListing);
     const favoritesIds = safeFavorites.map((f) => f._id);
 
-    const safeListings = (user.listings || []).map(serializeListing);
+    const safeListings = (ownListings || []).map(serializeListing);
     const listingsIds = safeListings.map((l) => l._id);
 
-    const safeContacted = (user.contacted || []).filter(Boolean).map(serializeListing);
-
+    const safeContacted = contactedListings.map(serializeListing);
     const contactedIds = safeContacted.map((l) => l._id);
 
     const safeUser = {
       ...user,
-      _id: user._id.toString(),
+      _id: user.id?.toString(),
       favorites: safeFavorites,
       favoritesIds,
       listings: safeListings,
       contacted: safeContacted,
       contactedIds,
       listingsIds,
-      createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
-      updatedAt: user.updatedAt ? new Date(user.updatedAt).toISOString() : null,
+      createdAt: user.created_at ? new Date(user.created_at).toISOString() : null,
+      updatedAt: user.updated_at ? new Date(user.updated_at).toISOString() : null,
     };
 
     return Response.json(safeUser, {

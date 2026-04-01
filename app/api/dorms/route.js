@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
-import connectMongo from "@/libs/mongoose";
-import Dorm from "@/models/Dorm";
+import supabase from "@/libs/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  await connectMongo();
-  const dorms = await Dorm.find().lean();
-  return NextResponse.json(dorms);
+  const { data: dorms, error } = await supabase
+    .from("dorms")
+    .select("*");
+
+  if (error) {
+    console.error("GET /api/dorms failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+
+  return NextResponse.json(dorms || []);
 }

@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import Review from "@/models/Review";
-import Listing from "@/models/Listing";
-import User from "@/models/User";
+import supabase from "@/libs/supabase";
 
 export async function GET() {
   try {
@@ -12,21 +9,29 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await connectMongo();
+    // Get listing IDs owned by this user
+    const { data: userListings } = await supabase
+      .from("listings")
+      .select("id")
+      .eq("landlord_id", session.user.id);
 
-    const userListings = await Listing.find({ owner: session.user.id }).select("_id");
-    const listingIds = userListings.map((l) => l._id);
+    const listingIds = (userListings || []).map((l) => l.id);
 
-    const pendingReviews = await Review.find({
-      legitimacy: false,
-      $or: [
-        { reviewedUser: session.user.id },
-        { listing: { $in: listingIds } },
-      ],
-    })
-      .populate("reviewer", "name image")
-      .populate("reviewedUser", "name")
-      .populate("listing", "address");
+    // Fetch pending reviews for those listings
+    let pendingReviews = [];
+    if (listingIds.length > 0) {
+      const { data: reviews, error } = await supabase
+        .from("reviews")
+        .select("*, reviewer:users!reviews_user_id_fkey(name, image), listings(address)")
+        .eq("legitimacy", false)
+        .in("listing_id", listingIds);
+
+      if (error) {
+        console.error("Error fetching pending reviews:", error);
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
+      }
+      pendingReviews = reviews || [];
+    }
 
     return NextResponse.json(pendingReviews);
   } catch (error) {
@@ -35,18 +40,25 @@ export async function GET() {
   }
 }
 
-// Verify the current user is allowed to act on this review (owns the listing or is the reviewed user)
+// Verify the current user is allowed to act on this review (owns the listing)
 async function verifyReviewOwnership(reviewId, userId) {
-  const review = await Review.findById(reviewId).lean();
-  if (!review) return { error: "Review not found", status: 404 };
+  const { data: review, error } = await supabase
+    .from("reviews")
+    .select("*")
+    .eq("id", reviewId)
+    .single();
 
-  if (review.listing) {
-    const listing = await Listing.findById(review.listing).select("owner").lean();
-    if (listing && String(listing.owner) === String(userId)) return { review };
+  if (error || !review) return { error: "Review not found", status: 404 };
+
+  if (review.listing_id) {
+    const { data: listing } = await supabase
+      .from("listings")
+      .select("landlord_id")
+      .eq("id", review.listing_id)
+      .single();
+    if (listing && String(listing.landlord_id) === String(userId)) return { review };
   }
-  if (review.reviewedUser && String(review.reviewedUser) === String(userId)) {
-    return { review };
-  }
+
   return { error: "Forbidden", status: 403 };
 }
 
@@ -63,35 +75,40 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Invalid reviewedType" }, { status: 400 });
     }
 
-    await connectMongo();
-
     const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
     if (error) return NextResponse.json({ error }, { status });
 
-    review.legitimacy = true;
-    await Review.findByIdAndUpdate(reviewId, { legitimacy: true });
+    // Mark review as legitimate
+    const { error: updateError } = await supabase
+      .from("reviews")
+      .update({ legitimacy: true })
+      .eq("id", reviewId);
 
-    if (reviewedType === "listing" && review.listing) {
-      const listing = await Listing.findById(review.listing);
-      if (listing) {
-        listing.numReviews += 1;
-        listing.rating = Math.round(
-          (listing.rating * (listing.numReviews - 1) + review.rating) /
-            listing.numReviews
-        );
-        await listing.save();
-      }
-    } else if (reviewedType === "user" && review.reviewedUser) {
-      const user = await User.findById(review.reviewedUser);
-      if (user) {
-        user.numReviews += 1;
-        user.rating = Math.round(
-          (user.rating * (user.numReviews - 1) + review.rating) /
-            user.numReviews
-        );
-        await user.save();
-      }
+    if (updateError) {
+      console.error("Error updating review legitimacy:", updateError);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
+
+    if (reviewedType === "listing" && review.listing_id) {
+      // Recalculate listing stats from all legitimate reviews
+      const { data: allReviews } = await supabase
+        .from("reviews")
+        .select("rating")
+        .eq("listing_id", review.listing_id)
+        .eq("legitimacy", true);
+
+      const reviews = allReviews || [];
+      const numReviews = reviews.length;
+      const rating = numReviews > 0
+        ? Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / numReviews)
+        : 0;
+
+      await supabase
+        .from("listings")
+        .update({ num_reviews: numReviews, rating })
+        .eq("id", review.listing_id);
+    }
+
     return NextResponse.json({});
   } catch (error) {
     console.error("Error updating review legitimacy:", error);
@@ -112,18 +129,35 @@ export async function DELETE(request) {
       return NextResponse.json({ error: "Invalid reviewedType" }, { status: 400 });
     }
 
-    await connectMongo();
-
     const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
     if (error) return NextResponse.json({ error }, { status });
 
-    await Review.findByIdAndDelete(reviewId);
+    // Delete the review
+    await supabase
+      .from("reviews")
+      .delete()
+      .eq("id", reviewId);
 
-    if (reviewedType === "listing" && review.listing) {
-      await Listing.findByIdAndUpdate(review.listing, { $pull: { reviews: review._id } });
-    } else if (reviewedType === "user" && review.reviewedUser) {
-      await User.findByIdAndUpdate(review.reviewedUser, { $pull: { reviews: review._id } });
+    if (reviewedType === "listing" && review.listing_id) {
+      // Recalculate listing stats from remaining legitimate reviews
+      const { data: allReviews } = await supabase
+        .from("reviews")
+        .select("rating")
+        .eq("listing_id", review.listing_id)
+        .eq("legitimacy", true);
+
+      const reviews = allReviews || [];
+      const numReviews = reviews.length;
+      const rating = numReviews > 0
+        ? Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / numReviews)
+        : 0;
+
+      await supabase
+        .from("listings")
+        .update({ num_reviews: numReviews, rating })
+        .eq("id", review.listing_id);
     }
+
     return NextResponse.json({});
   } catch (error) {
     console.error("Error deleting review:", error);

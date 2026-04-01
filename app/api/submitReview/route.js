@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import Review from "@/models/Review";
-import User from "@/models/User";
-import Listing from "@/models/Listing";
-import mongoose from "mongoose";
+import supabase from "@/libs/supabase";
 
 export async function POST(req) {
   try {
@@ -17,7 +13,6 @@ export async function POST(req) {
     const {
       rating,
       comment,
-      reviewedUserId,
       listingId,
       communicationRating,
       locationRating,
@@ -28,14 +23,8 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid rating or comment" }, { status: 400 });
     }
 
-    if (!reviewedUserId && !listingId) {
-      return NextResponse.json({ error: "Must provide reviewedUserId or listingId" }, { status: 400 });
-    }
-    if (reviewedUserId && !mongoose.Types.ObjectId.isValid(reviewedUserId)) {
-      return NextResponse.json({ error: "Invalid reviewedUserId" }, { status: 400 });
-    }
-    if (listingId && !mongoose.Types.ObjectId.isValid(listingId)) {
-      return NextResponse.json({ error: "Invalid listingId" }, { status: 400 });
+    if (!listingId) {
+      return NextResponse.json({ error: "Must provide listingId" }, { status: 400 });
     }
 
     // Validate optional category ratings if provided
@@ -48,27 +37,24 @@ export async function POST(req) {
       }
     }
 
-    await connectMongo();
+    const { data: newReview, error } = await supabase
+      .from("reviews")
+      .insert({
+        user_id: session.user.id,
+        listing_id: listingId || null,
+        rating,
+        comment: comment.trim(),
+        legitimacy: false,
+        communication_rating: communicationRating ?? null,
+        location_rating: locationRating ?? null,
+        value_rating: valueRating ?? null,
+      })
+      .select()
+      .single();
 
-    const newReview = new Review({
-      reviewer: session.user.id,
-      reviewedUser: reviewedUserId || null,
-      listing: listingId || null,
-      rating,
-      comment: comment.trim(),
-      legitimacy: false,
-      communicationRating: communicationRating ?? null,
-      locationRating: locationRating ?? null,
-      valueRating: valueRating ?? null,
-    });
-
-    await newReview.save();
-
-    if (reviewedUserId) {
-      await User.updateOne({ _id: reviewedUserId }, { $push: { reviews: newReview._id } });
-    }
-    if (listingId) {
-      await Listing.updateOne({ _id: listingId }, { $push: { reviews: newReview._id } });
+    if (error) {
+      console.error("POST /api/submitReview failed:", error);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
     return NextResponse.json(newReview);

@@ -1,24 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import mongoose from "mongoose";
-import connectMongo from "@/libs/mongoose";
-import Listing from "@/models/Listing";
-
-async function getListingModel(db) {
-  if (!db || db === "default") {
-    await connectMongo();
-    return Listing;
-  }
-  const uri = db === "dev" ? process.env.MONGO_URI_DEV : process.env.MONGO_URI_PROD;
-  if (!uri) return null;
-  const cacheKey = `_mongooseAdmin_${db}`;
-  if (!global[cacheKey] || global[cacheKey].readyState === 0) {
-    global[cacheKey] = mongoose.createConnection(uri, { bufferCommands: false, maxPoolSize: 5 });
-    await global[cacheKey].asPromise();
-  }
-  const conn = global[cacheKey];
-  return conn.models["Listing"] || conn.model("Listing", Listing.schema);
-}
+import { getSupabaseClient } from "@/libs/supabase";
 
 // Maps every known non-canonical value → canonical snake_case
 const NORMALIZE = {
@@ -50,19 +32,23 @@ export async function POST(req) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const db = new URL(req.url).searchParams.get("db") || "default";
-  const ListingModel = await getListingModel(db);
-  if (!ListingModel) return NextResponse.json({ error: "DB not configured" }, { status: 500 });
+  const dbTarget = req.headers.get("x-db-target");
+  const supabase = getSupabaseClient(dbTarget === "prod" || dbTarget === "dev" ? dbTarget : undefined);
 
-  const listings = await ListingModel.find({
-    amenities: { $exists: true, $not: { $size: 0 } },
-  }).select("_id amenities").lean();
+  const { data: listings, error } = await supabase
+    .from("listings")
+    .select("id, amenities")
+    .not("amenities", "eq", "{}");
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   let migrated = 0;
   let unchanged = 0;
   const unknown = new Set();
 
-  for (const listing of listings) {
+  for (const listing of listings || []) {
     const original = listing.amenities || [];
     const normalized = original.map((v) => {
       if (NORMALIZE[v]) return NORMALIZE[v];
@@ -74,16 +60,20 @@ export async function POST(req) {
     const changed = normalized.some((v, i) => v !== original[i]);
     if (!changed) { unchanged++; continue; }
 
-    await ListingModel.findByIdAndUpdate(
-      listing._id,
-      { $set: { amenities: normalized } },
-      { strict: false }
-    );
-    migrated++;
+    const { error: updateError } = await supabase
+      .from("listings")
+      .update({ amenities: normalized })
+      .eq("id", listing.id);
+
+    if (updateError) {
+      console.error("Error updating listing amenities:", updateError.message);
+    } else {
+      migrated++;
+    }
   }
 
   return NextResponse.json({
-    total: listings.length,
+    total: (listings || []).length,
     migrated,
     unchanged,
     unknownValues: [...unknown],

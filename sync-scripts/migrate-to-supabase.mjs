@@ -16,8 +16,8 @@
  * Prerequisites:
  *   - Run docs/supabase-schema.sql in the Supabase SQL editor first.
  *   - Add to .env.local:
- *       SUPABASE_URL=https://<project>.supabase.co
- *       SUPABASE_SERVICE_KEY=<service_role_key>
+ *       PROD_SUPABASE_URL=https://<project>.supabase.co
+ *       PROD_SUPABASE_SERVICE_KEY=<service_role_key>
  *
  * Usage:
  *   node sync-scripts/migrate-to-supabase.mjs
@@ -43,12 +43,12 @@ const envVars = Object.fromEntries(
 );
 
 const MONGO_URI    = envVars.MONGO_URI_PROD;
-const SUPABASE_URL = envVars.PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = envVars.SUPABASE_SERVICE_KEY;
+const SUPABASE_URL = envVars.PROD_SUPABASE_URL;
+const SUPABASE_KEY = envVars.PROD_SUPABASE_SERVICE_KEY;
 
 if (!MONGO_URI)    throw new Error("MONGO_URI_PROD missing from .env.local");
-if (!SUPABASE_URL) throw new Error("PUBLIC_SUPABASE_URL missing from .env.local");
-if (!SUPABASE_KEY) throw new Error("SUPABASE_SERVICE_KEY missing from .env.local");
+if (!SUPABASE_URL) throw new Error("PROD_SUPABASE_URL missing from .env.local");
+if (!SUPABASE_KEY) throw new Error("PROD_SUPABASE_SERVICE_KEY missing from .env.local");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const mongo    = new MongoClient(MONGO_URI);

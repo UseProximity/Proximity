@@ -652,7 +652,7 @@ function CellWrapper({ value, pendingValue, children }) {
 
 // ─── Image Manager Panel ───────────────────────────────────────────────────────
 
-function ImageManagerPanel({ listingId, initialImages, onClose, onSaved }) {
+function ImageManagerPanel({ listingId, initialImages, dbTarget, isProd, onClose, onSaved }) {
   const [images, setImages] = useState(Array.isArray(initialImages) ? initialImages : []);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -691,11 +691,12 @@ function ImageManagerPanel({ listingId, initialImages, onClose, onSaved }) {
 
   async function handleDelete(url) {
     if (!confirm("Delete this image? This cannot be undone.")) return;
+    if (isProd && !confirm("PRODUCTION: This will permanently delete this image from the PRODUCTION database. Are you absolutely sure?")) return;
     setPanelError(null);
     try {
       const res = await fetch("/api/admin/listing-images", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
         body: JSON.stringify({ listingId, imageUrl: url }),
       });
       const data = await res.json();
@@ -717,7 +718,7 @@ function ImageManagerPanel({ listingId, initialImages, onClose, onSaved }) {
     try {
       const res = await fetch("/api/admin/listing-images", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
         body: JSON.stringify({ listingId, oldUrl: renamingUrl, newFilename: renameValue.trim() }),
       });
       const data = await res.json();
@@ -779,12 +780,13 @@ function ImageManagerPanel({ listingId, initialImages, onClose, onSaved }) {
   }
 
   async function handleSave() {
+    if (isProd && !confirm("PRODUCTION: Saving image changes to the PRODUCTION database. Proceed?")) return;
     setSaving(true);
     setPanelError(null);
     try {
       const res = await fetch("/api/admin/listing-images", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
         body: JSON.stringify({ listingId, images }),
       });
       const data = await res.json();
@@ -926,6 +928,10 @@ export default function AdminDashboard() {
   const [addingUnitSaving, setAddingUnitSaving] = useState(false);
   const [addingUnitError, setAddingUnitError] = useState(null);
 
+  // DB environment toggle — "prod" or "dev"
+  const [dbTarget, setDbTarget] = useState("dev");
+  const isProd = dbTarget === "prod";
+
   const schema = SCHEMAS[activeTable] || [];
   const visibleSchema = schema.filter((f) => visibleColumns.has(f.key));
 
@@ -939,7 +945,27 @@ export default function AdminDashboard() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const loadTable = useCallback(async (table) => {
+  // Load persisted db target on mount; fall back to server's NODE_ENV
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("admin_db_target") : null;
+    if (stored === "prod" || stored === "dev") {
+      setDbTarget(stored);
+      return;
+    }
+    fetch("/api/admin/db-env")
+      .then((r) => r.json())
+      .then((d) => { if (d.env === "prod" || d.env === "dev") setDbTarget(d.env); })
+      .catch(() => {});
+  }, []);
+
+  function toggleDbTarget() {
+    const next = dbTarget === "prod" ? "dev" : "prod";
+    if (next === "prod" && !confirm("Switch to PRODUCTION database?\n\nAll reads and writes will affect real user data. Proceed?")) return;
+    setDbTarget(next);
+    if (typeof window !== "undefined") localStorage.setItem("admin_db_target", next);
+  }
+
+  const loadTable = useCallback(async (table, target) => {
     setLoading(true);
     setError(null);
     setPendingChanges({});
@@ -950,15 +976,16 @@ export default function AdminDashboard() {
     setSearchColumn("all");
     setSaveStatus(null);
     setVisibleColumns(new Set((SCHEMAS[table] || []).map((f) => f.key)));
+    const dbHeader = { "x-db-target": target };
     try {
-      const res = await fetch(`/api/admin/${table}`);
+      const res = await fetch(`/api/admin/${table}`, { headers: dbHeader });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       setRows(Array.isArray(data) ? data : []);
 
       // Also load listing_units when viewing listings
       if (table === "listings") {
-        const unitsRes = await fetch("/api/admin/listing_units");
+        const unitsRes = await fetch("/api/admin/listing_units", { headers: dbHeader });
         if (unitsRes.ok) {
           const unitsData = await unitsRes.json();
           const grouped = {};
@@ -978,8 +1005,8 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    loadTable(activeTable);
-  }, [activeTable, loadTable]);
+    loadTable(activeTable, dbTarget);
+  }, [activeTable, dbTarget, loadTable]);
 
   useEffect(() => {
     if (addRowOpen) {
@@ -1028,8 +1055,9 @@ export default function AdminDashboard() {
 
   async function handleDeleteUnit(listingId, unitId) {
     if (!confirm("Delete this unit? This cannot be undone.")) return;
+    if (isProd && !confirm("PRODUCTION: This will permanently delete this unit from the PRODUCTION database. Are you absolutely sure?")) return;
     try {
-      const res = await fetch(`/api/admin/listing_units?id=${unitId}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/listing_units?id=${unitId}`, { method: "DELETE", headers: { "x-db-target": dbTarget } });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         alert(data.error || "Delete failed");
@@ -1056,12 +1084,13 @@ export default function AdminDashboard() {
   }
 
   async function handleSaveNewUnit(listingId) {
+    if (isProd && !confirm("PRODUCTION: Adding a new unit to the PRODUCTION database. Proceed?")) return;
     setAddingUnitSaving(true);
     setAddingUnitError(null);
     try {
       const res = await fetch("/api/admin/listing_units", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
         body: JSON.stringify({ fields: { ...newUnitFields, listing_id: listingId } }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1091,6 +1120,7 @@ export default function AdminDashboard() {
     const entries = Object.entries(pendingChanges);
     const unitEntries = Object.entries(unitPendingChanges);
     if (entries.length === 0 && unitEntries.length === 0) return;
+    if (isProd && !confirm(`PRODUCTION: You are about to save ${entries.length + unitEntries.length} row(s) to the PRODUCTION database.\n\nThis will affect real user data. Proceed?`)) return;
     setSaving(true);
     setSaveStatus(null);
     let failed = 0;
@@ -1100,7 +1130,7 @@ export default function AdminDashboard() {
       try {
         const res = await fetch(url, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
           body: JSON.stringify({ id, updates }),
         });
         if (!res.ok) {
@@ -1123,7 +1153,7 @@ export default function AdminDashboard() {
     let migrateMsg = "";
     if (activeTable === "listings") {
       try {
-        const res = await fetch(`/api/admin/migrate-amenities`, { method: "POST" });
+        const res = await fetch(`/api/admin/migrate-amenities`, { method: "POST", headers: { "x-db-target": dbTarget } });
         const data = await res.json();
         if (!data.error && data.migrated > 0) {
           migrateMsg = ` · ${data.migrated} amenity row(s) normalized`;
@@ -1142,12 +1172,12 @@ export default function AdminDashboard() {
       setSaveStatus({ ok: true, msg: `${totalSaved} row(s) saved.${migrateMsg}` });
       setPendingChanges({});
       setUnitPendingChanges({});
-      loadTable(activeTable);
+      loadTable(activeTable, dbTarget);
     } else {
       const detail = errors.slice(0, 3).join("; ");
       setSaveStatus({ ok: false, msg: `${failed} row(s) failed: ${detail}` });
       // Still clear successfully-saved rows and reload
-      if (totalSaved > 0) loadTable(activeTable);
+      if (totalSaved > 0) loadTable(activeTable, dbTarget);
     }
   }
 
@@ -1185,6 +1215,7 @@ export default function AdminDashboard() {
 
   async function handleAddRowSubmit(e) {
     e.preventDefault();
+    if (isProd && !confirm(`PRODUCTION: You are about to create a new row in the PRODUCTION database.\n\nThis will affect real user data. Proceed?`)) return;
     setAddRowSaving(true);
     setAddRowError(null);
     try {
@@ -1209,7 +1240,7 @@ export default function AdminDashboard() {
 
       const res = await fetch(`/api/admin/${activeTable}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
         body: JSON.stringify({ fields }),
       });
       const newRow = await res.json().catch(() => ({}));
@@ -1226,7 +1257,7 @@ export default function AdminDashboard() {
         for (const unit of validUnits) {
           const uRes = await fetch("/api/admin/listing_units", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
             body: JSON.stringify({ fields: { ...unit, listing_id: newRow.id } }),
           });
           if (!uRes.ok) {
@@ -1241,7 +1272,7 @@ export default function AdminDashboard() {
       setAddRowOpen(false);
       setAddRowFields({});
       setAddRowUnits([]);
-      loadTable(activeTable);
+      loadTable(activeTable, dbTarget);
     } catch (err) {
       setAddRowError(err.message || "Request failed");
     } finally {
@@ -1253,9 +1284,28 @@ export default function AdminDashboard() {
     <>
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <div className="bg-gray-900 text-white px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
+      <div className={`text-white px-6 py-4 flex items-center justify-between gap-4 flex-wrap ${isProd ? "bg-red-950" : "bg-gray-900"}`}>
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-xl font-bold tracking-tight">Admin Dashboard</h1>
+          {/* DB environment badge */}
+          <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full uppercase tracking-widest border ${
+            isProd
+              ? "bg-red-500 border-red-400 text-white"
+              : "bg-green-600 border-green-500 text-white"
+          }`}>
+            {isProd ? "PROD" : "DEV"}
+          </span>
+          {/* DB toggle */}
+          <button
+            onClick={toggleDbTarget}
+            className={`px-3 py-1 text-xs rounded border font-medium transition-colors ${
+              isProd
+                ? "border-red-500 text-red-200 hover:bg-red-800"
+                : "border-gray-600 text-gray-300 hover:bg-gray-700"
+            }`}
+          >
+            Switch to {isProd ? "DEV" : "PROD"}
+          </button>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {saveStatus && (
@@ -1290,6 +1340,16 @@ export default function AdminDashboard() {
           </button>
         </div>
       </div>
+
+      {/* PRODUCTION warning banner */}
+      {isProd && (
+        <div className="bg-red-600 text-white px-6 py-2 text-sm font-semibold flex items-center gap-2">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          PRODUCTION DATABASE ACTIVE — All reads and writes affect real user data. Proceed with extreme caution.
+        </div>
+      )}
 
       <div className="px-6 py-5">
         {/* Table tabs */}
@@ -1756,6 +1816,8 @@ export default function AdminDashboard() {
       <ImageManagerPanel
         listingId={imagePanel.listingId}
         initialImages={imagePanel.images}
+        dbTarget={dbTarget}
+        isProd={isProd}
         onClose={() => setImagePanel(null)}
         onSaved={(newImages) => {
           setRows((prev) =>
