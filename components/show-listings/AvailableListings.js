@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -104,15 +105,17 @@ function ListingCard({ listing, session, onCardClick }) {
       className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200 flex flex-col cursor-pointer"
       onClick={() => onCardClick(listing._id)}
     >
-      <div className="relative">
+      <div className="relative aspect-video">
         {imageUrl ? (
-          <img
+          <Image
             src={imageUrl}
             alt={listing.address}
-            className={`w-full aspect-video object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className={`object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
           />
         ) : (
-          <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-400">
             No image
           </div>
         )}

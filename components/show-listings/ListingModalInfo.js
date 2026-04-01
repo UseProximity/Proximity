@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Phone,
   Mail,
@@ -654,11 +655,59 @@ function ContactTab({
   );
 }
 
+function GalleryImage({ src, index, onImageLoad }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20">
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center min-h-[120px]">
+          <svg
+            className="animate-spin h-8 w-8 text-white/70"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+        </div>
+      )}
+      <Image
+        src={src}
+        alt={`Listing photo ${index + 1}`}
+        width={1200}
+        height={900}
+        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+        className={`w-full h-auto block rounded-lg shadow transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        loading="lazy"
+        onLoad={() => { setLoaded(true); onImageLoad(src); }}
+      />
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ListingModalInfo({ session, listing }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [galleryLoadedSrcs, setGalleryLoadedSrcs] = useState([]);
   const [activeTab, setActiveTab] = useState("amenities");
+
+  // Reset loaded order each time the gallery closes
+  useEffect(() => {
+    if (!isGalleryOpen) setGalleryLoadedSrcs([]);
+  }, [isGalleryOpen]);
 
   // Review form state
   const [reviewText, setReviewText] = useState("");
@@ -736,11 +785,22 @@ export default function ListingModalInfo({ session, listing }) {
 
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
 
-  // Images
+  // Images — put any image with "main" in the filename first
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
-  const images = Array.isArray(listing?.images)
-    ? listing.images.filter(Boolean).map(sanitizeUrl)
-    : [];
+  const images = (() => {
+    const raw = Array.isArray(listing?.images)
+      ? listing.images.filter(Boolean).map(sanitizeUrl)
+      : [];
+    const mainIdx = raw.findIndex((url) =>
+      /main/i.test(url.split("/").pop().split("?")[0])
+    );
+    if (mainIdx > 0) {
+      const reordered = [...raw];
+      reordered.unshift(reordered.splice(mainIdx, 1)[0]);
+      return reordered;
+    }
+    return raw;
+  })();
   const coverImage = images[0];
   const secondImage = images[1] || images[0] || null;
   const thirdImage = images[2] || images[1] || images[0] || null;
@@ -871,14 +931,17 @@ export default function ListingModalInfo({ session, listing }) {
           <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
-              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:max-w-[65%]"
+              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
-                <img
+                <Image
                   src={coverImage}
                   alt={listing.address}
-                  className="w-full h-auto md:w-auto md:h-full block"
+                  fill
+                  priority
+                  sizes="(max-width: 768px) 100vw, 65vw"
+                  className="object-cover"
                 />
               ) : (
                 <div className="w-full aspect-[4/3] md:aspect-auto md:h-full md:w-[400px] bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
@@ -916,10 +979,12 @@ export default function ListingModalInfo({ session, listing }) {
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {secondImage ? (
-                  <img
+                  <Image
                     src={secondImage}
                     alt="Listing photo 2"
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 768px) 0vw, 35vw"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-200" />
@@ -931,10 +996,12 @@ export default function ListingModalInfo({ session, listing }) {
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {thirdImage ? (
-                  <img
+                  <Image
                     src={thirdImage}
                     alt="Listing photo 3"
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 768px) 0vw, 35vw"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-300" />
@@ -997,18 +1064,17 @@ export default function ListingModalInfo({ session, listing }) {
 
           {/* ── Unit Selector ── */}
           {sortedUnits.length > 0 && (
-            <div className="bg-white rounded-xl shadow px-6 py-3 mb-4 flex items-center gap-3 flex-wrap">
-              <span className="text-xs text-gray-500 font-medium shrink-0">Unit</span>
-              <div className="flex flex-wrap gap-2">
+            <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
+              <div className="flex w-full">
                 {sortedUnits.map(({ origIdx, label }, sortedIdx) => (
                   <button
                     key={origIdx}
                     type="button"
                     onClick={() => setSelectedUnitIdx(sortedIdx)}
-                    className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+                    className={`flex-1 py-2.5 px-2 text-sm font-semibold text-center transition border-b-2 ${
                       selectedUnitIdx === sortedIdx
-                        ? "bg-red-600 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        ? "bg-red-600 text-white border-red-600"
+                        : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
                     }`}
                   >
                     {label}
@@ -1167,13 +1233,19 @@ export default function ListingModalInfo({ session, listing }) {
               </button>
             </div>
             <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-              {images.map((src, index) => (
-                <img
-                  key={`${src}-${index}`}
+              {[
+                ...galleryLoadedSrcs,
+                ...images.filter((s) => !galleryLoadedSrcs.includes(s)),
+              ].map((src) => (
+                <GalleryImage
+                  key={src}
                   src={src}
-                  alt={`Listing photo ${index + 1}`}
-                  className="w-full h-auto rounded-lg shadow mb-4 break-inside-avoid block"
-                  loading="lazy"
+                  index={images.indexOf(src)}
+                  onImageLoad={(s) =>
+                    setGalleryLoadedSrcs((prev) =>
+                      prev.includes(s) ? prev : [s, ...prev]
+                    )
+                  }
                 />
               ))}
             </div>
