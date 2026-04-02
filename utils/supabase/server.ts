@@ -1,0 +1,26 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+const isProd = process.env.NODE_ENV === "production";
+const supabaseUrl = (isProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL)!;
+const supabaseKey = (isProd ? process.env.PROD_SUPABASE_DEFAULT_KEY : process.env.DEV_SUPABASE_DEFAULT_KEY)!;
+
+export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) => {
+  return createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        } catch {
+          // Called from a Server Component — safe to ignore if middleware
+          // is handling session refresh.
+        }
+      },
+    },
+  });
+};

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Phone,
   Mail,
@@ -153,8 +154,8 @@ const AMENITY_LABELS = {
 
 function AmenitiesTab({ listing }) {
   const amenities = (listing.amenities || [])
-    .filter((a) => AMENITY_LABELS[a])
-    .map((a) => AMENITY_LABELS[a]);
+    .map((a) => AMENITY_LABELS[a] || a)
+    .filter(Boolean);
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
@@ -654,11 +655,59 @@ function ContactTab({
   );
 }
 
+function GalleryImage({ src, index, onImageLoad }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20">
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center min-h-[120px]">
+          <svg
+            className="animate-spin h-8 w-8 text-white/70"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+        </div>
+      )}
+      <Image
+        src={src}
+        alt={`Listing photo ${index + 1}`}
+        width={1200}
+        height={900}
+        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+        className={`w-full h-auto block rounded-lg shadow transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        loading="lazy"
+        onLoad={() => { setLoaded(true); onImageLoad(src); }}
+      />
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ListingModalInfo({ session, listing }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [galleryLoadedSrcs, setGalleryLoadedSrcs] = useState([]);
   const [activeTab, setActiveTab] = useState("amenities");
+
+  // Reset loaded order each time the gallery closes
+  useEffect(() => {
+    if (!isGalleryOpen) setGalleryLoadedSrcs([]);
+  }, [isGalleryOpen]);
 
   // Review form state
   const [reviewText, setReviewText] = useState("");
@@ -696,11 +745,62 @@ export default function ListingModalInfo({ session, listing }) {
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSent, setContactSent] = useState(false);
 
-  // Images
+  // Unit selector — sorted ascending by beds, then baths, then disambiguation index
+  const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
+
+  // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
+  // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
+  const sortedUnits = useMemo(() => {
+    const units = listing.unitTypes ?? [];
+    const isStudio = (u) => (u.bedrooms ?? 0) === 0;
+    // Build base labels in original order for stable disambiguation numbering
+    const baseLabelOf = units.map((u) => {
+      if (isStudio(u)) return "Studio";
+      const beds = u.bedrooms != null ? `${u.bedrooms} Bed` : "? Bed";
+      const baths = u.bathrooms != null ? `${u.bathrooms} Bath` : "? Bath";
+      return `${beds} / ${baths}`;
+    });
+    const counts = {};
+    for (const lbl of baseLabelOf) counts[lbl] = (counts[lbl] || 0) + 1;
+    const counters = {};
+    const labels = baseLabelOf.map((lbl) => {
+      if (counts[lbl] > 1) {
+        counters[lbl] = (counters[lbl] || 0) + 1;
+        return { base: lbl, num: counters[lbl], label: `${lbl} (${counters[lbl]})` };
+      }
+      return { base: lbl, num: 0, label: lbl };
+    });
+    return units
+      .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
+      .sort((a, b) => {
+        const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
+        if (bedDiff !== 0) return bedDiff;
+        // Studios: don't sort by baths, only by dup number
+        if (isStudio(a.unit)) return a.num - b.num;
+        const bathDiff = (a.unit.bathrooms ?? 0) - (b.unit.bathrooms ?? 0);
+        if (bathDiff !== 0) return bathDiff;
+        return a.num - b.num;
+      });
+  }, [listing.unitTypes]);
+
+  const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
+
+  // Images — put any image with "main" in the filename first
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
-  const images = Array.isArray(listing?.images)
-    ? listing.images.filter(Boolean).map(sanitizeUrl)
-    : [];
+  const images = (() => {
+    const raw = Array.isArray(listing?.images)
+      ? listing.images.filter(Boolean).map(sanitizeUrl)
+      : [];
+    const mainIdx = raw.findIndex((url) =>
+      /main/i.test(url.split("/").pop().split("?")[0])
+    );
+    if (mainIdx > 0) {
+      const reordered = [...raw];
+      reordered.unshift(reordered.splice(mainIdx, 1)[0]);
+      return reordered;
+    }
+    return raw;
+  })();
   const coverImage = images[0];
   const secondImage = images[1] || images[0] || null;
   const thirdImage = images[2] || images[1] || images[0] || null;
@@ -831,14 +931,17 @@ export default function ListingModalInfo({ session, listing }) {
           <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
-              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:max-w-[65%]"
+              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
-                <img
+                <Image
                   src={coverImage}
                   alt={listing.address}
-                  className="w-full h-auto md:w-auto md:h-full block"
+                  fill
+                  priority
+                  sizes="(max-width: 768px) 100vw, 65vw"
+                  className="object-cover"
                 />
               ) : (
                 <div className="w-full aspect-[4/3] md:aspect-auto md:h-full md:w-[400px] bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
@@ -876,10 +979,12 @@ export default function ListingModalInfo({ session, listing }) {
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {secondImage ? (
-                  <img
+                  <Image
                     src={secondImage}
                     alt="Listing photo 2"
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 768px) 0vw, 35vw"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-200" />
@@ -891,10 +996,12 @@ export default function ListingModalInfo({ session, listing }) {
                 onClick={() => setIsGalleryOpen(true)}
               >
                 {thirdImage ? (
-                  <img
+                  <Image
                     src={thirdImage}
                     alt="Listing photo 3"
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 768px) 0vw, 35vw"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-300" />
@@ -955,15 +1062,37 @@ export default function ListingModalInfo({ session, listing }) {
             </button>
           </div>
 
+          {/* ── Unit Selector ── */}
+          {sortedUnits.length > 0 && (
+            <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
+              <div className="flex w-full">
+                {sortedUnits.map(({ origIdx, label }, sortedIdx) => (
+                  <button
+                    key={origIdx}
+                    type="button"
+                    onClick={() => setSelectedUnitIdx(sortedIdx)}
+                    className={`flex-1 py-2.5 px-2 text-sm font-semibold text-center transition border-b-2 ${
+                      selectedUnitIdx === sortedIdx
+                        ? "bg-red-600 text-white border-red-600"
+                        : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Stats Bar ── */}
           <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
             <StatCell
-              label={(() => {
+              label="/ mo"
+              value={selectedUnit ? (
+                selectedUnit.rent != null ? `$${selectedUnit.rent.toLocaleString()}` : "TBD"
+              ) : (() => {
                 const label = getRentRangeLabel(listing.unitTypes);
-                return label === "Contact for Pricing" ? "" : "/ mo";
-              })()}
-              value={(() => {
-                const label = getRentRangeLabel(listing.unitTypes);
+                if (label === "Contact for Pricing") return "TBD";
                 const dashIdx = label.indexOf("-");
                 if (dashIdx === -1) return label;
                 return (
@@ -977,15 +1106,15 @@ export default function ListingModalInfo({ session, listing }) {
             />
             <StatCell
               label="Beds"
-              value={getUnitValuesLabel(listing.unitTypes, "bedrooms")}
+              value={selectedUnit ? (selectedUnit.bedrooms != null ? String(selectedUnit.bedrooms) : "—") : getUnitValuesLabel(listing.unitTypes, "bedrooms")}
             />
             <StatCell
               label="Baths"
-              value={getUnitValuesLabel(listing.unitTypes, "bathrooms")}
+              value={selectedUnit ? (selectedUnit.bathrooms != null ? String(selectedUnit.bathrooms) : "—") : getUnitValuesLabel(listing.unitTypes, "bathrooms")}
             />
             <StatCell
               label="Sq Ft"
-              value={getAreaRangeLabel(listing.unitTypes)}
+              value={selectedUnit ? (selectedUnit.area ? selectedUnit.area.toLocaleString() : "—") : getAreaRangeLabel(listing.unitTypes)}
             />
             <StatCell
               label="Lease"
@@ -1104,13 +1233,19 @@ export default function ListingModalInfo({ session, listing }) {
               </button>
             </div>
             <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-              {images.map((src, index) => (
-                <img
-                  key={`${src}-${index}`}
+              {[
+                ...galleryLoadedSrcs,
+                ...images.filter((s) => !galleryLoadedSrcs.includes(s)),
+              ].map((src) => (
+                <GalleryImage
+                  key={src}
                   src={src}
-                  alt={`Listing photo ${index + 1}`}
-                  className="w-full h-auto rounded-lg shadow mb-4 break-inside-avoid block"
-                  loading="lazy"
+                  index={images.indexOf(src)}
+                  onImageLoad={(s) =>
+                    setGalleryLoadedSrcs((prev) =>
+                      prev.includes(s) ? prev : [s, ...prev]
+                    )
+                  }
                 />
               ))}
             </div>

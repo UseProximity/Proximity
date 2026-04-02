@@ -7,4 +7,7 @@ export const r2 = new S3Client({
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
+  // Disable SDK-injected checksum headers — R2 doesn't support them in CORS preflight
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
 });

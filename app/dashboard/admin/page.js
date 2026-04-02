@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import AddressSearchInput from "@/components/AddressSearchInput";
 
 // ─── UnitTypesSelector ────────────────────────────────────────────────────────
@@ -103,120 +103,218 @@ function UnitTypesSelector({ value, onChange }) {
   );
 }
 
+// ─── UserSearchDropdown ───────────────────────────────────────────────────────
+// Searchable dropdown for selecting a user by name; shows name, truncated ID, role.
+
+function UserSearchDropdown({ users, value, onChange, changed }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const selectedUser = users.find((u) => u.id === value);
+  const lq = query.trim().toLowerCase();
+  const filtered = lq
+    ? users.filter((u) => (u.name || "").toLowerCase().includes(lq))
+    : users;
+
+  const borderClass = changed
+    ? "border-amber-400 bg-amber-50"
+    : "border-gray-300 hover:border-gray-400 focus:border-blue-400";
+
+  function roleBadgeClass(role) {
+    if (role === "super") return "bg-red-500";
+    if (role === "landlord") return "bg-blue-500";
+    return "bg-gray-400";
+  }
+
+  return (
+    <div ref={ref} className="relative min-w-[200px]">
+      <input
+        type="text"
+        placeholder={selectedUser ? selectedUser.name : "Search by name…"}
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        className={`w-full px-2 py-0.5 rounded text-xs border focus:outline-none ${borderClass}`}
+      />
+      {selectedUser && !query && (
+        <div className="mt-0.5 px-2 flex items-center gap-1.5 text-xs text-gray-500">
+          <span className="font-mono text-gray-400 text-[10px]">{selectedUser.id.slice(0, 8)}…</span>
+          <span className={`px-1 rounded text-white text-[10px] ${roleBadgeClass(selectedUser.role)}`}>
+            {selectedUser.role}
+          </span>
+        </div>
+      )}
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-0.5 w-80 max-h-56 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400 italic">No users found</div>
+          ) : (
+            filtered.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onMouseDown={() => { onChange(u.id); setQuery(""); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2 ${u.id === value ? "bg-blue-50 font-semibold" : ""}`}
+              >
+                <span className="flex-1 text-gray-800 truncate">{u.name || "(no name)"}</span>
+                <span className="font-mono text-gray-400 text-[10px] shrink-0">{u.id.slice(0, 8)}…</span>
+                <span className={`px-1 rounded text-white text-[10px] shrink-0 ${roleBadgeClass(u.role)}`}>
+                  {u.role}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Schemas ──────────────────────────────────────────────────────────────────
-// type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum"
+// type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum" | "user-search"
 // enum fields also carry an `options` array of allowed values
 
 const SCHEMAS = {
   users: [
-    { key: "_id",            label: "ID",              type: "id"       },
-    { key: "name",           label: "Name",            type: "text",    required: true  },
-    { key: "email",          label: "Email",           type: "text",    required: true  },
-    { key: "role",           label: "Role",            type: "enum",    options: ["student", "landlord", "super"] },
-    { key: "phone",          label: "Phone",           type: "text"     },
-    { key: "gender",         label: "Gender",          type: "enum",    options: ["unspecified", "male", "female", "other"] },
-    { key: "birthday",       label: "Birthday",        type: "text"     },
-    { key: "description",    label: "Bio",             type: "text"     },
-    { key: "referralSource", label: "Referral Source", type: "text"     },
-    { key: "profileComplete",label: "Profile Complete",type: "boolean"  },
-    { key: "rating",         label: "Rating",          type: "number"   },
-    { key: "numReviews",     label: "# Reviews",       type: "number"   },
-    { key: "image",          label: "Image URL",       type: "text"     },
-    { key: "listings",       label: "Listings",        type: "json"     },
-    { key: "favorites",      label: "Favorites",       type: "json"     },
-    { key: "contacted",      label: "Contacted",       type: "json"     },
-    { key: "reviews",        label: "Reviews",         type: "json"     },
-    { key: "createdAt",      label: "Created",         type: "readonly" },
-    { key: "updatedAt",      label: "Updated",         type: "readonly" },
+    { key: "id",               label: "ID",              type: "id"       },
+    { key: "name",             label: "Name",            type: "text",    required: true  },
+    { key: "email",            label: "Email",           type: "text",    required: true  },
+    { key: "role",             label: "Role",            type: "enum",    options: ["student", "landlord", "super"] },
+    { key: "phone",            label: "Phone",           type: "text"     },
+    { key: "gender",           label: "Gender",          type: "enum",    options: ["unspecified", "male", "female", "other"] },
+    { key: "birthday",         label: "Birthday",        type: "text"     },
+    { key: "description",      label: "Bio",             type: "text"     },
+    { key: "referral_source",  label: "Referral Source", type: "text"     },
+    { key: "profile_complete", label: "Profile Complete",type: "boolean"  },
+    { key: "rating",           label: "Rating",          type: "number"   },
+    { key: "num_reviews",      label: "# Reviews",       type: "number"   },
+    { key: "image",            label: "Image URL",       type: "text"     },
+    { key: "created_at",       label: "Created",         type: "readonly" },
+    { key: "updated_at",       label: "Updated",         type: "readonly" },
   ],
   listings: [
-    { key: "_id",              label: "ID",                type: "id"       },
-    { key: "title",            label: "Title",             type: "text"     },
-    { key: "address",          label: "Address",           type: "text",    required: true  },
-    { key: "homeType",         label: "Home Type",         type: "enum",    options: ["apartment", "house", "condo", "townhouse"] },
-    { key: "leaseType",        label: "Lease Type",        type: "enum",    options: ["standard", "sublease"] },
-    { key: "leaseAvailability",label: "Lease Availability",type: "enum",    options: ["semester", "10-month", "12-month"] },
-    { key: "leaseStructure",   label: "Lease Structure",   type: "enum",    options: ["individual", "joint"] },
-    { key: "moveInDate",       label: "Move-in Date",      type: "text"     },
-    { key: "furnished",        label: "Furnished",         type: "boolean"  },
-    { key: "utilitiesIncluded",label: "Utilities Included",type: "multi-enum", options: ["water", "sewer", "trash", "internet", "electric", "gas", "hotWater", "yardCare"] },
-    { key: "subleaseFriendly", label: "Sublease Friendly", type: "boolean"  },
-    { key: "unavailable",      label: "Unavailable",       type: "boolean"  },
-    { key: "minRent",          label: "Min Rent",          type: "number"   },
-    { key: "maxRent",          label: "Max Rent",          type: "number"   },
-    { key: "minBedrooms",      label: "Min Beds",          type: "number"   },
-    { key: "maxBedrooms",      label: "Max Beds",          type: "number"   },
-    { key: "minBathrooms",     label: "Min Baths",         type: "number"   },
-    { key: "maxBathrooms",     label: "Max Baths",         type: "number"   },
-    { key: "minArea",          label: "Min Area (sqft)",   type: "number"   },
-    { key: "maxArea",          label: "Max Area (sqft)",   type: "number"   },
-    { key: "rating",           label: "Rating",            type: "number"   },
-    { key: "numReviews",       label: "# Reviews",         type: "number"   },
-    { key: "numSaves",         label: "# Saves",           type: "number"   },
-    { key: "numClicks",        label: "# Clicks",          type: "number"   },
-    { key: "shuttleWalkMinutes",label:"Shuttle Walk (min)", type: "number"  },
-    { key: "latitude",         label: "Latitude",          type: "number"   },
-    { key: "longitude",        label: "Longitude",         type: "number"   },
-    { key: "contactEmail",     label: "Contact Email",     type: "text"     },
-    { key: "contactPhone",     label: "Contact Phone",     type: "text"     },
-    { key: "contactName",      label: "Contact Name",      type: "text"     },
-    { key: "description",      label: "Description",       type: "text",    required: true  },
-    { key: "owner",            label: "Owner ID",          type: "text"     },
-    { key: "landlord",         label: "Landlord ID",       type: "text"     },
-    { key: "unitTypes",        label: "Unit Types",        type: "json",    required: true  },
-    { key: "images",           label: "Images",            type: "images"   },
-    { key: "reviews",          label: "Reviews",           type: "json"     },
-    { key: "placeWalkMinutes", label: "Place Walk Times",  type: "json"     },
-    { key: "amenities",        label: "Amenities",         type: "multi-enum", options: ["dishwasher","in_unit_laundry","refrigerator","stove","oven","microwave","ac_heating","mailroom","pets_allowed","extra_storage","fireplace","private_parking","pool","study_room","gym"] },
-    { key: "createdAt",        label: "Created",           type: "readonly" },
+    { key: "id",                   label: "ID",                type: "id"       },
+    { key: "title",                label: "Title",             type: "text"     },
+    { key: "address",              label: "Address",           type: "text",    required: true  },
+    { key: "home_type",            label: "Home Type",         type: "enum",    options: ["apartment", "house", "condo", "townhouse"] },
+    { key: "lease_type",           label: "Lease Type",        type: "enum",    options: ["standard", "sublease"] },
+    { key: "min_rent",             label: "Min Rent",          type: "readonly" },
+    { key: "max_rent",             label: "Max Rent",          type: "readonly" },
+    { key: "min_bedrooms",         label: "Min Beds",          type: "readonly" },
+    { key: "max_bedrooms",         label: "Max Beds",          type: "readonly" },
+    { key: "min_bathrooms",        label: "Min Baths",         type: "readonly" },
+    { key: "max_bathrooms",        label: "Max Baths",         type: "readonly" },
+    { key: "min_area",             label: "Min Area (sqft)",   type: "readonly" },
+    { key: "max_area",             label: "Max Area (sqft)",   type: "readonly" },
+    { key: "rating",               label: "Rating",            type: "readonly" },
+    { key: "num_reviews",          label: "# Reviews",         type: "readonly" },
+    { key: "num_saves",            label: "# Saves",           type: "readonly" },
+    { key: "num_clicks",           label: "# Clicks",          type: "readonly" },
+    { key: "shuttle_walk_minutes", label: "Shuttle Walk (min)", type: "readonly" },
+    { key: "latitude",             label: "Latitude",          type: "readonly" },
+    { key: "longitude",            label: "Longitude",         type: "readonly" },
+    { key: "contact_email",        label: "Contact Email",     type: "text"     },
+    { key: "contact_phone",        label: "Contact Phone",     type: "text"     },
+    { key: "contact_name",         label: "Contact Name",      type: "text"     },
+    { key: "description",          label: "Description",       type: "text"     },
+    { key: "furnished",            label: "Furnished",          type: "boolean"  },
+    { key: "utilities_included",   label: "Utilities Included", type: "multi-enum", options: ["water","sewer","trash","internet","electric","gas","hotWater","yardCare"] },
+    { key: "lease_structure",      label: "Lease Structure",    type: "enum",    options: ["individual","joint"] },
+    { key: "move_in_date",         label: "Move-in Date",       type: "date"     },
+    { key: "sublease_friendly",    label: "Sublease Friendly",  type: "boolean"  },
+    { key: "amenities",            label: "Amenities",          type: "multi-enum", options: ["dishwasher","in_unit_laundry","refrigerator","stove","oven","microwave","ac_heating","mailroom","pets_allowed","extra_storage","fireplace","private_parking","pool","study_room","gym"] },
+    { key: "unavailable",          label: "Unavailable",        type: "boolean"  },
+    { key: "landlord_id",          label: "Landlord",          type: "user-search" },
+    { key: "images",               label: "Images",            type: "images"   },
+    { key: "place_walk_minutes",   label: "Place Walk Times",  type: "walk-times" },
+    { key: "created_at",           label: "Created",           type: "readonly" },
+    { key: "updated_at",           label: "Updated",           type: "readonly" },
+  ],
+  listing_units: [
+    { key: "id",                  label: "ID",                 type: "id"       },
+    { key: "listing_id",          label: "Listing ID",         type: "text",    required: true  },
+    { key: "bedrooms",            label: "Bedrooms",           type: "number",  required: true  },
+    { key: "bathrooms",           label: "Bathrooms",          type: "number",  required: true  },
+    { key: "rent",                label: "Rent ($)",           type: "number"   },
+    { key: "area",                label: "Area (sqft)",        type: "number"   },
+    { key: "lease_availability",  label: "Lease Availability", type: "enum",    options: ["semester","10-month","12-month"] },
+    { key: "created_at",          label: "Created",            type: "readonly" },
+    { key: "updated_at",          label: "Updated",            type: "readonly" },
   ],
   reviews: [
-    { key: "_id",                label: "ID",             type: "id"       },
-    { key: "reviewer",           label: "Reviewer ID",    type: "text",    required: true  },
-    { key: "reviewedUser",       label: "Reviewed User",  type: "text"     },
-    { key: "listing",            label: "Listing ID",     type: "text"     },
-    { key: "rating",             label: "Rating",         type: "number",  required: true  },
-    { key: "comment",            label: "Comment",        type: "text",    required: true  },
-    { key: "legitimacy",         label: "Verified",       type: "boolean"  },
-    { key: "communicationRating",label: "Communication",  type: "number"   },
-    { key: "locationRating",     label: "Location",       type: "number"   },
-    { key: "valueRating",        label: "Value",          type: "number"   },
-    { key: "createdAt",          label: "Created",        type: "readonly" },
-    { key: "updatedAt",          label: "Updated",        type: "readonly" },
+    { key: "id",                   label: "ID",            type: "id"       },
+    { key: "user_id",              label: "Reviewer ID",   type: "text",    required: true  },
+    { key: "listing_id",           label: "Listing ID",    type: "text",    required: true  },
+    { key: "rating",               label: "Rating",        type: "number",  required: true  },
+    { key: "comment",              label: "Comment",       type: "text",    required: true  },
+    { key: "legitimacy",           label: "Verified",      type: "boolean"  },
+    { key: "communication_rating", label: "Communication", type: "number"   },
+    { key: "location_rating",      label: "Location",      type: "number"   },
+    { key: "value_rating",         label: "Value",         type: "number"   },
+    { key: "created_at",           label: "Created",       type: "readonly" },
+    { key: "updated_at",           label: "Updated",       type: "readonly" },
   ],
   dorms: [
-    { key: "_id",        label: "ID",          type: "id"       },
-    { key: "name",       label: "Name",        type: "text",    required: true  },
-    { key: "description",label: "Description", type: "text"     },
-    { key: "image",      label: "Image URL",   type: "text"     },
-    { key: "roomTypes",  label: "Room Types",  type: "json"     },
-    { key: "tags",       label: "Tags",        type: "json"     },
-    { key: "createdAt",  label: "Created",     type: "readonly" },
-    { key: "updatedAt",  label: "Updated",     type: "readonly" },
+    { key: "id",          label: "ID",          type: "id"       },
+    { key: "name",        label: "Name",        type: "text",    required: true  },
+    { key: "description", label: "Description", type: "text"     },
+    { key: "image",       label: "Image URL",   type: "text"     },
+    { key: "room_types",  label: "Room Types",  type: "json"     },
+    { key: "tags",        label: "Tags",        type: "json"     },
+    { key: "created_at",  label: "Created",     type: "readonly" },
+    { key: "updated_at",  label: "Updated",     type: "readonly" },
   ],
-  dormreviews: [
-    { key: "_id",      label: "ID",          type: "id"       },
-    { key: "name",     label: "Author Name", type: "text",    required: true  },
-    { key: "classYear",label: "Class Year",  type: "number",  required: true  },
-    { key: "rating",   label: "Rating",      type: "number",  required: true  },
-    { key: "dorm",     label: "Dorm",        type: "text",    required: true  },
-    { key: "dormType", label: "Room Type",   type: "text"     },
-    { key: "tags",     label: "Tags",        type: "json"     },
-    { key: "content",  label: "Content",     type: "text",    required: true  },
-    { key: "createdAt",label: "Created",     type: "readonly" },
-    { key: "updatedAt",label: "Updated",     type: "readonly" },
+  dorm_reviews: [
+    { key: "id",            label: "ID",          type: "id"       },
+    { key: "dorm_id",       label: "Dorm ID",     type: "text",    required: true  },
+    { key: "reviewer_name", label: "Author Name", type: "text",    required: true  },
+    { key: "class_year",    label: "Class Year",  type: "number",  required: true  },
+    { key: "rating",        label: "Rating",      type: "number",  required: true  },
+    { key: "dorm_type",     label: "Room Type",   type: "text"     },
+    { key: "tags",          label: "Tags",        type: "json"     },
+    { key: "content",       label: "Content",     type: "text",    required: true  },
+    { key: "created_at",    label: "Created",     type: "readonly" },
+    { key: "updated_at",    label: "Updated",     type: "readonly" },
   ],
   testimonials: [
-    { key: "_id",      label: "ID",     type: "id"       },
-    { key: "text",     label: "Text",   type: "text",    required: true  },
-    { key: "author",   label: "Author", type: "text",    required: true  },
-    { key: "rating",   label: "Rating", type: "number",  required: true  },
-    { key: "createdAt",label: "Created",type: "readonly" },
-    { key: "updatedAt",label: "Updated",type: "readonly" },
+    { key: "id",         label: "ID",     type: "id"       },
+    { key: "text",       label: "Text",   type: "text",    required: true  },
+    { key: "author",     label: "Author", type: "text",    required: true  },
+    { key: "rating",     label: "Rating", type: "number",  required: true  },
+    { key: "created_at", label: "Created",type: "readonly" },
+    { key: "updated_at", label: "Updated",type: "readonly" },
   ],
 };
 
-const TABLES = Object.keys(SCHEMAS);
+// listing_units is shown inline under listings, not as a standalone nav tab
+const TABLES = Object.keys(SCHEMAS).filter((t) => t !== "listing_units");
+
+// Returns a max-width style for a column based on its field definition
+function colStyle(f) {
+  switch (f.type) {
+    case "id":        return { width: 80,  maxWidth: 80  };
+    case "boolean":   return { width: 64,  maxWidth: 64  };
+    case "number":    return { width: 80,  maxWidth: 96  };
+    case "readonly":  return { width: 80,  maxWidth: 110 };
+    case "enum":      return { width: 110, maxWidth: 140 };
+    case "multi-enum":return { width: 120, maxWidth: 160 };
+    case "date":      return { width: 130, maxWidth: 150 };
+    case "images":    return { width: 90,  maxWidth: 90  };
+    case "walk-times":return { width: 200, maxWidth: 260 };
+    case "json":      return { width: 160, maxWidth: 240 };
+    default:          return { minWidth: 120 };           // text — grows freely
+  }
+}
 
 // ─── Cell Input Components ─────────────────────────────────────────────────────
 
@@ -420,7 +518,7 @@ function MultiEnumDropdown({ options, current, changed, onChange }) {
   );
 }
 
-function FieldInput({ fieldDef, value, pendingValue, onChange }) {
+function FieldInput({ fieldDef, value, pendingValue, onChange, users = [] }) {
   const { type } = fieldDef;
   const current = pendingValue !== undefined ? pendingValue : value;
   const changed = pendingValue !== undefined;
@@ -455,7 +553,7 @@ function FieldInput({ fieldDef, value, pendingValue, onChange }) {
 
   if (type === "id") {
     return (
-      <span className="block px-2 py-0.5 text-gray-400 font-mono text-xs whitespace-nowrap">
+      <span className="block px-2 py-0.5 text-gray-400 font-mono text-xs break-all">
         {current == null ? "" : String(current)}
       </span>
     );
@@ -466,7 +564,7 @@ function FieldInput({ fieldDef, value, pendingValue, onChange }) {
       typeof current === "object" ? new Date(current).toLocaleString() : String(current)
     );
     return (
-      <span className="block px-2 py-0.5 text-gray-400 text-xs whitespace-nowrap">
+      <span className="block px-2 py-0.5 text-gray-400 text-xs break-words">
         {display}
       </span>
     );
@@ -494,6 +592,37 @@ function FieldInput({ fieldDef, value, pendingValue, onChange }) {
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
         className={`${baseText} min-w-[80px]`}
         step="any"
+      />
+    );
+  }
+
+  if (type === "walk-times") {
+    const obj = current == null ? {} : (typeof current === "object" ? current : (() => {
+      try { return JSON.parse(current); } catch { return {}; }
+    })());
+    const entries = Object.entries(obj);
+    if (entries.length === 0) return <span className="block px-2 py-0.5 text-gray-400 text-xs">—</span>;
+    return (
+      <div className="px-2 py-1 flex flex-col gap-0.5 min-w-[180px]">
+        {entries.map(([place, mins]) => (
+          <div key={place} className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-gray-700 truncate max-w-[140px]" title={place}>{place}</span>
+            <span className="text-gray-500 whitespace-nowrap font-medium">{mins} min</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "date") {
+    // Normalize ISO datetime strings (e.g. "2025-08-01T00:00:00Z") to "YYYY-MM-DD"
+    const dateVal = current == null ? "" : String(current).slice(0, 10);
+    return (
+      <input
+        type="date"
+        value={dateVal}
+        onChange={(e) => onChange(e.target.value || null)}
+        className={`${baseText} min-w-[120px]`}
       />
     );
   }
@@ -528,6 +657,17 @@ function FieldInput({ fieldDef, value, pendingValue, onChange }) {
     );
   }
 
+  if (type === "user-search") {
+    return (
+      <UserSearchDropdown
+        users={users}
+        value={current == null ? "" : String(current)}
+        onChange={onChange}
+        changed={changed}
+      />
+    );
+  }
+
   // text (default)
   const display = current == null ? "" : String(current);
   return (
@@ -539,9 +679,68 @@ function FieldInput({ fieldDef, value, pendingValue, onChange }) {
   );
 }
 
+// ─── Cell Wrapper (overflow clip + copy on hover) ─────────────────────────────
+
+function CellWrapper({ value, pendingValue, children }) {
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const wrapperRef = useRef(null);
+
+  function getCopyText() {
+    const current = pendingValue !== undefined ? pendingValue : value;
+    if (current == null) return "";
+    if (typeof current === "object") return JSON.stringify(current);
+    return String(current);
+  }
+
+  function handleCopy(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    navigator.clipboard.writeText(getCopyText()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  useEffect(() => {
+    if (!expanded) return;
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setExpanded(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [expanded]);
+
+  return (
+    <div ref={wrapperRef} className="relative group" onClick={() => !expanded && setExpanded(true)}>
+      <div className={expanded ? "overflow-visible" : "overflow-hidden"} style={expanded ? {} : { maxHeight: "2rem" }}>
+        {children}
+      </div>
+      <button
+        type="button"
+        onMouseDown={handleCopy}
+        className="absolute top-0 right-0 z-10 opacity-0 group-hover:opacity-100 p-0.5 bg-white/90 rounded text-gray-400 hover:text-gray-700 transition-opacity pointer-events-auto"
+        title="Copy cell value"
+      >
+        {copied ? (
+          <svg className="w-3 h-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        ) : (
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 // ─── Image Manager Panel ───────────────────────────────────────────────────────
 
-function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
+function ImageManagerPanel({ listingId, initialImages, dbTarget, isProd, onClose, onSaved }) {
   const [images, setImages] = useState(Array.isArray(initialImages) ? initialImages : []);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -579,16 +778,14 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
   }
 
   async function handleDelete(url) {
-    const warning = db === "prod"
-      ? "⚠️ PRODUCTION: Delete this image? This will permanently remove it from the live site and cannot be undone."
-      : "Delete this image? This cannot be undone.";
-    if (!confirm(warning)) return;
+    if (!confirm("Delete this image? This cannot be undone.")) return;
+    if (isProd && !confirm("PRODUCTION: This will permanently delete this image from the PRODUCTION database. Are you absolutely sure?")) return;
     setPanelError(null);
     try {
       const res = await fetch("/api/admin/listing-images", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, imageUrl: url, db }),
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+        body: JSON.stringify({ listingId, imageUrl: url }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed");
@@ -609,8 +806,8 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
     try {
       const res = await fetch("/api/admin/listing-images", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, oldUrl: renamingUrl, newFilename: renameValue.trim(), db }),
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+        body: JSON.stringify({ listingId, oldUrl: renamingUrl, newFilename: renameValue.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Rename failed");
@@ -623,7 +820,7 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
 
   async function handleUpload(files) {
     if (!files || files.length === 0) return;
-    if (db === "prod" && !confirm(`⚠️ PRODUCTION: Upload ${files.length} photo(s) to the live site?`)) return;
+    if (!confirm(`Upload ${files.length} photo(s)?`)) return;
     setUploading(true);
     setPanelError(null);
     try {
@@ -633,7 +830,6 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           listingId,
-          db: db || "dev",
           files: files.map((f) => ({ name: f.name, type: f.type })),
         }),
       });
@@ -658,7 +854,7 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
       const confirmRes = await fetch("/api/upload", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, db: db || "dev", urls: publicUrls }),
+        body: JSON.stringify({ listingId, urls: publicUrls }),
       });
       const confirmData = await confirmRes.json();
       if (!confirmRes.ok) throw new Error(confirmData.error || `Failed to save images (HTTP ${confirmRes.status})`);
@@ -672,14 +868,14 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
   }
 
   async function handleSave() {
-    if (db === "prod" && !confirm("⚠️ PRODUCTION: Save this image order to the live site?")) return;
+    if (isProd && !confirm("PRODUCTION: Saving image changes to the PRODUCTION database. Proceed?")) return;
     setSaving(true);
     setPanelError(null);
     try {
       const res = await fetch("/api/admin/listing-images", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, images, db }),
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+        body: JSON.stringify({ listingId, images }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
@@ -705,12 +901,6 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
             </svg>
           </button>
         </div>
-        {db === "prod" && (
-          <div className="mx-0 px-5 py-2.5 bg-red-600 text-white text-xs font-semibold flex items-center gap-2">
-            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
-            PRODUCTION DATABASE — changes are live and permanent
-          </div>
-        )}
 
         {panelError && (
           <div className="mx-5 mt-3 px-3 py-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded">
@@ -725,7 +915,7 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
           {images.map((url, idx) => (
             <div key={url + idx} className="flex items-center gap-3 p-2 border border-gray-200 rounded-lg bg-white hover:bg-gray-50">
               <img
-                src={url}
+                src={`/_next/image?url=${encodeURIComponent(url)}&w=128&q=15`}
                 alt={`img-${idx}`}
                 className="w-16 h-12 object-cover rounded border border-gray-200 flex-shrink-0"
                 onError={(e) => { e.target.style.display = "none"; }}
@@ -799,7 +989,6 @@ function ImageManagerPanel({ listingId, initialImages, db, onClose, onSaved }) {
 
 export default function AdminDashboard() {
   const [activeTable, setActiveTable] = useState("users");
-  const [activeDb, setActiveDb] = useState("prod");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -814,8 +1003,25 @@ export default function AdminDashboard() {
   const colPickerRef = useRef(null);
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [addRowFields, setAddRowFields] = useState({});
+  const [addRowUnits, setAddRowUnits] = useState([]);
   const [addRowError, setAddRowError] = useState(null);
   const [addRowSaving, setAddRowSaving] = useState(false);
+
+  // All users — used to populate the landlord_id user-search dropdown
+  const [allUsers, setAllUsers] = useState([]);
+
+  // Inline listing_units state
+  const [unitsByListing, setUnitsByListing] = useState({});
+  const [expandedListings, setExpandedListings] = useState(new Set());
+  const [unitPendingChanges, setUnitPendingChanges] = useState({});
+  const [addingUnitForListing, setAddingUnitForListing] = useState(null);
+  const [newUnitFields, setNewUnitFields] = useState({});
+  const [addingUnitSaving, setAddingUnitSaving] = useState(false);
+  const [addingUnitError, setAddingUnitError] = useState(null);
+
+  // DB environment toggle — "prod" or "dev"
+  const [dbTarget, setDbTarget] = useState("dev");
+  const isProd = dbTarget === "prod";
 
   const schema = SCHEMAS[activeTable] || [];
   const visibleSchema = schema.filter((f) => visibleColumns.has(f.key));
@@ -830,19 +1036,64 @@ export default function AdminDashboard() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const loadTable = useCallback(async (table, db) => {
+  // Load persisted db target on mount; fall back to server's NODE_ENV
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("admin_db_target") : null;
+    if (stored === "prod" || stored === "dev") {
+      setDbTarget(stored);
+      return;
+    }
+    fetch("/api/admin/db-env")
+      .then((r) => r.json())
+      .then((d) => { if (d.env === "prod" || d.env === "dev") setDbTarget(d.env); })
+      .catch(() => {});
+  }, []);
+
+  function toggleDbTarget() {
+    const next = dbTarget === "prod" ? "dev" : "prod";
+    if (next === "prod" && !confirm("Switch to PRODUCTION database?\n\nAll reads and writes will affect real user data. Proceed?")) return;
+    setDbTarget(next);
+    if (typeof window !== "undefined") localStorage.setItem("admin_db_target", next);
+  }
+
+  const loadTable = useCallback(async (table, target) => {
     setLoading(true);
     setError(null);
     setPendingChanges({});
+    setUnitPendingChanges({});
+    setExpandedListings(new Set());
+    setUnitsByListing({});
     setSearch("");
     setSearchColumn("all");
     setSaveStatus(null);
     setVisibleColumns(new Set((SCHEMAS[table] || []).map((f) => f.key)));
+    const dbHeader = { "x-db-target": target };
     try {
-      const res = await fetch(`/api/admin/${table}?db=${db}`);
+      const res = await fetch(`/api/admin/${table}`, { headers: dbHeader });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       setRows(Array.isArray(data) ? data : []);
+
+      // Also load listing_units and users when viewing listings
+      if (table === "listings") {
+        const [unitsRes, usersRes] = await Promise.all([
+          fetch("/api/admin/listing_units", { headers: dbHeader }),
+          fetch("/api/admin/users", { headers: dbHeader }),
+        ]);
+        if (unitsRes.ok) {
+          const unitsData = await unitsRes.json();
+          const grouped = {};
+          for (const unit of (Array.isArray(unitsData) ? unitsData : [])) {
+            if (!grouped[unit.listing_id]) grouped[unit.listing_id] = [];
+            grouped[unit.listing_id].push(unit);
+          }
+          setUnitsByListing(grouped);
+        }
+        if (usersRes.ok) {
+          const usersData = await usersRes.json();
+          setAllUsers(Array.isArray(usersData) ? usersData : []);
+        }
+      }
     } catch (e) {
       setError(e.message);
       setRows([]);
@@ -852,8 +1103,8 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    loadTable(activeTable, activeDb);
-  }, [activeTable, activeDb, loadTable]);
+    loadTable(activeTable, dbTarget);
+  }, [activeTable, dbTarget, loadTable]);
 
   useEffect(() => {
     if (addRowOpen) {
@@ -880,7 +1131,7 @@ export default function AdminDashboard() {
 
   function handleCellChange(rowId, key, value) {
     if (key === "images" && value === "__open_panel__") {
-      const row = rows.find((r) => r._id === rowId);
+      const row = rows.find((r) => r.id === rowId);
       const imgs = Array.isArray(row?.images) ? row.images : [];
       setImagePanel({ listingId: rowId, images: imgs });
       return;
@@ -892,57 +1143,169 @@ export default function AdminDashboard() {
     setSaveStatus(null);
   }
 
+  function toggleExpand(listingId) {
+    setExpandedListings((prev) => {
+      const next = new Set(prev);
+      if (next.has(listingId)) next.delete(listingId); else next.add(listingId);
+      return next;
+    });
+  }
+
+  async function handleDeleteUnit(listingId, unitId) {
+    if (!confirm("Delete this unit? This cannot be undone.")) return;
+    if (isProd && !confirm("PRODUCTION: This will permanently delete this unit from the PRODUCTION database. Are you absolutely sure?")) return;
+    try {
+      const res = await fetch(`/api/admin/listing_units?id=${unitId}`, { method: "DELETE", headers: { "x-db-target": dbTarget } });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Delete failed");
+        return;
+      }
+      setUnitsByListing((prev) => ({
+        ...prev,
+        [listingId]: (prev[listingId] || []).filter((u) => u.id !== unitId),
+      }));
+      setUnitPendingChanges((prev) => {
+        const next = { ...prev };
+        delete next[unitId];
+        return next;
+      });
+    } catch (e) {
+      alert(e.message || "Delete failed");
+    }
+  }
+
+  function openAddUnit(listingId) {
+    setNewUnitFields(blankUnit());
+    setAddingUnitError(null);
+    setAddingUnitForListing(listingId);
+  }
+
+  async function handleSaveNewUnit(listingId) {
+    if (isProd && !confirm("PRODUCTION: Adding a new unit to the PRODUCTION database. Proceed?")) return;
+    setAddingUnitSaving(true);
+    setAddingUnitError(null);
+    try {
+      const res = await fetch("/api/admin/listing_units", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+        body: JSON.stringify({ fields: { ...newUnitFields, listing_id: listingId } }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status !== 201) throw new Error(data.error || `Error ${res.status}`);
+      setUnitsByListing((prev) => ({
+        ...prev,
+        [listingId]: [...(prev[listingId] || []), data],
+      }));
+      setAddingUnitForListing(null);
+      setNewUnitFields({});
+    } catch (e) {
+      setAddingUnitError(e.message);
+    } finally {
+      setAddingUnitSaving(false);
+    }
+  }
+
+  function handleUnitCellChange(unitId, key, value) {
+    setUnitPendingChanges((prev) => ({
+      ...prev,
+      [unitId]: { ...(prev[unitId] || {}), [key]: value },
+    }));
+    setSaveStatus(null);
+  }
+
   async function handleConfirmUpdates() {
     const entries = Object.entries(pendingChanges);
-    if (entries.length === 0) return;
+    const unitEntries = Object.entries(unitPendingChanges);
+    if (entries.length === 0 && unitEntries.length === 0) return;
+    if (isProd && !confirm(`PRODUCTION: You are about to save ${entries.length + unitEntries.length} row(s) to the PRODUCTION database.\n\nThis will affect real user data. Proceed?`)) return;
     setSaving(true);
     setSaveStatus(null);
     let failed = 0;
-    for (const [id, updates] of entries) {
+    const errors = [];
+
+    async function patchRow(url, id, updates) {
       try {
-        const res = await fetch(`/api/admin/${activeTable}?db=${activeDb}`, {
+        const res = await fetch(url, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
           body: JSON.stringify({ id, updates }),
         });
-        if (!res.ok) failed++;
-      } catch {
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`;
+          try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+          errors.push(`[${id.slice(0, 8)}…] ${msg}`);
+          failed++;
+        }
+      } catch (e) {
+        errors.push(`[${String(id).slice(0, 8)}…] ${e.message}`);
         failed++;
       }
     }
+
+    for (const [id, updates] of entries) {
+      await patchRow(`/api/admin/${activeTable}`, id, updates);
+    }
+
     // When saving listings, also normalize any legacy amenity values in the DB
     let migrateMsg = "";
     if (activeTable === "listings") {
       try {
-        const res = await fetch(`/api/admin/migrate-amenities?db=${activeDb}`, { method: "POST" });
+        const res = await fetch(`/api/admin/migrate-amenities`, { method: "POST", headers: { "x-db-target": dbTarget } });
         const data = await res.json();
         if (!data.error && data.migrated > 0) {
           migrateMsg = ` · ${data.migrated} amenity row(s) normalized`;
         }
       } catch { /* non-fatal */ }
     }
+
+    // Also save any pending unit changes when on listings view
+    for (const [unitId, updates] of unitEntries) {
+      await patchRow("/api/admin/listing_units", unitId, updates);
+    }
+
+    const totalSaved = entries.length + unitEntries.length - failed;
     setSaving(false);
     if (failed === 0) {
-      setSaveStatus({ ok: true, msg: `${entries.length} row(s) saved.${migrateMsg}` });
+      setSaveStatus({ ok: true, msg: `${totalSaved} row(s) saved.${migrateMsg}` });
       setPendingChanges({});
-      loadTable(activeTable, activeDb);
+      setUnitPendingChanges({});
+      loadTable(activeTable, dbTarget);
     } else {
-      setSaveStatus({ ok: false, msg: `${failed} row(s) failed to save.` });
+      const detail = errors.slice(0, 3).join("; ");
+      setSaveStatus({ ok: false, msg: `${failed} row(s) failed: ${detail}` });
+      // Still clear successfully-saved rows and reload
+      if (totalSaved > 0) loadTable(activeTable, dbTarget);
     }
   }
 
-  const pendingCount = Object.keys(pendingChanges).length;
+  const pendingCount = Object.keys(pendingChanges).length + Object.keys(unitPendingChanges).length;
+
+  function blankUnit() {
+    const u = {};
+    for (const f of SCHEMAS.listing_units) {
+      if (["id", "listing_id", "created_at", "updated_at"].includes(f.key)) continue;
+      if (f.type === "boolean") u[f.key] = false;
+      else if (f.type === "multi-enum") u[f.key] = [];
+      else u[f.key] = "";
+    }
+    return u;
+  }
 
   function openAddRow() {
     const initial = {};
     for (const f of schema) {
-      if (f.type === "id" || f.type === "readonly") continue;
+      if (f.type === "id" || f.type === "readonly" || f.type === "walk-times") continue;
       if (f.type === "boolean") initial[f.key] = false;
       else if (f.type === "multi-enum") initial[f.key] = [];
-      else if (activeTable === "listings" && f.key === "unitTypes") initial[f.key] = [];
       else initial[f.key] = "";
     }
+    if (activeTable === "listings") {
+      initial.lease_type = "standard";
+      initial.lease_structure = "individual";
+    }
     setAddRowFields(initial);
+    setAddRowUnits(activeTable === "listings" ? [blankUnit()] : []);
     setAddRowError(null);
     setAddRowSaving(false);
     setAddRowOpen(true);
@@ -950,22 +1313,64 @@ export default function AdminDashboard() {
 
   async function handleAddRowSubmit(e) {
     e.preventDefault();
+    if (isProd && !confirm(`PRODUCTION: You are about to create a new row in the PRODUCTION database.\n\nThis will affect real user data. Proceed?`)) return;
     setAddRowSaving(true);
     setAddRowError(null);
     try {
-      const res = await fetch(`/api/admin/${activeTable}?db=${activeDb}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fields: addRowFields }),
-      });
-      if (res.status === 201) {
-        setAddRowOpen(false);
-        setAddRowFields({});
-        loadTable(activeTable, activeDb);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setAddRowError(data.error || `Error ${res.status}`);
+      let fields = { ...addRowFields };
+
+      // Auto-generate description for listings when left blank
+      if (activeTable === "listings" && !fields.description?.trim()) {
+        const name = (fields.title?.trim() || fields.address?.split(",")[0]?.trim() || "This property");
+        const validUnits = addRowUnits.filter((u) => u.bedrooms !== "" && u.bathrooms !== "");
+        if (validUnits.length > 0) {
+          const beds = validUnits.map((u) => Number(u.bedrooms)).filter((n) => !isNaN(n));
+          const rents = validUnits.map((u) => Number(u.rent)).filter((n) => n > 0);
+          const utils = Array.isArray(validUnits[0]?.utilities_included) ? validUnits[0].utilities_included : [];
+          const minBed = Math.min(...beds);
+          const maxBed = Math.max(...beds);
+          const bedPart = minBed === maxBed ? `${minBed}-bedroom` : `${minBed} to ${maxBed} bedroom`;
+          const pricePart = rents.length > 0 ? ` for prices as low as $${Math.min(...rents).toLocaleString()}` : "";
+          const utilPart = utils.length > 0 ? ` with ${utils.join(", ")} included` : "";
+          fields.description = `${name} offers ${bedPart} units${pricePart}${utilPart}.`;
+        }
       }
+
+      const res = await fetch(`/api/admin/${activeTable}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+        body: JSON.stringify({ fields }),
+      });
+      const newRow = await res.json().catch(() => ({}));
+      if (res.status !== 201) {
+        setAddRowError(newRow.error || `Error ${res.status}`);
+        return;
+      }
+
+      // For listings, create each unit draft
+      if (activeTable === "listings" && newRow?.id) {
+        const validUnits = addRowUnits.filter(
+          (u) => u.bedrooms !== "" && u.bathrooms !== ""
+        );
+        for (const unit of validUnits) {
+          const uRes = await fetch("/api/admin/listing_units", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+            body: JSON.stringify({ fields: { ...unit, listing_id: newRow.id } }),
+          });
+          if (!uRes.ok) {
+            const uData = await uRes.json().catch(() => ({}));
+            setAddRowError(`Listing created, but a unit failed: ${uData.error || "unknown error"}`);
+            setAddRowSaving(false);
+            return;
+          }
+        }
+      }
+
+      setAddRowOpen(false);
+      setAddRowFields({});
+      setAddRowUnits([]);
+      loadTable(activeTable, dbTarget);
     } catch (err) {
       setAddRowError(err.message || "Request failed");
     } finally {
@@ -977,23 +1382,28 @@ export default function AdminDashboard() {
     <>
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <div className="bg-gray-900 text-white px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
+      <div className={`text-white px-6 py-4 flex items-center justify-between gap-4 flex-wrap ${isProd ? "bg-red-950" : "bg-gray-900"}`}>
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-xl font-bold tracking-tight">Admin Dashboard</h1>
-          <div className="flex rounded overflow-hidden border border-gray-600 text-xs font-semibold">
-            <button
-              onClick={() => setActiveDb("prod")}
-              className={`px-3 py-1 transition-colors ${activeDb === "prod" ? "bg-red-600 text-white" : "bg-gray-700 text-gray-400 hover:bg-gray-600"}`}
-            >
-              PROD
-            </button>
-            <button
-              onClick={() => setActiveDb("dev")}
-              className={`px-3 py-1 transition-colors ${activeDb === "dev" ? "bg-green-600 text-white" : "bg-gray-700 text-gray-400 hover:bg-gray-600"}`}
-            >
-              DEV
-            </button>
-          </div>
+          {/* DB environment badge */}
+          <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full uppercase tracking-widest border ${
+            isProd
+              ? "bg-red-500 border-red-400 text-white"
+              : "bg-green-600 border-green-500 text-white"
+          }`}>
+            {isProd ? "PROD" : "DEV"}
+          </span>
+          {/* DB toggle */}
+          <button
+            onClick={toggleDbTarget}
+            className={`px-3 py-1 text-xs rounded border font-medium transition-colors ${
+              isProd
+                ? "border-red-500 text-red-200 hover:bg-red-800"
+                : "border-gray-600 text-gray-300 hover:bg-gray-700"
+            }`}
+          >
+            Switch to {isProd ? "DEV" : "PROD"}
+          </button>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {saveStatus && (
@@ -1013,7 +1423,7 @@ export default function AdminDashboard() {
             + Add Row
           </button>
           <button
-            onClick={() => { setPendingChanges({}); setSaveStatus(null); }}
+            onClick={() => { setPendingChanges({}); setUnitPendingChanges({}); setSaveStatus(null); }}
             disabled={pendingCount === 0}
             className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -1028,6 +1438,16 @@ export default function AdminDashboard() {
           </button>
         </div>
       </div>
+
+      {/* PRODUCTION warning banner */}
+      {isProd && (
+        <div className="bg-red-600 text-white px-6 py-2 text-sm font-semibold flex items-center gap-2">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          PRODUCTION DATABASE ACTIVE — All reads and writes affect real user data. Proceed with extreme caution.
+        </div>
+      )}
 
       <div className="px-6 py-5">
         {/* Table tabs */}
@@ -1147,9 +1567,13 @@ export default function AdminDashboard() {
             <table className="min-w-full bg-white text-xs border-collapse">
               <thead>
                 <tr className="bg-gray-200 sticky top-0 z-10">
+                  {activeTable === "listings" && (
+                    <th className="border-b border-r border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap w-20">Units</th>
+                  )}
                   {visibleSchema.map((f) => (
                     <th
                       key={f.key}
+                      style={{ ...colStyle(f), maxWidth: undefined, width: undefined }}
                       className="border-b border-r border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap"
                     >
                       {f.label}
@@ -1162,27 +1586,159 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {filteredRows.map((row) => {
-                  const rowId = row._id;
+                  const rowId = row.id;
                   const pending = pendingChanges[rowId] || {};
                   const hasChanges = Object.keys(pending).length > 0;
+                  const units = activeTable === "listings" ? (unitsByListing[rowId] || []) : [];
+                  const isExpanded = expandedListings.has(rowId);
+                  const unitSchema = SCHEMAS.listing_units.filter((f) => f.key !== "listing_id");
+                  const colSpan = visibleSchema.length + (activeTable === "listings" ? 1 : 0);
                   return (
-                    <tr key={rowId} className={hasChanges ? "bg-amber-50" : "hover:bg-gray-50"}>
-                      {visibleSchema.map((f) => (
-                        <td key={f.key} className="border-b border-r border-gray-200 px-1 py-0.5 align-top">
-                          <FieldInput
-                            fieldDef={f}
-                            value={row[f.key]}
-                            pendingValue={pending[f.key]}
-                            onChange={(v) => handleCellChange(rowId, f.key, v)}
-                          />
-                        </td>
-                      ))}
-                    </tr>
+                    <React.Fragment key={rowId}>
+                      <tr className={hasChanges ? "bg-amber-50" : "hover:bg-gray-50"}>
+                        {activeTable === "listings" && (
+                          <td className="border-b border-r border-gray-200 px-2 py-0.5 align-middle">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(rowId)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap font-medium"
+                            >
+                              <span className="text-gray-500">{isExpanded ? "▼" : "▶"}</span>
+                              {units.length} unit{units.length !== 1 ? "s" : ""}
+                            </button>
+                          </td>
+                        )}
+                        {visibleSchema.map((f) => (
+                          <td key={f.key} style={colStyle(f)} className="border-b border-r border-gray-200 px-1 py-0.5 align-top">
+                            <CellWrapper value={row[f.key]} pendingValue={pending[f.key]}>
+                              <FieldInput
+                                fieldDef={f}
+                                value={row[f.key]}
+                                pendingValue={pending[f.key]}
+                                onChange={(v) => handleCellChange(rowId, f.key, v)}
+                                users={allUsers}
+                              />
+                            </CellWrapper>
+                          </td>
+                        ))}
+                      </tr>
+                      {activeTable === "listings" && isExpanded && (
+                        <tr>
+                          <td colSpan={colSpan} className="border-b border-gray-200 bg-blue-50 px-6 py-3">
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+                              Units — {row.address || rowId}
+                            </p>
+                            {units.length === 0 ? (
+                              <p className="text-xs text-gray-400 italic">No units found for this listing.</p>
+                            ) : (
+                              <div className="overflow-auto max-h-60 rounded border border-blue-200">
+                                <table className="w-auto bg-white text-xs border-collapse">
+                                  <thead>
+                                    <tr className="bg-blue-100 sticky top-0 z-10">
+                                      <th className="border-b border-r border-blue-200 px-2 py-1.5 w-8" />
+                                      {unitSchema.map((f) => (
+                                        <th key={f.key} style={{ ...colStyle(f), maxWidth: undefined, width: undefined }} className="border-b border-r border-blue-200 px-2 py-1.5 text-left font-semibold text-blue-800 whitespace-nowrap">
+                                          {f.label}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {units.map((unit) => {
+                                      const unitPending = unitPendingChanges[unit.id] || {};
+                                      const unitHasChanges = Object.keys(unitPending).length > 0;
+                                      return (
+                                        <tr key={unit.id} className={unitHasChanges ? "bg-amber-50" : "hover:bg-blue-50"}>
+                                          <td className="border-b border-r border-blue-100 px-1 py-0.5 align-middle text-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteUnit(rowId, unit.id)}
+                                              className="text-gray-300 hover:text-red-500 transition-colors leading-none text-base px-1"
+                                              title="Delete unit"
+                                            >
+                                              &times;
+                                            </button>
+                                          </td>
+                                          {unitSchema.map((f) => (
+                                            <td key={f.key} style={{ ...colStyle(f), width: undefined, maxWidth: undefined }} className="border-b border-r border-blue-100 px-1 py-0.5 align-top">
+                                              <CellWrapper value={unit[f.key]} pendingValue={unitPending[f.key]}>
+                                                <FieldInput
+                                                  fieldDef={f}
+                                                  value={unit[f.key]}
+                                                  pendingValue={unitPending[f.key]}
+                                                  onChange={(v) => handleUnitCellChange(unit.id, f.key, v)}
+                                                />
+                                              </CellWrapper>
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                            {addingUnitForListing !== rowId && (
+                              <div className="mt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openAddUnit(rowId)}
+                                  className="px-2 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded"
+                                >
+                                  + Add Unit
+                                </button>
+                              </div>
+                            )}
+                            {addingUnitForListing === rowId && (
+                              <div className="mt-3 border border-blue-300 rounded-lg bg-white p-3">
+                                <p className="text-xs font-semibold text-blue-700 mb-2">New Unit</p>
+                                {addingUnitError && (
+                                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">{addingUnitError}</p>
+                                )}
+                                <div className="flex flex-wrap gap-x-3 gap-y-2 mb-2">
+                                  {unitSchema.filter((f) => f.type !== "id" && f.type !== "readonly").map((f) => (
+                                    <div key={f.key} className={`flex flex-col gap-0.5 ${f.type === "multi-enum" ? "w-full" : "w-28"}`}>
+                                      <label className="text-xs text-gray-500">
+                                        {f.label}
+                                        {f.required && <span className="ml-0.5 text-red-400">*</span>}
+                                      </label>
+                                      <FieldInput
+                                        fieldDef={f}
+                                        value={newUnitFields[f.key]}
+                                        pendingValue={undefined}
+                                        onChange={(v) => setNewUnitFields((prev) => ({ ...prev, [f.key]: v }))}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => { setAddingUnitForListing(null); setAddingUnitError(null); }}
+                                    className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveNewUnit(rowId)}
+                                    disabled={addingUnitSaving}
+                                    className="px-3 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    {addingUnitSaving ? "Saving…" : "Save Unit"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
                 {filteredRows.length === 0 && (
                   <tr>
-                    <td colSpan={visibleSchema.length || 1} className="text-center py-10 text-gray-400">
+                    <td colSpan={(visibleSchema.length || 1) + (activeTable === "listings" ? 1 : 0)} className="text-center py-10 text-gray-400">
                       No rows found
                     </td>
                   </tr>
@@ -1194,103 +1750,178 @@ export default function AdminDashboard() {
       </div>
 
       {/* Add Row Modal */}
-      {addRowOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-800 capitalize">
-                Add {activeTable} Row
-              </h2>
-              <button
-                type="button"
-                onClick={() => setAddRowOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-              >
-                &times;
-              </button>
-            </div>
-            <form onSubmit={handleAddRowSubmit} className="flex flex-col flex-1 overflow-hidden">
-              <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
-                {schema
-                  .filter((f) => f.type !== "id" && f.type !== "readonly")
-                  .map((f) => (
-                    <div key={f.key} className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        {f.label}
-                        {f.required && <span className="ml-0.5 text-red-500">*</span>}
-                        <span className="ml-1 text-gray-400 font-normal">({f.type})</span>
-                      </label>
-                      {activeTable === "listings" && f.key === "address" ? (
-                        <AddressSearchInput
-                          value={addRowFields.address || ""}
-                          onChange={(e) =>
-                            setAddRowFields((prev) => ({ ...prev, address: e.target.value }))
-                          }
-                          onSelectSuggestion={(feature) => {
-                            const [lng, lat] = feature.center;
-                            setAddRowFields((prev) => ({
-                              ...prev,
-                              address: feature.place_name,
-                              latitude: lat,
-                              longitude: lng,
-                            }));
-                          }}
-                          placeholder="Start typing an address…"
-                          className="w-full px-2 py-0.5 rounded text-xs border border-gray-300 hover:border-gray-400 focus:border-blue-400 focus:outline-none"
-                        />
-                      ) : activeTable === "listings" && f.key === "unitTypes" ? (
-                        <UnitTypesSelector
-                          value={addRowFields.unitTypes}
-                          onChange={(v) => setAddRowFields((prev) => ({ ...prev, unitTypes: v }))}
-                        />
-                      ) : (
-                        <FieldInput
-                          fieldDef={f}
-                          value={addRowFields[f.key]}
-                          pendingValue={undefined}
-                          onChange={(v) =>
-                            setAddRowFields((prev) => ({ ...prev, [f.key]: v }))
-                          }
-                        />
-                      )}
-                    </div>
-                  ))}
-              </div>
-              {addRowError && (
-                <p className="mx-5 mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-                  {addRowError}
-                </p>
-              )}
-              <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+      {addRowOpen && (() => {
+        const isListings = activeTable === "listings";
+        const listingFields = schema.filter(
+          (f) => f.type !== "id" && f.type !== "readonly" && f.type !== "walk-times"
+        );
+        const unitFields = SCHEMAS.listing_units.filter(
+          (f) => !["id", "listing_id", "created_at", "updated_at"].includes(f.key)
+        );
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className={`bg-white rounded-lg shadow-xl w-full ${isListings ? "max-w-4xl" : "max-w-lg"} max-h-[90vh] flex flex-col`}>
+              {/* Modal header */}
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-base font-semibold text-gray-800 capitalize">
+                  Add {activeTable.replace(/_/g, " ")} Row
+                </h2>
                 <button
                   type="button"
                   onClick={() => setAddRowOpen(false)}
-                  className="px-4 py-1.5 text-sm text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addRowSaving}
-                  className="px-4 py-1.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {addRowSaving ? "Creating…" : "Create Row"}
+                  &times;
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleAddRowSubmit} className="flex flex-col flex-1 overflow-hidden">
+                <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+
+                  {/* ── Listing fields ── */}
+                  <div>
+                    {isListings && (
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Listing Details</p>
+                    )}
+                    <div className={`grid gap-3 ${isListings ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {listingFields.map((f) => (
+                        <div key={f.key} className={`flex flex-col gap-1 ${f.key === "description" ? "col-span-2" : ""}`}>
+                          <label className="text-xs font-medium text-gray-600">
+                            {f.label}
+                            {f.required && <span className="ml-0.5 text-red-500">*</span>}
+                          </label>
+                          {isListings && f.key === "address" ? (
+                            <AddressSearchInput
+                              value={addRowFields.address || ""}
+                              onChange={(e) =>
+                                setAddRowFields((prev) => ({ ...prev, address: e.target.value }))
+                              }
+                              onSelectSuggestion={(feature) => {
+                                const [lng, lat] = feature.center;
+                                setAddRowFields((prev) => ({
+                                  ...prev,
+                                  address: feature.place_name,
+                                  latitude: lat,
+                                  longitude: lng,
+                                }));
+                              }}
+                              placeholder="Start typing an address…"
+                              className="w-full px-2 py-1 rounded text-xs border border-gray-300 hover:border-gray-400 focus:border-blue-400 focus:outline-none"
+                            />
+                          ) : (
+                            <FieldInput
+                              fieldDef={f}
+                              value={addRowFields[f.key]}
+                              pendingValue={undefined}
+                              onChange={(v) => setAddRowFields((prev) => ({ ...prev, [f.key]: v }))}
+                              users={allUsers}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Units section (listings only) ── */}
+                  {isListings && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Units ({addRowUnits.length})
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setAddRowUnits((prev) => [...prev, blankUnit()])}
+                          className="px-2.5 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded"
+                        >
+                          + Add Unit
+                        </button>
+                      </div>
+                      {addRowUnits.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">No units yet. Click &quot;+ Add Unit&quot; to add one.</p>
+                      ) : (
+                        <div className="flex flex-col gap-3">
+                          {addRowUnits.map((unit, idx) => (
+                            <div key={idx} className="border border-blue-200 rounded-lg bg-blue-50 p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-semibold text-blue-700">Unit {idx + 1}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setAddRowUnits((prev) => prev.filter((_, i) => i !== idx))}
+                                  className="text-gray-400 hover:text-red-500 text-base leading-none"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {unitFields.map((f) => (
+                                  <div key={f.key} className={`flex flex-col gap-0.5 ${f.type === "multi-enum" ? "col-span-3" : ""}`}>
+                                    <label className="text-xs text-gray-500">
+                                      {f.label}
+                                      {f.required && <span className="ml-0.5 text-red-400">*</span>}
+                                    </label>
+                                    <FieldInput
+                                      fieldDef={f}
+                                      value={unit[f.key]}
+                                      pendingValue={undefined}
+                                      onChange={(v) =>
+                                        setAddRowUnits((prev) => {
+                                          const next = [...prev];
+                                          next[idx] = { ...next[idx], [f.key]: v };
+                                          return next;
+                                        })
+                                      }
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {addRowError && (
+                  <p className="mx-5 mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                    {addRowError}
+                  </p>
+                )}
+                <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddRowOpen(false)}
+                    className="px-4 py-1.5 text-sm text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addRowSaving}
+                    className="px-4 py-1.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {addRowSaving ? "Creating…" : isListings && addRowUnits.filter(u => u.bedrooms !== "" && u.bathrooms !== "").length > 0
+                      ? `Create Listing + ${addRowUnits.filter(u => u.bedrooms !== "" && u.bathrooms !== "").length} Unit(s)`
+                      : "Create Row"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
     {imagePanel && (
       <ImageManagerPanel
         listingId={imagePanel.listingId}
         initialImages={imagePanel.images}
-        db={activeDb}
+        dbTarget={dbTarget}
+        isProd={isProd}
         onClose={() => setImagePanel(null)}
         onSaved={(newImages) => {
           setRows((prev) =>
-            prev.map((r) => r._id === imagePanel.listingId ? { ...r, images: newImages } : r)
+            prev.map((r) => r.id === imagePanel.listingId ? { ...r, images: newImages } : r)
           );
           setImagePanel(null);
         }}

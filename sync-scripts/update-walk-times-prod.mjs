@@ -21,6 +21,7 @@ import { MongoClient } from "mongodb";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { WASHU_PLACES, SHUTTLE_STOPS } from "../utils/washuPlaces.js";
 
 // Load .env.local
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -42,35 +43,16 @@ if (!MAPBOX_TOKEN) {
   process.exit(1);
 }
 
-const WASHU_PLACES = [
-  { name: "Olin Library",               lat: 38.64851503785516,  lng: -90.30770757138812 },
-  { name: "Seigle Hall",                lat: 38.64901252229954,  lng: -90.31234570424581 },
-  { name: "Schnucks (Grocery)",         lat: 38.633335917020425, lng: -90.31473611720082 },
-  { name: "Danforth University Center", lat: 38.64754193120054,  lng: -90.31037361422699 },
-  { name: "Sumers Rec Center",          lat: 38.64933192571885,  lng: -90.31472066027095 },
-  { name: "Village House",              lat: 38.65056939432417,  lng: -90.31405161268682 },
-];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const SHUTTLE_STOPS = [
-  { lat: 38.6473, lng: -90.3097 },
-  { lat: 38.6482, lng: -90.3049 },
-  { lat: 38.6463, lng: -90.3041 },
-  { lat: 38.6485, lng: -90.3077 },
-  { lat: 38.6491, lng: -90.3061 },
-  { lat: 38.6492, lng: -90.3006 },
-  { lat: 38.6457, lng: -90.3152 },
-  { lat: 38.6454, lng: -90.3125 },
-  { lat: 38.6449, lng: -90.3146 },
-  { lat: 38.6517, lng: -90.3153 },
-  { lat: 38.6442, lng: -90.3159 },
-  { lat: 38.6582, lng: -90.2977 },
-  { lat: 38.6562, lng: -90.3052 },
-  { lat: 38.6538, lng: -90.2800 },
-  { lat: 38.6478, lng: -90.2846 },
-  { lat: 38.6362, lng: -90.2619 },
-];
-
-const CAMPUS = { lat: 38.64754193120054, lng: -90.31037361422699 };
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 async function fetchWalkMinutes(lat, lng, destLat, destLng) {
   const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${lng},${lat};${destLng},${destLat}?access_token=${MAPBOX_TOKEN}`;
@@ -132,19 +114,23 @@ async function main() {
     try {
       const { latitude: lat, longitude: lng } = doc;
 
-      const campusWalkMinutes = await fetchWalkMinutes(lat, lng, CAMPUS.lat, CAMPUS.lng);
+      const placeWalkMinutes = {};
+      for (const place of WASHU_PLACES) {
+        const minutes = await fetchWalkMinutes(lat, lng, place.lat, place.lng);
+        if (minutes != null) placeWalkMinutes[place.name] = minutes;
+        await sleep(200);
+      }
+      const placeValues = Object.values(placeWalkMinutes);
+      const campusWalkMinutes = placeValues.length > 0 ? Math.min(...placeValues) : null;
 
-      const placeResults = await Promise.all(
-        WASHU_PLACES.map(async (place) => {
-          const minutes = await fetchWalkMinutes(lat, lng, place.lat, place.lng);
-          return [place.name, minutes];
-        })
-      );
-      const placeWalkMinutes = Object.fromEntries(placeResults.filter(([, m]) => m != null));
-
-      const shuttleTimes = await Promise.all(
-        SHUTTLE_STOPS.map((s) => fetchWalkMinutes(lat, lng, s.lat, s.lng))
-      );
+      const nearest5 = [...SHUTTLE_STOPS]
+        .sort((a, b) => haversineKm(lat, lng, a.lat, a.lng) - haversineKm(lat, lng, b.lat, b.lng))
+        .slice(0, 5);
+      const shuttleTimes = [];
+      for (const s of nearest5) {
+        shuttleTimes.push(await fetchWalkMinutes(lat, lng, s.lat, s.lng));
+        await sleep(200);
+      }
       const validShuttle = shuttleTimes.filter((m) => m != null);
       const shuttleWalkMinutes = validShuttle.length > 0 ? Math.min(...validShuttle) : null;
 

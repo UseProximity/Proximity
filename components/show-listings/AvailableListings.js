@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -104,15 +105,17 @@ function ListingCard({ listing, session, onCardClick }) {
       className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200 flex flex-col cursor-pointer"
       onClick={() => onCardClick(listing._id)}
     >
-      <div className="relative">
+      <div className="relative aspect-video">
         {imageUrl ? (
-          <img
+          <Image
             src={imageUrl}
             alt={listing.address}
-            className={`w-full aspect-video object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className={`object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
           />
         ) : (
-          <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-400">
             No image
           </div>
         )}
@@ -608,11 +611,25 @@ export default function AvailableListings({
                       placeholder="Search location or home"
                       value={search || ""}
                       onChange={(e) => setSearch && setSearch(e.target.value)}
+                      onBlur={() => {
+                        const url = new URL(window.location);
+                        if (search) {
+                          url.searchParams.set("search", search);
+                        } else {
+                          url.searchParams.delete("search");
+                        }
+                        window.history.replaceState({}, "", url);
+                      }}
                       className="flex-1 outline-none text-sm bg-transparent text-gray-700 placeholder-gray-400"
                     />
                     {search && (
                       <button
-                        onClick={() => setSearch && setSearch("")}
+                        onClick={() => {
+                          setSearch && setSearch("");
+                          const url = new URL(window.location);
+                          url.searchParams.delete("search");
+                          window.history.replaceState({}, "", url);
+                        }}
                         className="text-gray-400 hover:text-gray-600"
                       >
                         <svg

@@ -1,5 +1,4 @@
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
+import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,46 +14,70 @@ export default async function Landlord({ params }) {
   const { landlordId } = params;
   const session = await auth();
 
-  await connectMongo();
+  // Fetch landlord user from Supabase
+  const { data: landlordRow, error: userError } = await supabase
+    .from("users")
+    .select("id, name, email, image, description, phone, birthday, gender, rating, num_reviews")
+    .eq("id", decodeURIComponent(landlordId))
+    .single();
 
-  // Need to sanitize the data before to fix: RangeError: Maximum call stack size exceeded.
-  const landlordDoc = await User.findById(decodeURIComponent(landlordId))
-    .populate({
-      path: "listings",
-      // select fields you actually need to reduce payload
-      select: "address images unitTypes leaseType createdAt",
-    })
-    .populate({
-      path: "reviews",
-      populate: {
-        path: "reviewer",
-        select: "name image",
-      },
-      select: "rating comment legitimacy reviewer createdAt",
-    })
-    .lean(); // <-- IMPORTANT: returns plain JS objects (no mongoose doc)
+  if (userError || !landlordRow) notFound();
 
-  if (!landlordDoc) notFound();
+  // Fetch listings for this landlord
+  const { data: listingRows } = await supabase
+    .from("listings")
+    .select("id, address, images, lease_type, created_at, listing_units(rent, area, bedrooms, bathrooms)")
+    .eq("landlord_id", landlordRow.id);
 
-  // sanitize: convert ObjectIds/dates to strings and keep only what you need
-  const landlord = {
-    ...landlordDoc,
-    _id: String(landlordDoc._id),
-    listings: (landlordDoc.listings || []).map((l) => ({
-      ...l,
-      _id: String(l._id),
-      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+  const listings = (listingRows ?? []).map((l) => ({
+    _id: l.id,
+    address: l.address,
+    images: Array.isArray(l.images) ? l.images : [],
+    leaseType: l.lease_type ?? null,
+    createdAt: l.created_at ? new Date(l.created_at).toISOString() : null,
+    unitTypes: (l.listing_units ?? []).map((u) => ({
+      rent: u.rent != null ? Number(u.rent) : null,
+      area: u.area != null ? Number(u.area) : null,
+      bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
+      bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
     })),
-    reviews: (landlordDoc.reviews || []).map((r) => ({
-      _id: String(r._id),
+  }));
+
+  // Fetch reviews for this landlord's listings
+  const listingIds = listings.map((l) => l._id);
+  let reviews = [];
+  if (listingIds.length > 0) {
+    const { data: reviewRows } = await supabase
+      .from("reviews")
+      .select("id, rating, comment, legitimacy, created_at, reviewer:users!reviews_user_id_fkey(name, image)")
+      .in("listing_id", listingIds)
+      .order("created_at", { ascending: false });
+
+    reviews = (reviewRows ?? []).map((r) => ({
+      _id: r.id,
       rating: r.rating,
       comment: r.comment,
-      legitimacy: r.legitimacy,
-      createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
+      legitimacy: r.legitimacy ?? false,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
       reviewer: r.reviewer
-        ? { name: r.reviewer.name, image: r.reviewer.image || null }
+        ? { name: r.reviewer.name, image: r.reviewer.image ?? null }
         : null,
-    })),
+    }));
+  }
+
+  const landlord = {
+    _id: landlordRow.id,
+    name: landlordRow.name,
+    email: landlordRow.email,
+    image: landlordRow.image,
+    description: landlordRow.description,
+    phone: landlordRow.phone,
+    birthday: landlordRow.birthday ?? null,
+    gender: landlordRow.gender,
+    rating: landlordRow.rating ?? 0,
+    numReviews: landlordRow.num_reviews ?? 0,
+    listings,
+    reviews,
   };
 
   const leaseTypeMap = {
@@ -135,10 +158,7 @@ export default async function Landlord({ params }) {
                       <p className="text-sm text-gray-400">
                         {getUnitValuesLabel(listing.unitTypes, "bedrooms")} Beds
                         {" • "}
-                        {getUnitValuesLabel(
-                          listing.unitTypes,
-                          "bathrooms"
-                        )}{" "}
+                        {getUnitValuesLabel(listing.unitTypes, "bathrooms")}{" "}
                         Baths • {getAreaRangeLabel(listing.unitTypes)} Sq Ft
                       </p>
                       <p className="text-xs text-gray-400">

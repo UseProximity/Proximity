@@ -1,7 +1,5 @@
 import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
-import mongoose from "mongoose";
+import supabase from "@/libs/supabase";
 
 // POST /api/contacted — add a listing to the user's contacted list (idempotent)
 export async function POST(req) {
@@ -15,15 +13,38 @@ export async function POST(req) {
     if (!listingId) {
       return Response.json({ error: "listingId required" }, { status: 400 });
     }
-    if (!mongoose.Types.ObjectId.isValid(listingId)) {
-      return Response.json({ error: "Invalid listingId" }, { status: 400 });
+
+    const { error } = await supabase
+      .from("user_contacted")
+      .upsert(
+        { user_id: session.user.id, listing_id: listingId },
+        { onConflict: "user_id,listing_id" }
+      );
+
+    if (error) {
+      console.error("Error saving contacted listing:", error);
+      return Response.json({ error: "Failed to save" }, { status: 500 });
     }
 
-    await connectMongo();
-
-    await User.findByIdAndUpdate(session.user.id, {
-      $addToSet: { contacted: listingId },
-    });
+    // Track contacts metric (fire-and-forget)
+    const _today = new Date().toISOString().split("T")[0];
+    supabase
+      .from("listings")
+      .select("landlord_id")
+      .eq("id", listingId)
+      .maybeSingle()
+      .then(({ data: _l }) => {
+        if (!_l) return;
+        supabase
+          .rpc("increment_listing_metric", {
+            p_listing_id: listingId,
+            p_landlord_id: _l.landlord_id ?? null,
+            p_metric_type: "contacts",
+            p_date: _today,
+          })
+          .catch((e) => console.error("[metrics] contacts increment failed:", e?.message));
+      })
+      .catch((e) => console.error("[metrics] contacts fetch failed:", e?.message));
 
     return Response.json({ ok: true });
   } catch (error) {

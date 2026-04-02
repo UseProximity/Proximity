@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/libs/r2";
 import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
+import supabase from "@/libs/supabase";
 
 export async function POST(req) {
   try {
@@ -35,8 +34,15 @@ export async function POST(req) {
 
     const url = `${process.env.R2_PUBLIC_BASE_URL}/${key}`;
 
-    await connectMongo();
-    await User.findByIdAndUpdate(session.user.id, { $set: { image: url } });
+    const { error } = await supabase
+      .from("users")
+      .update({ image: url })
+      .eq("id", session.user.id);
+
+    if (error) {
+      console.error("Profile photo update error:", error);
+      return NextResponse.json({ error: "Failed to update profile image" }, { status: 500 });
+    }
 
     return NextResponse.json({ url });
   } catch (err) {

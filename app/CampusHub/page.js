@@ -87,6 +87,24 @@ const EMPTY_FORM = {
   content: "",
 };
 
+function normalizeReview(r) {
+  return {
+    ...r,
+    _id: r._id ?? r.id,
+    dorm: r.dorm ?? r.dorms?.name,
+    name: r.name ?? r.reviewer_name,
+    classYear: r.classYear ?? r.class_year,
+    createdAt: r.createdAt ?? r.created_at,
+  };
+}
+
+function normalizeDorm(d) {
+  return {
+    ...d,
+    roomTypes: d.roomTypes ?? d.room_types ?? [],
+  };
+}
+
 export default function CampusHub() {
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [ratingMin, setRatingMin] = useState(1);
@@ -109,7 +127,7 @@ export default function CampusHub() {
   useEffect(() => {
     fetch("/api/dormReviews")
       .then((r) => r.json())
-      .then((data) => setAllReviews(Array.isArray(data) ? data : []))
+      .then((data) => setAllReviews(Array.isArray(data) ? data.map(normalizeReview) : []))
       .catch(() => {});
     fetch("/api/dorms")
       .then((r) => r.json())
@@ -117,7 +135,8 @@ export default function CampusHub() {
         if (!Array.isArray(data)) return;
         const map = {};
         data.forEach((d) => {
-          map[d.name] = d;
+          const normalized = normalizeDorm(d);
+          map[normalized.name] = normalized;
         });
         setDormMeta(map);
       })
@@ -133,7 +152,7 @@ export default function CampusHub() {
     setFormSuccess(false);
     fetch(`/api/dormReviews?dorm=${encodeURIComponent(selectedDorm.name)}`)
       .then((r) => r.json())
-      .then((data) => setDbReviews(Array.isArray(data) ? data : []))
+      .then((data) => setDbReviews(Array.isArray(data) ? data.map(normalizeReview) : []))
       .catch(() => {});
   }, [selectedDorm]);
 
@@ -173,7 +192,8 @@ export default function CampusHub() {
     }
   };
 
-  const allTags = [...new Set(allReviews.flatMap((r) => r.tags))].filter((t) => t !== "Off-Campus").sort();
+  const EXCLUDED_TAGS = new Set(["Off-Campus", "Off Campus", "On-Campus", "On Campus"]);
+  const allTags = [...new Set(allReviews.flatMap((r) => r.tags))].filter((t) => !EXCLUDED_TAGS.has(t)).sort();
   const allDormTypes = CANONICAL_ROOM_TYPES.filter((type) =>
     Object.values(dormMeta).some((d) => d.roomTypes?.includes(type))
   );

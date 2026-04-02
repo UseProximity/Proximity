@@ -1,9 +1,42 @@
 import { NextResponse } from "next/server";
-import User from "@/models/User";
-import Listing from "@/models/Listing";
-import connectMongo from "@/libs/mongoose";
+import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import nodemailer from "nodemailer";
+
+const _emailTransporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: Number(process.env.EMAIL_PORT) || 587,
+  secure: false,
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+});
+
+async function sendNewListingEmail(toEmail, toName, address, listingId) {
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn("[sendNewListingEmail] Email env vars not set — skipping in dev mode.");
+    return;
+  }
+  const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
+  await _emailTransporter.sendMail({
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: "You have a new listing on Proximity!",
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
+        <p>Hi ${toName || "there"},</p>
+        <p>Congratulations! A new listing has been added to your Proximity account.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p><strong>Address:</strong> ${address}</p>
+        <p style="margin-top: 16px;">
+          <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Your Listing</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+        <p style="color: #9ca3af; font-size: 12px;">You're receiving this because a listing was assigned to your account on Proximity.</p>
+      </div>
+    `,
+  });
+}
 
 async function geocodeAddress(address) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -50,6 +83,7 @@ export async function POST(req) {
       maxBathrooms,
       minArea,
       maxArea,
+      title,
     } = body;
 
     // Validate required fields
@@ -85,13 +119,18 @@ export async function POST(req) {
       if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
+      const userRole = session?.user?.role;
+      if (!["student", "landlord", "super"].includes(userRole)) {
+        return NextResponse.json(
+          { error: "Only students, landlords, and super admins can create listings." },
+          { status: 403 }
+        );
+      }
       ownerId = session?.user?.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
       }
     }
-
-    await connectMongo();
 
     // Geocode address if lat/lng not provided
     let resolvedLat = latitude;
@@ -117,46 +156,75 @@ export async function POST(req) {
       console.error("[walkTimes] Failed to fetch walk times:", err?.message);
     }
 
-    // Create New Listing
-    const autoTitle = address.split(",")[0].trim();
-    const newListing = await Listing.create({
-      title: autoTitle,
-      address,
-      longitude: resolvedLng,
-      latitude: resolvedLat,
-      description,
-      unitTypes,
-      leaseType: leaseType || "standard",
-      images: images || [],
-      owner: ownerId || undefined,
-      placeWalkMinutes,
-      shuttleWalkMinutes,
-      // Extra fields
-      leaseAvailability: leaseAvailability ?? null,
-      leaseStructure: leaseStructure ?? null,
-      homeType: homeType ?? "apartment",
-      amenities: amenities ?? [],
-      utilitiesIncluded: utilitiesIncluded ?? [],
-      subleaseFriendly: subleaseFriendly ?? false,
-      furnished: furnished ?? false,
-      moveInDate: moveInDate ?? null,
-      contactEmail: contactEmail ?? null,
-      contactPhone: contactPhone ?? null,
-      contactName: contactName ?? null,
-      minRent: minRent ?? null,
-      maxRent: maxRent ?? null,
-      minBedrooms: minBedrooms ?? null,
-      maxBedrooms: maxBedrooms ?? null,
-      minBathrooms: minBathrooms ?? null,
-      maxBathrooms: maxBathrooms ?? null,
-      minArea: minArea ?? null,
-      maxArea: maxArea ?? null,
-    });
+    // Insert listing row into Supabase
+    const { data: newListing, error: listingError } = await supabase
+      .from("listings")
+      .insert({
+        landlord_id: ownerId || null,
+        title: title?.trim() || null,
+        address,
+        longitude: resolvedLng,
+        latitude: resolvedLat,
+        description,
+        lease_type: leaseType || "standard",
+        images: images || [],
+        place_walk_minutes: placeWalkMinutes,
+        shuttle_walk_minutes: shuttleWalkMinutes,
+        // Extra fields
+        lease_structure: leaseStructure ?? null,
+        home_type: homeType ?? "apartment",
+        amenities: amenities ?? [],
+        utilities_included: utilitiesIncluded ?? [],
+        sublease_friendly: subleaseFriendly ?? false,
+        furnished: furnished ?? false,
+        move_in_date: moveInDate ?? null,
+        contact_email: contactEmail ?? null,
+        contact_phone: contactPhone ?? null,
+        contact_name: contactName ?? null,
+      })
+      .select()
+      .single();
 
-    if (ownerId) {
-      const user = await User.findById(ownerId);
-      user.listings.push(newListing._id);
-      await user.save();
+    if (listingError) {
+      console.error("Error creating listing:", listingError.message);
+      return NextResponse.json({ error: listingError.message }, { status: 500 });
+    }
+
+    // Notify landlord of their new listing
+    if (newListing.landlord_id) {
+      try {
+        const { data: landlordUser } = await supabase
+          .from("users")
+          .select("email, name")
+          .eq("id", newListing.landlord_id)
+          .maybeSingle();
+        if (landlordUser?.email) {
+          await sendNewListingEmail(landlordUser.email, landlordUser.name, newListing.address, newListing.id);
+        }
+      } catch (emailErr) {
+        console.error("[addListing] Failed to send landlord notification:", emailErr?.message);
+      }
+    }
+
+    // Insert each unit type row into listing_units
+    if (unitTypes.length > 0) {
+      const unitRows = unitTypes.map((unit) => ({
+        listing_id: newListing.id,
+        bedrooms: unit.bedrooms,
+        bathrooms: unit.bathrooms,
+        rent: unit.rent ?? null,
+        area: unit.area ?? null,
+        lease_availability: unit.leaseAvailability ?? leaseAvailability ?? null,
+      }));
+
+      const { error: unitsError } = await supabase
+        .from("listing_units")
+        .insert(unitRows);
+
+      if (unitsError) {
+        console.error("Error creating listing units:", unitsError.message);
+        return NextResponse.json({ error: unitsError.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json(

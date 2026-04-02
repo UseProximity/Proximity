@@ -1,64 +1,125 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import Listing from "@/models/Listing";
-import { serializePlaceWalkMinutes } from "@/utils/listingFormatters";
-import mongoose from "mongoose";
+import supabase from "@/libs/supabase";
 
-export async function GET(req, { params }) {
+function buildListing(row, units = [], owner = null, reviews = []) {
+  const firstUnit = units[0] ?? null;
+  return {
+    _id: row.id,
+    title: row.title ?? null,
+    address: row.address,
+    longitude: row.longitude != null ? Number(row.longitude) : null,
+    latitude: row.latitude != null ? Number(row.latitude) : null,
+    description: row.description,
+    unitTypes: units.map((u) => ({
+      rent: u.rent != null ? Number(u.rent) : null,
+      area: u.area != null ? Number(u.area) : null,
+      bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
+      bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+    })),
+    leaseType: row.lease_type ?? null,
+    images: Array.isArray(row.images) ? row.images : [],
+    numReviews: Number(row.num_reviews ?? 0),
+    rating: Number(row.rating ?? 0),
+    reviews,
+    placeWalkMinutes: row.place_walk_minutes ?? {},
+    shuttleWalkMinutes: row.shuttle_walk_minutes != null ? Number(row.shuttle_walk_minutes) : null,
+    contactEmail: row.contact_email ?? null,
+    contactPhone: row.contact_phone ?? null,
+    contactName: row.contact_name ?? null,
+    leaseAvailability: firstUnit?.lease_availability ?? null,  // stays per-unit
+    leaseStructure: row.lease_structure ?? null,
+    homeType: row.home_type ?? "apartment",
+    furnished: row.furnished ?? false,
+    moveInDate: row.move_in_date ?? null,
+    utilitiesIncluded: Array.isArray(row.utilities_included) ? row.utilities_included : [],
+    subleaseFriendly: row.sublease_friendly ?? false,
+    unavailable: row.unavailable ?? false,
+    amenities: Array.isArray(row.amenities) ? row.amenities : [],
+    minRent: row.min_rent != null ? Number(row.min_rent) : null,
+    maxRent: row.max_rent != null ? Number(row.max_rent) : null,
+    minBedrooms: row.min_bedrooms != null ? Number(row.min_bedrooms) : null,
+    maxBedrooms: row.max_bedrooms != null ? Number(row.max_bedrooms) : null,
+    minBathrooms: row.min_bathrooms != null ? Number(row.min_bathrooms) : null,
+    maxBathrooms: row.max_bathrooms != null ? Number(row.max_bathrooms) : null,
+    minArea: row.min_area != null ? Number(row.min_area) : null,
+    maxArea: row.max_area != null ? Number(row.max_area) : null,
+    numClicks: Number(row.num_clicks ?? 0),
+    numSaves: Number(row.num_saves ?? 0),
+    owner: owner
+      ? { _id: owner.id, name: owner.name, email: owner.email ?? null, image: owner.image ?? null }
+      : null,
+    createdAt: row.created_at ?? null,
+  };
+}
+
+export async function GET(_req, { params }) {
   try {
-    await connectMongo();
-
     const { listingId } = await params;
 
-    if (!listingId) {
+    if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
       return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
     }
-    if (!mongoose.Types.ObjectId.isValid(listingId)) {
-      return NextResponse.json({ error: "Invalid listing ID" }, { status: 400 });
-    }
 
-    const listing = await Listing.findByIdAndUpdate(
-      listingId,
-      { $inc: { numClicks: 1 } },
-      { new: true }
-    )
-      .populate("owner")
-      .populate({
-        path: "reviews",
-        populate: {
-          path: "reviewer",
-          select: "name image",
-        },
-      })
-      .lean();
+    // Fetch listing with landlord and units
+    const { data: row, error } = await supabase
+      .from("listings")
+      .select("*, landlord:users!landlord_id(id, name, email, image), listing_units(*)")
+      .eq("id", listingId)
+      .single();
 
-    if (!listing) {
+    if (error || !row) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    // Convert non-serializable fields
-    const safeListing = {
-      ...listing,
-      _id: listing._id.toString(),
-      owner: listing.owner
-        ? {
-            ...listing.owner,
-            _id: listing.owner._id.toString(),
-          }
+    // Increment num_clicks (fire-and-forget)
+    supabase
+      .from("listings")
+      .update({ num_clicks: (row.num_clicks ?? 0) + 1 })
+      .eq("id", listingId)
+      .then(({ error: updateErr }) => {
+        if (updateErr) console.error("[clicks] num_clicks increment failed:", updateErr.message);
+      });
+
+    // Track clicks metric (fire-and-forget)
+    const _today = new Date().toISOString().split("T")[0];
+    supabase
+      .rpc("increment_listing_metric", {
+        p_listing_id: listingId,
+        p_landlord_id: row.landlord_id ?? null,
+        p_metric_type: "clicks",
+        p_date: _today,
+      })
+      .then(({ error: rpcErr }) => {
+        if (rpcErr) console.error("[metrics] clicks increment failed:", rpcErr.message);
+      });
+
+    // Fetch reviews with reviewer info
+    const { data: reviewRows } = await supabase
+      .from("reviews")
+      .select("*, reviewer:users!user_id(id, name, image)")
+      .eq("listing_id", listingId);
+
+    const reviews = (reviewRows ?? []).map((r) => ({
+      _id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      legitimacy: r.legitimacy ?? false,
+      communicationRating: r.communication_rating ?? null,
+      locationRating: r.location_rating ?? null,
+      valueRating: r.value_rating ?? null,
+      createdAt: r.created_at ?? null,
+      reviewer: r.reviewer
+        ? { _id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image ?? null }
         : null,
-      createdAt: listing.createdAt?.toISOString() || null,
-      placeWalkMinutes: serializePlaceWalkMinutes(listing.placeWalkMinutes),
-      shuttleWalkMinutes: listing.shuttleWalkMinutes ?? null,
-    };
+    }));
+
+    const safeListing = buildListing(row, row.listing_units ?? [], row.landlord ?? null, reviews);
 
     return NextResponse.json(safeListing);
   } catch (error) {
     console.error("Error fetching listing:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -69,42 +130,43 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await connectMongo();
-
     const { listingId } = await params;
-    if (!listingId) {
+    if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
       return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
     }
-    if (!mongoose.Types.ObjectId.isValid(listingId)) {
-      return NextResponse.json({ error: "Invalid listing ID" }, { status: 400 });
-    }
 
-    const listing = await Listing.findById(listingId);
-    if (!listing) {
+    const { data: row, error: fetchError } = await supabase
+      .from("listings")
+      .select("id, landlord_id")
+      .eq("id", listingId)
+      .single();
+
+    if (fetchError || !row) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    if (String(listing.owner) !== String(session.user.id)) {
+    if (row.landlord_id !== session.user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { unavailable } = await req.json();
     if (typeof unavailable !== "boolean") {
-      return NextResponse.json(
-        { error: "Invalid value for unavailable" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid value for unavailable" }, { status: 400 });
     }
 
-    listing.unavailable = unavailable;
-    await listing.save();
+    // unavailable is now a listing-level field
+    const { error: updateError } = await supabase
+      .from("listings")
+      .update({ unavailable })
+      .eq("id", listingId);
 
-    return NextResponse.json({ success: true, unavailable: listing.unavailable });
+    if (updateError) {
+      return NextResponse.json({ error: "Failed to update listing" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, unavailable });
   } catch (error) {
     console.error("Error updating listing:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

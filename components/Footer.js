@@ -1,7 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Instagram } from "lucide-react";
 const Logo = "/logo.svg";
+
+const CONTACT_EMAIL = "info@useproximity.org";
 
 const NAV_COLS = [
   {
@@ -15,8 +20,8 @@ const NAV_COLS = [
     heading: "Company",
     links: [
       { label: "About Us", href: "/about" },
-      { label: "For Landlords", href: "/add-listing" },
     ],
+    contactButton: true,
     social: true,
   },
 ];
@@ -47,6 +52,15 @@ const SocialIcons = () => (
 );
 
 export default function Footer() {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopyEmail() {
+    navigator.clipboard.writeText(CONTACT_EMAIL).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  }
+
   return (
     <footer className="bg-gray-950 text-white">
       <div className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-6 md:pt-10 md:pb-8">
@@ -74,6 +88,19 @@ export default function Footer() {
                       </Link>
                     </li>
                   ))}
+                  {col.contactButton && (
+                    <li>
+                      <button
+                        onClick={handleCopyEmail}
+                        className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+                      >
+                        {copied ? "Copied!" : "Contact Us"}
+                      </button>
+                      {copied && (
+                        <p className="text-xs text-green-400 mt-1">{CONTACT_EMAIL} copied</p>
+                      )}
+                    </li>
+                  )}
                 </ul>
                 {col.social && (
                   <div className="mt-4 flex justify-center">
@@ -112,6 +139,19 @@ export default function Footer() {
                     </Link>
                   </li>
                 ))}
+                {col.contactButton && (
+                  <li>
+                    <button
+                      onClick={handleCopyEmail}
+                      className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+                    >
+                      {copied ? "Copied!" : "Contact Us"}
+                    </button>
+                    {copied && (
+                      <p className="text-xs text-green-400 mt-1">{CONTACT_EMAIL} copied</p>
+                    )}
+                  </li>
+                )}
               </ul>
               {col.social && (
                 <div className="mt-4">
