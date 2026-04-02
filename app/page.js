@@ -496,13 +496,11 @@ function RentalCard({ listing, index, isInView }) {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="font-bold text-sm text-gray-900 leading-snug">
-                  {streetAddress}
+                  {listing.title || streetAddress}
                 </h3>
-                {cityStateZip && (
-                  <p className="text-xs text-gray-500 font-normal mt-0.5">
-                    {cityStateZip}
-                  </p>
-                )}
+                <p className="text-xs text-gray-500 font-normal mt-0.5">
+                  {listing.title ? listing.address : cityStateZip}
+                </p>
               </div>
               <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
                 {getRentRangeLabel(listing.unitTypes)}
@@ -563,7 +561,11 @@ function PopularRentals() {
           : Array.isArray(data?.listings)
           ? data.listings
           : [];
-        setListings(all.slice(0, 6));
+        const sorted = [...all].sort(
+          (a, b) =>
+            (b.numSaves * 5 + b.numClicks) - (a.numSaves * 5 + a.numClicks)
+        );
+        setListings(sorted.slice(0, 6));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
