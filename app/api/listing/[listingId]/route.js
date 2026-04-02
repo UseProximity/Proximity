@@ -76,7 +76,23 @@ export async function GET(_req, { params }) {
     supabase
       .from("listings")
       .update({ num_clicks: (row.num_clicks ?? 0) + 1 })
-      .eq("id", listingId);
+      .eq("id", listingId)
+      .then(({ error: updateErr }) => {
+        if (updateErr) console.error("[clicks] num_clicks increment failed:", updateErr.message);
+      });
+
+    // Track clicks metric (fire-and-forget)
+    const _today = new Date().toISOString().split("T")[0];
+    supabase
+      .rpc("increment_listing_metric", {
+        p_listing_id: listingId,
+        p_landlord_id: row.landlord_id ?? null,
+        p_metric_type: "clicks",
+        p_date: _today,
+      })
+      .then(({ error: rpcErr }) => {
+        if (rpcErr) console.error("[metrics] clicks increment failed:", rpcErr.message);
+      });
 
     // Fetch reviews with reviewer info
     const { data: reviewRows } = await supabase

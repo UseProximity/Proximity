@@ -1,9 +1,5 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { MongoDBAdapter } from "@auth/mongodb-adapter";
-import clientPromise from "./libs/mongo";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
 import supabase from "@/libs/supabase";
 
 const config = {
@@ -13,73 +9,66 @@ const config = {
       clientSecret: process.env.GOOGLE_SECRET,
     }),
   ],
-  adapter: MongoDBAdapter(clientPromise),
+  session: { strategy: "jwt" },
   allowDangerousEmailAccountLinking: true,
   pages: {
     error: "/",
   },
   callbacks: {
-    async session({ session, user }) {
-      // Populate role and Supabase ID into the session.
-      // Look up by email so this works regardless of ID format differences
-      // between MongoDB (ObjectId) and Supabase (UUID).
+    async jwt({ token, user, account }) {
+      // Fires on every OAuth sign-in (account is set) or token refresh (account is null)
+      if (account?.provider === "google" && user?.email) {
+        const image = user.image ?? null;
+
+        const { data: existing } = await supabase
+          .from("users")
+          .select("id")
+          .eq("email", user.email)
+          .single();
+
+        if (!existing) {
+          // New user — insert with all defaults
+          const { error } = await supabase.from("users").insert({
+            email: user.email,
+            name: user.name || user.email.split("@")[0] || "New User",
+            image,
+            role: "student",
+            profile_complete: false,
+            gender: "unspecified",
+            phone: "N/A",
+            description: "",
+            referral_source: "",
+          });
+          if (error) console.error("jwt: failed to insert new user", error);
+        } else if (image) {
+          // Existing user — keep profile image in sync
+          const { error } = await supabase
+            .from("users")
+            .update({ image })
+            .eq("email", user.email);
+          if (error) console.error("jwt: failed to update user image", error);
+        }
+      }
+      return token;
+    },
+    async session({ session }) {
       if (session?.user?.email) {
         const { data: sbUser } = await supabase
           .from("users")
-          .select("id, role")
+          .select("id, role, profile_complete, name")
           .eq("email", session.user.email)
           .single();
         if (sbUser) {
           session.user.id = sbUser.id;
           session.user.role = sbUser.role ?? "student";
+          session.user.profileComplete = sbUser.profile_complete ?? false;
+          if (sbUser.name) session.user.name = sbUser.name;
         } else {
-          // Fallback: keep adapter id, default role
-          session.user.id = user?.id ?? session.user.id;
           session.user.role = "student";
+          session.user.profileComplete = false;
         }
       }
       return session;
-    },
-  },
-  events: {
-    async createUser({ user }) {
-      // Runs once after adapter creates the user
-      await connectMongo();
-      await User.updateOne(
-        { _id: user.id },
-        {
-          $set: {
-            createdAt: new Date(),
-            description: "",
-            email: user.email ?? null,
-            favorites: [],
-            gender: "unspecified",
-            image: user.image ?? null,
-            listings: [],
-            name:
-              user.name || (user.email ? user.email.split("@")[0] : "New User"),
-            numReviews: 0,
-            phone: "N/A",
-            profileComplete: false,
-            rating: 0,
-            referralSource: "",
-            reviews: [],
-            role: "student",
-          },
-        }
-      );
-    },
-    async signIn({ user, profile, account }) {
-      // Keep profile image in sync for Google sign-ins
-      if (account?.provider !== "google") return;
-      const image =
-        user?.image || profile?.picture || profile?.image || null;
-      if (!image) return;
-      await connectMongo();
-      await User.updateOne(
-        { _id: user.id },
-        { $set: { image } }
-      );
     },
   },
 };

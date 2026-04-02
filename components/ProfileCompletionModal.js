@@ -1,27 +1,55 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { signOut } from "next-auth/react";
 import Modal from "@/components/Modal";
+
+const ROLES = ["Student", "Landlord", "Parent", "Other"];
+
+const MONTHS = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
+
+function getClassYear(gradYear, gradMonth) {
+  const now = new Date();
+  const monthsUntilGrad =
+    (gradYear - now.getFullYear()) * 12 + (gradMonth - (now.getMonth() + 1));
+  if (monthsUntilGrad <= 0) return "Graduate / Alumni";
+  if (monthsUntilGrad <= 12) return "Senior";
+  if (monthsUntilGrad <= 24) return "Junior";
+  if (monthsUntilGrad <= 36) return "Sophomore";
+  return "Freshman";
+}
 
 export default function ProfileCompletionModal({ session }) {
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    birthday: "",
+    role: "",
+    graduationMonth: "",
+    graduationYear: "",
     gender: "",
     referralSource: "",
   });
   const [saving, setSaving] = useState(false);
-  const [role, setRole] = useState(null);
 
   useEffect(() => {
+    // Show only if Supabase profile_complete is explicitly false
     if (session?.user?.profileComplete === false) {
       setIsOpen(true);
     }
-
-    const params = new URLSearchParams(window.location.search);
-    setRole(params.get("role"));
   }, [session]);
 
   const handleInputChange = (e) => {
@@ -29,58 +57,67 @@ export default function ProfileCompletionModal({ session }) {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const isStudent = formData.role === "Student";
+
   const isFormValid =
-    formData.firstName && formData.lastName && formData.birthday && formData.gender && formData.referralSource;
+    formData.firstName &&
+    formData.lastName &&
+    formData.role &&
+    formData.gender &&
+    formData.referralSource &&
+    (!isStudent || (formData.graduationMonth && formData.graduationYear));
+
+  const classYear =
+    isStudent && formData.graduationYear && formData.graduationMonth
+      ? getClassYear(
+          parseInt(formData.graduationYear),
+          parseInt(formData.graduationMonth)
+        )
+      : null;
 
   const handleSave = async () => {
     try {
       setSaving(true);
+      const payload = {
+        name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
+        gender: formData.gender,
+        referralSource: formData.referralSource,
+        profileComplete: true,
+        role: formData.role.toLowerCase(),
+        graduation_year: isStudent ? parseInt(formData.graduationYear) : null,
+        graduation_month: isStudent ? parseInt(formData.graduationMonth) : null,
+      };
       const res = await fetch("/api/editProfile", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          name: `${formData.firstName?.trim()} ${formData.lastName?.trim()}`,
-          birthday: formData.birthday,
-          gender: formData.gender,
-          referralSource: formData.referralSource,
-          profileComplete: true,
-          role: role,
-        }),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
-      const updated = await res.json();
-      console.log("Profile updated:", updated);
       setIsOpen(false);
       window.location.reload();
     } catch (e) {
       console.error(e);
       alert("Couldn't save your profile. Please try again.");
     } finally {
-      console.log("Saving profile data:", formData);
       setSaving(false);
     }
   };
 
+  const currentYear = new Date().getFullYear();
+  const graduationYears = Array.from({ length: 8 }, (_, i) => currentYear + i);
+
   return (
-    <Modal isOpen={isOpen} onClose={() => {}}>
+    <Modal isOpen={isOpen} onClose={() => signOut({ callbackUrl: "/" })}>
       <div className="p-6 space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900">
-          Complete Your Profile
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-900">Complete Your Profile</h2>
         <p className="text-gray-600">
           Please fill out the following information to complete your profile and
           access all features of Proximity.
         </p>
         <form className="space-y-6">
-          {/* Name Field */}
+          {/* First Name */}
           <div>
-            <label
-              htmlFor="firstName"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
               First Name
             </label>
             <input
@@ -94,11 +131,9 @@ export default function ProfileCompletionModal({ session }) {
             />
           </div>
 
+          {/* Last Name */}
           <div>
-            <label
-              htmlFor="lastName"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
               Last Name
             </label>
             <input
@@ -112,31 +147,66 @@ export default function ProfileCompletionModal({ session }) {
             />
           </div>
 
-          {/* Birthday Field */}
+          {/* Role */}
           <div>
-            <label
-              htmlFor="birthday"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Birthday
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+              I am a…
             </label>
-            <input
-              type="date"
-              id="birthday"
-              name="birthday"
-              value={formData.birthday}
+            <select
+              id="role"
+              name="role"
+              value={formData.role}
               onChange={handleInputChange}
-              max={new Date().toISOString().split("T")[0]}
               className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-            />
+            >
+              <option value="">Select your role</option>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Gender Field */}
+          {/* Graduation Month + Year — students only */}
+          {isStudent && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Expected Graduation
+              </label>
+              <div className="flex gap-2">
+                <select
+                  name="graduationMonth"
+                  value={formData.graduationMonth}
+                  onChange={handleInputChange}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+                >
+                  <option value="">Month</option>
+                  {MONTHS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <select
+                  name="graduationYear"
+                  value={formData.graduationYear}
+                  onChange={handleInputChange}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+                >
+                  <option value="">Year</option>
+                  {graduationYears.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              {classYear && (
+                <p className="mt-1.5 text-xs text-red-600 font-medium">
+                  You are a {classYear}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Gender */}
           <div>
-            <label
-              htmlFor="gender"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
               Gender
             </label>
             <select
@@ -155,10 +225,7 @@ export default function ProfileCompletionModal({ session }) {
 
           {/* How'd you find us */}
           <div>
-            <label
-              htmlFor="referralSource"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="referralSource" className="block text-sm font-medium text-gray-700 mb-1">
               How&apos;d you find us?
             </label>
             <select
@@ -185,9 +252,7 @@ export default function ProfileCompletionModal({ session }) {
             onClick={handleSave}
             disabled={!isFormValid || saving}
             className={`w-full px-4 py-2 rounded-lg text-white font-medium transition-all ${
-              isFormValid
-                ? "bg-red-600 hover:bg-red-700"
-                : "bg-gray-300 cursor-not-allowed"
+              isFormValid ? "bg-red-600 hover:bg-red-700" : "bg-gray-300 cursor-not-allowed"
             }`}
           >
             {saving ? "Saving..." : "Save"}

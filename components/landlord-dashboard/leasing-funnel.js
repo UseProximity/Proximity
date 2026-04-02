@@ -1,400 +1,375 @@
 "use client";
 
-import { useState } from "react";
-import { Users, Calendar, TrendingDown, TrendingUp } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
-// Mock data
-const funnelData = [
-  { stage: "Inquiries", count: 127, percentage: 100, color: "bg-red-500" },
-  {
-    stage: "Applications",
-    count: 45,
-    percentage: 35.4,
-    color: "bg-yellow-500",
-  },
-  { stage: "Signed Leases", count: 12, percentage: 9.4, color: "bg-green-500" },
+const COLORS = ["#dc2626", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+
+const RANGE_OPTIONS = [
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "6m", label: "6 months" },
 ];
 
-const leadToLeaseData = [
-  { month: "Jan", days: 18 },
-  { month: "Feb", days: 22 },
-  { month: "Mar", days: 16 },
-  { month: "Apr", days: 19 },
-  { month: "May", days: 14 },
-  { month: "Jun", days: 21 },
+const METRIC_OPTIONS = [
+  { value: "clicks", label: "Clicks" },
+  { value: "saves", label: "Saves" },
+  { value: "contacts", label: "Contacts" },
 ];
 
-// Simple components
-const Card = ({ children, className = "" }) => (
-  <div
-    className={`bg-white rounded-lg border border-gray-200 shadow-sm ${className}`}
-  >
-    {children}
-  </div>
-);
+function generateDateRange(range) {
+  const dates = [];
+  const days = range === "7d" ? 7 : range === "6m" ? 182 : 30;
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    dates.push(d.toISOString().split("T")[0]);
+  }
+  return dates;
+}
 
-const CardHeader = ({ children, className = "" }) => (
-  <div className={`p-6 pb-2 ${className}`}>{children}</div>
-);
-
-const CardContent = ({ children, className = "" }) => (
-  <div className={`p-6 pt-0 ${className}`}>{children}</div>
-);
-
-const CardTitle = ({ children, className = "" }) => (
-  <h3
-    className={`text-lg font-semibold leading-none tracking-tight ${className}`}
-  >
-    {children}
-  </h3>
-);
-
-const CardDescription = ({ children, className = "" }) => (
-  <p className={`text-sm text-gray-500 ${className}`}>{children}</p>
-);
-
-const Badge = ({ children, variant = "default", className = "" }) => {
-  const variants = {
-    default: "bg-red-600 text-white",
-    secondary: "bg-gray-100 text-gray-900",
-  };
-
-  return (
-    <div
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${variants[variant]} ${className}`}
-    >
-      {children}
-    </div>
-  );
-};
-
-// Simple Bar Chart Component
-const SimpleBarChart = ({ data, dataKey, color = "#10b981" }) => {
-  const maxValue = Math.max(...data.map((item) => item[dataKey]));
-
-  return (
-    <div className="w-full h-[180px] flex items-end justify-between gap-2 p-4">
-      {data.map((item, index) => {
-        const height = (item[dataKey] / maxValue) * 140;
-        return (
-          <div key={index} className="flex flex-col items-center gap-2 flex-1">
-            <div className="text-xs font-medium text-gray-700">
-              {item[dataKey]}
-            </div>
-            <div
-              className="w-full rounded-t-md transition-all duration-300 hover:opacity-80"
-              style={{
-                height: `${height}px`,
-                backgroundColor: color,
-                minHeight: "4px",
-              }}
-            />
-            <div className="text-xs text-gray-500">{item.month}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
+function formatLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 export default function LeasingFunnel() {
-  const [selectedTimeframe, setSelectedTimeframe] = useState("month");
+  const [allListings, setAllListings] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [range, setRange] = useState("30d");
+  const [metricType, setMetricType] = useState("clicks");
+  const [displayMode, setDisplayMode] = useState("combined");
+  const [metrics, setMetrics] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Fetch landlord's listings on mount
+  useEffect(() => {
+    fetch("/api/landlord/listings")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAllListings(data);
+          setSelectedIds(data.map((l) => l.id));
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  // Fetch metrics when selection or range changes
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      setMetrics([]);
+      return;
+    }
+    setLoading(true);
+    const params = new URLSearchParams({ range, listingIds: selectedIds.join(",") });
+    fetch(`/api/landlord/metrics?${params}`)
+      .then((r) => r.json())
+      .then((data) => setMetrics(data.metrics ?? []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [selectedIds, range]);
+
+  // Build chart data
+  const dates = generateDateRange(range);
+  let chartData = [];
+
+  if (displayMode === "combined") {
+    const countsByDate = {};
+    metrics
+      .filter((m) => m.metric_type === metricType && selectedIds.includes(m.listing_id))
+      .forEach((m) => {
+        countsByDate[m.recorded_date] = (countsByDate[m.recorded_date] ?? 0) + m.count;
+      });
+    chartData = dates.map((d) => ({ date: formatLabel(d), value: countsByDate[d] ?? 0 }));
+  } else {
+    chartData = dates.map((d) => {
+      const row = { date: formatLabel(d) };
+      selectedIds.forEach((listingId) => {
+        const m = metrics.find(
+          (x) =>
+            x.listing_id === listingId &&
+            x.metric_type === metricType &&
+            x.recorded_date === d
+        );
+        const listing = allListings.find((l) => l.id === listingId);
+        const key = listing?.title || listing?.address || listingId;
+        row[key] = m?.count ?? 0;
+      });
+      return row;
+    });
+  }
+
+  // Summary stats
+  const relevantMetrics = metrics.filter(
+    (m) => m.metric_type === metricType && selectedIds.includes(m.listing_id)
+  );
+  const totalCount = relevantMetrics.reduce((sum, m) => sum + m.count, 0);
+  const dayTotals = dates.map((d) =>
+    relevantMetrics
+      .filter((m) => m.recorded_date === d)
+      .reduce((sum, m) => sum + m.count, 0)
+  );
+  const peakCount = dayTotals.length ? Math.max(...dayTotals) : 0;
+  const avgCount =
+    dayTotals.length ? (totalCount / dayTotals.length).toFixed(1) : "0";
+
+  // Dropdown label
+  let dropdownLabel = "No listings selected";
+  if (selectedIds.length > 0 && selectedIds.length === allListings.length) {
+    dropdownLabel = "All listings";
+  } else if (selectedIds.length === 1) {
+    const l = allListings.find((x) => x.id === selectedIds[0]);
+    dropdownLabel = l?.title || l?.address || "1 listing";
+  } else if (selectedIds.length > 1) {
+    dropdownLabel = `${selectedIds.length} listings`;
+  }
+
+  const toggleListing = (id) =>
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
+  const tickInterval =
+    range === "7d" ? 0 : range === "30d" ? 4 : 20;
 
   return (
-    <div className="w-full min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-2">
-          <div className="text-2xl">📅</div>
-          <h1 className="text-2xl font-bold text-gray-900">Leasing Funnel</h1>
-        </div>
-
-        {/* Key Metrics */}
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          <Card className="hover:shadow-lg transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Conversion Rate
-              </CardTitle>
-              <Users className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">9.4%</div>
-              <div className="text-xs text-gray-500 mt-1">
-                <span className="text-red-600 font-medium">-2.1%</span> from
-                last month
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                12 leases from 127 inquiries
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Avg. Days on Market
-              </CardTitle>
-              <Calendar className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">28 days</div>
-              <div className="text-xs text-gray-500 mt-1">
-                <span className="text-green-600 font-medium">-3 days</span> from
-                last month
-              </div>
-              <Badge
-                variant="secondary"
-                className="mt-2 bg-green-100 text-green-800"
-              >
-                <TrendingDown className="h-3 w-3 mr-1" />
-                Improving
-              </Badge>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow duration-200">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">
-                Abandonment Rate
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Users who started messages but didn&apos;t send them
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">23.5%</div>
-              <div className="text-xs text-gray-500 mt-1">
-                <span className="text-red-600 font-medium">+1.8%</span> from
-                last month
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                30 started, 7 abandoned
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Charts */}
-        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-          {/* Conversion Funnel */}
-          <Card className="hover:shadow-lg transition-shadow duration-200">
-            <CardHeader>
-              <CardTitle>Conversion Funnel</CardTitle>
-              <CardDescription>
-                Journey from inquiries to signed leases
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {funnelData.map((stage, index) => (
-                  <div key={stage.stage} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-4 h-4 rounded-full ${stage.color}`}
-                        />
-                        <span className="font-medium">{stage.stage}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold">{stage.count}</div>
-                        <div className="text-xs text-gray-500">
-                          {stage.percentage}%
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Visual funnel bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div
-                        className={`h-3 rounded-full transition-all duration-500 ${stage.color}`}
-                        style={{ width: `${stage.percentage}%` }}
-                      />
-                    </div>
-
-                    {/* Drop-off indicator */}
-                    {index < funnelData.length - 1 && (
-                      <div className="text-xs text-red-600 text-right">
-                        -{funnelData[index].count - funnelData[index + 1].count}{" "}
-                        dropped off
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Lead-to-Lease Time */}
-          <Card className="hover:shadow-lg transition-shadow duration-200">
-            <CardHeader>
-              <CardTitle>Lead-to-Lease Time</CardTitle>
-              <CardDescription>
-                Average days from first inquiry to lease signing
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SimpleBarChart
-                data={leadToLeaseData}
-                dataKey="days"
-                color="#10b981"
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Multi-select dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setDropdownOpen((o) => !o)}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 min-w-[180px] justify-between"
+          >
+            <span className="truncate">{dropdownLabel}</span>
+            <svg
+              className="h-4 w-4 text-gray-400 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
               />
-            </CardContent>
-          </Card>
+            </svg>
+          </button>
+          {dropdownOpen && (
+            <div className="absolute z-20 top-full mt-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[240px] max-h-64 overflow-y-auto">
+              <div className="flex gap-2 px-3 py-2 border-b border-gray-100">
+                <button
+                  onClick={() => setSelectedIds(allListings.map((l) => l.id))}
+                  className="text-xs text-red-600 hover:underline font-medium"
+                >
+                  All
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="text-xs text-gray-500 hover:underline"
+                >
+                  None
+                </button>
+              </div>
+              {allListings.map((listing) => (
+                <label
+                  key={listing.id}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(listing.id)}
+                    onChange={() => toggleListing(listing.id)}
+                    className="accent-red-600"
+                  />
+                  <span className="truncate">
+                    {listing.title || listing.address}
+                  </span>
+                </label>
+              ))}
+              {allListings.length === 0 && (
+                <p className="px-3 py-2 text-sm text-gray-400">No listings found</p>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Detailed Funnel Analysis */}
-        <Card className="hover:shadow-lg transition-shadow duration-200">
-          <CardHeader>
-            <CardTitle>Funnel Performance Analysis</CardTitle>
-            <CardDescription>
-              Detailed breakdown of each stage performance
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
-              {/* Stage 1: Inquiries */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full" />
-                  <h4 className="font-semibold">Inquiries Stage</h4>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total Inquiries:</span>
-                    <span className="font-medium">127</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Response Rate:</span>
-                    <span className="font-medium text-green-600">98%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Avg Response Time:</span>
-                    <span className="font-medium">2.3 hours</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Quality Score:</span>
-                    <span className="font-medium">8.2/10</span>
-                  </div>
-                </div>
-              </div>
+        {/* Range */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setRange(opt.value)}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                range === opt.value
+                  ? "bg-red-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
-              {/* Stage 2: Applications */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full" />
-                  <h4 className="font-semibold">Applications Stage</h4>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Applications:</span>
-                    <span className="font-medium">45</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Conversion Rate:</span>
-                    <span className="font-medium text-yellow-600">35.4%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Avg Processing:</span>
-                    <span className="font-medium">3.2 days</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Approval Rate:</span>
-                    <span className="font-medium">73%</span>
-                  </div>
-                </div>
-              </div>
+        {/* Metric type */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          {METRIC_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setMetricType(opt.value)}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                metricType === opt.value
+                  ? "bg-red-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
-              {/* Stage 3: Signed Leases */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full" />
-                  <h4 className="font-semibold">Signed Leases</h4>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Signed Leases:</span>
-                    <span className="font-medium">12</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Final Conversion:</span>
-                    <span className="font-medium text-green-600">9.4%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Avg Lease Value:</span>
-                    <span className="font-medium">$1,847</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Revenue Generated:</span>
-                    <span className="font-medium text-green-600">$22,164</span>
-                  </div>
-                </div>
-              </div>
+        {/* Display mode */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setDisplayMode("combined")}
+            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+              displayMode === "combined"
+                ? "bg-gray-800 text-white"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Combined
+          </button>
+          <button
+            onClick={() => setDisplayMode("separate")}
+            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+              displayMode === "separate"
+                ? "bg-gray-800 text-white"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Separate
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {selectedIds.length > 0 && (
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            { label: `Total ${metricType}`, value: totalCount },
+            { label: "Peak day", value: peakCount },
+            { label: "Avg / day", value: avgCount },
+          ].map(({ label, value }) => (
+            <div
+              key={label}
+              className="bg-white rounded-lg border border-gray-200 shadow-sm p-4"
+            >
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+                {label}
+              </p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
             </div>
-          </CardContent>
-        </Card>
+          ))}
+        </div>
+      )}
 
-        {/* Improvement Recommendations */}
-        <Card className="hover:shadow-lg transition-shadow duration-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-600" />
-              Improvement Recommendations
-            </CardTitle>
-            <CardDescription>
-              AI-powered suggestions to optimize your leasing funnel
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-              <div className="space-y-3">
-                <h4 className="font-semibold text-red-600">🎯 High Impact</h4>
-                <div className="space-y-2">
-                  <div className="p-3 bg-red-50 rounded-lg">
-                    <div className="font-medium text-sm">
-                      Reduce Application Drop-off
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      64.6% of inquiries don&apos;t convert to applications.
-                      Consider simplifying your application process.
-                    </div>
-                  </div>
-                  <div className="p-3 bg-red-50 rounded-lg">
-                    <div className="font-medium text-sm">
-                      Follow-up Strategy
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Implement automated follow-ups for inquiries that
-                      don&apos;t respond within 24 hours.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="font-semibold text-yellow-600">⚡ Quick Wins</h4>
-                <div className="space-y-2">
-                  <div className="p-3 bg-yellow-50 rounded-lg">
-                    <div className="font-medium text-sm">Virtual Tours</div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Add virtual tours to increase application conversion by an
-                      estimated 15-20%.
-                    </div>
-                  </div>
-                  <div className="p-3 bg-yellow-50 rounded-lg">
-                    <div className="font-medium text-sm">
-                      Response Templates
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Create templates for common inquiries to reduce response
-                      time to under 1 hour.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Chart */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+        {selectedIds.length === 0 ? (
+          <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+            Select a listing to view metrics
+          </div>
+        ) : loading ? (
+          <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+            Loading...
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart
+              data={chartData}
+              margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                tickLine={false}
+                interval={tickInterval}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  fontSize: 12,
+                  borderRadius: 8,
+                  border: "1px solid #e5e7eb",
+                }}
+              />
+              {displayMode === "combined" ? (
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#dc2626"
+                  strokeWidth={2}
+                  dot={false}
+                  name={
+                    metricType.charAt(0).toUpperCase() + metricType.slice(1)
+                  }
+                />
+              ) : (
+                <>
+                  {selectedIds.map((listingId, i) => {
+                    const listing = allListings.find((l) => l.id === listingId);
+                    const key =
+                      listing?.title || listing?.address || listingId;
+                    return (
+                      <Line
+                        key={listingId}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={COLORS[i % COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                        name={key}
+                      />
+                    );
+                  })}
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                </>
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );

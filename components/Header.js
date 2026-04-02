@@ -12,22 +12,10 @@ import { usePathname, useRouter } from "next/navigation";
 export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [signUpOpen, setSignUpOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const inputRef = useRef(null);
-  const signUpRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (signUpRef.current && !signUpRef.current.contains(e.target)) {
-        setSignUpOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus();
@@ -197,34 +185,12 @@ export function Header({ session }) {
                   >
                     Log In
                   </button>
-                  <div ref={signUpRef} className="relative">
-                    <button
-                      onClick={() => setSignUpOpen((v) => !v)}
-                      className="flex items-center gap-1.5 px-5 py-2.5 text-[17px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all duration-150 shadow-sm shadow-red-400/25"
-                    >
-                      Sign Up
-                      <svg className={`h-4 w-4 transition-transform duration-150 ${signUpOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {signUpOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-xl overflow-hidden z-50">
-                        <button
-                          onClick={() => { setSignUpOpen(false); signIn("google", { callbackUrl: "/?role=student" }); }}
-                          className="w-full px-4 py-3 text-left text-[15px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                          Student
-                        </button>
-                        <div className="h-px bg-gray-100" />
-                        <button
-                          onClick={() => { setSignUpOpen(false); signIn("google", { callbackUrl: "/?role=landlord" }); }}
-                          className="w-full px-4 py-3 text-left text-[15px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                          Landlord
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => signIn("google", { callbackUrl: "/" })}
+                    className="px-5 py-2.5 text-[17px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all duration-150 shadow-sm shadow-red-400/25"
+                  >
+                    Sign Up
+                  </button>
                 </>
               )}
             </div>
@@ -291,38 +257,16 @@ export function Header({ session }) {
               <div className="flex gap-2 w-full">
                 <button
                   onClick={() => { setMobileMenuOpen(false); signIn("google", { callbackUrl: "/" }); }}
-                  className="flex-1 mr-4 py-3 rounded-xl text-[16px] font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 transition-all text-center"
+                  className="flex-1 py-3 rounded-xl text-[16px] font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 transition-all text-center"
                 >
                   Log In
                 </button>
-                <div className="relative flex-1 flex" ref={signUpRef}>
-                  <button
-                    onClick={() => setSignUpOpen((v) => !v)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-[16px] font-medium text-white bg-red-500 hover:bg-red-600 transition-all"
-                  >
-                    Sign Up
-                    <svg className={`h-4 w-4 transition-transform duration-150 ${signUpOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {signUpOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-100 shadow-xl overflow-hidden z-50">
-                      <button
-                        onClick={() => { setSignUpOpen(false); setMobileMenuOpen(false); signIn("google", { callbackUrl: "/?role=student" }); }}
-                        className="w-full px-4 py-3 text-left text-[15px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        Student
-                      </button>
-                      <div className="h-px bg-gray-100" />
-                      <button
-                        onClick={() => { setSignUpOpen(false); setMobileMenuOpen(false); signIn("google", { callbackUrl: "/?role=landlord" }); }}
-                        className="w-full px-4 py-3 text-left text-[15px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        Landlord
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={() => { setMobileMenuOpen(false); signIn("google", { callbackUrl: "/" }); }}
+                  className="flex-1 py-3 rounded-xl text-[16px] font-medium text-white bg-red-500 hover:bg-red-600 transition-all text-center"
+                >
+                  Sign Up
+                </button>
               </div>
             </>
           )}

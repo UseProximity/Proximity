@@ -7,14 +7,19 @@ function serializeListing(l) {
   return {
     _id: l.id?.toString(),
     id: l.id,
+    title: l.title ?? null,
     address: l.address,
+    description: l.description ?? null,
     unitTypes: Array.isArray(l.listing_units) ? l.listing_units : [],
+    leaseType: l.lease_type ?? null,
+    leaseStructure: l.lease_structure ?? null,
     moveInDate: l.move_in_date ? new Date(l.move_in_date).toISOString() : null,
     homeType: l.home_type,
     amenities: Array.isArray(l.amenities) ? l.amenities : [],
-    furnished: l.furnished,
+    furnished: l.furnished ?? false,
     utilitiesIncluded: Array.isArray(l.utilities_included) ? l.utilities_included : [],
     subleaseFriendly: l.sublease_friendly ?? false,
+    unavailable: l.unavailable ?? false,
     distanceToCampusKm: l.distance_to_campus_km,
     minRent: l.min_rent,
     maxRent: l.max_rent,
@@ -27,6 +32,11 @@ function serializeListing(l) {
     images: Array.isArray(l.images) ? l.images : [],
     rating: l.rating ?? 0,
     numReviews: l.num_reviews ?? 0,
+    numClicks: l.num_clicks ?? 0,
+    numSaves: l.num_saves ?? 0,
+    contactEmail: l.contact_email ?? null,
+    contactPhone: l.contact_phone ?? null,
+    contactName: l.contact_name ?? null,
     owner: l.landlord_id?.toString?.() || null,
     latitude: l.latitude,
     longitude: l.longitude,
@@ -64,10 +74,10 @@ export async function GET() {
       .map((r) => r.listings)
       .filter(Boolean);
 
-    // Fetch user's own listings
+    // Fetch user's own listings with units
     const { data: ownListings } = await supabase
       .from("listings")
-      .select("*")
+      .select("*, listing_units(*)")
       .eq("landlord_id", userId);
 
     // Fetch contacted listings via user_contacted join → listings

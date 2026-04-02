@@ -35,7 +35,7 @@ export async function POST(req) {
       // Decrement num_saves
       const { data: listing } = await supabase
         .from("listings")
-        .select("num_saves")
+        .select("num_saves, landlord_id")
         .eq("id", listingId)
         .single();
       if (listing && listing.num_saves > 0) {
@@ -55,7 +55,7 @@ export async function POST(req) {
       // Increment num_saves
       const { data: listing } = await supabase
         .from("listings")
-        .select("num_saves")
+        .select("num_saves, landlord_id")
         .eq("id", listingId)
         .single();
       if (listing) {
@@ -63,6 +63,19 @@ export async function POST(req) {
           .from("listings")
           .update({ num_saves: (listing.num_saves ?? 0) + 1 })
           .eq("id", listingId);
+
+        // Track saves metric (fire-and-forget)
+        const _today = new Date().toISOString().split("T")[0];
+        supabase
+          .rpc("increment_listing_metric", {
+            p_listing_id: listingId,
+            p_landlord_id: listing.landlord_id ?? null,
+            p_metric_type: "saves",
+            p_date: _today,
+          })
+          .then(({ error: rpcErr }) => {
+            if (rpcErr) console.error("[metrics] saves increment failed:", rpcErr.message);
+          });
       }
 
       return NextResponse.json({ favorited: true });

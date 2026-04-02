@@ -154,8 +154,8 @@ const AMENITY_LABELS = {
 
 function AmenitiesTab({ listing }) {
   const amenities = (listing.amenities || [])
-    .filter((a) => AMENITY_LABELS[a])
-    .map((a) => AMENITY_LABELS[a]);
+    .map((a) => AMENITY_LABELS[a] || a)
+    .filter(Boolean);
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
