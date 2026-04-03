@@ -50,20 +50,33 @@ export function Header({ session }) {
   const navLinks = [
     { href: "/browse", label: "Browse Listings" },
     { href: "/CampusHub", label: "On Campus Hub" },
+    { href: "/matchmaking", label: "Matchmaking" },
     { href: "/about", label: "Meet the Founder" },
   ];
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
       <div className="relative w-full flex items-center justify-between h-[83px] md:h-[104px] px-8 md:px-12">
-
         {/* ── Left: Logo + Nav ── */}
-        <div className={`flex items-center gap-10 flex-shrink-0 ${searchOpen ? "hidden md:flex" : ""}`}>
+        <div
+          className={`flex items-center gap-10 flex-shrink-0 ${
+            searchOpen ? "hidden md:flex" : ""
+          }`}
+        >
           <Link href="/" className="flex items-center gap-3 flex-shrink-0">
             <div className="h-[56px] w-auto">
-              <Image src={Logo} alt="Proximity" width={56} height={56} className="h-full w-auto object-contain" priority />
+              <Image
+                src={Logo}
+                alt="Proximity"
+                width={56}
+                height={56}
+                className="h-full w-auto object-contain"
+                priority
+              />
             </div>
-            <span className="text-[26px] font-bold text-gray-900 tracking-tight">Proximity</span>
+            <span className="text-[26px] font-bold text-gray-900 tracking-tight">
+              Proximity
+            </span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
             {navLinks.map(({ href, label }) => (
@@ -71,7 +84,9 @@ export function Header({ session }) {
                 key={href}
                 href={href}
                 className={`px-4 py-2.5 rounded-lg text-[17px] font-medium transition-all duration-150 whitespace-nowrap ${
-                  isActive(href) ? "text-red-500 bg-red-50/80" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  isActive(href)
+                    ? "text-red-500 bg-red-50/80"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                 }`}
               >
                 {label}
@@ -108,13 +123,15 @@ export function Header({ session }) {
 
         {/* ── Right: Search + Auth + Hamburger ── */}
         <div className="flex items-center gap-2">
-
           {/* Search */}
           <div className="relative flex-shrink-0">
             {searchOpen ? (
               <>
                 {/* Spacer keeps the close-button slot in flow so auth buttons don't shift */}
-                <div className="w-11 h-11 opacity-0 pointer-events-none" aria-hidden="true" />
+                <div
+                  className="w-11 h-11 opacity-0 pointer-events-none"
+                  aria-hidden="true"
+                />
                 <form
                   onSubmit={submitSearch}
                   className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
@@ -151,49 +168,57 @@ export function Header({ session }) {
 
           {/* Auth buttons — desktop only */}
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
-              {session?.user ? (
-                <>
-                  <Link
-                    href={session.user.role === "landlord" ? "/dashboard/landlord" : "/dashboard/student"}
-                    className={`flex items-center gap-2 px-5 py-2.5 text-[17px] font-medium rounded-xl transition-all border ${
+            {session?.user ? (
+              <>
+                <Link
+                  href={
+                    session.user.role === "landlord"
+                      ? "/dashboard/landlord"
+                      : "/dashboard/student"
+                  }
+                  className={`flex items-center gap-2 px-5 py-2.5 text-[17px] font-medium rounded-xl transition-all border ${
+                    pathname.startsWith("/dashboard")
+                      ? "text-red-500 bg-red-50/80 border-red-200 hover:bg-red-100/70"
+                      : "text-gray-700 hover:text-gray-900 hover:bg-gray-50 border-gray-200"
+                  }`}
+                >
+                  <Image
+                    src={
                       pathname.startsWith("/dashboard")
-                        ? "text-red-500 bg-red-50/80 border-red-200 hover:bg-red-100/70"
-                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-50 border-gray-200"
-                    }`}
-                  >
-                    <Image
-                      src={pathname.startsWith("/dashboard") ? "/assets/profile-icon-1.svg" : "/assets/profile-icon.svg"}
-                      alt="Profile"
-                      width={20}
-                      height={20}
-                      className="w-5 h-5"
-                    />
-                    Dashboard
-                  </Link>
-                  <button
-                    onClick={() => signOut({ callbackUrl: "/" })}
-                    className="px-5 py-2.5 text-[17px] font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
-                  >
-                    Log out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => signIn("google", { callbackUrl: "/" })}
-                    className="px-5 py-2.5 text-[17px] font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl border border-gray-200 transition-all duration-150"
-                  >
-                    Log In
-                  </button>
-                  <button
-                    onClick={() => signIn("google", { callbackUrl: "/" })}
-                    className="px-5 py-2.5 text-[17px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all duration-150 shadow-sm shadow-red-400/25"
-                  >
-                    Sign Up
-                  </button>
-                </>
-              )}
-            </div>
+                        ? "/assets/profile-icon-1.svg"
+                        : "/assets/profile-icon.svg"
+                    }
+                    alt="Profile"
+                    width={20}
+                    height={20}
+                    className="w-5 h-5"
+                  />
+                  Dashboard
+                </Link>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="px-5 py-2.5 text-[17px] font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => signIn("google", { callbackUrl: "/" })}
+                  className="px-5 py-2.5 text-[17px] font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl border border-gray-200 transition-all duration-150"
+                >
+                  Log In
+                </button>
+                <button
+                  onClick={() => signIn("google", { callbackUrl: "/" })}
+                  className="px-5 py-2.5 text-[17px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all duration-150 shadow-sm shadow-red-400/25"
+                >
+                  Sign Up
+                </button>
+              </>
+            )}
+          </div>
 
           {/* Mobile hamburger */}
           {!searchOpen && (
@@ -202,7 +227,11 @@ export function Header({ session }) {
               className="md:hidden flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
               aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              {mobileMenuOpen ? (
+                <X className="h-6 w-6" />
+              ) : (
+                <Menu className="h-6 w-6" />
+              )}
             </button>
           )}
         </div>
@@ -217,7 +246,9 @@ export function Header({ session }) {
               href={href}
               onClick={() => setMobileMenuOpen(false)}
               className={`px-4 py-3 rounded-xl text-[17px] font-medium transition-all ${
-                isActive(href) ? "text-red-500 bg-red-50/80" : "text-gray-700 hover:bg-gray-50"
+                isActive(href)
+                  ? "text-red-500 bg-red-50/80"
+                  : "text-gray-700 hover:bg-gray-50"
               }`}
             >
               {label}
@@ -227,7 +258,11 @@ export function Header({ session }) {
           {session?.user ? (
             <>
               <Link
-                href={session.user.role === "landlord" ? "/dashboard/landlord" : "/dashboard/student"}
+                href={
+                  session.user.role === "landlord"
+                    ? "/dashboard/landlord"
+                    : "/dashboard/student"
+                }
                 onClick={() => setMobileMenuOpen(false)}
                 className={`flex items-center gap-2 px-4 py-3 rounded-xl text-[17px] font-medium transition-all ${
                   pathname.startsWith("/dashboard")
@@ -236,7 +271,11 @@ export function Header({ session }) {
                 }`}
               >
                 <Image
-                  src={pathname.startsWith("/dashboard") ? "/assets/profile-icon-1.svg" : "/assets/profile-icon.svg"}
+                  src={
+                    pathname.startsWith("/dashboard")
+                      ? "/assets/profile-icon-1.svg"
+                      : "/assets/profile-icon.svg"
+                  }
                   alt="Profile"
                   width={20}
                   height={20}
@@ -245,7 +284,10 @@ export function Header({ session }) {
                 Dashboard
               </Link>
               <button
-                onClick={() => { setMobileMenuOpen(false); signOut({ callbackUrl: "/" }); }}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  signOut({ callbackUrl: "/" });
+                }}
                 className="px-4 py-3 rounded-xl text-[17px] font-medium text-gray-600 hover:bg-gray-50 transition-all text-left"
               >
                 Log out
@@ -256,13 +298,19 @@ export function Header({ session }) {
               {/* Log In + Sign Up side by side */}
               <div className="flex gap-2 w-full">
                 <button
-                  onClick={() => { setMobileMenuOpen(false); signIn("google", { callbackUrl: "/" }); }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signIn("google", { callbackUrl: "/" });
+                  }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 transition-all text-center"
                 >
                   Log In
                 </button>
                 <button
-                  onClick={() => { setMobileMenuOpen(false); signIn("google", { callbackUrl: "/" }); }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signIn("google", { callbackUrl: "/" });
+                  }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-white bg-red-500 hover:bg-red-600 transition-all text-center"
                 >
                   Sign Up
