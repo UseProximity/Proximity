@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { signIn } from "next-auth/react";
 
 const INPUT_BASE =
   "w-full rounded-xl border bg-white px-4 py-3 text-[15px] text-gray-900 placeholder:text-gray-400 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100";
@@ -145,6 +146,7 @@ export default function ConciergeFormClient() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   const [showExitPoll, setShowExitPoll] = useState(false);
   const [exitPollThanks, setExitPollThanks] = useState(false);
@@ -221,15 +223,31 @@ export default function ConciergeFormClient() {
 
     setSubmitting(true);
     try {
-      const formEl = e.currentTarget;
-      const response = await fetch(formEl.action || FORM_ACTION, {
+      const response = await fetch("/api/matchmaking", {
         method: "POST",
-        body: new FormData(formEl),
-        headers: { Accept: "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          year_of_school: form.year_of_school,
+          group_size: form.group_size,
+          budget: form.budget,
+          lease_term: form.lease_term === "Other" ? form.lease_term_other : form.lease_term,
+          furnished: form.furnished,
+          commute: form.commute,
+          medical_campus: form.medical_campus,
+          priorities: form.priorities,
+          student_type: form.student_type,
+          area: form.area === "Other" ? form.area_other : form.area,
+          notes: form.notes,
+          referral_source: form.referral_source,
+        }),
+        headers: { "Content-Type": "application/json" },
       });
 
-      if (!response.ok) throw new Error(`Form submit failed: ${response.status}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Submit failed: ${response.status}`);
 
+      setIsNewUser(data.isNewUser);
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -247,6 +265,7 @@ export default function ConciergeFormClient() {
     setShowExitPoll(false);
     setExitPollThanks(false);
     setSubmitError(false);
+    setIsNewUser(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -361,6 +380,24 @@ export default function ConciergeFormClient() {
                 eye on your inbox.
               </p>
 
+              {isNewUser && (
+                <div className="mt-8 rounded-2xl bg-red-50 border border-red-100 px-6 py-5">
+                  <p className="text-sm font-semibold text-gray-900 text-center">
+                    Finalize your matchmaking
+                  </p>
+                  <p className="mt-1 text-sm text-gray-500 text-center">
+                    Create a free account so we can reach you and track your preferences.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => signIn("google", { callbackUrl: "/" })}
+                    className="mt-4 w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 transition"
+                  >
+                    Create account with Google
+                  </button>
+                </div>
+              )}
+
               {showExitPoll && (
                 <div id="exitPoll" className="mt-10">
                   <p className="text-sm text-gray-500 text-center">
@@ -376,12 +413,12 @@ export default function ConciergeFormClient() {
                       },
                       {
                         id: "ef2",
-                        value: "Wasn't sure it's legit",
+                        value: "Wasn’t sure it’s legit",
                         label: "Wasn’t sure it’s legit",
                       },
                       {
                         id: "ef3",
-                        value: "Didn't want to share email",
+                        value: "Didn’t want to share email",
                         label: "Didn’t want to share email",
                       },
                       {

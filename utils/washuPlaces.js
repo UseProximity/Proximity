@@ -8,6 +8,7 @@ export const WASHU_PLACES = [
   { name: "Danforth University Center", lat: 38.64754193120054,  lng: -90.31037361422699 },
   { name: "Sumers Rec Center",          lat: 38.64933192571885,  lng: -90.31472066027095 },
   { name: "Village House",              lat: 38.65056939432417,  lng: -90.31405161268682 },
+  { name: "Med Campus",                 lat: 38.638520791600385, lng: -90.26355199334968 },
 ];
 
 export const SHUTTLE_STOPS = [
