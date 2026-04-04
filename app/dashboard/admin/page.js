@@ -296,8 +296,8 @@ const SCHEMAS = {
   ],
 };
 
-// listing_units is shown inline under listings, not as a standalone nav tab
-const TABLES = Object.keys(SCHEMAS).filter((t) => t !== "listing_units");
+// Static tables used as fallback before the dynamic schema loads
+const STATIC_TABLES = Object.keys(SCHEMAS).sort();
 
 // Returns a max-width style for a column based on its field definition
 function colStyle(f) {
@@ -518,7 +518,7 @@ function MultiEnumDropdown({ options, current, changed, onChange }) {
   );
 }
 
-function FieldInput({ fieldDef, value, pendingValue, onChange, users = [] }) {
+function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLabel = null }) {
   const { type } = fieldDef;
   const current = pendingValue !== undefined ? pendingValue : value;
   const changed = pendingValue !== undefined;
@@ -668,8 +668,18 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [] }) {
     );
   }
 
-  // text (default)
+  // text (default) — with optional FK label
   const display = current == null ? "" : String(current);
+
+  if (fkLabel) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-0.5 min-w-[160px]">
+        <span className="text-xs text-gray-800 truncate flex-1 min-w-0">{fkLabel}</span>
+        <span className="text-[10px] font-mono text-gray-400 shrink-0 opacity-75">{display}</span>
+      </div>
+    );
+  }
+
   return (
     <ExpandingTextarea
       value={display}
@@ -997,7 +1007,7 @@ export default function AdminDashboard() {
   const [pendingChanges, setPendingChanges] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState(() => new Set(SCHEMAS["users"].map((f) => f.key)));
+  const [visibleColumns, setVisibleColumns] = useState(() => new Set((SCHEMAS["users"] || []).map((f) => f.key)));
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const [imagePanel, setImagePanel] = useState(null);
   const colPickerRef = useRef(null);
@@ -1023,8 +1033,64 @@ export default function AdminDashboard() {
   const [dbTarget, setDbTarget] = useState("dev");
   const isProd = dbTarget === "prod";
 
-  const schema = SCHEMAS[activeTable] || [];
-  const visibleSchema = schema.filter((f) => visibleColumns.has(f.key));
+  // FK lookup maps — id → human-readable label for reference columns
+  const [refMaps, setRefMaps] = useState({ users: {}, listings: {}, dorms: {} });
+
+  useEffect(() => {
+    const h = { "x-db-target": dbTarget };
+    Promise.all([
+      fetch("/api/admin/users",    { headers: h }).then((r) => r.ok ? r.json() : []),
+      fetch("/api/admin/listings", { headers: h }).then((r) => r.ok ? r.json() : []),
+      fetch("/api/admin/dorms",    { headers: h }).then((r) => r.ok ? r.json() : []),
+    ]).then(([users, listings, dorms]) => {
+      const maps = { users: {}, listings: {}, dorms: {} };
+      for (const u of (Array.isArray(users)    ? users    : [])) maps.users[u.id]    = u.name    || u.email   || u.id;
+      for (const l of (Array.isArray(listings) ? listings : [])) maps.listings[l.id] = l.address || l.title   || l.id;
+      for (const d of (Array.isArray(dorms)    ? dorms    : [])) maps.dorms[d.id]    = d.name    || d.id;
+      setRefMaps(maps);
+    }).catch(() => {});
+  }, [dbTarget]);
+
+  function resolveFk(colKey, id) {
+    if (!id) return null;
+    if (colKey === "user_id" || colKey === "landlord_id" || colKey === "reviewer_id") return refMaps.users[id]    || null;
+    if (colKey === "listing_id")  return refMaps.listings[id] || null;
+    if (colKey === "dorm_id")     return refMaps.dorms[id]    || null;
+    return null;
+  }
+
+  // Dynamic schema fetched from Supabase — falls back to hardcoded SCHEMAS for known tables
+  const [allTables, setAllTables] = useState(STATIC_TABLES);
+  const [dynamicSchemas, setDynamicSchemas] = useState({});
+
+  useEffect(() => {
+    fetch("/api/admin/schema", { headers: { "x-db-target": dbTarget } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.tables) setAllTables(d.tables);
+        if (d.schemas) setDynamicSchemas(d.schemas);
+      })
+      .catch(() => {});
+  }, [dbTarget]);
+
+  // Prefer the rich static SCHEMAS for known tables; fall back to dynamic for new ones
+  function getSchema(table) {
+    return SCHEMAS[table] || dynamicSchemas[table] || [];
+  }
+
+  const rawSchema = getSchema(activeTable);
+  // Fall back to deriving columns from first row when schema hasn't loaded yet
+  const schema = rawSchema.length > 0 ? rawSchema
+    : rows.length > 0
+      ? Object.keys(rows[0]).map((k) => ({
+          key: k,
+          label: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          type: k === "id" ? "id" : "text",
+        }))
+      : [];
+  const visibleSchema = visibleColumns.size > 0
+    ? schema.filter((f) => visibleColumns.has(f.key))
+    : schema;
 
   useEffect(() => {
     function handleOutsideClick(e) {
@@ -1056,6 +1122,28 @@ export default function AdminDashboard() {
     if (typeof window !== "undefined") localStorage.setItem("admin_db_target", next);
   }
 
+  const [walkTimesStatus, setWalkTimesStatus] = useState(null);
+  const [walkTimesRunning, setWalkTimesRunning] = useState(false);
+
+  async function handleUpdateWalkTimes() {
+    if (isProd && !confirm("Update walk times on PRODUCTION?\n\nThis will recalculate walk times for all listings in the production database.")) return;
+    setWalkTimesRunning(true);
+    setWalkTimesStatus(null);
+    try {
+      const res = await fetch("/api/admin/update-campus-walk-times", {
+        method: "POST",
+        headers: { "x-db-target": dbTarget },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      setWalkTimesStatus({ ok: true, msg: `Walk times updated: ${data.updated}/${data.total} listings` + (data.failed ? ` (${data.failed} failed)` : "") });
+    } catch (e) {
+      setWalkTimesStatus({ ok: false, msg: `Walk times error: ${e.message}` });
+    } finally {
+      setWalkTimesRunning(false);
+    }
+  }
+
   const loadTable = useCallback(async (table, target) => {
     setLoading(true);
     setError(null);
@@ -1066,7 +1154,6 @@ export default function AdminDashboard() {
     setSearch("");
     setSearchColumn("all");
     setSaveStatus(null);
-    setVisibleColumns(new Set((SCHEMAS[table] || []).map((f) => f.key)));
     const dbHeader = { "x-db-target": target };
     try {
       const res = await fetch(`/api/admin/${table}`, { headers: dbHeader });
@@ -1105,6 +1192,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadTable(activeTable, dbTarget);
   }, [activeTable, dbTarget, loadTable]);
+
+  // Update visible columns whenever the active table or dynamic schemas change.
+  // This runs with fresh closure values, fixing the stale-closure issue in loadTable's useCallback.
+  useEffect(() => {
+    const s = SCHEMAS[activeTable] || dynamicSchemas[activeTable] || [];
+    if (s.length > 0) {
+      setVisibleColumns(new Set(s.map((f) => f.key)));
+    }
+  }, [activeTable, dynamicSchemas]);
 
   useEffect(() => {
     if (addRowOpen) {
@@ -1283,7 +1379,7 @@ export default function AdminDashboard() {
 
   function blankUnit() {
     const u = {};
-    for (const f of SCHEMAS.listing_units) {
+    for (const f of getSchema("listing_units")) {
       if (["id", "listing_id", "created_at", "updated_at"].includes(f.key)) continue;
       if (f.type === "boolean") u[f.key] = false;
       else if (f.type === "multi-enum") u[f.key] = [];
@@ -1452,7 +1548,7 @@ export default function AdminDashboard() {
       <div className="px-6 py-5">
         {/* Table tabs */}
         <div className="flex gap-1.5 mb-5 flex-wrap">
-          {TABLES.map((t) => (
+          {allTables.map((t) => (
             <button
               key={t}
               onClick={() => setActiveTable(t)}
@@ -1576,9 +1672,29 @@ export default function AdminDashboard() {
                       style={{ ...colStyle(f), maxWidth: undefined, width: undefined }}
                       className="border-b border-r border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap"
                     >
-                      {f.label}
-                      {(f.type === "boolean" || f.type === "json" || f.type === "number" || f.type === "enum" || f.type === "multi-enum") && (
-                        <span className="ml-1 text-gray-400 font-normal text-xs">({f.type})</span>
+                      {f.type === "walk-times" ? (
+                        <div className="flex items-center gap-2">
+                          <span>{f.label}</span>
+                          <button
+                            onClick={handleUpdateWalkTimes}
+                            disabled={walkTimesRunning}
+                            className="px-2 py-0.5 text-xs bg-purple-700 hover:bg-purple-600 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {walkTimesRunning ? "Updating…" : "Update"}
+                          </button>
+                          {walkTimesStatus && (
+                            <span className={`text-xs font-normal ${walkTimesStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                              {walkTimesStatus.msg}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          {f.label}
+                          {(f.type === "boolean" || f.type === "json" || f.type === "number" || f.type === "enum" || f.type === "multi-enum") && (
+                            <span className="ml-1 text-gray-400 font-normal text-xs">({f.type})</span>
+                          )}
+                        </>
                       )}
                     </th>
                   ))}
@@ -1591,7 +1707,7 @@ export default function AdminDashboard() {
                   const hasChanges = Object.keys(pending).length > 0;
                   const units = activeTable === "listings" ? (unitsByListing[rowId] || []) : [];
                   const isExpanded = expandedListings.has(rowId);
-                  const unitSchema = SCHEMAS.listing_units.filter((f) => f.key !== "listing_id");
+                  const unitSchema = getSchema("listing_units").filter((f) => f.key !== "listing_id");
                   const colSpan = visibleSchema.length + (activeTable === "listings" ? 1 : 0);
                   return (
                     <React.Fragment key={rowId}>
@@ -1617,6 +1733,7 @@ export default function AdminDashboard() {
                                 pendingValue={pending[f.key]}
                                 onChange={(v) => handleCellChange(rowId, f.key, v)}
                                 users={allUsers}
+                                fkLabel={resolveFk(f.key, row[f.key])}
                               />
                             </CellWrapper>
                           </td>
@@ -1667,6 +1784,7 @@ export default function AdminDashboard() {
                                                   value={unit[f.key]}
                                                   pendingValue={unitPending[f.key]}
                                                   onChange={(v) => handleUnitCellChange(unit.id, f.key, v)}
+                                                  fkLabel={resolveFk(f.key, unit[f.key])}
                                                 />
                                               </CellWrapper>
                                             </td>
@@ -1755,7 +1873,7 @@ export default function AdminDashboard() {
         const listingFields = schema.filter(
           (f) => f.type !== "id" && f.type !== "readonly" && f.type !== "walk-times"
         );
-        const unitFields = SCHEMAS.listing_units.filter(
+        const unitFields = getSchema("listing_units").filter(
           (f) => !["id", "listing_id", "created_at", "updated_at"].includes(f.key)
         );
         return (

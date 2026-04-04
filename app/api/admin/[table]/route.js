@@ -43,16 +43,6 @@ function getDbTarget(req) {
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
-const VALID_TABLES = new Set([
-  "users",
-  "listings",
-  "listing_units",
-  "reviews",
-  "dorms",
-  "dorm_reviews",
-  "testimonials",
-]);
-
 async function requireSuper() {
   const session = await auth();
   if (!session || session.user.role !== "super") return null;
@@ -64,9 +54,6 @@ export async function GET(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  if (!VALID_TABLES.has(table)) {
-    return Response.json({ error: "Unknown table" }, { status: 404 });
-  }
 
   const supabase = getSupabaseClient(getDbTarget(req));
   const { data, error } = await supabase.from(table).select("*").limit(1000);
@@ -80,9 +67,6 @@ export async function PATCH(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  if (!VALID_TABLES.has(table)) {
-    return Response.json({ error: "Unknown table" }, { status: 404 });
-  }
 
   const supabase = getSupabaseClient(getDbTarget(req));
   const body = await req.json();
@@ -134,9 +118,6 @@ export async function POST(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  if (!VALID_TABLES.has(table)) {
-    return Response.json({ error: "Unknown table" }, { status: 404 });
-  }
 
   const supabase = getSupabaseClient(getDbTarget(req));
 
@@ -201,9 +182,6 @@ export async function DELETE(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-  if (!VALID_TABLES.has(table)) {
-    return Response.json({ error: "Unknown table" }, { status: 404 });
-  }
 
   const supabase = getSupabaseClient(getDbTarget(req));
   let id;
