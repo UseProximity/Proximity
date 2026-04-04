@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
   Search,
   Star,
@@ -10,9 +10,11 @@ import {
   ChevronRight,
   ArrowRight,
   X,
+  HandHeart,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useSession } from "next-auth/react";
 import AddressSearchInput from "@/components/AddressSearchInput";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
@@ -689,6 +691,81 @@ function CTABand() {
   );
 }
 
+// ─── Matchmaking Prompt Popup ──────────────────────────────────────────────────
+
+function MatchmakingPopup() {
+  const { data: session, status } = useSession();
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (status === "loading") return;
+
+    const check = async () => {
+      if (session?.user) {
+        try {
+          const res = await fetch("/api/matchmaking");
+          const data = await res.json();
+          if (data.hasResponse) return;
+        } catch {
+          // show popup on error to be safe
+        }
+      }
+      // Delay before showing
+      const t = setTimeout(() => setVisible(true), 3000);
+      return () => clearTimeout(t);
+    };
+
+    const cleanup = check();
+    return () => {
+      cleanup?.then?.((fn) => fn?.());
+    };
+  }, [status, session]);
+
+  if (dismissed || !visible) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.97 }}
+        transition={{ type: "spring", stiffness: 260, damping: 22 }}
+        className="fixed bottom-6 right-6 z-50 w-72 bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.14)] border border-gray-100 p-4"
+      >
+        <button
+          onClick={() => setDismissed(true)}
+          className="absolute top-3 right-3 text-gray-300 hover:text-gray-500 transition-colors"
+          aria-label="Dismiss"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="flex items-center gap-2 mb-2">
+          <div className="flex-shrink-0 w-7 h-7 bg-red-50 rounded-lg flex items-center justify-center">
+            <HandHeart className="h-4 w-4 text-red-500" />
+          </div>
+          <span className="text-sm font-bold text-gray-900">
+            Get personalized picks
+          </span>
+        </div>
+
+        <p className="text-xs text-gray-500 leading-relaxed mb-3">
+          Fill out our quick matchmaking form and we&apos;ll hand-pick
+          apartments that match your budget, location, and lifestyle.
+        </p>
+
+        <Link
+          href="/matchmaking"
+          className="flex items-center justify-center gap-1.5 w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors duration-150"
+        >
+          Find my match <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -710,6 +787,7 @@ export default function HomePage() {
         <CTABand />
       </main>
       <Footer />
+      <MatchmakingPopup />
     </div>
   );
 }

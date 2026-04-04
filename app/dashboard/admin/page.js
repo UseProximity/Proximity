@@ -294,6 +294,25 @@ const SCHEMAS = {
     { key: "created_at", label: "Created",type: "readonly" },
     { key: "updated_at", label: "Updated",type: "readonly" },
   ],
+  matchmaking_responses: [
+    { key: "id",             label: "ID",             type: "id"       },
+    { key: "user_id",        label: "User ID",        type: "readonly" },
+    { key: "name",           label: "Name",           type: "text",    required: true },
+    { key: "email",          label: "Email",          type: "text",    required: true },
+    { key: "year_of_school", label: "Year",           type: "text"     },
+    { key: "group_size",     label: "Group Size",     type: "text"     },
+    { key: "budget",         label: "Budget",         type: "text"     },
+    { key: "lease_term",     label: "Lease Term",     type: "text"     },
+    { key: "furnished",      label: "Furnished",      type: "text"     },
+    { key: "commute",        label: "Commute",        type: "text"     },
+    { key: "medical_campus", label: "Medical Campus", type: "boolean"  },
+    { key: "priorities",     label: "Priorities",     type: "json"     },
+    { key: "student_type",   label: "Student Type",   type: "text"     },
+    { key: "area",           label: "Area",           type: "text"     },
+    { key: "notes",          label: "Notes",          type: "text"     },
+    { key: "referral_source",label: "Referral",       type: "text"     },
+    { key: "created_at",     label: "Created",        type: "readonly" },
+  ],
 };
 
 // Static tables used as fallback before the dynamic schema loads
@@ -314,6 +333,26 @@ function colStyle(f) {
     case "json":      return { width: 160, maxWidth: 240 };
     default:          return { minWidth: 120 };           // text — grows freely
   }
+}
+
+// ─── Matchmaking → Claude format ──────────────────────────────────────────────
+
+function formatForClaude(row) {
+  const fields = [
+    "area", "budget", "commute", "email", "furnished",
+    "group_size", "lease_term", "medical_campus", "name",
+    "notes", "priorities", "referral_source", "student_type", "year_of_school",
+  ];
+  return fields
+    .map((key) => {
+      let val = row[key];
+      if (Array.isArray(val)) val = val.join(", ");
+      else if (val === true) val = "Yes";
+      else if (val === false) val = "No";
+      else val = val ?? "";
+      return `* ${key}: ${val}`.trimEnd();
+    })
+    .join("\n");
 }
 
 // ─── Cell Input Components ─────────────────────────────────────────────────────
@@ -1027,6 +1066,7 @@ export default function AdminDashboard() {
   const [addingUnitForListing, setAddingUnitForListing] = useState(null);
   const [newUnitFields, setNewUnitFields] = useState({});
   const [addingUnitSaving, setAddingUnitSaving] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
   const [addingUnitError, setAddingUnitError] = useState(null);
 
   // DB environment toggle — "prod" or "dev"
@@ -1666,6 +1706,9 @@ export default function AdminDashboard() {
                   {activeTable === "listings" && (
                     <th className="border-b border-r border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap w-20">Units</th>
                   )}
+                  {activeTable === "matchmaking_responses" && (
+                    <th className="border-b border-r border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap w-16">Copy</th>
+                  )}
                   {visibleSchema.map((f) => (
                     <th
                       key={f.key}
@@ -1721,6 +1764,25 @@ export default function AdminDashboard() {
                             >
                               <span className="text-gray-500">{isExpanded ? "▼" : "▶"}</span>
                               {units.length} unit{units.length !== 1 ? "s" : ""}
+                            </button>
+                          </td>
+                        )}
+                        {activeTable === "matchmaking_responses" && (
+                          <td className="border-b border-r border-gray-200 px-2 py-0.5 align-middle">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(formatForClaude(row));
+                                setCopiedId(rowId);
+                                setTimeout(() => setCopiedId((id) => id === rowId ? null : id), 2000);
+                              }}
+                              className={`text-xs font-medium px-2 py-0.5 rounded transition-colors whitespace-nowrap ${
+                                copiedId === rowId
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                              }`}
+                            >
+                              {copiedId === rowId ? "✓ Copied" : "Copy"}
                             </button>
                           </td>
                         )}

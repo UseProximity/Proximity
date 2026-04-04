@@ -1,9 +1,96 @@
 import { NextResponse } from "next/server";
 import supabase from "@/libs/supabase";
+import { auth } from "@/auth";
 
 const FORMSPREE_URL =
   process.env.NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL ||
   "https://formspree.io/f/xkoqolpy";
+
+export async function GET() {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ hasResponse: false });
+    }
+
+    const { data: user } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", session.user.email.toLowerCase())
+      .single();
+
+    if (!user) {
+      return NextResponse.json({ hasResponse: false });
+    }
+
+    const { data: response } = await supabase
+      .from("matchmaking_responses")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    return NextResponse.json({ hasResponse: !!response, response: response || null });
+  } catch {
+    return NextResponse.json({ hasResponse: false, response: null });
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      name, email, year_of_school, group_size, budget, lease_term,
+      furnished, commute, medical_campus, priorities, student_type,
+      area, notes,
+    } = body;
+
+    if (!name?.trim() || !email?.trim()) {
+      return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
+    }
+
+    const { data: user } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", session.user.email.toLowerCase())
+      .single();
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const { error } = await supabase
+      .from("matchmaking_responses")
+      .update({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        year_of_school: year_of_school || null,
+        group_size: group_size || null,
+        budget: budget || null,
+        lease_term: lease_term || null,
+        furnished: furnished || null,
+        commute: commute || null,
+        medical_campus: medical_campus ?? false,
+        priorities: priorities || [],
+        student_type: student_type || null,
+        area: area || null,
+        notes: notes || null,
+      })
+      .eq("user_id", user.id);
+
+    if (error) throw error;
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("matchmaking PATCH: unexpected error", err);
+    return NextResponse.json({ error: "Failed to update" }, { status: 500 });
+  }
+}
 
 export async function POST(request) {
   try {

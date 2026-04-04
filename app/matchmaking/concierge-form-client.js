@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 
 const INPUT_BASE =
   "w-full rounded-xl border bg-white px-4 py-3 text-[15px] text-gray-900 placeholder:text-gray-400 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100";
@@ -108,6 +108,71 @@ function Divider() {
   return <div className="my-10 h-px w-full bg-gray-200" />;
 }
 
+function ResponseSummary({ response: r, onEdit }) {
+  if (!r) return null;
+
+  const Row = ({ label, value }) =>
+    value ? (
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-0">
+        <span className="text-sm text-gray-500 w-40 flex-shrink-0">{label}</span>
+        <span className="text-sm font-medium text-gray-900 text-right">{value}</span>
+      </div>
+    ) : null;
+
+  const priorities = Array.isArray(r.priorities) && r.priorities.length > 0
+    ? r.priorities.join(", ")
+    : null;
+
+  const commuteLabel = r.commute
+    ? r.commute + (r.medical_campus ? " · Medical campus" : "")
+    : null;
+
+  return (
+    <div className="grid gap-8 lg:grid-cols-12 lg:gap-10">
+      <div className="lg:col-span-7">
+        <div className="mx-auto w-full rounded-3xl bg-white shadow-xl ring-1 ring-black/5 px-6 py-8 sm:px-10 sm:py-10">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-bold text-gray-900">Your preferences</h2>
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition"
+            >
+              Edit preferences
+            </button>
+          </div>
+
+          <Row label="Name" value={r.name} />
+          <Row label="Email" value={r.email} />
+          <Row label="Year of school" value={r.year_of_school} />
+          <Row label="Group size" value={r.group_size} />
+          <Row label="Budget / person" value={r.budget} />
+          <Row label="Lease term" value={r.lease_term} />
+          <Row label="Furnished" value={r.furnished} />
+          <Row label="Commute" value={commuteLabel} />
+          <Row label="Top priorities" value={priorities} />
+          <Row label="Student type" value={r.student_type} />
+          <Row label="Area" value={r.area} />
+          <Row label="Notes" value={r.notes} />
+        </div>
+      </div>
+
+      <aside className="lg:col-span-5">
+        <div className="lg:sticky lg:top-24">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <p className="text-sm font-semibold text-gray-900">
+              Need to update your preferences?
+            </p>
+            <p className={cn(TEXT_SUBTLE, "mt-1")}>
+              Hit &ldquo;Edit preferences&rdquo; to make changes. We&apos;ll use
+              your latest answers to refine your recommendations.
+            </p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 export default function ConciergeFormClient() {
   const FORM_ACTION =
     process.env.NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL ||
@@ -141,6 +206,11 @@ export default function ConciergeFormClient() {
     []
   );
 
+  const { data: session, status: sessionStatus } = useSession();
+
+  const [mode, setMode] = useState("loading"); // "loading" | "new" | "view" | "edit"
+  const [existingResponse, setExistingResponse] = useState(null);
+
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
@@ -157,6 +227,25 @@ export default function ConciergeFormClient() {
   const showStudentTypePrompt = form.priorities.includes(
     "Close to other WashU students"
   );
+
+  useEffect(() => {
+    if (sessionStatus === "loading") return;
+    if (!session?.user) {
+      setMode("new");
+      return;
+    }
+    fetch("/api/matchmaking")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.hasResponse && data.response) {
+          setExistingResponse(data.response);
+          setMode("view");
+        } else {
+          setMode("new");
+        }
+      })
+      .catch(() => setMode("new"));
+  }, [sessionStatus, session]);
 
   useEffect(() => {
     if (!submitted) return;
@@ -221,35 +310,46 @@ export default function ConciergeFormClient() {
     setSubmitError(false);
     if (!validate()) return;
 
+    const payload = {
+      name: form.name,
+      email: form.email,
+      year_of_school: form.year_of_school,
+      group_size: form.group_size,
+      budget: form.budget,
+      lease_term: form.lease_term === "Other" ? form.lease_term_other : form.lease_term,
+      furnished: form.furnished,
+      commute: form.commute,
+      medical_campus: form.medical_campus,
+      priorities: form.priorities,
+      student_type: form.student_type,
+      area: form.area === "Other" ? form.area_other : form.area,
+      notes: form.notes,
+      referral_source: form.referral_source,
+    };
+
     setSubmitting(true);
     try {
       const response = await fetch("/api/matchmaking", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          year_of_school: form.year_of_school,
-          group_size: form.group_size,
-          budget: form.budget,
-          lease_term: form.lease_term === "Other" ? form.lease_term_other : form.lease_term,
-          furnished: form.furnished,
-          commute: form.commute,
-          medical_campus: form.medical_campus,
-          priorities: form.priorities,
-          student_type: form.student_type,
-          area: form.area === "Other" ? form.area_other : form.area,
-          notes: form.notes,
-          referral_source: form.referral_source,
-        }),
+        method: mode === "edit" ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Submit failed: ${response.status}`);
 
-      setIsNewUser(data.isNewUser);
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (mode === "edit") {
+        // Refresh the stored response and return to view
+        const refreshed = await fetch("/api/matchmaking");
+        const refreshData = await refreshed.json();
+        if (refreshData.response) setExistingResponse(refreshData.response);
+        setMode("view");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        setIsNewUser(data.isNewUser);
+        setSubmitted(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     } catch (err) {
       setSubmitError(true);
     } finally {
@@ -266,6 +366,35 @@ export default function ConciergeFormClient() {
     setExitPollThanks(false);
     setSubmitError(false);
     setIsNewUser(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function startEditing() {
+    const r = existingResponse;
+    if (!r) return;
+    const knownLeaseTerms = ["Semester only", "Full year only", "Open to either"];
+    const knownAreas = ["The Loop", "Central West End", "Clayton", "No preference"];
+    setForm({
+      ...initialForm,
+      name: r.name || "",
+      email: r.email || "",
+      year_of_school: r.year_of_school || "",
+      group_size: r.group_size || "",
+      budget: r.budget || "",
+      lease_term: knownLeaseTerms.includes(r.lease_term) ? r.lease_term : (r.lease_term ? "Other" : ""),
+      lease_term_other: knownLeaseTerms.includes(r.lease_term) ? "" : (r.lease_term || ""),
+      furnished: r.furnished || "",
+      commute: r.commute || "",
+      medical_campus: r.medical_campus || false,
+      priorities: Array.isArray(r.priorities) ? r.priorities : [],
+      student_type: r.student_type || "",
+      area: knownAreas.includes(r.area) ? r.area : (r.area ? "Other" : ""),
+      area_other: knownAreas.includes(r.area) ? "" : (r.area || ""),
+      notes: r.notes || "",
+      referral_source: r.referral_source || "",
+    });
+    setErrors({});
+    setMode("edit");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -351,22 +480,43 @@ export default function ConciergeFormClient() {
             Matchmaking
           </p>
 
-          {!submitted ? (
+          {mode === "loading" && (
+          <div className="mt-10 flex justify-center">
+            <div className="h-8 w-72 rounded-lg bg-gray-100 animate-pulse" />
+          </div>
+        )}
+
+        {mode === "view" && (
+          <>
+            <h1 className="text-5xl font-bold text-gray-900 mb-4">
+              Your housing preferences
+            </h1>
+            <p className="text-gray-500 text-lg max-w-xl mx-auto">
+              We&apos;ve got your details on file. Edit them anytime.
+            </p>
+          </>
+        )}
+
+        {(mode === "new" || mode === "edit") && !submitted ? (
             <>
               <h1
                 id="formHeading"
                 className="text-5xl font-bold text-gray-900 mb-4"
               >
-                Tell us what you&apos;re looking for
+                {mode === "edit"
+                  ? "Update your preferences"
+                  : "Tell us what you\u2019re looking for"}
               </h1>
               <p
                 id="formSubtitle"
                 className="text-gray-500 text-lg max-w-xl mx-auto"
               >
-                Fill this out for free personalized housing recommendations.
+                {mode === "edit"
+                  ? "Make changes below and save your updated preferences."
+                  : "Fill this out for free personalized housing recommendations."}
               </p>
             </>
-          ) : (
+          ) : (mode === "new" || mode === "edit") && (
             <div className="mt-10 max-w-2xl w-full rounded-3xl bg-white shadow-xl ring-1 ring-black/5 px-7 py-10 sm:px-10 sm:py-12">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white">
                 <CheckIcon />
@@ -469,7 +619,13 @@ export default function ConciergeFormClient() {
         </div>
       </section>
 
-      {!submitted && (
+      {mode === "view" && (
+        <section className="mx-auto max-w-6xl px-6 pt-10 pb-24">
+          <ResponseSummary response={existingResponse} onEdit={startEditing} />
+        </section>
+      )}
+
+      {(mode === "new" || mode === "edit") && !submitted && (
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-24">
           <div className="grid gap-8 lg:grid-cols-12 lg:gap-10">
             {/* Form card */}
@@ -1165,15 +1321,27 @@ export default function ConciergeFormClient() {
                     disabled={submitting}
                   >
                     {submitting
-                      ? "Sending..."
+                      ? mode === "edit" ? "Saving..." : "Sending..."
                       : submitError
                         ? "Something went wrong — try again"
-                        : "Get My Recommendations"}
+                        : mode === "edit"
+                          ? "Save preferences"
+                          : "Get My Recommendations"}
                   </button>
-                  <p className="mt-4 text-center text-sm text-gray-400 leading-relaxed">
-                    We&apos;ll get back to you within 48 hours with personalized
-                    picks.
-                  </p>
+                  {mode === "edit" ? (
+                    <button
+                      type="button"
+                      onClick={() => setMode("view")}
+                      className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition"
+                    >
+                      Cancel
+                    </button>
+                  ) : (
+                    <p className="mt-4 text-center text-sm text-gray-400 leading-relaxed">
+                      We&apos;ll get back to you within 48 hours with personalized
+                      picks.
+                    </p>
+                  )}
                 </form>
               </div>
             </div>
