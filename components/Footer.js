@@ -14,13 +14,12 @@ const NAV_COLS = [
     links: [
       { label: "Browse Listings", href: "/browse" },
       { label: "On Campus Hub", href: "/CampusHub" },
+      { label: "Matchmaking", href: "/matchmaking" },
     ],
   },
   {
     heading: "Company",
-    links: [
-      { label: "About Us", href: "/about" },
-    ],
+    links: [{ label: "About Us", href: "/about" }],
     contactButton: true,
     social: true,
   },
@@ -64,26 +63,39 @@ export default function Footer() {
   return (
     <footer className="bg-gray-950 text-white">
       <div className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-6 md:pt-10 md:pb-8">
-
         {/* ── Mobile: centered ── */}
         <div className="flex flex-col items-center text-center mb-12 md:hidden">
           <Link href="/" className="flex items-center gap-2 mb-4">
-            <Image src={Logo} alt="Proximity" width={38} height={38} className="object-contain" />
+            <Image
+              src={Logo}
+              alt="Proximity"
+              width={38}
+              height={38}
+              className="object-contain"
+            />
             <span className="text-xl font-bold text-white">Proximity</span>
           </Link>
           <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
-            Better apartments. Honest reviews. Zero stress. The first platform built entirely for students to find and secure off-campus housing with confidence.
+            Better apartments. Honest reviews. Zero stress. The first platform
+            built entirely for students to find and secure off-campus housing
+            with confidence.
           </p>
           <div className="flex justify-evenly w-full">
             {NAV_COLS.map((col) => (
-              <div key={col.heading} className="flex flex-col items-center h-full">
+              <div
+                key={col.heading}
+                className="flex flex-col items-center h-full"
+              >
                 <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-4">
                   {col.heading}
                 </h4>
                 <ul className="space-y-3 text-center">
                   {col.links.map((link) => (
                     <li key={link.href}>
-                      <Link href={link.href} className="text-sm text-gray-400 hover:text-white transition-colors duration-200">
+                      <Link
+                        href={link.href}
+                        className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+                      >
                         {link.label}
                       </Link>
                     </li>
@@ -97,7 +109,9 @@ export default function Footer() {
                         {copied ? "Copied!" : "Contact Us"}
                       </button>
                       {copied && (
-                        <p className="text-xs text-green-400 mt-1">{CONTACT_EMAIL} copied</p>
+                        <p className="text-xs text-green-400 mt-1">
+                          {CONTACT_EMAIL} copied
+                        </p>
                       )}
                     </li>
                   )}
@@ -117,11 +131,19 @@ export default function Footer() {
           {/* Brand block */}
           <div className="col-span-2">
             <Link href="/" className="flex items-center gap-2 mb-5">
-              <Image src={Logo} alt="Proximity" width={38} height={38} className="object-contain" />
+              <Image
+                src={Logo}
+                alt="Proximity"
+                width={38}
+                height={38}
+                className="object-contain"
+              />
               <span className="text-xl font-bold text-white">Proximity</span>
             </Link>
             <p className="text-gray-400 text-sm leading-relaxed max-w-xs mb-6">
-              Better apartments. Honest reviews. Zero stress. The first platform built entirely for students to find and secure off-campus housing with confidence.
+              Better apartments. Honest reviews. Zero stress. The first platform
+              built entirely for students to find and secure off-campus housing
+              with confidence.
             </p>
           </div>
 
@@ -134,7 +156,10 @@ export default function Footer() {
               <ul className="space-y-3">
                 {col.links.map((link) => (
                   <li key={link.href}>
-                    <Link href={link.href} className="text-sm text-gray-400 hover:text-white transition-colors duration-200">
+                    <Link
+                      href={link.href}
+                      className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+                    >
                       {link.label}
                     </Link>
                   </li>
@@ -148,7 +173,9 @@ export default function Footer() {
                       {copied ? "Copied!" : "Contact Us"}
                     </button>
                     {copied && (
-                      <p className="text-xs text-green-400 mt-1">{CONTACT_EMAIL} copied</p>
+                      <p className="text-xs text-green-400 mt-1">
+                        {CONTACT_EMAIL} copied
+                      </p>
                     )}
                   </li>
                 )}
@@ -164,8 +191,12 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="mt-4 pt-4 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">© 2026 Proximity. All rights reserved.</p>
-          <p className="text-sm text-gray-600">Made for students, by students.</p>
+          <p className="text-sm text-gray-600">
+            © 2026 Proximity. All rights reserved.
+          </p>
+          <p className="text-sm text-gray-600">
+            Made for students, by students.
+          </p>
         </div>
       </div>
     </footer>
