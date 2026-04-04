@@ -1181,19 +1181,7 @@ export default function ConciergeFormClient() {
             {/* Side panel */}
             <aside className="lg:col-span-5">
               <div className="lg:sticky lg:top-24">
-                <div className="rounded-3xl bg-white/70 backdrop-blur shadow-sm ring-1 ring-black/5 p-6 sm:p-8">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-red-500">
-                    What Happens Next
-                  </p>
-                  <h3 className="mt-3 text-xl font-bold text-gray-900">
-                    Fast, student-first housing picks
-                  </h3>
-                  <p className="mt-2 text-sm text-gray-500 leading-relaxed">
-                    Answer the questions on the left. We&apos;ll send
-                    personalized options within 48 hours.
-                  </p>
-
-                  <div className="mt-6 grid gap-3">
+                <div className="grid gap-3">
                     <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4">
                       <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-red-50 text-red-600">
                         <span className="text-sm font-semibold">1</span>
@@ -1240,7 +1228,7 @@ export default function ConciergeFormClient() {
                     </div>
                   </div>
 
-                  <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-4">
+                  <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
                     <p className="text-sm font-semibold text-gray-900">
                       Good to know
                     </p>
@@ -1249,11 +1237,10 @@ export default function ConciergeFormClient() {
                       sure”. We can still match you.
                     </p>
                     <p className={cn(TEXT_SUBTLE, "mt-2")}>
-                      Your answers aren&apos;t posted publicly — they&apos;re
+                      Your answers aren&apos;t posted publicly, they&apos;re
                       just used to generate recommendations.
                     </p>
                   </div>
-                </div>
               </div>
             </aside>
           </div>
