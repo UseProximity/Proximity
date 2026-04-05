@@ -19,6 +19,7 @@ import AddressSearchInput from "@/components/AddressSearchInput";
 import UniversityLogosCarousel from "@/components/UniversityLogosCarousel";
 import Footer from "@/components/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
+import MapPopupCard from "@/components/show-listings/MapPopupCard";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
@@ -42,6 +43,7 @@ const SIDE_MARGIN = "px-12 md:px-20 lg:px-28";
 function HeroMapSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [previewListings, setPreviewListings] = useState([]);
+  const [selectedListing, setSelectedListing] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -151,8 +153,27 @@ function HeroMapSection() {
         <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
           {/* Real Mapbox map, desaturated */}
           <div className="absolute inset-0">
-            <MapView listings={previewListings} heroMode={true} />
+            <MapView
+              listings={previewListings}
+              heroMode={true}
+              onListingSelect={setSelectedListing}
+            />
           </div>
+
+          {/* Map popup card — shown when a pin is clicked */}
+          {selectedListing && (
+            <div className="absolute bottom-6 left-4 z-40 pointer-events-auto w-72">
+              <MapPopupCard
+                listing={selectedListing}
+                session={null}
+                onClose={() => setSelectedListing(null)}
+                onCardClick={(id) => {
+                  setSelectedListing(null);
+                  router.push(`/?listing=${id}`);
+                }}
+              />
+            </div>
+          )}
 
           {/* Left gradient — blends map into hero bg (desktop only) */}
           <div

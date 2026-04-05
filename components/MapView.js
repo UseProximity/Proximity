@@ -571,9 +571,9 @@ export default function MapView({
         .addTo(map);
       marker._listingId = listing._id;
       marker._starRating = starRating;
-      if (!heroMode) {
+      if (onListingSelect) {
         markerEl.addEventListener("click", () => {
-          onListingSelect?.(listing);
+          onListingSelect(listing);
         });
       } else {
         markerEl.style.cursor = "default";

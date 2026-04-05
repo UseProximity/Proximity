@@ -1433,7 +1433,7 @@ export default function AdminDashboard() {
     for (const f of schema) {
       if (f.type === "id" || f.type === "readonly" || f.type === "walk-times") continue;
       if (f.type === "boolean") initial[f.key] = false;
-      else if (f.type === "multi-enum") initial[f.key] = [];
+      else if (f.type === "multi-enum" || f.type === "images") initial[f.key] = [];
       else initial[f.key] = "";
     }
     if (activeTable === "listings") {
@@ -1454,6 +1454,11 @@ export default function AdminDashboard() {
     setAddRowError(null);
     try {
       let fields = { ...addRowFields };
+
+      // Strip UI sentinel values that must never reach the database
+      for (const [k, v] of Object.entries(fields)) {
+        if (v === "__open_panel__") fields[k] = [];
+      }
 
       // Auto-generate description for listings when left blank
       if (activeTable === "listings" && !fields.description?.trim()) {
