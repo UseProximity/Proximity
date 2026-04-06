@@ -874,20 +874,25 @@ export default function ConciergeFormClient() {
                       {[
                         {
                           id: "lt1",
-                          value: "Semester only",
-                          label: "Semester only",
+                          value: "Semester",
+                          label: "Semester",
                         },
                         {
                           id: "lt2",
-                          value: "Full year only",
-                          label: "Full year only",
+                          value: "12 month",
+                          label: "12 month",
                         },
                         {
                           id: "lt3",
-                          value: "Open to either",
-                          label: "Open to either",
+                          value: "10 month",
+                          label: "10 month",
                         },
-                        { id: "lt4", value: "Other", label: "Other" },
+                        {
+                          id: "lt4",
+                          value: "Flexible",
+                          label: "Flexible",
+                        },
+                        { id: "lt5", value: "Other", label: "Other" },
                       ].map((opt) => (
                         <RadioPill
                           key={opt.id}
