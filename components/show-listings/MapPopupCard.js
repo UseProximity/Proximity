@@ -7,8 +7,9 @@ import { getRentRangeLabel } from "@/utils/listingFormatters";
 export function ListingCard({ listing, session, onCardClick }) {
   const imageUrl = listing.images?.[0];
   const imageCount = listing.images?.length || 0;
-  const title = listing.title || listing.address.split(",")[0].trim();
-  const cityStateZip = listing.title
+  const addressBeforeComma = listing.address.split(",")[0].trim();
+  const title = listing.title || addressBeforeComma;
+  const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
     ? listing.address
     : listing.address.replace(/^[^,]+,\s*/, "");
   const bedValues = listing.unitTypes

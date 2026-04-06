@@ -20,7 +20,6 @@ function serializeListing(l) {
     utilitiesIncluded: Array.isArray(l.utilities_included) ? l.utilities_included : [],
     subleaseFriendly: l.sublease_friendly ?? false,
     unavailable: l.unavailable ?? false,
-    distanceToCampusKm: l.distance_to_campus_km,
     minRent: l.min_rent,
     maxRent: l.max_rent,
     minBathrooms: l.min_bathrooms,

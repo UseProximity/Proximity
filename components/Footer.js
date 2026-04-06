@@ -15,6 +15,7 @@ const NAV_COLS = [
       { label: "Browse Listings", href: "/browse" },
       { label: "On Campus Hub", href: "/CampusHub" },
       { label: "Matchmaking", href: "/matchmaking" },
+      { label: "Add Sublease", href: "/dashboard/student?addSublease=1" },
     ],
   },
   {

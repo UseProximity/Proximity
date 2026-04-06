@@ -6,7 +6,7 @@ import supabase from "@/libs/supabase";
 async function requireOwnership(listingId) {
   const session = await auth();
   if (!session?.user?.id) return { err: "Unauthorized", status: 401 };
-  if (!["landlord", "super"].includes(session.user.role)) {
+  if (!["landlord", "super", "student"].includes(session.user.role)) {
     return { err: "Forbidden", status: 403 };
   }
   // super can edit any listing

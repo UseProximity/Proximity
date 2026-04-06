@@ -88,7 +88,7 @@ function HeroMapSection() {
             className="text-5xl sm:text-6xl lg:text-[56px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
           >
             Find Your Perfect <span className="text-red-700">WashU</span>{" "}
-            Housing Now
+            Housing
           </motion.h1>
 
           {/* Sub-headline */}
@@ -162,7 +162,7 @@ function HeroMapSection() {
 
           {/* Map popup card — shown when a pin is clicked */}
           {selectedListing && (
-            <div className="absolute bottom-6 left-4 z-40 pointer-events-auto w-72">
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-72">
               <MapPopupCard
                 listing={selectedListing}
                 session={null}
