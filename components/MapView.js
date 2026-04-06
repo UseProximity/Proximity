@@ -574,6 +574,14 @@ export default function MapView({
       if (onListingSelect) {
         markerEl.addEventListener("click", () => {
           onListingSelect(listing);
+          if (heroMode) {
+            map.flyTo({
+              center: [listing.longitude, listing.latitude],
+              zoom: Math.max(map.getZoom(), 16),
+              duration: 500,
+              essential: true,
+            });
+          }
         });
       } else {
         markerEl.style.cursor = "default";

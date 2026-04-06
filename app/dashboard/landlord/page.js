@@ -483,7 +483,12 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   };
 
   const selectAddressSuggestion = (suggestion) => {
-    setForm((f) => ({ ...f, address: suggestion.label }));
+    const autoTitle = suggestion.label.split(",")[0].trim();
+    setForm((f) => ({
+      ...f,
+      address: suggestion.label,
+      title: (!f.title || f.title === (f.address || "").split(",")[0].trim()) ? autoTitle : f.title,
+    }));
     setAddressSuggestions([]);
     setAddressDropdownOpen(false);
   };
@@ -778,7 +783,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                 )}
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
                 <input
                   name="title" value={form.title} onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"

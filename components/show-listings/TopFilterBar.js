@@ -106,7 +106,6 @@ export default function TopFilterBar({
   }, [showFilters]);
 
   const hasActiveFilters =
-    filters.leaseType ||
     filters.bedrooms ||
     filters.maxBedrooms ||
     filters.bathrooms ||
@@ -223,24 +222,6 @@ export default function TopFilterBar({
           )}
         </div>
 
-        {/* Lease Type pill */}
-        <button
-          onClick={(e) => openPill(e, "lease-type")}
-          className={`flex items-center gap-2 px-5 py-3 border rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
-            filters.leaseType
-              ? "bg-red-600 text-white border-red-600"
-              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-          }`}
-        >
-          <span>
-            {filters.leaseType
-              ? filters.leaseType.charAt(0).toUpperCase() +
-                filters.leaseType.slice(1)
-              : "Home Type"}
-          </span>
-          {CHEVRON}
-        </button>
-
         {/* Bedroom pill */}
         <button
           onClick={(e) => openPill(e, "bedroom")}
@@ -338,66 +319,6 @@ export default function TopFilterBar({
           <span>Clear All</span>
         </button>
       </div>
-
-      {/* ── Lease Type dropdown ── */}
-      <FilterDropdownPortal isOpen={showFilters === "lease-type"}>
-        <div
-          className="fixed inset-0 z-[100]"
-          onClick={() => setShowFilters(false)}
-        />
-        <div
-          className="fixed z-[101]"
-          style={{ top: dropdownPos.top, left: dropdownPos.left }}
-        >
-          <div
-            className="filter-dropdown bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-64"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-semibold text-gray-900 mb-3">
-              Home Type
-            </h3>
-            <div className="space-y-1">
-              {[
-                { label: "Any", value: "" },
-                { label: "Apartment", value: "apartment" },
-                { label: "House", value: "house" },
-                { label: "Condo", value: "condo" },
-                { label: "Townhouse", value: "townhouse" },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    setFilters({ ...filters, leaseType: opt.value });
-                    setShowFilters(false);
-                  }}
-                  className={`block w-full text-left px-4 py-2 rounded-lg text-sm transition-colors ${
-                    filters.leaseType === opt.value
-                      ? "bg-red-600 text-white"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-between mt-4 pt-3 border-t border-gray-100">
-              <button
-                onClick={() => setFilters({ ...filters, leaseType: "" })}
-                className="text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-lg text-sm"
-              >
-                Reset
-              </button>
-              <button
-                onClick={() => setShowFilters(false)}
-                className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-red-600"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      </FilterDropdownPortal>
 
       {/* ── Bedroom dropdown ── */}
       <FilterDropdownPortal isOpen={showFilters === "bedroom"}>
@@ -566,6 +487,7 @@ export default function TopFilterBar({
                         { label: "Semester Lease", value: "semester" },
                         { label: "10-Month Lease", value: "10-month" },
                         { label: "12-Month Lease", value: "12-month" },
+                        { label: "Summer Lease",   value: "summer"   },
                       ].map((opt) => (
                         <label
                           key={opt.value}

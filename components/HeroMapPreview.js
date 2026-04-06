@@ -9,6 +9,7 @@ import { getRentRangeDisplay } from "@/utils/listingFormatters";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 const CAMPUS_CENTER = [-90.3032, 38.6495];
+const CARD_WIDTH = 180;
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -22,7 +23,6 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Compute a bounding box over listings, excluding outliers beyond 2 std deviations
 function computeBoundsExcludingOutliers(listings) {
   if (listings.length === 0) return null;
 
@@ -64,6 +64,9 @@ export default function HeroMapPreview({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [showExplore, setShowExplore] = useState(false);
+  const [selectedListing, setSelectedListing] = useState(null);
+  const selectedListingRef = useRef(null);
+  const pinJustClickedRef = useRef(false);
   const router = useRouter();
 
   // Init map once
@@ -86,6 +89,16 @@ export default function HeroMapPreview({
     mapRef.current = map;
     map.on("load", () => map.resize());
 
+    // Clicking the map background closes the card (skip if a pin was just clicked)
+    map.on("click", () => {
+      if (pinJustClickedRef.current) {
+        pinJustClickedRef.current = false;
+        return;
+      }
+      selectedListingRef.current = null;
+      setSelectedListing(null);
+    });
+
     // Show explore button only on real user input (not programmatic flyTo)
     const onUserInput = () => setShowExplore(true);
     const container = mapContainerRef.current;
@@ -93,34 +106,16 @@ export default function HeroMapPreview({
     container.addEventListener("touchstart", onUserInput, { once: true });
     container.addEventListener("wheel", onUserInput, { once: true });
 
-    // Popup styles
-    const style = document.createElement("style");
-    style.textContent = `
-      .hero-popup .mapboxgl-popup-content {
-        padding: 0 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.15) !important;
-        border: 1px solid rgba(226,232,240,0.8) !important;
-        overflow: hidden !important;
-        max-width: 160px !important;
-      }
-      .hero-popup .mapboxgl-popup-tip { border-top-color: #ffffff !important; }
-      .hero-popup .mapboxgl-popup-close-button { display: none !important; }
-    `;
-    document.head.appendChild(style);
-    map._heroPopupStyle = style;
-
     return () => {
       container.removeEventListener("mousedown", onUserInput);
       container.removeEventListener("touchstart", onUserInput);
       container.removeEventListener("wheel", onUserInput);
-      if (map._heroPopupStyle) document.head.removeChild(map._heroPopupStyle);
       mapRef.current = null;
       map.remove();
     };
   }, []);
 
-  // Add markers + center on cluster whenever listings arrive
+  // Add markers whenever listings arrive
   useEffect(() => {
     const map = mapRef.current;
     if (!map || listings.length === 0) return;
@@ -129,42 +124,12 @@ export default function HeroMapPreview({
       if (map._heroMarkers) map._heroMarkers.forEach((m) => m.remove());
       map._heroMarkers = [];
 
-      // Sort north-first so southern pins are added last and render on top
+      // Sort north-first so southern pins render on top
       const valid = [...listings]
         .filter((l) => l.longitude && l.latitude)
         .sort((a, b) => b.latitude - a.latitude);
 
       valid.forEach((listing) => {
-        const rentDisplay = getRentRangeDisplay(listing.unitTypes);
-        const rentHtml = rentDisplay.hasPrice
-          ? `${rentDisplay.label}<span style="font-size:11px;font-weight:400;color:#9ca3af;"> /mo</span>`
-          : rentDisplay.label;
-
-        const popup = new mapboxgl.Popup({
-          offset: 25,
-          closeButton: false,
-          className: "hero-popup",
-          maxWidth: "160px",
-        }).setHTML(`
-          <div data-listing-id="${
-            listing._id
-          }" style="width:160px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;">
-            ${
-              listing.images?.[0]
-                ? `<img src="${listing.images[0]}" alt="" style="width:100%;height:80px;object-fit:cover;display:block;" />`
-                : `<div style="width:100%;height:80px;background:#e5e7eb;"></div>`
-            }
-            <div style="padding:8px 10px 10px;">
-              <div style="font-weight:700;font-size:12px;color:#111;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${listing.address ? listing.address.split(",")[0] : ""}
-              </div>
-              <div style="font-weight:700;font-size:12px;color:#ef4444;margin-top:2px;">
-                ${rentHtml || "N/A"}
-              </div>
-            </div>
-          </div>
-        `);
-
         const starRating = Math.min(
           Math.max(Math.round(listing.rating || 5), 1),
           5
@@ -178,26 +143,43 @@ export default function HeroMapPreview({
 
         const marker = new mapboxgl.Marker({ element: markerEl })
           .setLngLat([listing.longitude, listing.latitude])
-          .setPopup(popup)
           .addTo(map);
         marker._listing = listing;
+        marker._markerImg = markerImg;
+        marker._starRating = starRating;
 
-        popup.on("open", () => {
+        markerEl.addEventListener("click", () => {
+          pinJustClickedRef.current = true; // prevent map click from closing the card
+
+          // Reset previous active pin icon
+          if (
+            map._activeMarker &&
+            map._activeMarker !== marker
+          ) {
+            const prev = map._activeMarker;
+            prev._markerImg.src = `/assets/map-icons/map-${prev._starRating}.svg`;
+          }
+
           markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;
-          const el = popup
-            .getElement()
-            ?.querySelector(`[data-listing-id="${listing._id}"]`);
-          if (el)
-            el.onclick = () => router.push(`/browse?listing=${listing._id}`);
-        });
-        popup.on("close", () => {
-          markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+          map._activeMarker = marker;
+
+          selectedListingRef.current = listing;
+          setSelectedListing(listing);
+
+          // Zoom in and center on pin
+          const targetZoom = Math.max(map.getZoom(), 16);
+          map.flyTo({
+            center: [listing.longitude, listing.latitude],
+            zoom: targetZoom,
+            duration: 500,
+            essential: true,
+          });
         });
 
         map._heroMarkers.push(marker);
       });
 
-      // Zoom out from campus center to frame the majority of listings
+      // Frame all listings on initial load
       const bounds = computeBoundsExcludingOutliers(valid);
       if (bounds) {
         const maxDeltaLng = Math.max(
@@ -255,7 +237,12 @@ export default function HeroMapPreview({
 
       if (match) {
         map.flyTo({ center: [lng, lat], zoom: 16, duration: 900 });
-        setTimeout(() => match.togglePopup(), 950);
+        setTimeout(() => {
+          selectedListingRef.current = match._listing;
+          setSelectedListing(match._listing);
+          match._markerImg.src = `/assets/map-icons/map-${match._starRating}-a.svg`;
+          map._activeMarker = match;
+        }, 950);
       } else {
         map.flyTo({ center: [lng, lat], zoom: 14, duration: 900 });
         const el = document.createElement("div");
@@ -271,9 +258,75 @@ export default function HeroMapPreview({
     else map.once("load", process);
   }, [searchLocation]);
 
+  const rentDisplay = selectedListing
+    ? getRentRangeDisplay(selectedListing.unitTypes)
+    : null;
+
   return (
     <div className="relative w-full h-full">
-      <div ref={mapContainerRef} className="w-full h-full" style={{}} />
+      <div ref={mapContainerRef} className="w-full h-full" />
+
+      {/* Listing card pinned below the clicked pin */}
+      {selectedListing && (
+        <div
+          onClick={() => router.push(`/browse?listing=${selectedListing._id}`)}
+          style={{
+            position: "absolute",
+            bottom: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: CARD_WIDTH,
+            zIndex: 50,
+            cursor: "pointer",
+            pointerEvents: "auto",
+            borderRadius: 12,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
+            border: "1px solid rgba(226,232,240,0.8)",
+            overflow: "hidden",
+            background: "#fff",
+            fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+          }}
+        >
+          {selectedListing.images?.[0] ? (
+            <img
+              src={selectedListing.images[0]}
+              alt=""
+              style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }}
+            />
+          ) : (
+            <div style={{ width: "100%", height: 90, background: "#e5e7eb" }} />
+          )}
+          <div style={{ padding: "8px 10px 10px" }}>
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 12,
+                color: "#111",
+                lineHeight: 1.3,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {selectedListing.address ? selectedListing.address.split(",")[0] : ""}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#ef4444", marginTop: 2 }}>
+              {rentDisplay?.hasPrice ? (
+                <>
+                  {rentDisplay.label}
+                  <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>
+                    {" "}/mo
+                  </span>
+                </>
+              ) : (
+                rentDisplay?.label || "N/A"
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Explore Map button */}
       <div
         className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"
         style={{

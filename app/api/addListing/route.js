@@ -65,6 +65,7 @@ export async function POST(req) {
       images,
       // Extra fields
       leaseAvailability,
+      lease_availability,
       leaseStructure,
       homeType,
       amenities,
@@ -181,6 +182,12 @@ export async function POST(req) {
         contact_email: contactEmail ?? null,
         contact_phone: contactPhone ?? null,
         contact_name: contactName ?? null,
+        lease_availability: (() => {
+          const val = leaseAvailability ?? lease_availability ?? null;
+          if (Array.isArray(val)) return val;
+          if (val) return [val];
+          return [];
+        })(),
       })
       .select()
       .single();

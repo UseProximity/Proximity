@@ -13,7 +13,6 @@ const DEFAULT_FILTERS = {
   maxBedrooms: "", // max bedrooms
   bathrooms: "", // min bathrooms
   maxBathrooms: "", // max bathrooms
-  leaseType: "", // top-bar quick filter (home type string)
   distance: "", // walking time to campus (minutes)
   distanceToShuttle: "", // walking time to shuttle stop (minutes)
   moveInDate: "",
@@ -110,10 +109,6 @@ export default function BrowseContent({ session }) {
         (!filters.maxBathrooms ||
           listing?.minBathrooms <= Number(filters.maxBathrooms));
 
-      // Top-bar Lease Type pill (home-type string match)
-      const matchLeaseType =
-        !filters.leaseType || lt.includes(filters.leaseType.toLowerCase());
-
       // Walking distance to campus — use the minimum walk time among all
       // non-grocery WashU places stored in placeWalkMinutes.
       let matchDistance = true;
@@ -161,29 +156,17 @@ export default function BrowseContent({ session }) {
       // Lease availability (semester / 10-month / 12-month)
       let matchLeaseAvail = true;
       if (filters.leaseAvailability && filters.leaseAvailability.length > 0) {
+        const la = Array.isArray(listing?.leaseAvailability) ? listing.leaseAvailability : [];
         matchLeaseAvail = filters.leaseAvailability.some((avail) => {
           switch (avail) {
             case "semester":
-              return (
-                lt.includes("semester") ||
-                desc.includes("semester") ||
-                listing?.leaseAvailability === "semester"
-              );
+              return la.includes("semester") || desc.includes("semester");
             case "10-month":
-              return (
-                lt.includes("10") ||
-                desc.includes("10 month") ||
-                desc.includes("10-month") ||
-                listing?.leaseAvailability === "10-month"
-              );
+              return la.includes("10-month") || desc.includes("10 month") || desc.includes("10-month");
             case "12-month":
-              return (
-                lt.includes("12") ||
-                lt.includes("year") ||
-                desc.includes("12 month") ||
-                desc.includes("12-month") ||
-                listing?.leaseAvailability === "12-month"
-              );
+              return la.includes("12-month") || desc.includes("12 month") || desc.includes("12-month");
+            case "summer":
+              return la.includes("summer") || desc.includes("summer");
             default:
               return true;
           }
@@ -218,50 +201,46 @@ export default function BrowseContent({ session }) {
       let matchFurnished = true;
       if (filters.furnished === "furnished") {
         matchFurnished =
-          (combined.includes("furnished") &&
-            !combined.includes("unfurnished")) ||
-          listing?.furnished === "furnished";
+          listing?.furnished === true ||
+          (combined.includes("furnished") && !combined.includes("unfurnished"));
       } else if (filters.furnished === "unfurnished") {
         matchFurnished =
+          listing?.furnished === false ||
           combined.includes("unfurnished") ||
-          !combined.includes("furnished") ||
-          listing?.furnished === "unfurnished";
+          !combined.includes("furnished");
       }
 
       // Utilities included
       let matchUtilities = true;
       if (filters.utilitiesIncluded) {
         matchUtilities =
+          (Array.isArray(listing?.utilitiesIncluded) && listing.utilitiesIncluded.length > 0) ||
           combined.includes("utilities included") ||
           combined.includes("utilities are included") ||
-          combined.includes("all utilities") ||
-          (Array.isArray(listing?.utilitiesIncluded) && listing.utilitiesIncluded.length > 0);
+          combined.includes("all utilities");
       }
 
       // Sublease friendly
       let matchSublease = true;
       if (filters.subleaseFriendly) {
         matchSublease =
-          lt.includes("subleas") ||
+          listing?.subleaseFriendly === true ||
           desc.includes("subleas") ||
-          desc.includes("subletting allowed") ||
-          listing?.subleaseFriendly === true;
+          desc.includes("subletting allowed");
       }
 
       // Lease structure
       let matchLeaseStructure = true;
       if (filters.leaseStructure === "individual") {
         matchLeaseStructure =
-          lt.includes("individual") ||
+          listing?.leaseStructure === "individual" ||
           desc.includes("individual lease") ||
-          desc.includes("by the room") ||
-          listing?.leaseStructure === "individual";
+          desc.includes("by the room");
       } else if (filters.leaseStructure === "joint") {
         matchLeaseStructure =
-          lt.includes("joint") ||
+          listing?.leaseStructure === "joint" ||
           desc.includes("joint lease") ||
-          desc.includes("whole unit") ||
-          listing?.leaseStructure === "joint";
+          desc.includes("whole unit");
       }
 
       // Favorites / saved listings
@@ -273,12 +252,14 @@ export default function BrowseContent({ session }) {
           (f) => String((f && f._id) || f) === String(listing._id)
         );
 
-      // Move in Date
+      // Move in Date — listings with no date set are always included
       let matchMoveInDate = true;
       if (filters.moveInDate) {
         const desiredDate = new Date(filters.moveInDate);
         const listingMoveInDate = new Date(listing.moveInDate);
-        matchMoveInDate = listingMoveInDate <= desiredDate;
+        matchMoveInDate =
+          isNaN(listingMoveInDate.getTime()) ||
+          listingMoveInDate <= desiredDate;
       }
 
       return (
@@ -287,7 +268,6 @@ export default function BrowseContent({ session }) {
         matchMaxRent &&
         matchBeds &&
         matchBaths &&
-        matchLeaseType &&
         matchDistance &&
         matchShuttle &&
         matchHomeType &&
