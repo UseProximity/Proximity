@@ -254,7 +254,8 @@ const SCHEMAS = {
   ],
   reviews: [
     { key: "id",                   label: "ID",            type: "id"       },
-    { key: "user_id",              label: "Reviewer ID",   type: "text",    required: true  },
+    { key: "user_id",              label: "Reviewer ID",   type: "text"     },
+    { key: "name",                 label: "Name",          type: "text"     },
     { key: "listing_id",           label: "Listing ID",    type: "text",    required: true  },
     { key: "rating",               label: "Rating",        type: "number",  required: true  },
     { key: "comment",              label: "Comment",       type: "text",    required: true  },

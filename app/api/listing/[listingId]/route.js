@@ -111,7 +111,7 @@ export async function GET(_req, { params }) {
       createdAt: r.created_at ?? null,
       reviewer: r.reviewer
         ? { _id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image ?? null }
-        : null,
+        : r.name ? { _id: null, name: r.name, image: null } : null,
     }));
 
     const safeListing = buildListing(row, row.listing_units ?? [], row.landlord ?? null, reviews);

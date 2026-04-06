@@ -37,7 +37,7 @@ export async function GET() {
       locationRating: r.location_rating ?? null,
       valueRating: r.value_rating ?? null,
       createdAt: r.created_at,
-      reviewer: r.reviewer ? { id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image } : null,
+      reviewer: r.reviewer ? { id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image } : r.name ? { id: null, name: r.name, image: null } : null,
       listing: r.listing ? { id: r.listing.id, address: r.listing.address, title: r.listing.title } : null,
     }))
   );

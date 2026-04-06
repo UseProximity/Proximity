@@ -1746,7 +1746,7 @@ function NotificationSection({
       <div className="divide-y rounded-lg overflow-hidden bg-white border border-gray-100 shadow-sm">
         {pendingReviews.map((r) => {
           const id = r._id || r.id;
-          const reviewerName = r.reviewer?.name || "Anonymous";
+          const reviewerName = r.reviewer?.name || r.name || "Anonymous";
           const reviewerImage = r.reviewer?.image?.trim?.()
             ? r.reviewer.image
             : "/default-icons/default-user.png";

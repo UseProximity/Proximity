@@ -49,7 +49,7 @@ export default async function Landlord({ params }) {
   if (listingIds.length > 0) {
     const { data: reviewRows } = await supabase
       .from("reviews")
-      .select("id, rating, comment, legitimacy, created_at, reviewer:users!reviews_user_id_fkey(name, image)")
+      .select("id, rating, comment, legitimacy, created_at, name, reviewer:users!reviews_user_id_fkey(name, image)")
       .in("listing_id", listingIds)
       .order("created_at", { ascending: false });
 
@@ -61,7 +61,7 @@ export default async function Landlord({ params }) {
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
       reviewer: r.reviewer
         ? { name: r.reviewer.name, image: r.reviewer.image ?? null }
-        : null,
+        : r.name ? { name: r.name, image: null } : null,
     }));
   }
 
