@@ -26,7 +26,7 @@ function buildListing(row, units = [], owner = null, reviews = []) {
     contactPhone: row.contact_phone ?? null,
     contactName: row.contact_name ?? null,
     // Listing-level fields (migrated from listing_units)
-    leaseAvailability: firstUnit?.lease_availability ?? null,  // stays per-unit
+    leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
     leaseStructure: row.lease_structure ?? null,
     homeType: row.home_type ?? "apartment",
     furnished: row.furnished ?? false,

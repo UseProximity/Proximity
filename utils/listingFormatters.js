@@ -120,7 +120,7 @@ export function normalizeListing({ listingRow, units = [], owner = null, reviews
     createdAt:           r.created_at           ?? null,
     reviewer: r.reviewer
       ? { _id: String(r.reviewer.id ?? ""), name: r.reviewer.name ?? null, image: r.reviewer.image ?? null }
-      : null,
+      : r.name ? { _id: null, name: r.name, image: null } : null,
   }));
 
   const normalizedOwner = owner

@@ -14,7 +14,7 @@ export default function AddListing() {
     unitTypes: [],
     description: "",
     leaseStructure: "",
-    leaseAvailability: "",
+    leaseAvailability: [],
     moveInDate: "",
     homeType: "",
     amenities: [],
@@ -36,9 +36,10 @@ export default function AddListing() {
   ];
 
   const leaseAvailabilityOptions = [
-    { value: "10_month", label: "10 Month" },
-    { value: "12_month", label: "12 Month" },
-    { value: "semester", label: "Semester" },
+    { value: "semester",  label: "Semester"  },
+    { value: "10-month",  label: "10 Month"  },
+    { value: "12-month",  label: "12 Month"  },
+    { value: "summer",    label: "Summer"    },
   ];
 
   const homeTypeOptions = [
@@ -398,7 +399,7 @@ export default function AddListing() {
         description: "",
         unitTypes: [],
         leaseStructure: "",
-        leaseAvailability: "",
+        leaseAvailability: [],
         moveInDate: "",
         homeType: "",
         amenities: [],
@@ -652,22 +653,30 @@ export default function AddListing() {
 
           {/* Lease Availability */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Lease Availability
             </label>
-            <select
-              name="leaseAvailability"
-              value={formData.leaseAvailability}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100"
-            >
-              <option value="">--Select Lease Availability--</option>
+            <div className="grid grid-cols-2 gap-2">
               {leaseAvailabilityOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
+                <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={(formData.leaseAvailability || []).includes(opt.value)}
+                    onChange={(e) => {
+                      const current = formData.leaseAvailability || [];
+                      setFormData({
+                        ...formData,
+                        leaseAvailability: e.target.checked
+                          ? [...current, opt.value]
+                          : current.filter((v) => v !== opt.value),
+                      });
+                    }}
+                    className="h-4 w-4"
+                  />
                   {opt.label}
-                </option>
+                </label>
               ))}
-            </select>
+            </div>
           </div>
 
           {/* Move-In Date */}

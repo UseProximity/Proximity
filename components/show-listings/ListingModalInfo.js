@@ -807,7 +807,7 @@ export default function ListingModalInfo({ session, listing }) {
 
   // Address
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(listing.address);
-  const cityStateZip = listing.title ? listing.address : parsedCityStateZip;
+  const cityStateZip = (listing.title && listing.title !== street) ? listing.address : parsedCityStateZip;
 
   // Reviews
   const legitimateReviews = (listing.reviews || [])
