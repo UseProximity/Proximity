@@ -559,12 +559,9 @@ function ContactTab({
             <p className="text-xs text-gray-400 uppercase tracking-wide">
               Listing by
             </p>
-            <Link
-              href={`/landlord/${encodeURIComponent(owner._id)}`}
-              className="text-lg font-semibold text-gray-900 hover:text-red-600 transition"
-            >
+            <span className="text-lg font-semibold text-gray-900">
               {owner.name}
-            </Link>
+            </span>
           </div>
         </div>
       )}
@@ -1032,17 +1029,6 @@ export default function ListingModalInfo({ session, listing }) {
               <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">{listing.title || street}</h1>
               {cityStateZip && (
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
-              )}
-              {listing.owner && (
-                <p className="text-sm text-gray-500 mt-2">
-                  Listed by{" "}
-                  <Link
-                    href={`/landlord/${encodeURIComponent(listing.owner._id)}`}
-                    className="font-semibold text-gray-800 hover:text-red-600 transition"
-                  >
-                    {listing.owner.name}
-                  </Link>
-                </p>
               )}
             </div>
             <button
