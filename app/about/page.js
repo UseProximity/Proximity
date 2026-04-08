@@ -36,7 +36,7 @@ export default function AboutPage() {
           Meet the Founder
         </h1>
         <p className="text-gray-500 text-lg max-w-xl mx-auto">
-          I was a student who got tired of the housing search. So I fixed it.
+          I am a student who got frustrated with my housing search. So I fixed it!
         </p>
       </section>
 

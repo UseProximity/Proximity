@@ -4,17 +4,21 @@ import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
 
 // GET /api/landlord/reviews — all approved reviews for the current landlord's listings
-export async function GET() {
+export async function GET(req) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["landlord", "super"].includes(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const viewAsId = searchParams.get("viewAs");
+  const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
+
   const { data: listingRows } = await supabase
     .from("listings")
     .select("id")
-    .eq("landlord_id", session.user.id);
+    .eq("landlord_id", targetUserId);
 
   const listingIds = (listingRows || []).map((l) => l.id);
   if (listingIds.length === 0) return NextResponse.json([]);

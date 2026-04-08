@@ -24,7 +24,7 @@ export default function ReviewsSection({
       return;
     }
 
-    if (session.user.role !== "student") {
+    if (!["student", "super"].includes(session.user.role)) {
       toast.error("Only students can leave reviews.");
       return;
     }

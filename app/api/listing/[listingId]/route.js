@@ -109,6 +109,8 @@ export async function GET(_req, { params }) {
       locationRating: r.location_rating ?? null,
       valueRating: r.value_rating ?? null,
       createdAt: r.created_at ?? null,
+      upvotes: Array.isArray(r.upvotes) ? r.upvotes : [],
+      downvotes: Array.isArray(r.downvotes) ? r.downvotes : [],
       reviewer: r.reviewer
         ? { _id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image ?? null }
         : r.name ? { _id: null, name: r.name, image: null } : null,

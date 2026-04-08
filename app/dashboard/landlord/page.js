@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   LineChart,
   Line,
@@ -357,7 +357,7 @@ function ProfileSection({
   );
 }
 
-function AnalyticsDashboardSection() {
+function AnalyticsDashboardSection({ viewAsId }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ function AnalyticsDashboardSection() {
           Track performance across your listings
         </p>
       </div>
-      <LeasingFunnel />
+      <LeasingFunnel viewAsId={viewAsId} />
     </div>
   );
 }
@@ -401,6 +401,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     contact_name: listing?.contact_name ?? listing?.contactName ?? user?.name ?? "",
     amenities: listing?.amenities ?? [],
     utilities_included: listing?.utilities_included ?? listing?.utilitiesIncluded ?? [],
+    lease_availability: listing?.lease_availability ?? listing?.leaseAvailability ?? [],
   });
   const rawUnits = listing?.listing_units ?? listing?.unitTypes ?? [];
   const [units, setUnits] = useState(
@@ -571,6 +572,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             contact_name: form.contact_name || null,
             amenities: form.amenities,
             utilities_included: form.utilities_included,
+            lease_availability: form.lease_availability,
             // persist any existing-image removals
             images: existingImages,
             units: unitPayload,
@@ -819,6 +821,33 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                     <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Lease Availability</label>
+                <div className="flex flex-wrap gap-2">
+                  {["Semester", "10-Month", "12-Month", "Summer"].map((opt) => {
+                    const selected = (form.lease_availability || []).includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setForm((prev) => ({
+                          ...prev,
+                          lease_availability: selected
+                            ? prev.lease_availability.filter((v) => v !== opt)
+                            : [...(prev.lease_availability || []), opt],
+                        }))}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                          selected
+                            ? "bg-red-500 text-white border-red-500"
+                            : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Move-in Date</label>
@@ -1246,7 +1275,7 @@ function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddL
   );
 }
 
-function ReviewsSection({ user }) {
+function ReviewsSection({ user, viewAsId }) {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedListingId, setSelectedListingId] = useState("all");
@@ -1255,7 +1284,7 @@ function ReviewsSection({ user }) {
   const reviewsPerPage = 5;
 
   useEffect(() => {
-    fetch("/api/landlord/reviews")
+    fetch(`/api/landlord/reviews${viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : ""}`)
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setReviews(data); })
       .catch(console.error)
@@ -1438,15 +1467,17 @@ function fmtDate(dateStr) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function ListingMetricsChart({ listingId }) {
+function ListingMetricsChart({ listingId, viewAsId }) {
   const [range, setRange] = useState("30d");
   const [metrics, setMetrics] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedMetrics, setSelectedMetrics] = useState(["clicks", "saves", "contacts"]);
 
   useEffect(() => {
     if (!listingId) return;
     setLoading(true);
     const params = new URLSearchParams({ range, listingIds: listingId });
+    if (viewAsId) params.set("viewAs", viewAsId);
     fetch(`/api/landlord/metrics?${params}`)
       .then((r) => r.json())
       .then((data) => setMetrics(data.metrics ?? []))
@@ -1464,26 +1495,55 @@ function ListingMetricsChart({ listingId }) {
     return row;
   });
 
+  const maxValue = selectedMetrics.length > 0
+    ? Math.max(...chartData.flatMap((d) => selectedMetrics.map((t) => d[t] ?? 0)), 1)
+    : 1;
+
+  const toggleMetric = (type) => {
+    setSelectedMetrics((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  };
+
   const tickInterval = range === "7d" ? 0 : range === "30d" ? 4 : 20;
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium">Engagement Over Time</CardTitle>
-        <div className="flex gap-1">
-          {RANGE_OPTIONS_CHART.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setRange(value)}
-              className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
-                range === value
-                  ? "bg-red-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            {["clicks", "saves", "contacts"].map((type) => {
+              const active = selectedMetrics.includes(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleMetric(type)}
+                  className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors border ${
+                    active ? "text-white" : "bg-white text-gray-400 border-gray-200"
+                  }`}
+                  style={active ? { backgroundColor: METRIC_COLORS[type], borderColor: METRIC_COLORS[type] } : {}}
+                >
+                  {METRIC_LABELS[type]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-1">
+            {RANGE_OPTIONS_CHART.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setRange(value)}
+                className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
+                  range === value
+                    ? "bg-red-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -1494,13 +1554,13 @@ function ListingMetricsChart({ listingId }) {
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={tickInterval} />
-              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} domain={[0, maxValue]} />
               <Tooltip
                 contentStyle={{ fontSize: 12 }}
                 formatter={(val, name) => [val, METRIC_LABELS[name] ?? name]}
               />
               <Legend formatter={(name) => METRIC_LABELS[name] ?? name} wrapperStyle={{ fontSize: 12 }} />
-              {["clicks", "saves", "contacts"].map((type) => (
+              {["clicks", "saves", "contacts"].filter((t) => selectedMetrics.includes(t)).map((type) => (
                 <Line
                   key={type}
                   type="monotone"
@@ -1520,7 +1580,7 @@ function ListingMetricsChart({ listingId }) {
 }
 
 // Property Detail View
-function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p, onEditListing }) {
+function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p, onEditListing, viewAsId }) {
   const router = useRouter();
   if (!p) return null;
 
@@ -1617,7 +1677,7 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
       </div>
 
       {/* Per-listing metrics chart */}
-      <ListingMetricsChart listingId={p._id || p.id} />
+      <ListingMetricsChart listingId={p._id || p.id} viewAsId={viewAsId} />
 
       {/* Details */}
       <Card>
@@ -1818,7 +1878,7 @@ function NotificationSection({
 // End Sections --------------------------------------------------------------------
 
 // Main Dashboard Component
-export default function ProximityDashboard() {
+export default function ProximityDashboard({ initialViewAsId } = {}) {
   const [activeView, setActiveView] = useState("profile");
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1840,11 +1900,16 @@ export default function ProximityDashboard() {
   });
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Read viewAsId once and lock it — never let URL changes reset it
+  const viewAsIdRef = useRef(initialViewAsId ?? searchParams.get("viewAs"));
+  const viewAsId = viewAsIdRef.current;
+  const isViewingAs = !!viewAsId;
   const initializedFromUrl = useRef(false);
 
   useEffect(() => {
     fetchUser();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // restore tab + selected listing from URL on initial load
   useEffect(() => {
@@ -1875,11 +1940,13 @@ export default function ProximityDashboard() {
 
   const fetchUser = async () => {
     try {
-      const response = await fetch(`/api/getUser`);
+      const url = isViewingAs
+        ? `/api/admin/viewUser?id=${encodeURIComponent(viewAsId)}`
+        : `/api/getUser`;
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch user: ${response.statusText}`);
       }
-
       setUser(await response.json());
     } catch (error) {
       console.error("Error fetching User:", error);
@@ -2030,19 +2097,25 @@ export default function ProximityDashboard() {
     setActiveView(key);
     setSelectedProperty(null);
     setSidebarOpen(false);
-    window.history.replaceState(null, "", `?tab=${key}`);
+    const p = new URLSearchParams({ tab: key });
+    if (viewAsId) p.set("viewAs", viewAsId);
+    window.history.replaceState(null, "", `?${p.toString()}`);
   };
 
   const handlePropertySelect = (property) => {
     setSelectedProperty(property);
     setActiveView("property-analytics");
-    window.history.replaceState(null, "", `?tab=properties&property=${property._id || property.id}`);
+    const p = new URLSearchParams({ tab: "properties", property: property._id || property.id });
+    if (viewAsId) p.set("viewAs", viewAsId);
+    window.history.replaceState(null, "", `?${p.toString()}`);
   };
 
   const handleBackToProperties = () => {
     setSelectedProperty(null);
     setActiveView("properties");
-    window.history.replaceState(null, "", `?tab=properties`);
+    const p = new URLSearchParams({ tab: "properties" });
+    if (viewAsId) p.set("viewAs", viewAsId);
+    window.history.replaceState(null, "", `?${p.toString()}`);
   };
 
   const getPageTitle = () => {
@@ -2072,6 +2145,7 @@ export default function ProximityDashboard() {
           handleBackToProperties={handleBackToProperties}
           selectedProperty={selectedProperty}
           onEditListing={handleEditListing}
+          viewAsId={viewAsId}
         />
       );
     switch (activeView) {
@@ -2088,9 +2162,9 @@ export default function ProximityDashboard() {
           />
         );
       case "reviews":
-        return <ReviewsSection user={user} />;
+        return <ReviewsSection user={user} viewAsId={viewAsId} />;
       case "analytics":
-        return <AnalyticsDashboardSection />;
+        return <AnalyticsDashboardSection viewAsId={viewAsId} />;
       case "notifications":
         return (
           <NotificationSection
@@ -2130,6 +2204,15 @@ export default function ProximityDashboard() {
         />
       )}
     <div className="w-full min-h-screen bg-gray-50 font-sans">
+      {isViewingAs && user && (
+        <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
+          <span>
+            Viewing as <span className="font-semibold">{user.name || user.email}</span>
+            <span className="ml-2 text-gray-400 font-mono text-xs">{user.id}</span>
+          </span>
+          <a href="/dashboard/admin" className="text-gray-300 hover:text-white underline">← Exit</a>
+        </div>
+      )}
       <div className="flex">
         {/* Sidebar */}
         <div

@@ -59,16 +59,23 @@ export async function GET() {
   try {
     const { data: listings, error } = await supabase
       .from("listings")
-      .select("*, landlord:users!landlord_id(id, name, email, image), listing_units(*)");
+      .select("*, landlord:users!landlord_id(id, name, email, image), listing_units(*), reviews!listing_id(rating, legitimacy)");
 
     if (error) {
       console.error("Error fetching listings:", error);
       return Response.json({ error: "Failed to fetch listings" }, { status: 500 });
     }
 
-    const safeListings = (listings ?? []).map((row) =>
-      buildListing(row, row.listing_units ?? [], row.landlord ?? null)
-    );
+    const safeListings = (listings ?? []).map((row) => {
+      const listing = buildListing(row, row.listing_units ?? [], row.landlord ?? null);
+      // Compute rating from legitimate reviews (same logic as ListingModalInfo)
+      const legitReviews = (row.reviews || []).filter((r) => r.legitimacy);
+      listing.numReviews = legitReviews.length;
+      listing.rating = legitReviews.length
+        ? legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length
+        : 0;
+      return listing;
+    });
 
     return Response.json(safeListings);
   } catch (error) {

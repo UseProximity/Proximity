@@ -137,6 +137,16 @@ const AMENITY_LABELS = {
   "pool":            "Pool",
   "study_room":      "Study Rooms",
   "gym":             "Gym / Fitness",
+  // lowercase variants
+  "in-unit laundry": "In-Unit Laundry",
+  "in unit laundry": "In-Unit Laundry",
+  "free parking":    "Private Parking",
+  "study rooms":     "Study Rooms",
+  "pets allowed":    "Pets Allowed",
+  "extra storage":   "Extra Storage",
+  "ac/heating":      "AC / Heating",
+  "ac / heating":    "AC / Heating",
+  "furnished":       "Furnished",
   // legacy ALL_CAPS (old DB records)
   "DISHWASHER":      "Dishwasher",
   "EXTRA STORAGE":   "Extra Storage",
@@ -152,9 +162,30 @@ const AMENITY_LABELS = {
   "FURNISHED":       "Furnished",
 };
 
+const UTILITY_LABELS = {
+  water:    "Water",
+  sewer:    "Sewer",
+  trash:    "Trash",
+  internet: "Internet",
+  electric: "Electric",
+  gas:      "Gas",
+  hotWater: "Hot Water",
+  yardCare: "Yard Care",
+};
+
+function toTitleCase(str) {
+  return str
+    .replace(/_/g, " ")
+    .replace(/-/g, "-")
+    .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
 function AmenitiesTab({ listing }) {
   const amenities = (listing.amenities || [])
-    .map((a) => AMENITY_LABELS[a] || a)
+    .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()] || toTitleCase(a || ""))
+    .filter(Boolean);
+  const utilities = (listing.utilitiesIncluded || [])
+    .map((u) => UTILITY_LABELS[u] || toTitleCase(u || ""))
     .filter(Boolean);
   return (
     <div>
@@ -169,6 +200,16 @@ function AmenitiesTab({ listing }) {
             <AmenityPill key={a} label={a} />
           ))}
         </div>
+      )}
+      {utilities.length > 0 && (
+        <>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">Utilities Included</h2>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {utilities.map((u) => (
+              <AmenityPill key={u} label={u} />
+            ))}
+          </div>
+        </>
       )}
       <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
       <div className="space-y-2">
@@ -332,6 +373,25 @@ function ReviewsTab({
     ? legitimateReviews
     : legitimateReviews.slice(0, 4);
 
+  // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
+  const [voteOverrides, setVoteOverrides] = useState({});
+
+  async function handleVote(reviewId, vote) {
+    if (!session?.user) return;
+    try {
+      const res = await fetch("/api/reviewVote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewId, vote }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setVoteOverrides((prev) => ({ ...prev, [reviewId]: data }));
+    } catch { /* ignore */ }
+  }
+
+  const userId = session?.user?.id;
+
   return (
     <div>
       {/* Overall rating header */}
@@ -450,20 +510,35 @@ function ReviewsTab({
                   <p className="text-gray-700 text-sm leading-relaxed mb-3">
                     {review.comment}
                   </p>
-                  {/* Placeholder upvote/downvote — not wired to backend yet */}
                   <div className="flex gap-4 text-xs text-gray-400">
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 hover:text-green-500 transition"
-                    >
-                      <ThumbsUp size={13} /> <span>0</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 hover:text-red-500 transition"
-                    >
-                      <ThumbsDown size={13} /> <span>0</span>
-                    </button>
+                    {(() => {
+                      const override = voteOverrides[review._id];
+                      const upCount = override ? override.upvotes : (review.upvotes?.length ?? 0);
+                      const downCount = override ? override.downvotes : (review.downvotes?.length ?? 0);
+                      const userVote = override
+                        ? override.userVote
+                        : userId && review.upvotes?.includes(userId) ? "up"
+                        : userId && review.downvotes?.includes(userId) ? "down"
+                        : null;
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleVote(review._id, "up")}
+                            className={`flex items-center gap-1 transition ${userVote === "up" ? "text-green-500" : "hover:text-green-500"}`}
+                          >
+                            <ThumbsUp size={13} /> <span>{upCount}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleVote(review._id, "down")}
+                            className={`flex items-center gap-1 transition ${userVote === "down" ? "text-red-500" : "hover:text-red-500"}`}
+                          >
+                            <ThumbsDown size={13} /> <span>{downCount}</span>
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -652,10 +727,13 @@ function ContactTab({
   );
 }
 
-function GalleryImage({ src, index, onImageLoad }) {
+function GalleryImage({ src, index, onImageLoad, onClick }) {
   const [loaded, setLoaded] = useState(false);
   return (
-    <div className="relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20">
+    <div
+      className={`relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20${onClick ? " cursor-zoom-in" : ""}`}
+      onClick={onClick}
+    >
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center min-h-[120px]">
           <svg
@@ -699,12 +777,21 @@ function GalleryImage({ src, index, onImageLoad }) {
 export default function ListingModalInfo({ session, listing }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryLoadedSrcs, setGalleryLoadedSrcs] = useState([]);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
 
   // Reset loaded order each time the gallery closes
   useEffect(() => {
     if (!isGalleryOpen) setGalleryLoadedSrcs([]);
   }, [isGalleryOpen]);
+
+  // Esc closes lightbox
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handler = (e) => { if (e.key === "Escape") setLightboxSrc(null); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightboxSrc]);
 
   // Review form state
   const [reviewText, setReviewText] = useState("");
@@ -842,7 +929,7 @@ export default function ListingModalInfo({ session, listing }) {
       signIn(undefined, { callbackUrl: "/browse" });
       return;
     }
-    if (session.user.role !== "student") {
+    if (!["student", "super"].includes(session.user.role)) {
       toast.error("Only students can leave reviews.");
       return;
     }
@@ -1232,9 +1319,37 @@ export default function ListingModalInfo({ session, listing }) {
                       prev.includes(s) ? prev : [s, ...prev]
                     )
                   }
+                  onClick={(e) => { e.stopPropagation(); setLightboxSrc(src); }}
                 />
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lightbox (fullscreen single image) ── */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 text-white/80 hover:text-white text-4xl leading-none z-10"
+            onClick={() => setLightboxSrc(null)}
+            aria-label="Close fullscreen image"
+          >
+            ×
+          </button>
+          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <Image
+              src={lightboxSrc}
+              alt="Fullscreen photo"
+              width={1600}
+              height={1200}
+              className="object-contain max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl"
+              priority
+            />
           </div>
         </div>
       )}

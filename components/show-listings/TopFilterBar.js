@@ -594,6 +594,47 @@ export default function TopFilterBar({
                         ))}
                     </div>
                   </FilterSection>
+
+                  {/* Utilities Included */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">Utilities Included</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: "water", label: "Water" },
+                        { value: "electric", label: "Electric" },
+                        { value: "gas", label: "Gas" },
+                        { value: "internet", label: "Internet" },
+                        { value: "trash", label: "Trash" },
+                        { value: "hotWater", label: "Hot Water" },
+                        { value: "sewer", label: "Sewer" },
+                        { value: "yardCare", label: "Yard Care" },
+                      ].map(({ value, label }) => {
+                        const selected = (draft.utilitiesIncluded || []).includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              const cur = draft.utilitiesIncluded || [];
+                              setDraft({
+                                ...draft,
+                                utilitiesIncluded: selected
+                                  ? cur.filter((v) => v !== value)
+                                  : [...cur, value],
+                              });
+                            }}
+                            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                              selected
+                                ? "bg-red-500 text-white border-red-500"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 {/* ── RIGHT COLUMN ── */}
@@ -736,10 +777,6 @@ export default function TopFilterBar({
                   {/* Boolean toggles */}
                   <div className="space-y-3">
                     {[
-                      {
-                        label: "Utilities Included",
-                        field: "utilitiesIncluded",
-                      },
                       { label: "Sublease Friendly", field: "subleaseFriendly" },
                     ].map(({ label, field }) => (
                       <label
