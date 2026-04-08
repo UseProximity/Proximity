@@ -10,7 +10,7 @@ import { getRentRangeLabel } from "@/utils/listingFormatters";
 function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
   const filled = isCampus
-    ? minutes < 15 ? 1 : minutes < 22 ? 2 : minutes < 30 ? 3 : minutes < 45 ? 4 : 5
+    ? minutes < 12 ? 1 : minutes < 20 ? 2 : minutes < 30 ? 3 : minutes < 45 ? 4 : 5
     : minutes <= 2 ? 1 : minutes <= 5 ? 2 : minutes <= 10 ? 3 : minutes <= 15 ? 4 : 5;
   const color = filled <= 1 ? "#22c55e" : filled <= 2 ? "#84cc16" : filled <= 3 ? "#eab308" : filled <= 4 ? "#f97316" : "#ef4444";
   return (
