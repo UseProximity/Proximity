@@ -1184,7 +1184,7 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
-      setWalkTimesStatus({ ok: true, msg: `Walk times updated: ${data.updated}/${data.total} listings` + (data.failed ? ` (${data.failed} failed)` : "") });
+      setWalkTimesStatus({ ok: true, msg: `Walk times updated: ${data.updated}/${data.total} listings` + (data.skipped ? ` (${data.skipped} already complete)` : "") + (data.failed ? ` (${data.failed} failed)` : "") });
     } catch (e) {
       setWalkTimesStatus({ ok: false, msg: `Walk times error: ${e.message}` });
     } finally {
