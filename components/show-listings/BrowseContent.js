@@ -20,7 +20,7 @@ const DEFAULT_FILTERS = {
   leaseAvailability: [], // ['semester','10-month','12-month']
   amenities: [], // ['pool','studyRooms','inUnitLaundry','freeParking','petsAllowed']
   furnished: "", // '' | 'furnished' | 'unfurnished'
-  utilitiesIncluded: false,
+  utilitiesIncluded: [], // ['water','electric','gas', ...]
   subleaseFriendly: false,
   leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
@@ -210,14 +210,11 @@ export default function BrowseContent({ session }) {
           !combined.includes("furnished");
       }
 
-      // Utilities included
+      // Utilities included — listing must include ALL selected utilities
       let matchUtilities = true;
-      if (filters.utilitiesIncluded) {
-        matchUtilities =
-          (Array.isArray(listing?.utilitiesIncluded) && listing.utilitiesIncluded.length > 0) ||
-          combined.includes("utilities included") ||
-          combined.includes("utilities are included") ||
-          combined.includes("all utilities");
+      if (filters.utilitiesIncluded?.length > 0) {
+        const listingUtils = Array.isArray(listing?.utilitiesIncluded) ? listing.utilitiesIncluded : [];
+        matchUtilities = filters.utilitiesIncluded.every((u) => listingUtils.includes(u));
       }
 
       // Sublease friendly

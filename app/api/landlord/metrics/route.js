@@ -18,14 +18,19 @@ export async function GET(req) {
   const listingIdsParam = searchParams.get("listingIds") || "";
 
   const daysBack = range === "7d" ? 7 : range === "6m" ? 182 : 30;
-  const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
-  const startDateStr = startDate.toISOString().split("T")[0];
+  const startDateStr =
+    range === "all"
+      ? null
+      : new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  const viewAsId = searchParams.get("viewAs");
+  const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
 
   // Fetch all listings for this landlord (used for the dropdown)
   const { data: listings, error: listingsError } = await supabase
     .from("listings")
     .select("id, address, title")
-    .eq("landlord_id", session.user.id)
+    .eq("landlord_id", targetUserId)
     .order("created_at", { ascending: false });
 
   if (listingsError) {
@@ -45,12 +50,13 @@ export async function GET(req) {
 
   let metrics = [];
   if (targetIds.length > 0) {
-    const { data, error: metricsError } = await supabase
+    let query = supabase
       .from("listing_metrics_daily")
       .select("listing_id, metric_type, recorded_date, count")
       .in("listing_id", targetIds)
-      .gte("recorded_date", startDateStr)
       .order("recorded_date", { ascending: true });
+    if (startDateStr) query = query.gte("recorded_date", startDateStr);
+    const { data, error: metricsError } = await query;
 
     if (metricsError) {
       return NextResponse.json({ error: metricsError.message }, { status: 500 });

@@ -959,7 +959,7 @@ const ClockIcon = ({ className = "w-5 h-5" }) => (
 const CARDS_PER_PAGE = 2;
 const SUBLEASES_PER_PAGE = 4;
 
-export default function StudentDashboardPage() {
+export default function StudentDashboardPage({ initialViewAsId } = {}) {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -976,14 +976,22 @@ export default function StudentDashboardPage() {
   const notifRef = useRef(null);
   const activityRef = useRef(null);
 
+  // Lock viewAsId on mount — never let URL changes reset it
+  const viewAsIdRef = useRef(initialViewAsId ?? searchParams.get("viewAs"));
+  const viewAsId = viewAsIdRef.current;
+  const isViewingAs = !!viewAsId;
+
   useEffect(() => {
-    fetch("/api/getUser")
+    const url = isViewingAs
+      ? `/api/admin/viewUser?id=${encodeURIComponent(viewAsId)}`
+      : "/api/getUser";
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         if (!data?.error) setDbUser(data);
       })
       .catch(console.error);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle ?addSublease=1 param — open modal or show role overlay
   useEffect(() => {
@@ -1091,6 +1099,15 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isViewingAs && dbUser && (
+        <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
+          <span>
+            Viewing as <span className="font-semibold">{dbUser.name || dbUser.email}</span>
+            <span className="ml-2 text-gray-400 font-mono text-xs">{dbUser.id}</span>
+          </span>
+          <a href="/dashboard/admin" className="text-gray-300 hover:text-white underline">← Exit</a>
+        </div>
+      )}
       <div className="max-w-screen-2xl mx-auto px-4 py-6 md:px-10 md:py-10">
         {/* Title bar */}
         <div className="flex items-center justify-between mb-8">
@@ -1163,14 +1180,6 @@ export default function StudentDashboardPage() {
             {/* Profile card */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <div className="flex flex-col items-center text-center relative">
-                <button
-                  onClick={() => setEditOpen(true)}
-                  className="absolute top-0 right-0 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l-4 1 1-4L15.232 5.232a2 2 0 012.828 0l.708.708a2 2 0 010 2.828L9 13z" />
-                  </svg>
-                </button>
 
                 {user?.image ? (
                   <img src={user.image} alt={user.name}
@@ -1210,6 +1219,12 @@ export default function StudentDashboardPage() {
                     <p className="text-xs md:text-sm text-gray-400">Subleases</p>
                   </div>
                 </div>
+                <button
+                  onClick={() => setEditOpen(true)}
+                  className="mt-4 w-full py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Edit Profile
+                </button>
               </div>
             </div>
 

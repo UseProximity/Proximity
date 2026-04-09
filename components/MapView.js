@@ -211,13 +211,6 @@ function computeBoundsExcludingOutliers(listings) {
   ];
 }
 
-function haversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 export default function MapView({
   listings = [],
@@ -229,12 +222,16 @@ export default function MapView({
   searchLocation = null,
   isActive = true,
   heroMode = false,
+  onBrowseArea = null,
 }) {
   const router = useRouter();
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+  const preSelectZoomRef = useRef(null);
+  const listingsRef = useRef(listings);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showExplore, setShowExplore] = useState(false);
+  const [showBrowseButton, setShowBrowseButton] = useState(false);
   const [showCrimeMap, setShowCrimeMap] = useState(false);
   const [activeRouteId, setActiveRouteId] = useState(null);
   const [crimeData, setCrimeData] = useState([]);
@@ -488,6 +485,13 @@ export default function MapView({
         mapRef.current.addControl(new mapboxgl.NavigationControl());
       }
 
+      // Show "Browse this area" button on user-initiated map movement
+      if (!heroMode && onBrowseArea) {
+        mapRef.current.on("movestart", (e) => {
+          if (e.originalEvent) setShowBrowseButton(true);
+        });
+      }
+
       // Resize map after initialization to ensure proper fit
       mapRef.current.once("load", () => {
         if (mapRef.current) {
@@ -559,11 +563,13 @@ export default function MapView({
     sortedListings.forEach((listing) => {
       if (!listing.longitude || !listing.latitude) return;
 
-      const starRating = Math.min(Math.max(Math.round(listing.rating || 5), 1), 5);
+      const hasReviews = (listing.rating || 0) > 0 || (listing.numReviews || 0) > 0;
+      const starRating = hasReviews ? Math.min(Math.max(Math.round(listing.rating || 3), 1), 5) : null;
+      const pinBase = hasReviews ? `map-${starRating}` : "map-generic";
       const markerEl = document.createElement("div");
       markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
       const markerImg = document.createElement("img");
-      markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+      markerImg.src = `/assets/map-icons/${pinBase}.svg`;
       markerImg.style.cssText = "width:100%;height:100%;";
       markerEl.appendChild(markerImg);
       const marker = new mapboxgl.Marker({ element: markerEl })
@@ -571,17 +577,10 @@ export default function MapView({
         .addTo(map);
       marker._listingId = listing._id;
       marker._starRating = starRating;
+      marker._pinBase = pinBase;
       if (onListingSelect) {
         markerEl.addEventListener("click", () => {
           onListingSelect(listing);
-          if (heroMode) {
-            map.flyTo({
-              center: [listing.longitude, listing.latitude],
-              zoom: Math.max(map.getZoom(), 16),
-              duration: 500,
-              essential: true,
-            });
-          }
         });
       } else {
         markerEl.style.cursor = "default";
@@ -790,7 +789,10 @@ export default function MapView({
     };
   }, [isActive, listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
 
-  // Sync active marker icon when selectedListingId changes (browse mode only)
+  // Keep listingsRef current so the selectedListingId effect can find coordinates
+  useEffect(() => { listingsRef.current = listings; }, [listings]);
+
+  // Sync active marker icon + fly to listing when selectedListingId changes
   useEffect(() => {
     if (!isActive || heroMode) return;
     const map = mapRef.current;
@@ -799,10 +801,31 @@ export default function MapView({
       const img = marker.getElement().querySelector("img");
       if (!img) return;
       img.src = marker._listingId === selectedListingId
-        ? `/assets/map-icons/map-${marker._starRating}-a.svg`
-        : `/assets/map-icons/map-${marker._starRating}.svg`;
+        ? `/assets/map-icons/${marker._pinBase}-a.svg`
+        : `/assets/map-icons/${marker._pinBase}.svg`;
     });
-  }, [isActive, selectedListingId]);
+
+    if (selectedListingId) {
+      const listing = listingsRef.current.find(
+        (l) => String(l._id) === String(selectedListingId)
+      );
+      if (listing?.longitude && listing?.latitude) {
+        if (preSelectZoomRef.current == null) {
+          preSelectZoomRef.current = map.getZoom();
+        }
+        map.flyTo({
+          center: [listing.longitude, listing.latitude],
+          zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+          offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
+          duration: 700,
+          essential: true,
+        });
+      }
+    } else if (preSelectZoomRef.current != null) {
+      map.flyTo({ zoom: preSelectZoomRef.current, duration: 600 });
+      preSelectZoomRef.current = null;
+    }
+  }, [isActive, selectedListingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Toggle handlers that preserve the current camera (center, zoom, pitch, bearing)
   const handleToggleHeatmap = useCallback(() => {
@@ -839,8 +862,7 @@ export default function MapView({
     }
   }, []);
 
-  // Zoom to a searched address and show appropriate pin
-  const searchHandledRef = useRef(null);
+  // Zoom to a searched address and show a dot marker
   useEffect(() => {
     if (!isActive) return;
     const map = mapRef.current;
@@ -850,17 +872,21 @@ export default function MapView({
       if (map._searchMarker) { map._searchMarker.remove(); map._searchMarker = null; }
 
       const { lat, lng } = searchLocation;
+
+      // Select the listing if one exists at this address, otherwise show a dot
+      const R = 6371000;
+      const haversine = (la1, ln1, la2, ln2) => {
+        const dLat = (la2 - la1) * Math.PI / 180;
+        const dLng = (ln2 - ln1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
       const match = listings.find(
-        (l) => l.latitude && l.longitude && haversineMeters(lat, lng, l.latitude, l.longitude) <= 80
+        (l) => l.latitude && l.longitude && haversine(lat, lng, l.latitude, l.longitude) <= 80
       );
 
       if (match) {
-        map.flyTo({ center: [lng, lat], zoom: 17, duration: 1000 });
-        const key = `${lat},${lng}`;
-        if (searchHandledRef.current !== key) {
-          searchHandledRef.current = key;
-          setTimeout(() => onListingSelect?.(match), 1100);
-        }
+        onListingSelect?.(match);
       } else {
         map.flyTo({ center: [lng, lat], zoom: 16, duration: 1000 });
         const el = document.createElement("div");
@@ -876,6 +902,27 @@ export default function MapView({
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
+      {!heroMode && onBrowseArea && (
+        <div
+          className="absolute top-3 left-1/2 z-10 transition-all duration-300"
+          style={{
+            opacity: showBrowseButton ? 1 : 0,
+            transform: `translateX(-50%) translateY(${showBrowseButton ? "0" : "-8px"})`,
+            pointerEvents: showBrowseButton ? "auto" : "none",
+          }}
+        >
+          <button
+            onClick={() => {
+              const map = mapRef.current;
+              if (map) onBrowseArea(map.getBounds());
+              setShowBrowseButton(false);
+            }}
+            className="px-4 py-2 bg-white text-gray-800 font-semibold text-xs rounded-full shadow-md border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            Browse this area
+          </button>
+        </div>
+      )}
       {heroMode && (
         <div
           className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"

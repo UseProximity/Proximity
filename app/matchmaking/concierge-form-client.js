@@ -192,12 +192,12 @@ export default function ConciergeFormClient() {
       lease_term: "",
       lease_term_other: "",
       furnished: "",
-      commute: "",
+      commute: [],
       medical_campus: false,
       priorities: [],
       priorities_other: "",
       student_type: "",
-      area: "",
+      area: [],
       area_other: "",
       notes: "",
       referral_source: "",
@@ -288,8 +288,8 @@ export default function ConciergeFormClient() {
     if (!form.budget) nextErrors.budget = true;
     if (!form.lease_term) nextErrors.lease_term = true;
     if (!form.furnished) nextErrors.furnished = true;
-    if (!form.commute) nextErrors.commute = true;
-    if (!form.area) nextErrors.area = true;
+    if (form.commute.length === 0) nextErrors.commute = true;
+    if (form.area.length === 0) nextErrors.area = true;
 
     setErrors(nextErrors);
 
@@ -318,11 +318,11 @@ export default function ConciergeFormClient() {
       budget: form.budget,
       lease_term: form.lease_term === "Other" ? form.lease_term_other : form.lease_term,
       furnished: form.furnished,
-      commute: form.commute,
+      commute: form.commute.join(", "),
       medical_campus: form.medical_campus,
       priorities: form.priorities,
       student_type: form.student_type,
-      area: form.area === "Other" ? form.area_other : form.area,
+      area: form.area.includes("Other") ? form.area_other : form.area.join(", "),
       notes: form.notes,
       referral_source: form.referral_source,
     };
@@ -456,7 +456,7 @@ export default function ConciergeFormClient() {
   }, [form.lease_term]);
 
   useEffect(() => {
-    if (form.area !== "Other" && form.area_other) {
+    if (!form.area.includes("Other") && form.area_other) {
       setForm((prev) => ({ ...prev, area_other: "" }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1018,16 +1018,24 @@ export default function ConciergeFormClient() {
                           label: "Not sure yet",
                         },
                       ].map((opt) => (
-                        <RadioPill
+                        <CheckboxPill
                           key={opt.id}
                           id={opt.id}
                           name="commute"
                           value={opt.value}
-                          checked={form.commute === opt.value}
-                          onChange={(e) => setField("commute", e.target.value)}
+                          checked={form.commute.includes(opt.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setField(
+                              "commute",
+                              form.commute.includes(val)
+                                ? form.commute.filter((v) => v !== val)
+                                : [...form.commute, val]
+                            );
+                          }}
                         >
                           {opt.label}
-                        </RadioPill>
+                        </CheckboxPill>
                       ))}
                     </div>
                     <span
@@ -1207,16 +1215,24 @@ export default function ConciergeFormClient() {
                         },
                         { id: "a5", value: "Other", label: "Other" },
                       ].map((opt) => (
-                        <RadioPill
+                        <CheckboxPill
                           key={opt.id}
                           id={opt.id}
                           name="area"
                           value={opt.value}
-                          checked={form.area === opt.value}
-                          onChange={(e) => setField("area", e.target.value)}
+                          checked={form.area.includes(opt.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setField(
+                              "area",
+                              form.area.includes(val)
+                                ? form.area.filter((v) => v !== val)
+                                : [...form.area, val]
+                            );
+                          }}
                         >
                           {opt.label}
-                        </RadioPill>
+                        </CheckboxPill>
                       ))}
                     </div>
                     <span
@@ -1227,7 +1243,7 @@ export default function ConciergeFormClient() {
                     </span>
                     <div
                       id="areaOther"
-                      className={cn("mt-3", form.area !== "Other" && "hidden")}
+                      className={cn("mt-3", !form.area.includes("Other") && "hidden")}
                     >
                       <input
                         type="text"

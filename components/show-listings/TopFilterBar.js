@@ -481,36 +481,33 @@ export default function TopFilterBar({
                 {/* ── LEFT COLUMN ── */}
                 <div className="space-y-6">
                   {/* Lease Availability */}
-                  <FilterSection title="Lease Availability">
-                    <div className="space-y-2">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">Lease Availability</p>
+                    <div className="flex flex-wrap gap-2">
                       {[
                         { label: "Semester Lease", value: "semester" },
                         { label: "10-Month Lease", value: "10-month" },
                         { label: "12-Month Lease", value: "12-month" },
                         { label: "Summer Lease",   value: "summer"   },
-                      ].map((opt) => (
-                        <label
-                          key={opt.value}
-                          className="flex items-center gap-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              draft.leaseAvailability?.includes(opt.value) ||
-                              false
-                            }
-                            onChange={() =>
-                              toggleArray("leaseAvailability", opt.value)
-                            }
-                            className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-4 h-4 accent-red-500"
-                          />
-                          <span className="text-sm text-gray-700">
-                            {opt.label}
-                          </span>
-                        </label>
-                      ))}
+                      ].map(({ value, label }) => {
+                        const selected = (draft.leaseAvailability || []).includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => toggleArray("leaseAvailability", value)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                              selected
+                                ? "bg-red-500 text-white border-red-500"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </FilterSection>
+                  </div>
 
                   {/* Move-in Date */}
                   <div>
@@ -528,38 +525,40 @@ export default function TopFilterBar({
                   </div>
 
                   {/* Home Type */}
-                  <FilterSection title="Home Type">
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">Home Type</p>
+                    <div className="flex flex-wrap gap-2">
                       {[
-                        { label: "House", value: "house" },
-                        { label: "Townhouse", value: "townhouse" },
                         { label: "Apartment", value: "apartment" },
-                        { label: "Single Bedroom", value: "singleBedroom" },
+                        { label: "House", value: "house" },
+                        { label: "Studio", value: "studio" },
+                        { label: "Townhouse", value: "townhouse" },
+                        { label: "Single Room", value: "single_room" },
                         { label: "Condo", value: "condo" },
-                      ].map((opt) => (
-                        <label
-                          key={opt.value}
-                          className="flex items-center gap-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              draft.homeType?.includes(opt.value) || false
-                            }
-                            onChange={() => toggleArray("homeType", opt.value)}
-                            className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-4 h-4 accent-red-500"
-                          />
-                          <span className="text-sm text-gray-700">
-                            {opt.label}
-                          </span>
-                        </label>
-                      ))}
+                      ].map(({ value, label }) => {
+                        const selected = (draft.homeType || []).includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => toggleArray("homeType", value)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                              selected
+                                ? "bg-red-500 text-white border-red-500"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </FilterSection>
+                  </div>
 
                   {/* Amenities */}
-                  <FilterSection title="Amenities">
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">Amenities</p>
+                    <div className="flex flex-wrap gap-2">
                       {[
                         { label: "Dishwasher",      value: "dishwasher"      },
                         { label: "In-Unit Laundry", value: "in_unit_laundry" },
@@ -572,28 +571,66 @@ export default function TopFilterBar({
                         { label: "Pool",            value: "pool"            },
                         { label: "Study Rooms",     value: "study_room"      },
                         { label: "Gym / Fitness",   value: "gym"             },
-                      ].map((opt) => (
-                          <label
-                            key={opt.value}
-                            className="flex items-center gap-2 cursor-pointer"
+                      ].map(({ value, label }) => {
+                        const selected = (draft.amenities || []).includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => toggleArray("amenities", value)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                              selected
+                                ? "bg-red-500 text-white border-red-500"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            }`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={
-                                draft.amenities?.includes(opt.value) || false
-                              }
-                              onChange={() =>
-                                toggleArray("amenities", opt.value)
-                              }
-                              className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-4 h-4 accent-red-500"
-                            />
-                            <span className="text-sm text-gray-700">
-                              {opt.label}
-                            </span>
-                          </label>
-                        ))}
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </FilterSection>
+                  </div>
+
+                  {/* Utilities Included */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">Utilities Included</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: "water", label: "Water" },
+                        { value: "electric", label: "Electric" },
+                        { value: "gas", label: "Gas" },
+                        { value: "internet", label: "Internet" },
+                        { value: "trash", label: "Trash" },
+                        { value: "hotWater", label: "Hot Water" },
+                        { value: "sewer", label: "Sewer" },
+                        { value: "yardCare", label: "Yard Care" },
+                      ].map(({ value, label }) => {
+                        const selected = (draft.utilitiesIncluded || []).includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              const cur = draft.utilitiesIncluded || [];
+                              setDraft({
+                                ...draft,
+                                utilitiesIncluded: selected
+                                  ? cur.filter((v) => v !== value)
+                                  : [...cur, value],
+                              });
+                            }}
+                            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                              selected
+                                ? "bg-red-500 text-white border-red-500"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 {/* ── RIGHT COLUMN ── */}
@@ -736,10 +773,6 @@ export default function TopFilterBar({
                   {/* Boolean toggles */}
                   <div className="space-y-3">
                     {[
-                      {
-                        label: "Utilities Included",
-                        field: "utilitiesIncluded",
-                      },
                       { label: "Sublease Friendly", field: "subleaseFriendly" },
                     ].map(({ label, field }) => (
                       <label

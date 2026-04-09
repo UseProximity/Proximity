@@ -1167,6 +1167,12 @@ export default function AdminDashboard() {
   const [walkTimesStatus, setWalkTimesStatus] = useState(null);
   const [walkTimesRunning, setWalkTimesRunning] = useState(false);
 
+  // View As feature
+  const [viewAsQuery, setViewAsQuery] = useState("");
+  const [viewAsResults, setViewAsResults] = useState([]);
+  const [viewAsSearching, setViewAsSearching] = useState(false);
+  const viewAsTimerRef = useRef(null);
+
   async function handleUpdateWalkTimes() {
     if (isProd && !confirm("Update walk times on PRODUCTION?\n\nThis will recalculate walk times for all listings in the production database.")) return;
     setWalkTimesRunning(true);
@@ -1178,12 +1184,27 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
-      setWalkTimesStatus({ ok: true, msg: `Walk times updated: ${data.updated}/${data.total} listings` + (data.failed ? ` (${data.failed} failed)` : "") });
+      setWalkTimesStatus({ ok: true, msg: `Walk times updated: ${data.updated}/${data.total} listings` + (data.skipped ? ` (${data.skipped} already complete)` : "") + (data.failed ? ` (${data.failed} failed)` : "") });
     } catch (e) {
       setWalkTimesStatus({ ok: false, msg: `Walk times error: ${e.message}` });
     } finally {
       setWalkTimesRunning(false);
     }
+  }
+
+  function handleViewAsSearch(q) {
+    setViewAsQuery(q);
+    clearTimeout(viewAsTimerRef.current);
+    if (!q || q.length < 2) { setViewAsResults([]); return; }
+    setViewAsSearching(true);
+    viewAsTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/searchUsers?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setViewAsResults(Array.isArray(data) ? data : []);
+      } catch { setViewAsResults([]); }
+      finally { setViewAsSearching(false); }
+    }, 300);
   }
 
   const loadTable = useCallback(async (table, target) => {
@@ -1593,6 +1614,51 @@ export default function AdminDashboard() {
       )}
 
       <div className="px-6 py-5">
+        {/* View As panel */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5 shadow-sm">
+          <p className="text-sm font-semibold text-gray-800 mb-3">View As User</p>
+          <div className="relative max-w-sm">
+            <input
+              type="text"
+              placeholder="Search by name or email…"
+              value={viewAsQuery}
+              onChange={(e) => handleViewAsSearch(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400"
+            />
+            {viewAsSearching && (
+              <span className="absolute right-3 top-2.5 text-xs text-gray-400">Searching…</span>
+            )}
+          </div>
+          {viewAsResults.length > 0 && (
+            <ul className="mt-2 border border-gray-200 rounded-lg overflow-hidden max-w-sm divide-y divide-gray-100">
+              {viewAsResults.map((u) => (
+                <li key={u.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{u.name || "—"}</p>
+                    <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                    <p className="text-[10px] font-mono text-gray-300">{u.id}</p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase text-white ${
+                      u.role === "super" ? "bg-red-500" : u.role === "landlord" ? "bg-blue-500" : "bg-gray-400"
+                    }`}>
+                      {u.role}
+                    </span>
+                    <a
+                      href={`/dashboard/view-as/${u.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs px-2.5 py-1 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      View →
+                    </a>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         {/* Table tabs */}
         <div className="flex gap-1.5 mb-5 flex-wrap">
           {allTables.map((t) => (

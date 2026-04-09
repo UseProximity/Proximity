@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -71,7 +71,28 @@ export default function AvailableListings({
 
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
-  const [routeActive, setRouteActive] = useState(false);
+
+  /* ── Viewport / "Browse this area" filter ── */
+  const [viewportBounds, setViewportBounds] = useState(null);
+
+  const handleBrowseArea = (bounds) => {
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    setViewportBounds({ swLat: sw.lat, swLng: sw.lng, neLat: ne.lat, neLng: ne.lng });
+  };
+
+  const visibleListings = useMemo(() => {
+    if (!viewportBounds) return listings;
+    return listings.filter(
+      (l) =>
+        l.latitude != null &&
+        l.longitude != null &&
+        l.latitude >= viewportBounds.swLat &&
+        l.latitude <= viewportBounds.neLat &&
+        l.longitude >= viewportBounds.swLng &&
+        l.longitude <= viewportBounds.neLng
+    );
+  }, [listings, viewportBounds]);
 
   /* ── Mobile UI state ── */
   // "closed" = just bottom tab, "peek" = half-screen on load, "open" = full drawer
@@ -89,24 +110,13 @@ export default function AvailableListings({
     setSelectedListing(null);
   }, [listings]);
 
-  // Clear route when overlay card is dismissed or swapped
-  useEffect(() => {
-    if (typeof window !== "undefined") window.hideRoute?.();
-    setRouteActive(false);
-  }, [selectedListing]);
-
-  const handleRouteToggle = () => {
-    if (!selectedListing) return;
-    if (routeActive) {
-      window.hideRoute?.();
-      setRouteActive(false);
-    } else {
-      window.showRouteToCampus?.(
-        [selectedListing.longitude, selectedListing.latitude],
-        selectedListing._id
-      );
-      setRouteActive(true);
-    }
+  const handlePinClose = () => {
+    setSelectedListing(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("lat");
+    params.delete("lng");
+    const qs = params.toString();
+    router.replace("/browse" + (qs ? "?" + qs : ""));
   };
 
   const handleListingClick = (listingId) => {
@@ -176,20 +186,37 @@ export default function AvailableListings({
         className="hidden md:block w-[40vw] shrink-0 overflow-y-auto px-4 py-4"
         style={{ height: "100%", minHeight: 0 }}
       >
-        <p className="text-sm font-semibold text-gray-500 px-1 mb-4">
-          {listings.length} Listings Found
-        </p>
+        <div className="flex items-center gap-2 px-1 mb-4">
+          <p className="text-sm font-semibold text-gray-500">
+            {visibleListings.length}{" "}
+            {viewportBounds ? "listings in this area" : "Listings Found"}
+          </p>
+          {viewportBounds && (
+            <button
+              onClick={() => setViewportBounds(null)}
+              className="text-xs text-red-600 hover:text-red-700 font-medium"
+            >
+              Show all
+            </button>
+          )}
+        </div>
 
-        {listings.length === 0 ? (
+        {visibleListings.length === 0 ? (
           emptyState
         ) : (
           <div className="grid grid-cols-2 gap-6">
-            {listings.map((listing) => (
+            {visibleListings.map((listing) => (
               <ListingCard
                 key={listing._id}
                 listing={listing}
                 session={session}
-                onCardClick={handleListingClick}
+                onCardClick={(listingId) => {
+                  if (selectedListing?._id === listingId) {
+                    handleListingClick(listingId);
+                  } else {
+                    setSelectedListing(listing);
+                  }
+                }}
               />
             ))}
           </div>
@@ -210,15 +237,14 @@ export default function AvailableListings({
           selectedListingId={selectedListing?._id}
           searchLocation={searchLocation}
           isActive={isDesktop}
+          onBrowseArea={handleBrowseArea}
         />
         {selectedListing && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
             <MapPopupCard
               listing={selectedListing}
               session={session}
-              routeActive={routeActive}
-              onRouteToggle={handleRouteToggle}
-              onClose={() => setSelectedListing(null)}
+              onClose={handlePinClose}
               onCardClick={handleListingClick}
             />
           </div>
@@ -240,6 +266,7 @@ export default function AvailableListings({
           selectedListingId={selectedListing?._id}
           searchLocation={searchLocation}
           isActive={!isDesktop}
+          onBrowseArea={handleBrowseArea}
         />
 
         {/* Map overlay card — shown when a pin is clicked and drawer is closed */}
@@ -248,9 +275,7 @@ export default function AvailableListings({
             <MapPopupCard
               listing={selectedListing}
               session={session}
-              routeActive={routeActive}
-              onRouteToggle={handleRouteToggle}
-              onClose={() => setSelectedListing(null)}
+              onClose={handlePinClose}
               onCardClick={(id) => {
                 setSelectedListing(null);
                 handleListingClick(id);
@@ -357,19 +382,28 @@ export default function AvailableListings({
               <div className="w-10 h-1 bg-gray-300 rounded-full" />
             </div>
             {/* Count row */}
-            <div className="flex items-center justify-center px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-center gap-2 px-4 py-3 border-b border-gray-100">
               <span className="text-sm font-semibold text-gray-500">
-                {listings.length} Listings Found
+                {visibleListings.length}{" "}
+                {viewportBounds ? "in this area" : "Listings Found"}
               </span>
+              {viewportBounds && (
+                <button
+                  onClick={() => setViewportBounds(null)}
+                  className="text-xs text-red-600 font-medium"
+                >
+                  Show all
+                </button>
+              )}
             </div>
           </div>
           {/* Scrollable cards */}
           <div className="overflow-y-auto flex-1 px-4 py-4 pb-8">
-            {listings.length === 0 ? (
+            {visibleListings.length === 0 ? (
               emptyState
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {listings.map((listing) => (
+                {visibleListings.map((listing) => (
                   <ListingCard
                     key={listing._id}
                     listing={listing}
@@ -669,6 +703,47 @@ export default function AvailableListings({
                   </div>
                 </FilterSection>
 
+                {/* Utilities Included */}
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm mb-2">Utilities Included</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: "water", label: "Water" },
+                      { value: "electric", label: "Electric" },
+                      { value: "gas", label: "Gas" },
+                      { value: "internet", label: "Internet" },
+                      { value: "trash", label: "Trash" },
+                      { value: "hotWater", label: "Hot Water" },
+                      { value: "sewer", label: "Sewer" },
+                      { value: "yardCare", label: "Yard Care" },
+                    ].map(({ value, label }) => {
+                      const selected = (mobileDraft.utilitiesIncluded || []).includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            const cur = mobileDraft.utilitiesIncluded || [];
+                            setMobileDraft({
+                              ...mobileDraft,
+                              utilitiesIncluded: selected
+                                ? cur.filter((v) => v !== value)
+                                : [...cur, value],
+                            });
+                          }}
+                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                            selected
+                              ? "bg-red-500 text-white border-red-500"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Move-in Date */}
                 <div>
                   <label className="block font-semibold text-gray-900 text-sm mb-2">
@@ -732,7 +807,6 @@ export default function AvailableListings({
                 {/* Toggles */}
                 <div className="space-y-3">
                   {[
-                    { label: "Utilities Included", field: "utilitiesIncluded" },
                     { label: "Sublease Friendly", field: "subleaseFriendly" },
                   ].map(({ label, field }) => (
                     <label

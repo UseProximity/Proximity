@@ -4,6 +4,31 @@ import Image from "next/image";
 import HeartIcon from "@/components/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 
+// Visual dot-scale: more dots = farther, color goes green → yellow → red
+// Campus thresholds: <10=1, <15=2, <20=3, <30=4, ≥30=5
+// Shuttle thresholds: ≤2=1, ≤5=2, ≤10=3, ≤15=4, >15=5
+function WalkScale({ minutes, label }) {
+  const isCampus = label === "campus";
+  const filled = isCampus
+    ? minutes < 12 ? 1 : minutes < 20 ? 2 : minutes < 30 ? 3 : minutes < 45 ? 4 : 5
+    : minutes <= 2 ? 1 : minutes <= 5 ? 2 : minutes <= 10 ? 3 : minutes <= 15 ? 4 : 5;
+  const color = filled <= 1 ? "#22c55e" : filled <= 2 ? "#84cc16" : filled <= 3 ? "#eab308" : filled <= 4 ? "#f97316" : "#ef4444";
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[10px] text-gray-400 leading-none capitalize">{label}</span>
+      <div className="flex gap-0.5">
+        {[1,2,3,4,5].map((d) => (
+          <span
+            key={d}
+            className="inline-block w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: d <= filled ? color : "#e5e7eb" }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ListingCard({ listing, session, onCardClick }) {
   const imageUrl = listing.images?.[0];
   const imageCount = listing.images?.length || 0;
@@ -62,36 +87,60 @@ export function ListingCard({ listing, session, onCardClick }) {
         )}
       </div>
       <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="font-bold text-sm text-gray-900 leading-snug">
+        <div className="flex items-start justify-between gap-2 min-w-0">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-sm text-gray-900 leading-snug truncate">
               {title}
             </h3>
             {cityStateZip && (
-              <p className="text-xs text-gray-500 font-normal mt-0.5">
+              <p className="text-xs text-gray-500 font-normal mt-0.5 truncate">
                 {cityStateZip}
               </p>
             )}
           </div>
-          <span className={`font-bold text-sm whitespace-nowrap flex-shrink-0 ${listing.unavailable ? "text-gray-400" : "text-red-500"}`}>
+          <span className={`font-bold text-sm whitespace-nowrap flex-shrink-0 ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
             {getRentRangeLabel(listing.unitTypes)}
             {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
               <span className="text-xs font-normal">/mo</span>
             )}
           </span>
         </div>
-        <div className="flex items-center justify-between mt-auto pt-2">
-          <span className="text-gray-500 text-xs">
+        <div className="flex items-center justify-between mt-auto pt-2 min-w-0">
+          <span className="text-gray-500 text-xs truncate flex-1">
             {bedLabel} bed{" | "}
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
           {listing.owner?.name && (
-            <span className="text-gray-400 text-xs truncate ml-2">
+            <span className="text-gray-400 text-xs truncate ml-2 max-w-[40%]">
               {listing.owner.name}
             </span>
           )}
         </div>
+        {(() => {
+          const pwm = listing.placeWalkMinutes;
+          const campusMin = pwm && typeof pwm === "object"
+            ? (() => {
+                const vals = Object.entries(pwm)
+                  .filter(([k]) => !k.toLowerCase().includes("grocery"))
+                  .map(([, v]) => v)
+                  .filter(Number.isFinite);
+                return vals.length > 0 ? Math.min(...vals) : null;
+              })()
+            : typeof pwm === "number" ? pwm : null;
+          const shuttleMin = typeof listing.shuttleWalkMinutes === "number" ? listing.shuttleWalkMinutes : null;
+          if (campusMin == null && shuttleMin == null) return null;
+          return (
+            <div className="flex items-center gap-3 mt-1.5">
+              {campusMin != null && Number.isFinite(campusMin) && (
+                <WalkScale minutes={campusMin} label="campus" />
+              )}
+              {shuttleMin != null && (
+                <WalkScale minutes={shuttleMin} label="shuttle" />
+              )}
+            </div>
+          );
+        })()}
       </div>
       <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
       <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
@@ -115,8 +164,6 @@ export function ListingCard({ listing, session, onCardClick }) {
 export default function MapPopupCard({
   listing,
   session,
-  routeActive,
-  onRouteToggle,
   onClose,
   onCardClick,
 }) {
@@ -146,18 +193,6 @@ export default function MapPopupCard({
         session={session}
         onCardClick={onCardClick}
       />
-      {onRouteToggle && (
-        <button
-          onClick={onRouteToggle}
-          className={`w-full mt-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors duration-200 shadow ${
-            routeActive
-              ? "bg-red-600 text-white hover:bg-red-700"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          {routeActive ? "Hide Route to Campus" : "📍 Show Route to Campus"}
-        </button>
-      )}
     </div>
   );
 }
