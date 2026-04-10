@@ -18,7 +18,7 @@ export async function GET(req) {
   const { data: listingRows } = await supabase
     .from("listings")
     .select("id")
-    .eq("landlord_id", targetUserId);
+    .contains("landlord_id", [targetUserId]);
 
   const listingIds = (listingRows || []).map((l) => l.id);
   if (listingIds.length === 0) return NextResponse.json([]);

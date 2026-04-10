@@ -57,17 +57,37 @@ export { buildListing };
 
 export async function GET() {
   try {
+    // landlord_id is now uuid[] — no FK join available; batch-fetch landlords separately
     const { data: listings, error } = await supabase
       .from("listings")
-      .select("*, landlord:users!landlord_id(id, name, email, image), listing_units(*), reviews!listing_id(rating, legitimacy)");
+      .select("*, listing_units(*), reviews!listing_id(rating, legitimacy)");
 
     if (error) {
       console.error("Error fetching listings:", error);
       return Response.json({ error: "Failed to fetch listings" }, { status: 500 });
     }
 
+    // Collect unique first-landlord IDs across all listings, then batch-fetch their user rows
+    const firstLandlordIds = [
+      ...new Set(
+        (listings ?? [])
+          .map((l) => (Array.isArray(l.landlord_id) ? l.landlord_id[0] : null))
+          .filter(Boolean)
+      ),
+    ];
+    let landlordMap = {};
+    if (firstLandlordIds.length > 0) {
+      const { data: landlordUsers } = await supabase
+        .from("users")
+        .select("id, name, email, image")
+        .in("id", firstLandlordIds);
+      for (const u of landlordUsers ?? []) landlordMap[u.id] = u;
+    }
+
     const safeListings = (listings ?? []).map((row) => {
-      const listing = buildListing(row, row.listing_units ?? [], row.landlord ?? null);
+      const firstId = Array.isArray(row.landlord_id) ? row.landlord_id[0] : null;
+      const owner = firstId ? landlordMap[firstId] ?? null : null;
+      const listing = buildListing(row, row.listing_units ?? [], owner);
       // Compute rating from legitimate reviews (same logic as ListingModalInfo)
       const legitReviews = (row.reviews || []).filter((r) => r.legitimacy);
       listing.numReviews = legitReviews.length;

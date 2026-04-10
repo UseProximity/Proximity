@@ -180,8 +180,104 @@ function UserSearchDropdown({ users, value, onChange, changed }) {
   );
 }
 
+// ─── UserSearchMultiDropdown ──────────────────────────────────────────────────
+// Multi-select variant of UserSearchDropdown — value is an array of user IDs.
+
+function UserSearchMultiDropdown({ users, value, onChange, changed }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const selected = Array.isArray(value) ? value : (value ? [value] : []);
+  const selectedUsers = selected.map((id) => users.find((u) => u.id === id)).filter(Boolean);
+  const lq = query.trim().toLowerCase();
+  const filtered = lq
+    ? users.filter((u) => (u.name || "").toLowerCase().includes(lq) && !selected.includes(u.id))
+    : users.filter((u) => !selected.includes(u.id));
+
+  const borderClass = changed
+    ? "border-amber-400 bg-amber-50"
+    : "border-gray-300 hover:border-gray-400 focus:border-blue-400";
+
+  function roleBadgeClass(role) {
+    if (role === "super") return "bg-red-500";
+    if (role === "landlord") return "bg-blue-500";
+    return "bg-gray-400";
+  }
+
+  function addUser(id) {
+    onChange([...selected, id]);
+    setQuery("");
+    setOpen(false);
+  }
+
+  function removeUser(id) {
+    onChange(selected.filter((s) => s !== id));
+  }
+
+  return (
+    <div ref={ref} className="relative min-w-[200px]">
+      {selectedUsers.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1">
+          {selectedUsers.map((u) => (
+            <span key={u.id} className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-800 rounded border border-blue-200">
+              <span>{u.name || "(no name)"}</span>
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); removeUser(u.id); }}
+                className="ml-0.5 text-blue-400 hover:text-red-500 leading-none font-bold"
+              >
+                &times;
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        placeholder="Add landlord…"
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        className={`w-full px-2 py-0.5 rounded text-xs border focus:outline-none ${borderClass}`}
+      />
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-0.5 w-80 max-h-56 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400 italic">No users found</div>
+          ) : (
+            filtered.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onMouseDown={() => addUser(u.id)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2"
+              >
+                <span className="flex-1 text-gray-800 truncate">{u.name || "(no name)"}</span>
+                <span className="font-mono text-gray-400 text-[10px] shrink-0">{u.id.slice(0, 8)}…</span>
+                <span className={`px-1 rounded text-white text-[10px] shrink-0 ${roleBadgeClass(u.role)}`}>
+                  {u.role}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Schemas ──────────────────────────────────────────────────────────────────
-// type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum" | "user-search"
+// type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum" | "user-search" | "user-search-multi"
 // enum fields also carry an `options` array of allowed values
 
 const SCHEMAS = {
@@ -235,7 +331,7 @@ const SCHEMAS = {
     { key: "sublease_friendly",    label: "Sublease Friendly",  type: "boolean"  },
     { key: "amenities",            label: "Amenities",          type: "multi-enum", options: ["dishwasher","in_unit_laundry","refrigerator","stove","oven","microwave","ac_heating","mailroom","pets_allowed","extra_storage","fireplace","private_parking","pool","study_room","gym"] },
     { key: "unavailable",          label: "Unavailable",        type: "boolean"  },
-    { key: "landlord_id",          label: "Landlord",          type: "user-search" },
+    { key: "landlord_id",          label: "Landlord(s)",       type: "user-search-multi" },
     { key: "images",               label: "Images",            type: "images"   },
     { key: "place_walk_minutes",   label: "Place Walk Times",  type: "walk-times" },
     { key: "created_at",           label: "Created",           type: "readonly" },
@@ -703,6 +799,17 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLab
       <UserSearchDropdown
         users={users}
         value={current == null ? "" : String(current)}
+        onChange={onChange}
+        changed={changed}
+      />
+    );
+  }
+
+  if (type === "user-search-multi") {
+    return (
+      <UserSearchMultiDropdown
+        users={users}
+        value={Array.isArray(current) ? current : (current ? [current] : [])}
         onChange={onChange}
         changed={changed}
       />
@@ -1456,7 +1563,7 @@ export default function AdminDashboard() {
     for (const f of schema) {
       if (f.type === "id" || f.type === "readonly" || f.type === "walk-times") continue;
       if (f.type === "boolean") initial[f.key] = false;
-      else if (f.type === "multi-enum" || f.type === "images") initial[f.key] = [];
+      else if (f.type === "multi-enum" || f.type === "images" || f.type === "user-search-multi") initial[f.key] = [];
       else initial[f.key] = "";
     }
     if (activeTable === "listings") {

@@ -19,7 +19,7 @@ async function requireOwnership(listingId) {
     .single();
 
   if (error || !listing) return { err: "Listing not found", status: 404 };
-  if (listing.landlord_id !== session.user.id) return { err: "Forbidden", status: 403 };
+  if (!(listing.landlord_id ?? []).includes(session.user.id)) return { err: "Forbidden", status: 403 };
   return { session };
 }
 

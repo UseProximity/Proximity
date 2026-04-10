@@ -30,7 +30,7 @@ export async function GET(req) {
   const { data: listings, error: listingsError } = await supabase
     .from("listings")
     .select("id, address, title")
-    .eq("landlord_id", targetUserId)
+    .contains("landlord_id", [targetUserId])
     .order("created_at", { ascending: false });
 
   if (listingsError) {

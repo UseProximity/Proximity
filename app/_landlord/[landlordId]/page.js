@@ -27,7 +27,7 @@ export default async function Landlord({ params }) {
   const { data: listingRows } = await supabase
     .from("listings")
     .select("id, address, images, lease_type, created_at, listing_units(rent, area, bedrooms, bathrooms)")
-    .eq("landlord_id", landlordRow.id);
+    .contains("landlord_id", [landlordRow.id]);
 
   const listings = (listingRows ?? []).map((l) => ({
     _id: l.id,

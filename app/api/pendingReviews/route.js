@@ -13,7 +13,7 @@ export async function GET() {
     const { data: userListings } = await supabase
       .from("listings")
       .select("id")
-      .eq("landlord_id", session.user.id);
+      .contains("landlord_id", [session.user.id]);
 
     const listingIds = (userListings || []).map((l) => l.id);
 
@@ -56,7 +56,7 @@ async function verifyReviewOwnership(reviewId, userId) {
       .select("landlord_id")
       .eq("id", review.listing_id)
       .single();
-    if (listing && String(listing.landlord_id) === String(userId)) return { review };
+    if (listing && (listing.landlord_id ?? []).includes(userId)) return { review };
   }
 
   return { error: "Forbidden", status: 403 };

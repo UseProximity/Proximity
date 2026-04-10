@@ -38,6 +38,33 @@ async function sendNewListingEmail(toEmail, toName, address, listingId) {
   });
 }
 
+async function sendCoLandlordAddedEmail(toEmail, toName, newLandlordName, newLandlordEmail, address, listingId) {
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn("[sendCoLandlordAddedEmail] Email env vars not set — skipping in dev mode.");
+    return;
+  }
+  const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
+  await _adminEmailTransporter.sendMail({
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: "A co-owner has been added to your listing on Proximity",
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
+        <p>Hi ${toName || "there"},</p>
+        <p>A new co-owner has been added to your listing at <strong>${address}</strong>.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p><strong>New co-owner:</strong> ${newLandlordName || "Unknown"} (${newLandlordEmail})</p>
+        <p style="margin-top: 16px;">
+          <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Listing</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+        <p style="color: #9ca3af; font-size: 12px;">You're receiving this because you are a co-owner of this listing on Proximity.</p>
+      </div>
+    `,
+  });
+}
+
 function getDbTarget(req) {
   const header = req.headers.get("x-db-target");
   return header === "prod" || header === "dev" ? header : undefined;
@@ -82,6 +109,17 @@ export async function PATCH(req, { params }) {
     return Response.json({ error: "No updatable fields provided" }, { status: 400 });
   }
 
+  // For listings with a landlord_id change, fetch the old array before updating
+  let oldLandlordIds = [];
+  if (table === "listings" && Array.isArray(safeUpdates.landlord_id)) {
+    const { data: oldListing } = await supabase
+      .from("listings")
+      .select("landlord_id")
+      .eq("id", id)
+      .maybeSingle();
+    oldLandlordIds = Array.isArray(oldListing?.landlord_id) ? oldListing.landlord_id : [];
+  }
+
   const { data, error } = await supabase
     .from(table)
     .update(safeUpdates)
@@ -94,16 +132,36 @@ export async function PATCH(req, { params }) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  // Notify new landlord if a listing's landlord_id was updated
-  if (table === "listings" && safeUpdates.landlord_id && data?.address) {
+  // Send email notifications when a listing's landlord_id array changes
+  if (table === "listings" && Array.isArray(safeUpdates.landlord_id) && data?.address) {
     try {
-      const { data: newLandlord } = await supabase
-        .from("users")
-        .select("email, name")
-        .eq("id", safeUpdates.landlord_id)
-        .maybeSingle();
-      if (newLandlord?.email) {
-        await sendNewListingEmail(newLandlord.email, newLandlord.name, data.address, data.id);
+      const newLandlordIds = safeUpdates.landlord_id;
+      const addedIds = newLandlordIds.filter((lid) => !oldLandlordIds.includes(lid));
+      const existingIds = newLandlordIds.filter((lid) => oldLandlordIds.includes(lid));
+
+      let addedLandlords = [];
+      if (addedIds.length > 0) {
+        const { data: users } = await supabase.from("users").select("id, email, name").in("id", addedIds);
+        addedLandlords = users ?? [];
+      }
+
+      // Notify newly added landlords
+      for (const landlord of addedLandlords) {
+        if (landlord.email) {
+          await sendNewListingEmail(landlord.email, landlord.name, data.address, data.id);
+        }
+      }
+
+      // Notify existing landlords that a new co-owner was added
+      if (addedLandlords.length > 0 && existingIds.length > 0) {
+        const { data: existingUsers } = await supabase.from("users").select("id, email, name").in("id", existingIds);
+        for (const existing of (existingUsers ?? [])) {
+          for (const added of addedLandlords) {
+            if (existing.email && added.email) {
+              await sendCoLandlordAddedEmail(existing.email, existing.name, added.name, added.email, data.address, data.id);
+            }
+          }
+        }
       }
     } catch (emailErr) {
       console.error("[admin PATCH] Failed to send landlord notification:", emailErr?.message);
@@ -155,7 +213,7 @@ export async function POST(req, { params }) {
 
     // Convert empty strings to null so numeric/text columns don't get ""
     // Keep array columns as [] (not null) to satisfy NOT NULL constraints
-    const ARRAY_COLUMNS = new Set(["images", "utilities_included", "amenities", "tags"]);
+    const ARRAY_COLUMNS = new Set(["images", "utilities_included", "amenities", "tags", "landlord_id"]);
     for (const [k, v] of Object.entries(safeFields)) {
       if (v === "") safeFields[k] = ARRAY_COLUMNS.has(k) ? [] : null;
     }
