@@ -3,8 +3,12 @@ export const dynamic = "force-dynamic";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
 
-function serializeListing(l) {
+function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
   const legitReviews = (l.reviews || []).filter((r) => r.legitimacy);
+  const ownerIds = Array.isArray(l.landlord_id) ? l.landlord_id : [];
+  const coOwners = ownerIds
+    .filter((id) => id !== currentUserId)
+    .map((id) => ({ id, name: coOwnerMap[id]?.name ?? null, email: coOwnerMap[id]?.email ?? null }));
   return {
     _id: l.id?.toString(),
     id: l.id,
@@ -29,7 +33,8 @@ function serializeListing(l) {
     rating: legitReviews.length
       ? legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length
       : 0,
-    owner: l.landlord_id?.toString?.() || null,
+    owner: ownerIds[0] ?? null,
+    coOwners,
     latitude: l.latitude,
     longitude: l.longitude,
     createdAt: l.created_at ? new Date(l.created_at).toISOString() : null,
@@ -74,15 +79,31 @@ export async function GET(req) {
 
     const [favoritesRows, ownListings, contactedRows] = await Promise.all([
       supabase.from("user_favorites").select("listings(*)").eq("user_id", userId),
-      supabase.from("listings").select("*, listing_units(*), reviews!listing_id(rating, legitimacy)").eq("landlord_id", userId),
+      supabase.from("listings").select("*, listing_units(*), reviews!listing_id(rating, legitimacy)").contains("landlord_id", [userId]),
       supabase.from("user_contacted").select("listings(*)").eq("user_id", userId),
     ]);
 
     const favoritesListings = (favoritesRows.data || []).map((r) => r.listings).filter(Boolean);
     const contactedListings = (contactedRows.data || []).map((r) => r.listings).filter(Boolean);
 
+    // Collect co-landlord IDs from all owned listings and batch-fetch their info
+    const coOwnerIds = new Set();
+    for (const l of ownListings.data || []) {
+      for (const lid of (Array.isArray(l.landlord_id) ? l.landlord_id : [])) {
+        if (lid !== userId) coOwnerIds.add(lid);
+      }
+    }
+    let coOwnerMap = {};
+    if (coOwnerIds.size > 0) {
+      const { data: coOwnerUsers } = await supabase
+        .from("users")
+        .select("id, name, email")
+        .in("id", [...coOwnerIds]);
+      for (const u of coOwnerUsers ?? []) coOwnerMap[u.id] = u;
+    }
+
     const safeFavorites = favoritesListings.map(serializeListing);
-    const safeListings = (ownListings.data || []).map(serializeListing);
+    const safeListings = (ownListings.data || []).map((l) => serializeListing(l, userId, coOwnerMap));
     const safeContacted = contactedListings.map(serializeListing);
 
     return Response.json({

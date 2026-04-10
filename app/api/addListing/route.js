@@ -161,7 +161,7 @@ export async function POST(req) {
     const { data: newListing, error: listingError } = await supabase
       .from("listings")
       .insert({
-        landlord_id: ownerId || null,
+        landlord_id: ownerId ? [ownerId] : [],
         title: title?.trim() || null,
         address,
         longitude: resolvedLng,
@@ -197,16 +197,17 @@ export async function POST(req) {
       return NextResponse.json({ error: listingError.message }, { status: 500 });
     }
 
-    // Notify landlord of their new listing
-    if (newListing.landlord_id) {
+    // Notify landlord(s) of their new listing
+    if (Array.isArray(newListing.landlord_id) && newListing.landlord_id.length > 0) {
       try {
-        const { data: landlordUser } = await supabase
+        const { data: landlordUsers } = await supabase
           .from("users")
           .select("email, name")
-          .eq("id", newListing.landlord_id)
-          .maybeSingle();
-        if (landlordUser?.email) {
-          await sendNewListingEmail(landlordUser.email, landlordUser.name, newListing.address, newListing.id);
+          .in("id", newListing.landlord_id);
+        for (const landlordUser of (landlordUsers ?? [])) {
+          if (landlordUser?.email) {
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, newListing.address, newListing.id);
+          }
         }
       } catch (emailErr) {
         console.error("[addListing] Failed to send landlord notification:", emailErr?.message);

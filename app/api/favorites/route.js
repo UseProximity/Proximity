@@ -69,7 +69,7 @@ export async function POST(req) {
         supabase
           .rpc("increment_listing_metric", {
             p_listing_id: listingId,
-            p_landlord_id: listing.landlord_id ?? null,
+            p_landlord_id: Array.isArray(listing.landlord_id) ? (listing.landlord_id[0] ?? null) : null,
             p_metric_type: "saves",
             p_date: _today,
           })

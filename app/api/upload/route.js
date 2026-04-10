@@ -81,7 +81,7 @@ export async function PATCH(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const isOwner = listing.landlord_id && String(listing.landlord_id) === String(session.user.id);
+    const isOwner = (listing.landlord_id ?? []).includes(session.user.id);
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -152,7 +152,7 @@ export async function POST(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const isOwner = listing.landlord_id && String(listing.landlord_id) === String(session.user.id);
+    const isOwner = (listing.landlord_id ?? []).includes(session.user.id);
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -207,7 +207,7 @@ export async function PUT(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const isOwner = listing.landlord_id && String(listing.landlord_id) === String(session.user.id);
+    const isOwner = (listing.landlord_id ?? []).includes(session.user.id);
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }

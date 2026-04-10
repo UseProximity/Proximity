@@ -3,7 +3,11 @@ export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not sta
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
 
-function serializeListing(l) {
+function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
+  const ownerIds = Array.isArray(l.landlord_id) ? l.landlord_id : [];
+  const coOwners = ownerIds
+    .filter((id) => id !== currentUserId)
+    .map((id) => ({ id, name: coOwnerMap[id]?.name ?? null, email: coOwnerMap[id]?.email ?? null }));
   return {
     _id: l.id?.toString(),
     id: l.id,
@@ -36,7 +40,8 @@ function serializeListing(l) {
     contactEmail: l.contact_email ?? null,
     contactPhone: l.contact_phone ?? null,
     contactName: l.contact_name ?? null,
-    owner: l.landlord_id?.toString?.() || null,
+    owner: ownerIds[0] ?? null,
+    coOwners,
     latitude: l.latitude,
     longitude: l.longitude,
     createdAt: l.created_at ? new Date(l.created_at).toISOString() : null,
@@ -77,7 +82,23 @@ export async function GET() {
     const { data: ownListings } = await supabase
       .from("listings")
       .select("*, listing_units(*)")
-      .eq("landlord_id", userId);
+      .contains("landlord_id", [userId]);
+
+    // Collect all unique co-landlord IDs (other landlords sharing these listings)
+    const coOwnerIds = new Set();
+    for (const l of ownListings ?? []) {
+      for (const lid of (Array.isArray(l.landlord_id) ? l.landlord_id : [])) {
+        if (lid !== userId) coOwnerIds.add(lid);
+      }
+    }
+    let coOwnerMap = {};
+    if (coOwnerIds.size > 0) {
+      const { data: coOwnerUsers } = await supabase
+        .from("users")
+        .select("id, name, email")
+        .in("id", [...coOwnerIds]);
+      for (const u of coOwnerUsers ?? []) coOwnerMap[u.id] = u;
+    }
 
     // Fetch contacted listings via user_contacted join → listings
     const { data: contactedRows } = await supabase
@@ -92,7 +113,7 @@ export async function GET() {
     const safeFavorites = favoritesListings.map(serializeListing);
     const favoritesIds = safeFavorites.map((f) => f._id);
 
-    const safeListings = (ownListings || []).map(serializeListing);
+    const safeListings = (ownListings || []).map((l) => serializeListing(l, userId, coOwnerMap));
     const listingsIds = safeListings.map((l) => l._id);
 
     const safeContacted = contactedListings.map(serializeListing);

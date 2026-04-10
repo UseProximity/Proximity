@@ -61,15 +61,27 @@ export async function GET(_req, { params }) {
       return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
     }
 
-    // Fetch listing with landlord and units
+    // Fetch listing with units (FK join on landlord_id removed — column is now uuid[])
     const { data: row, error } = await supabase
       .from("listings")
-      .select("*, landlord:users!landlord_id(id, name, email, image), listing_units(*)")
+      .select("*, listing_units(*)")
       .eq("id", listingId)
       .single();
 
     if (error || !row) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    }
+
+    // Fetch first landlord separately (show first in array per UX decision)
+    let ownerUser = null;
+    const firstLandlordId = Array.isArray(row.landlord_id) ? row.landlord_id[0] : null;
+    if (firstLandlordId) {
+      const { data: landlord } = await supabase
+        .from("users")
+        .select("id, name, email, image")
+        .eq("id", firstLandlordId)
+        .maybeSingle();
+      ownerUser = landlord ?? null;
     }
 
     // Increment num_clicks (fire-and-forget)
@@ -86,7 +98,7 @@ export async function GET(_req, { params }) {
     supabase
       .rpc("increment_listing_metric", {
         p_listing_id: listingId,
-        p_landlord_id: row.landlord_id ?? null,
+        p_landlord_id: firstLandlordId ?? null,
         p_metric_type: "clicks",
         p_date: _today,
       })
@@ -116,7 +128,7 @@ export async function GET(_req, { params }) {
         : r.name ? { _id: null, name: r.name, image: null } : null,
     }));
 
-    const safeListing = buildListing(row, row.listing_units ?? [], row.landlord ?? null, reviews);
+    const safeListing = buildListing(row, row.listing_units ?? [], ownerUser, reviews);
 
     return NextResponse.json(safeListing);
   } catch (error) {
@@ -147,7 +159,7 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    if (row.landlord_id !== session.user.id) {
+    if (!(row.landlord_id ?? []).includes(session.user.id)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

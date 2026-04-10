@@ -22,7 +22,7 @@ export async function GET(req) {
   const { data, error } = await supabase
     .from("listings")
     .select("*, listing_units(*)")
-    .eq("landlord_id", targetUserId)
+    .contains("landlord_id", [targetUserId])
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

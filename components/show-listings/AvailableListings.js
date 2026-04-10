@@ -604,71 +604,63 @@ export default function AvailableListings({
 
                 {/* Home Type */}
                 <FilterSection title="Home Type">
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { label: "House", value: "house" },
                       { label: "Townhouse", value: "townhouse" },
                       { label: "Apartment", value: "apartment" },
                       { label: "Single Bedroom", value: "singleBedroom" },
                       { label: "Condo", value: "condo" },
-                    ].map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            mobileDraft.homeType?.includes(opt.value) || false
-                          }
-                          onChange={() =>
-                            toggleMobileArray("homeType", opt.value)
-                          }
-                          className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-4 h-4 accent-red-500"
-                        />
-                        <span className="text-sm text-gray-700">
+                    ].map((opt) => {
+                      const selected = mobileDraft.homeType?.includes(opt.value) || false;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => toggleMobileArray("homeType", opt.value)}
+                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                            selected
+                              ? "bg-red-500 text-white border-red-500"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                          }`}
+                        >
                           {opt.label}
-                        </span>
-                      </label>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 </FilterSection>
 
                 {/* Lease Availability */}
                 <FilterSection title="Lease Availability">
-                  <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { label: "Semester Lease", value: "semester" },
                       { label: "10-Month Lease", value: "10-month" },
                       { label: "12-Month Lease", value: "12-month" },
-                    ].map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            mobileDraft.leaseAvailability?.includes(
-                              opt.value
-                            ) || false
-                          }
-                          onChange={() =>
-                            toggleMobileArray("leaseAvailability", opt.value)
-                          }
-                          className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-4 h-4 accent-red-500"
-                        />
-                        <span className="text-sm text-gray-700">
+                    ].map((opt) => {
+                      const selected = mobileDraft.leaseAvailability?.includes(opt.value) || false;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => toggleMobileArray("leaseAvailability", opt.value)}
+                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                            selected
+                              ? "bg-red-500 text-white border-red-500"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                          }`}
+                        >
                           {opt.label}
-                        </span>
-                      </label>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 </FilterSection>
 
                 {/* Amenities */}
                 <FilterSection title="Amenities">
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { label: "Dishwasher", value: "dishwasher" },
                       { label: "Extra Storage", value: "extraStorage" },
@@ -680,26 +672,23 @@ export default function AvailableListings({
                       { label: "Pets Allowed", value: "petsAllowed" },
                       { label: "Study Rooms", value: "studyRooms" },
                       { label: "Gym / Fitness", value: "gym" },
-                    ].map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            mobileDraft.amenities?.includes(opt.value) || false
-                          }
-                          onChange={() =>
-                            toggleMobileArray("amenities", opt.value)
-                          }
-                          className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-4 h-4 accent-red-500"
-                        />
-                        <span className="text-sm text-gray-700">
+                    ].map((opt) => {
+                      const selected = mobileDraft.amenities?.includes(opt.value) || false;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => toggleMobileArray("amenities", opt.value)}
+                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                            selected
+                              ? "bg-red-500 text-white border-red-500"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                          }`}
+                        >
                           {opt.label}
-                        </span>
-                      </label>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 </FilterSection>
 
