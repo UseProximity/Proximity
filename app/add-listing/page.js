@@ -342,7 +342,7 @@ export default function AddListing() {
       // Only upload images (if any) after listing is created,
       // because we need the listing ID for association
       if (formData.images.length > 0) {
-        const listingId = addResponse?.data?.listing?._id;
+        const listingId = addResponse?.data?.listing?.id;
         const MAX_BATCH_BYTES = 4 * 1024 * 1024; // stay under Vercel limit
         const batches = [];
         let currentBatch = [];
