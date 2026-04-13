@@ -47,6 +47,7 @@ export async function PATCH(req) {
     const allowedFields = {};
 
     if (body.name !== undefined) allowedFields.name = body.name;
+    if (body.birthday !== undefined) allowedFields.birthday = body.birthday || null;
     if (body.phone !== undefined) allowedFields.phone = body.phone;
     if (body.description !== undefined) allowedFields.description = body.description;
     if (body.gender !== undefined) allowedFields.gender = body.gender;
