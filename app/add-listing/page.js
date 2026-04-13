@@ -21,6 +21,7 @@ export default function AddListing() {
     furnished: "",
     utilitiesIncluded: [],
     subleaseFriendly: false,
+    twentyOnePlus: false,
     images: [],
   });
 
@@ -334,6 +335,7 @@ export default function AddListing() {
         amenities: formData.amenities || [],
         utilitiesIncluded: Array.isArray(formData.utilitiesIncluded) ? formData.utilitiesIncluded : [],
         subleaseFriendly: !!formData.subleaseFriendly,
+        twenty_one_plus: !!formData.twentyOnePlus,
         images: [],
       };
 
@@ -406,6 +408,7 @@ export default function AddListing() {
         furnished: "",
         utilitiesIncluded: [],
         subleaseFriendly: false,
+        twentyOnePlus: false,
         images: [],
       });
       setUnitTypes([
@@ -804,6 +807,20 @@ export default function AddListing() {
                 className="h-4 w-4"
               />
               Sublease Friendly
+            </label>
+          </div>
+
+          {/* 21+ Only */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                name="twentyOnePlus"
+                checked={formData.twentyOnePlus}
+                onChange={handleCheckboxChange}
+                className="h-4 w-4"
+              />
+              21+ Only
             </label>
           </div>
 

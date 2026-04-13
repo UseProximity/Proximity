@@ -329,6 +329,7 @@ const SCHEMAS = {
     { key: "move_in_date",         label: "Move-in Date",       type: "date"     },
     { key: "lease_availability",   label: "Lease Availability", type: "multi-enum", options: ["semester","10-month","12-month","summer"] },
     { key: "sublease_friendly",    label: "Sublease Friendly",  type: "boolean"  },
+    { key: "twenty_one_plus",      label: "21+ Only",           type: "boolean"  },
     { key: "amenities",            label: "Amenities",          type: "multi-enum", options: ["dishwasher","in_unit_laundry","refrigerator","stove","oven","microwave","ac_heating","mailroom","pets_allowed","extra_storage","fireplace","private_parking","pool","study_room","gym"] },
     { key: "unavailable",          label: "Unavailable",        type: "boolean"  },
     { key: "landlord_id",          label: "Landlord(s)",       type: "user-search-multi" },

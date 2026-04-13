@@ -33,6 +33,7 @@ function buildListing(row, units = [], owner = null, reviews = []) {
     moveInDate: row.move_in_date ?? null,
     utilitiesIncluded: Array.isArray(row.utilities_included) ? row.utilities_included : [],
     subleaseFriendly: row.sublease_friendly ?? false,
+    twentyOnePlus: row.twenty_one_plus ?? false,
     unavailable: row.unavailable ?? false,
     amenities: Array.isArray(row.amenities) ? row.amenities : [],
     // Aggregate columns (maintained by DB trigger)

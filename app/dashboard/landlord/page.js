@@ -394,6 +394,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     lease_type: listing?.lease_type ?? listing?.leaseType ?? "standard",
     furnished: listing?.furnished ?? false,
     sublease_friendly: listing?.sublease_friendly ?? listing?.subleaseFriendly ?? false,
+    twenty_one_plus: listing?.twenty_one_plus ?? listing?.twentyOnePlus ?? false,
     move_in_date: listing?.move_in_date ?? (listing?.moveInDate ? listing.moveInDate.slice(0, 10) : ""),
     // Auto-fill contact info from the landlord's profile for new listings
     contact_email: listing?.contact_email ?? listing?.contactEmail ?? user?.email ?? "",
@@ -566,6 +567,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             lease_type: form.lease_type,
             furnished: form.furnished,
             sublease_friendly: form.sublease_friendly,
+            twenty_one_plus: form.twenty_one_plus,
             move_in_date: form.move_in_date || null,
             contact_email: form.contact_email || null,
             contact_phone: form.contact_phone || null,
@@ -864,6 +866,10 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="checkbox" name="sublease_friendly" checked={form.sublease_friendly} onChange={handleChange} className="accent-red-600" />
                   Sublease Friendly
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" name="twenty_one_plus" checked={form.twenty_one_plus} onChange={handleChange} className="accent-red-600" />
+                  21+ Only
                 </label>
               </div>
             </div>
