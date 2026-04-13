@@ -1254,6 +1254,13 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                 <p className="text-xs text-gray-400 mt-1">Opens in new tab</p>
               </a>
             )}
+            {user.role === "super" && (
+              <a href="/dashboard/admin?table=reviews&filter=pending" target="_blank" rel="noopener noreferrer"
+                className="block bg-gray-900 hover:bg-gray-800 transition-colors rounded-xl border border-gray-700 shadow-sm p-5 text-center">
+                <p className="font-semibold text-white text-sm">Pending Reviews</p>
+                <p className="text-xs text-gray-400 mt-1">Opens in new tab</p>
+              </a>
+            )}
           </div>
 
           {/* ── RIGHT COLUMN ── */}

@@ -22,14 +22,82 @@ import {
   calcAge,
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
+import { trackEvent } from "@/utils/analytics";
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
 const leaseAvailabilityMap = {
   "10_month": "10 Month",
   "12_month": "12 Month",
+  "10-month": "10 Month",
+  "12-month": "12 Month",
   semester: "Semester",
+  summer: "Summer",
 };
+
+function formatLeaseAvailability(val) {
+  if (!val) return "—";
+  const arr = Array.isArray(val) ? val : [val];
+  if (arr.length === 0) return "—";
+  return arr.map((v) => leaseAvailabilityMap[v] || v).join(" · ");
+}
+
+function LeaseStatCell({ leaseAvailability }) {
+  const [open, setOpen] = useState(false);
+  const arr = Array.isArray(leaseAvailability)
+    ? leaseAvailability.filter(Boolean)
+    : leaseAvailability ? [leaseAvailability] : [];
+  const labels = arr.map((v) => leaseAvailabilityMap[v] || v);
+
+  if (labels.length === 0) {
+    return (
+      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
+        <div className="text-sm sm:text-lg font-semibold text-gray-900">—</div>
+        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+      </div>
+    );
+  }
+
+  if (labels.length === 1) {
+    return (
+      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
+        <div className="text-sm sm:text-lg font-semibold text-gray-900">{labels[0]}</div>
+        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex flex-col items-center gap-0.5 group"
+      >
+        <span className="text-sm sm:text-lg font-semibold text-gray-900 leading-tight">
+          {labels[0]}
+        </span>
+        <span className="text-[11px] font-medium text-red-500 group-hover:text-red-600 transition-colors">
+          +{labels.length - 1} more
+        </span>
+      </button>
+      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-md py-1.5 min-w-[120px] text-center">
+            {labels.map((l) => (
+              <div key={l} className="text-xs text-gray-700 px-3 py-1">
+                {l}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const AmenitiesMap = {
   in_unit_laundry: "In-Unit Laundry",
@@ -562,41 +630,50 @@ function ReviewsTab({
 
       {/* Leave a Review form */}
       <div className="border-t border-gray-100 pt-6 mt-4">
-        <h3 className="text-base font-semibold text-gray-900 mb-4">
-          Leave a Review
-        </h3>
-        <form onSubmit={handleReviewSubmit} className="space-y-4">
-          <StarRow label="Overall" value={rating} onChange={setRating} />
-          <StarRow
-            label="Communication"
-            value={commRating}
-            onChange={setCommRating}
-          />
-          <StarRow label="Location" value={locRating} onChange={setLocRating} />
-          <StarRow label="Value" value={valRating} onChange={setValRating} />
-          <textarea
-            value={reviewText}
-            onChange={(e) => setReviewText(e.target.value)}
-            placeholder="Leave a review..."
-            rows={4}
-            maxLength={1000}
-            className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
-          />
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={
-                reviewLoading ||
-                !reviewText.trim() ||
-                reviewText.trim().length < 5 ||
-                rating === 0
-              }
-              className="bg-red-600 text-white text-sm font-medium px-6 py-2 rounded-full shadow hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {reviewLoading ? "Posting..." : "Post"}
-            </button>
+        {session?.user?.email?.endsWith("@wustl.edu") ? (
+          <>
+            <h3 className="text-base font-semibold text-gray-900 mb-4">
+              Leave a Review
+            </h3>
+            <form onSubmit={handleReviewSubmit} className="space-y-4">
+              <StarRow label="Overall" value={rating} onChange={setRating} />
+              <StarRow
+                label="Communication"
+                value={commRating}
+                onChange={setCommRating}
+              />
+              <StarRow label="Location" value={locRating} onChange={setLocRating} />
+              <StarRow label="Value" value={valRating} onChange={setValRating} />
+              <textarea
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                placeholder="Leave a review..."
+                rows={4}
+                maxLength={1000}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={
+                    reviewLoading ||
+                    !reviewText.trim() ||
+                    reviewText.trim().length < 5 ||
+                    rating === 0
+                  }
+                  className="bg-red-600 text-white text-sm font-medium px-6 py-2 rounded-full shadow hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {reviewLoading ? "Posting..." : "Post"}
+                </button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+            Reviews are only open to verified WashU students. Please sign in with your{" "}
+            <span className="font-semibold">@wustl.edu</span> Google account.
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -816,7 +893,7 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function ListingModalInfo({ session, listing }) {
+export default function ListingModalInfo({ session, listing, excludeTabs = [], compact = false }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryLoadedSrcs, setGalleryLoadedSrcs] = useState([]);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -1039,6 +1116,7 @@ export default function ListingModalInfo({ session, listing }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
         });
+        trackEvent("contact_submit", { listingId: listing._id, address: listing.address });
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
@@ -1052,7 +1130,7 @@ export default function ListingModalInfo({ session, listing }) {
 
   return (
     <>
-      <div className="bg-gray-50 min-h-screen">
+      <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* ── Photo Grid ── */}
           <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
@@ -1232,13 +1310,7 @@ export default function ListingModalInfo({ session, listing }) {
               label="Sq Ft"
               value={selectedUnit ? (selectedUnit.area ? selectedUnit.area.toLocaleString() : "—") : getAreaRangeLabel(listing.unitTypes)}
             />
-            <StatCell
-              label="Lease"
-              value={
-                leaseAvailabilityMap[listing.leaseAvailability] ||
-                listing.leaseAvailability
-              }
-            />
+            <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
             <StatCell
               label="Rating"
               value={overallAvg ? `★ ${overallAvg}` : "—"}
@@ -1251,7 +1323,7 @@ export default function ListingModalInfo({ session, listing }) {
             className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 px-4"
           >
             <nav className="flex overflow-x-auto max-w-7xl mx-auto">
-              {TABS.map((tab) => (
+              {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"

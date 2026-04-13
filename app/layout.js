@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import ProfileCompletionModal from "@/components/ProfileCompletionModal";
 import GlobalListingModal from "@/components/GlobalListingModal";
 import Providers from "@/components/Providers";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -42,6 +43,7 @@ export default async function RootLayout({ children }) {
           <Header session={session} />
           <ProfileCompletionModal session={session} />
           <GlobalListingModal />
+          <AnalyticsTracker />
           {children}
         </Providers>
       </body>

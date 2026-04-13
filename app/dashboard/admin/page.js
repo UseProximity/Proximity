@@ -354,12 +354,12 @@ const SCHEMAS = {
     { key: "user_id",              label: "Reviewer ID",   type: "text"     },
     { key: "name",                 label: "Name",          type: "text"     },
     { key: "listing_id",           label: "Listing ID",    type: "text",    required: true  },
-    { key: "rating",               label: "Rating",        type: "number",  required: true  },
+    { key: "rating",               label: "Rating",        type: "number",  required: true, min: 1, max: 5  },
     { key: "comment",              label: "Comment",       type: "text",    required: true  },
     { key: "legitimacy",           label: "Verified",      type: "boolean"  },
-    { key: "communication_rating", label: "Communication", type: "number"   },
-    { key: "location_rating",      label: "Location",      type: "number"   },
-    { key: "value_rating",         label: "Value",         type: "number"   },
+    { key: "communication_rating", label: "Communication", type: "number",  min: 1, max: 5  },
+    { key: "location_rating",      label: "Location",      type: "number",  min: 1, max: 5  },
+    { key: "value_rating",         label: "Value",         type: "number",  min: 1, max: 5  },
     { key: "created_at",           label: "Created",       type: "readonly" },
     { key: "updated_at",           label: "Updated",       type: "readonly" },
   ],
@@ -378,7 +378,7 @@ const SCHEMAS = {
     { key: "dorm_id",       label: "Dorm ID",     type: "text",    required: true  },
     { key: "reviewer_name", label: "Author Name", type: "text",    required: true  },
     { key: "class_year",    label: "Class Year",  type: "number",  required: true  },
-    { key: "rating",        label: "Rating",      type: "number",  required: true  },
+    { key: "rating",        label: "Rating",      type: "number",  required: true, min: 1, max: 5  },
     { key: "dorm_type",     label: "Room Type",   type: "text"     },
     { key: "tags",          label: "Tags",        type: "json"     },
     { key: "content",       label: "Content",     type: "text",    required: true  },
@@ -730,6 +730,8 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLab
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
         className={`${baseText} min-w-[80px]`}
         step="any"
+        {...(fieldDef.min != null ? { min: fieldDef.min } : {})}
+        {...(fieldDef.max != null ? { max: fieldDef.max } : {})}
       />
     );
   }
@@ -1150,6 +1152,45 @@ export default function AdminDashboard() {
   const [activeTable, setActiveTable] = useState("users");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Pending reviews moderation
+  const [pendingReviewsOpen, setPendingReviewsOpen] = useState(false);
+  const [pendingReviews, setPendingReviews] = useState([]);
+  const [pendingReviewsLoading, setPendingReviewsLoading] = useState(false);
+  const [pendingReviewsError, setPendingReviewsError] = useState(null);
+
+  async function loadPendingReviews() {
+    setPendingReviewsLoading(true);
+    setPendingReviewsError(null);
+    try {
+      const res = await fetch("/api/admin/pending-reviews");
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      setPendingReviews(Array.isArray(data) ? data : []);
+    } catch {
+      setPendingReviewsError("Failed to load pending reviews.");
+    } finally {
+      setPendingReviewsLoading(false);
+    }
+  }
+
+  async function handleApprovePendingReview(reviewId) {
+    await fetch("/api/admin/pending-reviews", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId }),
+    });
+    setPendingReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  }
+
+  async function handleDeletePendingReview(reviewId) {
+    await fetch("/api/admin/pending-reviews", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId }),
+    });
+    setPendingReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  }
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [searchColumn, setSearchColumn] = useState("all");
@@ -1223,9 +1264,21 @@ export default function AdminDashboard() {
       .catch(() => {});
   }, [dbTarget]);
 
-  // Prefer the rich static SCHEMAS for known tables; fall back to dynamic for new ones
+  // Merge static overrides (rich types/options) with dynamic DB columns.
+  // Hardcoded entries take precedence for known keys; new DB columns appear automatically.
   function getSchema(table) {
-    return SCHEMAS[table] || dynamicSchemas[table] || [];
+    const overrides = SCHEMAS[table] || [];
+    const dynamic = dynamicSchemas[table] || [];
+    if (dynamic.length === 0) return overrides;
+    if (overrides.length === 0) return dynamic;
+    const overrideMap = new Map(overrides.map((f) => [f.key, f]));
+    const knownKeys = new Set(overrides.map((f) => f.key));
+    // Split timestamps to keep them last
+    const timestamps = overrides.filter((f) => f.key === "created_at" || f.key === "updated_at");
+    const main = overrides.filter((f) => f.key !== "created_at" && f.key !== "updated_at");
+    // New DB columns not in hardcoded set
+    const newCols = dynamic.filter((f) => !knownKeys.has(f.key));
+    return [...main, ...newCols, ...timestamps].map((f) => overrideMap.get(f.key) || f);
   }
 
   const rawSchema = getSchema(activeTable);
@@ -1367,10 +1420,11 @@ export default function AdminDashboard() {
   // Update visible columns whenever the active table or dynamic schemas change.
   // This runs with fresh closure values, fixing the stale-closure issue in loadTable's useCallback.
   useEffect(() => {
-    const s = SCHEMAS[activeTable] || dynamicSchemas[activeTable] || [];
+    const s = getSchema(activeTable);
     if (s.length > 0) {
       setVisibleColumns(new Set(s.map((f) => f.key)));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTable, dynamicSchemas]);
 
   useEffect(() => {
@@ -1792,7 +1846,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Table tabs */}
-        <div className="flex gap-1.5 mb-5 flex-wrap">
+        <div className="flex gap-1.5 mb-3 flex-wrap">
           {allTables.map((t) => (
             <button
               key={t}
@@ -1806,6 +1860,85 @@ export default function AdminDashboard() {
               {t}
             </button>
           ))}
+        </div>
+
+        {/* Moderation — Pending Reviews */}
+        <div className="mb-5">
+          <button
+            onClick={() => {
+              const next = !pendingReviewsOpen;
+              setPendingReviewsOpen(next);
+              if (next && pendingReviews.length === 0) loadPendingReviews();
+            }}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+          >
+            <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+            Pending Reviews
+            {pendingReviews.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 bg-orange-500 text-white text-xs rounded-full font-bold">
+                {pendingReviews.length}
+              </span>
+            )}
+            <svg className={`w-3.5 h-3.5 transition-transform ${pendingReviewsOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {pendingReviewsOpen && (
+            <div className="mt-2 bg-white border border-orange-200 rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-800">Reviews awaiting approval</p>
+                <button
+                  onClick={loadPendingReviews}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {pendingReviewsLoading ? (
+                <p className="text-sm text-gray-400 py-4 text-center">Loading…</p>
+              ) : pendingReviewsError ? (
+                <p className="text-sm text-red-500">{pendingReviewsError}</p>
+              ) : pendingReviews.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">No pending reviews.</p>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {pendingReviews.map((r) => (
+                    <div key={r.id} className="border border-gray-100 rounded-lg p-3 flex flex-col gap-1 bg-gray-50">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-800 truncate">
+                            {r.reviewer?.name || "Unknown"}{" "}
+                            <span className="font-normal text-gray-400">({r.reviewer?.email || "—"})</span>
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {r.listings?.title || r.listings?.address || "Unknown listing"}
+                          </p>
+                          <p className="text-xs text-gray-500">Rating: {r.rating}/5</p>
+                          <p className="text-xs text-gray-700 mt-1 line-clamp-3">{r.text}</p>
+                        </div>
+                        <div className="flex flex-col gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => handleApprovePendingReview(r.id)}
+                            className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded font-medium transition-colors"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleDeletePendingReview(r.id)}
+                            className="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Search bar + column picker */}

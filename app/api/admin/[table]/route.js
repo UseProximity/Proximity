@@ -212,10 +212,11 @@ export async function POST(req, { params }) {
     }
 
     // Convert empty strings to null so numeric/text columns don't get ""
-    // Keep array columns as [] (not null) to satisfy NOT NULL constraints
+    // Keep array columns as [] and text-with-empty-default columns as '' to satisfy NOT NULL constraints
     const ARRAY_COLUMNS = new Set(["images", "utilities_included", "amenities", "tags", "landlord_id"]);
+    const TEXT_EMPTY_DEFAULT_COLUMNS = new Set(["dorm_type"]);
     for (const [k, v] of Object.entries(safeFields)) {
-      if (v === "") safeFields[k] = ARRAY_COLUMNS.has(k) ? [] : null;
+      if (v === "") safeFields[k] = ARRAY_COLUMNS.has(k) ? [] : TEXT_EMPTY_DEFAULT_COLUMNS.has(k) ? "" : null;
     }
 
     const { data, error } = await supabase

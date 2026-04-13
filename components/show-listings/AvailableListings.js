@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
 import MapPopupCard, { ListingCard } from "@/components/show-listings/MapPopupCard";
+import ListDetailPanel from "@/components/show-listings/ListDetailPanel";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -72,6 +73,9 @@ export default function AvailableListings({
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
 
+  /* ── Left panel expanded listing ── */
+  const [expandedListing, setExpandedListing] = useState(null);
+
   /* ── Viewport / "Browse this area" filter ── */
   const [viewportBounds, setViewportBounds] = useState(null);
 
@@ -105,13 +109,15 @@ export default function AvailableListings({
     if (mobileFiltersOpen) setMobileDraft(filters);
   }, [mobileFiltersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear map overlay card when listings data changes
+  // Clear map overlay card and expanded panel when listings data changes
   useEffect(() => {
     setSelectedListing(null);
+    setExpandedListing(null);
   }, [listings]);
 
   const handlePinClose = () => {
     setSelectedListing(null);
+    setExpandedListing(null);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("lat");
     params.delete("lng");
@@ -183,43 +189,53 @@ export default function AvailableListings({
     <>
       {/* ── Desktop listing panel ── */}
       <div
-        className="hidden md:block w-[40vw] shrink-0 overflow-y-auto px-4 py-4"
+        className={`hidden md:block shrink-0 overflow-y-auto px-4 py-4 transition-[width] duration-300 ${expandedListing ? "w-[65vw]" : "w-[40vw]"}`}
         style={{ height: "100%", minHeight: 0 }}
       >
-        <div className="flex items-center gap-2 px-1 mb-4">
-          <p className="text-sm font-semibold text-gray-500">
-            {visibleListings.length}{" "}
-            {viewportBounds ? "listings in this area" : "Listings Found"}
-          </p>
-          {viewportBounds && (
-            <button
-              onClick={() => setViewportBounds(null)}
-              className="text-xs text-red-600 hover:text-red-700 font-medium"
-            >
-              Show all
-            </button>
-          )}
-        </div>
-
-        {visibleListings.length === 0 ? (
-          emptyState
+        {expandedListing ? (
+          <ListDetailPanel
+            listing={expandedListing}
+            session={session}
+            onBack={() => {
+              setExpandedListing(null);
+              setSelectedListing(null);
+            }}
+          />
         ) : (
-          <div className="grid grid-cols-2 gap-6">
-            {visibleListings.map((listing) => (
-              <ListingCard
-                key={listing._id}
-                listing={listing}
-                session={session}
-                onCardClick={(listingId) => {
-                  if (selectedListing?._id === listingId) {
-                    handleListingClick(listingId);
-                  } else {
-                    setSelectedListing(listing);
-                  }
-                }}
-              />
-            ))}
-          </div>
+          <>
+            <div className="flex items-center gap-2 px-1 mb-4">
+              <p className="text-sm font-semibold text-gray-500">
+                {visibleListings.length}{" "}
+                {viewportBounds ? "listings in this area" : "Listings Found"}
+              </p>
+              {viewportBounds && (
+                <button
+                  onClick={() => setViewportBounds(null)}
+                  className="text-xs text-red-600 hover:text-red-700 font-medium"
+                >
+                  Show all
+                </button>
+              )}
+            </div>
+
+            {visibleListings.length === 0 ? (
+              emptyState
+            ) : (
+              <div className="grid grid-cols-2 gap-6">
+                {visibleListings.map((listing) => (
+                  <ListingCard
+                    key={listing._id}
+                    listing={listing}
+                    session={session}
+                    onCardClick={() => {
+                      setExpandedListing(listing);
+                      setSelectedListing(listing);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -233,19 +249,25 @@ export default function AvailableListings({
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
-          onListingSelect={setSelectedListing}
-          selectedListingId={selectedListing?._id}
+          onListingSelect={(listing) => {
+            setSelectedListing(listing);
+            setExpandedListing(null);
+          }}
+          selectedListingId={expandedListing?._id || selectedListing?._id}
           searchLocation={searchLocation}
           isActive={isDesktop}
           onBrowseArea={handleBrowseArea}
+          panelExpanded={!!expandedListing}
         />
-        {selectedListing && (
+        {selectedListing && !expandedListing && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
             <MapPopupCard
               listing={selectedListing}
               session={session}
               onClose={handlePinClose}
-              onCardClick={handleListingClick}
+              onCardClick={() => {
+                setExpandedListing(selectedListing);
+              }}
             />
           </div>
         )}

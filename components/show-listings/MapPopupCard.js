@@ -3,6 +3,7 @@
 import Image from "next/image";
 import HeartIcon from "@/components/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { trackEvent } from "@/utils/analytics";
 
 // Visual dot-scale: more dots = farther, color goes green → yellow → red
 // Campus thresholds: <10=1, <15=2, <20=3, <30=4, ≥30=5
@@ -59,7 +60,7 @@ export function ListingCard({ listing, session, onCardClick }) {
   return (
     <div
       className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200 flex flex-col cursor-pointer"
-      onClick={() => onCardClick(listing._id)}
+      onClick={() => { onCardClick(listing._id); trackEvent("listing_click", { listingId: listing._id, address: listing.address }); }}
     >
       <div className="relative aspect-video">
         {imageUrl ? (

@@ -1899,8 +1899,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
 
-  const [pendingReviews, setPendingReviews] = useState([]); // array of reviews (for notifications)
-  const [pendingLoading, setPendingLoading] = useState({}); // { reviewId: true }
   const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
 
   const [isEditing, setIsEditing] = useState(false);
@@ -1967,67 +1965,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       console.error("Error fetching User:", error);
     }
   };
-
-  // notifications material ----------------------------------------
-  // For notification - fetch pending reviews when user loads
-  useEffect(() => {
-    if (!user) return; // wait until user is loaded
-    fetchPendingReviews();
-  }, [user]);
-
-  const fetchPendingReviews = async () => {
-    try {
-      const res = await fetch("/api/pendingReviews");
-      if (!res.ok) throw new Error("Failed to fetch pending reviews");
-      const data = await res.json();
-      setPendingReviews(data);
-    } catch (err) {
-      console.error("Error fetching pending reviews:", err);
-    }
-  };
-
-  // Generic handler used for approve/reject actions
-  const handlePendingAction = async (reviewId, reviewedType, action) => {
-    if (!reviewId) return;
-    if (pendingLoading[reviewId]) return; // already working
-
-    setPendingLoading((m) => ({ ...m, [reviewId]: true }));
-
-    try {
-      const res = await fetch("/api/pendingReviews", {
-        method: action === "approve" ? "PATCH" : "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewId, reviewedType }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`Request failed: ${res.status} ${text}`);
-      }
-
-      // Optimistically remove the item from the list on success
-      setPendingReviews((prev) =>
-        prev.filter((p) => (p._id || p.id) !== reviewId)
-      );
-    } catch (err) {
-      console.error("Pending review action failed:", err);
-      alert("Could not complete the action. Please try again.");
-    } finally {
-      setPendingLoading((m) => {
-        const copy = { ...m };
-        delete copy[reviewId];
-        return copy;
-      });
-    }
-  };
-
-  // convenience wrappers
-  const approvePendingReview = (reviewId, reviewedType) =>
-    handlePendingAction(reviewId, reviewedType, "approve");
-  const rejectPendingReview = (reviewId, reviewedType) =>
-    handlePendingAction(reviewId, reviewedType, "reject");
-
-  // end notifications material  ----------------------------------------
 
   // helpers for form
   const onChange = (e) => {
@@ -2146,8 +2083,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return "My Profile";
       case "analytics":
         return "Analytics";
-      case "notifications":
-        return "Notifications";
       default:
         return "Landlord Dashboard";
     }
@@ -2180,17 +2115,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
-      case "notifications":
-        return (
-          <NotificationSection
-            user={user}
-            pendingReviews={pendingReviews}
-            onApprove={approvePendingReview}
-            onReject={rejectPendingReview}
-            loadingMap={pendingLoading}
-          />
-        );
-
       case "profile":
       default:
         return (
@@ -2309,20 +2233,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
               {getPageTitle()}
             </h1>
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hover:bg-red-50 hover:text-red-600 relative"
-                onClick={() => setActiveView("notifications")}
-              >
-                <Bell className="h-4 w-4" />
-                {pendingReviews.length > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none rounded-full bg-red-600 text-white">
-                    {pendingReviews.length > 9 ? "9+" : pendingReviews.length}
-                  </span>
-                )}
-              </Button>
-
               <Button
                 variant="ghost"
                 size="icon"
