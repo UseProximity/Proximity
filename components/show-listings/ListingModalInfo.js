@@ -19,6 +19,7 @@ import {
   getAreaRangeLabel,
   getRentRangeLabel,
   getUnitValuesLabel,
+  calcAge,
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 
@@ -605,12 +606,53 @@ function ReviewsTab({
 
 function ContactTab({
   listing,
+  session,
   contactForm,
   setContactForm,
   handleContactSubmit,
   contactLoading,
   contactSent,
 }) {
+  const [ageStatus, setAgeStatus] = useState(listing.twentyOnePlus ? "loading" : "ok");
+
+  useEffect(() => {
+    if (!listing.twentyOnePlus) return;
+    fetch("/api/getUser")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.birthday) {
+          setAgeStatus("no_birthday");
+        } else {
+          setAgeStatus(calcAge(data.birthday) >= 21 ? "ok" : "too_young");
+        }
+      })
+      .catch(() => setAgeStatus("ok"));
+  }, [listing.twentyOnePlus]);
+
+  if (listing.twentyOnePlus && ageStatus === "loading") {
+    return <div className="py-8 text-center text-sm text-gray-400">Verifying eligibility...</div>;
+  }
+
+  if (listing.twentyOnePlus && ageStatus === "no_birthday") {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+        This property requires residents to be 21+. Please add your birthday in your{" "}
+        <a href="/dashboard/student" className="underline font-medium">
+          profile settings
+        </a>{" "}
+        to verify your age.
+      </div>
+    );
+  }
+
+  if (listing.twentyOnePlus && ageStatus === "too_young") {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+        This property requires residents to be 21 or older.
+      </div>
+    );
+  }
+
   const owner = listing.owner;
 
   const handleChange = (field) => (e) =>
@@ -985,6 +1027,7 @@ export default function ListingModalInfo({ session, listing }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...contactForm,
+          listingId: listing._id,
           landlordEmail: listing.contactEmail ?? listing.owner?.email,
           landlordName: listing.contactName ?? listing.owner?.name,
           listingAddress: listing.address,
@@ -1271,6 +1314,7 @@ export default function ListingModalInfo({ session, listing }) {
             {activeTab === "contact" && session && (
               <ContactTab
                 listing={listing}
+                session={session}
                 contactForm={contactForm}
                 setContactForm={setContactForm}
                 handleContactSubmit={handleContactSubmit}

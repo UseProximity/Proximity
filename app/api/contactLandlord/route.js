@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { auth } from "@/auth";
+import supabase from "@/libs/supabase";
+import { calcAge } from "@/utils/listingFormatters";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EMAIL SETUP INSTRUCTIONS
@@ -66,6 +69,7 @@ export async function POST(req) {
       email,
       phone,
       message,
+      listingId,
       landlordEmail,
       landlordName,
       listingAddress,
@@ -154,6 +158,31 @@ export async function POST(req) {
         </div>
       `,
     };
+
+    // Server-side 21+ age guard
+    if (listingId) {
+      const session = await auth();
+      if (session?.user?.email) {
+        const { data: listingRow } = await supabase
+          .from("listings")
+          .select("twenty_one_plus")
+          .eq("id", listingId)
+          .single();
+
+        if (listingRow?.twenty_one_plus) {
+          const { data: userRow } = await supabase
+            .from("users")
+            .select("birthday")
+            .eq("email", session.user.email)
+            .single();
+
+          const age = calcAge(userRow?.birthday ?? null);
+          if (age === null || age < 21) {
+            return NextResponse.json({ error: "Age restriction: must be 21+" }, { status: 403 });
+          }
+        }
+      }
+    }
 
     // If email credentials are not configured, log and return success (dev mode)
     if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
