@@ -551,7 +551,7 @@ export default function MapView({
   // isActive: true = lighter/brighter active color scheme
   function buildPinSVGElement(rating, listingId, isActive) {
     const el = document.createElement("div");
-    el.style.cssText = "width:36px;height:44px;";
+    el.style.cssText = "width:35px;height:49px;";
 
     const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
     const hasRating = rating != null && rating > 0;
@@ -625,7 +625,7 @@ export default function MapView({
       const exactRating = (listing.rating || 0) > 0 ? (listing.rating || 0) : null;
       const markerEl = buildPinSVGElement(exactRating, listing._id, false);
       markerEl.style.cursor = onListingSelect ? "pointer" : "default";
-      const marker = new mapboxgl.Marker({ element: markerEl })
+      const marker = new mapboxgl.Marker({ element: markerEl, anchor: "bottom" })
         .setLngLat([listing.longitude, listing.latitude])
         .addTo(map);
       marker._listingId = listing._id;

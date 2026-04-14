@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
-import HeartIcon from "@/components/HeartIcon";
 import ListingMap from "@/components/show-listings/ListingMap";
 import {
   getAreaRangeLabel,
@@ -953,11 +952,22 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
 
   // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
   // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
+  // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
   const sortedUnits = useMemo(() => {
     const units = listing.unitTypes ?? [];
     const isStudio = (u) => (u.bedrooms ?? 0) === 0;
+
+    // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
+    const seen = new Set();
+    const deduped = units.filter((u) => {
+      const key = `${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${u.rent ?? ""}|${u.area ?? ""}|${u.leaseType ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     // Build base labels in original order for stable disambiguation numbering
-    const baseLabelOf = units.map((u) => {
+    const baseLabelOf = deduped.map((u) => {
       if (isStudio(u)) return "Studio";
       const beds = u.bedrooms != null ? `${u.bedrooms} Bed` : "? Bed";
       const baths = u.bathrooms != null ? `${u.bathrooms} Bath` : "? Bath";
@@ -973,7 +983,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
       }
       return { base: lbl, num: 0, label: lbl };
     });
-    return units
+    return deduped
       .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
       .sort((a, b) => {
         const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
@@ -1133,7 +1143,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* ── Photo Grid ── */}
-          <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
+          <div className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${compact ? "md:h-[300px]" : "md:h-[520px]"}`}>
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
               className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
@@ -1153,27 +1163,6 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   No photos available
                 </div>
               )}
-              {/* HeartIcon */}
-              <div
-                className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <HeartIcon
-                  session={session}
-                  listingId={listing._id}
-                  initial={
-                    Boolean(session?.user) &&
-                    Boolean(
-                      session?.user?.favorites?.some(
-                        (f) => String((f && f._id) || f) === String(listing._id)
-                      ) ||
-                        session?.user?.favoritesIds?.includes(
-                          String(listing._id)
-                        )
-                    )
-                  }
-                />
-              </div>
             </div>
 
             {/* Two stacked thumbnails — fill remaining width, desktop only */}
@@ -1320,9 +1309,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           {/* ── Sticky Tab Bar ── */}
           <div
             id="listing-tabs"
-            className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 px-4"
+            className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4"
           >
-            <nav className="flex overflow-x-auto max-w-7xl mx-auto">
+            <nav className="flex justify-center">
               {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
                 <button
                   key={tab.id}

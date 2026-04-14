@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -75,6 +75,14 @@ export default function AvailableListings({
 
   /* ── Left panel expanded listing ── */
   const [expandedListing, setExpandedListing] = useState(null);
+  const panelRef = useRef(null);
+
+  // Scroll panel to top whenever a listing is expanded
+  useEffect(() => {
+    if (expandedListing && panelRef.current) {
+      panelRef.current.scrollTop = 0;
+    }
+  }, [expandedListing]);
 
   /* ── Viewport / "Browse this area" filter ── */
   const [viewportBounds, setViewportBounds] = useState(null);
@@ -189,6 +197,7 @@ export default function AvailableListings({
     <>
       {/* ── Desktop listing panel ── */}
       <div
+        ref={panelRef}
         className={`hidden md:block shrink-0 overflow-y-auto px-4 py-4 transition-[width] duration-300 ${expandedListing ? "w-[65vw]" : "w-[40vw]"}`}
         style={{ height: "100%", minHeight: 0 }}
       >

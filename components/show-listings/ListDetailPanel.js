@@ -1,12 +1,22 @@
 "use client";
 
 import ListingModalInfo from "@/components/show-listings/ListingModalInfo";
+import HeartIcon from "@/components/HeartIcon";
 
 export default function ListDetailPanel({ listing, session, onBack }) {
+  const isFavorite =
+    Boolean(session?.user) &&
+    Boolean(
+      session?.user?.favorites?.some(
+        (f) => String((f && f._id) || f) === String(listing._id)
+      ) || session?.user?.favoritesIds?.includes(String(listing._id))
+    );
+
   return (
     <div className="relative">
-      {/* Sticky overlay back arrow — h-0 so it takes no space in document flow */}
+      {/* Sticky overlay — h-0 so it takes no space in document flow */}
       <div className="sticky top-0 z-50 h-0 overflow-visible pointer-events-none">
+        {/* Back button — left */}
         <button
           onClick={onBack}
           aria-label="Back to listings"
@@ -22,6 +32,14 @@ export default function ListDetailPanel({ listing, session, onBack }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
+        {/* Heart button — right */}
+        <div className="pointer-events-auto absolute top-3 right-3 flex items-center justify-center w-11 h-11 rounded-full bg-white border border-gray-200 shadow hover:shadow-lg transition-shadow duration-150">
+          <HeartIcon
+            session={session}
+            listingId={listing._id}
+            initial={isFavorite}
+          />
+        </div>
       </div>
       <ListingModalInfo
         listing={listing}

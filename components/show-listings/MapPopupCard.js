@@ -144,7 +144,7 @@ export function ListingCard({ listing, session, onCardClick }) {
         })()}
       </div>
       <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
-      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50">
+      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50">
         <HeartIcon
           session={session}
           listingId={listing._id}
