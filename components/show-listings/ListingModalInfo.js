@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
@@ -23,6 +23,23 @@ import {
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { trackEvent } from "@/utils/analytics";
+
+// Scroll `el` into view within its nearest scrollable ancestor only — never
+// touches window / document scroll so it works inside modals and panels.
+function scrollIntoContainer(el) {
+  if (!el) return;
+  let parent = el.parentElement;
+  while (parent && parent !== document.body) {
+    const cs = window.getComputedStyle(parent);
+    if (/auto|scroll/.test(cs.overflowY) && parent.scrollHeight > parent.clientHeight) {
+      const elTop = el.getBoundingClientRect().top;
+      const parentTop = parent.getBoundingClientRect().top;
+      parent.scrollBy({ top: elTop - parentTop, behavior: "smooth" });
+      return;
+    }
+    parent = parent.parentElement;
+  }
+}
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
@@ -892,6 +909,14 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
     if (!isGalleryOpen) setGalleryLoadedSrcs([]);
   }, [isGalleryOpen]);
 
+  // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
+  useEffect(() => {
+    if (!isGalleryOpen) return;
+    const handler = (e) => { if (e.key === "Escape" && !lightboxSrc) setIsGalleryOpen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isGalleryOpen, lightboxSrc]);
+
   // Esc closes lightbox
   useEffect(() => {
     if (!lightboxSrc) return;
@@ -935,6 +960,15 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   });
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSent, setContactSent] = useState(false);
+
+  // Hero image loading state
+  const [heroImageLoaded, setHeroImageLoaded] = useState(false);
+  const heroImgWrapperRef = useRef(null);
+  useEffect(() => {
+    if (!heroImgWrapperRef.current) return;
+    const img = heroImgWrapperRef.current.querySelector("img");
+    if (img?.complete && img.naturalWidth > 0) setHeroImageLoaded(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unit selector — sorted ascending by beds, then baths, then disambiguation index
   const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
@@ -1115,7 +1149,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
         });
-        trackEvent("contact_submit", { listingId: listing._id, address: listing.address });
+        setTimeout(() => trackEvent("contact_submit", { listingId: listing._id, address: listing.address }), 0);
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
@@ -1134,32 +1168,40 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           {/* ── Photo Grid ── */}
           <div className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${compact ? "md:h-[300px]" : "md:h-[520px]"}`}>
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
-            <motion.div
-              layoutId={compact ? `listing-hero-${listing._id}` : undefined}
+            <div
+              ref={heroImgWrapperRef}
               className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
-                <Image
-                  src={coverImage}
-                  alt={listing.address}
-                  fill
-                  priority
-                  sizes="(max-width: 768px) 100vw, 65vw"
-                  className="object-cover"
-                />
+                <>
+                  {!heroImageLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600" />
+                    </div>
+                  )}
+                  <Image
+                    src={coverImage}
+                    alt={listing.address}
+                    fill
+                    priority
+                    sizes="(max-width: 768px) 100vw, 65vw"
+                    className="object-cover"
+                    onLoad={() => setHeroImageLoaded(true)}
+                  />
+                </>
               ) : (
                 <div className="w-full aspect-[4/3] md:aspect-auto md:h-full md:w-[400px] bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
                   No photos available
                 </div>
               )}
-            </motion.div>
+            </div>
 
             {/* Two stacked thumbnails — fill remaining width, desktop only */}
             <motion.div
               className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
-              initial={compact ? { opacity: 0, x: -28 } : false}
-              animate={{ opacity: 1, x: 0 }}
+              initial={compact ? { opacity: 0 } : false}
+              animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
             >
               {/* Top thumbnail */}
@@ -1210,8 +1252,8 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           </div>
 
           <motion.div
-            initial={compact ? { opacity: 0, y: 22 } : false}
-            animate={{ opacity: 1, y: 0 }}
+            initial={compact ? { opacity: 0 } : false}
+            animate={{ opacity: 1 }}
             transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
           >
 
@@ -1232,9 +1274,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
             <button
               onClick={() => {
                 setActiveTab("contact");
-                document
-                  .getElementById("listing-tabs")
-                  ?.scrollIntoView({ behavior: "smooth" });
+                scrollIntoContainer(document.getElementById("listing-tabs"));
               }}
               className={`shrink-0 text-sm font-semibold px-4 py-2 rounded-lg transition ${
                 listing.unavailable

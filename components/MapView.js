@@ -907,6 +907,18 @@ export default function MapView({
       const newPin = buildPinSVGElement(marker._rating, marker._listingId, isActive);
       el.innerHTML = newPin.innerHTML;
     });
+    // Re-establish correct south-on-top stacking, then pin selected last
+    const sorted = [...map.markers].sort((a, b) => b.getLngLat().lat - a.getLngLat().lat);
+    sorted.forEach((marker) => {
+      if (marker._listingId === selectedListingId) return;
+      const el = marker.getElement();
+      if (el?.parentNode) el.parentNode.appendChild(el);
+    });
+    if (selectedListingId) {
+      const activeMarker = map.markers.find((m) => m._listingId === selectedListingId);
+      const el = activeMarker?.getElement();
+      if (el?.parentNode) el.parentNode.appendChild(el);
+    }
 
     if (selectedListingId) {
       // panelExpanded effect set this flag synchronously before we ran —

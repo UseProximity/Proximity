@@ -6,15 +6,19 @@ export default function ModalListing({ isOpen, onClose, children }) {
   useEffect(() => {
     if (!isOpen) return;
     const scrollY = window.scrollY;
+    const prevOverflow = document.body.style.overflow;
+    const prevPosition = document.body.style.position;
+    const prevTop = document.body.style.top;
+    const prevWidth = document.body.style.width;
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
     document.body.style.top = `-${scrollY}px`;
     document.body.style.width = "100%";
     return () => {
-      document.body.style.overflow = "";
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.width = "";
+      document.body.style.overflow = prevOverflow;
+      document.body.style.position = prevPosition;
+      document.body.style.top = prevTop;
+      document.body.style.width = prevWidth;
       window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
@@ -38,7 +42,7 @@ export default function ModalListing({ isOpen, onClose, children }) {
         >
           ×
         </button>
-        <div className="w-full px-6 pb-6 overflow-y-auto flex-1" onScroll={(e) => e.stopPropagation()}>
+        <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

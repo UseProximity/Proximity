@@ -1,7 +1,7 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { motion } from "framer-motion";
 import HeartIcon from "@/components/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { trackEvent } from "@/utils/analytics";
@@ -31,8 +31,17 @@ function WalkScale({ minutes, label }) {
   );
 }
 
-export function ListingCard({ listing, session, onCardClick }) {
+export function ListingCard({ listing, session, onCardClick, isSelected = false }) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const imgWrapperRef = useRef(null);
   const imageUrl = listing.images?.[0];
+
+  // onLoad doesn't fire for cached images — check .complete on mount
+  useEffect(() => {
+    if (!imgWrapperRef.current) return;
+    const img = imgWrapperRef.current.querySelector("img");
+    if (img?.complete && img.naturalWidth > 0) setImageLoaded(true);
+  }, []);
   const imageCount = listing.images?.length || 0;
   const addressBeforeComma = listing.address.split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
@@ -60,18 +69,32 @@ export function ListingCard({ listing, session, onCardClick }) {
 
   return (
     <div
-      className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200 flex flex-col cursor-pointer"
-      onClick={() => { onCardClick(listing._id); trackEvent("listing_click", { listingId: listing._id, address: listing.address }); }}
+      className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
+      onClick={() => {
+        onCardClick(listing._id);
+        setTimeout(() => trackEvent("listing_click", { listingId: listing._id, address: listing.address }), 0);
+      }}
     >
-      <motion.div layoutId={`listing-hero-${listing._id}`} className="relative aspect-video">
+      <div
+        ref={imgWrapperRef}
+        className="relative aspect-video bg-gray-100"
+      >
         {imageUrl ? (
-          <Image
-            src={imageUrl}
-            alt={listing.address}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className={`object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
-          />
+          <>
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600" />
+              </div>
+            )}
+            <Image
+              src={imageUrl}
+              alt={listing.address}
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              className={`object-cover${listing.unavailable ? " opacity-50 grayscale" : ""}`}
+              onLoad={() => setImageLoaded(true)}
+            />
+          </>
         ) : (
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-400">
             No image
@@ -87,7 +110,7 @@ export function ListingCard({ listing, session, onCardClick }) {
             See all {imageCount} photos
           </div>
         )}
-      </motion.div>
+      </div>
       <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
         <div className="flex items-start justify-between gap-2 min-w-0">
           <div className="min-w-0 flex-1">
@@ -144,7 +167,7 @@ export function ListingCard({ listing, session, onCardClick }) {
           );
         })()}
       </div>
-      <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
+      <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50">
         <HeartIcon
           session={session}
