@@ -20,13 +20,14 @@ export default function ListingMap({ latitude, longitude, address }) {
         style: "mapbox://styles/mapbox/streets-v12",
         center: [longitude, latitude],
         zoom: 15,
-        interactive: false,
       });
 
       new mapboxgl.Marker({ color: "#dc2626" })
         .setLngLat([longitude, latitude])
         .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(address || "Listing"))
         .addTo(map);
+
+map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
       mapRef.current = map;
     };

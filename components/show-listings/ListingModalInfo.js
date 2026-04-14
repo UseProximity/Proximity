@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
+import HeartIcon from "@/components/HeartIcon";
 import ListingMap from "@/components/show-listings/ListingMap";
 import {
   getAreaRangeLabel,
@@ -1199,6 +1200,29 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   No photos available
                 </div>
               )}
+              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
+              {!compact && (
+                <div
+                  className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <HeartIcon
+                    session={session}
+                    listingId={listing._id}
+                    initial={
+                      Boolean(session?.user) &&
+                      Boolean(
+                        session?.user?.favorites?.some(
+                          (f) => String((f && f._id) || f) === String(listing._id)
+                        ) ||
+                          session?.user?.favoritesIds?.includes(
+                            String(listing._id)
+                          )
+                      )
+                    }
+                  />
+                </div>
+              )}
             </div>
 
             {/* Two stacked thumbnails — fill remaining width, desktop only */}
@@ -1354,9 +1378,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           {/* ── Sticky Tab Bar ── */}
           <div
             id="listing-tabs"
-            className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${compact ? "top-[52px]" : "top-0"}`}
+            className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${compact ? "top-[52px]" : "top-0 px-4"}`}
           >
-            <nav className="flex justify-center">
+            <nav className={`flex ${compact ? "justify-center" : "overflow-x-auto max-w-7xl mx-auto"}`}>
               {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
                 <button
                   key={tab.id}
