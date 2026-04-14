@@ -452,7 +452,7 @@ const SCHEMAS = {
     { key: "reviewer_name", label: "Author Name", type: "text",    required: true  },
     { key: "class_year",    label: "Class Year",  type: "number",  required: true,  min: 2020, max: 2035, step: 1 },
     { key: "rating",        label: "Rating",      type: "number",  required: true,  min: 1, max: 5  },
-    { key: "dorm_type",     label: "Room Type",   type: "enum",    options: ["Modern Single","Modern Double","Modern Triple","Traditional Single","Traditional Double","Traditional Triple","Apartment Style"] },
+    { key: "dorm_type",     label: "Room Type",   type: "enum",    required: true, options: ["Modern Single","Modern Double","Modern Triple","Traditional Single","Traditional Double","Traditional Triple","Apartment Style"] },
     { key: "tags",          label: "Tags",        type: "multi-enum", options: ["Quiet Floor","Study Floor","Social Floor","Historic","New Building","Central Location","Apartment Style","Modern"] },
     { key: "content",       label: "Content",     type: "text",    required: true  },
     { key: "created_at",    label: "Created",     type: "readonly" },
@@ -1718,6 +1718,20 @@ export default function AdminDashboard() {
           const utilPart = utils.length > 0 ? ` with ${utils.join(", ")} included` : "";
           fields.description = `${name} offers ${bedPart} units${pricePart}${utilPart}.`;
         }
+      }
+
+      // Validate required fields before hitting the DB
+      const tableSchema = SCHEMAS[activeTable] || [];
+      const missingRequired = tableSchema
+        .filter((f) => f.required && !["id", "readonly"].includes(f.type))
+        .filter((f) => {
+          const v = fields[f.key];
+          return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+        });
+      if (missingRequired.length > 0) {
+        setAddRowError(`Required fields missing: ${missingRequired.map((f) => f.label).join(", ")}`);
+        setAddRowSaving(false);
+        return;
       }
 
       const res = await fetch(`/api/admin/${activeTable}`, {
