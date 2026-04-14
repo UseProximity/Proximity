@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { motion } from "framer-motion";
 import HeartIcon from "@/components/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { trackEvent } from "@/utils/analytics";
@@ -62,7 +63,7 @@ export function ListingCard({ listing, session, onCardClick }) {
       className="relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border border-gray-100 hover:border-red-200 flex flex-col cursor-pointer"
       onClick={() => { onCardClick(listing._id); trackEvent("listing_click", { listingId: listing._id, address: listing.address }); }}
     >
-      <div className="relative aspect-video">
+      <motion.div layoutId={`listing-hero-${listing._id}`} className="relative aspect-video">
         {imageUrl ? (
           <Image
             src={imageUrl}
@@ -86,7 +87,7 @@ export function ListingCard({ listing, session, onCardClick }) {
             See all {imageCount} photos
           </div>
         )}
-      </div>
+      </motion.div>
       <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
         <div className="flex items-start justify-between gap-2 min-w-0">
           <div className="min-w-0 flex-1">

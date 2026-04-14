@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -198,54 +199,58 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto px-4 py-4 transition-[width] duration-300 ${expandedListing ? "w-[65vw]" : "w-[40vw]"}`}
+        className={`hidden md:block shrink-0 overflow-y-auto transition-[width] duration-300 ${expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"}`}
         style={{ height: "100%", minHeight: 0 }}
       >
-        {expandedListing ? (
-          <ListDetailPanel
-            listing={expandedListing}
-            session={session}
-            onBack={() => {
-              setExpandedListing(null);
-              setSelectedListing(null);
-            }}
-          />
-        ) : (
-          <>
-            <div className="flex items-center gap-2 px-1 mb-4">
-              <p className="text-sm font-semibold text-gray-500">
-                {visibleListings.length}{" "}
-                {viewportBounds ? "listings in this area" : "Listings Found"}
-              </p>
-              {viewportBounds && (
-                <button
-                  onClick={() => setViewportBounds(null)}
-                  className="text-xs text-red-600 hover:text-red-700 font-medium"
-                >
-                  Show all
-                </button>
-              )}
-            </div>
-
-            {visibleListings.length === 0 ? (
-              emptyState
-            ) : (
-              <div className="grid grid-cols-2 gap-6">
-                {visibleListings.map((listing) => (
-                  <ListingCard
-                    key={listing._id}
-                    listing={listing}
-                    session={session}
-                    onCardClick={() => {
-                      setExpandedListing(listing);
-                      setSelectedListing(listing);
-                    }}
-                  />
-                ))}
+        <AnimatePresence initial={false} mode="popLayout">
+          {expandedListing ? (
+            <motion.div key={`detail-${expandedListing._id}`} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+              <ListDetailPanel
+                listing={expandedListing}
+                session={session}
+                onBack={() => {
+                  setExpandedListing(null);
+                  setSelectedListing(null);
+                }}
+              />
+            </motion.div>
+          ) : (
+            <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+              <div className="flex items-center gap-2 px-1 mb-4">
+                <p className="text-sm font-semibold text-gray-500">
+                  {visibleListings.length}{" "}
+                  {viewportBounds ? "listings in this area" : "Listings Found"}
+                </p>
+                {viewportBounds && (
+                  <button
+                    onClick={() => setViewportBounds(null)}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium"
+                  >
+                    Show all
+                  </button>
+                )}
               </div>
-            )}
-          </>
-        )}
+
+              {visibleListings.length === 0 ? (
+                emptyState
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
+                  {visibleListings.map((listing) => (
+                    <ListingCard
+                      key={listing._id}
+                      listing={listing}
+                      session={session}
+                      onCardClick={() => {
+                        setExpandedListing(listing);
+                        setSelectedListing(listing);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Desktop map ── */}

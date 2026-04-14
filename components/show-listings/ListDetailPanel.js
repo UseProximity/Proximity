@@ -13,17 +13,16 @@ export default function ListDetailPanel({ listing, session, onBack }) {
     );
 
   return (
-    <div className="relative">
-      {/* Sticky overlay — h-0 so it takes no space in document flow */}
-      <div className="sticky top-0 z-50 h-0 overflow-visible pointer-events-none">
-        {/* Back button — left */}
+    <div>
+      {/* Sticky top banner */}
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4 py-3">
         <button
           onClick={onBack}
           aria-label="Back to listings"
-          className="pointer-events-auto absolute top-3 left-3 flex items-center justify-center w-9 h-9 rounded-full bg-white border border-gray-200 text-gray-600 hover:text-gray-900 hover:shadow-lg transition-shadow duration-150"
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors duration-150"
         >
           <svg
-            className="w-4 h-4"
+            className="w-4 h-4 flex-shrink-0"
             fill="none"
             stroke="currentColor"
             strokeWidth={2.5}
@@ -31,9 +30,10 @@ export default function ListDetailPanel({ listing, session, onBack }) {
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
+          <span className="text-sm font-semibold">Back to listings</span>
         </button>
-        {/* Heart button — right */}
-        <div className="pointer-events-auto absolute top-3 right-3 flex items-center justify-center w-11 h-11 rounded-full bg-white border border-gray-200 shadow hover:shadow-lg transition-shadow duration-150">
+        <div className="flex items-center gap-2 text-gray-600">
+          <span className="text-sm font-semibold">Save this listing</span>
           <HeartIcon
             session={session}
             listingId={listing._id}

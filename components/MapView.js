@@ -230,6 +230,10 @@ export default function MapView({
   const mapRef = useRef(null);
   const preSelectZoomRef = useRef(null);
   const listingsRef = useRef(listings);
+  // Set synchronously at the top of the panelExpanded effect so the
+  // selectedListingId effect (which runs after, in definition order) can
+  // read it and skip its own flyTo.
+  const panelIsTransitioningRef = useRef(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showExplore, setShowExplore] = useState(false);
   const [showBrowseButton, setShowBrowseButton] = useState(false);
@@ -842,12 +846,16 @@ export default function MapView({
   // Keep listingsRef current so the selectedListingId effect can find coordinates
   useEffect(() => { listingsRef.current = listings; }, [listings]);
 
-  // When the panel expands/collapses: resize the map canvas every RAF frame so it
-  // smoothly follows the CSS width transition, then ease-pan to keep the selected
-  // pin centered in the new viewport.
+  // When the panel expands/collapses: resize the map canvas on every RAF frame so
+  // it smoothly follows the CSS width transition.
+  // Sets panelIsTransitioningRef = true SYNCHRONOUSLY before any RAF so the
+  // selectedListingId effect (defined below, runs after this one) sees it and
+  // skips its own flyTo. We own the flyTo here, fired once the resize is done.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    panelIsTransitioningRef.current = true;
 
     const TRANSITION_MS = 300;
     const start = performance.now();
@@ -858,15 +866,20 @@ export default function MapView({
       if (now - start < TRANSITION_MS + 16) {
         rafId = requestAnimationFrame(tick);
       } else {
-        // Transition finished — smooth pan to re-center selected listing
-        if (selectedListingId) {
+        // Transition finished — map is at its final dimensions.
+        panelIsTransitioningRef.current = false;
+        // If the panel just expanded with a listing active, fly to it now.
+        if (panelExpanded && selectedListingId) {
           const listing = listingsRef.current.find(
             (l) => String(l._id) === String(selectedListingId)
           );
           if (listing?.longitude && listing?.latitude) {
-            map.easeTo({
+            map.resize(); // one final sync before calculating offset
+            map.flyTo({
               center: [listing.longitude, listing.latitude],
-              duration: 350,
+              zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+              offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
+              duration: 700,
               essential: true,
             });
           }
@@ -875,10 +888,15 @@ export default function MapView({
     }
 
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+      panelIsTransitioningRef.current = false;
+    };
   }, [panelExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync active marker icon + fly to listing when selectedListingId changes
+  // Sync active marker icon + fly to listing when selectedListingId changes.
+  // Skips flyTo when the panel is mid-transition — the panelExpanded effect
+  // above will fire it once the map has settled at its final size.
   useEffect(() => {
     if (!isActive || heroMode) return;
     const map = mapRef.current;
@@ -891,6 +909,10 @@ export default function MapView({
     });
 
     if (selectedListingId) {
+      // panelExpanded effect set this flag synchronously before we ran —
+      // hand off camera control to it so flyTo uses final map dimensions.
+      if (panelIsTransitioningRef.current) return;
+
       const listing = listingsRef.current.find(
         (l) => String(l._id) === String(selectedListingId)
       );

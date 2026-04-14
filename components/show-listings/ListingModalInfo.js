@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -98,18 +99,6 @@ function LeaseStatCell({ leaseAvailability }) {
   );
 }
 
-const AmenitiesMap = {
-  in_unit_laundry: "In-Unit Laundry",
-  ac_heating: "AC/Heating",
-  mailroom: "Mailroom",
-  pets_allowed: "Pets Allowed",
-  extra_storage: "Extra Storage",
-  fireplace: "Fireplace",
-  private_parking: "Private Parking",
-  pool: "Pool",
-  study_room: "Study Room",
-  dishwasher: "Dishwasher",
-};
 
 const TABS = [
   { id: "amenities", label: "Overview" },
@@ -1141,11 +1130,12 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   return (
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
-        <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
           {/* ── Photo Grid ── */}
           <div className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${compact ? "md:h-[300px]" : "md:h-[520px]"}`}>
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
-            <div
+            <motion.div
+              layoutId={compact ? `listing-hero-${listing._id}` : undefined}
               className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
@@ -1163,10 +1153,15 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   No photos available
                 </div>
               )}
-            </div>
+            </motion.div>
 
             {/* Two stacked thumbnails — fill remaining width, desktop only */}
-            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
+            <motion.div
+              className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
+              initial={compact ? { opacity: 0, x: -28 } : false}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
+            >
               {/* Top thumbnail */}
               <div
                 className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
@@ -1201,7 +1196,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   <div className="w-full h-full bg-gray-300" />
                 )}
               </div>
-            </div>
+            </motion.div>
 
             {/* Always-visible "See all photos" button */}
             {images.length > 0 && (
@@ -1213,6 +1208,12 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
               </button>
             )}
           </div>
+
+          <motion.div
+            initial={compact ? { opacity: 0, y: 22 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
+          >
 
           {/* ── Header Info ── */}
           {listing.unavailable && (
@@ -1309,7 +1310,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           {/* ── Sticky Tab Bar ── */}
           <div
             id="listing-tabs"
-            className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4"
+            className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${compact ? "top-[52px]" : "top-0"}`}
           >
             <nav className="flex justify-center">
               {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
@@ -1384,6 +1385,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
               />
             )}
           </div>
+          </motion.div>
         </div>
       </div>
 
