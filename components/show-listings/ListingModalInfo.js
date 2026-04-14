@@ -255,12 +255,16 @@ function toTitleCase(str) {
 }
 
 function AmenitiesTab({ listing }) {
-  const amenities = (listing.amenities || [])
-    .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()] || toTitleCase(a || ""))
-    .filter(Boolean);
-  const utilities = (listing.utilitiesIncluded || [])
-    .map((u) => UTILITY_LABELS[u] || toTitleCase(u || ""))
-    .filter(Boolean);
+  const amenities = [...new Set(
+    (listing.amenities || [])
+      .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()])
+      .filter(Boolean)
+  )];
+  const utilities = [...new Set(
+    (listing.utilitiesIncluded || [])
+      .map((u) => UTILITY_LABELS[u] || UTILITY_LABELS[u?.toLowerCase()])
+      .filter(Boolean)
+  )];
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
