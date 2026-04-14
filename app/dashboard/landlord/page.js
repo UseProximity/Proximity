@@ -495,13 +495,46 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     setAddressDropdownOpen(false);
   };
 
-  const handleImageFiles = (files) => {
+  const compressImage = (file) =>
+    new Promise((resolve) => {
+      // Skip files already under 1 MB
+      if (file.size < 1 * 1024 * 1024) { resolve(file); return; }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1920;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          const ratio = Math.min(MAX / width, MAX / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob || blob.size >= file.size) { resolve(file); return; }
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+          },
+          "image/jpeg",
+          0.85
+        );
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+
+  const handleImageFiles = async (files) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (!imgs.length) return;
-    setStagedFiles((prev) => [...prev, ...imgs]);
+    const compressed = await Promise.all(imgs.map(compressImage));
+    setStagedFiles((prev) => [...prev, ...compressed]);
     setStagedPreviews((prev) => [
       ...prev,
-      ...imgs.map((f) => URL.createObjectURL(f)),
+      ...compressed.map((f) => URL.createObjectURL(f)),
     ]);
   };
 
@@ -598,26 +631,62 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Something went wrong."); return; }
 
-      // Upload staged images — the /api/upload PATCH derives the folder from the
-      // listing address automatically and appends the URLs to the DB row.
+      // Upload staged images via presigned URLs so files go directly from the
+      // browser to R2, bypassing Vercel's 4.5 MB serverless body limit.
       if (stagedFiles.length > 0) {
         const listingId = isEdit
           ? (listing._id || listing.id)
           : data.listing?.id;
         if (listingId) {
-          const fd = new FormData();
-          fd.append("listingId", listingId);
-          stagedFiles.forEach((f) => fd.append("files", f));
-          const uploadRes = await fetch("/api/upload", {
-            method: "PATCH",
-            body: fd,
+          // Step 1: get presigned PUT URLs for each file
+          const presignRes = await fetch("/api/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              listingId,
+              files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
+            }),
           });
-          if (!uploadRes.ok) {
-            const uploadData = await uploadRes.json().catch(() => ({}));
-            // Surface upload errors but don't block the success callback —
-            // the listing was created successfully; images can be retried.
-            console.error("[upload] image upload failed:", uploadData.error);
-            setError(`Listing saved, but images failed to upload: ${uploadData.error || "unknown error"}`);
+          if (!presignRes.ok) {
+            const presignData = await presignRes.json().catch(() => ({}));
+            console.error("[upload] failed to get presigned URLs:", presignData.error);
+            setError(`Listing saved, but images failed to upload: ${presignData.error || `server error ${presignRes.status}`}`);
+            setSubmitting(false);
+            return;
+          }
+          const { presigned } = await presignRes.json();
+
+          // Step 2: upload each file directly to R2
+          const uploadResults = await Promise.allSettled(
+            stagedFiles.map((file, i) =>
+              fetch(presigned[i].uploadUrl, {
+                method: "PUT",
+                body: file,
+                headers: { "Content-Type": file.type },
+              })
+            )
+          );
+          const failedUploads = uploadResults.filter((r) => r.status === "rejected" || !r.value?.ok);
+          if (failedUploads.length > 0) {
+            console.error("[upload] some files failed to upload to R2:", failedUploads);
+            setError(`Listing saved, but ${failedUploads.length} image(s) failed to upload. Please try re-uploading them.`);
+            setSubmitting(false);
+            return;
+          }
+
+          // Step 3: record the confirmed public URLs on the listing
+          const confirmRes = await fetch("/api/upload", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              listingId,
+              urls: presigned.map((p) => p.publicUrl),
+            }),
+          });
+          if (!confirmRes.ok) {
+            const confirmData = await confirmRes.json().catch(() => ({}));
+            console.error("[upload] failed to confirm image URLs:", confirmData.error);
+            setError(`Listing saved, but images were uploaded and could not be saved: ${confirmData.error || `server error ${confirmRes.status}`}`);
             setSubmitting(false);
             return;
           }
@@ -1056,7 +1125,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                 Drop photos here or tap to browse
               </span>
               <span className="text-xs text-gray-400 mt-0.5">
-                JPG, PNG, WebP — any size
+                JPG, PNG, WebP — auto-compressed if large
               </span>
             </label>
           </div>

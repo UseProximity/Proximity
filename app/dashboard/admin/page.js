@@ -276,6 +276,79 @@ function UserSearchMultiDropdown({ users, value, onChange, changed }) {
   );
 }
 
+// ─── FkSearchDropdown ─────────────────────────────────────────────────────────
+// Searchable dropdown for selecting a foreign-key reference by label.
+// options: { id: string, label: string }[]
+
+function FkSearchDropdown({ options, value, onChange, changed }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const selectedOption = options.find((o) => o.id === value);
+  const lq = query.trim().toLowerCase();
+  const filtered = lq
+    ? options.filter((o) => o.label.toLowerCase().includes(lq) || o.id.toLowerCase().includes(lq))
+    : options;
+
+  const borderClass = changed
+    ? "border-amber-400 bg-amber-50"
+    : "border-gray-300 hover:border-gray-400 focus:border-blue-400";
+
+  return (
+    <div ref={ref} className="relative min-w-[180px]">
+      <input
+        type="text"
+        placeholder={selectedOption ? selectedOption.label : "Search…"}
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        className={`w-full px-2 py-0.5 rounded text-xs border focus:outline-none ${borderClass}`}
+      />
+      {selectedOption && !query && (
+        <div className="mt-0.5 px-2 flex items-center gap-1.5 text-xs text-gray-500">
+          <span className="font-mono text-gray-400 text-[10px]">{value.slice(0, 8)}…</span>
+        </div>
+      )}
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-0.5 w-72 max-h-56 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg">
+          <button
+            type="button"
+            onMouseDown={() => { onChange(null); setQuery(""); setOpen(false); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 italic"
+          >
+            — clear —
+          </button>
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400 italic">No results</div>
+          ) : (
+            filtered.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onMouseDown={() => { onChange(o.id); setQuery(""); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2 ${o.id === value ? "bg-blue-50 font-semibold" : ""}`}
+              >
+                <span className="flex-1 text-gray-800 truncate">{o.label}</span>
+                <span className="font-mono text-gray-400 text-[10px] shrink-0">{o.id.slice(0, 8)}…</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 // type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum" | "user-search" | "user-search-multi"
 // enum fields also carry an `options` array of allowed values
@@ -340,21 +413,21 @@ const SCHEMAS = {
   ],
   listing_units: [
     { key: "id",                  label: "ID",                 type: "id"       },
-    { key: "listing_id",          label: "Listing ID",         type: "text",    required: true  },
-    { key: "bedrooms",            label: "Bedrooms",           type: "number",  required: true  },
-    { key: "bathrooms",           label: "Bathrooms",          type: "number",  required: true  },
-    { key: "rent",                label: "Rent ($)",           type: "number"   },
-    { key: "area",                label: "Area (sqft)",        type: "number"   },
+    { key: "listing_id",          label: "Listing",            type: "fk-search", refTable: "listings", required: true  },
+    { key: "bedrooms",            label: "Bedrooms",           type: "number",  required: true,  min: 0, max: 20, step: 1 },
+    { key: "bathrooms",           label: "Bathrooms",          type: "number",  required: true,  min: 0, max: 10, step: 0.5 },
+    { key: "rent",                label: "Rent ($)",           type: "number",  min: 0 },
+    { key: "area",                label: "Area (sqft)",        type: "number",  min: 0 },
     { key: "lease_availability",  label: "Lease Availability", type: "enum",    options: ["semester","10-month","12-month","summer"] },
     { key: "created_at",          label: "Created",            type: "readonly" },
     { key: "updated_at",          label: "Updated",            type: "readonly" },
   ],
   reviews: [
     { key: "id",                   label: "ID",            type: "id"       },
-    { key: "user_id",              label: "Reviewer ID",   type: "text"     },
+    { key: "user_id",              label: "Reviewer",      type: "fk-search", refTable: "users" },
     { key: "name",                 label: "Name",          type: "text"     },
-    { key: "listing_id",           label: "Listing ID",    type: "text",    required: true  },
-    { key: "rating",               label: "Rating",        type: "number",  required: true, min: 1, max: 5  },
+    { key: "listing_id",           label: "Listing",       type: "fk-search", refTable: "listings", required: true  },
+    { key: "rating",               label: "Rating",        type: "number",  required: true,  min: 1, max: 5  },
     { key: "comment",              label: "Comment",       type: "text",    required: true  },
     { key: "legitimacy",           label: "Verified",      type: "boolean"  },
     { key: "communication_rating", label: "Communication", type: "number",  min: 1, max: 5  },
@@ -368,19 +441,19 @@ const SCHEMAS = {
     { key: "name",        label: "Name",        type: "text",    required: true  },
     { key: "description", label: "Description", type: "text"     },
     { key: "image",       label: "Image URL",   type: "text"     },
-    { key: "room_types",  label: "Room Types",  type: "json"     },
-    { key: "tags",        label: "Tags",        type: "json"     },
+    { key: "room_types",  label: "Room Types",  type: "multi-enum", options: ["Modern Single","Modern Double","Modern Triple","Traditional Single","Traditional Double","Traditional Triple","Apartment Style"] },
+    { key: "tags",        label: "Tags",        type: "multi-enum", options: ["Quiet Floor","Study Floor","Social Floor","Historic","New Building","Central Location","Apartment Style","Modern"] },
     { key: "created_at",  label: "Created",     type: "readonly" },
     { key: "updated_at",  label: "Updated",     type: "readonly" },
   ],
   dorm_reviews: [
     { key: "id",            label: "ID",          type: "id"       },
-    { key: "dorm_id",       label: "Dorm ID",     type: "text",    required: true  },
+    { key: "dorm_id",       label: "Dorm",        type: "fk-search", refTable: "dorms", required: true  },
     { key: "reviewer_name", label: "Author Name", type: "text",    required: true  },
-    { key: "class_year",    label: "Class Year",  type: "number",  required: true  },
-    { key: "rating",        label: "Rating",      type: "number",  required: true, min: 1, max: 5  },
-    { key: "dorm_type",     label: "Room Type",   type: "text"     },
-    { key: "tags",          label: "Tags",        type: "json"     },
+    { key: "class_year",    label: "Class Year",  type: "number",  required: true,  min: 2020, max: 2035, step: 1 },
+    { key: "rating",        label: "Rating",      type: "number",  required: true,  min: 1, max: 5  },
+    { key: "dorm_type",     label: "Room Type",   type: "enum",    required: true, options: ["Modern Single","Modern Double","Modern Triple","Traditional Single","Traditional Double","Traditional Triple","Apartment Style"] },
+    { key: "tags",          label: "Tags",        type: "multi-enum", options: ["Quiet Floor","Study Floor","Social Floor","Historic","New Building","Central Location","Apartment Style","Modern"] },
     { key: "content",       label: "Content",     type: "text",    required: true  },
     { key: "created_at",    label: "Created",     type: "readonly" },
     { key: "updated_at",    label: "Updated",     type: "readonly" },
@@ -389,7 +462,7 @@ const SCHEMAS = {
     { key: "id",         label: "ID",     type: "id"       },
     { key: "text",       label: "Text",   type: "text",    required: true  },
     { key: "author",     label: "Author", type: "text",    required: true  },
-    { key: "rating",     label: "Rating", type: "number",  required: true  },
+    { key: "rating",     label: "Rating", type: "number",  required: true,  min: 1, max: 5  },
     { key: "created_at", label: "Created",type: "readonly" },
     { key: "updated_at", label: "Updated",type: "readonly" },
   ],
@@ -529,7 +602,7 @@ function EnumDropdown({ options, current, changed, onChange }) {
         <div
           ref={dropdownRef}
           style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded shadow-lg"
+          className="bg-white border border-gray-200 rounded shadow-lg max-h-56 overflow-y-auto"
         >
           {options.map((opt) => (
             <button
@@ -629,7 +702,7 @@ function MultiEnumDropdown({ options, current, changed, onChange }) {
         <div
           ref={dropdownRef}
           style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 180, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded shadow-lg py-1"
+          className="bg-white border border-gray-200 rounded shadow-lg py-1 max-h-56 overflow-y-auto"
         >
           {options.map((opt) => {
             const checked = selected.includes(opt);
@@ -656,7 +729,7 @@ function MultiEnumDropdown({ options, current, changed, onChange }) {
   );
 }
 
-function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLabel = null }) {
+function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLabel = null, refMaps = {} }) {
   const { type } = fieldDef;
   const current = pendingValue !== undefined ? pendingValue : value;
   const changed = pendingValue !== undefined;
@@ -729,9 +802,9 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLab
         value={current == null ? "" : String(current)}
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
         className={`${baseText} min-w-[80px]`}
-        step="any"
-        {...(fieldDef.min != null ? { min: fieldDef.min } : {})}
-        {...(fieldDef.max != null ? { max: fieldDef.max } : {})}
+        step={fieldDef.step ?? "any"}
+        min={fieldDef.min ?? undefined}
+        max={fieldDef.max ?? undefined}
       />
     );
   }
@@ -794,6 +867,19 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLab
       >
         View all ({imgs.length})
       </button>
+    );
+  }
+
+  if (type === "fk-search") {
+    const map = refMaps[fieldDef.refTable] || {};
+    const options = Object.entries(map).map(([id, label]) => ({ id, label }));
+    return (
+      <FkSearchDropdown
+        options={options}
+        value={current == null ? "" : String(current)}
+        onChange={onChange}
+        changed={changed}
+      />
     );
   }
 
@@ -1686,6 +1772,20 @@ export default function AdminDashboard() {
         }
       }
 
+      // Validate required fields before hitting the DB
+      const tableSchema = SCHEMAS[activeTable] || [];
+      const missingRequired = tableSchema
+        .filter((f) => f.required && !["id", "readonly"].includes(f.type))
+        .filter((f) => {
+          const v = fields[f.key];
+          return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+        });
+      if (missingRequired.length > 0) {
+        setAddRowError(`Required fields missing: ${missingRequired.map((f) => f.label).join(", ")}`);
+        setAddRowSaving(false);
+        return;
+      }
+
       const res = await fetch(`/api/admin/${activeTable}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
@@ -2137,6 +2237,7 @@ export default function AdminDashboard() {
                                 onChange={(v) => handleCellChange(rowId, f.key, v)}
                                 users={allUsers}
                                 fkLabel={resolveFk(f.key, row[f.key])}
+                                refMaps={refMaps}
                               />
                             </CellWrapper>
                           </td>
@@ -2348,6 +2449,7 @@ export default function AdminDashboard() {
                               pendingValue={undefined}
                               onChange={(v) => setAddRowFields((prev) => ({ ...prev, [f.key]: v }))}
                               users={allUsers}
+                              refMaps={refMaps}
                             />
                           )}
                         </div>
