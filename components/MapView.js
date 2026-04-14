@@ -223,12 +223,17 @@ export default function MapView({
   isActive = true,
   heroMode = false,
   onBrowseArea = null,
+  panelExpanded = false,
 }) {
   const router = useRouter();
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const preSelectZoomRef = useRef(null);
   const listingsRef = useRef(listings);
+  // Set synchronously at the top of the panelExpanded effect so the
+  // selectedListingId effect (which runs after, in definition order) can
+  // read it and skip its own flyTo.
+  const panelIsTransitioningRef = useRef(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showExplore, setShowExplore] = useState(false);
   const [showBrowseButton, setShowBrowseButton] = useState(false);
@@ -545,6 +550,64 @@ export default function MapView({
     };
   }, [isActive, heroMode, showRouteToCampus, hideRoute]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Builds an inline-SVG pin element with a dynamically clipped star fill.
+  // rating: exact float (e.g. 3.7) or null for no-review pins
+  // isActive: true = lighter/brighter active color scheme
+  function buildPinSVGElement(rating, listingId, isActive) {
+    const el = document.createElement("div");
+    el.style.cssText = "width:35px;height:49px;";
+
+    const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
+    const hasRating = rating != null && rating > 0;
+
+    const PIN_PATH = "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
+    const STAR_PATH = "M17.0293 8.79004C17.1878 8.34883 17.8122 8.34883 17.9707 8.79004L20.4404 15.668C20.6507 16.2534 21.2013 16.6479 21.8232 16.6602L29.2773 16.8076C29.7553 16.817 29.9486 17.427 29.5635 17.71L23.6768 22.0293C23.1599 22.4086 22.9415 23.0747 23.1328 23.6865L25.2832 30.5664C25.4241 31.0173 24.9192 31.3935 24.5273 31.1299L18.3379 26.9619C17.8315 26.621 17.1685 26.621 16.6621 26.9619L10.4727 31.1299C10.0808 31.3935 9.57593 31.0173 9.7168 30.5664L11.8672 23.6865C12.0585 23.0747 11.8401 22.4086 11.3232 22.0293L5.43652 17.71C5.05135 17.427 5.24468 16.817 5.72266 16.8076L13.1768 16.6602C13.7987 16.6479 14.3493 16.2534 14.5596 15.668L17.0293 8.79004Z";
+
+    if (!hasRating) {
+      const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
+      const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
+      const circleFill = isActive ? "#FFA2A2" : "white";
+      el.innerHTML = `<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="pg_${safeId}" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
+            <stop stop-color="white"/>
+            <stop offset="0.18" stop-color="${pinBodyStop2}"${pinBodyOpacity}/>
+          </linearGradient>
+        </defs>
+        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
+        <circle cx="17.5" cy="20" r="5.5" fill="${circleFill}" opacity="0.9"/>
+      </svg>`;
+    } else {
+      // Star y-bounds: top≈8.34, bottom≈31.4, height≈23. Clip from bottom up for fractional fill.
+      const STAR_BOTTOM = 31.4;
+      const STAR_HEIGHT = 23.06;
+      const fillHeight = ((rating / 5) * STAR_HEIGHT).toFixed(2);
+      const clipY = (STAR_BOTTOM - parseFloat(fillHeight)).toFixed(2);
+
+      const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
+      const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
+      const starFill = isActive ? "#FFA2A2" : "#FFFFF6";
+      const starStroke = isActive ? "#FFA2A2" : "#FFFFF6";
+
+      el.innerHTML = `<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="pg_${safeId}" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
+            <stop stop-color="white"/>
+            <stop offset="0.18" stop-color="${pinBodyStop2}"${pinBodyOpacity}/>
+          </linearGradient>
+          <clipPath id="sc_${safeId}">
+            <rect x="4" y="${clipY}" width="27" height="${fillHeight}"/>
+          </clipPath>
+        </defs>
+        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
+        <path d="${STAR_PATH}" fill="${starFill}" clip-path="url(#sc_${safeId})"/>
+        <path d="${STAR_PATH}" fill="none" stroke="${starStroke}" stroke-width="0.75"/>
+      </svg>`;
+    }
+
+    return el;
+  }
+
   // Separate effect: update markers and layers without recreating/removing the map itself.
   useEffect(() => {
     if (!isActive) return;
@@ -563,27 +626,18 @@ export default function MapView({
     sortedListings.forEach((listing) => {
       if (!listing.longitude || !listing.latitude) return;
 
-      const hasReviews = (listing.rating || 0) > 0 || (listing.numReviews || 0) > 0;
-      const starRating = hasReviews ? Math.min(Math.max(Math.round(listing.rating || 3), 1), 5) : null;
-      const pinBase = hasReviews ? `map-${starRating}` : "map-generic";
-      const markerEl = document.createElement("div");
-      markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
-      const markerImg = document.createElement("img");
-      markerImg.src = `/assets/map-icons/${pinBase}.svg`;
-      markerImg.style.cssText = "width:100%;height:100%;";
-      markerEl.appendChild(markerImg);
-      const marker = new mapboxgl.Marker({ element: markerEl })
+      const exactRating = (listing.rating || 0) > 0 ? (listing.rating || 0) : null;
+      const markerEl = buildPinSVGElement(exactRating, listing._id, false);
+      markerEl.style.cursor = onListingSelect ? "pointer" : "default";
+      const marker = new mapboxgl.Marker({ element: markerEl, anchor: "bottom" })
         .setLngLat([listing.longitude, listing.latitude])
         .addTo(map);
       marker._listingId = listing._id;
-      marker._starRating = starRating;
-      marker._pinBase = pinBase;
+      marker._rating = exactRating;
       if (onListingSelect) {
         markerEl.addEventListener("click", () => {
           onListingSelect(listing);
         });
-      } else {
-        markerEl.style.cursor = "default";
       }
       map.markers.push(marker);
     });
@@ -792,20 +846,85 @@ export default function MapView({
   // Keep listingsRef current so the selectedListingId effect can find coordinates
   useEffect(() => { listingsRef.current = listings; }, [listings]);
 
-  // Sync active marker icon + fly to listing when selectedListingId changes
+  // When the panel expands/collapses: resize the map canvas on every RAF frame so
+  // it smoothly follows the CSS width transition.
+  // Sets panelIsTransitioningRef = true SYNCHRONOUSLY before any RAF so the
+  // selectedListingId effect (defined below, runs after this one) sees it and
+  // skips its own flyTo. We own the flyTo here, fired once the resize is done.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    panelIsTransitioningRef.current = true;
+
+    const TRANSITION_MS = 300;
+    const start = performance.now();
+    let rafId;
+
+    function tick(now) {
+      map.resize();
+      if (now - start < TRANSITION_MS + 16) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        // Transition finished — map is at its final dimensions.
+        panelIsTransitioningRef.current = false;
+        // If the panel just expanded with a listing active, fly to it now.
+        if (panelExpanded && selectedListingId) {
+          const listing = listingsRef.current.find(
+            (l) => String(l._id) === String(selectedListingId)
+          );
+          if (listing?.longitude && listing?.latitude) {
+            map.resize(); // one final sync before calculating offset
+            map.flyTo({
+              center: [listing.longitude, listing.latitude],
+              zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+              offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
+              duration: 700,
+              essential: true,
+            });
+          }
+        }
+      }
+    }
+
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafId);
+      panelIsTransitioningRef.current = false;
+    };
+  }, [panelExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync active marker icon + fly to listing when selectedListingId changes.
+  // Skips flyTo when the panel is mid-transition — the panelExpanded effect
+  // above will fire it once the map has settled at its final size.
   useEffect(() => {
     if (!isActive || heroMode) return;
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
-      const img = marker.getElement().querySelector("img");
-      if (!img) return;
-      img.src = marker._listingId === selectedListingId
-        ? `/assets/map-icons/${marker._pinBase}-a.svg`
-        : `/assets/map-icons/${marker._pinBase}.svg`;
+      const isActive = marker._listingId === selectedListingId;
+      const el = marker.getElement();
+      const newPin = buildPinSVGElement(marker._rating, marker._listingId, isActive);
+      el.innerHTML = newPin.innerHTML;
     });
+    // Re-establish correct south-on-top stacking, then pin selected last
+    const sorted = [...map.markers].sort((a, b) => b.getLngLat().lat - a.getLngLat().lat);
+    sorted.forEach((marker) => {
+      if (marker._listingId === selectedListingId) return;
+      const el = marker.getElement();
+      if (el?.parentNode) el.parentNode.appendChild(el);
+    });
+    if (selectedListingId) {
+      const activeMarker = map.markers.find((m) => m._listingId === selectedListingId);
+      const el = activeMarker?.getElement();
+      if (el?.parentNode) el.parentNode.appendChild(el);
+    }
 
     if (selectedListingId) {
+      // panelExpanded effect set this flag synchronously before we ran —
+      // hand off camera control to it so flyTo uses final map dimensions.
+      if (panelIsTransitioningRef.current) return;
+
       const listing = listingsRef.current.find(
         (l) => String(l._id) === String(selectedListingId)
       );

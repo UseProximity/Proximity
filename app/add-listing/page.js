@@ -63,6 +63,7 @@ export default function AddListing() {
     { value: "private_parking", label: "Private Parking" },
     { value: "pool", label: "Pool" },
     { value: "study_room", label: "Study Room" },
+    { value: "gym", label: "Gym / Fitness" },
   ];
 
   const furnishedOptions = [

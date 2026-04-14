@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -22,27 +23,100 @@ import {
   calcAge,
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
+import { trackEvent } from "@/utils/analytics";
+
+// Scroll `el` into view within its nearest scrollable ancestor only — never
+// touches window / document scroll so it works inside modals and panels.
+function scrollIntoContainer(el) {
+  if (!el) return;
+  let parent = el.parentElement;
+  while (parent && parent !== document.body) {
+    const cs = window.getComputedStyle(parent);
+    if (/auto|scroll/.test(cs.overflowY) && parent.scrollHeight > parent.clientHeight) {
+      const elTop = el.getBoundingClientRect().top;
+      const parentTop = parent.getBoundingClientRect().top;
+      parent.scrollBy({ top: elTop - parentTop, behavior: "smooth" });
+      return;
+    }
+    parent = parent.parentElement;
+  }
+}
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
 const leaseAvailabilityMap = {
   "10_month": "10 Month",
   "12_month": "12 Month",
+  "10-month": "10 Month",
+  "12-month": "12 Month",
   semester: "Semester",
+  summer: "Summer",
 };
 
-const AmenitiesMap = {
-  in_unit_laundry: "In-Unit Laundry",
-  ac_heating: "AC/Heating",
-  mailroom: "Mailroom",
-  pets_allowed: "Pets Allowed",
-  extra_storage: "Extra Storage",
-  fireplace: "Fireplace",
-  private_parking: "Private Parking",
-  pool: "Pool",
-  study_room: "Study Room",
-  dishwasher: "Dishwasher",
-};
+function formatLeaseAvailability(val) {
+  if (!val) return "—";
+  const arr = Array.isArray(val) ? val : [val];
+  if (arr.length === 0) return "—";
+  return arr.map((v) => leaseAvailabilityMap[v] || v).join(" · ");
+}
+
+function LeaseStatCell({ leaseAvailability }) {
+  const [open, setOpen] = useState(false);
+  const arr = Array.isArray(leaseAvailability)
+    ? leaseAvailability.filter(Boolean)
+    : leaseAvailability ? [leaseAvailability] : [];
+  const labels = arr.map((v) => leaseAvailabilityMap[v] || v);
+
+  if (labels.length === 0) {
+    return (
+      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
+        <div className="text-sm sm:text-lg font-semibold text-gray-900">—</div>
+        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+      </div>
+    );
+  }
+
+  if (labels.length === 1) {
+    return (
+      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
+        <div className="text-sm sm:text-lg font-semibold text-gray-900">{labels[0]}</div>
+        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex flex-col items-center gap-0.5 group"
+      >
+        <span className="text-sm sm:text-lg font-semibold text-gray-900 leading-tight">
+          {labels[0]}
+        </span>
+        <span className="text-[11px] font-medium text-red-500 group-hover:text-red-600 transition-colors">
+          +{labels.length - 1} more
+        </span>
+      </button>
+      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-md py-1.5 min-w-[120px] text-center">
+            {labels.map((l) => (
+              <div key={l} className="text-xs text-gray-700 px-3 py-1">
+                {l}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 
 const TABS = [
   { id: "amenities", label: "Overview" },
@@ -182,12 +256,16 @@ function toTitleCase(str) {
 }
 
 function AmenitiesTab({ listing }) {
-  const amenities = (listing.amenities || [])
-    .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()] || toTitleCase(a || ""))
-    .filter(Boolean);
-  const utilities = (listing.utilitiesIncluded || [])
-    .map((u) => UTILITY_LABELS[u] || toTitleCase(u || ""))
-    .filter(Boolean);
+  const amenities = [...new Set(
+    (listing.amenities || [])
+      .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()])
+      .filter(Boolean)
+  )];
+  const utilities = [...new Set(
+    (listing.utilitiesIncluded || [])
+      .map((u) => UTILITY_LABELS[u] || UTILITY_LABELS[u?.toLowerCase()])
+      .filter(Boolean)
+  )];
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
@@ -562,41 +640,50 @@ function ReviewsTab({
 
       {/* Leave a Review form */}
       <div className="border-t border-gray-100 pt-6 mt-4">
-        <h3 className="text-base font-semibold text-gray-900 mb-4">
-          Leave a Review
-        </h3>
-        <form onSubmit={handleReviewSubmit} className="space-y-4">
-          <StarRow label="Overall" value={rating} onChange={setRating} />
-          <StarRow
-            label="Communication"
-            value={commRating}
-            onChange={setCommRating}
-          />
-          <StarRow label="Location" value={locRating} onChange={setLocRating} />
-          <StarRow label="Value" value={valRating} onChange={setValRating} />
-          <textarea
-            value={reviewText}
-            onChange={(e) => setReviewText(e.target.value)}
-            placeholder="Leave a review..."
-            rows={4}
-            maxLength={1000}
-            className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
-          />
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={
-                reviewLoading ||
-                !reviewText.trim() ||
-                reviewText.trim().length < 5 ||
-                rating === 0
-              }
-              className="bg-red-600 text-white text-sm font-medium px-6 py-2 rounded-full shadow hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {reviewLoading ? "Posting..." : "Post"}
-            </button>
+        {session?.user?.email?.endsWith("@wustl.edu") ? (
+          <>
+            <h3 className="text-base font-semibold text-gray-900 mb-4">
+              Leave a Review
+            </h3>
+            <form onSubmit={handleReviewSubmit} className="space-y-4">
+              <StarRow label="Overall" value={rating} onChange={setRating} />
+              <StarRow
+                label="Communication"
+                value={commRating}
+                onChange={setCommRating}
+              />
+              <StarRow label="Location" value={locRating} onChange={setLocRating} />
+              <StarRow label="Value" value={valRating} onChange={setValRating} />
+              <textarea
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                placeholder="Leave a review..."
+                rows={4}
+                maxLength={1000}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={
+                    reviewLoading ||
+                    !reviewText.trim() ||
+                    reviewText.trim().length < 5 ||
+                    rating === 0
+                  }
+                  className="bg-red-600 text-white text-sm font-medium px-6 py-2 rounded-full shadow hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {reviewLoading ? "Posting..." : "Post"}
+                </button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+            Reviews are only open to verified WashU students. Please sign in with your{" "}
+            <span className="font-semibold">@wustl.edu</span> Google account.
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -816,7 +903,7 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function ListingModalInfo({ session, listing }) {
+export default function ListingModalInfo({ session, listing, excludeTabs = [], compact = false }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryLoadedSrcs, setGalleryLoadedSrcs] = useState([]);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -826,6 +913,14 @@ export default function ListingModalInfo({ session, listing }) {
   useEffect(() => {
     if (!isGalleryOpen) setGalleryLoadedSrcs([]);
   }, [isGalleryOpen]);
+
+  // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
+  useEffect(() => {
+    if (!isGalleryOpen) return;
+    const handler = (e) => { if (e.key === "Escape" && !lightboxSrc) setIsGalleryOpen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isGalleryOpen, lightboxSrc]);
 
   // Esc closes lightbox
   useEffect(() => {
@@ -871,16 +966,36 @@ export default function ListingModalInfo({ session, listing }) {
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSent, setContactSent] = useState(false);
 
+  // Hero image loading state
+  const [heroImageLoaded, setHeroImageLoaded] = useState(false);
+  const heroImgWrapperRef = useRef(null);
+  useEffect(() => {
+    if (!heroImgWrapperRef.current) return;
+    const img = heroImgWrapperRef.current.querySelector("img");
+    if (img?.complete && img.naturalWidth > 0) setHeroImageLoaded(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Unit selector — sorted ascending by beds, then baths, then disambiguation index
   const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
 
   // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
   // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
+  // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
   const sortedUnits = useMemo(() => {
     const units = listing.unitTypes ?? [];
     const isStudio = (u) => (u.bedrooms ?? 0) === 0;
+
+    // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
+    const seen = new Set();
+    const deduped = units.filter((u) => {
+      const key = `${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${u.rent ?? ""}|${u.area ?? ""}|${u.leaseType ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     // Build base labels in original order for stable disambiguation numbering
-    const baseLabelOf = units.map((u) => {
+    const baseLabelOf = deduped.map((u) => {
       if (isStudio(u)) return "Studio";
       const beds = u.bedrooms != null ? `${u.bedrooms} Bed` : "? Bed";
       const baths = u.bathrooms != null ? `${u.bathrooms} Bath` : "? Bath";
@@ -896,7 +1011,7 @@ export default function ListingModalInfo({ session, listing }) {
       }
       return { base: lbl, num: 0, label: lbl };
     });
-    return units
+    return deduped
       .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
       .sort((a, b) => {
         const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
@@ -1039,6 +1154,7 @@ export default function ListingModalInfo({ session, listing }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
         });
+        setTimeout(() => trackEvent("contact_submit", { listingId: listing._id, address: listing.address }), 0);
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
@@ -1052,54 +1168,70 @@ export default function ListingModalInfo({ session, listing }) {
 
   return (
     <>
-      <div className="bg-gray-50 min-h-screen">
-        <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
+        <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
           {/* ── Photo Grid ── */}
-          <div className="relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden md:h-[520px]">
+          <div className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${compact ? "md:h-[300px]" : "md:h-[520px]"}`}>
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
+              ref={heroImgWrapperRef}
               className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
-                <Image
-                  src={coverImage}
-                  alt={listing.address}
-                  fill
-                  priority
-                  sizes="(max-width: 768px) 100vw, 65vw"
-                  className="object-cover"
-                />
+                <>
+                  {!heroImageLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600" />
+                    </div>
+                  )}
+                  <Image
+                    src={coverImage}
+                    alt={listing.address}
+                    fill
+                    priority
+                    sizes="(max-width: 768px) 100vw, 65vw"
+                    className="object-cover"
+                    onLoad={() => setHeroImageLoaded(true)}
+                  />
+                </>
               ) : (
                 <div className="w-full aspect-[4/3] md:aspect-auto md:h-full md:w-[400px] bg-gray-200 flex items-center justify-center text-gray-400 text-sm">
                   No photos available
                 </div>
               )}
-              {/* HeartIcon */}
-              <div
-                className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <HeartIcon
-                  session={session}
-                  listingId={listing._id}
-                  initial={
-                    Boolean(session?.user) &&
-                    Boolean(
-                      session?.user?.favorites?.some(
-                        (f) => String((f && f._id) || f) === String(listing._id)
-                      ) ||
-                        session?.user?.favoritesIds?.includes(
-                          String(listing._id)
-                        )
-                    )
-                  }
-                />
-              </div>
+              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
+              {!compact && (
+                <div
+                  className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <HeartIcon
+                    session={session}
+                    listingId={listing._id}
+                    initial={
+                      Boolean(session?.user) &&
+                      Boolean(
+                        session?.user?.favorites?.some(
+                          (f) => String((f && f._id) || f) === String(listing._id)
+                        ) ||
+                          session?.user?.favoritesIds?.includes(
+                            String(listing._id)
+                          )
+                      )
+                    }
+                  />
+                </div>
+              )}
             </div>
 
             {/* Two stacked thumbnails — fill remaining width, desktop only */}
-            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
+            <motion.div
+              className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
+              initial={compact ? { opacity: 0 } : false}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
+            >
               {/* Top thumbnail */}
               <div
                 className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
@@ -1134,7 +1266,7 @@ export default function ListingModalInfo({ session, listing }) {
                   <div className="w-full h-full bg-gray-300" />
                 )}
               </div>
-            </div>
+            </motion.div>
 
             {/* Always-visible "See all photos" button */}
             {images.length > 0 && (
@@ -1146,6 +1278,12 @@ export default function ListingModalInfo({ session, listing }) {
               </button>
             )}
           </div>
+
+          <motion.div
+            initial={compact ? { opacity: 0 } : false}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
+          >
 
           {/* ── Header Info ── */}
           {listing.unavailable && (
@@ -1164,9 +1302,7 @@ export default function ListingModalInfo({ session, listing }) {
             <button
               onClick={() => {
                 setActiveTab("contact");
-                document
-                  .getElementById("listing-tabs")
-                  ?.scrollIntoView({ behavior: "smooth" });
+                scrollIntoContainer(document.getElementById("listing-tabs"));
               }}
               className={`shrink-0 text-sm font-semibold px-4 py-2 rounded-lg transition ${
                 listing.unavailable
@@ -1232,13 +1368,7 @@ export default function ListingModalInfo({ session, listing }) {
               label="Sq Ft"
               value={selectedUnit ? (selectedUnit.area ? selectedUnit.area.toLocaleString() : "—") : getAreaRangeLabel(listing.unitTypes)}
             />
-            <StatCell
-              label="Lease"
-              value={
-                leaseAvailabilityMap[listing.leaseAvailability] ||
-                listing.leaseAvailability
-              }
-            />
+            <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
             <StatCell
               label="Rating"
               value={overallAvg ? `★ ${overallAvg}` : "—"}
@@ -1248,10 +1378,10 @@ export default function ListingModalInfo({ session, listing }) {
           {/* ── Sticky Tab Bar ── */}
           <div
             id="listing-tabs"
-            className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 px-4"
+            className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${compact ? "top-[52px]" : "top-0 px-4"}`}
           >
-            <nav className="flex overflow-x-auto max-w-7xl mx-auto">
-              {TABS.map((tab) => (
+            <nav className={`flex ${compact ? "justify-center" : "overflow-x-auto max-w-7xl mx-auto"}`}>
+              {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -1323,6 +1453,7 @@ export default function ListingModalInfo({ session, listing }) {
               />
             )}
           </div>
+          </motion.div>
         </div>
       </div>
 

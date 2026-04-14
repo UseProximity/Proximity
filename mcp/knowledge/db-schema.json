@@ -1,0 +1,699 @@
+{
+  "_description": "Database schema. Primary DB is Supabase (PostgreSQL). Mongoose models are legacy (MongoDB) and in migration.",
+  "_generated": "2026-04-14T19:03:14.511Z",
+  "supabase": {
+    "note": "Use libs/supabase.js (default export) for standard server-side queries. Use getSupabaseClient('prod'|'dev') to target a specific env.",
+    "tables": [
+      {
+        "table": "users",
+        "description": "Platform users — all roles stored here",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "note": "primary key"
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "note": "unique, from Google OAuth"
+          },
+          {
+            "name": "name",
+            "type": "text"
+          },
+          {
+            "name": "image",
+            "type": "text",
+            "note": "profile photo URL"
+          },
+          {
+            "name": "role",
+            "type": "text",
+            "note": "'student' | 'landlord' | 'super'"
+          },
+          {
+            "name": "profile_complete",
+            "type": "boolean",
+            "note": "gates dashboard access"
+          },
+          {
+            "name": "gender",
+            "type": "text"
+          },
+          {
+            "name": "phone",
+            "type": "text"
+          },
+          {
+            "name": "description",
+            "type": "text"
+          },
+          {
+            "name": "referral_source",
+            "type": "text"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamptz"
+          }
+        ]
+      },
+      {
+        "table": "listings",
+        "description": "Rental property listings — core entity",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "note": "primary key"
+          },
+          {
+            "name": "landlord_id",
+            "type": "uuid[]",
+            "note": "array — supports co-landlords"
+          },
+          {
+            "name": "title",
+            "type": "text",
+            "note": "nullable"
+          },
+          {
+            "name": "address",
+            "type": "text"
+          },
+          {
+            "name": "longitude",
+            "type": "numeric"
+          },
+          {
+            "name": "latitude",
+            "type": "numeric"
+          },
+          {
+            "name": "description",
+            "type": "text"
+          },
+          {
+            "name": "lease_type",
+            "type": "text",
+            "note": "e.g. 'standard'"
+          },
+          {
+            "name": "images",
+            "type": "text[]"
+          },
+          {
+            "name": "place_walk_minutes",
+            "type": "jsonb",
+            "note": "{ placeName: minutes } map"
+          },
+          {
+            "name": "shuttle_walk_minutes",
+            "type": "numeric"
+          },
+          {
+            "name": "contact_email",
+            "type": "text"
+          },
+          {
+            "name": "contact_phone",
+            "type": "text"
+          },
+          {
+            "name": "contact_name",
+            "type": "text"
+          },
+          {
+            "name": "lease_availability",
+            "type": "text[]",
+            "note": "'semester' | '10-month' | '12-month'"
+          },
+          {
+            "name": "lease_structure",
+            "type": "text",
+            "note": "'individual' | 'joint'"
+          },
+          {
+            "name": "home_type",
+            "type": "text",
+            "note": "'apartment' | 'house' | 'condo' | 'townhouse'"
+          },
+          {
+            "name": "furnished",
+            "type": "boolean"
+          },
+          {
+            "name": "move_in_date",
+            "type": "text"
+          },
+          {
+            "name": "utilities_included",
+            "type": "text[]",
+            "note": "water|sewer|trash|internet|electric|gas|hotWater|yardCare"
+          },
+          {
+            "name": "sublease_friendly",
+            "type": "boolean"
+          },
+          {
+            "name": "unavailable",
+            "type": "boolean"
+          },
+          {
+            "name": "amenities",
+            "type": "text[]"
+          },
+          {
+            "name": "min_rent",
+            "type": "numeric",
+            "note": "computed by DB trigger from listing_units"
+          },
+          {
+            "name": "max_rent",
+            "type": "numeric",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "min_bedrooms",
+            "type": "int",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "max_bedrooms",
+            "type": "int",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "min_bathrooms",
+            "type": "numeric",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "max_bathrooms",
+            "type": "numeric",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "min_area",
+            "type": "numeric",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "max_area",
+            "type": "numeric",
+            "note": "computed by DB trigger"
+          },
+          {
+            "name": "num_reviews",
+            "type": "int",
+            "note": "computed"
+          },
+          {
+            "name": "rating",
+            "type": "numeric",
+            "note": "computed, 0–5"
+          },
+          {
+            "name": "num_clicks",
+            "type": "int"
+          },
+          {
+            "name": "num_saves",
+            "type": "int"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamptz"
+          }
+        ]
+      },
+      {
+        "table": "listing_units",
+        "description": "Individual unit types within a listing (bedrooms/bathrooms/rent variants)",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid"
+          },
+          {
+            "name": "listing_id",
+            "type": "uuid",
+            "note": "FK → listings.id"
+          },
+          {
+            "name": "bedrooms",
+            "type": "int"
+          },
+          {
+            "name": "bathrooms",
+            "type": "numeric"
+          },
+          {
+            "name": "rent",
+            "type": "numeric"
+          },
+          {
+            "name": "area",
+            "type": "numeric"
+          },
+          {
+            "name": "lease_availability",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "table": "reviews",
+        "description": "Listing reviews submitted by students",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid"
+          },
+          {
+            "name": "listing_id",
+            "type": "uuid",
+            "note": "FK → listings.id"
+          },
+          {
+            "name": "rating",
+            "type": "numeric",
+            "note": "1–5"
+          },
+          {
+            "name": "legitimacy",
+            "type": "boolean",
+            "note": "admin-verified flag; only legit reviews count toward rating"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamptz"
+          }
+        ]
+      },
+      {
+        "table": "dorms",
+        "description": "University dorm catalog",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid"
+          },
+          {
+            "name": "name",
+            "type": "text"
+          },
+          {
+            "name": "description",
+            "type": "text"
+          },
+          {
+            "name": "tags",
+            "type": "text[]"
+          }
+        ]
+      },
+      {
+        "table": "dorm_reviews",
+        "description": "Student reviews for dorms",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid"
+          },
+          {
+            "name": "dorm_id",
+            "type": "uuid",
+            "note": "FK → dorms.id"
+          },
+          {
+            "name": "rating",
+            "type": "numeric"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamptz"
+          }
+        ]
+      },
+      {
+        "table": "testimonials",
+        "description": "User testimonials shown on the landing page",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid"
+          },
+          {
+            "name": "content",
+            "type": "text"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamptz"
+          }
+        ]
+      }
+    ]
+  },
+  "mongoose": {
+    "note": "Legacy. Two connection files: libs/mongoose.js (Mongoose) and libs/mongo.js (raw MongoClient for NextAuth adapter). Being migrated to Supabase.",
+    "models": [
+      {
+        "model": "Dorm",
+        "file": "models/Dorm.js",
+        "status": "legacy-mongodb",
+        "fields": [
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "image",
+            "type": "String"
+          }
+        ]
+      },
+      {
+        "model": "DormReview",
+        "file": "models/DormReview.js",
+        "status": "legacy-mongodb",
+        "fields": [
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "classYear",
+            "type": "Number"
+          },
+          {
+            "name": "rating",
+            "type": "Number"
+          },
+          {
+            "name": "dorm",
+            "type": "String"
+          },
+          {
+            "name": "dormType",
+            "type": "String"
+          },
+          {
+            "name": "content",
+            "type": "String"
+          }
+        ]
+      },
+      {
+        "model": "Listing",
+        "file": "models/Listing.js",
+        "status": "legacy-mongodb",
+        "fields": [
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "rent",
+            "type": "Number"
+          },
+          {
+            "name": "area",
+            "type": "Number"
+          },
+          {
+            "name": "bedrooms",
+            "type": "Number"
+          },
+          {
+            "name": "bathrooms",
+            "type": "Number"
+          },
+          {
+            "name": "title",
+            "type": "String"
+          },
+          {
+            "name": "address",
+            "type": "String"
+          },
+          {
+            "name": "longitude",
+            "type": "Number"
+          },
+          {
+            "name": "latitude",
+            "type": "Number"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "unitTypes",
+            "type": "[unitTypeSchema]"
+          },
+          {
+            "name": "leaseType",
+            "type": "String"
+          },
+          {
+            "name": "numReviews",
+            "type": "Number"
+          },
+          {
+            "name": "rating",
+            "type": "Number"
+          },
+          {
+            "name": "placeWalkMinutes",
+            "type": "Map"
+          },
+          {
+            "name": "shuttleWalkMinutes",
+            "type": "Number"
+          },
+          {
+            "name": "contactEmail",
+            "type": "String"
+          },
+          {
+            "name": "contactPhone",
+            "type": "String"
+          },
+          {
+            "name": "contactName",
+            "type": "String"
+          },
+          {
+            "name": "leaseAvailability",
+            "type": "String"
+          },
+          {
+            "name": "leaseStructure",
+            "type": "String"
+          },
+          {
+            "name": "homeType",
+            "type": "String"
+          },
+          {
+            "name": "furnished",
+            "type": "Boolean"
+          },
+          {
+            "name": "moveInDate",
+            "type": "String"
+          },
+          {
+            "name": "utilitiesIncluded",
+            "type": "String"
+          },
+          {
+            "name": "subleaseFriendly",
+            "type": "Boolean"
+          },
+          {
+            "name": "unavailable",
+            "type": "Boolean"
+          },
+          {
+            "name": "minRent",
+            "type": "Number"
+          },
+          {
+            "name": "maxRent",
+            "type": "Number"
+          },
+          {
+            "name": "minBedrooms",
+            "type": "Number"
+          },
+          {
+            "name": "maxBedrooms",
+            "type": "Number"
+          },
+          {
+            "name": "minBathrooms",
+            "type": "Number"
+          },
+          {
+            "name": "maxBathrooms",
+            "type": "Number"
+          },
+          {
+            "name": "minArea",
+            "type": "Number"
+          },
+          {
+            "name": "maxArea",
+            "type": "Number"
+          },
+          {
+            "name": "numClicks",
+            "type": "Number"
+          },
+          {
+            "name": "numSaves",
+            "type": "Number"
+          },
+          {
+            "name": "owner",
+            "type": "ObjectId"
+          },
+          {
+            "name": "landlord",
+            "type": "ObjectId"
+          },
+          {
+            "name": "createdAt",
+            "type": "Date"
+          }
+        ]
+      },
+      {
+        "model": "Review",
+        "file": "models/Review.js",
+        "status": "legacy-mongodb",
+        "fields": [
+          {
+            "name": "reviewer",
+            "type": "ObjectId"
+          },
+          {
+            "name": "reviewedUser",
+            "type": "ObjectId"
+          },
+          {
+            "name": "listing",
+            "type": "ObjectId"
+          },
+          {
+            "name": "rating",
+            "type": "Number"
+          },
+          {
+            "name": "comment",
+            "type": "String"
+          },
+          {
+            "name": "legitimacy",
+            "type": "Boolean"
+          },
+          {
+            "name": "communicationRating",
+            "type": "Number"
+          },
+          {
+            "name": "locationRating",
+            "type": "Number"
+          },
+          {
+            "name": "valueRating",
+            "type": "Number"
+          }
+        ]
+      },
+      {
+        "model": "Testimonial",
+        "file": "models/Testimonial.js",
+        "status": "legacy-mongodb",
+        "fields": [
+          {
+            "name": "text",
+            "type": "String"
+          },
+          {
+            "name": "author",
+            "type": "String"
+          },
+          {
+            "name": "rating",
+            "type": "Number"
+          }
+        ]
+      },
+      {
+        "model": "User",
+        "file": "models/User.js",
+        "status": "legacy-mongodb",
+        "fields": [
+          {
+            "name": "birthday",
+            "type": "Date"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String"
+          },
+          {
+            "name": "gender",
+            "type": "String"
+          },
+          {
+            "name": "image",
+            "type": "String"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "numReviews",
+            "type": "Number"
+          },
+          {
+            "name": "phone",
+            "type": "String"
+          },
+          {
+            "name": "profileComplete",
+            "type": "Boolean"
+          },
+          {
+            "name": "rating",
+            "type": "Number"
+          },
+          {
+            "name": "referralSource",
+            "type": "String"
+          },
+          {
+            "name": "role",
+            "type": "String"
+          }
+        ]
+      }
+    ]
+  }
+}

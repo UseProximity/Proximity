@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
+import { trackEvent } from "@/utils/analytics";
 
 const INPUT_BASE =
   "w-full rounded-xl border bg-white px-4 py-3 text-[15px] text-gray-900 placeholder:text-gray-400 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100";
@@ -202,6 +203,8 @@ export default function ConciergeFormClient() {
       notes: "",
       referral_source: "",
       exit_feedback: "",
+      move_in_date_earliest: "",
+      move_in_date_latest: "",
     }),
     []
   );
@@ -325,6 +328,12 @@ export default function ConciergeFormClient() {
       area: form.area.includes("Other") ? form.area_other : form.area.join(", "),
       notes: form.notes,
       referral_source: form.referral_source,
+      move_in_date_earliest: form.move_in_date_earliest
+        ? form.move_in_date_earliest + "-01"
+        : null,
+      move_in_date_latest: form.move_in_date_latest
+        ? form.move_in_date_latest + "-01"
+        : null,
     };
 
     setSubmitting(true);
@@ -345,10 +354,12 @@ export default function ConciergeFormClient() {
         if (refreshData.response) setExistingResponse(refreshData.response);
         setMode("view");
         window.scrollTo({ top: 0, behavior: "smooth" });
+        trackEvent("matchmaking_submit", { action: "edit" });
       } else {
         setIsNewUser(data.isNewUser);
         setSubmitted(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
+        trackEvent("matchmaking_submit", { action: "new" });
       }
     } catch (err) {
       setSubmitError(true);
@@ -392,6 +403,12 @@ export default function ConciergeFormClient() {
       area_other: knownAreas.includes(r.area) ? "" : (r.area || ""),
       notes: r.notes || "",
       referral_source: r.referral_source || "",
+      move_in_date_earliest: r.move_in_date_earliest
+        ? r.move_in_date_earliest.slice(0, 7)
+        : "",
+      move_in_date_latest: r.move_in_date_latest
+        ? r.move_in_date_latest.slice(0, 7)
+        : "",
     });
     setErrors({});
     setMode("edit");
@@ -1253,6 +1270,113 @@ export default function ConciergeFormClient() {
                         placeholder="e.g. Dogtown, Maplewood, U City..."
                         className={INPUT_BASE}
                       />
+                    </div>
+                  </div>
+
+                  <Divider />
+
+                  {/* Move-in date range */}
+                  <div className="mb-7">
+                    <p className="block text-sm font-semibold text-gray-900">
+                      Move-in date range{" "}
+                      <span className="ml-1 text-[13px] font-normal text-gray-400">
+                        Optional
+                      </span>
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-4">
+                      {/* Earliest */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">
+                          Earliest move-in
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <select
+                              value={form.move_in_date_earliest ? form.move_in_date_earliest.split("-")[1] : ""}
+                              onChange={(e) => {
+                                const month = e.target.value;
+                                const year = form.move_in_date_earliest
+                                  ? form.move_in_date_earliest.split("-")[0]
+                                  : String(new Date().getFullYear());
+                                setField("move_in_date_earliest", month ? `${year}-${month}` : "");
+                              }}
+                              className={SELECT_BASE}
+                            >
+                              <option value="">Month</option>
+                              {[["01","Jan"],["02","Feb"],["03","Mar"],["04","Apr"],["05","May"],["06","Jun"],["07","Jul"],["08","Aug"],["09","Sep"],["10","Oct"],["11","Nov"],["12","Dec"]].map(([v,l]) => (
+                                <option key={v} value={v}>{l}</option>
+                              ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </div>
+                          </div>
+                          <div className="relative flex-1">
+                            <select
+                              value={form.move_in_date_earliest ? form.move_in_date_earliest.split("-")[0] : ""}
+                              onChange={(e) => {
+                                const year = e.target.value;
+                                const month = form.move_in_date_earliest ? form.move_in_date_earliest.split("-")[1] : "";
+                                setField("move_in_date_earliest", year && month ? `${year}-${month}` : "");
+                              }}
+                              className={SELECT_BASE}
+                            >
+                              <option value="">Year</option>
+                              {[0,1,2].map((o) => { const y = String(new Date().getFullYear()+o); return <option key={y} value={y}>{y}</option>; })}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Latest */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">
+                          Latest move-in
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <select
+                              value={form.move_in_date_latest ? form.move_in_date_latest.split("-")[1] : ""}
+                              onChange={(e) => {
+                                const month = e.target.value;
+                                const year = form.move_in_date_latest
+                                  ? form.move_in_date_latest.split("-")[0]
+                                  : String(new Date().getFullYear());
+                                setField("move_in_date_latest", month ? `${year}-${month}` : "");
+                              }}
+                              className={SELECT_BASE}
+                            >
+                              <option value="">Month</option>
+                              {[["01","Jan"],["02","Feb"],["03","Mar"],["04","Apr"],["05","May"],["06","Jun"],["07","Jul"],["08","Aug"],["09","Sep"],["10","Oct"],["11","Nov"],["12","Dec"]].map(([v,l]) => (
+                                <option key={v} value={v}>{l}</option>
+                              ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </div>
+                          </div>
+                          <div className="relative flex-1">
+                            <select
+                              value={form.move_in_date_latest ? form.move_in_date_latest.split("-")[0] : ""}
+                              onChange={(e) => {
+                                const year = e.target.value;
+                                const month = form.move_in_date_latest ? form.move_in_date_latest.split("-")[1] : "";
+                                setField("move_in_date_latest", year && month ? `${year}-${month}` : "");
+                              }}
+                              className={SELECT_BASE}
+                            >
+                              <option value="">Year</option>
+                              {[0,1,2].map((o) => { const y = String(new Date().getFullYear()+o); return <option key={y} value={y}>{y}</option>; })}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

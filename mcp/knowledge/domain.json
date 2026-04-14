@@ -1,0 +1,126 @@
+{
+  "_description": "Core domain knowledge for the Proximity housing marketplace.",
+  "_generated": "2026-04-14T19:03:14.512Z",
+  "app": {
+    "name": "Proximity",
+    "purpose": "Off-campus housing marketplace for WashU (Washington University in St. Louis) students",
+    "url": "https://useproximity.org",
+    "deployment": "Vercel (Next.js serverless)"
+  },
+  "techStack": {
+    "framework": "Next.js 15 (App Router)",
+    "language": "JavaScript (no TypeScript in src — only middleware.ts)",
+    "styling": "Tailwind CSS 3",
+    "auth": "NextAuth v5 (beta) — Google OAuth only, JWT strategy",
+    "primaryDb": "Supabase (PostgreSQL)",
+    "legacyDb": "MongoDB via Mongoose (in migration to Supabase)",
+    "fileStorage": "AWS S3 + Cloudflare R2 (libs/r2.js)",
+    "maps": "Mapbox GL + Leaflet",
+    "email": "Nodemailer (SMTP)",
+    "ui": "Radix UI, Lucide React, Framer Motion, Recharts, @chatscope/chat-ui-kit-react"
+  },
+  "roles": {
+    "student": {
+      "default": true,
+      "description": "Default role for all new sign-ups via Google OAuth",
+      "can": [
+        "Browse and search listings",
+        "Save/favorite listings",
+        "Submit reviews",
+        "Use matchmaking (roommate finding)",
+        "Contact landlords",
+        "Create sub-lease listings"
+      ],
+      "cannot": [
+        "Access /dashboard landlord metrics",
+        "Manage listings"
+      ]
+    },
+    "landlord": {
+      "description": "Property managers who list rentals",
+      "can": [
+        "Create and manage listings",
+        "View landlord metrics dashboard (views, saves, trends)",
+        "Receive contact emails from students"
+      ],
+      "cannot": [
+        "Access admin panel"
+      ]
+    },
+    "super": {
+      "description": "Platform admins — full access",
+      "can": [
+        "All student + landlord capabilities",
+        "Access /api/admin/* routes (CRUD on any table, view any user)",
+        "Toggle dev/prod database target via x-db-target header",
+        "Approve/reject reviews (set legitimacy flag)",
+        "Run bulk operations (migrate amenities, update walk times)"
+      ]
+    }
+  },
+  "auth": {
+    "provider": "Google OAuth via NextAuth v5",
+    "sessionStrategy": "JWT",
+    "sessionShape": {
+      "session.user.id": "UUID from Supabase users table",
+      "session.user.email": "Google email",
+      "session.user.role": "'student' | 'landlord' | 'super'",
+      "session.user.profileComplete": "boolean — gates profile completion modal",
+      "session.user.name": "Display name"
+    },
+    "authGuardPattern": "const session = await auth(); if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });",
+    "superGuardPattern": "if (!session || session.user.role !== 'super') return Response.json({ error: 'Forbidden' }, { status: 403 });",
+    "importLine": "import { auth } from '@/auth';"
+  },
+  "dbAccess": {
+    "supabaseImport": "import supabase from '@/libs/supabase';",
+    "supabaseTargetedImport": "import { getSupabaseClient } from '@/libs/supabase'; // use for admin routes that need prod/dev toggle",
+    "mongooseImport": "import dbConnect from '@/libs/mongoose';",
+    "note": "Prefer Supabase for all new code. Mongoose models are legacy and being migrated."
+  },
+  "keyWorkflows": {
+    "createListing": [
+      "POST /api/addListing with address, unitTypes[], and metadata",
+      "Server geocodes address via Mapbox if lat/lng not provided",
+      "Server calls fetchAllWalkTimes() from utils/walkTimes.js to calculate walk minutes to all WashU places + shuttle stops",
+      "Insert row into listings table, then insert unit rows into listing_units",
+      "DB triggers recompute aggregate columns (min/max rent, bedrooms, etc.) on listing_units change",
+      "Email notification sent to landlord(s) via Nodemailer"
+    ],
+    "imageUpload": [
+      "Client requests a presigned S3 URL via POST /api/upload",
+      "Client uploads the file directly to S3 using the presigned URL",
+      "Client passes the returned S3 URL to addListing or editListing"
+    ],
+    "walkTimes": [
+      "utils/walkTimes.js exports fetchAllWalkTimes(lat, lng)",
+      "Calls Mapbox Directions API for each WashU place in utils/washuPlaces.js (WASHU_PLACES + SHUTTLE_STOPS arrays)",
+      "Returns { placeWalkMinutes: { placeName: minutes }, shuttleWalkMinutes: number }",
+      "Stored as place_walk_minutes (jsonb) and shuttle_walk_minutes (numeric) on the listing row"
+    ],
+    "userOnboarding": [
+      "Google OAuth sign-in creates a new row in users table with role='student', profile_complete=false",
+      "session.user.profileComplete=false triggers ProfileCompletionModal on the client",
+      "User fills out profile → PATCH /api/editProfile → sets profile_complete=true"
+    ]
+  },
+  "conventions": {
+    "apiResponses": "Use Response.json() for all API responses. Use NextResponse.json() only when setting custom headers or redirects.",
+    "errorShape": "{ error: 'message string' } with appropriate HTTP status code",
+    "dbColumnNaming": "Supabase columns use snake_case (e.g. lease_type). JS layer converts to camelCase (e.g. leaseType) in buildListing().",
+    "envVars": {
+      "GOOGLE_ID": "Google OAuth client ID",
+      "GOOGLE_SECRET": "Google OAuth client secret",
+      "DEV_SUPABASE_URL": "Supabase project URL for dev",
+      "DEV_SUPABASE_SERVICE_KEY": "Supabase service role key for dev",
+      "PROD_SUPABASE_URL": "Supabase project URL for prod",
+      "PROD_SUPABASE_SERVICE_KEY": "Supabase service role key for prod",
+      "NEXT_PUBLIC_MAPBOX_TOKEN": "Mapbox public token (safe to expose to browser)",
+      "IMPORT_SECRET": "Shared secret to allow /api/addListing without session auth (used by import scripts)",
+      "EMAIL_HOST": "SMTP host for Nodemailer",
+      "EMAIL_PORT": "SMTP port",
+      "EMAIL_USER": "SMTP username",
+      "EMAIL_PASS": "SMTP password"
+    }
+  }
+}

@@ -88,7 +88,7 @@ export async function GET() {
     const safeListings = (listings ?? []).map((row) => {
       const firstId = Array.isArray(row.landlord_id) ? row.landlord_id[0] : null;
       const owner = firstId ? landlordMap[firstId] ?? null : null;
-      const listing = buildListing(row, row.listing_units ?? [], owner);
+      const listing = buildListing(row, row.listing_units ?? [], owner, row.reviews ?? []);
       // Compute rating from legitimate reviews (same logic as ListingModalInfo)
       const legitReviews = (row.reviews || []).filter((r) => r.legitimacy);
       listing.numReviews = legitReviews.length;

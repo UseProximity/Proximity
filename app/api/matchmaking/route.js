@@ -1,3 +1,8 @@
+// DB migration (run manually in Supabase SQL editor):
+// ALTER TABLE matchmaking_responses
+//   ADD COLUMN move_in_date_earliest date,
+//   ADD COLUMN move_in_date_latest date;
+
 import { NextResponse } from "next/server";
 import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
@@ -48,7 +53,7 @@ export async function PATCH(request) {
     const {
       name, email, year_of_school, group_size, budget, lease_term,
       furnished, commute, medical_campus, priorities, student_type,
-      area, notes,
+      area, notes, move_in_date_earliest, move_in_date_latest,
     } = body;
 
     if (!name?.trim() || !email?.trim()) {
@@ -81,6 +86,8 @@ export async function PATCH(request) {
         student_type: student_type || null,
         area: area || null,
         notes: notes || null,
+        move_in_date_earliest: move_in_date_earliest || null,
+        move_in_date_latest: move_in_date_latest || null,
       })
       .eq("user_id", user.id);
 
@@ -110,6 +117,8 @@ export async function POST(request) {
       area,
       notes,
       referral_source,
+      move_in_date_earliest,
+      move_in_date_latest,
     } = body;
 
     if (!name?.trim() || !email?.trim()) {
@@ -181,6 +190,8 @@ export async function POST(request) {
         area: area || null,
         notes: notes || null,
         referral_source: referral_source || null,
+        move_in_date_earliest: move_in_date_earliest || null,
+        move_in_date_latest: move_in_date_latest || null,
       });
 
     if (responseError) {
@@ -191,27 +202,34 @@ export async function POST(request) {
       );
     }
 
-    // Also forward to Formspree so the original email notifications keep working
-    fetch(FORMSPREE_URL, {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        email: normalizedEmail,
-        year_of_school,
-        group_size,
-        budget,
-        lease_term,
-        furnished,
-        commute,
-        medical_campus,
-        priorities,
-        student_type,
-        area,
-        notes,
-        referral_source,
-      }),
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-    }).catch((err) => console.error("matchmaking: formspree forward failed", err));
+    // Forward to Formspree for email notifications.
+    // Awaited before returning so Vercel doesn't terminate the function early.
+    try {
+      await fetch(FORMSPREE_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          email: normalizedEmail,
+          year_of_school,
+          group_size,
+          budget,
+          lease_term,
+          furnished,
+          commute,
+          medical_campus,
+          priorities,
+          student_type,
+          area,
+          notes,
+          referral_source,
+          move_in_date_earliest,
+          move_in_date_latest,
+        }),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+      });
+    } catch (err) {
+      console.error("matchmaking: formspree forward failed", err);
+    }
 
     return NextResponse.json({ success: true, isNewUser });
   } catch (err) {

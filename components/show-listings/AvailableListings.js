@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
 import MapPopupCard, { ListingCard } from "@/components/show-listings/MapPopupCard";
+import ListDetailPanel from "@/components/show-listings/ListDetailPanel";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -72,6 +74,53 @@ export default function AvailableListings({
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
 
+  /* ── Left panel expanded listing ── */
+  const panelId = searchParams.get("panel");
+  const [expandedListing, setExpandedListing] = useState(null);
+  const panelRef = useRef(null);
+
+  // Sync local state from URL — handles browser back/forward and page reload
+  useEffect(() => {
+    if (!panelId) {
+      setExpandedListing(null);
+      return;
+    }
+    if (!listings.length) return;
+    const match = listings.find((l) => String(l._id) === panelId);
+    if (match) setExpandedListing(match);
+  }, [panelId, listings]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openPanel = (listing) => {
+    setExpandedListing(listing); // immediate UI — no router round-trip wait
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("panel", listing._id);
+    router.push(`/browse?${params.toString()}`);
+  };
+
+  const closePanel = () => {
+    setExpandedListing(null); // immediate UI
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("panel");
+    const qs = params.toString();
+    router.push(`/browse${qs ? `?${qs}` : ""}`);
+  };
+
+  // Scroll panel to top whenever a listing is expanded
+  useEffect(() => {
+    if (expandedListing && panelRef.current) {
+      panelRef.current.scrollTop = 0;
+    }
+  }, [expandedListing]);
+
+  // Scroll panel to the selected listing card when a pin is clicked (centered)
+  useEffect(() => {
+    if (!selectedListing || expandedListing || !panelRef.current) return;
+    const card = panelRef.current.querySelector(
+      `[data-listing-id="${selectedListing._id}"]`
+    );
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [selectedListing]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Viewport / "Browse this area" filter ── */
   const [viewportBounds, setViewportBounds] = useState(null);
 
@@ -82,16 +131,18 @@ export default function AvailableListings({
   };
 
   const visibleListings = useMemo(() => {
-    if (!viewportBounds) return listings;
-    return listings.filter(
-      (l) =>
-        l.latitude != null &&
-        l.longitude != null &&
-        l.latitude >= viewportBounds.swLat &&
-        l.latitude <= viewportBounds.neLat &&
-        l.longitude >= viewportBounds.swLng &&
-        l.longitude <= viewportBounds.neLng
-    );
+    const filtered = !viewportBounds
+      ? listings
+      : listings.filter(
+          (l) =>
+            l.latitude != null &&
+            l.longitude != null &&
+            l.latitude >= viewportBounds.swLat &&
+            l.latitude <= viewportBounds.neLat &&
+            l.longitude >= viewportBounds.swLng &&
+            l.longitude <= viewportBounds.neLng
+        );
+    return [...filtered].sort((a, b) => (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0));
   }, [listings, viewportBounds]);
 
   /* ── Mobile UI state ── */
@@ -105,16 +156,24 @@ export default function AvailableListings({
     if (mobileFiltersOpen) setMobileDraft(filters);
   }, [mobileFiltersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear map overlay card when listings data changes
+  // Clear map overlay card and panel when listings data changes (filter/search)
   useEffect(() => {
     setSelectedListing(null);
-  }, [listings]);
+    setExpandedListing(null);
+    if (panelId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("panel");
+      const qs = params.toString();
+      router.replace(`/browse${qs ? `?${qs}` : ""}`);
+    }
+  }, [listings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePinClose = () => {
     setSelectedListing(null);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("lat");
     params.delete("lng");
+    params.delete("panel");
     const qs = params.toString();
     router.replace("/browse" + (qs ? "?" + qs : ""));
   };
@@ -183,44 +242,61 @@ export default function AvailableListings({
     <>
       {/* ── Desktop listing panel ── */}
       <div
-        className="hidden md:block w-[40vw] shrink-0 overflow-y-auto px-4 py-4"
+        ref={panelRef}
+        className={`hidden md:block shrink-0 overflow-y-auto transition-[width] duration-300 ${expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"}`}
         style={{ height: "100%", minHeight: 0 }}
       >
-        <div className="flex items-center gap-2 px-1 mb-4">
-          <p className="text-sm font-semibold text-gray-500">
-            {visibleListings.length}{" "}
-            {viewportBounds ? "listings in this area" : "Listings Found"}
-          </p>
-          {viewportBounds && (
-            <button
-              onClick={() => setViewportBounds(null)}
-              className="text-xs text-red-600 hover:text-red-700 font-medium"
-            >
-              Show all
-            </button>
-          )}
-        </div>
-
-        {visibleListings.length === 0 ? (
-          emptyState
-        ) : (
-          <div className="grid grid-cols-2 gap-6">
-            {visibleListings.map((listing) => (
-              <ListingCard
-                key={listing._id}
-                listing={listing}
+        <AnimatePresence initial={false} mode="wait">
+          {expandedListing ? (
+            <motion.div key={`detail-${expandedListing._id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+              <ListDetailPanel
+                listing={expandedListing}
                 session={session}
-                onCardClick={(listingId) => {
-                  if (selectedListing?._id === listingId) {
-                    handleListingClick(listingId);
-                  } else {
-                    setSelectedListing(listing);
-                  }
+                onBack={() => {
+                  setSelectedListing(null);
+                  closePanel();
                 }}
               />
-            ))}
-          </div>
-        )}
+            </motion.div>
+          ) : (
+            <motion.div key="grid" exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+              <div className="flex items-center gap-2 px-1 mb-4">
+                <p className="text-sm font-semibold text-gray-500">
+                  {visibleListings.length}{" "}
+                  {viewportBounds ? "listings in this area" : "Listings Found"}
+                </p>
+                {viewportBounds && (
+                  <button
+                    onClick={() => setViewportBounds(null)}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium"
+                  >
+                    Show all
+                  </button>
+                )}
+              </div>
+
+              {visibleListings.length === 0 ? (
+                emptyState
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
+                  {visibleListings.map((listing) => (
+                    <div key={listing._id} data-listing-id={listing._id}>
+                      <ListingCard
+                        listing={listing}
+                        session={session}
+                        isSelected={selectedListing?._id === listing._id}
+                        onCardClick={() => {
+                          setSelectedListing(listing);
+                          openPanel(listing);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Desktop map ── */}
@@ -233,19 +309,25 @@ export default function AvailableListings({
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
-          onListingSelect={setSelectedListing}
-          selectedListingId={selectedListing?._id}
+          onListingSelect={(listing) => {
+            setSelectedListing(listing);
+            closePanel();
+          }}
+          selectedListingId={expandedListing?._id || selectedListing?._id}
           searchLocation={searchLocation}
           isActive={isDesktop}
           onBrowseArea={handleBrowseArea}
+          panelExpanded={!!expandedListing}
         />
-        {selectedListing && (
+        {selectedListing && !expandedListing && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
             <MapPopupCard
               listing={selectedListing}
               session={session}
               onClose={handlePinClose}
-              onCardClick={handleListingClick}
+              onCardClick={() => {
+                openPanel(selectedListing);
+              }}
             />
           </div>
         )}

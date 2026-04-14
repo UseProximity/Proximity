@@ -41,8 +41,6 @@ TODO.md
 
 public/listing-pics
 .swarm/memory.db
-.claude-flow
-.claude
 .swarm
 .next
 .agents
@@ -52,3 +50,12 @@ scripts
 today.md
 .mcp.json
 
+# Claude Code local state (worktrees, memory, logs)
+.claude/
+.claude-flow/
+
+# MCP server dependencies
+mcp/node_modules/
+# Allow mcp/scripts/ even though root-level `scripts` is ignored
+!mcp/scripts/
+!mcp/scripts/**
