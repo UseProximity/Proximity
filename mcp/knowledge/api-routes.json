@@ -1,0 +1,392 @@
+{
+  "_description": "All Next.js API routes. auth: public=no auth, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
+  "_generated": "2026-04-14T19:03:14.507Z",
+  "count": 33,
+  "routes": [
+    {
+      "path": "/api/addListing",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "users",
+        "listing_units"
+      ],
+      "file": "app/api/addListing/route.js"
+    },
+    {
+      "path": "/api/admin/[table]",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "tables": [
+        "listings",
+        "users"
+      ],
+      "file": "app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/db-env",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "tables": [],
+      "file": "app/api/admin/db-env/route.js"
+    },
+    {
+      "path": "/api/admin/listing-images",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "tables": [
+        "listings"
+      ],
+      "file": "app/api/admin/listing-images/route.js"
+    },
+    {
+      "path": "/api/admin/migrate-amenities",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "tables": [
+        "listings"
+      ],
+      "file": "app/api/admin/migrate-amenities/route.js"
+    },
+    {
+      "path": "/api/admin/schema",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "tables": [],
+      "file": "app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/update-campus-walk-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "tables": [
+        "listings"
+      ],
+      "file": "app/api/admin/update-campus-walk-times/route.js"
+    },
+    {
+      "path": "/api/admin/viewUser",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "tables": [
+        "users",
+        "user_favorites",
+        "listings",
+        "user_contacted"
+      ],
+      "file": "app/api/admin/viewUser/route.js"
+    },
+    {
+      "path": "/api/auth/[...nextauth]",
+      "methods": [],
+      "auth": "public",
+      "tables": [],
+      "file": "app/api/auth/[...nextauth]/route.js"
+    },
+    {
+      "path": "/api/contacted",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "tables": [
+        "user_contacted",
+        "listings"
+      ],
+      "file": "app/api/contacted/route.js"
+    },
+    {
+      "path": "/api/contactLandlord",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "tables": [],
+      "file": "app/api/contactLandlord/route.js"
+    },
+    {
+      "path": "/api/dormReviews",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "tables": [
+        "dorm_reviews",
+        "dorms"
+      ],
+      "file": "app/api/dormReviews/route.js"
+    },
+    {
+      "path": "/api/dorms",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "tables": [
+        "dorms"
+      ],
+      "file": "app/api/dorms/route.js"
+    },
+    {
+      "path": "/api/editProfile",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "super",
+      "tables": [
+        "users"
+      ],
+      "file": "app/api/editProfile/route.js"
+    },
+    {
+      "path": "/api/favorites",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "tables": [
+        "user_favorites",
+        "listings"
+      ],
+      "file": "app/api/favorites/route.js"
+    },
+    {
+      "path": "/api/favorites/[listingId]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "tables": [
+        "user_favorites",
+        "listings"
+      ],
+      "file": "app/api/favorites/[listingId]/route.js"
+    },
+    {
+      "path": "/api/getUser",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "tables": [
+        "users",
+        "user_favorites",
+        "listings",
+        "user_contacted"
+      ],
+      "file": "app/api/getUser/route.js"
+    },
+    {
+      "path": "/api/landlord/listings",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings"
+      ],
+      "file": "app/api/landlord/listings/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "listing_units"
+      ],
+      "file": "app/api/landlord/listings/[listingId]/route.js"
+    },
+    {
+      "path": "/api/landlord/metrics",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "listing_metrics_daily"
+      ],
+      "file": "app/api/landlord/metrics/route.js"
+    },
+    {
+      "path": "/api/landlord/reviews",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "reviews"
+      ],
+      "file": "app/api/landlord/reviews/route.js"
+    },
+    {
+      "path": "/api/listing/[listingId]",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "users",
+        "reviews"
+      ],
+      "file": "app/api/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/listings",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "tables": [
+        "listings",
+        "users"
+      ],
+      "file": "app/api/listings/route.js"
+    },
+    {
+      "path": "/api/matchmaking",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "any",
+      "tables": [
+        "users",
+        "matchmaking_responses"
+      ],
+      "file": "app/api/matchmaking/route.js"
+    },
+    {
+      "path": "/api/pendingReviews",
+      "methods": [
+        "GET",
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "reviews"
+      ],
+      "file": "app/api/pendingReviews/route.js"
+    },
+    {
+      "path": "/api/reviewVote",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "tables": [
+        "reviews"
+      ],
+      "file": "app/api/reviewVote/route.js"
+    },
+    {
+      "path": "/api/searchUsers",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "tables": [
+        "users"
+      ],
+      "file": "app/api/searchUsers/route.js"
+    },
+    {
+      "path": "/api/submitReview",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "tables": [
+        "reviews"
+      ],
+      "file": "app/api/submitReview/route.js"
+    },
+    {
+      "path": "/api/testimonials",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "tables": [
+        "testimonials"
+      ],
+      "file": "app/api/testimonials/route.js"
+    },
+    {
+      "path": "/api/upload",
+      "methods": [
+        "POST",
+        "PUT",
+        "PATCH"
+      ],
+      "auth": "super",
+      "tables": [
+        "listings"
+      ],
+      "file": "app/api/upload/route.js"
+    },
+    {
+      "path": "/api/uploadProfilePhoto",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "tables": [
+        "users"
+      ],
+      "file": "app/api/uploadProfilePhoto/route.js"
+    },
+    {
+      "path": "/api/webhooks/new-listing",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "tables": [
+        "users"
+      ],
+      "file": "app/api/webhooks/new-listing/route.js"
+    },
+    {
+      "path": "/api/webhooks/new-user",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "tables": [],
+      "file": "app/api/webhooks/new-user/route.js"
+    }
+  ]
+}

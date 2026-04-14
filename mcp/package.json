@@ -1,0 +1,14 @@
+{
+  "name": "proximity-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MCP knowledge server for the Proximity housing app",
+  "main": "src/index.mjs",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "generate": "node scripts/generate-knowledge.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
