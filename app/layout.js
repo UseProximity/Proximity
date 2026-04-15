@@ -8,6 +8,7 @@ import ProfileCompletionModal from "@/components/ProfileCompletionModal";
 import GlobalListingModal from "@/components/GlobalListingModal";
 import Providers from "@/components/Providers";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }) {
           <GlobalListingModal />
           <AnalyticsTracker />
           {children}
+          <Analytics />
         </Providers>
       </body>
     </html>
