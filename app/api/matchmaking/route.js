@@ -70,25 +70,27 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    const updatePayload = {
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      year_of_school: year_of_school || null,
+      group_size: group_size || null,
+      budget: budget || null,
+      lease_term: lease_term || null,
+      furnished: furnished || null,
+      commute: commute || null,
+      medical_campus: medical_campus ?? false,
+      priorities: priorities || [],
+      student_type: student_type || null,
+      area: area || null,
+      notes: notes || null,
+    };
+    if (move_in_date_earliest !== undefined) updatePayload.move_in_date_earliest = move_in_date_earliest || null;
+    if (move_in_date_latest !== undefined) updatePayload.move_in_date_latest = move_in_date_latest || null;
+
     const { error } = await supabase
       .from("matchmaking_responses")
-      .update({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        year_of_school: year_of_school || null,
-        group_size: group_size || null,
-        budget: budget || null,
-        lease_term: lease_term || null,
-        furnished: furnished || null,
-        commute: commute || null,
-        medical_campus: medical_campus ?? false,
-        priorities: priorities || [],
-        student_type: student_type || null,
-        area: area || null,
-        notes: notes || null,
-        move_in_date_earliest: move_in_date_earliest || null,
-        move_in_date_latest: move_in_date_latest || null,
-      })
+      .update(updatePayload)
       .eq("user_id", user.id);
 
     if (error) throw error;
@@ -172,27 +174,32 @@ export async function POST(request) {
     }
 
     // Save the matchmaking response linked to the user
+    const insertPayload = {
+      user_id: userId,
+      name: name.trim(),
+      email: normalizedEmail,
+      year_of_school: year_of_school || null,
+      group_size: group_size || null,
+      budget: budget || null,
+      lease_term: lease_term || null,
+      furnished: furnished || null,
+      commute: commute || null,
+      medical_campus: medical_campus ?? false,
+      priorities: priorities || [],
+      student_type: student_type || null,
+      area: area || null,
+      notes: notes || null,
+      referral_source: referral_source || null,
+    };
+    // Only include move_in_date columns if they were sent — they require a DB migration
+    // (ALTER TABLE matchmaking_responses ADD COLUMN move_in_date_earliest date, ADD COLUMN move_in_date_latest date)
+    // that may not yet be applied in all environments.
+    if (move_in_date_earliest !== undefined) insertPayload.move_in_date_earliest = move_in_date_earliest || null;
+    if (move_in_date_latest !== undefined) insertPayload.move_in_date_latest = move_in_date_latest || null;
+
     const { error: responseError } = await supabase
       .from("matchmaking_responses")
-      .insert({
-        user_id: userId,
-        name: name.trim(),
-        email: normalizedEmail,
-        year_of_school: year_of_school || null,
-        group_size: group_size || null,
-        budget: budget || null,
-        lease_term: lease_term || null,
-        furnished: furnished || null,
-        commute: commute || null,
-        medical_campus: medical_campus ?? false,
-        priorities: priorities || [],
-        student_type: student_type || null,
-        area: area || null,
-        notes: notes || null,
-        referral_source: referral_source || null,
-        move_in_date_earliest: move_in_date_earliest || null,
-        move_in_date_latest: move_in_date_latest || null,
-      });
+      .insert(insertPayload);
 
     if (responseError) {
       console.error("matchmaking: failed to insert response", responseError);
