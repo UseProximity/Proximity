@@ -7,10 +7,10 @@ async function requireSuper() {
   if (!session?.user?.email) return null;
   const { data: user } = await supabase
     .from("users")
-    .select("id, role")
+    .select("id, roles!role_id(name)")
     .eq("email", session.user.email.toLowerCase())
     .single();
-  if (!user || user.role !== "super") return null;
+  if (!user || user.roles?.name !== "super") return null;
   return user;
 }
 
@@ -20,9 +20,10 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { data: reviews, error } = await supabase
-      .from("reviews")
-      .select("*, reviewer:users!reviews_user_id_fkey(name, email, image), listings(address, title)")
+      .from("listing_reviews")
+      .select("*, reviewer:users!user_id(name, email, image), listings!listing_id(address, title)")
       .eq("legitimacy", false)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -42,30 +43,13 @@ export async function PATCH(request) {
     if (!reviewId) return NextResponse.json({ error: "reviewId required" }, { status: 400 });
 
     const { data: review, error: fetchErr } = await supabase
-      .from("reviews")
+      .from("listing_reviews")
       .select("id, listing_id")
       .eq("id", reviewId)
       .single();
     if (fetchErr || !review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
 
-    await supabase.from("reviews").update({ legitimacy: true }).eq("id", reviewId);
-
-    if (review.listing_id) {
-      const { data: allReviews } = await supabase
-        .from("reviews")
-        .select("rating")
-        .eq("listing_id", review.listing_id)
-        .eq("legitimacy", true);
-      const reviews = allReviews || [];
-      const numReviews = reviews.length;
-      const rating = numReviews > 0
-        ? reviews.reduce((s, r) => s + r.rating, 0) / numReviews
-        : 0;
-      await supabase
-        .from("listings")
-        .update({ num_reviews: numReviews, rating })
-        .eq("id", review.listing_id);
-    }
+    await supabase.from("listing_reviews").update({ legitimacy: true }).eq("id", reviewId);
 
     return NextResponse.json({ success: true });
   } catch (err) {
@@ -83,30 +67,13 @@ export async function DELETE(request) {
     if (!reviewId) return NextResponse.json({ error: "reviewId required" }, { status: 400 });
 
     const { data: review, error: fetchErr } = await supabase
-      .from("reviews")
+      .from("listing_reviews")
       .select("id, listing_id")
       .eq("id", reviewId)
       .single();
     if (fetchErr || !review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
 
-    await supabase.from("reviews").delete().eq("id", reviewId);
-
-    if (review.listing_id) {
-      const { data: allReviews } = await supabase
-        .from("reviews")
-        .select("rating")
-        .eq("listing_id", review.listing_id)
-        .eq("legitimacy", true);
-      const reviews = allReviews || [];
-      const numReviews = reviews.length;
-      const rating = numReviews > 0
-        ? reviews.reduce((s, r) => s + r.rating, 0) / numReviews
-        : 0;
-      await supabase
-        .from("listings")
-        .update({ num_reviews: numReviews, rating })
-        .eq("id", review.listing_id);
-    }
+    await supabase.from("listing_reviews").update({ deleted_at: new Date().toISOString() }).eq("id", reviewId);
 
     return NextResponse.json({ success: true });
   } catch (err) {

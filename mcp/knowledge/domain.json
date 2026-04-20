@@ -1,6 +1,6 @@
 {
   "_description": "Core domain knowledge for the Proximity housing marketplace.",
-  "_generated": "2026-04-14T19:03:14.512Z",
+  "_generated": "2026-04-20T22:18:02.282Z",
   "app": {
     "name": "Proximity",
     "purpose": "Off-campus housing marketplace for WashU (Washington University in St. Louis) students",
@@ -12,8 +12,7 @@
     "language": "JavaScript (no TypeScript in src — only middleware.ts)",
     "styling": "Tailwind CSS 3",
     "auth": "NextAuth v5 (beta) — Google OAuth only, JWT strategy",
-    "primaryDb": "Supabase (PostgreSQL)",
-    "legacyDb": "MongoDB via Mongoose (in migration to Supabase)",
+    "db": "Supabase (PostgreSQL)",
     "fileStorage": "AWS S3 + Cloudflare R2 (libs/r2.js)",
     "maps": "Mapbox GL + Leaflet",
     "email": "Nodemailer (SMTP)",
@@ -54,7 +53,7 @@
         "Access /api/admin/* routes (CRUD on any table, view any user)",
         "Toggle dev/prod database target via x-db-target header",
         "Approve/reject reviews (set legitimacy flag)",
-        "Run bulk operations (migrate amenities, update walk times)"
+        "Run bulk operations (update walk times)"
       ]
     }
   },
@@ -74,9 +73,7 @@
   },
   "dbAccess": {
     "supabaseImport": "import supabase from '@/libs/supabase';",
-    "supabaseTargetedImport": "import { getSupabaseClient } from '@/libs/supabase'; // use for admin routes that need prod/dev toggle",
-    "mongooseImport": "import dbConnect from '@/libs/mongoose';",
-    "note": "Prefer Supabase for all new code. Mongoose models are legacy and being migrated."
+    "supabaseTargetedImport": "import { getSupabaseClient } from '@/libs/supabase'; // use for admin routes that need prod/dev toggle"
   },
   "keyWorkflows": {
     "createListing": [

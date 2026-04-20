@@ -15,13 +15,15 @@ export default async function ViewAsPage({ params }) {
 
   const { data: targetUser } = await supabase
     .from("users")
-    .select("id, role, name")
+    .select("id, name, roles!role_id(name)")
     .eq("id", userId)
     .single();
 
   if (!targetUser) redirect("/dashboard/admin");
 
-  if (targetUser.role === "student") {
+  const targetRole = targetUser.roles?.name ?? "student";
+
+  if (targetRole === "student") {
     return (
       <Suspense>
         <StudentDashboardPage initialViewAsId={userId} />

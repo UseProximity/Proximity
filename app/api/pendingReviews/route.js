@@ -9,20 +9,22 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get listing IDs owned by this user
-    const { data: userListings } = await supabase
-      .from("listings")
-      .select("id")
-      .contains("landlord_id", [session.user.id]);
+    const userId = session.user.id;
 
-    const listingIds = (userListings || []).map((l) => l.id);
+    // Get listing IDs owned by this user via listing_landlords
+    const { data: ll } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .eq("user_id", userId);
+
+    const listingIds = (ll ?? []).map((r) => r.listing_id);
 
     // Fetch pending reviews for those listings
     let pendingReviews = [];
     if (listingIds.length > 0) {
       const { data: reviews, error } = await supabase
-        .from("reviews")
-        .select("*, reviewer:users!reviews_user_id_fkey(name, image), listings(address)")
+        .from("listing_reviews")
+        .select("*, reviewer:users!user_id(name, image), listings(address)")
         .eq("legitimacy", false)
         .in("listing_id", listingIds);
 
@@ -43,7 +45,7 @@ export async function GET() {
 // Verify the current user is allowed to act on this review (owns the listing)
 async function verifyReviewOwnership(reviewId, userId) {
   const { data: review, error } = await supabase
-    .from("reviews")
+    .from("listing_reviews")
     .select("*")
     .eq("id", reviewId)
     .single();
@@ -51,12 +53,14 @@ async function verifyReviewOwnership(reviewId, userId) {
   if (error || !review) return { error: "Review not found", status: 404 };
 
   if (review.listing_id) {
-    const { data: listing } = await supabase
-      .from("listings")
-      .select("landlord_id")
-      .eq("id", review.listing_id)
-      .single();
-    if (listing && (listing.landlord_id ?? []).includes(userId)) return { review };
+    const { data: own } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .eq("listing_id", review.listing_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (own) return { review };
   }
 
   return { error: "Forbidden", status: 403 };
@@ -80,7 +84,7 @@ export async function PATCH(request) {
 
     // Mark review as legitimate
     const { error: updateError } = await supabase
-      .from("reviews")
+      .from("listing_reviews")
       .update({ legitimacy: true })
       .eq("id", reviewId);
 
@@ -89,25 +93,8 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    if (reviewedType === "listing" && review.listing_id) {
-      // Recalculate listing stats from all legitimate reviews
-      const { data: allReviews } = await supabase
-        .from("reviews")
-        .select("rating")
-        .eq("listing_id", review.listing_id)
-        .eq("legitimacy", true);
-
-      const reviews = allReviews || [];
-      const numReviews = reviews.length;
-      const rating = numReviews > 0
-        ? Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / numReviews)
-        : 0;
-
-      await supabase
-        .from("listings")
-        .update({ num_reviews: numReviews, rating })
-        .eq("id", review.listing_id);
-    }
+    // Suppress unused variable warning — review used for ownership check only here
+    void review;
 
     return NextResponse.json({});
   } catch (error) {
@@ -134,29 +121,11 @@ export async function DELETE(request) {
 
     // Delete the review
     await supabase
-      .from("reviews")
+      .from("listing_reviews")
       .delete()
       .eq("id", reviewId);
 
-    if (reviewedType === "listing" && review.listing_id) {
-      // Recalculate listing stats from remaining legitimate reviews
-      const { data: allReviews } = await supabase
-        .from("reviews")
-        .select("rating")
-        .eq("listing_id", review.listing_id)
-        .eq("legitimacy", true);
-
-      const reviews = allReviews || [];
-      const numReviews = reviews.length;
-      const rating = numReviews > 0
-        ? Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / numReviews)
-        : 0;
-
-      await supabase
-        .from("listings")
-        .update({ num_reviews: numReviews, rating })
-        .eq("id", review.listing_id);
-    }
+    void review;
 
     return NextResponse.json({});
   } catch (error) {

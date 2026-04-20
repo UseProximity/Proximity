@@ -60,12 +60,6 @@ export const getAreaRangeLabel = (unitTypes = []) => {
   return `${minArea.toLocaleString()}-${maxArea.toLocaleString()}`;
 };
 
-// Converts a Mongoose Map (or plain object) to a plain JS object.
-export function serializePlaceWalkMinutes(pwm) {
-  if (pwm instanceof Map) return Object.fromEntries(pwm);
-  return pwm ?? {};
-}
-
 export function calcAge(birthday) {
   if (!birthday) return null;
   const dob = new Date(birthday);
@@ -83,8 +77,7 @@ export function calcAge(birthday) {
  * camelCase shape expected by all frontend components.
  *
  * The `listing_units` table stores certain listing-level fields (furnished,
- * amenities, leaseAvailability, etc.) on every unit row because there was no
- * per-unit equivalent in the original MongoDB schema. Those fields are read
+ * amenities, leaseAvailability, etc.) on every unit row. Those fields are read
  * from the first unit; if no units exist the fields default to safe values.
  *
  * @param {object} listingRow  - Raw row from the `listings` Supabase table.

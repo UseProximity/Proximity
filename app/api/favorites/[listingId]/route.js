@@ -17,11 +17,23 @@ export async function DELETE(_req, { params }) {
 
     const userId = session.user.id;
 
+    const { data: typeRow } = await supabase
+      .from("interaction_types")
+      .select("id")
+      .eq("name", "saved")
+      .single();
+    const favoriteTypeId = typeRow?.id;
+
+    if (!favoriteTypeId) {
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
+
     const { data: existing } = await supabase
-      .from("user_favorites")
-      .select("user_id")
+      .from("user_listing_interactions")
+      .select("id")
       .eq("user_id", userId)
       .eq("listing_id", listingId)
+      .eq("interaction_type_id", favoriteTypeId)
       .maybeSingle();
 
     if (!existing) {
@@ -29,23 +41,11 @@ export async function DELETE(_req, { params }) {
     }
 
     await supabase
-      .from("user_favorites")
+      .from("user_listing_interactions")
       .delete()
       .eq("user_id", userId)
-      .eq("listing_id", listingId);
-
-    // Decrement num_saves
-    const { data: listing } = await supabase
-      .from("listings")
-      .select("num_saves")
-      .eq("id", listingId)
-      .single();
-    if (listing && listing.num_saves > 0) {
-      await supabase
-        .from("listings")
-        .update({ num_saves: listing.num_saves - 1 })
-        .eq("id", listingId);
-    }
+      .eq("listing_id", listingId)
+      .eq("interaction_type_id", favoriteTypeId);
 
     return NextResponse.json({ removed: true, listingId });
   } catch (err) {

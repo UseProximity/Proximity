@@ -349,6 +349,10 @@ function FkSearchDropdown({ options, value, onChange, changed }) {
   );
 }
 
+// Amenity column names in listing_amenities (used for merge on load + upsert on save)
+const AMENITY_COLS = ["air_conditioning","dishwasher","gym","laundry","mailroom","microwave","oven","parking","pets_allowed","pool","refrigerator","rooftop","storage","stove","study_room"];
+const UTILITY_COLS = ["electric","gas","heat","water","internet","trash","cable","sewer","cooling"];
+
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 // type: "id" | "readonly" | "text" | "number" | "boolean" | "json" | "enum" | "user-search" | "user-search-multi"
 // enum fields also carry an `options` array of allowed values
@@ -358,58 +362,62 @@ const SCHEMAS = {
     { key: "id",               label: "ID",              type: "id"       },
     { key: "name",             label: "Name",            type: "text",    required: true  },
     { key: "email",            label: "Email",           type: "text",    required: true  },
-    { key: "role",             label: "Role",            type: "enum",    options: ["student", "landlord", "super"] },
+    { key: "role_id",          label: "Role",            type: "readonly" },
     { key: "phone",            label: "Phone",           type: "text"     },
     { key: "gender",           label: "Gender",          type: "enum",    options: ["unspecified", "male", "female", "other"] },
     { key: "birthday",         label: "Birthday",        type: "text"     },
+    { key: "graduation_year",  label: "Grad Year",       type: "number"   },
+    { key: "graduation_month", label: "Grad Month",      type: "number"   },
+    { key: "school_id",        label: "School",          type: "readonly" },
     { key: "description",      label: "Bio",             type: "text"     },
     { key: "referral_source",  label: "Referral Source", type: "text"     },
     { key: "profile_complete", label: "Profile Complete",type: "boolean"  },
-    { key: "rating",           label: "Rating",          type: "number"   },
-    { key: "num_reviews",      label: "# Reviews",       type: "number"   },
+    { key: "is_system",        label: "System User",     type: "boolean"  },
     { key: "image",            label: "Image URL",       type: "text"     },
     { key: "created_at",       label: "Created",         type: "readonly" },
     { key: "updated_at",       label: "Updated",         type: "readonly" },
+    { key: "deleted_at",       label: "Deleted",         type: "readonly" },
   ],
   listings: [
-    { key: "id",                   label: "ID",                type: "id"       },
-    { key: "title",                label: "Display Name",      type: "text"     },
-    { key: "address",              label: "Address",           type: "text",    required: true  },
-    { key: "home_type",            label: "Home Type",         type: "enum",    options: ["apartment", "house", "condo", "townhouse"] },
-    { key: "lease_type",           label: "Lease Type",        type: "enum",    options: ["standard", "sublease"] },
-    { key: "min_rent",             label: "Min Rent",          type: "readonly" },
-    { key: "max_rent",             label: "Max Rent",          type: "readonly" },
-    { key: "min_bedrooms",         label: "Min Beds",          type: "readonly" },
-    { key: "max_bedrooms",         label: "Max Beds",          type: "readonly" },
-    { key: "min_bathrooms",        label: "Min Baths",         type: "readonly" },
-    { key: "max_bathrooms",        label: "Max Baths",         type: "readonly" },
-    { key: "min_area",             label: "Min Area (sqft)",   type: "readonly" },
-    { key: "max_area",             label: "Max Area (sqft)",   type: "readonly" },
-    { key: "rating",               label: "Rating",            type: "readonly" },
-    { key: "num_reviews",          label: "# Reviews",         type: "readonly" },
-    { key: "num_saves",            label: "# Saves",           type: "readonly" },
-    { key: "num_clicks",           label: "# Clicks",          type: "readonly" },
-    { key: "shuttle_walk_minutes", label: "Shuttle Walk (min)", type: "readonly" },
-    { key: "latitude",             label: "Latitude",          type: "readonly" },
-    { key: "longitude",            label: "Longitude",         type: "readonly" },
-    { key: "contact_email",        label: "Contact Email",     type: "text"     },
-    { key: "contact_phone",        label: "Contact Phone",     type: "text"     },
-    { key: "contact_name",         label: "Contact Name",      type: "text"     },
-    { key: "description",          label: "Description",       type: "text"     },
+    { key: "id",                   label: "ID",                 type: "id"       },
+    { key: "title",                label: "Display Name",       type: "text"     },
+    { key: "address",              label: "Address",            type: "text",    required: true  },
+    { key: "city",                 label: "City",               type: "text"     },
+    { key: "state",                label: "State",              type: "text"     },
+    { key: "zipcode",              label: "Zip Code",           type: "text"     },
+    { key: "home_type_id",         label: "Home Type",          type: "readonly" },
+    { key: "lease_type",           label: "Lease Type",         type: "enum",    options: ["standard", "sublease"] },
+    { key: "min_rent",             label: "Min Rent",           type: "readonly" },
+    { key: "max_rent",             label: "Max Rent",           type: "readonly" },
+    { key: "min_bedrooms",         label: "Min Beds",           type: "readonly" },
+    { key: "max_bedrooms",         label: "Max Beds",           type: "readonly" },
+    { key: "min_bathrooms",        label: "Min Baths",          type: "readonly" },
+    { key: "max_bathrooms",        label: "Max Baths",          type: "readonly" },
+    { key: "min_area",             label: "Min Area (sqft)",    type: "readonly" },
+    { key: "max_area",             label: "Max Area (sqft)",    type: "readonly" },
+    { key: "latitude",             label: "Latitude",           type: "readonly" },
+    { key: "longitude",            label: "Longitude",          type: "readonly" },
+    { key: "contact_email",        label: "Contact Email",      type: "text"     },
+    { key: "contact_phone",        label: "Contact Phone",      type: "text"     },
+    { key: "contact_name",         label: "Contact Name",       type: "text"     },
+    { key: "description",          label: "Description",        type: "text"     },
     { key: "furnished",            label: "Furnished",          type: "boolean"  },
-    { key: "utilities_included",   label: "Utilities Included", type: "multi-enum", options: ["water","sewer","trash","internet","electric","gas","hotWater","yardCare"] },
+    { key: "utilities_included",   label: "Utilities Included", type: "multi-enum", options: UTILITY_COLS },
     { key: "lease_structure",      label: "Lease Structure",    type: "enum",    options: ["individual","joint"] },
     { key: "move_in_date",         label: "Move-in Date",       type: "date"     },
     { key: "lease_availability",   label: "Lease Availability", type: "multi-enum", options: ["semester","10-month","12-month","summer"] },
     { key: "sublease_friendly",    label: "Sublease Friendly",  type: "boolean"  },
     { key: "twenty_one_plus",      label: "21+ Only",           type: "boolean"  },
-    { key: "amenities",            label: "Amenities",          type: "multi-enum", options: ["dishwasher","in_unit_laundry","refrigerator","stove","oven","microwave","ac_heating","mailroom","pets_allowed","extra_storage","fireplace","private_parking","pool","study_room","gym"] },
+    { key: "amenities",            label: "Amenities",          type: "multi-enum", options: AMENITY_COLS },
     { key: "unavailable",          label: "Unavailable",        type: "boolean"  },
-    { key: "landlord_id",          label: "Landlord(s)",       type: "user-search-multi" },
-    { key: "images",               label: "Images",            type: "images"   },
-    { key: "place_walk_minutes",   label: "Place Walk Times",  type: "walk-times" },
-    { key: "created_at",           label: "Created",           type: "readonly" },
-    { key: "updated_at",           label: "Updated",           type: "readonly" },
+    { key: "primary_landlord_id",  label: "Primary Landlord",   type: "readonly" },
+    { key: "school_id",            label: "School",             type: "readonly" },
+    { key: "landlord_id",          label: "Landlord(s)",        type: "user-search-multi" },
+    { key: "images",               label: "Images",             type: "images"   },
+    { key: "place_walk_minutes",   label: "Place Walk Times",   type: "walk-times" },
+    { key: "created_at",           label: "Created",            type: "readonly" },
+    { key: "updated_at",           label: "Updated",            type: "readonly" },
+    { key: "deleted_at",           label: "Deleted",            type: "readonly" },
   ],
   listing_units: [
     { key: "id",                  label: "ID",                 type: "id"       },
@@ -774,6 +782,14 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLab
     const display = current == null ? "" : (
       typeof current === "object" ? new Date(current).toLocaleString() : String(current)
     );
+    if (fkLabel) {
+      return (
+        <div className="flex flex-col px-2 py-0.5 min-w-[160px]">
+          <span className="text-xs text-gray-800 truncate">{fkLabel}</span>
+          <span className="text-[10px] font-mono text-gray-400 truncate">{display}</span>
+        </div>
+      );
+    }
     return (
       <span className="block px-2 py-0.5 text-gray-400 text-xs break-words">
         {display}
@@ -910,9 +926,9 @@ function FieldInput({ fieldDef, value, pendingValue, onChange, users = [], fkLab
 
   if (fkLabel) {
     return (
-      <div className="flex items-center gap-2 px-2 py-0.5 min-w-[160px]">
-        <span className="text-xs text-gray-800 truncate flex-1 min-w-0">{fkLabel}</span>
-        <span className="text-[10px] font-mono text-gray-400 shrink-0 opacity-75">{display}</span>
+      <div className="flex flex-col px-2 py-0.5 min-w-[160px]">
+        <span className="text-xs text-gray-800 truncate">{fkLabel}</span>
+        <span className="text-[10px] font-mono text-gray-400 truncate">{display}</span>
       </div>
     );
   }
@@ -1311,28 +1327,93 @@ export default function AdminDashboard() {
   const isProd = dbTarget === "prod";
 
   // FK lookup maps — id → human-readable label for reference columns
-  const [refMaps, setRefMaps] = useState({ users: {}, listings: {}, dorms: {} });
+  const [refMaps, setRefMaps] = useState({
+    users: {}, listings: {}, dorms: {},
+    listing_units: {}, roles: {}, tags: {}, interaction_types: {},
+    locations: {}, home_types: {}, metric_types: {}, listing_reviews: {},
+    dorm_reviews: {}, lease_structures: {}, schools: {}, thread_types: {},
+    priority_types: {}, chat_threads: {}, contracts: {},
+  });
 
   useEffect(() => {
     const h = { "x-db-target": dbTarget };
+    const ft = (name) => fetch(`/api/admin/${name}`, { headers: h }).then((r) => r.ok ? r.json() : []);
     Promise.all([
-      fetch("/api/admin/users",    { headers: h }).then((r) => r.ok ? r.json() : []),
-      fetch("/api/admin/listings", { headers: h }).then((r) => r.ok ? r.json() : []),
-      fetch("/api/admin/dorms",    { headers: h }).then((r) => r.ok ? r.json() : []),
-    ]).then(([users, listings, dorms]) => {
-      const maps = { users: {}, listings: {}, dorms: {} };
-      for (const u of (Array.isArray(users)    ? users    : [])) maps.users[u.id]    = u.name    || u.email   || u.id;
-      for (const l of (Array.isArray(listings) ? listings : [])) maps.listings[l.id] = l.address || l.title   || l.id;
-      for (const d of (Array.isArray(dorms)    ? dorms    : [])) maps.dorms[d.id]    = d.name    || d.id;
-      setRefMaps(maps);
+      ft("users"), ft("listings"), ft("dorms"), ft("listing_units"),
+      ft("roles"), ft("tags"), ft("interaction_types"), ft("locations"),
+      ft("home_types"), ft("metric_types"), ft("listing_reviews"), ft("dorm_reviews"),
+      ft("lease_structures"), ft("schools"), ft("thread_types"), ft("priority_types"),
+      ft("chat_threads"), ft("contracts"),
+    ]).then(([
+      users, listings, dorms, listing_units,
+      roles, tags, interaction_types, locations,
+      home_types, metric_types, listing_reviews, dorm_reviews,
+      lease_structures, schools, thread_types, priority_types,
+      chat_threads, contracts,
+    ]) => {
+      const arr = (x) => (Array.isArray(x) ? x : []);
+      const userMap = {};
+      for (const u of arr(users)) userMap[u.id] = u.name || u.email || u.id;
+      const listingMap = {};
+      for (const l of arr(listings)) listingMap[l.id] = l.address || l.title || l.id;
+      const dormMap = {};
+      for (const d of arr(dorms)) dormMap[d.id] = d.name || d.id;
+      // Chained: unit_id → listing address via listing_id
+      const unitMap = {};
+      for (const u of arr(listing_units)) unitMap[u.id] = listingMap[u.listing_id] || u.listing_id || u.id;
+      // Chained: review_id → listing address via listing_id
+      const reviewMap = {};
+      for (const r of arr(listing_reviews)) reviewMap[r.id] = listingMap[r.listing_id] || r.listing_id || r.id;
+      // Chained: dorm_review_id → dorm name via dorm_id
+      const dormReviewMap = {};
+      for (const r of arr(dorm_reviews)) dormReviewMap[r.id] = dormMap[r.dorm_id] || r.dorm_id || r.id;
+      // Chained: thread_id → listing address via listing_id
+      const threadMap = {};
+      for (const t of arr(chat_threads)) threadMap[t.id] = listingMap[t.listing_id] || t.listing_id || t.id;
+      // Simple lookup maps
+      const roleMap = {}; for (const r of arr(roles)) roleMap[r.id] = r.name || r.id;
+      const tagMap = {}; for (const t of arr(tags)) tagMap[t.id] = t.name || t.id;
+      const itMap = {}; for (const it of arr(interaction_types)) itMap[it.id] = it.name || it.id;
+      const locMap = {}; for (const l of arr(locations)) locMap[l.id] = l.name || l.id;
+      const htMap = {}; for (const ht of arr(home_types)) htMap[ht.id] = ht.label || ht.name || ht.id;
+      const mtMap = {}; for (const mt of arr(metric_types)) mtMap[mt.id] = mt.name || mt.id;
+      const lsMap = {}; for (const ls of arr(lease_structures)) lsMap[ls.id] = ls.name || ls.id;
+      const schMap = {}; for (const s of arr(schools)) schMap[s.id] = s.name || s.id;
+      const ttMap = {}; for (const tt of arr(thread_types)) ttMap[tt.id] = tt.name || tt.id;
+      const ptMap = {}; for (const pt of arr(priority_types)) ptMap[pt.id] = pt.name || pt.id;
+      const contractMap = {}; for (const c of arr(contracts)) contractMap[c.id] = c.address || c.title || c.id;
+      setRefMaps({
+        users: userMap, listings: listingMap, dorms: dormMap,
+        listing_units: unitMap, roles: roleMap, tags: tagMap,
+        interaction_types: itMap, locations: locMap, home_types: htMap,
+        metric_types: mtMap, listing_reviews: reviewMap, dorm_reviews: dormReviewMap,
+        lease_structures: lsMap, schools: schMap, thread_types: ttMap,
+        priority_types: ptMap, chat_threads: threadMap, contracts: contractMap,
+      });
     }).catch(() => {});
   }, [dbTarget]);
 
   function resolveFk(colKey, id) {
     if (!id) return null;
-    if (colKey === "user_id" || colKey === "landlord_id" || colKey === "reviewer_id") return refMaps.users[id]    || null;
-    if (colKey === "listing_id")  return refMaps.listings[id] || null;
-    if (colKey === "dorm_id")     return refMaps.dorms[id]    || null;
+    if (["user_id", "landlord_id", "reviewer_id", "sender_id", "changed_by_id", "primary_landlord_id"].includes(colKey))
+      return refMaps.users[id] || null;
+    if (colKey === "listing_id")          return refMaps.listings[id] || null;
+    if (colKey === "dorm_id")             return refMaps.dorms[id] || null;
+    if (colKey === "unit_id" || colKey === "listing_unit_id") return refMaps.listing_units[id] || null;
+    if (colKey === "role_id")             return refMaps.roles[id] || null;
+    if (colKey === "tag_id")              return refMaps.tags[id] || null;
+    if (colKey === "interaction_type_id") return refMaps.interaction_types[id] || null;
+    if (colKey === "location_id")         return refMaps.locations[id] || null;
+    if (colKey === "home_type_id")        return refMaps.home_types[id] || null;
+    if (colKey === "metric_type_id")      return refMaps.metric_types[id] || null;
+    if (colKey === "review_id")           return refMaps.listing_reviews[id] || null;
+    if (colKey === "dorm_review_id")      return refMaps.dorm_reviews[id] || null;
+    if (colKey === "lease_structure_id")  return refMaps.lease_structures[id] || null;
+    if (colKey === "school_id")           return refMaps.schools[id] || null;
+    if (colKey === "thread_type_id")      return refMaps.thread_types[id] || null;
+    if (colKey === "thread_id")           return refMaps.chat_threads[id] || null;
+    if (colKey === "priority_type_id")    return refMaps.priority_types[id] || null;
+    if (colKey === "contract_id")         return refMaps.contracts[id] || null;
     return null;
   }
 
@@ -1471,11 +1552,14 @@ export default function AdminDashboard() {
       const data = await res.json();
       setRows(Array.isArray(data) ? data : []);
 
-      // Also load listing_units and users when viewing listings
+      // Also load listing_units, users, and listing_amenities when viewing listings
       if (table === "listings") {
-        const [unitsRes, usersRes] = await Promise.all([
+        const [unitsRes, usersRes, amenitiesRes, utilitiesRes, landlordRes] = await Promise.all([
           fetch("/api/admin/listing_units", { headers: dbHeader }),
           fetch("/api/admin/users", { headers: dbHeader }),
+          fetch("/api/admin/listing_amenities", { headers: dbHeader }),
+          fetch("/api/admin/listing_utilities", { headers: dbHeader }),
+          fetch("/api/admin/listing_landlords", { headers: dbHeader }),
         ]);
         if (unitsRes.ok) {
           const unitsData = await unitsRes.json();
@@ -1489,6 +1573,31 @@ export default function AdminDashboard() {
         if (usersRes.ok) {
           const usersData = await usersRes.json();
           setAllUsers(Array.isArray(usersData) ? usersData : []);
+        }
+        if (amenitiesRes.ok) {
+          const amenitiesData = await amenitiesRes.json();
+          const amenitiesMap = {};
+          for (const row of (Array.isArray(amenitiesData) ? amenitiesData : [])) {
+            amenitiesMap[row.listing_id] = AMENITY_COLS.filter((col) => row[col] === true);
+          }
+          setRows((prev) => prev.map((r) => ({ ...r, amenities: amenitiesMap[r.id] ?? [] })));
+        }
+        if (utilitiesRes.ok) {
+          const utilitiesData = await utilitiesRes.json();
+          const utilitiesMap = {};
+          for (const row of (Array.isArray(utilitiesData) ? utilitiesData : [])) {
+            utilitiesMap[row.listing_id] = UTILITY_COLS.filter((col) => row[col] === true);
+          }
+          setRows((prev) => prev.map((r) => ({ ...r, utilities_included: utilitiesMap[r.id] ?? [] })));
+        }
+        if (landlordRes.ok) {
+          const landlordData = await landlordRes.json();
+          const landlordMap = {};
+          for (const row of (Array.isArray(landlordData) ? landlordData : [])) {
+            if (!landlordMap[row.listing_id]) landlordMap[row.listing_id] = [];
+            landlordMap[row.listing_id].push(row.user_id);
+          }
+          setRows((prev) => prev.map((r) => ({ ...r, landlord_id: landlordMap[r.id] ?? [] })));
         }
       }
     } catch (e) {
@@ -1651,19 +1760,73 @@ export default function AdminDashboard() {
     }
 
     for (const [id, updates] of entries) {
-      await patchRow(`/api/admin/${activeTable}`, id, updates);
-    }
+      const { amenities, utilities_included, landlord_id, ...mainUpdates } = updates;
 
-    // When saving listings, also normalize any legacy amenity values in the DB
-    let migrateMsg = "";
-    if (activeTable === "listings") {
-      try {
-        const res = await fetch(`/api/admin/migrate-amenities`, { method: "POST", headers: { "x-db-target": dbTarget } });
-        const data = await res.json();
-        if (!data.error && data.migrated > 0) {
-          migrateMsg = ` · ${data.migrated} amenity row(s) normalized`;
+      // Amenities live in listing_amenities, not the listings row itself
+      if (amenities !== undefined && activeTable === "listings") {
+        try {
+          const amenitySet = new Set(amenities || []);
+          const boolMap = Object.fromEntries(AMENITY_COLS.map((col) => [col, amenitySet.has(col)]));
+          const res = await fetch("/api/admin/listing_amenities", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+            body: JSON.stringify({ listing_id: id, ...boolMap }),
+          });
+          if (!res.ok) {
+            let msg = `HTTP ${res.status}`;
+            try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+            errors.push(`[${id.slice(0, 8)}…] amenities: ${msg}`);
+            failed++;
+          }
+        } catch (e) {
+          errors.push(`[${String(id).slice(0, 8)}…] amenities: ${e.message}`);
+          failed++;
         }
-      } catch { /* non-fatal */ }
+      }
+      // Utilities live in listing_utilities
+      if (utilities_included !== undefined && activeTable === "listings") {
+        try {
+          const utilSet = new Set(utilities_included || []);
+          const boolMap = Object.fromEntries(UTILITY_COLS.map((col) => [col, utilSet.has(col)]));
+          const res = await fetch("/api/admin/listing_utilities", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+            body: JSON.stringify({ listing_id: id, ...boolMap }),
+          });
+          if (!res.ok) {
+            let msg = `HTTP ${res.status}`;
+            try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+            errors.push(`[${id.slice(0, 8)}…] utilities: ${msg}`);
+            failed++;
+          }
+        } catch (e) {
+          errors.push(`[${String(id).slice(0, 8)}…] utilities: ${e.message}`);
+          failed++;
+        }
+      }
+      // Landlords live in listing_landlords
+      if (landlord_id !== undefined && activeTable === "listings") {
+        try {
+          const res = await fetch("/api/admin/listing_landlords", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "x-db-target": dbTarget },
+            body: JSON.stringify({ listing_id: id, user_ids: landlord_id || [] }),
+          });
+          if (!res.ok) {
+            let msg = `HTTP ${res.status}`;
+            try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+            errors.push(`[${id.slice(0, 8)}…] landlords: ${msg}`);
+            failed++;
+          }
+        } catch (e) {
+          errors.push(`[${String(id).slice(0, 8)}…] landlords: ${e.message}`);
+          failed++;
+        }
+      }
+
+      if (Object.keys(mainUpdates).length > 0) {
+        await patchRow(`/api/admin/${activeTable}`, id, mainUpdates);
+      }
     }
 
     // Also save any pending unit changes when on listings view
@@ -1674,7 +1837,7 @@ export default function AdminDashboard() {
     const totalSaved = entries.length + unitEntries.length - failed;
     setSaving(false);
     if (failed === 0) {
-      setSaveStatus({ ok: true, msg: `${totalSaved} row(s) saved.${migrateMsg}` });
+      setSaveStatus({ ok: true, msg: `${totalSaved} row(s) saved.` });
       setPendingChanges({});
       setUnitPendingChanges({});
       loadTable(activeTable, dbTarget);

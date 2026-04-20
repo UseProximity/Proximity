@@ -1666,7 +1666,24 @@ function ListingMetricsChart({ listingId, viewAsId }) {
 // Property Detail View
 function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p, onEditListing, viewAsId }) {
   const router = useRouter();
+  const [allTimeMetrics, setAllTimeMetrics] = useState([]);
+
+  const listingId = p?._id || p?.id;
+  useEffect(() => {
+    if (!listingId) return;
+    const params = new URLSearchParams({ range: "all", listingIds: listingId });
+    if (viewAsId) params.set("viewAs", viewAsId);
+    fetch(`/api/landlord/metrics?${params}`)
+      .then((r) => r.json())
+      .then((data) => setAllTimeMetrics(data.metrics ?? []))
+      .catch(console.error);
+  }, [listingId, viewAsId]);
+
   if (!p) return null;
+
+  const totalViews = allTimeMetrics.filter((m) => m.metric_type === "clicks").reduce((sum, m) => sum + m.count, 0);
+  const totalSaves = allTimeMetrics.filter((m) => m.metric_type === "saves").reduce((sum, m) => sum + m.count, 0);
+  const totalContacts = allTimeMetrics.filter((m) => m.metric_type === "contacts").reduce((sum, m) => sum + m.count, 0);
 
   const units = p.unitTypes ?? [];
   const images = Array.isArray(p.images) ? p.images : [];
@@ -1674,9 +1691,7 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
   const utilities = Array.isArray(p.utilitiesIncluded) ? p.utilitiesIncluded : [];
 
   const handleViewAsStudent = () => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("listing", p._id || p.id);
-    router.push(`?${params.toString()}`);
+    window.open(`/browse?panel=${p._id || p.id}`, "_blank");
   };
 
   return (
@@ -1741,11 +1756,12 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
       )}
 
       {/* Stat cards */}
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         {[
-          { label: "Views", value: p.numClicks ?? 0, icon: <Eye className="h-4 w-4 text-red-600" /> },
-          { label: "Saves", value: p.numSaves ?? 0, icon: <Star className="h-4 w-4 text-yellow-500" /> },
-          { label: "Reviews", value: p.numReviews ?? 0, icon: <MessageSquare className="h-4 w-4 text-blue-500" /> },
+          { label: "Views", value: totalViews, icon: <Eye className="h-4 w-4 text-red-600" /> },
+          { label: "Saves", value: totalSaves, icon: <Star className="h-4 w-4 text-yellow-500" /> },
+          { label: "Contacts", value: totalContacts, icon: <MessageSquare className="h-4 w-4 text-blue-500" /> },
+          { label: "Reviews", value: p.numReviews ?? 0, icon: <MessageSquare className="h-4 w-4 text-purple-500" /> },
           { label: "Rating", value: p.numReviews > 0 ? `${Number(p.rating).toFixed(1)} / 5` : "—", icon: <ThumbsUp className="h-4 w-4 text-green-500" /> },
         ].map(({ label, value, icon }) => (
           <Card key={label}>

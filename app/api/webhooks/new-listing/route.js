@@ -78,11 +78,22 @@ export async function POST(request) {
   const body = await request.json();
   const listing = body.record;
 
-  const landlordIds = Array.isArray(listing.landlord_id) ? listing.landlord_id : [];
+  const listingId = listing.id;
+  if (!listingId) {
+    return NextResponse.json({ skipped: 'No listing id' });
+  }
+
+  // Fetch landlord user_ids from listing_landlords (landlord_id no longer on listings)
+  const { data: landlordRows } = await supabase
+    .from('listing_landlords')
+    .select('user_id')
+    .eq('listing_id', listingId);
+  const landlordIds = (landlordRows ?? []).map((r) => r.user_id);
+
   const listingTitle = listing.title || listing.address || 'Unknown address';
 
   if (landlordIds.length === 0) {
-    return NextResponse.json({ skipped: 'No landlord_id on listing' });
+    return NextResponse.json({ skipped: 'No landlords for listing' });
   }
 
   // Fetch all landlord users from Supabase in one query

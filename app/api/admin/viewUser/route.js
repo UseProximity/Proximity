@@ -3,36 +3,61 @@ export const dynamic = "force-dynamic";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
 
+const LISTING_SELECT = `
+  id, title, address, description, latitude, longitude, created_at,
+  lease_type, lease_structure, furnished, move_in_date, unavailable,
+  sublease_friendly, min_rent, max_rent, min_bedrooms, max_bedrooms,
+  home_types(label),
+  listing_units(bedrooms, bathrooms, area),
+  listing_landlords(user_id, is_primary),
+  listing_amenities(air_conditioning, dishwasher, gym, laundry, mailroom, microwave, oven, parking, pets_allowed, pool, refrigerator, rooftop, storage, stove, study_room),
+  listing_utilities(electric, gas, heat, water, internet, trash, cable, sewer, cooling),
+  listing_images(url, sort_order),
+  listing_reviews(rating, legitimacy, deleted_at)
+`;
+
+function amenitiesRowToArray(row) {
+  if (!row) return [];
+  return ["air_conditioning","dishwasher","gym","laundry","mailroom","microwave","oven",
+    "parking","pets_allowed","pool","refrigerator","rooftop","storage","stove","study_room"]
+    .filter(k => row[k] === true);
+}
+
+function utilitiesRowToArray(row) {
+  if (!row) return [];
+  return ["electric","gas","heat","water","internet","trash","cable","sewer","cooling"]
+    .filter(k => row[k] === true);
+}
+
 function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
-  const legitReviews = (l.reviews || []).filter((r) => r.legitimacy);
-  const ownerIds = Array.isArray(l.landlord_id) ? l.landlord_id : [];
+  const legitReviews = (l.listing_reviews ?? []).filter(r => r.legitimacy && !r.deleted_at);
+  const landlordRows = l.listing_landlords ?? [];
+  const ownerIds = landlordRows.map(r => r.user_id);
   const coOwners = ownerIds
-    .filter((id) => id !== currentUserId)
-    .map((id) => ({ id, name: coOwnerMap[id]?.name ?? null, email: coOwnerMap[id]?.email ?? null }));
+    .filter(id => id !== currentUserId)
+    .map(id => ({ id, name: coOwnerMap[id]?.name ?? null, email: coOwnerMap[id]?.email ?? null }));
   return {
     _id: l.id?.toString(),
     id: l.id,
     title: l.title ?? null,
     address: l.address,
     description: l.description ?? null,
-    unitTypes: Array.isArray(l.listing_units) ? l.listing_units : [],
+    unitTypes: (l.listing_units ?? []).map(u => ({ bedrooms: u.bedrooms, bathrooms: u.bathrooms, area: u.area, rent: null })),
     leaseType: l.lease_type ?? null,
-    homeType: l.home_type,
-    amenities: Array.isArray(l.amenities) ? l.amenities : [],
+    homeType: l.home_types?.label ?? null,
+    amenities: amenitiesRowToArray(l.listing_amenities),
     furnished: l.furnished ?? false,
-    utilitiesIncluded: Array.isArray(l.utilities_included) ? l.utilities_included : [],
+    utilitiesIncluded: utilitiesRowToArray(l.listing_utilities),
     unavailable: l.unavailable ?? false,
     minRent: l.min_rent,
     maxRent: l.max_rent,
     minBedrooms: l.min_bedrooms,
     maxBedrooms: l.max_bedrooms,
-    images: Array.isArray(l.images) ? l.images : [],
-    numClicks: Number(l.num_clicks ?? 0),
-    numSaves: Number(l.num_saves ?? 0),
+    images: (l.listing_images ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map(i => i.url),
+    numClicks: 0,
+    numSaves: 0,
     numReviews: legitReviews.length,
-    rating: legitReviews.length
-      ? legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length
-      : 0,
+    rating: legitReviews.length ? legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length : 0,
     owner: ownerIds[0] ?? null,
     coOwners,
     latitude: l.latitude,
@@ -48,14 +73,13 @@ export async function GET(req) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify requesting user is a super
     const { data: reqUser } = await supabase
       .from("users")
-      .select("role")
+      .select("id, roles!role_id(name)")
       .eq("email", session.user.email)
       .single();
 
-    if (reqUser?.role !== "super") {
+    if (reqUser?.roles?.name !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -77,44 +101,69 @@ export async function GET(req) {
 
     const userId = user.id;
 
-    const [favoritesRows, ownListings, contactedRows] = await Promise.all([
-      supabase.from("user_favorites").select("listings(*)").eq("user_id", userId),
-      supabase.from("listings").select("*, listing_units(*), reviews!listing_id(rating, legitimacy)").contains("landlord_id", [userId]),
-      supabase.from("user_contacted").select("listings(*)").eq("user_id", userId),
+    // Get interaction type IDs
+    const { data: types } = await supabase.from("interaction_types").select("id, name");
+    const typeMap = Object.fromEntries((types ?? []).map(t => [t.name, t.id]));
+
+    // Get owned listing IDs
+    const { data: ownedRows } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .eq("user_id", userId);
+    const ownedIds = (ownedRows ?? []).map(r => r.listing_id);
+
+    // Get favorite and contacted listing IDs
+    const [favRows, contactedRowsResult] = await Promise.all([
+      typeMap.saved
+        ? supabase.from("user_listing_interactions").select("listing_id").eq("user_id", userId).eq("interaction_type_id", typeMap.saved)
+        : Promise.resolve({ data: [] }),
+      typeMap.contacted
+        ? supabase.from("user_listing_interactions").select("listing_id").eq("user_id", userId).eq("interaction_type_id", typeMap.contacted)
+        : Promise.resolve({ data: [] }),
     ]);
 
-    const favoritesListings = (favoritesRows.data || []).map((r) => r.listings).filter(Boolean);
-    const contactedListings = (contactedRows.data || []).map((r) => r.listings).filter(Boolean);
+    const favIds = (favRows.data ?? []).map(r => r.listing_id);
+    const contactedIds = (contactedRowsResult.data ?? []).map(r => r.listing_id);
 
-    // Collect co-landlord IDs from all owned listings and batch-fetch their info
+    // Fetch all three sets of listings in parallel
+    const allIds = [...new Set([...ownedIds, ...favIds, ...contactedIds])];
+    let listingMap = {};
+    if (allIds.length > 0) {
+      const { data: allListings } = await supabase
+        .from("listings")
+        .select(LISTING_SELECT)
+        .in("id", allIds)
+        .is("deleted_at", null);
+      for (const l of allListings ?? []) listingMap[l.id] = l;
+    }
+
+    // Build co-owner map from owned listings
     const coOwnerIds = new Set();
-    for (const l of ownListings.data || []) {
-      for (const lid of (Array.isArray(l.landlord_id) ? l.landlord_id : [])) {
-        if (lid !== userId) coOwnerIds.add(lid);
+    for (const id of ownedIds) {
+      const l = listingMap[id];
+      if (l) for (const row of (l.listing_landlords ?? [])) {
+        if (row.user_id !== userId) coOwnerIds.add(row.user_id);
       }
     }
     let coOwnerMap = {};
     if (coOwnerIds.size > 0) {
-      const { data: coOwnerUsers } = await supabase
-        .from("users")
-        .select("id, name, email")
-        .in("id", [...coOwnerIds]);
+      const { data: coOwnerUsers } = await supabase.from("users").select("id, name, email").in("id", [...coOwnerIds]);
       for (const u of coOwnerUsers ?? []) coOwnerMap[u.id] = u;
     }
 
-    const safeFavorites = favoritesListings.map(serializeListing);
-    const safeListings = (ownListings.data || []).map((l) => serializeListing(l, userId, coOwnerMap));
-    const safeContacted = contactedListings.map(serializeListing);
+    const safeListings = ownedIds.map(id => listingMap[id]).filter(Boolean).map(l => serializeListing(l, userId, coOwnerMap));
+    const safeFavorites = favIds.map(id => listingMap[id]).filter(Boolean).map(l => serializeListing(l));
+    const safeContacted = contactedIds.map(id => listingMap[id]).filter(Boolean).map(l => serializeListing(l));
 
     return Response.json({
       ...user,
       _id: user.id?.toString(),
       favorites: safeFavorites,
-      favoritesIds: safeFavorites.map((f) => f._id),
+      favoritesIds: safeFavorites.map(f => f._id),
       listings: safeListings,
       contacted: safeContacted,
-      contactedIds: safeContacted.map((l) => l._id),
-      listingsIds: safeListings.map((l) => l._id),
+      contactedIds: safeContacted.map(l => l._id),
+      listingsIds: safeListings.map(l => l._id),
       createdAt: user.created_at ? new Date(user.created_at).toISOString() : null,
       updatedAt: user.updated_at ? new Date(user.updated_at).toISOString() : null,
     }, { headers: { "Cache-Control": "no-store" } });

@@ -11,14 +11,14 @@ export async function GET(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fetch the requesting user's role
+    // Fetch the requesting user's role via the roles join
     const { data: reqUser } = await supabase
       .from("users")
-      .select("role")
+      .select("roles!role_id(name)")
       .eq("email", session.user.email)
       .single();
 
-    if (reqUser?.role !== "super") {
+    if (reqUser?.roles?.name !== "super") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -31,7 +31,7 @@ export async function GET(req) {
 
     const { data: users, error } = await supabase
       .from("users")
-      .select("id, name, email, role")
+      .select("id, name, email, roles!role_id(name)")
       .or(`name.ilike.%${q}%,email.ilike.%${q}%`)
       .limit(10);
 
@@ -40,7 +40,14 @@ export async function GET(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    return NextResponse.json(users || []);
+    return NextResponse.json(
+      (users || []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.roles?.name ?? "student",
+      }))
+    );
   } catch (e) {
     console.error("GET /api/searchUsers failed:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

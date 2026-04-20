@@ -1,8 +1,3 @@
-// DB migration (run manually in Supabase SQL editor):
-// ALTER TABLE matchmaking_responses
-//   ADD COLUMN move_in_date_earliest date,
-//   ADD COLUMN move_in_date_latest date;
-
 import { NextResponse } from "next/server";
 import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
@@ -10,6 +5,38 @@ import { auth } from "@/auth";
 const FORMSPREE_URL =
   process.env.NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL ||
   "https://formspree.io/f/xkoqolpy";
+
+// Parse a budget string like "$800-$1,000" or "$1,500" into a numeric value
+function parseBudgetNum(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return value;
+  const stripped = String(value).replace(/[$,\s]/g, "");
+  const range = stripped.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (range) return Number(range[2]);
+  const single = stripped.match(/^(\d+(?:\.\d+)?)$/);
+  if (single) return Number(single[1]);
+  return null;
+}
+
+function parseBudgetMin(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return value;
+  const stripped = String(value).replace(/[$,\s]/g, "");
+  const range = stripped.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (range) return Number(range[1]);
+  const single = stripped.match(/^(\d+(?:\.\d+)?)$/);
+  if (single) return Number(single[1]);
+  return null;
+}
+
+// Convert furnished field from various text representations to boolean
+function parseFurnished(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["yes", "true", "furnished"].includes(value.toLowerCase());
+  }
+  return null;
+}
 
 export async function GET() {
   try {
@@ -28,15 +55,13 @@ export async function GET() {
       return NextResponse.json({ hasResponse: false });
     }
 
-    const { data: response } = await supabase
-      .from("matchmaking_responses")
+    const { data: pref } = await supabase
+      .from("matchmaking_preferences")
       .select("*")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+      .maybeSingle();
 
-    return NextResponse.json({ hasResponse: !!response, response: response || null });
+    return NextResponse.json({ hasResponse: !!pref, response: pref || null });
   } catch {
     return NextResponse.json({ hasResponse: false, response: null });
   }
@@ -51,9 +76,11 @@ export async function PATCH(request) {
 
     const body = await request.json();
     const {
-      name, email, year_of_school, group_size, budget, lease_term,
-      furnished, commute, medical_campus, priorities, student_type,
+      name, email,
+      group_size, budget, lease_term,
+      furnished, student_type,
       area, notes, move_in_date_earliest, move_in_date_latest,
+      budget_min,
     } = body;
 
     if (!name?.trim() || !email?.trim()) {
@@ -71,23 +98,18 @@ export async function PATCH(request) {
     }
 
     const { error } = await supabase
-      .from("matchmaking_responses")
+      .from("matchmaking_preferences")
       .update({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        year_of_school: year_of_school || null,
-        group_size: group_size || null,
-        budget: budget || null,
-        lease_term: lease_term || null,
-        furnished: furnished || null,
-        commute: commute || null,
-        medical_campus: medical_campus ?? false,
-        priorities: priorities || [],
-        student_type: student_type || null,
-        area: area || null,
-        notes: notes || null,
-        move_in_date_earliest: move_in_date_earliest || null,
-        move_in_date_latest: move_in_date_latest || null,
+        budget_min: parseBudgetMin(budget_min ?? budget) ?? null,
+        budget_max: parseBudgetNum(budget) ?? null,
+        group_size: group_size ?? null,
+        lease_term: lease_term ?? null,
+        furnished: parseFurnished(furnished),
+        student_type: student_type ?? null,
+        area: area ?? null,
+        notes: notes ?? null,
+        move_in_date_earliest: move_in_date_earliest ?? null,
+        move_in_date_latest: move_in_date_latest ?? null,
       })
       .eq("user_id", user.id);
 
@@ -105,18 +127,14 @@ export async function POST(request) {
     const {
       name,
       email,
-      year_of_school,
       group_size,
       budget,
+      budget_min,
       lease_term,
       furnished,
-      commute,
-      medical_campus,
-      priorities,
       student_type,
       area,
       notes,
-      referral_source,
       move_in_date_earliest,
       move_in_date_latest,
     } = body;
@@ -143,18 +161,24 @@ export async function POST(request) {
     if (existingUser) {
       userId = existingUser.id;
     } else {
+      // Look up the student role ID
+      const { data: studentRole } = await supabase
+        .from("roles")
+        .select("id")
+        .eq("name", "student")
+        .single();
+
       // Create a stub user with incomplete profile
       const { data: newUser, error: insertError } = await supabase
         .from("users")
         .insert({
           email: normalizedEmail,
           name: name.trim(),
-          role: "student",
+          role_id: studentRole?.id ?? null,
           profile_complete: false,
           gender: "unspecified",
           phone: "N/A",
           description: "",
-          referral_source: referral_source || "",
         })
         .select("id")
         .single();
@@ -171,31 +195,25 @@ export async function POST(request) {
       isNewUser = true;
     }
 
-    // Save the matchmaking response linked to the user
-    const { error: responseError } = await supabase
-      .from("matchmaking_responses")
-      .insert({
+    // Upsert matchmaking_preferences (UNIQUE on user_id)
+    const { error: prefError } = await supabase
+      .from("matchmaking_preferences")
+      .upsert({
         user_id: userId,
-        name: name.trim(),
-        email: normalizedEmail,
-        year_of_school: year_of_school || null,
-        group_size: group_size || null,
-        budget: budget || null,
-        lease_term: lease_term || null,
-        furnished: furnished || null,
-        commute: commute || null,
-        medical_campus: medical_campus ?? false,
-        priorities: priorities || [],
-        student_type: student_type || null,
-        area: area || null,
-        notes: notes || null,
-        referral_source: referral_source || null,
-        move_in_date_earliest: move_in_date_earliest || null,
-        move_in_date_latest: move_in_date_latest || null,
-      });
+        budget_min: parseBudgetMin(budget_min ?? budget) ?? null,
+        budget_max: parseBudgetNum(budget) ?? null,
+        group_size: group_size ?? null,
+        lease_term: lease_term ?? null,
+        furnished: parseFurnished(furnished),
+        student_type: student_type ?? null,
+        area: area ?? null,
+        notes: notes ?? null,
+        move_in_date_earliest: move_in_date_earliest ?? null,
+        move_in_date_latest: move_in_date_latest ?? null,
+      }, { onConflict: "user_id" });
 
-    if (responseError) {
-      console.error("matchmaking: failed to insert response", responseError);
+    if (prefError) {
+      console.error("matchmaking: failed to upsert preferences", prefError);
       return NextResponse.json(
         { error: "Failed to save response" },
         { status: 500 }
@@ -210,18 +228,13 @@ export async function POST(request) {
         body: JSON.stringify({
           name,
           email: normalizedEmail,
-          year_of_school,
           group_size,
           budget,
           lease_term,
           furnished,
-          commute,
-          medical_campus,
-          priorities,
           student_type,
           area,
           notes,
-          referral_source,
           move_in_date_earliest,
           move_in_date_latest,
         }),

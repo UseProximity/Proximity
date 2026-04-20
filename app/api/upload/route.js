@@ -73,7 +73,7 @@ export async function PATCH(req) {
 
     const { data: listing, error: fetchError } = await supabase
       .from("listings")
-      .select("id, landlord_id, address, images")
+      .select("id, address")
       .eq("id", listingId)
       .single();
 
@@ -81,7 +81,13 @@ export async function PATCH(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const isOwner = (listing.landlord_id ?? []).includes(session.user.id);
+    const { data: own } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .eq("listing_id", listingId)
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    const isOwner = !!own;
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -114,8 +120,20 @@ export async function PATCH(req) {
       return Response.json({ error: "No valid files" }, { status: 400 });
     }
 
-    const updatedImages = (listing.images || []).concat(urls);
-    await supabase.from("listings").update({ images: updatedImages }).eq("id", listingId);
+    // Find max current sort_order for this listing
+    const { data: existingImages } = await supabase
+      .from("listing_images")
+      .select("sort_order")
+      .eq("listing_id", listingId)
+      .order("sort_order", { ascending: false })
+      .limit(1);
+    const maxOrder = existingImages?.[0]?.sort_order ?? -1;
+    const imageRows = urls.map((url, i) => ({
+      listing_id: listingId,
+      url,
+      sort_order: maxOrder + 1 + i,
+    }));
+    await supabase.from("listing_images").insert(imageRows);
 
     return Response.json({ urls, url: urls[0] });
   } catch (error) {
@@ -144,7 +162,7 @@ export async function POST(req) {
 
     const { data: listing, error: fetchError } = await supabase
       .from("listings")
-      .select("id, landlord_id, address")
+      .select("id, address")
       .eq("id", listingId)
       .single();
 
@@ -152,7 +170,13 @@ export async function POST(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const isOwner = (listing.landlord_id ?? []).includes(session.user.id);
+    const { data: own } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .eq("listing_id", listingId)
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    const isOwner = !!own;
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -199,7 +223,7 @@ export async function PUT(req) {
 
     const { data: listing, error: fetchError } = await supabase
       .from("listings")
-      .select("id, landlord_id, images")
+      .select("id")
       .eq("id", listingId)
       .single();
 
@@ -207,13 +231,31 @@ export async function PUT(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const isOwner = (listing.landlord_id ?? []).includes(session.user.id);
+    const { data: own } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .eq("listing_id", listingId)
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    const isOwner = !!own;
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const updatedImages = (listing.images || []).concat(urls);
-    await supabase.from("listings").update({ images: updatedImages }).eq("id", listingId);
+    // Find max current sort_order for this listing
+    const { data: existingImages } = await supabase
+      .from("listing_images")
+      .select("sort_order")
+      .eq("listing_id", listingId)
+      .order("sort_order", { ascending: false })
+      .limit(1);
+    const maxOrder = existingImages?.[0]?.sort_order ?? -1;
+    const imageRows = urls.map((url, i) => ({
+      listing_id: listingId,
+      url,
+      sort_order: maxOrder + 1 + i,
+    }));
+    await supabase.from("listing_images").insert(imageRows);
 
     return Response.json({ urls });
   } catch (error) {

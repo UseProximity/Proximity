@@ -26,18 +26,34 @@ export async function GET(req) {
   const viewAsId = searchParams.get("viewAs");
   const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
 
-  // Fetch all listings for this landlord (used for the dropdown)
-  const { data: listings, error: listingsError } = await supabase
-    .from("listings")
-    .select("id, address, title")
-    .contains("landlord_id", [targetUserId])
-    .order("created_at", { ascending: false });
+  // Fetch all listing IDs for this landlord via listing_landlords
+  const { data: ll, error: llError } = await supabase
+    .from("listing_landlords")
+    .select("listing_id")
+    .eq("user_id", targetUserId);
 
-  if (listingsError) {
-    return NextResponse.json({ error: listingsError.message }, { status: 500 });
+  if (llError) {
+    return NextResponse.json({ error: llError.message }, { status: 500 });
   }
 
-  const allIds = (listings ?? []).map((l) => l.id);
+  const ownedIds = (ll ?? []).map((r) => r.listing_id);
+
+  // Fetch listing details for the dropdown
+  let listings = [];
+  if (ownedIds.length > 0) {
+    const { data: listingRows, error: listingsError } = await supabase
+      .from("listings")
+      .select("id, address, title")
+      .in("id", ownedIds)
+      .order("created_at", { ascending: false });
+
+    if (listingsError) {
+      return NextResponse.json({ error: listingsError.message }, { status: 500 });
+    }
+    listings = listingRows ?? [];
+  }
+
+  const allIds = listings.map((l) => l.id);
   let targetIds = allIds;
   if (listingIdsParam.trim()) {
     const requested = listingIdsParam
@@ -52,7 +68,7 @@ export async function GET(req) {
   if (targetIds.length > 0) {
     let query = supabase
       .from("listing_metrics_daily")
-      .select("listing_id, metric_type, recorded_date, count")
+      .select("listing_id, metric_type_id, metric_types(name), recorded_date, count")
       .in("listing_id", targetIds)
       .order("recorded_date", { ascending: true });
     if (startDateStr) query = query.gte("recorded_date", startDateStr);
@@ -61,8 +77,15 @@ export async function GET(req) {
     if (metricsError) {
       return NextResponse.json({ error: metricsError.message }, { status: 500 });
     }
-    metrics = data ?? [];
+
+    // Map to maintain frontend compatibility: expose metric_type as name string
+    metrics = (data ?? []).map((row) => ({
+      listing_id: row.listing_id,
+      metric_type: row.metric_types?.name ?? null,
+      recorded_date: row.recorded_date,
+      count: row.count,
+    }));
   }
 
-  return NextResponse.json({ listings: listings ?? [], metrics });
+  return NextResponse.json({ listings, metrics });
 }

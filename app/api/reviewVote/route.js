@@ -10,18 +10,16 @@ export async function POST(req) {
     }
 
     const { reviewId, vote } = await req.json();
-    if (!reviewId || !["up", "down"].join("").includes(vote)) {
+    if (!reviewId || !["up", "down"].includes(vote)) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
     const userId = session.user.id;
-    const addCol = vote === "up" ? "upvotes" : "downvotes";
-    const removeCol = vote === "up" ? "downvotes" : "upvotes";
 
-    // Fetch current vote arrays
+    // Validate review exists
     const { data: review, error: fetchError } = await supabase
-      .from("reviews")
-      .select("id, upvotes, downvotes")
+      .from("listing_reviews")
+      .select("id")
       .eq("id", reviewId)
       .single();
 
@@ -29,32 +27,63 @@ export async function POST(req) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
 
-    const addArr = Array.isArray(review[addCol]) ? review[addCol] : [];
-    const removeArr = Array.isArray(review[removeCol]) ? review[removeCol] : [];
+    // Check for an existing vote by this user on this review
+    const { data: existingVote } = await supabase
+      .from("review_votes")
+      .select("vote")
+      .eq("review_id", reviewId)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    const alreadyVoted = addArr.includes(userId);
-    const newAddArr = alreadyVoted
-      ? addArr.filter((id) => id !== userId) // toggle off
-      : [...addArr, userId];
-    const newRemoveArr = removeArr.filter((id) => id !== userId); // remove opposite vote
+    if (existingVote) {
+      if (existingVote.vote === vote) {
+        // Same direction — toggle off (delete)
+        const { error: deleteError } = await supabase
+          .from("review_votes")
+          .delete()
+          .eq("review_id", reviewId)
+          .eq("user_id", userId);
 
-    const { data: updated, error: updateError } = await supabase
-      .from("reviews")
-      .update({ [addCol]: newAddArr, [removeCol]: newRemoveArr })
-      .eq("id", reviewId)
-      .select("id, upvotes, downvotes")
-      .single();
+        if (deleteError) {
+          console.error("POST /api/reviewVote delete failed:", deleteError);
+          return NextResponse.json({ error: "Server error" }, { status: 500 });
+        }
+      } else {
+        // Different direction — update to new vote
+        const { error: updateError } = await supabase
+          .from("review_votes")
+          .update({ vote })
+          .eq("review_id", reviewId)
+          .eq("user_id", userId);
 
-    if (updateError) {
-      console.error("POST /api/reviewVote update failed:", updateError);
-      return NextResponse.json({ error: "Server error" }, { status: 500 });
+        if (updateError) {
+          console.error("POST /api/reviewVote update failed:", updateError);
+          return NextResponse.json({ error: "Server error" }, { status: 500 });
+        }
+      }
+    } else {
+      // No existing vote — insert
+      const { error: insertError } = await supabase
+        .from("review_votes")
+        .insert({ review_id: reviewId, user_id: userId, vote });
+
+      if (insertError) {
+        console.error("POST /api/reviewVote insert failed:", insertError);
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
+      }
     }
 
-    return NextResponse.json({
-      upvotes: updated.upvotes?.length ?? 0,
-      downvotes: updated.downvotes?.length ?? 0,
-      userVote: newAddArr.includes(userId) ? vote : null,
-    });
+    // Return updated counts and current user vote
+    const { data: votes } = await supabase
+      .from("review_votes")
+      .select("user_id, vote")
+      .eq("review_id", reviewId);
+
+    const upvotes = (votes ?? []).filter((v) => v.vote === "up").length;
+    const downvotes = (votes ?? []).filter((v) => v.vote === "down").length;
+    const userVote = (votes ?? []).find((v) => v.user_id === userId)?.vote ?? null;
+
+    return NextResponse.json({ upvotes, downvotes, userVote });
   } catch (e) {
     console.error("POST /api/reviewVote failed:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

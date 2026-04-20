@@ -95,13 +95,17 @@ function normalizeReview(r) {
     name: r.name ?? r.reviewer_name,
     classYear: r.classYear ?? r.class_year,
     createdAt: r.createdAt ?? r.created_at,
+    tags: r.tags ?? (r.dorm_review_tags ?? []).map((t) => t.tags?.name).filter(Boolean),
   };
 }
 
 function normalizeDorm(d) {
   return {
     ...d,
-    roomTypes: d.roomTypes ?? d.room_types ?? [],
+    roomTypes:
+      d.roomTypes ??
+      d.room_types ??
+      (d.dorm_room_types ?? []).map((rt) => rt.room_type).filter(Boolean),
   };
 }
 
@@ -193,7 +197,7 @@ export default function CampusHub() {
   };
 
   const EXCLUDED_TAGS = new Set(["Off-Campus", "Off Campus", "On-Campus", "On Campus"]);
-  const allTags = [...new Set(allReviews.flatMap((r) => r.tags))].filter((t) => !EXCLUDED_TAGS.has(t)).sort();
+  const allTags = [...new Set(allReviews.flatMap((r) => r.tags ?? []))].filter((t) => t && !EXCLUDED_TAGS.has(t)).sort();
   const allDormTypes = CANONICAL_ROOM_TYPES.filter((type) =>
     Object.values(dormMeta).some((d) => d.roomTypes?.includes(type))
   );
@@ -208,9 +212,14 @@ export default function CampusHub() {
   const filteredDorms = allDorms
     .filter((dorm) => {
       const dormReviews = dormGroups[dorm] || [];
+      const avgRating =
+        dormReviews.length > 0
+          ? dormReviews.reduce((sum, r) => sum + r.rating, 0) / dormReviews.length
+          : null;
       const matchesRating =
-        dormReviews.length === 0 ||
-        dormReviews.some((r) => r.rating >= ratingMin && r.rating <= ratingMax);
+        avgRating === null
+          ? ratingMin === 1 && ratingMax === 5
+          : avgRating >= ratingMin && avgRating <= ratingMax;
       const matchesType =
         selectedTypes.length === 0 ||
         selectedTypes.some((t) => dormMeta[dorm]?.roomTypes?.includes(t));
@@ -223,7 +232,7 @@ export default function CampusHub() {
       const matchesTags =
         selectedTags.length === 0 ||
         dormReviews.some((r) =>
-          selectedTags.some((tag) => r.tags.includes(tag))
+          selectedTags.some((tag) => (r.tags ?? []).includes(tag))
         );
       return matchesRating && matchesType && matchesSearch && matchesTags;
     })
@@ -400,7 +409,7 @@ export default function CampusHub() {
                 onChange={() => toggleTag(tag)}
                 className="accent-red-500 rounded"
               />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors">
+              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors capitalize">
                 {tag}
               </span>
             </label>
@@ -601,13 +610,22 @@ export default function CampusHub() {
                   const roomType = dbRoomTypes?.length
                     ? dbRoomTypes.join(" · ")
                     : "—";
-                  const rawTags =
-                    dormMeta[dorm]?.tags || dormReviews[0]?.tags || [];
-                  const mainTags =
-                    rawTags.length > 2
-                      ? rawTags.slice(0, 2).join(" · ") +
-                        ` +${rawTags.length - 2}`
-                      : rawTags.join(" · ");
+                  const tagCounts = {};
+                  for (const r of dormReviews) {
+                    for (const t of (r.tags ?? [])) {
+                      if (!EXCLUDED_TAGS.has(t)) tagCounts[t] = (tagCounts[t] || 0) + 1;
+                    }
+                  }
+                  const topTags = Object.entries(tagCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([t]) => t)
+                    .slice(0, 3);
+                  const mainTags = topTags.length > 2
+                    ? topTags.slice(0, 2).join(" · ") + ` +${topTags.length - 2}`
+                    : topTags.join(" · ");
+                  const avgRating = dormReviews.length
+                    ? (dormReviews.reduce((s, r) => s + r.rating, 0) / dormReviews.length).toFixed(1)
+                    : null;
                   return (
                     <div
                       key={dorm}
@@ -641,19 +659,26 @@ export default function CampusHub() {
                           <h2 className="text-lg font-bold leading-tight">
                             {dorm}
                           </h2>
-                          <p className="text-sm text-gray-600 text-right shrink-0 whitespace-nowrap">
+                          <p className="text-sm text-gray-600 text-right shrink-0 whitespace-nowrap capitalize">
                             {mainTags}
                           </p>
                         </div>
-                        {/* Row 2: type + review count */}
+                        {/* Row 2: type + rating + review count */}
                         <div className="flex justify-between items-baseline gap-2">
                           <p className="text-sm text-gray-600 truncate min-w-0">
                             {roomType}
                           </p>
-                          <p className="text-sm text-gray-500 shrink-0">
-                            {dormReviews.length} review
-                            {dormReviews.length !== 1 && "s"}
-                          </p>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {avgRating && (
+                              <span className="flex items-center gap-0.5 text-sm font-semibold text-gray-800">
+                                <AiFillStar className="text-red-500 text-xs" />
+                                {avgRating}
+                              </span>
+                            )}
+                            <span className="text-sm text-gray-500">
+                              ({dormReviews.length})
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -799,7 +824,7 @@ export default function CampusHub() {
                               {r.content}
                             </p>
                             <div className="flex flex-wrap items-center gap-1.5">
-                              {r.tags.map((tag) => (
+                              {(r.tags ?? []).map((tag) => (
                                 <span
                                   key={tag}
                                   className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full"

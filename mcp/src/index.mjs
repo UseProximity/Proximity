@@ -28,7 +28,7 @@ const RESOURCES = [
     uri: "proximity://db-schema",
     name: "Database Schema",
     description:
-      "Supabase (PostgreSQL) table definitions + legacy Mongoose models. Includes columns, types, relationships, and migration status.",
+      "Supabase (PostgreSQL) table definitions. Includes columns, types, and relationships.",
     mimeType: "application/json",
     file: "db-schema.json",
   },

@@ -16,7 +16,9 @@ import supabase from "@/libs/supabase";
 
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const text = await request.text();
+    if (!text?.trim()) return NextResponse.json({ success: true });
+    const body = JSON.parse(text);
     const { eventType, page, metadata, userId, sessionId } = body;
     if (!eventType) {
       return NextResponse.json({ error: "eventType required" }, { status: 400 });

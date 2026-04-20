@@ -121,16 +121,10 @@ export default function LeasingFunnel({ viewAsId } = {}) {
     ? Math.max(...chartData.flatMap((d) => selectedMetrics.map((t) => d[t] ?? 0)), 1)
     : 1;
 
-  // Summary stats across all selected metrics
-  const allRelevantMetrics = metrics.filter(
-    (m) => selectedMetrics.includes(m.metric_type) && selectedIds.includes(m.listing_id)
-  );
-  const totalCount = allRelevantMetrics.reduce((sum, m) => sum + m.count, 0);
-  const dayTotals = dates.map((d) =>
-    allRelevantMetrics.filter((m) => m.recorded_date === d).reduce((sum, m) => sum + m.count, 0)
-  );
-  const peakCount = dayTotals.length ? Math.max(...dayTotals) : 0;
-  const avgCount = dayTotals.length ? (totalCount / dayTotals.length).toFixed(1) : "0";
+  // Per-metric totals across selected listings
+  const totalViews = metrics.filter((m) => m.metric_type === "clicks" && selectedIds.includes(m.listing_id)).reduce((sum, m) => sum + m.count, 0);
+  const totalSaves = metrics.filter((m) => m.metric_type === "saves" && selectedIds.includes(m.listing_id)).reduce((sum, m) => sum + m.count, 0);
+  const totalContacts = metrics.filter((m) => m.metric_type === "contacts" && selectedIds.includes(m.listing_id)).reduce((sum, m) => sum + m.count, 0);
 
   let dropdownLabel = "No listings selected";
   if (selectedIds.length > 0 && selectedIds.length === allListings.length) {
@@ -229,13 +223,13 @@ export default function LeasingFunnel({ viewAsId } = {}) {
       {selectedIds.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Total", value: totalCount },
-            { label: "Peak day", value: peakCount },
-            { label: "Avg / day", value: avgCount },
-          ].map(({ label, value }) => (
+            { label: "Total Views", value: totalViews, color: METRIC_COLORS.clicks },
+            { label: "Total Saves", value: totalSaves, color: METRIC_COLORS.saves },
+            { label: "Total Contacts", value: totalContacts, color: METRIC_COLORS.contacts },
+          ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{label}</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+              <p className="text-2xl font-bold mt-1" style={{ color }}>{value}</p>
             </div>
           ))}
         </div>

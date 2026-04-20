@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
+import { useSession, signIn } from "next-auth/react";
 import { createPortal } from "react-dom";
+import { useFavorites } from "@/components/FavoritesContext";
 
 function AuthModal({ onClose }) {
   return createPortal(
@@ -44,54 +45,43 @@ function AuthModal({ onClose }) {
   );
 }
 
-export default function HeartIcon({ session, listingId, initial = false }) {
-  const [isFavorite, setIsFavorite] = useState(initial);
+export default function HeartIcon({ listingId }) {
+  const { data: session } = useSession();
+  const { savedIds, toggle } = useFavorites();
+  const isFavorite = savedIds.includes(String(listingId));
   const [pending, setPending] = useState(false);
   const [showModal, setShowModal] = useState(false);
-
-  useEffect(() => {
-    setIsFavorite(initial);
-  }, [initial]);
 
   const handleClick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (pending) return;
 
-    if (!session) {
+    if (!session?.user?.id) {
       setShowModal(true);
       return;
     }
 
-    const prev = isFavorite;
-    const next = !prev;
-
-    setIsFavorite(next);
     setPending(true);
+    const next = !isFavorite;
+    toggle(listingId, next); // optimistic
 
     try {
-      if (!session?.user?.id) {
-        setIsFavorite(prev);
-        return;
-      }
-
       const res = await fetch("/api/favorites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, userId: session?.user?.id }),
+        body: JSON.stringify({ listingId }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || typeof data.favorited !== "boolean") {
-        setIsFavorite(prev);
-        return;
+        toggle(listingId, isFavorite); // revert
+      } else if (data.favorited !== next) {
+        toggle(listingId, data.favorited); // sync server truth
       }
-
-      setIsFavorite(data.favorited);
-    } catch (err) {
-      console.error("Could not update favorites:", err);
-      setIsFavorite(prev);
+    } catch {
+      toggle(listingId, isFavorite); // revert
     } finally {
       setPending(false);
     }

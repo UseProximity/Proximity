@@ -94,30 +94,78 @@ export async function PATCH(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
-
   const supabase = getSupabaseClient(getDbTarget(req));
   const body = await req.json();
+
+  // listing_amenities / listing_utilities are keyed by listing_id — handle upsert separately
+  if (table === "listing_amenities" || table === "listing_utilities") {
+    const { listing_id, ...boolUpdates } = body;
+    if (!listing_id) return Response.json({ error: "listing_id required" }, { status: 400 });
+    const { error } = await supabase
+      .from(table)
+      .upsert({ listing_id, ...boolUpdates }, { onConflict: "listing_id" });
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ success: true });
+  }
+
+  // listing_landlords — delete all then re-insert, with email notifications
+  if (table === "listing_landlords") {
+    const { listing_id, user_ids } = body;
+    if (!listing_id) return Response.json({ error: "listing_id required" }, { status: 400 });
+    const newUserIds = Array.isArray(user_ids) ? user_ids : [];
+    // Diff for email notifications
+    const { data: oldRows } = await supabase
+      .from("listing_landlords").select("user_id").eq("listing_id", listing_id);
+    const oldLandlordIds = (oldRows || []).map((r) => r.user_id);
+    const { data: listing } = await supabase
+      .from("listings").select("id, address").eq("id", listing_id).single();
+    // Replace junction rows
+    await supabase.from("listing_landlords").delete().eq("listing_id", listing_id);
+    if (newUserIds.length > 0) {
+      const { error } = await supabase
+        .from("listing_landlords")
+        .insert(newUserIds.map((user_id) => ({ listing_id, user_id })));
+      if (error) return Response.json({ error: error.message }, { status: 500 });
+    }
+    // Email newly added landlords
+    if (listing?.address) {
+      try {
+        const addedIds = newUserIds.filter((id) => !oldLandlordIds.includes(id));
+        const keptIds  = newUserIds.filter((id) =>  oldLandlordIds.includes(id));
+        let addedLandlords = [];
+        if (addedIds.length > 0) {
+          const { data: addedUsers } = await supabase.from("users").select("id, email, name").in("id", addedIds);
+          addedLandlords = addedUsers ?? [];
+        }
+        for (const landlord of addedLandlords) {
+          if (landlord.email) await sendNewListingEmail(landlord.email, landlord.name, listing.address, listing.id);
+        }
+        if (addedLandlords.length > 0 && keptIds.length > 0) {
+          const { data: keptUsers } = await supabase.from("users").select("id, email, name").in("id", keptIds);
+          for (const kept of (keptUsers ?? [])) {
+            for (const added of addedLandlords) {
+              if (kept.email && added.email)
+                await sendCoLandlordAddedEmail(kept.email, kept.name, added.name, added.email, listing.address, listing.id);
+            }
+          }
+        }
+      } catch (emailErr) {
+        console.error("[admin PATCH listing_landlords] email error:", emailErr?.message);
+      }
+    }
+    return Response.json({ success: true });
+  }
+
   const { id, updates } = body;
   if (!id || typeof id !== "string" || id.trim() === "") {
     return Response.json({ error: "Missing or invalid id" }, { status: 400 });
   }
 
   // Strip immutable / auto-managed fields
-  const { id: _id, created_at, updated_at, mongo_id, ...safeUpdates } = updates || {};
+  const { id: _id, created_at, updated_at, ...safeUpdates } = updates || {};
 
   if (Object.keys(safeUpdates).length === 0) {
     return Response.json({ error: "No updatable fields provided" }, { status: 400 });
-  }
-
-  // For listings with a landlord_id change, fetch the old array before updating
-  let oldLandlordIds = [];
-  if (table === "listings" && Array.isArray(safeUpdates.landlord_id)) {
-    const { data: oldListing } = await supabase
-      .from("listings")
-      .select("landlord_id")
-      .eq("id", id)
-      .maybeSingle();
-    oldLandlordIds = Array.isArray(oldListing?.landlord_id) ? oldListing.landlord_id : [];
   }
 
   const { data, error } = await supabase
@@ -130,42 +178,6 @@ export async function PATCH(req, { params }) {
   if (error) {
     console.error(`[admin PATCH] table=${table} id=${id}`, error);
     return Response.json({ error: error.message }, { status: 500 });
-  }
-
-  // Send email notifications when a listing's landlord_id array changes
-  if (table === "listings" && Array.isArray(safeUpdates.landlord_id) && data?.address) {
-    try {
-      const newLandlordIds = safeUpdates.landlord_id;
-      const addedIds = newLandlordIds.filter((lid) => !oldLandlordIds.includes(lid));
-      const existingIds = newLandlordIds.filter((lid) => oldLandlordIds.includes(lid));
-
-      let addedLandlords = [];
-      if (addedIds.length > 0) {
-        const { data: users } = await supabase.from("users").select("id, email, name").in("id", addedIds);
-        addedLandlords = users ?? [];
-      }
-
-      // Notify newly added landlords
-      for (const landlord of addedLandlords) {
-        if (landlord.email) {
-          await sendNewListingEmail(landlord.email, landlord.name, data.address, data.id);
-        }
-      }
-
-      // Notify existing landlords that a new co-owner was added
-      if (addedLandlords.length > 0 && existingIds.length > 0) {
-        const { data: existingUsers } = await supabase.from("users").select("id, email, name").in("id", existingIds);
-        for (const existing of (existingUsers ?? [])) {
-          for (const added of addedLandlords) {
-            if (existing.email && added.email) {
-              await sendCoLandlordAddedEmail(existing.email, existing.name, added.name, added.email, data.address, data.id);
-            }
-          }
-        }
-      }
-    } catch (emailErr) {
-      console.error("[admin PATCH] Failed to send landlord notification:", emailErr?.message);
-    }
   }
 
   return Response.json(data);
@@ -184,7 +196,7 @@ export async function POST(req, { params }) {
     const { fields } = body;
 
     // Strip immutable / auto-managed fields
-    const { id: _id, created_at, updated_at, mongo_id, ...safeFields } = fields || {};
+    const { id: _id, created_at, updated_at, ...safeFields } = fields || {};
 
     // Listings: geocode if lat/lng missing, then insert directly into Supabase
     if (table === "listings") {
@@ -212,11 +224,8 @@ export async function POST(req, { params }) {
     }
 
     // Convert empty strings to null so numeric/text columns don't get ""
-    // Keep array columns as [] and text-with-empty-default columns as '' to satisfy NOT NULL constraints
-    const ARRAY_COLUMNS = new Set(["images", "utilities_included", "amenities", "tags", "landlord_id"]);
-    const TEXT_EMPTY_DEFAULT_COLUMNS = new Set(["dorm_type"]);
     for (const [k, v] of Object.entries(safeFields)) {
-      if (v === "") safeFields[k] = ARRAY_COLUMNS.has(k) ? [] : TEXT_EMPTY_DEFAULT_COLUMNS.has(k) ? "" : null;
+      if (v === "") safeFields[k] = null;
     }
 
     const { data, error } = await supabase

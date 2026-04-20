@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
 
+export async function GET() {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ ids: [] });
+
+  const { data: typeRow } = await supabase
+    .from("interaction_types")
+    .select("id")
+    .eq("name", "saved")
+    .single();
+
+  if (!typeRow) return NextResponse.json({ ids: [] });
+
+  const { data: rows } = await supabase
+    .from("user_listing_interactions")
+    .select("listing_id")
+    .eq("user_id", session.user.id)
+    .eq("interaction_type_id", typeRow.id);
+
+  return NextResponse.json({ ids: (rows ?? []).map((r) => r.listing_id) });
+}
+
 export async function POST(req) {
   try {
     const session = await auth();
@@ -16,67 +37,52 @@ export async function POST(req) {
 
     const userId = session.user.id;
 
+    // Look up the favorite interaction type ID
+    const { data: typeRow } = await supabase
+      .from("interaction_types")
+      .select("id")
+      .eq("name", "saved")
+      .single();
+    const favoriteTypeId = typeRow?.id;
+
+    if (!favoriteTypeId) {
+      return NextResponse.json({ error: "Interaction type not found" }, { status: 500 });
+    }
+
     // Check if already favorited
     const { data: existing } = await supabase
-      .from("user_favorites")
-      .select("user_id")
+      .from("user_listing_interactions")
+      .select("listing_id")
       .eq("user_id", userId)
       .eq("listing_id", listingId)
+      .eq("interaction_type_id", favoriteTypeId)
       .maybeSingle();
 
     if (existing) {
       // Remove favorite
       await supabase
-        .from("user_favorites")
+        .from("user_listing_interactions")
         .delete()
         .eq("user_id", userId)
-        .eq("listing_id", listingId);
-
-      // Decrement num_saves
-      const { data: listing } = await supabase
-        .from("listings")
-        .select("num_saves, landlord_id")
-        .eq("id", listingId)
-        .single();
-      if (listing && listing.num_saves > 0) {
-        await supabase
-          .from("listings")
-          .update({ num_saves: listing.num_saves - 1 })
-          .eq("id", listingId);
-      }
+        .eq("listing_id", listingId)
+        .eq("interaction_type_id", favoriteTypeId);
 
       return NextResponse.json({ favorited: false });
     } else {
       // Add favorite
       await supabase
-        .from("user_favorites")
-        .insert({ user_id: userId, listing_id: listingId });
+        .from("user_listing_interactions")
+        .insert({ user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId });
 
-      // Increment num_saves
-      const { data: listing } = await supabase
-        .from("listings")
-        .select("num_saves, landlord_id")
-        .eq("id", listingId)
-        .single();
-      if (listing) {
-        await supabase
-          .from("listings")
-          .update({ num_saves: (listing.num_saves ?? 0) + 1 })
-          .eq("id", listingId);
-
-        // Track saves metric (fire-and-forget)
-        const _today = new Date().toISOString().split("T")[0];
-        supabase
-          .rpc("increment_listing_metric", {
-            p_listing_id: listingId,
-            p_landlord_id: Array.isArray(listing.landlord_id) ? (listing.landlord_id[0] ?? null) : null,
-            p_metric_type: "saves",
-            p_date: _today,
-          })
-          .then(({ error: rpcErr }) => {
-            if (rpcErr) console.error("[metrics] saves increment failed:", rpcErr.message);
-          });
-      }
+      // Track saves metric (fire-and-forget)
+      supabase
+        .rpc("increment_listing_metric", {
+          p_listing_id: listingId,
+          p_metric_name: "saves",
+        })
+        .then(({ error: rpcErr }) => {
+          if (rpcErr) console.error("[metrics] favorite increment failed:", rpcErr.message);
+        });
 
       return NextResponse.json({ favorited: true });
     }

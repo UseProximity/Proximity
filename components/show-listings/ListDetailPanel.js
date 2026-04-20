@@ -1,16 +1,11 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import ListingModalInfo from "@/components/show-listings/ListingModalInfo";
 import HeartIcon from "@/components/HeartIcon";
 
-export default function ListDetailPanel({ listing, session, onBack }) {
-  const isFavorite =
-    Boolean(session?.user) &&
-    Boolean(
-      session?.user?.favorites?.some(
-        (f) => String((f && f._id) || f) === String(listing._id)
-      ) || session?.user?.favoritesIds?.includes(String(listing._id))
-    );
+export default function ListDetailPanel({ listing, onBack }) {
+  const { data: session } = useSession();
 
   return (
     <div>
@@ -34,11 +29,7 @@ export default function ListDetailPanel({ listing, session, onBack }) {
         </button>
         <div className="flex items-center gap-2 text-gray-600">
           <span className="text-sm font-semibold">Save this listing</span>
-          <HeartIcon
-            session={session}
-            listingId={listing._id}
-            initial={isFavorite}
-          />
+          <HeartIcon listingId={listing._id} />
         </div>
       </div>
       <ListingModalInfo

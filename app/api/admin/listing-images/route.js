@@ -72,7 +72,7 @@ export async function PATCH(req) {
 
     const { data: listing, error: fetchError } = await supabase
       .from("listings")
-      .select("id, images")
+      .select("id")
       .eq("id", listingId)
       .single();
 
@@ -109,16 +109,27 @@ export async function PATCH(req) {
       );
 
       const newUrl = buildPublicUrl(newKey, db);
-      const renamedImages = (listing.images || []).map((u) => (u === body.oldUrl ? newUrl : u));
-      await supabase.from("listings").update({ images: renamedImages }).eq("id", listingId);
+      // Update the listing_images row with the old URL to use the new URL
+      await supabase
+        .from("listing_images")
+        .update({ url: newUrl })
+        .eq("listing_id", listingId)
+        .eq("url", body.oldUrl);
       console.log("[listing-images PATCH] rename done:", newUrl);
       return Response.json({ newUrl });
     }
 
-    // Reorder
+    // Reorder — body.images is an array of URLs in new order
     if (Array.isArray(body.images)) {
       console.log("[listing-images PATCH] reorder count:", body.images.length);
-      await supabase.from("listings").update({ images: body.images }).eq("id", listingId);
+      const updates = body.images.map((url, i) =>
+        supabase
+          .from("listing_images")
+          .update({ sort_order: i })
+          .eq("listing_id", listingId)
+          .eq("url", url)
+      );
+      await Promise.all(updates);
       return Response.json({ images: body.images });
     }
 
@@ -155,7 +166,7 @@ export async function DELETE(req) {
 
     const { data: listing, error: fetchError } = await supabase
       .from("listings")
-      .select("id, images")
+      .select("id")
       .eq("id", listingId)
       .single();
 
@@ -182,10 +193,23 @@ export async function DELETE(req) {
       console.log("[listing-images DELETE] could not resolve R2 key, skipping R2 delete");
     }
 
-    const remainingImages = (listing.images || []).filter((u) => u !== imageUrl);
-    await supabase.from("listings").update({ images: remainingImages }).eq("id", listingId);
-    console.log("[listing-images DELETE] done, remaining:", remainingImages.length);
-    return Response.json({ images: remainingImages });
+    // Delete the row from listing_images
+    await supabase
+      .from("listing_images")
+      .delete()
+      .eq("listing_id", listingId)
+      .eq("url", imageUrl);
+
+    // Fetch remaining images ordered by sort_order
+    const { data: remaining } = await supabase
+      .from("listing_images")
+      .select("url")
+      .eq("listing_id", listingId)
+      .order("sort_order");
+
+    const remainingUrls = (remaining ?? []).map((r) => r.url);
+    console.log("[listing-images DELETE] done, remaining:", remainingUrls.length);
+    return Response.json({ images: remainingUrls });
   } catch (error) {
     console.error("[listing-images DELETE] error:", error);
     return Response.json({ error: "Request failed" }, { status: 500 });
