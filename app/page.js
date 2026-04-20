@@ -537,8 +537,8 @@ function RentalCard({ listing, index, isInView }) {
               <span className="text-gray-500 text-xs">
                 {bedLabel} bed{" | "}
                 {bathLabel} bath
-                {listing.leaseAvailability
-                  ? ` | ${listing.leaseAvailability}`
+                {listing.leaseType
+                  ? ` | ${listing.leaseType}`
                   : ""}
               </span>
               {listing.owner?.name && (
