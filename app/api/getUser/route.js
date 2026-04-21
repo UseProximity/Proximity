@@ -18,7 +18,7 @@ function utilitiesRowToArray(row) {
     .filter((k) => row[k] === true);
 }
 
-function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
+function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap = {}) {
   const landlords = Array.isArray(l.listing_landlords) ? l.listing_landlords : [];
   const primaryLandlord = landlords.find((x) => x.is_primary) ?? landlords[0] ?? null;
   const owner = primaryLandlord?.user_id ?? null;
@@ -76,7 +76,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
       .map((i) => i.url),
     rating,
     numReviews,
-    numClicks: 0,
+    numClicks: metricsMap[l.id] ?? 0,
     numSaves: 0,
     contactEmail: l.contact_email ?? null,
     contactPhone: l.contact_phone ?? null,
@@ -168,11 +168,12 @@ export async function GET() {
     const contactedIds = (contactedInteractions ?? []).map((r) => r.listing_id);
     const ownedIds = (ownedRows ?? []).map((r) => r.listing_id);
 
-    // Fetch full listing data for all three sets in parallel
+    // Fetch full listing data for all three sets in parallel, plus all-time click metrics for owned listings
     const [
       { data: favListings },
       { data: contactedListings },
       { data: ownListings },
+      { data: clicksMetrics },
     ] = await Promise.all([
       favoriteIds.length > 0
         ? supabase.from("listings").select(LISTING_SELECT).in("id", favoriteIds).is("deleted_at", null)
@@ -183,7 +184,20 @@ export async function GET() {
       ownedIds.length > 0
         ? supabase.from("listings").select(LISTING_SELECT).in("id", ownedIds).is("deleted_at", null)
         : Promise.resolve({ data: [] }),
+      ownedIds.length > 0
+        ? supabase
+            .from("listing_metrics_daily")
+            .select("listing_id, metric_types(name), count")
+            .in("listing_id", ownedIds)
+        : Promise.resolve({ data: [] }),
     ]);
+
+    const metricsMap = {};
+    for (const m of clicksMetrics ?? []) {
+      if (m.metric_types?.name === "clicks") {
+        metricsMap[m.listing_id] = (metricsMap[m.listing_id] ?? 0) + m.count;
+      }
+    }
 
     // Collect all co-landlord IDs across own listings (other landlords sharing these listings)
     const coOwnerIds = new Set();
@@ -208,7 +222,7 @@ export async function GET() {
     const safeContactedIds = safeContacted.map((l) => l._id);
 
     const safeListings = (ownListings ?? []).map((l) =>
-      serializeListing(l, userId, coOwnerMap)
+      serializeListing(l, userId, coOwnerMap, metricsMap)
     );
     const listingsIds = safeListings.map((l) => l._id);
 

@@ -27,7 +27,7 @@ const allDorms = [
   "Rutledge",
   "Shanedling",
   "Shepley",
-  "SoFoHo",
+  "Zetcher",
   "Wheeler",
   "Millbrook",
   "Village East",
