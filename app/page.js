@@ -169,7 +169,7 @@ function HeroMapSection() {
                 onClose={() => setSelectedListing(null)}
                 onCardClick={(id) => {
                   setSelectedListing(null);
-                  router.push(`/?listing=${id}`);
+                  router.push(`/browse?panel=${id}`);
                 }}
               />
             </div>

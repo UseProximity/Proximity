@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-04-14T19:03:14.512Z",
-  "count": 29,
+  "_generated": "2026-04-20T22:18:02.281Z",
+  "count": 32,
   "components": [
     {
       "name": "AddressSearchInput",
@@ -9,9 +9,19 @@
       "description": "Mapbox address autocomplete input — used in add-listing and add-sub-lease forms"
     },
     {
+      "name": "AnalyticsTracker",
+      "file": "components/AnalyticsTracker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ButtonAuth",
       "file": "components/ButtonAuth.js",
       "description": "Sign in / sign out button using NextAuth"
+    },
+    {
+      "name": "FavoritesContext",
+      "file": "components/FavoritesContext.js",
+      "description": "No description — run generate after adding a description above."
     },
     {
       "name": "Footer",
@@ -117,6 +127,11 @@
       "name": "FilterComponents",
       "file": "components/show-listings/FilterComponents.js",
       "description": "Individual filter UI atoms (checkboxes, sliders, toggles)"
+    },
+    {
+      "name": "ListDetailPanel",
+      "file": "components/show-listings/ListDetailPanel.js",
+      "description": "No description — run generate after adding a description above."
     },
     {
       "name": "ListingFilters",

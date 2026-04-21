@@ -592,13 +592,11 @@ function ReviewsTab({
                   <div className="flex gap-4 text-xs text-gray-400">
                     {(() => {
                       const override = voteOverrides[review._id];
-                      const upCount = override ? override.upvotes : (review.upvotes?.length ?? 0);
-                      const downCount = override ? override.downvotes : (review.downvotes?.length ?? 0);
+                      const upCount = override ? override.upvotes : (review.upvotes ?? 0);
+                      const downCount = override ? override.downvotes : (review.downvotes ?? 0);
                       const userVote = override
                         ? override.userVote
-                        : userId && review.upvotes?.includes(userId) ? "up"
-                        : userId && review.downvotes?.includes(userId) ? "down"
-                        : null;
+                        : review.userVote ?? null;
                       return (
                         <>
                           <button
@@ -942,18 +940,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   // Walk times — read from pre-computed DB values (populated at listing creation)
   const walkLoading = false;
   const storedTimes = listing?.placeWalkMinutes;
-  const walkTimes = useMemo(() => {
-    if (!storedTimes) return {};
-    // storedTimes may be a Mongoose Map or a plain object depending on serialisation
-    if (typeof storedTimes.get === "function") {
-      const obj = {};
-      storedTimes.forEach((v, k) => {
-        obj[k] = v;
-      });
-      return obj;
-    }
-    return storedTimes;
-  }, [storedTimes]);
+  const walkTimes = useMemo(() => storedTimes ?? {}, [storedTimes]);
 
   // Contact form state
   const [contactForm, setContactForm] = useState({
@@ -1206,21 +1193,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <HeartIcon
-                    session={session}
-                    listingId={listing._id}
-                    initial={
-                      Boolean(session?.user) &&
-                      Boolean(
-                        session?.user?.favorites?.some(
-                          (f) => String((f && f._id) || f) === String(listing._id)
-                        ) ||
-                          session?.user?.favoritesIds?.includes(
-                            String(listing._id)
-                          )
-                      )
-                    }
-                  />
+                  <HeartIcon listingId={listing._id} />
                 </div>
               )}
             </div>

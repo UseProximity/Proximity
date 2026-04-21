@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/show-listings/AvailableListings";
 import TopFilterBar from "@/components/show-listings/TopFilterBar";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
+import { useFavorites } from "@/components/FavoritesContext";
 
 const DEFAULT_FILTERS = {
   minRent: "",
@@ -27,6 +28,7 @@ const DEFAULT_FILTERS = {
 };
 
 export default function BrowseContent({ session }) {
+  const { savedIds } = useFavorites();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const searchParams = useSearchParams();
@@ -50,6 +52,7 @@ export default function BrowseContent({ session }) {
 
     fetchListings();
   }, []);
+
 
   // Lock body scroll to prevent page dragging
   useEffect(() => {
@@ -241,13 +244,8 @@ export default function BrowseContent({ session }) {
       }
 
       // Favorites / saved listings
-      const userFavorites =
-        session?.user?.favorites || session?.user?.favoritesIds || [];
       const matchSaved =
-        !filters.savedOnly ||
-        userFavorites.some(
-          (f) => String((f && f._id) || f) === String(listing._id)
-        );
+        !filters.savedOnly || savedIds.includes(String(listing._id)); // eslint-disable-line react-hooks/exhaustive-deps
 
       // Move in Date — listings with no date set are always included
       let matchMoveInDate = true;

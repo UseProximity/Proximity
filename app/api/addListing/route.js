@@ -50,6 +50,54 @@ async function geocodeAddress(address) {
   return { latitude: lat, longitude: lng };
 }
 
+const AMENITY_MAP = {
+  "ac_heating": "air_conditioning",
+  "ac/heating": "air_conditioning",
+  "air_conditioning": "air_conditioning",
+  "air conditioning": "air_conditioning",
+  "dishwasher": "dishwasher",
+  "gym": "gym",
+  "laundry": "laundry",
+  "in_unit_laundry": "laundry",
+  "in-unit laundry": "laundry",
+  "mailroom": "mailroom",
+  "microwave": "microwave",
+  "oven": "oven",
+  "parking": "parking",
+  "private_parking": "parking",
+  "private parking": "parking",
+  "pets_allowed": "pets_allowed",
+  "pets allowed": "pets_allowed",
+  "pet friendly": "pets_allowed",
+  "pet_friendly": "pets_allowed",
+  "pool": "pool",
+  "refrigerator": "refrigerator",
+  "rooftop": "rooftop",
+  "storage": "storage",
+  "extra_storage": "storage",
+  "extra storage": "storage",
+  "bike storage": "storage",
+  "bike_storage": "storage",
+  "stove": "stove",
+  "study_room": "study_room",
+  "study room": "study_room",
+};
+
+const UTILITY_MAP = {
+  "electric": "electric",
+  "electricity": "electric",
+  "gas": "gas",
+  "heat": "heat",
+  "heating": "heat",
+  "water": "water",
+  "internet": "internet",
+  "wifi": "internet",
+  "wi-fi": "internet",
+  "trash": "trash",
+  "cable": "cable",
+  "sewer": "sewer",
+  "cooling": "cooling",
+};
 
 export async function POST(req) {
   try {
@@ -62,7 +110,6 @@ export async function POST(req) {
       description,
       unitTypes,
       leaseType,
-      images,
       // Extra fields
       leaseAvailability,
       lease_availability,
@@ -77,14 +124,6 @@ export async function POST(req) {
       contactEmail,
       contactPhone,
       contactName,
-      minRent,
-      maxRent,
-      minBedrooms,
-      maxBedrooms,
-      minBathrooms,
-      maxBathrooms,
-      minArea,
-      maxArea,
       title,
     } = body;
 
@@ -158,25 +197,45 @@ export async function POST(req) {
       console.error("[walkTimes] Failed to fetch walk times:", err?.message);
     }
 
-    // Insert listing row into Supabase
+    // Look up home_type_id from home_types table
+    let homeTypeId = null;
+    if (homeType) {
+      const { data: homeTypeRow } = await supabase
+        .from("home_types")
+        .select("id")
+        .eq("label", homeType)
+        .maybeSingle();
+      homeTypeId = homeTypeRow?.id ?? null;
+    }
+    // Fall back to 'Other' if not found
+    if (!homeTypeId) {
+      const { data: otherRow } = await supabase
+        .from("home_types")
+        .select("id")
+        .eq("label", "Other")
+        .maybeSingle();
+      homeTypeId = otherRow?.id ?? null;
+    }
+
+    // Normalize lease_availability
+    const leaseAvailabilityVal = (() => {
+      const val = leaseAvailability ?? lease_availability ?? null;
+      if (Array.isArray(val)) return val[0] ?? null;
+      return val;
+    })();
+
+    // Insert listing row into Supabase (no dropped columns)
     const { data: newListing, error: listingError } = await supabase
       .from("listings")
       .insert({
-        landlord_id: ownerId ? [ownerId] : [],
         title: title?.trim() || null,
         address,
         longitude: resolvedLng,
         latitude: resolvedLat,
         description,
         lease_type: leaseType || "standard",
-        images: images || [],
-        place_walk_minutes: placeWalkMinutes,
-        shuttle_walk_minutes: shuttleWalkMinutes,
-        // Extra fields
+        home_type_id: homeTypeId,
         lease_structure: leaseStructure ?? null,
-        home_type: homeType ?? "apartment",
-        amenities: amenities ?? [],
-        utilities_included: utilitiesIncluded ?? [],
         sublease_friendly: subleaseFriendly ?? false,
         twenty_one_plus: twenty_one_plus ?? false,
         furnished: furnished ?? false,
@@ -184,14 +243,10 @@ export async function POST(req) {
         contact_email: contactEmail ?? null,
         contact_phone: contactPhone ?? null,
         contact_name: contactName ?? null,
-        lease_availability: (() => {
-          const val = leaseAvailability ?? lease_availability ?? null;
-          if (Array.isArray(val)) return val;
-          if (val) return [val];
-          return [];
-        })(),
+        unavailable: false,
+        deleted_at: null,
       })
-      .select()
+      .select("id, address")
       .single();
 
     if (listingError) {
@@ -199,41 +254,123 @@ export async function POST(req) {
       return NextResponse.json({ error: listingError.message }, { status: 500 });
     }
 
-    // Notify landlord(s) of their new listing
-    if (Array.isArray(newListing.landlord_id) && newListing.landlord_id.length > 0) {
+    const listingId = newListing.id;
+
+    // Insert into listing_landlords
+    if (ownerId) {
+      await supabase.from("listing_landlords").insert({
+        listing_id: listingId,
+        user_id: ownerId,
+        is_primary: true,
+      });
+    }
+
+    // Insert listing_amenities row
+    const amenityRow = { listing_id: listingId };
+    for (const name of (amenities ?? [])) {
+      const col = AMENITY_MAP[name.toLowerCase()];
+      if (col) amenityRow[col] = true;
+    }
+    await supabase.from("listing_amenities").insert(amenityRow);
+
+    // Insert listing_utilities row
+    const utilityRow = { listing_id: listingId };
+    for (const name of (utilitiesIncluded ?? [])) {
+      const col = UTILITY_MAP[name.toLowerCase()];
+      if (col) utilityRow[col] = true;
+    }
+    await supabase.from("listing_utilities").insert(utilityRow);
+
+    // Insert listing_walk_times rows
+    try {
+      const { data: locations } = await supabase
+        .from("locations")
+        .select("id, name");
+
+      const walkTimeRows = [];
+
+      if (locations && locations.length > 0) {
+        // Map placeWalkMinutes keys to location rows (case-insensitive)
+        for (const [key, minutes] of Object.entries(placeWalkMinutes ?? {})) {
+          const loc = locations.find(
+            (l) => l.name.toLowerCase() === key.toLowerCase()
+          );
+          if (loc && minutes != null) {
+            walkTimeRows.push({ listing_id: listingId, location_id: loc.id, minutes });
+          }
+        }
+
+        // Map shuttleWalkMinutes to the shuttle_nearest location
+        if (shuttleWalkMinutes != null) {
+          const shuttleLoc = locations.find(
+            (l) => l.name.toLowerCase() === "shuttle_nearest"
+          );
+          if (shuttleLoc) {
+            walkTimeRows.push({
+              listing_id: listingId,
+              location_id: shuttleLoc.id,
+              minutes: shuttleWalkMinutes,
+            });
+          }
+        }
+      }
+
+      if (walkTimeRows.length > 0) {
+        await supabase.from("listing_walk_times").insert(walkTimeRows);
+      }
+    } catch (wtErr) {
+      console.error("[addListing] Failed to insert walk times:", wtErr?.message);
+    }
+
+    // Insert listing_units (without rent and lease_availability)
+    const unitRows = unitTypes.map((unit) => ({
+      listing_id: listingId,
+      bedrooms: unit.bedrooms,
+      bathrooms: unit.bathrooms,
+      area: unit.area ?? null,
+    }));
+
+    const { data: insertedUnits, error: unitsError } = await supabase
+      .from("listing_units")
+      .insert(unitRows)
+      .select("id, bedrooms, bathrooms");
+
+    if (unitsError) {
+      console.error("Error creating listing units:", unitsError.message);
+      return NextResponse.json({ error: unitsError.message }, { status: 500 });
+    }
+
+    // Insert unit_leases for units that have rent
+    const leaseRows = [];
+    for (let i = 0; i < unitTypes.length; i++) {
+      const unit = unitTypes[i];
+      if (unit.rent != null && insertedUnits[i]) {
+        leaseRows.push({
+          unit_id: insertedUnits[i].id,
+          rent: unit.rent,
+          is_active: true,
+          available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+        });
+      }
+    }
+    if (leaseRows.length > 0) {
+      await supabase.from("unit_leases").insert(leaseRows);
+    }
+
+    // Notify landlord of their new listing
+    if (ownerId) {
       try {
         const { data: landlordUsers } = await supabase
           .from("users")
           .select("email, name")
-          .in("id", newListing.landlord_id);
+          .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, newListing.address, newListing.id);
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, newListing.address, listingId);
           }
         }
       } catch (emailErr) {
         console.error("[addListing] Failed to send landlord notification:", emailErr?.message);
-      }
-    }
-
-    // Insert each unit type row into listing_units
-    if (unitTypes.length > 0) {
-      const unitRows = unitTypes.map((unit) => ({
-        listing_id: newListing.id,
-        bedrooms: unit.bedrooms,
-        bathrooms: unit.bathrooms,
-        rent: unit.rent ?? null,
-        area: unit.area ?? null,
-        lease_availability: unit.leaseAvailability ?? leaseAvailability ?? null,
-      }));
-
-      const { error: unitsError } = await supabase
-        .from("listing_units")
-        .insert(unitRows);
-
-      if (unitsError) {
-        console.error("Error creating listing units:", unitsError.message);
-        return NextResponse.json({ error: unitsError.message }, { status: 500 });
       }
     }
 

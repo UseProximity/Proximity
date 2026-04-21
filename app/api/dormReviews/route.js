@@ -7,9 +7,11 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const dormName = searchParams.get("dorm");
 
+  const SELECT = "*, dorms(name), dorm_review_tags(tags(name))";
+
   let query = supabase
     .from("dorm_reviews")
-    .select("*, dorms(name)")
+    .select(SELECT)
     .order("created_at", { ascending: false });
 
   if (dormName) {
@@ -26,7 +28,7 @@ export async function GET(req) {
 
     query = supabase
       .from("dorm_reviews")
-      .select("*, dorms(name)")
+      .select(SELECT)
       .eq("dorm_id", dormRecord.id)
       .order("created_at", { ascending: false });
   }

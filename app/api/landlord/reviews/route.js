@@ -15,17 +15,17 @@ export async function GET(req) {
   const viewAsId = searchParams.get("viewAs");
   const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
 
-  const { data: listingRows } = await supabase
-    .from("listings")
-    .select("id")
-    .contains("landlord_id", [targetUserId]);
+  const { data: ll } = await supabase
+    .from("listing_landlords")
+    .select("listing_id")
+    .eq("user_id", targetUserId);
 
-  const listingIds = (listingRows || []).map((l) => l.id);
+  const listingIds = (ll ?? []).map((r) => r.listing_id);
   if (listingIds.length === 0) return NextResponse.json([]);
 
   const { data: reviews, error } = await supabase
-    .from("reviews")
-    .select("*, reviewer:users!reviews_user_id_fkey(id, name, image), listing:listings!reviews_listing_id_fkey(id, address, title)")
+    .from("listing_reviews")
+    .select("*, reviewer:users!user_id(id, name, image), listing:listings!listing_id(id, address, title)")
     .eq("legitimacy", true)
     .in("listing_id", listingIds)
     .order("created_at", { ascending: false });
@@ -41,8 +41,14 @@ export async function GET(req) {
       locationRating: r.location_rating ?? null,
       valueRating: r.value_rating ?? null,
       createdAt: r.created_at,
-      reviewer: r.reviewer ? { id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image } : r.name ? { id: null, name: r.name, image: null } : null,
-      listing: r.listing ? { id: r.listing.id, address: r.listing.address, title: r.listing.title } : null,
+      reviewer: r.reviewer
+        ? { id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image }
+        : r.name
+        ? { id: null, name: r.name, image: null }
+        : null,
+      listing: r.listing
+        ? { id: r.listing.id, address: r.listing.address, title: r.listing.title }
+        : null,
     }))
   );
 }

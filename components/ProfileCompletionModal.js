@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import Modal from "@/components/Modal";
 
 const ROLES = ["Student", "Landlord", "Parent", "Other"];
@@ -33,6 +33,7 @@ function getClassYear(gradYear, gradMonth) {
 }
 
 export default function ProfileCompletionModal({ session }) {
+  const { update } = useSession();
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
@@ -94,7 +95,7 @@ export default function ProfileCompletionModal({ session }) {
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       setIsOpen(false);
-      window.location.reload();
+      await update({ profileComplete: true });
     } catch (e) {
       console.error(e);
       alert("Couldn't save your profile. Please try again.");

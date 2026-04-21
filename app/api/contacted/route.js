@@ -14,11 +14,26 @@ export async function POST(req) {
       return Response.json({ error: "listingId required" }, { status: 400 });
     }
 
+    const userId = session.user.id;
+
+    // Look up the contacted interaction type ID
+    const { data: typeRow } = await supabase
+      .from("interaction_types")
+      .select("id")
+      .eq("name", "contacted")
+      .single();
+    const contactedTypeId = typeRow?.id;
+
+    if (!contactedTypeId) {
+      return Response.json({ error: "Interaction type not found" }, { status: 500 });
+    }
+
+    // Upsert — idempotent, ignore conflict on duplicate
     const { error } = await supabase
-      .from("user_contacted")
+      .from("user_listing_interactions")
       .upsert(
-        { user_id: session.user.id, listing_id: listingId },
-        { onConflict: "user_id,listing_id" }
+        { user_id: userId, listing_id: listingId, interaction_type_id: contactedTypeId },
+        { onConflict: "user_id,listing_id,interaction_type_id", ignoreDuplicates: true }
       );
 
     if (error) {
@@ -27,24 +42,14 @@ export async function POST(req) {
     }
 
     // Track contacts metric (fire-and-forget)
-    const _today = new Date().toISOString().split("T")[0];
     supabase
-      .from("listings")
-      .select("landlord_id")
-      .eq("id", listingId)
-      .maybeSingle()
-      .then(({ data: _l }) => {
-        if (!_l) return;
-        supabase
-          .rpc("increment_listing_metric", {
-            p_listing_id: listingId,
-            p_landlord_id: Array.isArray(_l.landlord_id) ? (_l.landlord_id[0] ?? null) : null,
-            p_metric_type: "contacts",
-            p_date: _today,
-          })
-          .catch((e) => console.error("[metrics] contacts increment failed:", e?.message));
+      .rpc("increment_listing_metric", {
+        p_listing_id: listingId,
+        p_metric_name: "contacts",
       })
-      .catch((e) => console.error("[metrics] contacts fetch failed:", e?.message));
+      .then(({ error: rpcErr }) => {
+        if (rpcErr) console.error("[metrics] contact increment failed:", rpcErr.message);
+      });
 
     return Response.json({ ok: true });
   } catch (error) {

@@ -1,5 +1,16 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Migration artifacts — DO NOT COMMIT
+backups/
+.env.migration
+*.dump
+backup_pre_v4_*
+backup_*.sql
+
+# Supabase CLI — local state, may contain project refs / connection info
+supabase/.temp/
+supabase/.branches/
+
 # dependencies
 /node_modules
 /.pnp
@@ -27,6 +38,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env.migration
 
 # vercel
 .vercel

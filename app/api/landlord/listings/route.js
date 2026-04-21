@@ -19,10 +19,18 @@ export async function GET(req) {
   const viewAsId = searchParams.get("viewAs");
   const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
 
+  const { data: ll } = await supabase
+    .from("listing_landlords")
+    .select("listing_id")
+    .eq("user_id", targetUserId);
+
+  const ids = (ll ?? []).map((r) => r.listing_id);
+  if (ids.length === 0) return NextResponse.json([]);
+
   const { data, error } = await supabase
     .from("listings")
-    .select("*, listing_units(*)")
-    .contains("landlord_id", [targetUserId])
+    .select("*, listing_units(bedrooms, bathrooms, area)")
+    .in("id", ids)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

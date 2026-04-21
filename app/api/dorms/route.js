@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const { data: dorms, error } = await supabase
     .from("dorms")
-    .select("*");
+    .select("*, dorm_room_types(room_type)");
 
   if (error) {
     console.error("GET /api/dorms failed:", error);

@@ -78,23 +78,35 @@ export default function AvailableListings({
   const panelId = searchParams.get("panel");
   const [expandedListing, setExpandedListing] = useState(null);
   const panelRef = useRef(null);
+  const listingsInitialized = useRef(false);
 
-  // Sync local state from URL — handles browser back/forward and page reload
+  // Sync local state from URL — handles direct links, back/forward, and page reload
   useEffect(() => {
     if (!panelId) {
       setExpandedListing(null);
       return;
     }
-    if (!listings.length) return;
+    // Already showing this listing — don't re-fetch
+    if (expandedListing && String(expandedListing._id) === panelId) return;
+    // Try listings array first for instant render, then always fetch full detail
     const match = listings.find((l) => String(l._id) === panelId);
     if (match) setExpandedListing(match);
-  }, [panelId, listings]); // eslint-disable-line react-hooks/exhaustive-deps
+    fetch(`/api/listing/${panelId}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setExpandedListing(data); })
+      .catch(() => {});
+  }, [panelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPanel = (listing) => {
-    setExpandedListing(listing); // immediate UI — no router round-trip wait
+    setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
     router.push(`/browse?${params.toString()}`);
+    // Fetch full detail (unit_leases for rent, review IDs for voting)
+    fetch(`/api/listing/${listing._id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setExpandedListing(data); })
+      .catch(() => {});
   };
 
   const closePanel = () => {
@@ -156,8 +168,15 @@ export default function AvailableListings({
     if (mobileFiltersOpen) setMobileDraft(filters);
   }, [mobileFiltersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear map overlay card and panel when listings data changes (filter/search)
+  // Clear map overlay card and panel when listings data changes (filter/search).
+  // Skips until the initial data load has settled (empty → real data) so that
+  // direct ?panel= links are not wiped on first render.
   useEffect(() => {
+    if (!listingsInitialized.current) {
+      // Wait until we see actual data, then mark initialized on the NEXT change
+      if (listings.length > 0) listingsInitialized.current = true;
+      return;
+    }
     setSelectedListing(null);
     setExpandedListing(null);
     if (panelId) {
@@ -251,7 +270,6 @@ export default function AvailableListings({
             <motion.div key={`detail-${expandedListing._id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
               <ListDetailPanel
                 listing={expandedListing}
-                session={session}
                 onBack={() => {
                   setSelectedListing(null);
                   closePanel();

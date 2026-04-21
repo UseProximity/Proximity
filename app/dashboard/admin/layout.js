@@ -13,11 +13,11 @@ export default async function AdminLayout({ children }) {
   // Second check: verify directly against the database — session alone can't be trusted
   const { data: dbUser } = await supabase
     .from("users")
-    .select("role")
+    .select("roles!role_id(name)")
     .eq("email", session.user.email)
     .single();
 
-  if (dbUser?.role !== "super") {
+  if (dbUser?.roles?.name !== "super") {
     redirect("/");
   }
 

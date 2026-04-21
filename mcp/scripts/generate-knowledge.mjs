@@ -108,163 +108,14 @@ function generateApiRoutes() {
 }
 
 // ── 2. DB Schema ──────────────────────────────────────────────────────────────
-
-function extractMongooseFields(content) {
-  const fields = [];
-  // Match field: { type: ..., required: ..., default: ... } patterns
-  const fieldRegex = /(\w+):\s*\{[^}]*type:\s*([^,}]+)/g;
-  let match;
-  while ((match = fieldRegex.exec(content)) !== null) {
-    const name = match[1].trim();
-    if (["_id", "id"].includes(name)) continue;
-    const type = match[2].trim().replace(/^mongoose\.Schema\.Types\./, "");
-    fields.push({ name, type });
-  }
-  return fields;
-}
+// db-schema.json is hand-maintained against the live Supabase schema. This generator
+// intentionally does NOT rewrite it — it would require live DB access at generate
+// time, and the hardcoded snapshots here drift faster than they're useful.
+// To refresh db-schema.json: query information_schema against the dev DB (see the
+// comment at the top of db-schema.json) and update in place.
 
 function generateDbSchema() {
-  const modelsDir = join(ROOT, "models");
-  const modelFiles = walk(modelsDir, ".js");
-
-  const mongooseModels = modelFiles.map((filepath) => {
-    const content = readFile(filepath);
-    const name = filepath.split("/").pop().replace(".js", "");
-    const fields = extractMongooseFields(content);
-    return { model: name, file: relative(ROOT, filepath), status: "legacy-mongodb", fields };
-  });
-
-  // Supabase tables derived from reading route files and libs/supabase.js
-  // These are the known tables as of the current codebase state.
-  // Run the admin /api/admin/schema route to get the live schema.
-  const supabaseTables = [
-    {
-      table: "users",
-      description: "Platform users — all roles stored here",
-      columns: [
-        { name: "id", type: "uuid", note: "primary key" },
-        { name: "email", type: "text", note: "unique, from Google OAuth" },
-        { name: "name", type: "text" },
-        { name: "image", type: "text", note: "profile photo URL" },
-        { name: "role", type: "text", note: "'student' | 'landlord' | 'super'" },
-        { name: "profile_complete", type: "boolean", note: "gates dashboard access" },
-        { name: "gender", type: "text" },
-        { name: "phone", type: "text" },
-        { name: "description", type: "text" },
-        { name: "referral_source", type: "text" },
-        { name: "created_at", type: "timestamptz" },
-      ],
-    },
-    {
-      table: "listings",
-      description: "Rental property listings — core entity",
-      columns: [
-        { name: "id", type: "uuid", note: "primary key" },
-        { name: "landlord_id", type: "uuid[]", note: "array — supports co-landlords" },
-        { name: "title", type: "text", note: "nullable" },
-        { name: "address", type: "text" },
-        { name: "longitude", type: "numeric" },
-        { name: "latitude", type: "numeric" },
-        { name: "description", type: "text" },
-        { name: "lease_type", type: "text", note: "e.g. 'standard'" },
-        { name: "images", type: "text[]" },
-        { name: "place_walk_minutes", type: "jsonb", note: "{ placeName: minutes } map" },
-        { name: "shuttle_walk_minutes", type: "numeric" },
-        { name: "contact_email", type: "text" },
-        { name: "contact_phone", type: "text" },
-        { name: "contact_name", type: "text" },
-        { name: "lease_availability", type: "text[]", note: "'semester' | '10-month' | '12-month'" },
-        { name: "lease_structure", type: "text", note: "'individual' | 'joint'" },
-        { name: "home_type", type: "text", note: "'apartment' | 'house' | 'condo' | 'townhouse'" },
-        { name: "furnished", type: "boolean" },
-        { name: "move_in_date", type: "text" },
-        { name: "utilities_included", type: "text[]", note: "water|sewer|trash|internet|electric|gas|hotWater|yardCare" },
-        { name: "sublease_friendly", type: "boolean" },
-        { name: "unavailable", type: "boolean" },
-        { name: "amenities", type: "text[]" },
-        { name: "min_rent", type: "numeric", note: "computed by DB trigger from listing_units" },
-        { name: "max_rent", type: "numeric", note: "computed by DB trigger" },
-        { name: "min_bedrooms", type: "int", note: "computed by DB trigger" },
-        { name: "max_bedrooms", type: "int", note: "computed by DB trigger" },
-        { name: "min_bathrooms", type: "numeric", note: "computed by DB trigger" },
-        { name: "max_bathrooms", type: "numeric", note: "computed by DB trigger" },
-        { name: "min_area", type: "numeric", note: "computed by DB trigger" },
-        { name: "max_area", type: "numeric", note: "computed by DB trigger" },
-        { name: "num_reviews", type: "int", note: "computed" },
-        { name: "rating", type: "numeric", note: "computed, 0–5" },
-        { name: "num_clicks", type: "int" },
-        { name: "num_saves", type: "int" },
-        { name: "created_at", type: "timestamptz" },
-      ],
-    },
-    {
-      table: "listing_units",
-      description: "Individual unit types within a listing (bedrooms/bathrooms/rent variants)",
-      columns: [
-        { name: "id", type: "uuid" },
-        { name: "listing_id", type: "uuid", note: "FK → listings.id" },
-        { name: "bedrooms", type: "int" },
-        { name: "bathrooms", type: "numeric" },
-        { name: "rent", type: "numeric" },
-        { name: "area", type: "numeric" },
-        { name: "lease_availability", type: "text" },
-      ],
-    },
-    {
-      table: "reviews",
-      description: "Listing reviews submitted by students",
-      columns: [
-        { name: "id", type: "uuid" },
-        { name: "listing_id", type: "uuid", note: "FK → listings.id" },
-        { name: "rating", type: "numeric", note: "1–5" },
-        { name: "legitimacy", type: "boolean", note: "admin-verified flag; only legit reviews count toward rating" },
-        { name: "created_at", type: "timestamptz" },
-      ],
-    },
-    {
-      table: "dorms",
-      description: "University dorm catalog",
-      columns: [
-        { name: "id", type: "uuid" },
-        { name: "name", type: "text" },
-        { name: "description", type: "text" },
-        { name: "tags", type: "text[]" },
-      ],
-    },
-    {
-      table: "dorm_reviews",
-      description: "Student reviews for dorms",
-      columns: [
-        { name: "id", type: "uuid" },
-        { name: "dorm_id", type: "uuid", note: "FK → dorms.id" },
-        { name: "rating", type: "numeric" },
-        { name: "created_at", type: "timestamptz" },
-      ],
-    },
-    {
-      table: "testimonials",
-      description: "User testimonials shown on the landing page",
-      columns: [
-        { name: "id", type: "uuid" },
-        { name: "content", type: "text" },
-        { name: "created_at", type: "timestamptz" },
-      ],
-    },
-  ];
-
-  write("db-schema.json", {
-    _description:
-      "Database schema. Primary DB is Supabase (PostgreSQL). Mongoose models are legacy (MongoDB) and in migration.",
-    _generated: new Date().toISOString(),
-    supabase: {
-      note: "Use libs/supabase.js (default export) for standard server-side queries. Use getSupabaseClient('prod'|'dev') to target a specific env.",
-      tables: supabaseTables,
-    },
-    mongoose: {
-      note: "Legacy. Two connection files: libs/mongoose.js (Mongoose) and libs/mongo.js (raw MongoClient for NextAuth adapter). Being migrated to Supabase.",
-      models: mongooseModels,
-    },
-  });
+  // no-op: db-schema.json is managed out-of-band.
 }
 
 // ── 3. Components ─────────────────────────────────────────────────────────────
@@ -342,8 +193,7 @@ function generateDomain() {
       language: "JavaScript (no TypeScript in src — only middleware.ts)",
       styling: "Tailwind CSS 3",
       auth: "NextAuth v5 (beta) — Google OAuth only, JWT strategy",
-      primaryDb: "Supabase (PostgreSQL)",
-      legacyDb: "MongoDB via Mongoose (in migration to Supabase)",
+      db: "Supabase (PostgreSQL)",
       fileStorage: "AWS S3 + Cloudflare R2 (libs/r2.js)",
       maps: "Mapbox GL + Leaflet",
       email: "Nodemailer (SMTP)",
@@ -380,7 +230,7 @@ function generateDomain() {
           "Access /api/admin/* routes (CRUD on any table, view any user)",
           "Toggle dev/prod database target via x-db-target header",
           "Approve/reject reviews (set legitimacy flag)",
-          "Run bulk operations (migrate amenities, update walk times)",
+          "Run bulk operations (update walk times)",
         ],
       },
     },
@@ -403,8 +253,6 @@ function generateDomain() {
     dbAccess: {
       supabaseImport: "import supabase from '@/libs/supabase';",
       supabaseTargetedImport: "import { getSupabaseClient } from '@/libs/supabase'; // use for admin routes that need prod/dev toggle",
-      mongooseImport: "import dbConnect from '@/libs/mongoose';",
-      note: "Prefer Supabase for all new code. Mongoose models are legacy and being migrated.",
     },
 
     keyWorkflows: {

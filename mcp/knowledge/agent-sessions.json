@@ -1,0 +1,45 @@
+{
+  "_description": "Live log of all agent swarms spawned via the proximity MCP. Each session tracks goal, roles, per-agent step progress, and final status.",
+  "_note": "Managed by spawn-agents, log-agent-step, and get-agent-status tools. Do not edit manually.",
+  "sessions": [
+    {
+      "session_id": "swarm-1776379321315",
+      "goal": "Add review form to listing modal",
+      "roles": [
+        "frontend",
+        "backend"
+      ],
+      "created": "2026-04-16T22:42:01.315Z",
+      "status": "active",
+      "agents": {
+        "frontend": {
+          "status": "active",
+          "steps": [
+            {
+              "ts": "2026-04-16T22:42:01.432Z",
+              "type": "start",
+              "message": "Starting frontend work"
+            }
+          ],
+          "files_created": [],
+          "files_modified": []
+        },
+        "backend": {
+          "status": "pending",
+          "steps": [
+            {
+              "ts": "2026-04-16T22:42:01.540Z",
+              "type": "file_created",
+              "message": "Created reviews API route",
+              "file": "app/api/reviews/route.js"
+            }
+          ],
+          "files_created": [
+            "app/api/reviews/route.js"
+          ],
+          "files_modified": []
+        }
+      }
+    }
+  ]
+}

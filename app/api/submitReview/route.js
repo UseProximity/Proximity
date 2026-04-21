@@ -49,7 +49,7 @@ export async function POST(req) {
     }
 
     const { data: newReview, error } = await supabase
-      .from("reviews")
+      .from("listing_reviews")
       .insert({
         user_id: session.user.id,
         listing_id: listingId || null,
@@ -66,36 +66,6 @@ export async function POST(req) {
     if (error) {
       console.error("POST /api/submitReview failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
-    }
-
-    // Recalculate listing rating and review count immediately
-    try {
-      const { data: allReviews, error: fetchErr } = await supabase
-        .from("reviews")
-        .select("rating")
-        .eq("listing_id", listingId)
-        .eq("legitimacy", true);
-
-      if (!fetchErr && allReviews) {
-        const numReviews = allReviews.length;
-        const avgRating =
-          numReviews > 0
-            ? Math.round(
-                (allReviews.reduce((sum, r) => sum + r.rating, 0) / numReviews) * 10
-              ) / 10
-            : null;
-
-        const { error: updateErr } = await supabase
-          .from("listings")
-          .update({ num_reviews: numReviews, rating: avgRating })
-          .eq("id", listingId);
-
-        if (updateErr) {
-          console.error("POST /api/submitReview: failed to update listing rating:", updateErr);
-        }
-      }
-    } catch (ratingErr) {
-      console.error("POST /api/submitReview: rating recalculation error:", ratingErr);
     }
 
     return NextResponse.json(newReview);

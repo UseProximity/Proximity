@@ -12,10 +12,9 @@ export async function PATCH(req) {
 
     console.log("PATCH /api/editProfile: looking up email", session.user.email);
 
-    // Always look up by email — session.user.id may be a MongoDB ObjectId for new users
     const { data: sbUser, error: lookupError } = await supabase
       .from("users")
-      .select("id, role")
+      .select("id, roles!role_id(name)")
       .eq("email", session.user.email)
       .single();
 
@@ -38,7 +37,8 @@ export async function PATCH(req) {
       );
     }
 
-    console.log("PATCH /api/editProfile: found Supabase user", { id: sbUser.id, role: sbUser.role });
+    const currentRole = sbUser.roles?.name ?? null;
+    console.log("PATCH /api/editProfile: found Supabase user", { id: sbUser.id, role: currentRole });
 
     const supabaseId = sbUser.id;
     const body = await req.json();
@@ -62,12 +62,18 @@ export async function PATCH(req) {
 
     // Only allow role changes if provided; super can only be set if already super
     if (body.role !== undefined && body.role !== null) {
-      if (body.role === "super") {
-        if (sbUser.role !== "super") {
-          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+      if (body.role === "super" && currentRole !== "super") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      allowedFields.role = body.role;
+      const { data: roleRow, error: roleErr } = await supabase
+        .from("roles")
+        .select("id")
+        .eq("name", body.role)
+        .single();
+      if (roleErr || !roleRow) {
+        return NextResponse.json({ error: `Unknown role: ${body.role}` }, { status: 400 });
+      }
+      allowedFields.role_id = roleRow.id;
     }
 
     console.log("PATCH /api/editProfile: updating fields", allowedFields);

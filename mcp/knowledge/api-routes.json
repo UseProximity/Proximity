@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth: public=no auth, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-04-14T19:03:14.507Z",
-  "count": 33,
+  "_generated": "2026-04-20T22:18:02.278Z",
+  "count": 34,
   "routes": [
     {
       "path": "/api/addListing",
@@ -10,9 +10,16 @@
       ],
       "auth": "any",
       "tables": [
+        "home_types",
         "listings",
-        "users",
-        "listing_units"
+        "listing_landlords",
+        "listing_amenities",
+        "listing_utilities",
+        "locations",
+        "listing_walk_times",
+        "listing_units",
+        "unit_leases",
+        "users"
       ],
       "file": "app/api/addListing/route.js"
     },
@@ -26,6 +33,7 @@
       ],
       "auth": "super",
       "tables": [
+        "listing_landlords",
         "listings",
         "users"
       ],
@@ -48,20 +56,24 @@
       ],
       "auth": "super",
       "tables": [
-        "listings"
+        "listings",
+        "listing_images"
       ],
       "file": "app/api/admin/listing-images/route.js"
     },
     {
-      "path": "/api/admin/migrate-amenities",
+      "path": "/api/admin/pending-reviews",
       "methods": [
-        "POST"
+        "GET",
+        "PATCH",
+        "DELETE"
       ],
       "auth": "super",
       "tables": [
-        "listings"
+        "users",
+        "listing_reviews"
       ],
-      "file": "app/api/admin/migrate-amenities/route.js"
+      "file": "app/api/admin/pending-reviews/route.js"
     },
     {
       "path": "/api/admin/schema",
@@ -79,7 +91,9 @@
       ],
       "auth": "super",
       "tables": [
-        "listings"
+        "listings",
+        "locations",
+        "listing_walk_times"
       ],
       "file": "app/api/admin/update-campus-walk-times/route.js"
     },
@@ -88,12 +102,13 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "any",
       "tables": [
         "users",
-        "user_favorites",
-        "listings",
-        "user_contacted"
+        "interaction_types",
+        "listing_landlords",
+        "user_listing_interactions",
+        "listings"
       ],
       "file": "app/api/admin/viewUser/route.js"
     },
@@ -111,8 +126,8 @@
       ],
       "auth": "any",
       "tables": [
-        "user_contacted",
-        "listings"
+        "interaction_types",
+        "user_listing_interactions"
       ],
       "file": "app/api/contacted/route.js"
     },
@@ -121,8 +136,11 @@
       "methods": [
         "POST"
       ],
-      "auth": "public",
-      "tables": [],
+      "auth": "any",
+      "tables": [
+        "listings",
+        "users"
+      ],
       "file": "app/api/contactLandlord/route.js"
     },
     {
@@ -154,21 +172,34 @@
       "methods": [
         "PATCH"
       ],
-      "auth": "super",
+      "auth": "any",
       "tables": [
-        "users"
+        "users",
+        "roles"
       ],
       "file": "app/api/editProfile/route.js"
     },
     {
+      "path": "/api/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "tables": [
+        "events"
+      ],
+      "file": "app/api/events/route.js"
+    },
+    {
       "path": "/api/favorites",
       "methods": [
+        "GET",
         "POST"
       ],
       "auth": "any",
       "tables": [
-        "user_favorites",
-        "listings"
+        "interaction_types",
+        "user_listing_interactions"
       ],
       "file": "app/api/favorites/route.js"
     },
@@ -179,8 +210,8 @@
       ],
       "auth": "any",
       "tables": [
-        "user_favorites",
-        "listings"
+        "interaction_types",
+        "user_listing_interactions"
       ],
       "file": "app/api/favorites/[listingId]/route.js"
     },
@@ -192,9 +223,10 @@
       "auth": "any",
       "tables": [
         "users",
-        "user_favorites",
-        "listings",
-        "user_contacted"
+        "interaction_types",
+        "user_listing_interactions",
+        "listing_landlords",
+        "listings"
       ],
       "file": "app/api/getUser/route.js"
     },
@@ -205,6 +237,7 @@
       ],
       "auth": "any",
       "tables": [
+        "listing_landlords",
         "listings"
       ],
       "file": "app/api/landlord/listings/route.js"
@@ -217,8 +250,10 @@
       ],
       "auth": "any",
       "tables": [
+        "listing_landlords",
         "listings",
-        "listing_units"
+        "listing_units",
+        "unit_leases"
       ],
       "file": "app/api/landlord/listings/[listingId]/route.js"
     },
@@ -229,6 +264,7 @@
       ],
       "auth": "any",
       "tables": [
+        "listing_landlords",
         "listings",
         "listing_metrics_daily"
       ],
@@ -241,8 +277,8 @@
       ],
       "auth": "any",
       "tables": [
-        "listings",
-        "reviews"
+        "listing_landlords",
+        "listing_reviews"
       ],
       "file": "app/api/landlord/reviews/route.js"
     },
@@ -256,7 +292,9 @@
       "tables": [
         "listings",
         "users",
-        "reviews"
+        "listing_reviews",
+        "review_votes",
+        "listing_landlords"
       ],
       "file": "app/api/listing/[listingId]/route.js"
     },
@@ -282,7 +320,8 @@
       "auth": "any",
       "tables": [
         "users",
-        "matchmaking_responses"
+        "matchmaking_preferences",
+        "roles"
       ],
       "file": "app/api/matchmaking/route.js"
     },
@@ -295,8 +334,8 @@
       ],
       "auth": "any",
       "tables": [
-        "listings",
-        "reviews"
+        "listing_landlords",
+        "listing_reviews"
       ],
       "file": "app/api/pendingReviews/route.js"
     },
@@ -307,7 +346,8 @@
       ],
       "auth": "any",
       "tables": [
-        "reviews"
+        "listing_reviews",
+        "review_votes"
       ],
       "file": "app/api/reviewVote/route.js"
     },
@@ -316,7 +356,7 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "any",
       "tables": [
         "users"
       ],
@@ -329,7 +369,7 @@
       ],
       "auth": "any",
       "tables": [
-        "reviews"
+        "listing_reviews"
       ],
       "file": "app/api/submitReview/route.js"
     },
@@ -353,7 +393,9 @@
       ],
       "auth": "super",
       "tables": [
-        "listings"
+        "listings",
+        "listing_landlords",
+        "listing_images"
       ],
       "file": "app/api/upload/route.js"
     },
@@ -375,6 +417,7 @@
       ],
       "auth": "public",
       "tables": [
+        "listing_landlords",
         "users"
       ],
       "file": "app/api/webhooks/new-listing/route.js"

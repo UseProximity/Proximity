@@ -169,18 +169,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50">
-        <HeartIcon
-          session={session}
-          listingId={listing._id}
-          initial={
-            Boolean(session?.user) &&
-            Boolean(
-              session?.user?.favorites?.some(
-                (f) => String((f && f._id) || f) === String(listing._id)
-              ) || session?.user?.favoritesIds?.includes(String(listing._id))
-            )
-          }
-        />
+        <HeartIcon listingId={listing._id} />
       </div>
     </div>
   );

@@ -15,59 +15,84 @@ const config = {
     error: "/",
   },
   callbacks: {
-    async jwt({ token, user, account }) {
-      // Fires on every OAuth sign-in (account is set) or token refresh (account is null)
+    async jwt({ token, user, account, trigger, session: updateData }) {
+      // On sign-in: fetch user from DB once and cache in the token
       if (account?.provider === "google" && user?.email) {
         const image = user.image ?? null;
 
         const { data: existing } = await supabase
           .from("users")
-          .select("id")
+          .select("id, profile_complete, name, roles!role_id(name)")
           .eq("email", user.email)
           .single();
 
         if (!existing) {
-          // New user — insert with all defaults
-          const { error } = await supabase.from("users").insert({
-            email: user.email,
-            name: user.name || user.email.split("@")[0] || "New User",
-            image,
-            role: "student",
-            profile_complete: false,
-            gender: "unspecified",
-            phone: "N/A",
-            description: "",
-            referral_source: "",
-          });
-          if (error) console.error("jwt: failed to insert new user", error);
-        } else if (image) {
-          // Existing user — keep profile image in sync
-          const { error } = await supabase
+          const { data: studentRole } = await supabase
+            .from("roles")
+            .select("id")
+            .eq("name", "student")
+            .single();
+          const { data: newUser, error } = await supabase
             .from("users")
-            .update({ image })
-            .eq("email", user.email);
-          if (error) console.error("jwt: failed to update user image", error);
+            .insert({
+              email: user.email,
+              name: user.name || user.email.split("@")[0] || "New User",
+              image,
+              role_id: studentRole?.id,
+              profile_complete: false,
+              gender: "unspecified",
+              phone: "N/A",
+              description: "",
+              referral_source: "",
+            })
+            .select("id")
+            .single();
+          if (error) console.error("jwt: failed to insert new user", error);
+          token.userId = newUser?.id ?? null;
+          token.role = "student";
+          token.profileComplete = false;
+        } else {
+          if (image) {
+            const { error } = await supabase
+              .from("users")
+              .update({ image })
+              .eq("email", user.email);
+            if (error) console.error("jwt: failed to update user image", error);
+          }
+          token.userId = existing.id;
+          token.role = existing.roles?.name ?? "student";
+          token.profileComplete = existing.profile_complete ?? false;
+          if (existing.name) token.name = existing.name;
         }
       }
-      return token;
-    },
-    async session({ session }) {
-      if (session?.user?.email) {
+
+      // Backfill old tokens issued before JWT caching was introduced
+      if (!token.userId && token.email) {
         const { data: sbUser } = await supabase
           .from("users")
-          .select("id, role, profile_complete, name")
-          .eq("email", session.user.email)
+          .select("id, profile_complete, name, roles!role_id(name)")
+          .eq("email", token.email)
           .single();
         if (sbUser) {
-          session.user.id = sbUser.id;
-          session.user.role = sbUser.role ?? "student";
-          session.user.profileComplete = sbUser.profile_complete ?? false;
-          if (sbUser.name) session.user.name = sbUser.name;
-        } else {
-          session.user.role = "student";
-          session.user.profileComplete = false;
+          token.userId = sbUser.id;
+          token.role = sbUser.roles?.name ?? "student";
+          token.profileComplete = sbUser.profile_complete ?? false;
+          if (sbUser.name) token.name = sbUser.name;
         }
       }
+
+      // Client called update({ profileComplete: true }) after profile completion
+      if (trigger === "update" && updateData?.profileComplete !== undefined) {
+        token.profileComplete = updateData.profileComplete;
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      // Read from token — no DB hit
+      session.user.id = token.userId;
+      session.user.role = token.role ?? "student";
+      session.user.profileComplete = token.profileComplete ?? false;
       return session;
     },
   },
