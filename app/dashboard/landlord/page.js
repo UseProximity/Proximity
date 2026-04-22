@@ -413,7 +413,7 @@ const UTILITY_LABELS = {
   sewer:    "Sewer",
   cooling:  "Cooling",
 };
-const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "studio", "other"];
+const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "other"];
 const LEASE_TYPES = ["standard", "sublease", "short-term"];
 
 const emptyUnit = () => ({ bedrooms: "", bathrooms: "", rent: "", area: "" });
@@ -424,7 +424,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     address: listing?.address ?? "",
     title: listing?.title ?? "",
     description: listing?.description ?? "",
-    home_type: listing?.home_type ?? listing?.homeType ?? "apartment",
+    home_type: (listing?.home_type ?? listing?.homeType ?? "apartment").toLowerCase(),
     lease_type: listing?.lease_type ?? listing?.leaseType ?? "standard",
     furnished: listing?.furnished ?? false,
     sublease_friendly: listing?.sublease_friendly ?? listing?.subleaseFriendly ?? false,
@@ -436,7 +436,12 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     contact_name: listing?.contact_name ?? listing?.contactName ?? user?.name ?? "",
     amenities: listing?.amenities ?? [],
     utilities_included: listing?.utilities_included ?? listing?.utilitiesIncluded ?? [],
-    lease_availability: listing?.lease_availability ?? listing?.leaseAvailability ?? [],
+    lease_availability: (() => {
+      const raw = listing?.lease_availability ?? listing?.leaseAvailability ?? [];
+      const canon = ["Semester", "10-Month", "12-Month", "Summer"];
+      const byLower = new Map(canon.map((v) => [v.toLowerCase(), v]));
+      return Array.from(new Set(raw.map((v) => byLower.get(String(v).toLowerCase())).filter(Boolean)));
+    })(),
   });
   const rawUnits = listing?.listing_units ?? listing?.unitTypes ?? [];
   const [units, setUnits] = useState(
@@ -451,8 +456,6 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // { name?, email?, phone? }
-  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   // Image upload
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -740,37 +743,11 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
         diff.phone = trim(form.contact_phone);
       }
 
-      if (Object.keys(diff).length > 0) {
-        setProfileUpdatePrompt(diff);
-        return; // wait for user's choice before closing
-      }
-
-      onSuccess();
+      await onSuccess(Object.keys(diff).length > 0 ? diff : null);
     } catch {
       setError("Network error. Please try again.");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleProfileUpdate = async (shouldUpdate) => {
-    if (!shouldUpdate) { onSuccess(); return; }
-    setUpdatingProfile(true);
-    try {
-      await fetch("/api/editProfile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(profileUpdatePrompt.name  && { name:  profileUpdatePrompt.name }),
-          ...(profileUpdatePrompt.email && { email: profileUpdatePrompt.email }),
-          ...(profileUpdatePrompt.phone && { phone: profileUpdatePrompt.phone }),
-        }),
-      });
-    } catch {
-      // non-fatal — proceed regardless
-    } finally {
-      setUpdatingProfile(false);
-      onSuccess();
     }
   };
 
@@ -796,47 +773,6 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
               {error}
-            </div>
-          )}
-
-          {/* Profile update prompt */}
-          {profileUpdatePrompt && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-blue-900">
-                Update your Proximity profile?
-              </p>
-              <p className="text-sm text-blue-700">
-                The contact info you entered is different from what&apos;s on your profile. Would you like to update your profile too?
-              </p>
-              <ul className="text-sm text-blue-800 space-y-1 pl-1">
-                {profileUpdatePrompt.name && (
-                  <li><span className="font-medium">Name:</span> {profileUpdatePrompt.name}</li>
-                )}
-                {profileUpdatePrompt.email && (
-                  <li><span className="font-medium">Email:</span> {profileUpdatePrompt.email}</li>
-                )}
-                {profileUpdatePrompt.phone && (
-                  <li><span className="font-medium">Phone:</span> {profileUpdatePrompt.phone}</li>
-                )}
-              </ul>
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  disabled={updatingProfile}
-                  onClick={() => handleProfileUpdate(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors"
-                >
-                  {updatingProfile ? "Updating…" : "Yes, update profile"}
-                </button>
-                <button
-                  type="button"
-                  disabled={updatingProfile}
-                  onClick={() => handleProfileUpdate(false)}
-                  className="px-4 py-2 border border-blue-300 text-blue-700 hover:bg-blue-100 text-sm font-medium rounded-lg transition-colors"
-                >
-                  No, keep current profile
-                </button>
-              </div>
             </div>
           )}
 
@@ -2221,6 +2157,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
   const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
   const [coOwnersModal, setCoOwnersModal] = useState(null); // null | listing
+  const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // null | { name?, email?, phone? }
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2258,6 +2196,16 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       if (listing) setSelectedProperty(listing);
     }
   }, [user]);
+
+  // Keep selectedProperty in sync with the freshest user.listings so that
+  // re-opening the edit modal after a save shows the updated data.
+  useEffect(() => {
+    if (!selectedProperty || !user?.listings) return;
+    const fresh = user.listings.find(
+      (l) => l._id === selectedProperty._id || l.id === selectedProperty.id
+    );
+    if (fresh && fresh !== selectedProperty) setSelectedProperty(fresh);
+  }, [user, selectedProperty]);
 
   // keep form in sync when user loads
   useEffect(() => {
@@ -2361,9 +2309,32 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       alert("Network error.");
     }
   };
-  const handleListingModalSuccess = () => {
+  const handleListingModalSuccess = async (profileDiff = null) => {
+    await fetchUser();
     setListingModal(null);
-    fetchUser();
+    if (profileDiff) setProfileUpdatePrompt(profileDiff);
+  };
+
+  const handleProfileUpdate = async (shouldUpdate) => {
+    if (!shouldUpdate) { setProfileUpdatePrompt(null); return; }
+    setUpdatingProfile(true);
+    try {
+      await fetch("/api/editProfile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(profileUpdatePrompt.name  && { name:  profileUpdatePrompt.name }),
+          ...(profileUpdatePrompt.email && { email: profileUpdatePrompt.email }),
+          ...(profileUpdatePrompt.phone && { phone: profileUpdatePrompt.phone }),
+        }),
+      });
+      await fetchUser();
+    } catch {
+      // non-fatal — proceed regardless
+    } finally {
+      setUpdatingProfile(false);
+      setProfileUpdatePrompt(null);
+    }
   };
 
   const handleNavigation = (key) => {
@@ -2471,6 +2442,47 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           currentUserId={user?.id}
           onClose={() => setCoOwnersModal(null)}
         />
+      )}
+      {profileUpdatePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Update your Proximity profile?
+            </h3>
+            <p className="text-sm text-gray-600">
+              The contact info you entered is different from what&apos;s on your profile. Would you like to update your profile too?
+            </p>
+            <ul className="text-sm text-gray-800 space-y-1 bg-gray-50 rounded-lg p-3">
+              {profileUpdatePrompt.name && (
+                <li><span className="font-medium">Name:</span> {profileUpdatePrompt.name}</li>
+              )}
+              {profileUpdatePrompt.email && (
+                <li><span className="font-medium">Email:</span> {profileUpdatePrompt.email}</li>
+              )}
+              {profileUpdatePrompt.phone && (
+                <li><span className="font-medium">Phone:</span> {profileUpdatePrompt.phone}</li>
+              )}
+            </ul>
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                disabled={updatingProfile}
+                onClick={() => handleProfileUpdate(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+              >
+                No, keep current profile
+              </button>
+              <button
+                type="button"
+                disabled={updatingProfile}
+                onClick={() => handleProfileUpdate(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                {updatingProfile ? "Updating…" : "Yes, update profile"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     <div className="w-full min-h-screen bg-gray-50 font-sans">
       {isViewingAs && user && (

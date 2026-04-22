@@ -19,7 +19,7 @@ const UTILITY_COLS = [
 // Columns that still live on `listings` after the 0025 drop migration.
 const LISTING_COLS = new Set([
   "title", "address", "longitude", "latitude", "description",
-  "lease_type", "home_type_id", "lease_structure",
+  "lease_type", "home_type_id", "lease_structure", "lease_availability",
   "sublease_friendly", "twenty_one_plus", "furnished",
   "move_in_date", "contact_email", "contact_phone", "contact_name",
   "unavailable", "deleted_at",
@@ -135,7 +135,13 @@ export async function PATCH(req, { params }) {
   }
 
   if (Array.isArray(units)) {
-    await supabase.from("listing_units").delete().eq("listing_id", listingId);
+    const { error: unitsDeleteError } = await supabase
+      .from("listing_units")
+      .delete()
+      .eq("listing_id", listingId);
+    if (unitsDeleteError) {
+      return NextResponse.json({ error: unitsDeleteError.message }, { status: 500 });
+    }
 
     if (units.length > 0) {
       const unitRows = units.map((u) => ({
