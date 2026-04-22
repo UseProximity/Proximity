@@ -79,12 +79,13 @@ export default function ProfileCompletionModal({ session }) {
   const handleSave = async () => {
     try {
       setSaving(true);
+      const newRole = formData.role.toLowerCase();
       const payload = {
         name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
         gender: formData.gender,
         referralSource: formData.referralSource,
         profileComplete: true,
-        role: formData.role.toLowerCase(),
+        role: newRole,
         graduation_year: isStudent ? parseInt(formData.graduationYear) : null,
         graduation_month: isStudent ? parseInt(formData.graduationMonth) : null,
       };
@@ -94,8 +95,14 @@ export default function ProfileCompletionModal({ session }) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      const updated = await res.json();
       setIsOpen(false);
-      await update({ profileComplete: true });
+      // Push the new role into the JWT so the header + dashboard redirects
+      // reflect it immediately instead of waiting for the 60s auto-heal.
+      await update({
+        profileComplete: true,
+        role: updated?.role ?? newRole,
+      });
     } catch (e) {
       console.error(e);
       alert("Couldn't save your profile. Please try again.");

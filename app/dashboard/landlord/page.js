@@ -17,7 +17,6 @@ import {
   BarChart3,
   TrendingUp,
   MapPin,
-  Settings,
   Bell,
   Target,
   Search,
@@ -39,6 +38,8 @@ import {
   Trash2,
   Camera,
   X,
+  Users,
+  UserPlus,
 } from "lucide-react";
 
 import LeasingFunnel from "@/components/landlord-dashboard/leasing-funnel";
@@ -163,23 +164,23 @@ function ProfileSection({
   }
 
   return (
-    <div className="bg-white p-8 rounded-lg shadow-lg mb-8">
-      <div className="flex flex-col md:flex-row gap-8">
+    <div className="bg-white p-5 sm:p-8 rounded-lg shadow-lg mb-8">
+      <div className="flex flex-col md:flex-row gap-5 md:gap-8">
         {/* Profile Image */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex justify-center md:block">
           <img
             src={user.image}
             alt={user.name}
-            className="w-32 h-32 rounded-full object-cover border border-gray-200 shadow-md"
+            className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border border-gray-200 shadow-md"
           />
         </div>
 
         {/* Profile Info */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {!isEditing ? (
             <>
               <div className="flex items-center flex-wrap gap-2">
-                <h1 className="text-4xl font-bold text-gray-900">
+                <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 break-words">
                   {user.name}
                 </h1>
                 <Badge
@@ -200,13 +201,13 @@ function ProfileSection({
                   </span>
                 </div>
               )}
-              <p className="text-gray-500 mt-2 text-lg">
+              <p className="text-gray-500 mt-2 text-base sm:text-lg">
                 {user.listings.length} active listings
               </p>{" "}
-              <p className="text-gray-400 text-base mt-2">
+              <p className="text-gray-400 text-sm sm:text-base mt-2">
                 {calcAge(user.birthday) != null ? `${calcAge(user.birthday)} years old` : null}{user.gender ? ` • ${user.gender}` : ""}
               </p>
-              <p className="text-gray-500 text-base mt-2">
+              <p className="text-gray-500 text-sm sm:text-base mt-2 break-words">
                 📞 {user.phone} • ✉️ {user.email}
               </p>
               {/* Additional Info */}
@@ -1147,8 +1148,198 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   );
 }
 
+function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
+  const listingId = listing._id || listing.id;
+  const [landlords, setLandlords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState(null);
+  const [removing, setRemoving] = useState(null);
+  const [promoting, setPromoting] = useState(null);
+
+  const currentIsPrimary = landlords.find((l) => l.userId === currentUserId)?.isPrimary ?? false;
+
+  useEffect(() => {
+    fetch(`/api/landlord/listings/${listingId}/landlords`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setLandlords(data); })
+      .catch(() => setError("Failed to load co-owners."))
+      .finally(() => setLoading(false));
+  }, [listingId]);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setAdding(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/landlords`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to add co-owner."); return; }
+      setLandlords((prev) => [...prev, data]);
+      setEmail("");
+    } catch {
+      setError("Network error.");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleMakePrimary = async (userId) => {
+    const target = landlords.find((l) => l.userId === userId);
+    const name = target?.name || target?.email || "this person";
+    if (!confirm(`Make ${name} the primary owner? You will lose primary status.`)) return;
+    setError(null);
+    setPromoting(userId);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/landlords`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to transfer primary."); return; }
+      setLandlords((prev) => prev.map((l) => ({ ...l, isPrimary: l.userId === userId })));
+    } catch {
+      setError("Network error.");
+    } finally {
+      setPromoting(null);
+    }
+  };
+
+  const handleRemove = async (userId) => {
+    setError(null);
+    setRemoving(userId);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/landlords`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to remove co-owner."); return; }
+      setLandlords((prev) => prev.filter((l) => l.userId !== userId));
+    } catch {
+      setError("Network error.");
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Co-owners</h2>
+            <p className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">
+              {listing.title || listing.address}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="h-4 w-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              People with access
+            </p>
+            {loading ? (
+              <p className="text-sm text-gray-400 py-2">Loading…</p>
+            ) : (
+              <ul className="space-y-2">
+                {landlords.map((l) => (
+                  <li key={l.userId} className="flex items-center justify-between gap-3 py-1">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                        <User className="h-4 w-4 text-gray-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {l.name || l.email || "Unknown"}
+                          {l.isPrimary && (
+                            <span className="ml-2 text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                              Primary
+                            </span>
+                          )}
+                        </p>
+                        {l.name && l.email && (
+                          <p className="text-xs text-gray-400 truncate">{l.email}</p>
+                        )}
+                      </div>
+                    </div>
+                    {!l.isPrimary && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {currentIsPrimary && (
+                          <button
+                            onClick={() => handleMakePrimary(l.userId)}
+                            disabled={!!promoting}
+                            className="text-xs text-purple-600 hover:text-purple-700 font-medium px-2 py-1 rounded-md hover:bg-purple-50 transition-colors disabled:opacity-50"
+                          >
+                            {promoting === l.userId ? "Saving…" : "Make Primary"}
+                          </button>
+                        )}
+                        {l.userId !== currentUserId && (
+                          <button
+                            onClick={() => handleRemove(l.userId)}
+                            disabled={removing === l.userId}
+                            className="text-xs text-red-600 hover:text-red-700 font-medium px-2 py-1 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+                          >
+                            {removing === l.userId ? "Removing…" : "Remove"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Add co-owner by email
+            </p>
+            <form onSubmit={handleAdd} className="flex gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="landlord@email.com"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+              <button
+                type="submit"
+                disabled={adding || !email.trim()}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+              >
+                <UserPlus className="h-4 w-4" />
+                {adding ? "Adding…" : "Add"}
+              </button>
+            </form>
+            <p className="text-xs text-gray-400 mt-1.5">
+              The person must already have a Proximity account.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Properties Page Content
-function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddListing, onEditListing, onDeleteListing }) {
+function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddListing, onEditListing, onDeleteListing, onManageCoOwners }) {
   const [togglingId, setTogglingId] = useState(null);
 
   async function handleToggleUnavailable(e, property) {
@@ -1214,14 +1405,14 @@ function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddL
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Your Properties</h1>
-          <p className="text-gray-500">
+          <p className="text-gray-500 text-sm sm:text-base">
             Manage and view analytics for all your listings
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-2 sm:gap-3">
           <Badge variant="secondary" className="bg-green-100 text-green-800">
             {user.listings.filter((l) => !l.unavailable).length} Available
           </Badge>
@@ -1342,6 +1533,13 @@ function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddL
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onManageCoOwners(property); }}
+                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-purple-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-purple-50 transition-colors"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Co-owners
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDeleteListing(property); }}
@@ -1667,6 +1865,7 @@ function ListingMetricsChart({ listingId, viewAsId }) {
 function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p, onEditListing, viewAsId }) {
   const router = useRouter();
   const [allTimeMetrics, setAllTimeMetrics] = useState([]);
+  const [contactTotals, setContactTotals] = useState({});
 
   const listingId = p?._id || p?.id;
   useEffect(() => {
@@ -1675,7 +1874,10 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
     if (viewAsId) params.set("viewAs", viewAsId);
     fetch(`/api/landlord/metrics?${params}`)
       .then((r) => r.json())
-      .then((data) => setAllTimeMetrics(data.metrics ?? []))
+      .then((data) => {
+        setAllTimeMetrics(data.metrics ?? []);
+        setContactTotals(data.contactTotals ?? {});
+      })
       .catch(console.error);
   }, [listingId, viewAsId]);
 
@@ -1683,7 +1885,7 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
 
   const totalViews = allTimeMetrics.filter((m) => m.metric_type === "clicks").reduce((sum, m) => sum + m.count, 0);
   const totalSaves = allTimeMetrics.filter((m) => m.metric_type === "saves").reduce((sum, m) => sum + m.count, 0);
-  const totalContacts = allTimeMetrics.filter((m) => m.metric_type === "contacts").reduce((sum, m) => sum + m.count, 0);
+  const totalContacts = contactTotals[listingId] ?? 0;
 
   const units = p.unitTypes ?? [];
   const images = Array.isArray(p.images) ? p.images : [];
@@ -1985,6 +2187,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   const [user, setUser] = useState(null);
 
   const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
+  const [coOwnersModal, setCoOwnersModal] = useState(null); // null | listing
 
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2104,6 +2307,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
   const handleAddListing = () => setListingModal({ mode: "add" });
   const handleEditListing = (listing) => setListingModal({ mode: "edit", listing });
+  const handleManageCoOwners = (listing) => setCoOwnersModal(listing);
   const handleDeleteListing = async (property) => {
     if (!confirm(`Delete "${property.title || property.address}"? This cannot be undone.`)) return;
     try {
@@ -2194,6 +2398,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
             onAddListing={handleAddListing}
             onEditListing={handleEditListing}
             onDeleteListing={handleDeleteListing}
+            onManageCoOwners={handleManageCoOwners}
           />
         );
       case "reviews":
@@ -2227,6 +2432,13 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           user={user}
         />
       )}
+      {coOwnersModal && (
+        <ManageCoOwnersModal
+          listing={coOwnersModal}
+          currentUserId={user?.id}
+          onClose={() => setCoOwnersModal(null)}
+        />
+      )}
     <div className="w-full min-h-screen bg-gray-50 font-sans">
       {isViewingAs && user && (
         <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
@@ -2238,13 +2450,22 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         </div>
       )}
       <div className="flex">
-        {/* Sidebar */}
-        <div
+        {/* Mobile backdrop — only visible when sidebar is open on < md */}
+        {sidebarOpen && (
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-30"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Sidebar: fixed drawer on mobile, sticky column on desktop */}
+        <aside
           className={`${
-            sidebarOpen ? "block" : "hidden"
-          } md:block w-64 bg-white border-r border-gray-200 h-screen sticky top-0 overflow-y-auto`}
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
         >
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
                 P
@@ -2254,6 +2475,13 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                 <span className="text-xs text-gray-500">Landlord Portal</span>
               </div>
             </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-md"
+              aria-label="Close menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
           <div className="p-4 space-y-6">
@@ -2309,26 +2537,24 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
               </div>
             </div>
           </div>
-        </div>
+        </aside>
 
         {/* Main Content */}
-        <div className="flex-1">
-          <div className="flex items-center justify-between border-b bg-white px-6 py-4">
-            <h1 className="text-lg font-semibold text-gray-900">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-20">
+            <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate min-w-0">
               {getPageTitle()}
             </h1>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hover:bg-red-50 hover:text-red-600"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </div>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 -mr-2 text-gray-700 hover:bg-gray-100 rounded-md flex-shrink-0"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
           </div>
 
-          <main className="p-6">{renderContent()}</main>
+          <main className="p-4 sm:p-6">{renderContent()}</main>
         </div>
       </div>
     </div>

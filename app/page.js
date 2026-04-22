@@ -790,6 +790,36 @@ function MatchmakingPopup() {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
+  const { data: session, update } = useSession();
+
+  // Fix: new users who signed in via "Login as Landlord" get created as students
+  // in auth.js. Detect the ?role=landlord callback param and correct it immediately.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const intendedRole = params.get("role");
+    if (
+      intendedRole === "landlord" &&
+      session?.user?.role === "student" &&
+      session?.user?.profileComplete === false
+    ) {
+      fetch("/api/editProfile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "landlord" }),
+      })
+        .then((res) => {
+          if (res.ok) {
+            update({ role: "landlord" });
+            // Remove the role param from the URL without a reload
+            const url = new URL(window.location.href);
+            url.searchParams.delete("role");
+            window.history.replaceState({}, "", url.toString());
+          }
+        })
+        .catch(console.error);
+    }
+  }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     document.body.style.overflow = "";
     document.body.style.height = "";

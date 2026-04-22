@@ -708,13 +708,16 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
 // ─── Edit Profile Modal ────────────────────────────────────────────────────────
 
 function EditProfileModal({ user, onClose, onSaved }) {
+  const { update: updateSession } = useSession();
+  const router = useRouter();
+  const initialRole = (user.role || "student").toLowerCase();
   const [form, setForm] = useState({
     name: user.name || "",
     birthday: user.birthday
       ? new Date(user.birthday).toISOString().split("T")[0]
       : "",
     gender: (user.gender || "unspecified").toLowerCase(),
-    role: (user.role || "student").toLowerCase(),
+    role: initialRole,
     phone: user.phone || "",
     description: user.description || "",
     referralSource: user.referralSource || "",
@@ -781,6 +784,22 @@ function EditProfileModal({ user, onClose, onSaved }) {
       }
       const updated = await res.json();
       onSaved(updated);
+
+      // If role changed, push the new role into the JWT and route them to
+      // the correct dashboard. Without this the session still thinks they're
+      // a student and Header + dashboard layout redirects break.
+      const newRole = (updated?.role ?? form.role ?? "").toLowerCase();
+      if (newRole && newRole !== initialRole) {
+        await updateSession({ role: newRole });
+        if (newRole === "landlord") {
+          router.replace("/dashboard/landlord");
+          return;
+        }
+        if (newRole === "admin" || newRole === "super") {
+          router.replace("/dashboard/admin");
+          return;
+        }
+      }
       onClose();
     } catch (err) {
       setError(err.message);

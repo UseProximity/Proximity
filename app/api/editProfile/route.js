@@ -82,7 +82,7 @@ export async function PATCH(req) {
       .from("users")
       .update(allowedFields)
       .eq("id", supabaseId)
-      .select()
+      .select("*, roles!role_id(name)")
       .single();
 
     if (error) {
@@ -102,7 +102,10 @@ export async function PATCH(req) {
       return NextResponse.json({ error: "Update returned no row" }, { status: 404 });
     }
 
-    return NextResponse.json(updated);
+    // Expose role name at the top level so clients can read `updated.role`
+    // and feed it to NextAuth session.update({ role }).
+    const { roles, ...rest } = updated;
+    return NextResponse.json({ ...rest, role: roles?.name ?? null });
   } catch (e) {
     console.error("PATCH /api/user/profile failed:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

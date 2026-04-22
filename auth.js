@@ -2,6 +2,11 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import supabase from "@/libs/supabase";
 
+// How long the JWT can trust its cached role before re-checking the DB.
+// Short enough to heal stale sessions (e.g. role was changed in another
+// tab / by an admin) without requiring a sign-out.
+const ROLE_REFRESH_MS = 60_000;
+
 const config = {
   providers: [
     Google({
@@ -51,6 +56,7 @@ const config = {
           token.userId = newUser?.id ?? null;
           token.role = "student";
           token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
         } else {
           if (image) {
             const { error } = await supabase
@@ -63,6 +69,7 @@ const config = {
           token.role = existing.roles?.name ?? "student";
           token.profileComplete = existing.profile_complete ?? false;
           if (existing.name) token.name = existing.name;
+          token.roleCheckedAt = Date.now();
         }
       }
 
@@ -78,12 +85,42 @@ const config = {
           token.role = sbUser.roles?.name ?? "student";
           token.profileComplete = sbUser.profile_complete ?? false;
           if (sbUser.name) token.name = sbUser.name;
+          token.roleCheckedAt = Date.now();
         }
       }
 
-      // Client called update({ profileComplete: true }) after profile completion
-      if (trigger === "update" && updateData?.profileComplete !== undefined) {
-        token.profileComplete = updateData.profileComplete;
+      // Client called update({ profileComplete, role }) after profile completion
+      if (trigger === "update") {
+        if (updateData?.profileComplete !== undefined) {
+          token.profileComplete = updateData.profileComplete;
+        }
+        if (updateData?.role !== undefined) {
+          token.role = updateData.role;
+          token.roleCheckedAt = Date.now();
+        }
+      }
+
+      // Auto-heal stale role/profile_complete from DB.
+      // Why: users can change their role via /api/editProfile (or an admin can
+      // edit it server-side) without the JWT knowing. Without this refresh a
+      // landlord whose role was flipped in the DB would keep seeing the student
+      // UI until they sign out and back in.
+      if (
+        token.userId &&
+        (!token.roleCheckedAt ||
+          Date.now() - token.roleCheckedAt > ROLE_REFRESH_MS)
+      ) {
+        const { data: fresh, error: refreshErr } = await supabase
+          .from("users")
+          .select("profile_complete, roles!role_id(name)")
+          .eq("id", token.userId)
+          .single();
+        if (!refreshErr && fresh) {
+          token.role = fresh.roles?.name ?? token.role ?? "student";
+          token.profileComplete =
+            fresh.profile_complete ?? token.profileComplete ?? false;
+        }
+        token.roleCheckedAt = Date.now();
       }
 
       return token;
