@@ -62,6 +62,7 @@ export default function LeasingFunnel({ viewAsId } = {}) {
   const [range, setRange] = useState("30d");
   const [selectedMetrics, setSelectedMetrics] = useState(["clicks", "saves", "contacts"]);
   const [metrics, setMetrics] = useState([]);
+  const [contactTotals, setContactTotals] = useState({});
   const [loading, setLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -99,7 +100,10 @@ export default function LeasingFunnel({ viewAsId } = {}) {
     if (viewAsId) params.set("viewAs", viewAsId);
     fetch(`/api/landlord/metrics?${params}`)
       .then((r) => r.json())
-      .then((data) => setMetrics(data.metrics ?? []))
+      .then((data) => {
+        setMetrics(data.metrics ?? []);
+        setContactTotals(data.contactTotals ?? {});
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [selectedIds, range]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,7 +128,7 @@ export default function LeasingFunnel({ viewAsId } = {}) {
   // Per-metric totals across selected listings
   const totalViews = metrics.filter((m) => m.metric_type === "clicks" && selectedIds.includes(m.listing_id)).reduce((sum, m) => sum + m.count, 0);
   const totalSaves = metrics.filter((m) => m.metric_type === "saves" && selectedIds.includes(m.listing_id)).reduce((sum, m) => sum + m.count, 0);
-  const totalContacts = metrics.filter((m) => m.metric_type === "contacts" && selectedIds.includes(m.listing_id)).reduce((sum, m) => sum + m.count, 0);
+  const totalContacts = selectedIds.reduce((sum, id) => sum + (contactTotals[id] ?? 0), 0);
 
   let dropdownLabel = "No listings selected";
   if (selectedIds.length > 0 && selectedIds.length === allListings.length) {

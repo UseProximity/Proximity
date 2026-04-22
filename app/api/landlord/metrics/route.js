@@ -87,5 +87,28 @@ export async function GET(req) {
     }));
   }
 
-  return NextResponse.json({ listings, metrics });
+  // Direct contact counts from user_listing_interactions (source of truth — listing_metrics_daily
+  // can lag when increment_listing_metric RPC misses older or failed calls)
+  const contactTotals = {};
+  if (targetIds.length > 0) {
+    const { data: contactTypeRow } = await supabase
+      .from("interaction_types")
+      .select("id")
+      .eq("name", "contacted")
+      .single();
+    if (contactTypeRow?.id) {
+      let contactQuery = supabase
+        .from("user_listing_interactions")
+        .select("listing_id")
+        .in("listing_id", targetIds)
+        .eq("interaction_type_id", contactTypeRow.id);
+      if (startDateStr) contactQuery = contactQuery.gte("created_at", startDateStr);
+      const { data: contactRows } = await contactQuery;
+      for (const row of contactRows ?? []) {
+        contactTotals[row.listing_id] = (contactTotals[row.listing_id] ?? 0) + 1;
+      }
+    }
+  }
+
+  return NextResponse.json({ listings, metrics, contactTotals });
 }

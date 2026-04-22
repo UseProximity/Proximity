@@ -1136,7 +1136,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
         }),
       });
       if (res.ok) {
-        await fetch("/api/contacted", {
+        fetch("/api/contacted", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
