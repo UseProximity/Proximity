@@ -50,54 +50,18 @@ async function geocodeAddress(address) {
   return { latitude: lat, longitude: lng };
 }
 
-const AMENITY_MAP = {
-  "ac_heating": "air_conditioning",
-  "ac/heating": "air_conditioning",
-  "air_conditioning": "air_conditioning",
-  "air conditioning": "air_conditioning",
-  "dishwasher": "dishwasher",
-  "gym": "gym",
-  "laundry": "laundry",
-  "in_unit_laundry": "laundry",
-  "in-unit laundry": "laundry",
-  "mailroom": "mailroom",
-  "microwave": "microwave",
-  "oven": "oven",
-  "parking": "parking",
-  "private_parking": "parking",
-  "private parking": "parking",
-  "pets_allowed": "pets_allowed",
-  "pets allowed": "pets_allowed",
-  "pet friendly": "pets_allowed",
-  "pet_friendly": "pets_allowed",
-  "pool": "pool",
-  "refrigerator": "refrigerator",
-  "rooftop": "rooftop",
-  "storage": "storage",
-  "extra_storage": "storage",
-  "extra storage": "storage",
-  "bike storage": "storage",
-  "bike_storage": "storage",
-  "stove": "stove",
-  "study_room": "study_room",
-  "study room": "study_room",
-};
+// Valid boolean column names on listing_amenities / listing_utilities.
+// Clients send these names directly; unknown values are ignored.
+const AMENITY_COLS = new Set([
+  "air_conditioning", "dishwasher", "gym", "laundry", "mailroom",
+  "microwave", "oven", "parking", "pets_allowed", "pool",
+  "refrigerator", "rooftop", "storage", "stove", "study_room",
+]);
 
-const UTILITY_MAP = {
-  "electric": "electric",
-  "electricity": "electric",
-  "gas": "gas",
-  "heat": "heat",
-  "heating": "heat",
-  "water": "water",
-  "internet": "internet",
-  "wifi": "internet",
-  "wi-fi": "internet",
-  "trash": "trash",
-  "cable": "cable",
-  "sewer": "sewer",
-  "cooling": "cooling",
-};
+const UTILITY_COLS = new Set([
+  "electric", "gas", "heat", "water", "internet",
+  "trash", "cable", "sewer", "cooling",
+]);
 
 export async function POST(req) {
   try {
@@ -203,7 +167,7 @@ export async function POST(req) {
       const { data: homeTypeRow } = await supabase
         .from("home_types")
         .select("id")
-        .eq("label", homeType)
+        .ilike("label", homeType)
         .maybeSingle();
       homeTypeId = homeTypeRow?.id ?? null;
     }
@@ -268,16 +232,14 @@ export async function POST(req) {
     // Insert listing_amenities row
     const amenityRow = { listing_id: listingId };
     for (const name of (amenities ?? [])) {
-      const col = AMENITY_MAP[name.toLowerCase()];
-      if (col) amenityRow[col] = true;
+      if (typeof name === "string" && AMENITY_COLS.has(name)) amenityRow[name] = true;
     }
     await supabase.from("listing_amenities").insert(amenityRow);
 
     // Insert listing_utilities row
     const utilityRow = { listing_id: listingId };
     for (const name of (utilitiesIncluded ?? [])) {
-      const col = UTILITY_MAP[name.toLowerCase()];
-      if (col) utilityRow[col] = true;
+      if (typeof name === "string" && UTILITY_COLS.has(name)) utilityRow[name] = true;
     }
     await supabase.from("listing_utilities").insert(utilityRow);
 

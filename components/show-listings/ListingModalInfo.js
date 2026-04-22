@@ -199,53 +199,35 @@ function StatCell({ label, value }) {
 
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
+// Keys are the boolean column names from listing_amenities / listing_utilities.
 const AMENITY_LABELS = {
-  // canonical snake_case
-  "dishwasher":      "Dishwasher",
-  "in_unit_laundry": "In-Unit Laundry",
-  "ac_heating":      "AC / Heating",
-  "mailroom":        "Mailroom",
-  "pets_allowed":    "Pets Allowed",
-  "extra_storage":   "Extra Storage",
-  "fireplace":       "Fireplace",
-  "private_parking": "Private Parking",
-  "pool":            "Pool",
-  "study_room":      "Study Rooms",
-  "gym":             "Gym / Fitness",
-  // lowercase variants
-  "in-unit laundry": "In-Unit Laundry",
-  "in unit laundry": "In-Unit Laundry",
-  "free parking":    "Private Parking",
-  "study rooms":     "Study Rooms",
-  "pets allowed":    "Pets Allowed",
-  "extra storage":   "Extra Storage",
-  "ac/heating":      "AC / Heating",
-  "ac / heating":    "AC / Heating",
-  "furnished":       "Furnished",
-  // legacy ALL_CAPS (old DB records)
-  "DISHWASHER":      "Dishwasher",
-  "EXTRA STORAGE":   "Extra Storage",
-  "IN-UNIT LAUNDRY": "In-Unit Laundry",
-  "IN UNIT LAUNDRY": "In-Unit Laundry",
-  "FIREPLACE":       "Fireplace",
-  "FREE PARKING":    "Private Parking",
-  "MAILROOM":        "Mailroom",
-  "POOL":            "Pool",
-  "PETS ALLOWED":    "Pets Allowed",
-  "STUDY ROOMS":     "Study Rooms",
-  "GYM":             "Gym / Fitness",
-  "FURNISHED":       "Furnished",
+  air_conditioning: "Air Conditioning",
+  dishwasher:       "Dishwasher",
+  gym:              "Gym",
+  laundry:          "Laundry",
+  mailroom:         "Mailroom",
+  microwave:        "Microwave",
+  oven:             "Oven",
+  parking:          "Parking",
+  pets_allowed:     "Pets Allowed",
+  pool:             "Pool",
+  refrigerator:     "Refrigerator",
+  rooftop:          "Rooftop",
+  storage:          "Storage",
+  stove:            "Stove",
+  study_room:       "Study Room",
 };
 
 const UTILITY_LABELS = {
-  water:    "Water",
-  sewer:    "Sewer",
-  trash:    "Trash",
-  internet: "Internet",
   electric: "Electric",
   gas:      "Gas",
-  hotWater: "Hot Water",
-  yardCare: "Yard Care",
+  heat:     "Heat",
+  water:    "Water",
+  internet: "Internet",
+  trash:    "Trash",
+  cable:    "Cable",
+  sewer:    "Sewer",
+  cooling:  "Cooling",
 };
 
 function toTitleCase(str) {

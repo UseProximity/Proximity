@@ -52,18 +52,23 @@ export default function AddListing() {
     { value: "condo", label: "Condo" },
   ];
 
+  // Values are exact `listing_amenities` boolean column names.
   const amenityOptions = [
-    { value: "dishwasher", label: "Dishwasher" },
-    { value: "in_unit_laundry", label: "In-unit Laundry" },
-    { value: "ac_heating", label: "AC / Heating" },
-    { value: "mailroom", label: "Mailroom" },
-    { value: "pets_allowed", label: "Pets Allowed" },
-    { value: "extra_storage", label: "Extra Storage" },
-    { value: "fireplace", label: "Fireplace" },
-    { value: "private_parking", label: "Private Parking" },
-    { value: "pool", label: "Pool" },
-    { value: "study_room", label: "Study Room" },
-    { value: "gym", label: "Gym / Fitness" },
+    { value: "air_conditioning", label: "Air Conditioning" },
+    { value: "dishwasher",       label: "Dishwasher" },
+    { value: "gym",              label: "Gym" },
+    { value: "laundry",          label: "Laundry" },
+    { value: "mailroom",         label: "Mailroom" },
+    { value: "microwave",        label: "Microwave" },
+    { value: "oven",             label: "Oven" },
+    { value: "parking",          label: "Parking" },
+    { value: "pets_allowed",     label: "Pets Allowed" },
+    { value: "pool",             label: "Pool" },
+    { value: "refrigerator",     label: "Refrigerator" },
+    { value: "rooftop",          label: "Rooftop" },
+    { value: "storage",          label: "Storage" },
+    { value: "stove",            label: "Stove" },
+    { value: "study_room",       label: "Study Room" },
   ];
 
   const furnishedOptions = [
@@ -767,14 +772,15 @@ export default function AddListing() {
             </label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: "water", label: "Water" },
-                { value: "sewer", label: "Sewer" },
-                { value: "trash", label: "Trash" },
-                { value: "internet", label: "Internet" },
                 { value: "electric", label: "Electric" },
-                { value: "gas", label: "Gas" },
-                { value: "hotWater", label: "Hot Water" },
-                { value: "yardCare", label: "Yard Care" },
+                { value: "gas",      label: "Gas" },
+                { value: "heat",     label: "Heat" },
+                { value: "water",    label: "Water" },
+                { value: "internet", label: "Internet" },
+                { value: "trash",    label: "Trash" },
+                { value: "cable",    label: "Cable" },
+                { value: "sewer",    label: "Sewer" },
+                { value: "cooling",  label: "Cooling" },
               ].map((utility) => (
                 <label key={utility.value} className="flex items-center gap-2 text-sm text-gray-700">
                   <input

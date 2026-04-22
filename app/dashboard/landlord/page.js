@@ -374,12 +374,45 @@ function AnalyticsDashboardSection({ viewAsId }) {
 }
 
 // Add / Edit Listing Modal -------------------------------------------------------
+// Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
+// The API writes `row[name] = true` for each, so anything not in these lists is dropped.
 const AMENITY_OPTIONS = [
-  "Parking", "Gym", "Pool", "Laundry", "Pets Allowed", "Dishwasher",
-  "Air Conditioning", "Heating", "Elevator", "Rooftop", "Storage",
-  "Bike Storage", "EV Charging",
+  "air_conditioning", "dishwasher", "gym", "laundry", "mailroom",
+  "microwave", "oven", "parking", "pets_allowed", "pool",
+  "refrigerator", "rooftop", "storage", "stove", "study_room",
 ];
-const UTILITY_OPTIONS = ["Water", "Gas", "Electric", "Internet", "Trash", "Sewer", "Cable"];
+const AMENITY_LABELS = {
+  air_conditioning: "Air Conditioning",
+  dishwasher:       "Dishwasher",
+  gym:              "Gym",
+  laundry:          "Laundry",
+  mailroom:         "Mailroom",
+  microwave:        "Microwave",
+  oven:             "Oven",
+  parking:          "Parking",
+  pets_allowed:     "Pets Allowed",
+  pool:             "Pool",
+  refrigerator:     "Refrigerator",
+  rooftop:          "Rooftop",
+  storage:          "Storage",
+  stove:            "Stove",
+  study_room:       "Study Room",
+};
+const UTILITY_OPTIONS = [
+  "electric", "gas", "heat", "water", "internet",
+  "trash", "cable", "sewer", "cooling",
+];
+const UTILITY_LABELS = {
+  electric: "Electric",
+  gas:      "Gas",
+  heat:     "Heat",
+  water:    "Water",
+  internet: "Internet",
+  trash:    "Trash",
+  cable:    "Cable",
+  sewer:    "Sewer",
+  cooling:  "Cooling",
+};
 const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "studio", "other"];
 const LEASE_TYPES = ["standard", "sublease", "short-term"];
 
@@ -958,7 +991,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                       ? "bg-red-600 text-white border-red-600"
                       : "bg-white text-gray-600 border-gray-300 hover:border-red-400"
                   }`}>
-                  {a}
+                  {AMENITY_LABELS[a]}
                 </button>
               ))}
             </div>
@@ -977,7 +1010,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                       ? "bg-red-600 text-white border-red-600"
                       : "bg-white text-gray-600 border-gray-300 hover:border-red-400"
                   }`}>
-                  {u}
+                  {UTILITY_LABELS[u]}
                 </button>
               ))}
             </div>
