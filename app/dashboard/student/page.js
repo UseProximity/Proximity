@@ -1118,7 +1118,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     if (searchParams.get("addSublease") !== "1") return;
     if (!dbUser) return; // wait for user to load
 
-    if (dbUser.role === "student" || dbUser.role === "super") {
+    if (session?.user?.role === "student" || session?.user?.role === "super") {
       setSubleaseModal({ mode: "add" });
     } else {
       setShowRoleOverlay(true);
