@@ -12,11 +12,12 @@ function sanitizeCallbackUrl(raw) {
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams;
   const callbackUrl = sanitizeCallbackUrl(params?.callbackUrl);
+  const initialTab = params?.tab === "signup" ? "signup" : "signin";
 
   const session = await auth();
   if (session) {
     redirect(callbackUrl);
   }
 
-  return <LoginClient callbackUrl={callbackUrl} />;
+  return <LoginClient callbackUrl={callbackUrl} initialTab={initialTab} />;
 }

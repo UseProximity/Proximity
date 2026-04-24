@@ -6,7 +6,7 @@ import Link from "next/link";
 const Logo = "/logo.svg";
 import { Search, X, Menu } from "lucide-react";
 import AddressSearchInput from "@/components/AddressSearchInput";
-import { signIn, signOut } from "next-auth/react";
+import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 
 export function Header({ session }) {
@@ -205,13 +205,13 @@ export function Header({ session }) {
             ) : (
               <>
                 <button
-                  onClick={() => signIn("google", { callbackUrl: "/" })}
+                  onClick={() => router.push("/login")}
                   className="px-5 py-2.5 text-[17px] font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl border border-gray-200 transition-all duration-150"
                 >
                   Log In
                 </button>
                 <button
-                  onClick={() => signIn("google", { callbackUrl: "/" })}
+                  onClick={() => router.push("/login?tab=signup")}
                   className="px-5 py-2.5 text-[17px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all duration-150 shadow-sm shadow-red-400/25"
                 >
                   Sign Up
@@ -298,19 +298,13 @@ export function Header({ session }) {
               {/* Log In + Sign Up side by side */}
               <div className="flex gap-2 w-full">
                 <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    signIn("google", { callbackUrl: "/" });
-                  }}
+                  onClick={() => { setMobileMenuOpen(false); router.push("/login"); }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 transition-all text-center"
                 >
                   Log In
                 </button>
                 <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    signIn("google", { callbackUrl: "/" });
-                  }}
+                  onClick={() => { setMobileMenuOpen(false); router.push("/login?tab=signup"); }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-white bg-red-500 hover:bg-red-600 transition-all text-center"
                 >
                   Sign Up

@@ -1,5 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
 import supabase from "@/libs/supabase";
 
 // How long the JWT can trust its cached role before re-checking the DB.
@@ -13,6 +15,26 @@ const config = {
       clientId: process.env.GOOGLE_ID,
       clientSecret: process.env.GOOGLE_SECRET,
     }),
+    Credentials({
+      async authorize(credentials) {
+        const { email, password } = credentials;
+        if (!email || !password) return null;
+
+        const { data: user } = await supabase
+          .from("users")
+          .select("id, email, name, password_hash, email_verified, profile_complete, roles!role_id(name)")
+          .eq("email", email)
+          .single();
+
+        if (!user || !user.password_hash) return null;
+        if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) return null;
+
+        return { id: user.id, email: user.email, name: user.name };
+      },
+    }),
   ],
   session: { strategy: "jwt" },
   allowDangerousEmailAccountLinking: true,
@@ -21,6 +43,23 @@ const config = {
   },
   callbacks: {
     async jwt({ token, user, account, trigger, session: updateData }) {
+      // Credentials sign-in: user.id is the DB id returned from authorize()
+      if (account?.provider === "credentials" && user?.id) {
+        const { data: existing } = await supabase
+          .from("users")
+          .select("id, profile_complete, name, roles!role_id(name)")
+          .eq("id", user.id)
+          .single();
+        if (existing) {
+          token.userId = existing.id;
+          token.role = existing.roles?.name ?? "student";
+          token.profileComplete = existing.profile_complete ?? false;
+          if (existing.name) token.name = existing.name;
+          token.roleCheckedAt = Date.now();
+        }
+        return token;
+      }
+
       // On sign-in: fetch user from DB once and cache in the token
       if (account?.provider === "google" && user?.email) {
         const image = user.image ?? null;
