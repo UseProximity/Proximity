@@ -150,7 +150,7 @@ export default function LoginClient({ callbackUrl, initialTab }) {
                 <span className="font-medium">{verificationSentTo}</span>.
               </p>
             </div>
-            <p className="text-sm text-gray-500 mb-3">Didn't get it?</p>
+            <p className="text-sm text-gray-500 mb-3">Didn&apos;t get it?</p>
             <button
               onClick={handleResend}
               disabled={resendLoading}
