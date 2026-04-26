@@ -3,7 +3,7 @@ import Link from "next/link";
 import Footer from "@/components/Footer";
 
 export const metadata = {
-  title: "About the Founder | Proximity",
+  title: "About Proximity — WashU Student Housing, Built by WashU Students",
   description: "Meet the man behind Proximity.",
 };
 

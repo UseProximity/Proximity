@@ -9,12 +9,13 @@ import GlobalListingModal from "@/components/GlobalListingModal";
 import Providers from "@/components/Providers";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
 import { Analytics } from '@vercel/analytics/next';
+import { GoogleAnalytics } from '@next/third-parties/google';
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Proximity",
-  description: "Find Housing Near Your University",
+  title: "WashU Student Housing Matchmaking | Honest Peer Reviews | Pre-Vetted Listings | Proximity",
+  description: "Proximity helps WashU students find the perfect off-campus apartment. Verified listings, honest peer reviews, and free personalized matchmaking near Washington University in St. Louis.",
 };
 
 export default async function RootLayout({ children }) {
@@ -47,6 +48,7 @@ export default async function RootLayout({ children }) {
           <AnalyticsTracker />
           {children}
           <Analytics />
+          <GoogleAnalytics gaId="G-QJCHSZJXQY" />
         </Providers>
       </body>
     </html>

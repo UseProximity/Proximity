@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { trackEvent } from "@/utils/analytics";
 
@@ -209,6 +210,7 @@ export default function ConciergeFormClient() {
     []
   );
 
+  const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
 
   const [mode, setMode] = useState("loading"); // "loading" | "new" | "view" | "edit"
@@ -358,6 +360,7 @@ export default function ConciergeFormClient() {
       } else {
         setIsNewUser(data.isNewUser);
         setSubmitted(true);
+        router.push('/matchmaking?submitted=true');
         window.scrollTo({ top: 0, behavior: "smooth" });
         trackEvent("matchmaking_submit", { action: "new" });
       }
@@ -377,6 +380,7 @@ export default function ConciergeFormClient() {
     setExitPollThanks(false);
     setSubmitError(false);
     setIsNewUser(false);
+    router.replace('/matchmaking');
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
