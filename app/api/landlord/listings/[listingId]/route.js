@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { deleteAsUser } from "@/libs/supabaseWithUser";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -89,105 +90,23 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  if (Object.keys(safeUpdates).length > 0) {
-    const { error: updateError } = await supabase
-      .from("listings")
-      .update(safeUpdates)
-      .eq("id", listingId);
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
-  }
+  const leaseAvailabilityVal = Array.isArray(lease_availability)
+    ? (lease_availability[0] ?? null)
+    : (lease_availability ?? null);
 
-  if (amenities !== undefined) {
-    const row = { listing_id: listingId, ...boolRow(AMENITY_COLS, amenities) };
-    const { error: amErr } = await supabase
-      .from("listing_amenities")
-      .upsert(row, { onConflict: "listing_id" });
-    if (amErr) {
-      return NextResponse.json({ error: amErr.message }, { status: 500 });
-    }
-  }
+  // All writes in one RPC transaction so fn_action_log captures the real user ID
+  const { error: rpcError } = await supabase.rpc("rpc_edit_listing", {
+    p_user_id: check.session.user.id,
+    p_listing_id: listingId,
+    p_listing_updates: Object.keys(safeUpdates).length > 0 ? safeUpdates : null,
+    p_amenities: amenities !== undefined ? boolRow(AMENITY_COLS, amenities) : null,
+    p_utilities: utilities_included !== undefined ? boolRow(UTILITY_COLS, utilities_included) : null,
+    p_images_keep: Array.isArray(images) ? images.filter((u) => typeof u === "string" && u) : null,
+    p_units: Array.isArray(units) ? units : null,
+    p_lease_availability: leaseAvailabilityVal,
+  });
 
-  if (utilities_included !== undefined) {
-    const row = { listing_id: listingId, ...boolRow(UTILITY_COLS, utilities_included) };
-    const { error: utErr } = await supabase
-      .from("listing_utilities")
-      .upsert(row, { onConflict: "listing_id" });
-    if (utErr) {
-      return NextResponse.json({ error: utErr.message }, { status: 500 });
-    }
-  }
-
-  // Client sends the URL set it wants kept; delete anything else. New uploads go through /api/upload.
-  if (Array.isArray(images)) {
-    const keepUrls = images.filter((u) => typeof u === "string" && u);
-    const { data: existing } = await supabase
-      .from("listing_images")
-      .select("id, url")
-      .eq("listing_id", listingId);
-    const toDelete = (existing ?? [])
-      .filter((r) => !keepUrls.includes(r.url))
-      .map((r) => r.id);
-    if (toDelete.length > 0) {
-      await supabase.from("listing_images").delete().in("id", toDelete);
-    }
-  }
-
-  if (Array.isArray(units)) {
-    const { error: unitsDeleteError } = await supabase
-      .from("listing_units")
-      .delete()
-      .eq("listing_id", listingId);
-    if (unitsDeleteError) {
-      return NextResponse.json({ error: unitsDeleteError.message }, { status: 500 });
-    }
-
-    if (units.length > 0) {
-      const unitRows = units.map((u) => ({
-        listing_id: listingId,
-        bedrooms: u.bedrooms ?? null,
-        bathrooms: u.bathrooms ?? null,
-        area: u.area ?? null,
-      }));
-
-      const { data: insertedUnits, error: unitsError } = await supabase
-        .from("listing_units")
-        .insert(unitRows)
-        .select("id, bedrooms, bathrooms, area");
-
-      if (unitsError) {
-        return NextResponse.json({ error: unitsError.message }, { status: 500 });
-      }
-
-      const leaseAvailabilityVal = Array.isArray(lease_availability)
-        ? (lease_availability[0] ?? null)
-        : (lease_availability ?? null);
-
-      const leaseRows = (insertedUnits ?? [])
-        .map((inserted, idx) => {
-          const rent = units[idx]?.rent ?? null;
-          const availFrom = units[idx]?.leaseAvailability ?? leaseAvailabilityVal ?? null;
-          if (rent == null && availFrom == null) return null;
-          return {
-            unit_id: inserted.id,
-            rent,
-            is_active: true,
-            available_from: availFrom,
-          };
-        })
-        .filter(Boolean);
-
-      if (leaseRows.length > 0) {
-        const { error: leasesError } = await supabase
-          .from("unit_leases")
-          .insert(leaseRows);
-        if (leasesError) {
-          console.error("unit_leases insert error:", leasesError);
-        }
-      }
-    }
-  }
+  if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 });
 
   const { data: updated } = await supabase
     .from("listings")
@@ -206,7 +125,11 @@ export async function DELETE(_req, { params }) {
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
-  const { error } = await supabase.from("listings").delete().eq("id", listingId);
+  const { error } = await deleteAsUser(supabase, {
+    userId: check.session.user.id,
+    table: "listings",
+    rowId: listingId,
+  });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

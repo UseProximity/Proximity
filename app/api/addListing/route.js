@@ -188,10 +188,47 @@ export async function POST(req) {
       return val;
     })();
 
-    // Insert listing row into Supabase (no dropped columns)
-    const { data: newListing, error: listingError } = await supabase
-      .from("listings")
-      .insert({
+    // Build amenity and utility boolean maps
+    const amenityObj = Object.fromEntries([...AMENITY_COLS].map((c) => [c, false]));
+    for (const name of (amenities ?? [])) {
+      if (typeof name === "string" && AMENITY_COLS.has(name)) amenityObj[name] = true;
+    }
+
+    const utilityObj = Object.fromEntries([...UTILITY_COLS].map((c) => [c, false]));
+    for (const name of (utilitiesIncluded ?? [])) {
+      if (typeof name === "string" && UTILITY_COLS.has(name)) utilityObj[name] = true;
+    }
+
+    // Resolve walk-time location IDs (read-only; insert happens inside rpc_create_listing)
+    const walkTimeRows = [];
+    try {
+      const { data: locations } = await supabase.from("locations").select("id, name");
+      if (locations?.length) {
+        for (const [key, minutes] of Object.entries(placeWalkMinutes ?? {})) {
+          const loc = locations.find((l) => l.name.toLowerCase() === key.toLowerCase());
+          if (loc && minutes != null) walkTimeRows.push({ location_id: loc.id, minutes });
+        }
+        if (shuttleWalkMinutes != null) {
+          const shuttleLoc = locations.find((l) => l.name.toLowerCase() === "shuttle_nearest");
+          if (shuttleLoc) walkTimeRows.push({ location_id: shuttleLoc.id, minutes: shuttleWalkMinutes });
+        }
+      }
+    } catch (wtErr) {
+      console.error("[addListing] Failed to resolve walk times:", wtErr?.message);
+    }
+
+    const unitData = unitTypes.map((unit) => ({
+      bedrooms: unit.bedrooms,
+      bathrooms: unit.bathrooms,
+      area: unit.area ?? null,
+      rent: unit.rent ?? null,
+      leaseAvailability: unit.leaseAvailability ?? null,
+    }));
+
+    // All DB writes in one transaction — sets app.current_user_id for action_log attribution
+    const { data: listingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
+      p_user_id: ownerId,
+      p_listing_data: {
         title: title?.trim() || null,
         address,
         longitude: resolvedLng,
@@ -209,114 +246,17 @@ export async function POST(req) {
         contact_name: contactName ?? null,
         unavailable: false,
         deleted_at: null,
-      })
-      .select("id, address")
-      .single();
+      },
+      p_amenities: amenityObj,
+      p_utilities: utilityObj,
+      p_walk_times: walkTimeRows,
+      p_units: unitData,
+      p_lease_availability: leaseAvailabilityVal,
+    });
 
     if (listingError) {
       console.error("Error creating listing:", listingError.message);
       return NextResponse.json({ error: listingError.message }, { status: 500 });
-    }
-
-    const listingId = newListing.id;
-
-    // Insert into listing_landlords
-    if (ownerId) {
-      await supabase.from("listing_landlords").insert({
-        listing_id: listingId,
-        user_id: ownerId,
-        is_primary: true,
-      });
-    }
-
-    // Insert listing_amenities row
-    const amenityRow = { listing_id: listingId };
-    for (const name of (amenities ?? [])) {
-      if (typeof name === "string" && AMENITY_COLS.has(name)) amenityRow[name] = true;
-    }
-    await supabase.from("listing_amenities").insert(amenityRow);
-
-    // Insert listing_utilities row
-    const utilityRow = { listing_id: listingId };
-    for (const name of (utilitiesIncluded ?? [])) {
-      if (typeof name === "string" && UTILITY_COLS.has(name)) utilityRow[name] = true;
-    }
-    await supabase.from("listing_utilities").insert(utilityRow);
-
-    // Insert listing_walk_times rows
-    try {
-      const { data: locations } = await supabase
-        .from("locations")
-        .select("id, name");
-
-      const walkTimeRows = [];
-
-      if (locations && locations.length > 0) {
-        // Map placeWalkMinutes keys to location rows (case-insensitive)
-        for (const [key, minutes] of Object.entries(placeWalkMinutes ?? {})) {
-          const loc = locations.find(
-            (l) => l.name.toLowerCase() === key.toLowerCase()
-          );
-          if (loc && minutes != null) {
-            walkTimeRows.push({ listing_id: listingId, location_id: loc.id, minutes });
-          }
-        }
-
-        // Map shuttleWalkMinutes to the shuttle_nearest location
-        if (shuttleWalkMinutes != null) {
-          const shuttleLoc = locations.find(
-            (l) => l.name.toLowerCase() === "shuttle_nearest"
-          );
-          if (shuttleLoc) {
-            walkTimeRows.push({
-              listing_id: listingId,
-              location_id: shuttleLoc.id,
-              minutes: shuttleWalkMinutes,
-            });
-          }
-        }
-      }
-
-      if (walkTimeRows.length > 0) {
-        await supabase.from("listing_walk_times").insert(walkTimeRows);
-      }
-    } catch (wtErr) {
-      console.error("[addListing] Failed to insert walk times:", wtErr?.message);
-    }
-
-    // Insert listing_units (without rent and lease_availability)
-    const unitRows = unitTypes.map((unit) => ({
-      listing_id: listingId,
-      bedrooms: unit.bedrooms,
-      bathrooms: unit.bathrooms,
-      area: unit.area ?? null,
-    }));
-
-    const { data: insertedUnits, error: unitsError } = await supabase
-      .from("listing_units")
-      .insert(unitRows)
-      .select("id, bedrooms, bathrooms");
-
-    if (unitsError) {
-      console.error("Error creating listing units:", unitsError.message);
-      return NextResponse.json({ error: unitsError.message }, { status: 500 });
-    }
-
-    // Insert unit_leases for units that have rent
-    const leaseRows = [];
-    for (let i = 0; i < unitTypes.length; i++) {
-      const unit = unitTypes[i];
-      if (unit.rent != null && insertedUnits[i]) {
-        leaseRows.push({
-          unit_id: insertedUnits[i].id,
-          rent: unit.rent,
-          is_active: true,
-          available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
-        });
-      }
-    }
-    if (leaseRows.length > 0) {
-      await supabase.from("unit_leases").insert(leaseRows);
     }
 
     // Notify landlord of their new listing
@@ -328,7 +268,7 @@ export async function POST(req) {
           .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, newListing.address, listingId);
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId);
           }
         }
       } catch (emailErr) {
@@ -337,7 +277,7 @@ export async function POST(req) {
     }
 
     return NextResponse.json(
-      { message: "Listing created successfully", listing: newListing },
+      { message: "Listing created successfully", listing: { id: listingId, address } },
       { status: 201 }
     );
   } catch (e) {

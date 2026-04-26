@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "@/libs/r2";
 import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
+import { insertBatchAsUser } from "@/libs/supabaseWithUser";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -133,7 +134,11 @@ export async function PATCH(req) {
       url,
       sort_order: maxOrder + 1 + i,
     }));
-    await supabase.from("listing_images").insert(imageRows);
+    await insertBatchAsUser(supabase, {
+      userId: session.user.id,
+      table: "listing_images",
+      rows: imageRows,
+    });
 
     return Response.json({ urls, url: urls[0] });
   } catch (error) {
@@ -255,7 +260,11 @@ export async function PUT(req) {
       url,
       sort_order: maxOrder + 1 + i,
     }));
-    await supabase.from("listing_images").insert(imageRows);
+    await insertBatchAsUser(supabase, {
+      userId: session.user.id,
+      table: "listing_images",
+      rows: imageRows,
+    });
 
     return Response.json({ urls });
   } catch (error) {

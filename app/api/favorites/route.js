@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import supabase from "@/libs/supabase";
 import { auth } from "@/auth";
+import { insertAsUser, deleteAsUser } from "@/libs/supabaseWithUser";
 
 export async function GET() {
   const session = await auth();
@@ -60,19 +61,20 @@ export async function POST(req) {
 
     if (existing) {
       // Remove favorite
-      await supabase
-        .from("user_listing_interactions")
-        .delete()
-        .eq("user_id", userId)
-        .eq("listing_id", listingId)
-        .eq("interaction_type_id", favoriteTypeId);
+      await deleteAsUser(supabase, {
+        userId,
+        table: "user_listing_interactions",
+        match: { user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId },
+      });
 
       return NextResponse.json({ favorited: false });
     } else {
       // Add favorite
-      await supabase
-        .from("user_listing_interactions")
-        .insert({ user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId });
+      await insertAsUser(supabase, {
+        userId,
+        table: "user_listing_interactions",
+        data: { user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId },
+      });
 
       // Track saves metric (fire-and-forget)
       supabase

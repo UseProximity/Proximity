@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { updateAsUser } from "@/libs/supabaseWithUser";
 
 export async function PATCH(req) {
   try {
@@ -78,12 +79,12 @@ export async function PATCH(req) {
 
     console.log("PATCH /api/editProfile: updating fields", allowedFields);
 
-    const { data: updated, error } = await supabase
-      .from("users")
-      .update(allowedFields)
-      .eq("id", supabaseId)
-      .select("*, roles!role_id(name)")
-      .single();
+    const { error } = await updateAsUser(supabase, {
+      userId: supabaseId,
+      table: "users",
+      data: allowedFields,
+      rowId: supabaseId,
+    });
 
     if (error) {
       console.error("PATCH /api/editProfile: update failed", {
@@ -97,8 +98,14 @@ export async function PATCH(req) {
       );
     }
 
-    if (!updated) {
-      console.error("PATCH /api/editProfile: update returned no row", { supabaseId });
+    const { data: updated, error: fetchError } = await supabase
+      .from("users")
+      .select("*, roles!role_id(name)")
+      .eq("id", supabaseId)
+      .single();
+
+    if (fetchError || !updated) {
+      console.error("PATCH /api/editProfile: fetch after update failed", { supabaseId });
       return NextResponse.json({ error: "Update returned no row" }, { status: 404 });
     }
 

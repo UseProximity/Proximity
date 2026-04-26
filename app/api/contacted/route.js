@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { upsertAsUser } from "@/libs/supabaseWithUser";
 
 // POST /api/contacted — add a listing to the user's contacted list (idempotent)
 export async function POST(req) {
@@ -29,12 +30,13 @@ export async function POST(req) {
     }
 
     // Upsert — idempotent, ignore conflict on duplicate
-    const { error } = await supabase
-      .from("user_listing_interactions")
-      .upsert(
-        { user_id: userId, listing_id: listingId, interaction_type_id: contactedTypeId },
-        { onConflict: "user_id,listing_id,interaction_type_id", ignoreDuplicates: true }
-      );
+    const { error } = await upsertAsUser(supabase, {
+      userId,
+      table: "user_listing_interactions",
+      data: { user_id: userId, listing_id: listingId, interaction_type_id: contactedTypeId },
+      conflictCols: ["user_id", "listing_id", "interaction_type_id"],
+      ignoreConflicts: true,
+    });
 
     if (error) {
       console.error("Error saving contacted listing:", error);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { updateAsUser } from "@/libs/supabaseWithUser";
 
 async function requireSuper() {
   const session = await auth();
@@ -49,7 +50,7 @@ export async function PATCH(request) {
       .single();
     if (fetchErr || !review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
 
-    await supabase.from("listing_reviews").update({ legitimacy: true }).eq("id", reviewId);
+    await updateAsUser(supabase, { userId: user.id, table: "listing_reviews", data: { legitimacy: true }, rowId: reviewId });
 
     return NextResponse.json({ success: true });
   } catch (err) {
@@ -73,7 +74,7 @@ export async function DELETE(request) {
       .single();
     if (fetchErr || !review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
 
-    await supabase.from("listing_reviews").update({ deleted_at: new Date().toISOString() }).eq("id", reviewId);
+    await updateAsUser(supabase, { userId: user.id, table: "listing_reviews", data: { deleted_at: new Date().toISOString() }, rowId: reviewId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

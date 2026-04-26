@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { insertAsUser, updateAsUser, deleteAsUser } from "@/libs/supabaseWithUser";
 
 async function requireOwnership(listingId) {
   const session = await auth();
@@ -79,9 +80,11 @@ export async function POST(req, { params }) {
 
   if (existing) return NextResponse.json({ error: "That person is already a co-owner." }, { status: 409 });
 
-  const { error: insertErr } = await supabase
-    .from("listing_landlords")
-    .insert({ listing_id: listingId, user_id: targetUser.id, is_primary: false });
+  const { error: insertErr } = await insertAsUser(supabase, {
+    userId: check.session.user.id,
+    table: "listing_landlords",
+    data: { listing_id: listingId, user_id: targetUser.id, is_primary: false },
+  });
 
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
 
@@ -115,18 +118,23 @@ export async function PATCH(req, { params }) {
 
   if (!target) return NextResponse.json({ error: "That user is not a co-owner of this listing." }, { status: 404 });
 
-  const { error: clearErr } = await supabase
-    .from("listing_landlords")
-    .update({ is_primary: false })
-    .eq("listing_id", listingId);
+  const actorId = check.session.user.id;
+
+  const { error: clearErr } = await updateAsUser(supabase, {
+    userId: actorId,
+    table: "listing_landlords",
+    data: { is_primary: false },
+    match: { listing_id: listingId },
+  });
 
   if (clearErr) return NextResponse.json({ error: clearErr.message }, { status: 500 });
 
-  const { error: setErr } = await supabase
-    .from("listing_landlords")
-    .update({ is_primary: true })
-    .eq("listing_id", listingId)
-    .eq("user_id", userId);
+  const { error: setErr } = await updateAsUser(supabase, {
+    userId: actorId,
+    table: "listing_landlords",
+    data: { is_primary: true },
+    match: { listing_id: listingId, user_id: userId },
+  });
 
   if (setErr) return NextResponse.json({ error: setErr.message }, { status: 500 });
 
@@ -152,11 +160,11 @@ export async function DELETE(req, { params }) {
   if (!target) return NextResponse.json({ error: "Not a co-owner of this listing." }, { status: 404 });
   if (target.is_primary) return NextResponse.json({ error: "Cannot remove the primary owner." }, { status: 400 });
 
-  const { error } = await supabase
-    .from("listing_landlords")
-    .delete()
-    .eq("listing_id", listingId)
-    .eq("user_id", userId);
+  const { error } = await deleteAsUser(supabase, {
+    userId: check.session.user.id,
+    table: "listing_landlords",
+    match: { listing_id: listingId, user_id: userId },
+  });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { insertAsUser, updateAsUser, deleteAsUser } from "@/libs/supabaseWithUser";
 
 export async function POST(req) {
   try {
@@ -38,11 +39,11 @@ export async function POST(req) {
     if (existingVote) {
       if (existingVote.vote === vote) {
         // Same direction — toggle off (delete)
-        const { error: deleteError } = await supabase
-          .from("review_votes")
-          .delete()
-          .eq("review_id", reviewId)
-          .eq("user_id", userId);
+        const { error: deleteError } = await deleteAsUser(supabase, {
+          userId,
+          table: "review_votes",
+          match: { review_id: reviewId, user_id: userId },
+        });
 
         if (deleteError) {
           console.error("POST /api/reviewVote delete failed:", deleteError);
@@ -50,11 +51,12 @@ export async function POST(req) {
         }
       } else {
         // Different direction — update to new vote
-        const { error: updateError } = await supabase
-          .from("review_votes")
-          .update({ vote })
-          .eq("review_id", reviewId)
-          .eq("user_id", userId);
+        const { error: updateError } = await updateAsUser(supabase, {
+          userId,
+          table: "review_votes",
+          data: { vote },
+          match: { review_id: reviewId, user_id: userId },
+        });
 
         if (updateError) {
           console.error("POST /api/reviewVote update failed:", updateError);
@@ -63,9 +65,11 @@ export async function POST(req) {
       }
     } else {
       // No existing vote — insert
-      const { error: insertError } = await supabase
-        .from("review_votes")
-        .insert({ review_id: reviewId, user_id: userId, vote });
+      const { error: insertError } = await insertAsUser(supabase, {
+        userId,
+        table: "review_votes",
+        data: { review_id: reviewId, user_id: userId, vote },
+      });
 
       if (insertError) {
         console.error("POST /api/reviewVote insert failed:", insertError);

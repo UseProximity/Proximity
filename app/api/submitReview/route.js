@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/libs/supabase";
+import { insertAsUser } from "@/libs/supabaseWithUser";
 
 export async function POST(req) {
   try {
@@ -48,9 +49,10 @@ export async function POST(req) {
       }
     }
 
-    const { data: newReview, error } = await supabase
-      .from("listing_reviews")
-      .insert({
+    const { data: newReview, error } = await insertAsUser(supabase, {
+      userId: session.user.id,
+      table: "listing_reviews",
+      data: {
         user_id: session.user.id,
         listing_id: listingId || null,
         rating,
@@ -59,9 +61,8 @@ export async function POST(req) {
         communication_rating: communicationRating ?? null,
         location_rating: locationRating ?? null,
         value_rating: valueRating ?? null,
-      })
-      .select()
-      .single();
+      },
+    });
 
     if (error) {
       console.error("POST /api/submitReview failed:", error);
