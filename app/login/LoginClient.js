@@ -16,6 +16,11 @@ export default function LoginClient({ callbackUrl, initialTab }) {
   const [verificationSentTo, setVerificationSentTo] = useState("");
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
+  const [forgotView, setForgotView] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotError, setForgotError] = useState("");
 
   useEffect(() => {
     if (searchParams.get("verified") === "1") {
@@ -31,6 +36,30 @@ export default function LoginClient({ callbackUrl, initialTab }) {
     setError("");
     setVerificationSentTo("");
     setResendMsg("");
+    setForgotView(false);
+    setForgotSent(false);
+  };
+
+  const handleForgot = async (e) => {
+    e.preventDefault();
+    setForgotError("");
+    setForgotLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setForgotError(data.error ?? "Something went wrong. Please try again.");
+      } else {
+        setForgotSent(true);
+      }
+    } catch {
+      setForgotError("Something went wrong. Please try again.");
+    }
+    setForgotLoading(false);
   };
 
   const handleSignIn = async (e) => {
@@ -103,6 +132,7 @@ export default function LoginClient({ callbackUrl, initialTab }) {
   };
 
   const verified = searchParams.get("verified") === "1";
+  const resetDone = searchParams.get("reset") === "1";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -141,7 +171,54 @@ export default function LoginClient({ callbackUrl, initialTab }) {
           </div>
         )}
 
-        {verificationSentTo ? (
+        {resetDone && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-green-50 text-green-700 text-sm">
+            Password reset! You can now sign in with your new password.
+          </div>
+        )}
+
+        {forgotView ? (
+          <div className="text-center">
+            {forgotSent ? (
+              <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
+                <p className="font-semibold mb-1">Check your inbox</p>
+                <p>We sent a reset link to <span className="font-medium">{forgotEmail}</span>.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-4">Enter your email and we&apos;ll send you a reset link.</p>
+                {forgotError && (
+                  <div className="mb-3 px-4 py-3 rounded-lg bg-red-50 text-red-600 text-sm text-left">
+                    {forgotError}
+                  </div>
+                )}
+                <form onSubmit={handleForgot} className="flex flex-col gap-3 text-left">
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={forgotEmail}
+                    onChange={(e) => { setForgotEmail(e.target.value); setForgotError(""); }}
+                    required
+                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-red-400 transition"
+                  />
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition"
+                  >
+                    {forgotLoading ? "Sending…" : "Send Reset Link"}
+                  </button>
+                </form>
+              </>
+            )}
+            <button
+              onClick={() => { setForgotView(false); setForgotSent(false); setForgotEmail(""); setForgotError(""); }}
+              className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
+            >
+              ← Back
+            </button>
+          </div>
+        ) : verificationSentTo ? (
           <div className="text-center">
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
@@ -200,6 +277,13 @@ export default function LoginClient({ callbackUrl, initialTab }) {
                   className="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition"
                 >
                   {loading ? "Signing in…" : "Continue with Email"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setError(""); setForgotEmail(email); setForgotView(true); }}
+                  className="text-sm text-gray-400 hover:text-gray-600 transition text-center w-full"
+                >
+                  Forgot password?
                 </button>
               </form>
             ) : (

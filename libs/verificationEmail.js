@@ -13,6 +13,27 @@ export function getBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+  await transporter.sendMail({
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "Reset your Proximity password",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+        <h2 style="color:#111">Reset your password${name ? `, ${name}` : ""}</h2>
+        <p>Click the button below to set a new password. This link expires in 1 hour.</p>
+        <a href="${resetUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Reset Password
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${resetUrl}</p>
+        <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendVerificationEmail({ email, name, token, baseUrl }) {
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
   await transporter.sendMail({
