@@ -130,11 +130,6 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
-          {listing.owner?.name && (
-            <span className="text-gray-400 text-xs truncate ml-2 max-w-[40%]">
-              {listing.owner.name}
-            </span>
-          )}
         </div>
         {(() => {
           const pwm = listing.placeWalkMinutes;

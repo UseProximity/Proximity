@@ -728,33 +728,9 @@ function ContactTab({
 
   return (
     <div className="max-w-xl">
-      {/* Landlord info */}
-      {owner && (
-        <div className="flex items-center gap-4 mb-6">
-          <img
-            src={
-              owner.image?.trim()
-                ? owner.image
-                : "/default-icons/default-user.png"
-            }
-            alt={owner.name}
-            className="w-14 h-14 rounded-full object-cover ring-2 ring-gray-100"
-          />
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide">
-              Listing by
-            </p>
-            <span className="text-lg font-semibold text-gray-900">
-              {owner.name}
-            </span>
-          </div>
-        </div>
-      )}
-
       {contactSent ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
-          Your message was sent!
-          {owner ? ` ${owner.name} will be in touch soon.` : ""}
+          Your message was sent! The property manager will be in touch soon.
         </div>
       ) : (
         <form onSubmit={handleContactSubmit} className="space-y-3">
