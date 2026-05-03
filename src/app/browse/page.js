@@ -1,0 +1,16 @@
+import { Suspense } from "react";
+import BrowseContent from "@/components/listings/BrowseContent";
+import { auth } from "@/auth";
+
+export const metadata = {
+  title: "Browse WashU Student Apartments and Rentals | Proximity",
+};
+
+export default async function Browse() {
+  const session = await auth();
+  return (
+    <Suspense fallback={<div></div>}>
+      <BrowseContent session={session} />
+    </Suspense>
+  );
+}

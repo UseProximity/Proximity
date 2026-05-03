@@ -68,6 +68,8 @@ today.md
 
 # MCP server dependencies
 mcp/node_modules/
+# MCP knowledge base — auto-generated, never commit
+mcp/knowledge/
 # Allow mcp/scripts/ even though root-level `scripts` is ignored
 !mcp/scripts/
 !mcp/scripts/**
