@@ -88,6 +88,7 @@ const config = {
               phone: "N/A",
               description: "",
               referral_source: "",
+              google_account: true,
             })
             .select("id")
             .single();
@@ -97,13 +98,12 @@ const config = {
           token.profileComplete = false;
           token.roleCheckedAt = Date.now();
         } else {
-          if (image) {
-            const { error } = await supabase
-              .from("users")
-              .update({ image })
-              .eq("email", user.email);
-            if (error) console.error("jwt: failed to update user image", error);
-          }
+          const imageUpdate = image ? { image, google_account: true } : { google_account: true };
+          const { error } = await supabase
+            .from("users")
+            .update(imageUpdate)
+            .eq("email", user.email);
+          if (error) console.error("jwt: failed to update user", error);
           token.userId = existing.id;
           token.role = existing.roles?.name ?? "student";
           token.profileComplete = existing.profile_complete ?? false;

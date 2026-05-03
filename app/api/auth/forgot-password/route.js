@@ -12,15 +12,15 @@ export async function POST(req) {
 
     const { data: user } = await supabase
       .from("users")
-      .select("id, name, password_hash")
+      .select("id, name, google_account")
       .eq("email", email)
       .single();
 
-    if (!user || !user.password_hash) {
-      const msg = !user
-        ? "No account found for that email."
-        : "This email is linked to a Google account. Please sign in with Google.";
-      return NextResponse.json({ error: msg }, { status: 404 });
+    if (!user) {
+      return NextResponse.json({ error: "No account found for that email." }, { status: 404 });
+    }
+    if (user.google_account) {
+      return NextResponse.json({ error: "This email is linked to a Google account. Please sign in with Google." }, { status: 404 });
     }
 
     const token = crypto.randomUUID();
