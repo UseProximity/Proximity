@@ -2319,7 +2319,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     }
   };
 
-  const handleAddListing = () => setListingModal({ mode: "add" });
+  const handleAddListing = () => router.push("/add-listing");
   const handleEditListing = (listing) => setListingModal({ mode: "edit", listing });
   const handleManageCoOwners = (listing) => setCoOwnersModal(listing);
   const handleDeleteListing = async (property) => {
