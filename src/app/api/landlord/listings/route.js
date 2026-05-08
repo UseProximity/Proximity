@@ -29,7 +29,7 @@ export async function GET(req) {
 
   const { data, error } = await supabase
     .from("listings")
-    .select("*, listing_units(bedrooms, bathrooms, area)")
+    .select("*, listing_leases(bedrooms, bathrooms, area, rent, pricing_basis, is_active, deleted_at)")
     .in("id", ids)
     .order("created_at", { ascending: false });
 

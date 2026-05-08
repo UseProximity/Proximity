@@ -218,16 +218,23 @@ export async function POST(req) {
       console.error("[addListing] Failed to resolve walk times:", wtErr?.message);
     }
 
-    const unitData = unitTypes.map((unit) => ({
+    // Build leases array — accept new `leases` payload or convert legacy `unitTypes`.
+    const leaseData = (body.leases ?? unitTypes).map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
+      pricing_basis: unit.pricing_basis ?? "per_unit",
       rent: unit.rent ?? null,
-      leaseAvailability: unit.leaseAvailability ?? null,
+      beds_in_lease: unit.beds_in_lease ?? null,
+      lease_term_months: unit.lease_term_months ?? 12,
+      available_from: unit.available_from ?? unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+      sublease: unit.sublease ?? false,
+      summer_only: unit.summer_only ?? false,
+      semester_only: unit.semester_only ?? false,
+      unit_group_label: unit.unit_group_label ?? null,
     }));
 
-    // All DB writes in one transaction — sets app.current_user_id for action_log attribution
-    const { data: listingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
+    const { data: listingId, error: listingError } = await supabase.rpc("rpc_create_listing_v2", {
       p_user_id: ownerId,
       p_listing_data: {
         title: title?.trim() || null,
@@ -251,8 +258,8 @@ export async function POST(req) {
       p_amenities: amenityObj,
       p_utilities: utilityObj,
       p_walk_times: walkTimeRows,
-      p_units: unitData,
-      p_lease_availability: leaseAvailabilityVal,
+      p_leases: leaseData,
+      p_pet_policy: body.petPolicy ?? null,
     });
 
     if (listingError) {

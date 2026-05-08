@@ -96,6 +96,20 @@ export async function PATCH(req, { params }) {
   })();
 
   // All writes in one RPC transaction so fn_action_log captures the real user ID
+  // Convert units → listing_leases format for dual-write during transition.
+  const leasesPayload = Array.isArray(units)
+    ? units.map((u) => ({
+        bedrooms: u.bedrooms,
+        bathrooms: u.bathrooms,
+        area: u.area ?? null,
+        pricing_basis: u.pricing_basis ?? "per_unit",
+        rent: u.rent ?? null,
+        lease_term_months: u.lease_term_months ?? 12,
+        available_from: u.available_from ?? u.leaseAvailability ?? leaseAvailabilityVal ?? null,
+        sublease: u.sublease ?? false,
+      }))
+    : null;
+
   const { error: rpcError } = await supabase.rpc("rpc_edit_listing", {
     p_user_id: check.session.user.id,
     p_listing_id: listingId,
@@ -105,6 +119,7 @@ export async function PATCH(req, { params }) {
     p_images_keep: Array.isArray(images) ? images.filter((u) => typeof u === "string" && u) : null,
     p_units: Array.isArray(units) ? units : null,
     p_lease_availability: leaseAvailabilityVal,
+    p_leases: leasesPayload,
   });
 
   if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 });
@@ -112,7 +127,7 @@ export async function PATCH(req, { params }) {
   const { data: updated } = await supabase
     .from("listings")
     .select(
-      "*, listing_units(bedrooms, bathrooms, area), listing_amenities(*), listing_utilities(*), listing_images(url, sort_order), home_types(label)"
+      "*, listing_leases(bedrooms, bathrooms, area, rent, pricing_basis, is_active, deleted_at), listing_amenities(*), listing_utilities(*), listing_images(url, sort_order), home_types(label)"
     )
     .eq("id", listingId)
     .single();

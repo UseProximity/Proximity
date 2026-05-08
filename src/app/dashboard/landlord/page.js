@@ -50,6 +50,8 @@ import {
   getUnitValuesLabel,
   calcAge,
 } from "@/utils/listingFormatters";
+import LeaseVaultTab from "./_tabs/LeaseVaultTab";
+import ConversationsTab from "./_tabs/ConversationsTab";
 
 
 // Simple components
@@ -2459,6 +2461,10 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
+      case "lease-vault":
+        return <LeaseVaultTab user={user} />;
+      case "conversations":
+        return <ConversationsTab user={user} />;
       case "profile":
       default:
         return (
@@ -2628,6 +2634,29 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                 >
                   <Star className="h-4 w-4" />
                   Reviews
+                </button>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Leasing</h3>
+              <div className="space-y-1">
+                <button
+                  onClick={() => handleNavigation("lease-vault")}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                    activeView === "lease-vault" ? "bg-red-50 text-red-700" : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Lease Vault
+                </button>
+                <button
+                  onClick={() => handleNavigation("conversations")}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                    activeView === "conversations" ? "bg-red-50 text-red-700" : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <Bell className="h-4 w-4" />
+                  Conversations
                 </button>
               </div>
             </div>

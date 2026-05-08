@@ -77,8 +77,9 @@ function inferRouteDetails(routePath, content) {
   const tables = [...new Set(tableMatches.map((m) => m[1]))];
 
   // Derive URL path from filesystem path
-  // e.g. app/api/favorites/[listingId]/route.js → /api/favorites/[listingId]
+  // e.g. src/app/api/favorites/[listingId]/route.js → /api/favorites/[listingId]
   const urlPath = relPath
+    .replace(/^src\/app/, "")
     .replace(/^app/, "")
     .replace(/\/route\.js$/, "")
     .replace(/\\/g, "/");
@@ -87,7 +88,7 @@ function inferRouteDetails(routePath, content) {
 }
 
 function generateApiRoutes() {
-  const apiDir = join(ROOT, "app", "api");
+  const apiDir = join(ROOT, "src", "app", "api");
   const routeFiles = walk(apiDir, "route.js");
 
   const routes = routeFiles.map((filepath) => {
@@ -153,12 +154,12 @@ const COMPONENT_DESCRIPTIONS = {
 };
 
 function generateComponents() {
-  const componentsDir = join(ROOT, "components");
+  const componentsDir = join(ROOT, "src", "components");
   const files = walk(componentsDir, ".js");
 
   const components = files.map((filepath) => {
     const rel = relative(ROOT, filepath);
-    const key = rel.replace("components/", "");
+    const key = rel.replace("src/components/", "");
     return {
       name: filepath.split("/").pop().replace(".js", ""),
       file: rel,

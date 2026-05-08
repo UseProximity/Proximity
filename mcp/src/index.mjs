@@ -5,60 +5,11 @@ import {
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync, existsSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const knowledgeDir = join(__dirname, "..", "knowledge");
-
-// ── Resources ────────────────────────────────────────────────────────────────
-
-const RESOURCES = [
-  {
-    uri: "proximity://api-routes",
-    name: "API Routes",
-    description:
-      "All Next.js API routes: path, HTTP methods, auth requirements, Supabase tables touched, and purpose.",
-    mimeType: "application/json",
-    file: "api-routes.json",
-  },
-  {
-    uri: "proximity://db-schema",
-    name: "Database Schema",
-    description:
-      "Supabase (PostgreSQL) table definitions. Includes columns, types, and relationships.",
-    mimeType: "application/json",
-    file: "db-schema.json",
-  },
-  {
-    uri: "proximity://components",
-    name: "React Components",
-    description:
-      "Inventory of all React components: file path, purpose, props summary, and which pages use them.",
-    mimeType: "application/json",
-    file: "components.json",
-  },
-  {
-    uri: "proximity://domain",
-    name: "Domain Overview",
-    description:
-      "Core domain knowledge: roles (student/landlord/super), auth flow (NextAuth v5 + Google OAuth), key workflows, tech stack, and data flow.",
-    mimeType: "application/json",
-    file: "domain.json",
-  },
-];
-
-function readKnowledge(filename) {
-  const filepath = join(knowledgeDir, filename);
-  if (!existsSync(filepath)) {
-    return JSON.stringify({
-      error: `Knowledge file '${filename}' not found. Run: npm run generate`,
-    });
-  }
-  return readFileSync(filepath, "utf-8");
-}
+import { RESOURCES, readKnowledge } from "./resources.mjs";
+import { TOOLS, callTool } from "./tools.mjs";
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
@@ -194,7 +145,7 @@ List the most likely failure points and a fix for each.`,
 
 const server = new Server(
   { name: "proximity", version: "0.1.0" },
-  { capabilities: { resources: {}, prompts: {} } }
+  { capabilities: { resources: {}, prompts: {}, tools: {} } }
 );
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => ({
@@ -222,6 +173,15 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   const messages = getPromptMessages(name, args ?? {});
   return { messages };
+});
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: TOOLS,
+}));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+  return callTool(name, args ?? {});
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

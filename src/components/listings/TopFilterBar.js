@@ -637,9 +637,10 @@ export default function TopFilterBar({
                 <div className="space-y-6">
                   {/* Price Range */}
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm mb-3">
+                    <p className="font-semibold text-gray-900 text-sm mb-1">
                       Price Range
                     </p>
+                    <p className="text-xs text-gray-400 mb-3">per bed / month</p>
                     <DualRangeSlider
                       minRent={draft.minRent}
                       maxRent={draft.maxRent}
@@ -696,6 +697,44 @@ export default function TopFilterBar({
                         })
                       }
                     />
+                  </div>
+
+                  {/* Lease Term */}
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm mb-3">Lease Term</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { months: 12, label: "12 mo" },
+                        { months: 10, label: "10 mo" },
+                        { months: 8,  label: "8 mo"  },
+                        { months: 7,  label: "7 mo"  },
+                        { months: 4,  label: "Summer" },
+                      ].map(({ months, label }) => {
+                        const active = (draft.leaseTerm || []).includes(months);
+                        return (
+                          <button
+                            key={months}
+                            type="button"
+                            onClick={() => {
+                              const cur = draft.leaseTerm || [];
+                              setDraft({
+                                ...draft,
+                                leaseTerm: active
+                                  ? cur.filter((m) => m !== months)
+                                  : [...cur, months],
+                              });
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                              active
+                                ? "bg-red-600 text-white border-red-600"
+                                : "bg-white text-gray-700 border-gray-300 hover:border-red-400"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Walking Distance to Campus */}

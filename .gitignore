@@ -73,3 +73,6 @@ mcp/knowledge/
 # Allow mcp/scripts/ even though root-level `scripts` is ignored
 !mcp/scripts/
 !mcp/scripts/**
+
+docs
+supabase

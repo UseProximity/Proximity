@@ -81,6 +81,38 @@ function walkTimesToMap(walkTimes) {
 }
 
 // ---------------------------------------------------------------------------
+// Compute per-bed-normalised rent + dimension aggregates from listing_leases.
+// Rent normalised to per-bed so filter ranges are apples-to-apples.
+// ---------------------------------------------------------------------------
+
+function computeLeaseAggregates(leases) {
+  const active = (leases ?? []).filter((l) => l.is_active && !l.deleted_at);
+  if (!active.length) {
+    return { minRent: null, maxRent: null, minBedrooms: null, maxBedrooms: null,
+             minBathrooms: null, maxBathrooms: null, minArea: null, maxArea: null };
+  }
+  const perBedRent = (l) => {
+    if (l.pricing_basis === "per_bed") return Number(l.rent);
+    if (l.pricing_basis === "per_unit" && l.bedrooms > 0) return Number(l.rent) / l.bedrooms;
+    return Number(l.rent);
+  };
+  const rents = active.map(perBedRent);
+  const beds  = active.map((l) => l.bedrooms).filter((v) => v != null);
+  const baths = active.map((l) => l.bathrooms).filter((v) => v != null);
+  const areas = active.map((l) => l.area).filter((v) => v != null);
+  return {
+    minRent:      rents.length ? Math.min(...rents) : null,
+    maxRent:      rents.length ? Math.max(...rents) : null,
+    minBedrooms:  beds.length  ? Math.min(...beds)  : null,
+    maxBedrooms:  beds.length  ? Math.max(...beds)  : null,
+    minBathrooms: baths.length ? Math.min(...baths) : null,
+    maxBathrooms: baths.length ? Math.max(...baths) : null,
+    minArea:      areas.length ? Math.min(...areas) : null,
+    maxArea:      areas.length ? Math.max(...areas) : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // buildListing — inline (includes reviews with votes + full walk times)
 // ---------------------------------------------------------------------------
 
@@ -98,23 +130,19 @@ function buildListing(row, owner = null, reviews = []) {
     longitude: row.longitude != null ? Number(row.longitude) : null,
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
-    unitTypes: (row.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
-      const nextAvailable = (u.unit_leases ?? [])
-        .filter((l) => l.available_from)
-        .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
-        ?.available_from ?? null;
-      return {
-        rent: activeRent != null ? Number(activeRent) : null,
-        area: u.area != null ? Number(u.area) : null,
-        bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
-        bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-        leaseAvailability: nextAvailable,
-      };
-    }),
-    leaseType: (row.listing_units ?? []).some((u) =>
-      (u.unit_leases ?? []).some((l) => l.is_active && l.sublease)
-    ) ? "Sublease" : "Standard",
+    unitTypes: (row.listing_leases ?? [])
+      .filter((l) => l.is_active && !l.deleted_at)
+      .map((l) => ({
+        rent: l.rent != null ? Number(l.rent) : null,
+        area: l.area != null ? Number(l.area) : null,
+        bedrooms: l.bedrooms != null ? Number(l.bedrooms) : null,
+        bathrooms: l.bathrooms != null ? Number(l.bathrooms) : null,
+        pricingBasis: l.pricing_basis,
+        leaseTermMonths: l.lease_term_months,
+        leaseAvailability: l.available_from ?? null,
+      })),
+    leaseType: (row.listing_leases ?? []).some((l) => l.is_active && !l.deleted_at && l.sublease)
+      ? "Sublease" : "Standard",
     images: (row.listing_images ?? [])
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((img) => img.url),
@@ -141,14 +169,7 @@ function buildListing(row, owner = null, reviews = []) {
     twentyOnePlus: row.twenty_one_plus ?? false,
     unavailable: row.unavailable ?? false,
     amenities: amenitiesRowToArray(row.listing_amenities),
-    minRent: row.min_rent != null ? Number(row.min_rent) : null,
-    maxRent: row.max_rent != null ? Number(row.max_rent) : null,
-    minBedrooms: row.min_bedrooms != null ? Number(row.min_bedrooms) : null,
-    maxBedrooms: row.max_bedrooms != null ? Number(row.max_bedrooms) : null,
-    minBathrooms: row.min_bathrooms != null ? Number(row.min_bathrooms) : null,
-    maxBathrooms: row.max_bathrooms != null ? Number(row.max_bathrooms) : null,
-    minArea: row.min_area != null ? Number(row.min_area) : null,
-    maxArea: row.max_area != null ? Number(row.max_area) : null,
+    ...computeLeaseAggregates(row.listing_leases),
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
@@ -188,13 +209,8 @@ export async function GET(req, { params }) {
         lease_structure, furnished, move_in_date,
         sublease_friendly, twenty_one_plus, unavailable,
         city, state, zipcode, created_at,
-        min_rent, max_rent, min_bedrooms, max_bedrooms,
-        min_bathrooms, max_bathrooms, min_area, max_area,
         home_types(label),
-        listing_units(
-          id, bedrooms, bathrooms, area,
-          unit_leases(rent, is_active, available_from, sublease)
-        ),
+        listing_leases(bedrooms, bathrooms, area, rent, pricing_basis, is_active, sublease, available_from, lease_term_months, deleted_at),
         listing_landlords(user_id, is_primary),
         listing_amenities(
           air_conditioning, dishwasher, gym, laundry, mailroom, microwave,

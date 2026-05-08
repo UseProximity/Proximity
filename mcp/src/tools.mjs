@@ -460,7 +460,7 @@ function fmtSchema(doc) {
 // Keep this short. Agents copy-paste briefings into Task tool prompts — long preambles eat context.
 const WORKING_PRINCIPLES = `## Working Principles (apply before every action)
 - **Ask before assuming**: If the goal, file locations, naming, or scope are ambiguous, ask one focused clarifying question before writing code. Don't guess on behalf of the user.
-- **Narrate changes**: Before each file edit or SQL migration, output one short sentence naming the file and what you're changing (e.g. "Updating app/api/foo/route.js: fix role lookup to use roles!role_id(name)"). Skip this for read-only exploration.`;
+- **Narrate any approval-prompting tool call — sentence goes ABOVE the call**: Before each Edit/Write/apply_migration/DDL execute_sql, Bash command, or any MCP tool that prompts the user for approval, output one short sentence naming what is being run and why (e.g. "Updating src/app/api/foo/route.js: fix role lookup" or "Running npm run build to verify type errors are gone"). The sentence must appear in user-visible text BEFORE the tool call, not after — the user reads narration to track silent tool calls. Read-only ops pre-approved by the user (Read, Grep, Glob, list_tables on whitelisted MCPs) don't need narration unless batched in unfamiliar combinations.`;
 
 function fmtActiveTasks(doc) {
   if (!doc) return "";

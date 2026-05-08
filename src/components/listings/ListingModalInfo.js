@@ -121,6 +121,7 @@ function LeaseStatCell({ leaseAvailability }) {
 
 const TABS = [
   { id: "amenities", label: "Overview" },
+  { id: "details", label: "Details" },
   { id: "map", label: "Map" },
   { id: "places", label: "Places" },
   { id: "reviews", label: "Reviews" },
@@ -966,6 +967,28 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
 
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
 
+  // ── P1 listing extras (pet policy, fees, concessions, faqs, conflict count) ──
+  const [listingExtras, setListingExtras] = useState(null);
+  const [conflictCount, setConflictCount] = useState(0);
+
+  useEffect(() => {
+    const id = listing?._id || listing?.id;
+    if (!id) return;
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/landlord/listings/${id}/pet-policy`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/landlord/listings/${id}/fees`).then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/landlord/listings/${id}/concessions`).then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/landlord/listings/${id}/faqs`).then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/listings/${id}/conflicts`).then((r) => r.ok ? r.json() : {}).catch(() => {}),
+    ]).then(([petPolicy, fees, concessions, faqs, conflicts]) => {
+      if (cancelled) return;
+      setListingExtras({ petPolicy, fees: fees ?? [], concessions: concessions ?? [], faqs: faqs ?? [] });
+      setConflictCount(conflicts?.active_count ?? (Array.isArray(conflicts) ? conflicts.length : 0));
+    });
+    return () => { cancelled = true; };
+  }, [listing?._id, listing?.id]);
+
   // Images — put any image with "main" in the filename first
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
   const images = (() => {
@@ -1301,6 +1324,25 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
             />
           </div>
 
+          {/* ── Conflict awareness banner (§10.3) ── */}
+          {conflictCount > 0 && (
+            <div className="mb-4 px-4 py-2.5 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-800 flex items-center gap-2">
+              <span className="text-yellow-500">⚠</span>
+              Another student is currently in the application stage for this property.
+            </div>
+          )}
+
+          {/* ── Active concessions pills ── */}
+          {listingExtras?.concessions?.filter((c) => c.active).length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {listingExtras.concessions.filter((c) => c.active).map((c) => (
+                <span key={c.id} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                  🎁 {c.description}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* ── Sticky Tab Bar ── */}
           <div
             id="listing-tabs"
@@ -1377,6 +1419,93 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                 contactLoading={contactLoading}
                 contactSent={contactSent}
               />
+            )}
+            {activeTab === "details" && (
+              <div className="space-y-7">
+                {/* Pet policy */}
+                {listingExtras?.petPolicy?.policy_text && (
+                  <section>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Pet policy</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                      {listingExtras.petPolicy.policy_text}
+                    </p>
+                  </section>
+                )}
+
+                {/* Fees */}
+                {listingExtras?.fees?.length > 0 && (
+                  <section>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Fees</h3>
+                    {["one_time", "refundable_deposit", "recurring", "penalty"].map((cat) => {
+                      const catFees = listingExtras.fees.filter((f) => f.fee_types?.category === cat);
+                      if (!catFees.length) return null;
+                      const labels = { one_time: "One-time", refundable_deposit: "Deposits", recurring: "Recurring", penalty: "Penalties" };
+                      return (
+                        <div key={cat} className="mb-4">
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{labels[cat]}</p>
+                          <div className="space-y-1.5">
+                            {catFees.map((f) => (
+                              <div key={f.id} className="flex items-center justify-between text-sm">
+                                <span className="text-gray-700">{f.fee_types?.display_label || f.fee_type_id}</span>
+                                <span className="font-medium text-gray-900">
+                                  ${Number(f.amount).toLocaleString()}
+                                  <span className="text-xs text-gray-400 font-normal ml-1">{f.basis !== "flat" ? `/ ${f.basis.replace(/_/g, " ")}` : ""}</span>
+                                  {f.refundable && <span className="ml-1 text-xs text-green-600">(refundable)</span>}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </section>
+                )}
+
+                {/* Concessions */}
+                {listingExtras?.concessions?.filter((c) => c.active).length > 0 && (
+                  <section>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Current offers</h3>
+                    <div className="space-y-2">
+                      {listingExtras.concessions.filter((c) => c.active).map((c) => (
+                        <div key={c.id} className="flex items-start gap-2 text-sm text-gray-700">
+                          <span className="text-green-600 mt-0.5">✓</span>
+                          <div>
+                            <p className="font-medium">{c.description}</p>
+                            {c.conditions && <p className="text-xs text-gray-400">{c.conditions}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* FAQs */}
+                {listingExtras?.faqs?.filter((f) => f.is_public).length > 0 && (
+                  <section>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">FAQs</h3>
+                    <div className="space-y-3">
+                      {listingExtras.faqs.filter((f) => f.is_public).sort((a, b) => a.sort_order - b.sort_order).map((faq) => (
+                        <details key={faq.id} className="group border border-gray-200 rounded-lg overflow-hidden">
+                          <summary className="px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer hover:bg-gray-50 list-none flex items-center justify-between">
+                            {faq.question}
+                            <span className="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+                          </summary>
+                          <div className="px-4 pb-3 pt-1 text-sm text-gray-600 leading-relaxed border-t border-gray-100">
+                            {faq.answer}
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {!listingExtras && (
+                  <p className="text-sm text-gray-400 text-center py-8">Loading details…</p>
+                )}
+                {listingExtras && !listingExtras.petPolicy?.policy_text && !listingExtras.fees?.length && !listingExtras.faqs?.filter((f) => f.is_public).length && (
+                  <p className="text-sm text-gray-400 text-center py-8">No additional details available yet.</p>
+                )}
+              </div>
             )}
           </div>
           </motion.div>

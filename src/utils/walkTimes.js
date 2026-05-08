@@ -1,3 +1,9 @@
+/*
+ * Walk-time utilities — haversine distance calculation and Mapbox Directions API helpers
+ * for computing walking minutes from a listing to WashU campus locations and shuttle stops.
+ * fetchAllWalkTimes is the primary export used by listing creation and edit API routes.
+ */
+
 import { WASHU_PLACES, SHUTTLE_STOPS } from "@/utils/washuPlaces";
 
 export function haversineKm(lat1, lng1, lat2, lng2) {

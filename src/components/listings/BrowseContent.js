@@ -36,6 +36,7 @@ const DEFAULT_FILTERS = {
   subleaseFriendly: false,
   leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
+  leaseTerm: [], // numeric months: [4, 7, 8, 10, 12]
 };
 
 export default function BrowseContent({ session }) {
@@ -254,6 +255,14 @@ export default function BrowseContent({ session }) {
           desc.includes("whole unit");
       }
 
+      // Lease term — match if any unitType offers the selected term(s)
+      let matchLeaseTerm = true;
+      if (filters.leaseTerm?.length > 0) {
+        matchLeaseTerm = (listing.unitTypes ?? []).some((u) =>
+          filters.leaseTerm.includes(u.leaseTermMonths)
+        );
+      }
+
       // Favorites / saved listings
       const matchSaved =
         !filters.savedOnly || savedIds.includes(String(listing._id)); // eslint-disable-line react-hooks/exhaustive-deps
@@ -284,7 +293,8 @@ export default function BrowseContent({ session }) {
         matchSublease &&
         matchLeaseStructure &&
         matchMoveInDate &&
-        matchSaved
+        matchSaved &&
+        matchLeaseTerm
       );
     }).sort((a, b) => {
       const aHasImages = a.images?.length > 0;

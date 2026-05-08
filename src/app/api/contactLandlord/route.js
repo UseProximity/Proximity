@@ -94,38 +94,36 @@ export async function POST(req) {
 
     const senderName = `${firstName.trim()} ${lastName.trim()}`;
 
+    const conversationsUrl = "https://useproximity.org/dashboard/landlord?view=conversations";
     const landlordMailOptions = {
       from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
       to: landlordEmail,
       replyTo: email,
-      subject: `New Inquiry: ${listingAddress || "Your Listing"} — via Proximity`,
+      subject: `New message from ${senderName} — ${listingAddress || "your listing"}`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
           <p>Hi ${landlordName || "there"},</p>
 
-          <p>You've received a new inquiry about your listing at <strong>${listingAddress || "your property"}</strong> through Proximity.</p>
+          <p><strong>${senderName}</strong> sent you a message about your listing at <strong>${listingAddress || "your property"}</strong>.</p>
 
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+          <div style="background: #f9fafb; border-left: 4px solid #dc2626; padding: 14px 16px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; white-space: pre-wrap; color: #374151; font-style: italic;">"${message.trim()}"</p>
+          </div>
 
-          <p style="margin: 6px 0;"><strong>From:</strong> ${senderName}</p>
-          <p style="margin: 6px 0;"><strong>Email:</strong> <a href="mailto:${email}" style="color: #dc2626;">${email}</a></p>
-          <p style="margin: 6px 0;"><strong>Phone:</strong> ${phone?.trim() || "Not provided"}</p>
+          <p style="margin-top: 24px;">
+            <a href="${conversationsUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">
+              Reply in Proximity →
+            </a>
+          </p>
 
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-
-          <p style="margin-bottom: 8px;"><strong>Message:</strong></p>
-          <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${message.trim()}"</p>
-
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-
-          <p>You can reply directly to this email to respond to ${firstName.trim()}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
-
-          <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+          <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">
+            You can also reply directly to this email — but replying through Proximity keeps all your conversations in one place.
+          </p>
 
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
           <p style="color: #9ca3af; font-size: 12px;">
-            You're receiving this because your property is listed on Proximity. Questions? Contact us at
-            <a href="mailto:info@useproximity.org" style="color: #9ca3af;">info@useproximity.org</a>
+            You're receiving this because your property is listed on Proximity.<br/>
+            Questions? <a href="mailto:info@useproximity.org" style="color: #9ca3af;">info@useproximity.org</a>
           </p>
         </div>
       `,
@@ -196,6 +194,73 @@ export async function POST(req) {
 
     const studentInfo = await transporter.sendMail(studentConfirmationOptions);
     console.log(`[contactLandlord] Student confirmation sent to ${email} — messageId: ${studentInfo.messageId}`);
+
+    // Record the contact as an active conversation and create a chat thread (fire-and-forget).
+    if (listingId) {
+      const session = await auth();
+      const studentId = session?.user?.id;
+      if (studentId) {
+        try {
+          // Upsert listing_active_conversations
+          await supabase
+            .from("listing_active_conversations")
+            .upsert({
+              listing_id: listingId,
+              student_user_id: studentId,
+              state: "inquired",
+              last_activity_at: new Date().toISOString(),
+            }, { onConflict: "listing_id,student_user_id", ignoreDuplicates: true });
+
+          // Create a chat thread between student and landlord (if one doesn't exist)
+          const { data: existing } = await supabase
+            .from("chat_threads")
+            .select("id")
+            .eq("listing_id", listingId)
+            .is("deleted_at", null)
+            .limit(1)
+            .maybeSingle();
+
+          if (!existing) {
+            const { data: typeRow } = await supabase
+              .from("thread_types")
+              .select("id")
+              .eq("name", "listing_inquiry")
+              .maybeSingle();
+
+            const { data: thread } = await supabase
+              .from("chat_threads")
+              .insert({ listing_id: listingId, thread_type_id: typeRow?.id ?? null, subject: null })
+              .select("id")
+              .single();
+
+            if (thread) {
+              // Add student as participant
+              await supabase.from("chat_participants").insert({ thread_id: thread.id, user_id: studentId });
+
+              // Add primary landlord as participant
+              const { data: ll } = await supabase
+                .from("listing_landlords")
+                .select("user_id")
+                .eq("listing_id", listingId)
+                .eq("is_primary", true)
+                .maybeSingle();
+              if (ll?.user_id && ll.user_id !== studentId) {
+                await supabase.from("chat_participants").insert({ thread_id: thread.id, user_id: ll.user_id });
+              }
+
+              // Update conversation with the new thread id
+              await supabase
+                .from("listing_active_conversations")
+                .update({ chat_thread_id: thread.id })
+                .eq("listing_id", listingId)
+                .eq("student_user_id", studentId);
+            }
+          }
+        } catch (convErr) {
+          console.error("[contactLandlord] conversation/thread creation failed:", convErr?.message);
+        }
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
