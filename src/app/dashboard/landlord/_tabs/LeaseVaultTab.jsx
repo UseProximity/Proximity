@@ -135,7 +135,7 @@ export default function LeaseVaultTab({ user }) {
           <div className="text-sm text-gray-400 py-4">Loading…</div>
         ) : leases.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">
-            No lease vault entries yet. Start a chat with a student, then click "Start lease draft from this chat."
+            No lease vault entries yet. Start a chat with a student, then click &ldquo;Start lease draft from this chat.&rdquo;
           </div>
         ) : (
           <div className="space-y-2">

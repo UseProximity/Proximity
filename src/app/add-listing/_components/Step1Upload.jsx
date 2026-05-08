@@ -234,7 +234,7 @@ export default function Step1Upload({ state, dispatch, onNext }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold text-gray-900 mb-1">Upload your files and let AI do the work</h2>
-        <p className="text-sm text-gray-500">Drop in a lease PDF and/or listing photos. AI extracts rent, fees, amenities, pet policy — everything. You'll review and confirm in the next step.</p>
+        <p className="text-sm text-gray-500">Drop in a lease PDF and/or listing photos. AI extracts rent, fees, amenities, pet policy — everything. You&apos;ll review and confirm in the next step.</p>
       </div>
 
       {/* Address */}
