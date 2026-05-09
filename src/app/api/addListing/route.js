@@ -181,11 +181,12 @@ export async function POST(req) {
       homeTypeId = otherRow?.id ?? null;
     }
 
-    // Normalize lease_availability
+    // Normalize lease_availability — only pass through if it looks like a real date (YYYY-MM-DD).
+    // The form also sends category labels like "semester" which cannot be cast to date.
     const leaseAvailabilityVal = (() => {
       const val = leaseAvailability ?? lease_availability ?? null;
-      if (Array.isArray(val)) return val[0] ?? null;
-      return val;
+      const raw = Array.isArray(val) ? (val[0] ?? null) : val;
+      return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
     })();
 
     // Build amenity and utility boolean maps
