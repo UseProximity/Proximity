@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 
 const TABS = [
   { id: "basics",      label: "Basics" },
@@ -223,6 +224,7 @@ function PetPolicyTab({ listingId }) {
 function PhotosTab({ listingId, listing }) {
   const [images, setImages] = useState(listing.images || []);
   const [uploading, setUploading] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
   const inputRef = useRef(null);
 
   const upload = async (files) => {
@@ -240,11 +242,22 @@ function PhotosTab({ listingId, listing }) {
   };
 
   const remove = async (url) => {
+    const next = images.filter((u) => u !== url);
     const res = await fetch(`/api/landlord/listings/${listingId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ images: images.filter((u) => u !== url) }),
+      body: JSON.stringify({ images: next }),
     });
-    if (res.ok) { setImages((p) => p.filter((u) => u !== url)); toast.success("Photo removed"); }
+    if (res.ok) { setImages(next); toast.success("Photo removed"); }
+  };
+
+  const reorder = async (newUrls) => {
+    setImages(newUrls);
+    setSavingOrder(true);
+    await fetch(`/api/landlord/listings/${listingId}/images`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: newUrls }),
+    });
+    setSavingOrder(false);
   };
 
   return (
@@ -259,19 +272,12 @@ function PhotosTab({ listingId, listing }) {
           onChange={(e) => upload(e.target.files)} />
         <p className="text-sm text-gray-600">{uploading ? "Uploading…" : "Drop photos here or click to upload"}</p>
       </div>
-      {images.length > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-          {images.map((url) => (
-            <div key={url} className="relative aspect-square group rounded-lg overflow-hidden border border-gray-200">
-              <img src={url} alt="" className="w-full h-full object-cover" />
-              <button onClick={() => remove(url)}
-                className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <DraggableImageGrid
+        images={images}
+        onReorder={reorder}
+        onRemove={remove}
+        saving={savingOrder}
+      />
     </div>
   );
 }

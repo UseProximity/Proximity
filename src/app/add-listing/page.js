@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import FieldStateBadge from "./_components/FieldStateBadge";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
+import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -187,6 +188,7 @@ export default function AddListing() {
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [publishing, setPublishing] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   const log = (msg) => dispatch({ type: "LOG", msg });
   const set = (payload) => dispatch({ type: "SET", payload });
@@ -485,6 +487,29 @@ export default function AddListing() {
     } finally {
       setPublishing(false);
     }
+  };
+
+  const reorderImages = async (newUrls) => {
+    set({ imageUrls: newUrls });
+    if (!s.listingId) return;
+    setSavingOrder(true);
+    await fetch(`/api/landlord/listings/${s.listingId}/images`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: newUrls }),
+    });
+    setSavingOrder(false);
+  };
+
+  const removeImage = async (url) => {
+    const next = s.imageUrls.filter((u) => u !== url);
+    set({ imageUrls: next });
+    if (!s.listingId) return;
+    await fetch(`/api/landlord/listings/${s.listingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: next }),
+    });
   };
 
   const discard = async () => {
@@ -843,6 +868,18 @@ export default function AddListing() {
           + Add lease offer
         </button>
       </Section>
+
+      {/* Photos */}
+      {s.imageUrls.length > 0 && (
+        <Section title="Photos">
+          <DraggableImageGrid
+            images={s.imageUrls}
+            onReorder={reorderImages}
+            onRemove={removeImage}
+            saving={savingOrder}
+          />
+        </Section>
+      )}
 
       {/* Student preview */}
       <div>
