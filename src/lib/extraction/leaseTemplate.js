@@ -3,7 +3,23 @@ import { fetchPdfAsBase64, runToolExtraction } from "@/lib/anthropic";
 import {
   PROMPT_VERSION, SYSTEM_PROMPT, buildPrompt,
   TOOL_NAME, TOOL_DESCRIPTION, TOOL_SCHEMA,
-} from "./prompts/leaseTemplate.v1.js";
+} from "./prompts/leaseTemplate.v2.js";
+
+/**
+ * Compute per-tenant monthly rent from raw lease values.
+ *
+ * rent_type breakdown:
+ *   "total"               → covers all months for all tenants combined
+ *   "per_month_all_tenants" → monthly charge split among tenants
+ *   "per_month_per_tenant"  → already per-tenant per-month (no division needed)
+ */
+function computeMonthlyPerTenant(rentAsStated, rentType, numTenants, termMonths) {
+  const tenants = Math.max(numTenants || 1, 1);
+  const months  = Math.max(termMonths  || 1, 1);
+  if (rentType === "total")                return rentAsStated / months / tenants;
+  if (rentType === "per_month_all_tenants") return rentAsStated / tenants;
+  return rentAsStated; // per_month_per_tenant — already correct
+}
 
 /**
  * Run the initial extraction pass on a lease template PDF.
@@ -46,14 +62,30 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
       }],
     });
 
-    const confidence = toolInput.per_field_confidence ?? {};
-    const confidenceValues = Object.values(confidence).filter((v) => typeof v === "number");
-    const avgConfidence = confidenceValues.length
-      ? confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length
-      : 0;
-    const fieldsExtracted = Object.keys(confidence).length;
+    // v2 schema: confidence lives per lease_offer, plus overall_confidence
+    const offers = toolInput.lease_offers ?? [];
+    const avgConfidence = toolInput.overall_confidence
+      ?? (offers.length ? offers.reduce((s, o) => s + (o.confidence ?? 0), 0) / offers.length : 0);
+    const fieldsExtracted = offers.length;
 
-    // Write extraction run record
+    // Build per-tenant monthly rent for each offer
+    const computedOffers = offers.map((offer) => ({
+      ...offer,
+      monthly_per_tenant: computeMonthlyPerTenant(
+        offer.rent_as_stated,
+        offer.rent_type,
+        offer.num_tenants,
+        offer.lease_term_months,
+      ),
+    }));
+
+    // Store on template for the wizard to use
+    await supabase
+      .from("lease_templates")
+      .update({ extracted_fields: { ...toolInput, computed_offers: computedOffers } })
+      .eq("id", templateId);
+
+    // Write extraction run
     const { data: run } = await supabase
       .from("lease_extraction_runs")
       .insert({
@@ -65,27 +97,23 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
         duration_ms: durationMs,
         fields_extracted_count: fieldsExtracted,
         avg_confidence: avgConfidence,
-        per_field_confidence: confidence,
+        per_field_confidence: Object.fromEntries(
+          computedOffers.map((o, i) => [`offer_${i}_${o.unit_label || "main"}`, o.confidence ?? 0])
+        ),
         status: "success",
       })
       .select("id")
       .single();
     runId = run?.id;
 
-    // Store extracted_fields on the template itself
-    await supabase
-      .from("lease_templates")
-      .update({ extracted_fields: toolInput })
-      .eq("id", templateId);
-
-    // Only upsert listing-level data if a listing is linked
     if (listingId) {
       await Promise.all([
+        upsertLeaseOffers(listingId, computedOffers, runId),
         upsertPetPolicy(listingId, toolInput, runId),
         upsertFees(listingId, toolInput, feeTypes, runId),
         upsertConcessions(listingId, toolInput, runId),
         upsertFaqs(listingId, toolInput, runId),
-        upsertFieldStates(listingId, toolInput, confidence, runId, landlordId),
+        upsertAmenityFieldStates(listingId, toolInput, runId, landlordId),
       ]);
     }
 
@@ -168,28 +196,77 @@ async function upsertFaqs(listingId, extracted, runId) {
   await supabase.from("listing_faqs").insert(rows);
 }
 
-async function upsertFieldStates(listingId, extracted, confidence, runId, landlordId) {
-  const fields = [
-    ["listings", listingId, "description", extracted.bedrooms != null],
-    ["listing_leases", listingId, "bedrooms", extracted.bedrooms != null],
-    ["listing_leases", listingId, "bathrooms", extracted.bathrooms != null],
-    ["listing_leases", listingId, "area", extracted.area_sqft != null],
-    ["listing_leases", listingId, "pricing_basis", extracted.pricing_basis_default !== "unknown"],
-    ["listing_leases", listingId, "rent", Array.isArray(extracted.base_rent_options) && extracted.base_rent_options.length > 0],
-    ["listing_pet_policies", listingId, "policy_text", !!extracted.pet_policy_text],
-  ];
+/**
+ * Insert listing_leases rows from computed offers.
+ * Each offer becomes one row with pricing_basis=per_bed and rent=monthly_per_tenant.
+ */
+async function upsertLeaseOffers(listingId, computedOffers, runId) {
+  if (!computedOffers.length) return;
 
-  for (const [tableName, recordId, fieldName, hasValue] of fields) {
-    if (!hasValue) continue;
+  // Clear any previously extracted (non-manual) leases so we don't duplicate
+  await supabase
+    .from("listing_leases")
+    .delete()
+    .eq("listing_id", listingId)
+    .eq("last_verified_source", "lease_pdf");
+
+  const rows = computedOffers
+    .filter((o) => o.monthly_per_tenant && o.lease_term_months)
+    .map((o) => ({
+      listing_id: listingId,
+      bedrooms: o.bedrooms ?? 1,
+      bathrooms: o.bathrooms ?? 1,
+      area: o.area_sqft ?? null,
+      pricing_basis: "per_bed",            // always per-tenant
+      rent: Math.round(o.monthly_per_tenant * 100) / 100,
+      beds_in_lease: o.num_tenants ?? null,
+      lease_term_months: o.lease_term_months,
+      available_from: o.available_from ?? null,
+      sublease: o.sublease_allowed ?? false,
+      unit_group_label: o.unit_label ?? null,
+      is_active: true,
+      last_verified_source: "lease_pdf",
+    }));
+
+  if (rows.length) await supabase.from("listing_leases").insert(rows);
+}
+
+/**
+ * Upsert field states for amenities detected in the lease PDF.
+ */
+async function upsertAmenityFieldStates(listingId, extracted, runId, landlordId) {
+  const amenityMap = {
+    parking: "parking", pool: "pool", gym: "gym", laundry: "laundry",
+    dishwasher: "dishwasher", air_conditioning: "air_conditioning",
+  };
+
+  if (extracted.pet_policy_text) {
     await supabase.rpc("upsert_field_state", {
       p_listing_id: listingId,
-      p_table_name: tableName,
-      p_record_id: recordId,
-      p_field_name: fieldName,
+      p_table_name: "listing_pet_policies",
+      p_record_id: listingId,
+      p_field_name: "policy_text",
       p_state: "ai_suggested",
       p_source: "lease_pdf",
-      p_ai_confidence: confidence[fieldName] ?? null,
-      p_suggested_value: fieldName === "policy_text" ? extracted.pet_policy_text : null,
+      p_ai_confidence: 0.9,
+      p_suggested_value: extracted.pet_policy_text,
+      p_changed_by: landlordId,
+      p_extraction_run_id: runId,
+    });
+  }
+
+  for (const amenity of (extracted.amenities ?? [])) {
+    const col = amenityMap[amenity.name?.toLowerCase()];
+    if (!col) continue;
+    await supabase.rpc("upsert_field_state", {
+      p_listing_id: listingId,
+      p_table_name: "listing_amenities",
+      p_record_id: listingId,
+      p_field_name: col,
+      p_state: "ai_suggested",
+      p_source: "lease_pdf",
+      p_ai_confidence: 0.8,
+      p_suggested_value: String(amenity.included),
       p_changed_by: landlordId,
       p_extraction_run_id: runId,
     });
