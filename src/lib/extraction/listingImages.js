@@ -20,14 +20,32 @@ const AMENITY_COLS = new Set([
  * @param {string[]} imageUrls - public image URLs
  * @param {string} landlordId
  */
+/**
+ * Fetch an image URL and return it as a base64 content block.
+ * Anthropic's vision API only accepts a small allowlist of domains via URL type;
+ * for R2 / custom domains we must send as base64.
+ */
+async function imageUrlToBase64Block(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) return null;
+  const contentType = res.headers.get("content-type") || "image/jpeg";
+  // Only supported media types by Anthropic vision
+  const mediaType = ["image/jpeg","image/png","image/gif","image/webp"].includes(contentType)
+    ? contentType
+    : "image/jpeg";
+  const buf = await res.arrayBuffer();
+  const data = Buffer.from(buf).toString("base64");
+  return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+}
+
 export async function extractAmenitiesFromImages(listingId, imageUrls, landlordId) {
   const start = Date.now();
 
-  // Build image content blocks (max 20 per Anthropic API)
-  const imageBlocks = imageUrls.slice(0, 20).map((url) => ({
-    type: "image",
-    source: { type: "url", url },
-  }));
+  // Fetch images as base64 (Anthropic doesn't accept arbitrary URL domains)
+  const imageBlockResults = await Promise.all(
+    imageUrls.slice(0, 20).map((url) => imageUrlToBase64Block(url).catch(() => null))
+  );
+  const imageBlocks = imageBlockResults.filter(Boolean);
 
   let run;
   try {
