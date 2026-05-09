@@ -68,16 +68,21 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
       ?? (offers.length ? offers.reduce((s, o) => s + (o.confidence ?? 0), 0) / offers.length : 0);
     const fieldsExtracted = offers.length;
 
-    // Build per-tenant monthly rent for each offer
-    const computedOffers = offers.map((offer) => ({
-      ...offer,
-      monthly_per_tenant: computeMonthlyPerTenant(
-        offer.rent_as_stated,
-        offer.rent_type,
-        offer.num_tenants,
-        offer.lease_term_months,
-      ),
-    }));
+    // Number of tenants = number of bedrooms (always).
+    // Use bedrooms as the divisor for per-tenant math.
+    const computedOffers = offers.map((offer) => {
+      const tenants = Math.max(offer.bedrooms ?? 1, 1);
+      return {
+        ...offer,
+        num_tenants: tenants,
+        monthly_per_tenant: computeMonthlyPerTenant(
+          offer.rent_as_stated,
+          offer.rent_type,
+          tenants,
+          offer.lease_term_months,
+        ),
+      };
+    });
 
     // Store on template for the wizard to use
     await supabase
@@ -219,7 +224,7 @@ async function upsertLeaseOffers(listingId, computedOffers, runId) {
       area: o.area_sqft ?? null,
       pricing_basis: "per_bed",            // always per-tenant
       rent: Math.round(o.monthly_per_tenant * 100) / 100,
-      beds_in_lease: o.num_tenants ?? null,
+      beds_in_lease: o.bedrooms ?? null, // tenants = bedrooms
       lease_term_months: o.lease_term_months,
       available_from: o.available_from ?? null,
       sublease: o.sublease_allowed ?? false,
