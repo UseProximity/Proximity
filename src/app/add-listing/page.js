@@ -14,7 +14,7 @@ export default function AddListing() {
     unitTypes: [],
     description: "",
     leaseStructure: "",
-    leaseAvailability: [],
+    leaseAvailability: "",
     moveInDate: "",
     homeType: "",
     amenities: [],
@@ -36,12 +36,6 @@ export default function AddListing() {
     { value: "joint", label: "Joint" },
   ];
 
-  const leaseAvailabilityOptions = [
-    { value: "semester",  label: "Semester"  },
-    { value: "10-month",  label: "10 Month"  },
-    { value: "12-month",  label: "12 Month"  },
-    { value: "summer",    label: "Summer"    },
-  ];
 
   const homeTypeOptions = [
     { value: "apartment", label: "Apartment" },
@@ -660,32 +654,18 @@ export default function AddListing() {
             </select>
           </div>
 
-          {/* Lease Availability */}
+          {/* Available From */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Lease Availability
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Available From
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {leaseAvailabilityOptions.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={(formData.leaseAvailability || []).includes(opt.value)}
-                    onChange={(e) => {
-                      const current = formData.leaseAvailability || [];
-                      setFormData({
-                        ...formData,
-                        leaseAvailability: e.target.checked
-                          ? [...current, opt.value]
-                          : current.filter((v) => v !== opt.value),
-                      });
-                    }}
-                    className="h-4 w-4"
-                  />
-                  {opt.label}
-                </label>
-              ))}
-            </div>
+            <input
+              type="date"
+              name="leaseAvailability"
+              value={formData.leaseAvailability}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
           </div>
 
           {/* Move-In Date */}
