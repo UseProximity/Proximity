@@ -90,9 +90,10 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  const leaseAvailabilityVal = Array.isArray(lease_availability)
-    ? (lease_availability[0] ?? null)
-    : (lease_availability ?? null);
+  const leaseAvailabilityVal = (() => {
+    const raw = Array.isArray(lease_availability) ? (lease_availability[0] ?? null) : (lease_availability ?? null);
+    return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+  })();
 
   // All writes in one RPC transaction so fn_action_log captures the real user ID
   const { error: rpcError } = await supabase.rpc("rpc_edit_listing", {
