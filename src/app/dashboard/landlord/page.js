@@ -743,7 +743,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
         diff.phone = trim(form.contact_phone);
       }
 
-      await onSuccess(Object.keys(diff).length > 0 ? diff : null);
+      await onSuccess(unitPayload, Object.keys(diff).length > 0 ? diff : null);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -2309,7 +2309,26 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       alert("Network error.");
     }
   };
-  const handleListingModalSuccess = async (profileDiff = null) => {
+  const handleListingModalSuccess = async (updatedUnits = null, profileDiff = null) => {
+    if (updatedUnits && listingModal?.listing) {
+      const listingId = listingModal.listing._id || listingModal.listing.id;
+      setUser((prev) => ({
+        ...prev,
+        listings: prev.listings.map((l) =>
+          l._id === listingId || l.id === listingId
+            ? {
+                ...l,
+                unitTypes: updatedUnits.map((u) => ({
+                  bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
+                  bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+                  area: u.area != null ? Number(u.area) : null,
+                  rent: u.rent != null ? Number(u.rent) : null,
+                })),
+              }
+            : l
+        ),
+      }));
+    }
     await fetchUser();
     setListingModal(null);
     if (profileDiff) setProfileUpdatePrompt(profileDiff);
