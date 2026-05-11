@@ -3,7 +3,7 @@ import { fetchPdfAsBase64, runToolExtraction } from "@/lib/anthropic";
 import {
   PROMPT_VERSION, SYSTEM_PROMPT, buildPrompt,
   TOOL_NAME, TOOL_DESCRIPTION, TOOL_SCHEMA,
-} from "./prompts/leaseTemplate.v2.js";
+} from "./prompts/leaseTemplate.v3.js";
 
 /**
  * Compute per-tenant monthly rent from raw lease values.
@@ -103,7 +103,7 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
         fields_extracted_count: fieldsExtracted,
         avg_confidence: avgConfidence,
         per_field_confidence: Object.fromEntries(
-          computedOffers.map((o, i) => [`offer_${i}_${o.unit_label || "main"}`, o.confidence ?? 0])
+          computedOffers.map((o, i) => [`offer_${i}_${o.unit_group_label || "main"}`, o.confidence ?? 0])
         ),
         status: "success",
       })
@@ -113,6 +113,7 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
 
     if (listingId) {
       await Promise.all([
+        upsertListingDetails(listingId, toolInput),
         upsertLeaseOffers(listingId, computedOffers, runId),
         upsertPetPolicy(listingId, toolInput, runId),
         upsertFees(listingId, toolInput, feeTypes, runId),
@@ -144,6 +145,37 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
       .select("id")
       .single();
     throw Object.assign(err, { runId: run?.id });
+  }
+}
+
+async function upsertListingDetails(listingId, extracted) {
+  const d = extracted.listing_details;
+  if (!d) return;
+
+  const updates = {};
+  if (d.title)            updates.title            = d.title;
+  if (d.description)      updates.description      = d.description;
+  if (d.lease_type)       updates.lease_type       = d.lease_type;
+  if (d.lease_structure)  updates.lease_structure  = d.lease_structure;
+  if (d.furnished        != null) updates.furnished        = d.furnished;
+  if (d.sublease_friendly != null) updates.sublease_friendly = d.sublease_friendly;
+  if (d.twenty_one_plus  != null) updates.twenty_one_plus  = d.twenty_one_plus;
+  if (d.move_in_date)    updates.move_in_date     = d.move_in_date;
+  if (d.contact_name)    updates.contact_name     = d.contact_name;
+  if (d.contact_email)   updates.contact_email    = d.contact_email;
+  if (d.contact_phone)   updates.contact_phone    = d.contact_phone;
+
+  if (d.home_type) {
+    const { data: htRow } = await supabase
+      .from("home_types")
+      .select("id")
+      .ilike("label", d.home_type)
+      .maybeSingle();
+    if (htRow?.id) updates.home_type_id = htRow.id;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await supabase.from("listings").update(updates).eq("id", listingId);
   }
 }
 
@@ -219,16 +251,22 @@ async function upsertLeaseOffers(listingId, computedOffers, runId) {
     .filter((o) => o.monthly_per_tenant && o.lease_term_months)
     .map((o) => ({
       listing_id: listingId,
-      bedrooms: o.bedrooms ?? 1,
+      // For per_bed pricing, bedrooms = beds being leased = num_tenants.
+      // Keeps bed count consistent with the rent division (e.g. $4200 / 3 tenants → 3 beds @ $1400).
+      beds_in_lease: o.beds_in_lease ?? o.num_tenants ?? o.bedrooms ?? null,
+      bedrooms: o.beds_in_lease ?? o.num_tenants ?? o.bedrooms ?? 1,
       bathrooms: o.bathrooms ?? 1,
+      total_bedrooms: o.total_bedrooms ?? o.bedrooms ?? null,
+      total_bathrooms: o.total_bathrooms ?? o.bathrooms ?? null,
       area: o.area_sqft ?? null,
-      pricing_basis: "per_bed",            // always per-tenant
+      pricing_basis: "per_bed",
       rent: Math.round(o.monthly_per_tenant * 100) / 100,
-      beds_in_lease: o.num_tenants ?? o.bedrooms ?? null,
       lease_term_months: o.lease_term_months,
       available_from: o.available_from ?? null,
+      summer_only: o.summer_only ?? false,
+      semester_only: o.semester_only ?? false,
       sublease: o.sublease_allowed ?? false,
-      unit_group_label: o.unit_label ?? null,
+      unit_group_label: o.unit_group_label ?? null,
       is_active: true,
       last_verified_source: "lease_pdf",
     }));

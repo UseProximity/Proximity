@@ -1248,19 +1248,17 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
               )}
             </div>
-            <button
-              onClick={() => {
-                setActiveTab("contact");
-                setTimeout(() => scrollIntoContainer(document.getElementById("listing-tabs")), 50);
-              }}
-              className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
-                listing.unavailable
-                  ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
-                  : "bg-red-600 hover:bg-red-700 text-white"
-              }`}
-            >
-              Contact Manager
-            </button>
+            {!listing.unavailable && (
+              <button
+                onClick={() => {
+                  setActiveTab("contact");
+                  setTimeout(() => scrollIntoContainer(document.getElementById("listing-tabs")), 50);
+                }}
+                className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition bg-red-600 hover:bg-red-700 text-white"
+              >
+                Contact Manager
+              </button>
+            )}
           </div>
 
           {/* ── Unit Selector ── */}
@@ -1349,7 +1347,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
             className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${compact ? "top-[52px]" : "top-0 px-4"}`}
           >
             <nav className={`flex ${compact ? "justify-center" : "overflow-x-auto max-w-7xl mx-auto"}`}>
-              {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
+              {TABS.filter((tab) => !excludeTabs.includes(tab.id) && !(listing.unavailable && tab.id === "contact")).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"

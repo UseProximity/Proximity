@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import FieldStateBadge from "./_components/FieldStateBadge";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import { fetchAllWalkTimes } from "@/utils/walkTimes";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,12 @@ const INITIAL = {
   fees: [],
   analysisLog: [],
   analysisError: null,
+  zillowData: null,
+  infoConfirmed: false,
+  progress: 0,
+  currentStep: "",
+  placeWalkMinutes: {},
+  shuttleWalkMinutes: null,
 };
 
 function reducer(s, a) {
@@ -192,6 +199,7 @@ export default function AddListing() {
 
   const log = (msg) => dispatch({ type: "LOG", msg });
   const set = (payload) => dispatch({ type: "SET", payload });
+  const step = (msg, pct) => set({ currentStep: msg, progress: pct });
 
   // Pre-fill contact info from landlord profile
   useEffect(() => {
@@ -268,14 +276,13 @@ export default function AddListing() {
       toast.error("Upload a lease PDF or photos to analyse");
       return;
     }
-    set({ phase: "analysing", analysisError: null, analysisLog: [] });
+    set({ phase: "analysing", analysisError: null, analysisLog: [], progress: 5, currentStep: "Creating listing draft…" });
 
     let listingId = null;
     let templateId = null;
 
     try {
       // 1. Create listing draft
-      log("Creating listing draft…");
       const draftRes = await fetch("/api/landlord/listings/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -290,9 +297,39 @@ export default function AddListing() {
       listingId = draftData.listingId;
       set({ listingId });
 
-      // 2. Upload + extract PDF (single upload → single template)
+      step("", 15);
+
+      // 2. Zillow lookup — runs in background, fills empty fields only
+      fetch("/api/landlord/zillow-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: s.address, latitude: s.latitude, longitude: s.longitude }),
+      }).then(r => r.ok ? r.json() : null).then(zd => {
+        if (!zd?.found) return;
+        set(prev => {
+          const updates = { zillowData: zd };
+          if (!prev.title       && zd.title)     updates.title     = zd.title;
+          if (!prev.description && zd.description) updates.description = zd.description;
+          if (!prev.homeType    && zd.home_type) updates.homeType  = zd.home_type;
+          if (prev.furnished === false && zd.furnished) updates.furnished = zd.furnished;
+          if (!prev.contactPhone && zd.contact_phone) updates.contactPhone = zd.contact_phone;
+          return updates;
+        });
+        // Pre-fill one lease row from Zillow if none exist yet
+        if (s.leases.length === 0 && (zd.bedrooms || zd.rent)) {
+          dispatch({ type: "ADD_LEASE", lease: {
+            bedrooms: zd.bedrooms ?? "", bathrooms: zd.bathrooms ?? "",
+            area: zd.area_sqft ?? "", rent: zd.rent ?? "",
+            pricing_basis: "per_unit", lease_term_months: "12",
+            available_from: "", sublease: false,
+            total_bedrooms: null, total_bathrooms: null,
+          }});
+        }
+      }).catch(() => {});
+
+      // 3. Upload + extract PDF (single upload → single template)
       if (pdfFile) {
-        log("Uploading lease PDF…");
+        step("", 30);
         const fd = new FormData();
         fd.append("file", pdfFile);
         const uploadRes = await fetch("/api/landlord/pdf-upload", { method: "POST", body: fd });
@@ -313,19 +350,14 @@ export default function AddListing() {
         templateId = tplData.id;
         set({ templateId });
 
-        log("Analysing lease with AI — this takes ~30 seconds…");
+        step("", 55);
         const exRes = await fetch(`/api/landlord/lease-templates/${templateId}/extract`, { method: "POST" });
-        const exData = await exRes.json();
-        if (!exRes.ok) {
-          log("⚠ AI extraction failed — you can fill in fields manually");
-        } else {
-          log(`✓ Extracted ${exData.fieldsExtracted || 0} fields from lease`);
-        }
+        await exRes.json();
       }
 
-      // 3. Upload images + AI amenity detection
+      // 4. Upload images + AI amenity detection
       if (imageFiles.length > 0) {
-        log("Uploading photos…");
+        step("", 70);
         const batches = [];
         let batch = [], bytes = 0;
         for (const f of imageFiles) {
@@ -345,18 +377,17 @@ export default function AddListing() {
         }
         if (allUrls.length > 0) {
           set({ imageUrls: allUrls });
-          log("Detecting amenities from photos…");
+          step("", 80);
           await fetch("/api/landlord/extract-from-images", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ listing_id: listingId, image_urls: allUrls }),
           });
-          log(`✓ ${allUrls.length} photo${allUrls.length !== 1 ? "s" : ""} uploaded`);
         }
       }
 
-      // 4. Fetch all extracted state from DB
-      log("Loading extracted data…");
+      // 5. Fetch all extracted state from DB
+      step("", 90);
       const [fsRes, ppRes, feesRes, leasesRes, tplDetailRes] = await Promise.all([
         fetch(`/api/landlord/listings/${listingId}/field-states`),
         fetch(`/api/landlord/listings/${listingId}/pet-policy`),
@@ -398,6 +429,9 @@ export default function AddListing() {
         }));
       }
 
+      // Compute walk times client-side so the preview map/places tabs are accurate
+      const walkTimes = await fetchAllWalkTimes(s.latitude, s.longitude).catch(() => null);
+
       set({
         phase: "editing",
         fieldStates,
@@ -406,9 +440,11 @@ export default function AddListing() {
         leases: dbLeases,
         title: fieldStates["listings.title"]?.suggested_value || "",
         description: fieldStates["listings.description"]?.suggested_value || "",
+        placeWalkMinutes: walkTimes?.placeWalkMinutes ?? {},
+        shuttleWalkMinutes: walkTimes?.shuttleWalkMinutes ?? null,
+        progress: 100,
+        currentStep: "",
       });
-
-      log("✓ Ready to review");
 
     } catch (err) {
       console.error("[analyse]", err);
@@ -554,8 +590,8 @@ export default function AddListing() {
     twentyOnePlus: s.twentyOnePlus,
     furnished: s.furnished,
     leaseAvailability: [],
-    placeWalkMinutes: {},
-    shuttleWalkMinutes: null,
+    placeWalkMinutes: s.placeWalkMinutes,
+    shuttleWalkMinutes: s.shuttleWalkMinutes,
     reviews: [],
     numReviews: 0,
     rating: 0,
@@ -621,15 +657,20 @@ export default function AddListing() {
           )}
 
           {busy && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
-              {s.analysisLog.map((msg, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm text-blue-800">
-                  {i === s.analysisLog.length - 1
-                    ? <span className="w-3.5 h-3.5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin shrink-0" />
-                    : <span className="text-blue-500 shrink-0">✓</span>}
-                  {msg}
-                </div>
-              ))}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span className="flex items-center gap-2">
+                  <span className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                  Analysing…
+                </span>
+                <span className="font-medium tabular-nums">{s.progress}%</span>
+              </div>
+              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-red-500 rounded-full transition-all duration-500"
+                  style={{ width: `${s.progress}%` }}
+                />
+              </div>
             </div>
           )}
 
@@ -870,21 +911,51 @@ export default function AddListing() {
       </Section>
 
       {/* Photos */}
-      {s.imageUrls.length > 0 && (
-        <Section title="Photos">
-          <DraggableImageGrid
-            images={s.imageUrls}
-            onReorder={reorderImages}
-            onRemove={removeImage}
-            saving={savingOrder}
-          />
-        </Section>
-      )}
+      <Section title="Photos">
+        {s.imageUrls.length > 0 && (
+          <div className="mb-4">
+            <DraggableImageGrid
+              images={s.imageUrls}
+              onReorder={reorderImages}
+              onRemove={removeImage}
+              saving={savingOrder}
+            />
+          </div>
+        )}
+        <UploadZone accept="image/*" multiple icon="🖼️"
+          label="Add more photos" sublabel="PNG, JPG, WEBP"
+          files={[]} disabled={false}
+          onFiles={async (fileList) => {
+            const imgs = Array.from(fileList).filter(f => f.type.startsWith("image/"));
+            if (!imgs.length || !s.listingId) return;
+            const batches = [];
+            let batch = [], bytes = 0;
+            for (const f of imgs) {
+              if (bytes + f.size > MAX_BATCH && batch.length) { batches.push(batch); batch = []; bytes = 0; }
+              batch.push(f); bytes += f.size;
+            }
+            if (batch.length) batches.push(batch);
+            const allUrls = [];
+            for (const b of batches) {
+              const fd = new FormData();
+              b.forEach(f => fd.append("files", f));
+              fd.append("listingId", s.listingId);
+              const res = await fetch("/api/upload", { method: "PATCH", body: fd });
+              const data = await res.json();
+              if (res.ok) allUrls.push(...(data.urls || []));
+            }
+            if (allUrls.length) set({ imageUrls: [...s.imageUrls, ...allUrls] });
+          }}
+        />
+      </Section>
 
       {/* Student preview */}
       <div>
         <h2 className="text-sm font-semibold text-gray-800 mb-1">Student preview</h2>
-        <p className="text-xs text-gray-500 mb-4">Exactly how students will see your listing. Updates as you edit.</p>
+        <p className="text-xs text-gray-500 mb-2">Exactly how students will see your listing. Updates as you edit.</p>
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+          Map and walk times are approximate during preview — exact distances will finalize once the listing is published.
+        </p>
         <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
           <ListingModalInfo
             listing={previewListing}
@@ -896,22 +967,39 @@ export default function AddListing() {
       </div>
 
       {/* Publish bar */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-200 pb-8">
-        <button onClick={discard} className="text-sm text-gray-500 hover:text-red-600 transition">
-          Discard draft
-        </button>
-        <div className="flex gap-3">
-          <button
-            onClick={() => router.push(session?.user?.role === "student" ? "/dashboard/student" : "/dashboard/landlord?tab=properties")}
-            className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
-            Save as draft
+      <div className="pt-4 border-t border-gray-200 pb-8 space-y-4">
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={s.infoConfirmed}
+            onChange={e => set({ infoConfirmed: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+          />
+          <span className="text-sm text-gray-600">
+            I confirm that the information provided in this listing is accurate and complete to the best of my knowledge, and that I am authorized to list this property for rent.
+          </span>
+        </label>
+
+        <div className="flex items-center justify-between">
+          <button onClick={discard} className="text-sm text-gray-500 hover:text-red-600 transition">
+            Discard draft
           </button>
-          <button
-            onClick={publish}
-            disabled={publishing || s.leases.length === 0}
-            className="px-8 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition">
-            {publishing ? "Publishing…" : "Publish listing"}
-          </button>
+          <div className="flex gap-3">
+            <div className="flex flex-col items-center gap-1">
+              <button
+                onClick={() => router.push(session?.user?.role === "student" ? "/dashboard/student" : "/dashboard/landlord?tab=properties")}
+                className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
+                Save as draft
+              </button>
+              <span className="text-xs text-gray-400">Switch to available in dashboard to publish</span>
+            </div>
+            <button
+              onClick={publish}
+              disabled={publishing || s.leases.length === 0 || !s.infoConfirmed}
+              className="px-8 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition">
+              {publishing ? "Publishing…" : "Publish listing"}
+            </button>
+          </div>
         </div>
       </div>
     </main>
