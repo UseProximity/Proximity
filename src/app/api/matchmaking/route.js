@@ -80,6 +80,7 @@ export async function PATCH(request) {
       group_size, budget, lease_term,
       furnished, student_type,
       area, notes, move_in_date_earliest, move_in_date_latest,
+      move_out_date, open_to_roommates,
       budget_min,
     } = body;
 
@@ -128,6 +129,8 @@ export async function PATCH(request) {
         notes: notes ?? null,
         move_in_date_earliest: move_in_date_earliest ?? null,
         move_in_date_latest: move_in_date_latest ?? null,
+        move_out_date: move_out_date ?? null,
+        open_to_roommates: open_to_roommates ?? null,
       })
       .eq("user_id", user.id);
 
@@ -155,6 +158,8 @@ export async function POST(request) {
       notes,
       move_in_date_earliest,
       move_in_date_latest,
+      move_out_date,
+      open_to_roommates,
     } = body;
 
     if (!name?.trim() || !email?.trim()) {
@@ -228,6 +233,8 @@ export async function POST(request) {
         notes: notes ?? null,
         move_in_date_earliest: move_in_date_earliest ?? null,
         move_in_date_latest: move_in_date_latest ?? null,
+        move_out_date: move_out_date ?? null,
+        open_to_roommates: open_to_roommates ?? null,
       }, { onConflict: "user_id" });
 
     if (prefError) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   LineChart,
@@ -314,6 +315,23 @@ function ProfileSection({
                   <option value="Colleague">Colleague</option>
                   <option value="On Campus">On Campus</option>
                   <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  I am a…
+                </label>
+                <select
+                  name="role"
+                  value={form.role}
+                  onChange={onChange}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="student">Student</option>
+                  <option value="landlord">Landlord</option>
+                  <option value="parent">Parent</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
 
@@ -2160,6 +2178,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // null | { name?, email?, phone? }
   const [updatingProfile, setUpdatingProfile] = useState(false);
 
+  const { update: updateSession } = useSession();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -2169,6 +2188,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     birthday: "",
     gender: "unspecified",
     referralSource: "",
+    role: "landlord",
   });
 
   const router = useRouter();
@@ -2217,6 +2237,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
       gender: user.gender || "unspecified",
       referralSource: user.referralSource || "",
+      role: (user.role || "landlord").toLowerCase(),
     });
   }, [user]);
 
@@ -2252,6 +2273,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
         gender: user.gender || "unspecified",
         referralSource: user.referralSource || "",
+        role: (user.role || "landlord").toLowerCase(),
       });
     }
   };
@@ -2259,6 +2281,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   const saveProfile = async () => {
     try {
       setSaving(true);
+      const initialRole = (user?.role || "landlord").toLowerCase();
       const res = await fetch("/api/editProfile", {
         method: "PATCH",
         headers: {
@@ -2272,12 +2295,20 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           birthday: form.birthday || null,
           gender: form.gender || "unspecified",
           referralSource: form.referralSource || "",
+          role: form.role,
         }),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       const updated = await res.json();
       setUser(updated);
       setIsEditing(false);
+      const newRole = (updated?.role ?? form.role ?? "").toLowerCase();
+      if (newRole && newRole !== initialRole) {
+        await updateSession({ role: newRole });
+        if (newRole === "student") { router.replace("/dashboard/student"); return; }
+        if (newRole === "parent" || newRole === "other") { router.replace("/dashboard/student"); return; }
+        if (newRole === "super" || newRole === "admin") { router.replace("/dashboard/admin"); return; }
+      }
     } catch (e) {
       console.error(e);
       alert("Couldn't save your profile. Please try again.");

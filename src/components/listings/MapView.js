@@ -19,6 +19,7 @@ import {
   getRentRangeLabel,
   getUnitValuesLabel,
 } from "@/utils/listingFormatters";
+import { SHUTTLE_STOPS } from "@/utils/washuPlaces";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -248,6 +249,7 @@ export default function MapView({
   const [showExplore, setShowExplore] = useState(false);
   const [showBrowseButton, setShowBrowseButton] = useState(false);
   const [showCrimeMap, setShowCrimeMap] = useState(false);
+  const [showShuttleStops, setShowShuttleStops] = useState(false);
   const [activeRouteId, setActiveRouteId] = useState(null);
   const [crimeData, setCrimeData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -833,14 +835,59 @@ export default function MapView({
       }
     };
 
+    const shuttleGeoJSON = {
+      type: "FeatureCollection",
+      features: SHUTTLE_STOPS.map((s) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [s.lng, s.lat] },
+        properties: { name: s.name },
+      })),
+    };
+
+    const addShuttleStops = () => {
+      if (!map.getSource("shuttle-stops")) {
+        map.addSource("shuttle-stops", { type: "geojson", data: shuttleGeoJSON });
+      }
+      if (!map.getLayer("shuttle-stops-layer")) {
+        map.addLayer({
+          id: "shuttle-stops-layer",
+          type: "circle",
+          source: "shuttle-stops",
+          paint: {
+            "circle-radius": 4,
+            "circle-color": "#14b8a6",
+            "circle-stroke-width": 1.5,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.85,
+          },
+        });
+        map.on("click", "shuttle-stops-layer", (e) => {
+          const name = e.features[0].properties.name;
+          new mapboxgl.Popup({ closeButton: false, offset: 10 })
+            .setLngLat(e.features[0].geometry.coordinates)
+            .setHTML(`<span style="font-size:12px;font-weight:600">${name}</span>`)
+            .addTo(map);
+        });
+        map.on("mouseenter", "shuttle-stops-layer", () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", "shuttle-stops-layer", () => { map.getCanvas().style.cursor = ""; });
+      }
+    };
+
+    const removeShuttleStops = () => {
+      if (map.getLayer("shuttle-stops-layer")) map.removeLayer("shuttle-stops-layer");
+      if (map.getSource("shuttle-stops")) map.removeSource("shuttle-stops");
+    };
+
     if (!map.isStyleLoaded()) {
       map.once("style.load", () => {
         showHeatmap ? addHeatmap() : removeHeatmap();
         showCrimeMap ? addCrimeHeatmap() : removeCrimeHeatmap();
+        showShuttleStops ? addShuttleStops() : removeShuttleStops();
       });
     } else {
       showHeatmap ? addHeatmap() : removeHeatmap();
       showCrimeMap ? addCrimeHeatmap() : removeCrimeHeatmap();
+      showShuttleStops ? addShuttleStops() : removeShuttleStops();
     }
 
     return () => {
@@ -851,7 +898,7 @@ export default function MapView({
       }
       // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
     };
-  }, [isActive, listings, showHeatmap, showCrimeMap, heatmapData, crimeHeatmapData]);
+  }, [isActive, listings, showHeatmap, showCrimeMap, showShuttleStops, heatmapData, crimeHeatmapData]);
 
   // Keep listingsRef current so the selectedListingId effect can find coordinates
   useEffect(() => { listingsRef.current = listings; }, [listings]);
@@ -991,6 +1038,10 @@ export default function MapView({
     }
   }, []);
 
+  const handleToggleShuttleStops = useCallback(() => {
+    setShowShuttleStops((v) => !v);
+  }, []);
+
   // Zoom to a searched address and show a dot marker
   useEffect(() => {
     if (!isActive) return;
@@ -1031,6 +1082,20 @@ export default function MapView({
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
+      {!heroMode && (
+        <div className="absolute bottom-8 right-3 z-10 flex flex-col gap-1.5">
+          <button
+            onClick={handleToggleShuttleStops}
+            className={`px-2.5 py-1.5 text-[11px] font-medium rounded-full shadow border transition-colors ${
+              showShuttleStops
+                ? "bg-teal-500 text-white border-teal-500"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            {showShuttleStops ?"Hide Shuttle stops" : "Show Shuttle stops"}
+          </button>
+        </div>
+      )}
       {!heroMode && onBrowseArea && (
         <div
           className="absolute top-3 left-1/2 z-10 transition-all duration-300"

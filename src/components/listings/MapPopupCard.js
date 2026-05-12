@@ -6,9 +6,6 @@ import HeartIcon from "@/components/ui/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { trackEvent } from "@/utils/analytics";
 
-// Visual dot-scale: more dots = farther, color goes green → yellow → red
-// Campus thresholds: <10=1, <15=2, <20=3, <30=4, ≥30=5
-// Shuttle thresholds: ≤2=1, ≤5=2, ≤10=3, ≤15=4, >15=5
 function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
   const filled = isCampus
@@ -18,15 +15,9 @@ function WalkScale({ minutes, label }) {
   return (
     <div className="flex items-center gap-1">
       <span className="text-[10px] text-gray-400 leading-none capitalize">{label}</span>
-      <div className="flex gap-0.5">
-        {[1,2,3,4,5].map((d) => (
-          <span
-            key={d}
-            className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: d <= filled ? color : "#e5e7eb" }}
-          />
-        ))}
-      </div>
+      <span style={{ color }} className="text-[10px] tabular-nums tracking-tighter leading-none">
+        {minutes} min
+      </span>
     </div>
   );
 }

@@ -206,6 +206,8 @@ export default function ConciergeFormClient() {
       exit_feedback: "",
       move_in_date_earliest: "",
       move_in_date_latest: "",
+      move_out_date: "",
+      open_to_roommates: null,
     }),
     []
   );
@@ -336,6 +338,10 @@ export default function ConciergeFormClient() {
       move_in_date_latest: form.move_in_date_latest
         ? form.move_in_date_latest + "-01"
         : null,
+      move_out_date: form.move_out_date
+        ? form.move_out_date + "-01"
+        : null,
+      open_to_roommates: form.open_to_roommates,
     };
 
     setSubmitting(true);
@@ -413,6 +419,10 @@ export default function ConciergeFormClient() {
       move_in_date_latest: r.move_in_date_latest
         ? r.move_in_date_latest.slice(0, 7)
         : "",
+      move_out_date: r.move_out_date
+        ? r.move_out_date.slice(0, 7)
+        : "",
+      open_to_roommates: r.open_to_roommates ?? null,
     });
     setErrors({});
     setMode("edit");
@@ -1287,7 +1297,7 @@ export default function ConciergeFormClient() {
                         Optional
                       </span>
                     </p>
-                    <div className="mt-3 grid grid-cols-2 gap-4">
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {/* Earliest */}
                       <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -1381,6 +1391,81 @@ export default function ConciergeFormClient() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Move-out date */}
+                  <div className="mb-7 mt-5">
+                    <p className="block text-sm font-semibold text-gray-900">
+                      Move-out date{" "}
+                      <span className="ml-1 text-[13px] font-normal text-gray-400">
+                        Optional
+                      </span>
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <div className="relative flex-1">
+                        <select
+                          value={form.move_out_date ? form.move_out_date.split("-")[1] : ""}
+                          onChange={(e) => {
+                            const month = e.target.value;
+                            const year = form.move_out_date
+                              ? form.move_out_date.split("-")[0]
+                              : String(new Date().getFullYear());
+                            setField("move_out_date", month ? `${year}-${month}` : "");
+                          }}
+                          className={SELECT_BASE}
+                        >
+                          <option value="">Month</option>
+                          {[["01","Jan"],["02","Feb"],["03","Mar"],["04","Apr"],["05","May"],["06","Jun"],["07","Jul"],["08","Aug"],["09","Sep"],["10","Oct"],["11","Nov"],["12","Dec"]].map(([v,l]) => (
+                            <option key={v} value={v}>{l}</option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </div>
+                      </div>
+                      <div className="relative flex-1">
+                        <select
+                          value={form.move_out_date ? form.move_out_date.split("-")[0] : ""}
+                          onChange={(e) => {
+                            const year = e.target.value;
+                            const month = form.move_out_date ? form.move_out_date.split("-")[1] : "";
+                            setField("move_out_date", year && month ? `${year}-${month}` : "");
+                          }}
+                          className={SELECT_BASE}
+                        >
+                          <option value="">Year</option>
+                          {[0,1,2].map((o) => { const y = String(new Date().getFullYear()+o); return <option key={y} value={y}>{y}</option>; })}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Divider />
+
+                  {/* Open to roommates */}
+                  <div className="mb-7">
+                    <p className="block text-sm font-semibold text-gray-900 mb-3">
+                      Open to roommates?
+                    </p>
+                    <div className="flex gap-3">
+                      {[["yes", "Yes"], ["no", "No"], ["maybe", "Open to it"]].map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setField("open_to_roommates", form.open_to_roommates === val ? null : val)}
+                          className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
+                            form.open_to_roommates === val
+                              ? "bg-gray-900 text-white border-gray-900"
+                              : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
