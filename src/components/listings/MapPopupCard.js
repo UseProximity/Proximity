@@ -14,10 +14,13 @@ function WalkScale({ minutes, label }) {
   const color = filled <= 1 ? "#22c55e" : filled <= 2 ? "#84cc16" : filled <= 3 ? "#eab308" : filled <= 4 ? "#f97316" : "#ef4444";
   return (
     <div className="flex items-center gap-1">
-      <span className="text-[10px] text-gray-400 leading-none capitalize">{label}</span>
+      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }} className="w-3 h-3 flex-shrink-0">
+        <path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/>
+      </svg>
       <span style={{ color }} className="text-[10px] tabular-nums tracking-tighter leading-none">
         {minutes} min
       </span>
+      <span className="text-[10px] text-gray-400 leading-none capitalize">{label}</span>
     </div>
   );
 }
@@ -159,8 +162,42 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
         })()}
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
-      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50">
+      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
         <HeartIcon listingId={listing._id} />
+      </div>
+    </div>
+  );
+}
+
+export function MobileMapPopup({ listing, onClose, onViewListing }) {
+  const addressBeforeComma = listing.address.split(",")[0].trim();
+  const title = listing.title || addressBeforeComma;
+  return (
+    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 px-4 py-3 relative">
+      <button
+        onClick={onClose}
+        className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 p-0.5"
+        aria-label="Close"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      <p className="font-semibold text-sm text-gray-900 pr-7 truncate">{title}</p>
+      <p className="text-xs text-gray-400 mt-0.5 truncate">{listing.address}</p>
+      <div className="flex items-center justify-between mt-3">
+        <span className="font-bold text-sm text-gray-900">
+          {getRentRangeLabel(listing.unitTypes)}
+          {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
+            <span className="text-xs font-normal text-gray-500">/mo</span>
+          )}
+        </span>
+        <button
+          onClick={onViewListing}
+          className="px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
+        >
+          View listing →
+        </button>
       </div>
     </div>
   );

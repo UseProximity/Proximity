@@ -34,6 +34,7 @@ export default async function RootLayout({ children }) {
     <html lang="en" data-theme="">
       <head>
         <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+        <meta name="impact-site-verification" value="adb0995a-e102-4c41-90cd-dc3477fc8b5b" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

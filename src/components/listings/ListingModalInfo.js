@@ -25,8 +25,8 @@ import {
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { trackEvent } from "@/utils/analytics";
 
-// Scroll `el` into view within its nearest scrollable ancestor only — never
-// touches window / document scroll so it works inside modals and panels.
+// Scroll `el` into view within its nearest scrollable ancestor; falls back to
+// window-level scrollIntoView so it works in both modals and full-page views.
 function scrollIntoContainer(el) {
   if (!el) return;
   let parent = el.parentElement;
@@ -40,6 +40,7 @@ function scrollIntoContainer(el) {
     }
     parent = parent.parentElement;
   }
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
@@ -885,14 +886,8 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
 
 export default function ListingModalInfo({ session, listing, excludeTabs = [], compact = false }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-  const [galleryLoadedSrcs, setGalleryLoadedSrcs] = useState([]);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
-
-  // Reset loaded order each time the gallery closes
-  useEffect(() => {
-    if (!isGalleryOpen) setGalleryLoadedSrcs([]);
-  }, [isGalleryOpen]);
 
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {
@@ -1257,9 +1252,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
             <button
               onClick={() => {
                 setActiveTab("contact");
-                scrollIntoContainer(document.getElementById("listing-tabs"));
+                setTimeout(() => scrollIntoContainer(document.getElementById("listing-tabs")), 50);
               }}
-              className={`shrink-0 text-sm font-semibold px-4 py-2 rounded-lg transition ${
+              className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
                 listing.unavailable
                   ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
                   : "bg-red-600 hover:bg-red-700 text-white"
@@ -1436,19 +1431,11 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
               </button>
             </div>
             <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-              {[
-                ...galleryLoadedSrcs,
-                ...images.filter((s) => !galleryLoadedSrcs.includes(s)),
-              ].map((src) => (
+              {images.map((src) => (
                 <GalleryImage
                   key={src}
                   src={src}
                   index={images.indexOf(src)}
-                  onImageLoad={(s) =>
-                    setGalleryLoadedSrcs((prev) =>
-                      prev.includes(s) ? prev : [s, ...prev]
-                    )
-                  }
                   onClick={(e) => { e.stopPropagation(); setLightboxSrc(src); }}
                 />
               ))}

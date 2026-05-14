@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
-import MapPopupCard, { ListingCard } from "@/components/listings/MapPopupCard";
+import MapPopupCard, { ListingCard, MobileMapPopup } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
 import {
   getAreaRangeLabel,
@@ -158,8 +158,25 @@ export default function AvailableListings({
   }, [listings, viewportBounds]);
 
   /* ── Mobile UI state ── */
-  // "closed" = just bottom tab, "peek" = half-screen on load, "open" = full drawer
-  const [drawerState, setDrawerState] = useState("peek");
+  const [mobileView, setMobileView] = useState(() => {
+    if (typeof window === "undefined") return "map";
+    return new URLSearchParams(window.location.search).get("view") === "listings" ? "listings" : "map";
+  });
+
+  // Sync mobileView when URL changes (back/forward navigation)
+  useEffect(() => {
+    const v = searchParams.get("view");
+    setMobileView(v === "listings" ? "listings" : "map");
+  }, [searchParams]);
+
+  const switchMobileView = (view) => {
+    setMobileView(view);
+    if (view === "listings") setSelectedListing(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", view);
+    router.push(`/browse?${params.toString()}`);
+  };
+
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [mobileDraft, setMobileDraft] = useState(filters);
 
@@ -351,172 +368,211 @@ export default function AvailableListings({
         )}
       </div>
 
-      {/* ── Mobile: map-first layout ── */}
-      <div className="md:hidden w-full relative" style={{ height: "100%" }}>
-        {/* Full-screen map */}
-        <MapView
-          listings={listings}
-          filters={filters}
-          setFilters={setFilters}
-          handleReset={handleReset}
-          onListingSelect={(listing) => {
-            setSelectedListing(listing);
-            setDrawerState("closed");
-          }}
-          selectedListingId={selectedListing?._id}
-          searchLocation={searchLocation}
-          isActive={!isDesktop}
-          onBrowseArea={handleBrowseArea}
-        />
+      {/* ── Mobile layout ── */}
+      <div className="md:hidden flex flex-col w-full" style={{ height: "100%" }}>
+        {/* Content area: map or listings */}
+        <div className="flex-1 relative overflow-hidden min-h-0">
 
-        {/* Map overlay card — shown when a pin is clicked and drawer is closed */}
-        {selectedListing && drawerState === "closed" && (
-          <div className="absolute bottom-20 left-4 right-4 z-10 pointer-events-auto">
-            <MapPopupCard
-              listing={selectedListing}
-              session={session}
-              onClose={handlePinClose}
-              onCardClick={(id) => {
-                setSelectedListing(null);
-                handleListingClick(id);
-              }}
-            />
-          </div>
-        )}
+          {/* MAP VIEW */}
+          {mobileView === "map" && (
+            <>
+              <MapView
+                listings={listings}
+                filters={filters}
+                setFilters={setFilters}
+                handleReset={handleReset}
+                onListingSelect={(listing) => {
+                  setSelectedListing(listing);
+                }}
+                selectedListingId={selectedListing?._id}
+                searchLocation={searchLocation}
+                isActive={!isDesktop}
+                onBrowseArea={handleBrowseArea}
+              />
 
-        {/* Top-left: Filter icon + Heart stacked */}
-        <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+              {/* Minimal pin popup */}
+              {selectedListing && (
+                <div className="absolute bottom-4 left-4 right-4 z-10 pointer-events-auto">
+                  <MobileMapPopup
+                    listing={selectedListing}
+                    onClose={handlePinClose}
+                    onViewListing={() =>
+                      router.push(`/listings/${selectedListing._id}?from=map`)
+                    }
+                  />
+                </div>
+              )}
+
+              {/* Filter / saved buttons */}
+              <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+                <button
+                  onClick={() => setMobileFiltersOpen(true)}
+                  className="bg-white rounded-full p-3 shadow-lg border border-gray-200 active:bg-gray-50"
+                  aria-label="Open filters"
+                >
+                  <img
+                    src="/assets/filter-icon.svg"
+                    alt=""
+                    className="w-5 h-5"
+                    style={{ filter: "brightness(0) opacity(0.7)" }}
+                  />
+                </button>
+                <button
+                  onClick={() =>
+                    setFilters({ ...filters, savedOnly: !filters.savedOnly })
+                  }
+                  className={`rounded-full p-3 shadow-lg border active:opacity-80 transition-colors ${
+                    filters.savedOnly
+                      ? "bg-red-500 border-red-500"
+                      : "bg-white border-gray-200"
+                  }`}
+                  aria-label={
+                    filters.savedOnly ? "Show all listings" : "Show saved listings"
+                  }
+                >
+                  <svg
+                    className={`w-5 h-5 ${
+                      filters.savedOnly ? "text-white" : "text-gray-700"
+                    }`}
+                    fill={filters.savedOnly ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 016.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* LISTINGS VIEW */}
+          {mobileView === "listings" && (
+            <div className="h-full overflow-y-auto bg-gray-50">
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-500">
+                  {visibleListings.length}{" "}
+                  {viewportBounds ? "in this area" : "Listings Found"}
+                </span>
+                {viewportBounds && (
+                  <button
+                    onClick={() => setViewportBounds(null)}
+                    className="text-xs text-red-600 font-medium"
+                  >
+                    Show all
+                  </button>
+                )}
+              </div>
+              <div className="px-4 pb-3 flex items-center gap-2">
+                <button
+                  onClick={() => setMobileFiltersOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-medium text-gray-700 shadow-sm active:bg-gray-50"
+                >
+                  <img
+                    src="/assets/filter-icon.svg"
+                    alt=""
+                    className="w-3.5 h-3.5"
+                    style={{ filter: "brightness(0) opacity(0.7)" }}
+                  />
+                  Filters
+                </button>
+                <button
+                  onClick={() =>
+                    setFilters({ ...filters, savedOnly: !filters.savedOnly })
+                  }
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors active:opacity-80 shadow-sm ${
+                    filters.savedOnly
+                      ? "bg-red-500 border-red-500 text-white"
+                      : "bg-white border-gray-200 text-gray-700"
+                  }`}
+                >
+                  <svg
+                    className={`w-3.5 h-3.5 ${
+                      filters.savedOnly ? "text-white" : "text-gray-700"
+                    }`}
+                    fill={filters.savedOnly ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 016.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z"
+                    />
+                  </svg>
+                  Saved
+                </button>
+              </div>
+              <div className="px-4 pb-6 space-y-4">
+                {visibleListings.length === 0
+                  ? emptyState
+                  : visibleListings.map((listing) => (
+                      <ListingCard
+                        key={listing._id}
+                        listing={listing}
+                        session={session}
+                        onCardClick={() =>
+                          router.push(`/listings/${listing._id}?from=listings`)
+                        }
+                      />
+                    ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom toggle bar */}
+        <div
+          className="flex-shrink-0 bg-white border-t border-gray-200 flex"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           <button
-            onClick={() => setMobileFiltersOpen(true)}
-            className="bg-white rounded-full p-3 shadow-lg border border-gray-200 active:bg-gray-50"
-            aria-label="Open filters"
-          >
-            <img
-              src="/assets/filter-icon.svg"
-              alt=""
-              className="w-5 h-5"
-              style={{ filter: "brightness(0) opacity(0.7)" }}
-            />
-          </button>
-
-          {/* Heart (saved filter toggle) */}
-          <button
-            onClick={() =>
-              setFilters({ ...filters, savedOnly: !filters.savedOnly })
-            }
-            className={`rounded-full p-3 shadow-lg border active:opacity-80 transition-colors ${
-              filters.savedOnly
-                ? "bg-red-500 border-red-500"
-                : "bg-white border-gray-200"
+            onClick={() => switchMobileView("map")}
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-semibold transition-colors ${
+              mobileView === "map" ? "text-[#E8000B]" : "text-gray-400"
             }`}
-            aria-label={
-              filters.savedOnly ? "Show all listings" : "Show saved listings"
-            }
           >
             <svg
-              className={`w-5 h-5 ${
-                filters.savedOnly ? "text-white" : "text-gray-700"
-              }`}
-              fill={filters.savedOnly ? "currentColor" : "none"}
+              className="w-5 h-5"
+              fill="none"
               stroke="currentColor"
-              strokeWidth={2}
+              strokeWidth={1.8}
               viewBox="0 0 24 24"
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 016.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z"
+                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
               />
             </svg>
+            Map
           </button>
-        </div>
-
-        {/* Bottom: Arrow-up tab (full width, always visible when drawer is closed) */}
-        {drawerState === "closed" && (
           <button
-            onClick={() => setDrawerState("open")}
-            className="absolute bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl py-3 z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] flex items-center justify-center active:bg-gray-50"
-            aria-label="View listings"
+            onClick={() => switchMobileView("listings")}
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-semibold transition-colors ${
+              mobileView === "listings" ? "text-[#E8000B]" : "text-gray-400"
+            }`}
           >
-            <img src="/assets/arrow-open-tab.svg" className="w-8 h-8" alt="" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 6h16M4 10h16M4 14h16M4 18h16"
+              />
+            </svg>
+            Listings
           </button>
-        )}
-
-        {/* Tap-on-map backdrop to close listings drawer */}
-        {drawerState === "open" && (
-          <div
-            className="absolute inset-0 z-[15]"
-            onClick={() => setDrawerState("closed")}
-          />
-        )}
-
-        {/* Listings drawer — 3 states: closed, peek (half), open (full) */}
-        <div
-          className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl z-20 flex flex-col transition-transform duration-300 ease-out"
-          style={{
-            maxHeight: "80vh",
-            transform:
-              drawerState === "open"
-                ? "translateY(0)"
-                : drawerState === "peek"
-                ? "translateY(calc(100% - 45vh))"
-                : "translateY(100%)",
-          }}
-        >
-          {/* Sticky header – tap to expand, swipe down to minimize */}
-          <div
-            className="flex-shrink-0 bg-white rounded-t-3xl sticky top-0 z-10"
-            onClick={() => { if (drawerState !== "open") setDrawerState("open"); }}
-            onTouchStart={(e) => {
-              e.currentTarget._touchStartY = e.touches[0].clientY;
-            }}
-            onTouchEnd={(e) => {
-              const delta =
-                e.changedTouches[0].clientY -
-                (e.currentTarget._touchStartY || 0);
-              if (delta > 50) setDrawerState("closed");
-            }}
-          >
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
-            </div>
-            {/* Count row */}
-            <div className="flex items-center justify-center gap-2 px-4 py-3 border-b border-gray-100">
-              <span className="text-sm font-semibold text-gray-500">
-                {visibleListings.length}{" "}
-                {viewportBounds ? "in this area" : "Listings Found"}
-              </span>
-              {viewportBounds && (
-                <button
-                  onClick={() => setViewportBounds(null)}
-                  className="text-xs text-red-600 font-medium"
-                >
-                  Show all
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Scrollable cards */}
-          <div className="overflow-y-auto flex-1 px-4 py-4 pb-8">
-            {visibleListings.length === 0 ? (
-              emptyState
-            ) : (
-              <div className="grid grid-cols-1 gap-4">
-                {visibleListings.map((listing) => (
-                  <ListingCard
-                    key={listing._id}
-                    listing={listing}
-                    session={session}
-                    onCardClick={(id) => {
-                      setDrawerState("closed");
-                      handleListingClick(id);
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Filters drawer (slides up from bottom with backdrop) */}
