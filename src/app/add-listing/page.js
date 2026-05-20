@@ -432,6 +432,7 @@ export default function AddListing() {
       // Compute walk times client-side so the preview map/places tabs are accurate
       const walkTimes = await fetchAllWalkTimes(s.latitude, s.longitude).catch(() => null);
 
+      console.log("[analyse] calling set phase:editing, listingId:", listingId);
       set({
         phase: "editing",
         fieldStates,
@@ -445,6 +446,20 @@ export default function AddListing() {
         progress: 100,
         currentStep: "",
       });
+      console.log("[analyse] set done, fetching fresh listing");
+      const freshRes = await fetch(`/api/listing/${listingId}`);
+      console.log("[analyse] fresh listing fetch", freshRes.status, "listingId:", listingId);
+      if (freshRes.ok) {
+        const fresh = await freshRes.json();
+        console.log("[analyse] fresh.amenities:", fresh.amenities, "fresh.utilitiesIncluded:", fresh.utilitiesIncluded);
+        const aObj = Object.fromEntries(AMENITY_COLS.map(c => [c, (fresh.amenities || []).includes(c)]));
+        const uObj = Object.fromEntries(UTILITY_COLS.map(c => [c, (fresh.utilitiesIncluded || []).includes(c)]));
+        console.log("[analyse] setting amenities:", aObj, "utilities:", uObj);
+        setAmenities(aObj);
+        setUtilities(uObj);
+      } else {
+        console.error("[analyse] fresh listing fetch failed:", freshRes.status, await freshRes.text());
+      }
 
     } catch (err) {
       console.error("[analyse]", err);

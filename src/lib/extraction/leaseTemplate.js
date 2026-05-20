@@ -3,7 +3,7 @@ import { fetchPdfAsBase64, runToolExtraction } from "@/lib/anthropic";
 import {
   PROMPT_VERSION, SYSTEM_PROMPT, buildPrompt,
   TOOL_NAME, TOOL_DESCRIPTION, TOOL_SCHEMA,
-} from "./prompts/leaseTemplate.v3.js";
+} from "./prompts/leaseTemplate.v4.js";
 
 /**
  * Compute per-tenant monthly rent from raw lease values.
@@ -120,6 +120,7 @@ export async function extractLeaseTemplate({ templateId, listingId, pdfUrl, land
         upsertConcessions(listingId, toolInput, runId),
         upsertFaqs(listingId, toolInput, runId),
         upsertAmenityFieldStates(listingId, toolInput, runId, landlordId),
+        upsertUtilityFieldStates(listingId, toolInput, runId, landlordId),
       ]);
     }
 
@@ -274,44 +275,59 @@ async function upsertLeaseOffers(listingId, computedOffers, runId) {
   if (rows.length) await supabase.from("listing_leases").insert(rows);
 }
 
-/**
- * Upsert field states for amenities detected in the lease PDF.
- */
+const AMENITY_COLS = [
+  "air_conditioning", "dishwasher", "gym", "laundry", "mailroom",
+  "microwave", "oven", "parking", "pets_allowed", "pool",
+  "refrigerator", "rooftop", "storage", "stove", "study_room",
+];
+
+const UTILITY_COLS = [
+  "electric", "gas", "heat", "water", "internet",
+  "trash", "cable", "sewer", "cooling",
+];
+
 async function upsertAmenityFieldStates(listingId, extracted, runId, landlordId) {
-  const amenityMap = {
-    parking: "parking", pool: "pool", gym: "gym", laundry: "laundry",
-    dishwasher: "dishwasher", air_conditioning: "air_conditioning",
-  };
+  const amenities = extracted.amenities ?? {};
 
-  if (extracted.pet_policy_text) {
-    await supabase.rpc("upsert_field_state", {
-      p_listing_id: listingId,
-      p_table_name: "listing_pet_policies",
-      p_record_id: listingId,
-      p_field_name: "policy_text",
-      p_state: "ai_suggested",
-      p_source: "lease_pdf",
-      p_ai_confidence: 0.9,
-      p_suggested_value: extracted.pet_policy_text,
-      p_changed_by: landlordId,
-      p_extraction_run_id: runId,
-    });
+  console.log("[leaseTemplate.v4] amenities from extraction:", JSON.stringify(
+    Object.fromEntries(AMENITY_COLS.map(c => [c, amenities[c] ?? null]))
+  ));
+
+  const amenitiesRow = Object.fromEntries(
+    Object.entries(amenities).filter(([col, val]) => AMENITY_COLS.includes(col) && val === true)
+  );
+
+  console.log("[leaseTemplate.v4] amenitiesRow to upsert:", JSON.stringify(amenitiesRow));
+
+  if (Object.keys(amenitiesRow).length > 0) {
+    const { error } = await supabase
+      .from("listing_amenities")
+      .upsert({ listing_id: listingId, ...amenitiesRow }, { onConflict: "listing_id" });
+    console.log("[leaseTemplate.v4] listing_amenities upsert:", error ? `ERROR: ${error.message}` : "ok");
+  } else {
+    console.log("[leaseTemplate.v4] listing_amenities upsert: skipped (no true values)");
   }
+}
 
-  for (const amenity of (extracted.amenities ?? [])) {
-    const col = amenityMap[amenity.name?.toLowerCase()];
-    if (!col) continue;
-    await supabase.rpc("upsert_field_state", {
-      p_listing_id: listingId,
-      p_table_name: "listing_amenities",
-      p_record_id: listingId,
-      p_field_name: col,
-      p_state: "ai_suggested",
-      p_source: "lease_pdf",
-      p_ai_confidence: 0.8,
-      p_suggested_value: String(amenity.included),
-      p_changed_by: landlordId,
-      p_extraction_run_id: runId,
-    });
+async function upsertUtilityFieldStates(listingId, extracted, runId, landlordId) {
+  const utilities = extracted.utilities_included ?? {};
+
+  console.log("[leaseTemplate.v4] utilities from extraction:", JSON.stringify(
+    Object.fromEntries(UTILITY_COLS.map(c => [c, utilities[c] ?? null]))
+  ));
+
+  const utilitiesRow = Object.fromEntries(
+    Object.entries(utilities).filter(([col, val]) => UTILITY_COLS.includes(col) && val === true)
+  );
+
+  console.log("[leaseTemplate.v4] utilitiesRow to upsert:", JSON.stringify(utilitiesRow));
+
+  if (Object.keys(utilitiesRow).length > 0) {
+    const { error } = await supabase
+      .from("listing_utilities")
+      .upsert({ listing_id: listingId, ...utilitiesRow }, { onConflict: "listing_id" });
+    console.log("[leaseTemplate.v4] listing_utilities upsert:", error ? `ERROR: ${error.message}` : "ok");
+  } else {
+    console.log("[leaseTemplate.v4] listing_utilities upsert: skipped (no true values)");
   }
 }
