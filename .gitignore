@@ -60,7 +60,6 @@ CLAUDE.md
 sync-scripts
 scripts
 today.md
-.mcp.json
 
 # Claude Code local state (worktrees, memory, logs)
 .claude/
