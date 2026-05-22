@@ -61,9 +61,9 @@ export async function PATCH(req) {
     if (body.graduation_month !== undefined)
       allowedFields.graduation_month = body.graduation_month ?? null;
 
-    // Only allow role changes if provided; super can only be set if already super
+    // Only allow role changes if provided; only super can promote to super or admin
     if (body.role !== undefined && body.role !== null) {
-      if (body.role === "super" && currentRole !== "super") {
+      if ((body.role === "super" || body.role === "admin") && currentRole !== "super") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       const { data: roleRow, error: roleErr } = await supabase

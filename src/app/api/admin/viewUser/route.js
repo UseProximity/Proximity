@@ -88,7 +88,8 @@ export async function GET(req) {
       .eq("email", session.user.email)
       .single();
 
-    if (reqUser?.roles?.name !== "super") {
+    const reqRole = reqUser?.roles?.name;
+    if (reqRole !== "super" && reqRole !== "admin") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -6,7 +6,8 @@ export default async function AdminLayout({ children }) {
   const session = await auth();
 
   // First check: session role
-  if (!session?.user?.email || session.user.role !== "super") {
+  const sessionRole = session?.user?.role;
+  if (!session?.user?.email || (sessionRole !== "super" && sessionRole !== "admin")) {
     redirect("/");
   }
 
@@ -17,7 +18,8 @@ export default async function AdminLayout({ children }) {
     .eq("email", session.user.email)
     .single();
 
-  if (dbUser?.roles?.name !== "super") {
+  const dbRole = dbUser?.roles?.name;
+  if (dbRole !== "super" && dbRole !== "admin") {
     redirect("/");
   }
 

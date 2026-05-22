@@ -33,7 +33,7 @@ function toLabel(colName) {
 
 export async function GET(req) {
   const session = await auth();
-  if (!session || session.user.role !== "super") {
+  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
