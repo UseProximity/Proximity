@@ -1,0 +1,170 @@
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import supabase from "@/lib/supabase";
+import { handleTurn } from "@/lib/matchmaking/chatOrchestrator";
+import { rankListings } from "@/lib/matchmaking/listingFilter";
+
+async function resolveUserId(email) {
+  const { data: user } = await supabase
+    .from("users")
+    .select("id, name")
+    .eq("email", email.toLowerCase())
+    .single();
+  return user;
+}
+
+export async function GET() {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const user = await resolveUserId(session.user.email);
+    if (!user) return NextResponse.json({ session: null });
+
+    const { data: chatSession } = await supabase
+      .from("matchmaking_chat_sessions")
+      .select("*")
+      .eq("user_id", user.id)
+      .not("status", "eq", "abandoned")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return NextResponse.json({ session: chatSession ?? null });
+  } catch (err) {
+    console.error("[matchmaking/chat GET]", err);
+    return NextResponse.json({ session: null });
+  }
+}
+
+export async function POST(request) {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const user = await resolveUserId(session.user.email);
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    const body = await request.json();
+    const { sessionId, message } = body;
+
+    let chatSession;
+
+    if (sessionId) {
+      const { data, error } = await supabase
+        .from("matchmaking_chat_sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .single();
+      if (error || !data) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+      if (data.user_id !== user.id) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      chatSession = data;
+    } else {
+      const { data, error } = await supabase
+        .from("matchmaking_chat_sessions")
+        .insert({
+          user_id: user.id,
+          preferences: { name: user.name ?? "" },
+          weights: {},
+          transcript: [],
+          candidates: [],
+          recommendations: [],
+          status: "in_progress",
+        })
+        .select()
+        .single();
+      if (error) {
+        return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
+      }
+      chatSession = data;
+    }
+
+    const { assistantMessage, session: updatedSession } = await handleTurn({
+      session: chatSession,
+      userMessage: message ?? "",
+    });
+
+    return NextResponse.json({
+      sessionId: updatedSession.id,
+      assistantMessage,
+      preferences: updatedSession.preferences,
+      weights: updatedSession.weights,
+      candidates: updatedSession.candidates,
+      recommendations: updatedSession.recommendations,
+      status: updatedSession.status,
+    });
+  } catch (err) {
+    console.error("[matchmaking/chat POST]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const user = await resolveUserId(session.user.email);
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    const body = await request.json();
+    const { sessionId, patch } = body;
+    if (!sessionId || !patch) {
+      return NextResponse.json({ error: "sessionId and patch are required" }, { status: 400 });
+    }
+
+    const { data: chatSession, error } = await supabase
+      .from("matchmaking_chat_sessions")
+      .select("*")
+      .eq("id", sessionId)
+      .single();
+    if (error || !chatSession) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    if (chatSession.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const updatedPreferences = { ...chatSession.preferences, ...patch };
+
+    let candidates = chatSession.candidates;
+    try {
+      const { ranked } = await rankListings({
+        preferences: updatedPreferences,
+        weights: chatSession.weights,
+        requestedIntentions: ["Best overall match", "Best value", "Closest to campus"],
+        limit: 10,
+      });
+      candidates = ranked;
+    } catch (err) {
+      console.error("[matchmaking/chat PATCH] rankListings failed:", err);
+    }
+
+    const { error: updateError } = await supabase
+      .from("matchmaking_chat_sessions")
+      .update({ preferences: updatedPreferences, candidates })
+      .eq("id", sessionId);
+    if (updateError) {
+      return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      sessionId,
+      preferences: updatedPreferences,
+      weights: chatSession.weights,
+      candidates,
+      recommendations: chatSession.recommendations,
+      status: chatSession.status,
+    });
+  } catch (err) {
+    console.error("[matchmaking/chat PATCH]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
