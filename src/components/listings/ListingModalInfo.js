@@ -990,22 +990,11 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
 
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
 
-  // Images — put any image with "main" in the filename first
+  // Images — respect the landlord-chosen order (sort_order from listing_images).
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
-  const images = (() => {
-    const raw = Array.isArray(listing?.images)
-      ? listing.images.filter(Boolean).map(sanitizeUrl)
-      : [];
-    const mainIdx = raw.findIndex((url) =>
-      /main/i.test(url.split("/").pop().split("?")[0])
-    );
-    if (mainIdx > 0) {
-      const reordered = [...raw];
-      reordered.unshift(reordered.splice(mainIdx, 1)[0]);
-      return reordered;
-    }
-    return raw;
-  })();
+  const images = Array.isArray(listing?.images)
+    ? listing.images.filter(Boolean).map(sanitizeUrl)
+    : [];
   const coverImage = images[0];
   const secondImage = images[1] || images[0] || null;
   const thirdImage = images[2] || images[1] || images[0] || null;
