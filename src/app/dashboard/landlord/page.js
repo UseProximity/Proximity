@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 
 import LeasingFunnel from "@/components/dashboard/leasing-funnel";
+import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,
@@ -481,6 +482,32 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const [stagedFiles, setStagedFiles] = useState([]);
   const [stagedPreviews, setStagedPreviews] = useState([]);
   const [existingImages, setExistingImages] = useState(listing?.images ?? []);
+  const [savingImageOrder, setSavingImageOrder] = useState(false);
+
+  const handleReorderExistingImages = async (nextUrls) => {
+    const prev = existingImages;
+    setExistingImages(nextUrls);
+    if (!isEdit) return;
+    setSavingImageOrder(true);
+    try {
+      const listingId = listing._id || listing.id;
+      const res = await fetch(`/api/landlord/listings/${listingId}/images`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls: nextUrls }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to save image order.");
+        setExistingImages(prev);
+      }
+    } catch {
+      setError("Failed to save image order.");
+      setExistingImages(prev);
+    } finally {
+      setSavingImageOrder(false);
+    }
+  };
 
   // Address autocomplete
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -1047,25 +1074,15 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
               Photos
             </h3>
 
-            {/* Existing images (edit mode) */}
+            {/* Existing images (edit mode) — drag to reorder */}
             {isEdit && existingImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {existingImages.map((url) => (
-                  <div key={url} className="relative w-20 h-20 flex-shrink-0">
-                    <img
-                      src={url}
-                      alt=""
-                      className="w-full h-full object-cover rounded-lg border border-gray-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeExistingImage(url)}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center shadow transition-colors"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+              <div className="mb-3">
+                <DraggableImageGrid
+                  images={existingImages}
+                  onReorder={handleReorderExistingImages}
+                  onRemove={removeExistingImage}
+                  saving={savingImageOrder}
+                />
               </div>
             )}
 

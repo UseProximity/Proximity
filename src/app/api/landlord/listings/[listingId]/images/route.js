@@ -27,7 +27,6 @@ export async function PATCH(req, { params }) {
   const { urls } = await req.json();
   if (!Array.isArray(urls)) return NextResponse.json({ error: "urls array required" }, { status: 400 });
 
-  // Update sort_order for each URL in parallel
   await Promise.all(
     urls.map((url, i) =>
       supabase
