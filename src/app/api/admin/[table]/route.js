@@ -76,8 +76,14 @@ async function requireSuper() {
   return session;
 }
 
+async function requireSuperOrAdmin() {
+  const session = await auth();
+  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) return null;
+  return session;
+}
+
 export async function GET(req, { params }) {
-  const session = await requireSuper();
+  const session = await requireSuperOrAdmin();
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;

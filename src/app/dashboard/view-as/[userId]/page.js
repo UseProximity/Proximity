@@ -7,7 +7,7 @@ import StudentDashboardPage from "@/app/dashboard/student/page";
 
 export default async function ViewAsPage({ params }) {
   const session = await auth();
-  if (!session || session.user.role !== "super") {
+  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
     redirect("/");
   }
 

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 
 // ─── UnitTypesSelector ────────────────────────────────────────────────────────
@@ -1251,6 +1253,9 @@ function ImageManagerPanel({ listingId, initialImages, dbTarget, isProd, onClose
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
+  const { data: session } = useSession();
+  const isReadOnly = session?.user?.role === "admin";
+  const readOnlyTitle = isReadOnly ? "Read-only (admin role)" : undefined;
   const [activeTable, setActiveTable] = useState("users");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2029,28 +2034,48 @@ export default function AdminDashboard() {
               {pendingCount} row{pendingCount !== 1 ? "s" : ""} with unsaved changes
             </span>
           )}
+          <Link
+            href="/dashboard/admin/export"
+            className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 text-white rounded font-medium"
+          >
+            Export
+          </Link>
           <button
             onClick={openAddRow}
-            className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded font-medium"
+            disabled={isReadOnly}
+            title={readOnlyTitle}
+            className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
           >
             + Add Row
           </button>
           <button
             onClick={() => { setPendingChanges({}); setUnitPendingChanges({}); setSaveStatus(null); }}
-            disabled={pendingCount === 0}
+            disabled={pendingCount === 0 || isReadOnly}
+            title={readOnlyTitle}
             className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Discard
           </button>
           <button
             onClick={handleConfirmUpdates}
-            disabled={saving || pendingCount === 0}
+            disabled={saving || pendingCount === 0 || isReadOnly}
+            title={readOnlyTitle}
             className="px-4 py-1.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? "Saving…" : "Confirm Updates"}
           </button>
         </div>
       </div>
+
+      {/* Read-only admin banner */}
+      {isReadOnly && (
+        <div className="bg-amber-500 text-amber-950 px-6 py-2 text-sm font-semibold flex items-center gap-2">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Viewing in read-only admin mode — mutations are disabled.
+        </div>
+      )}
 
       {/* PRODUCTION warning banner */}
       {isProd && (
@@ -2184,13 +2209,17 @@ export default function AdminDashboard() {
                         <div className="flex flex-col gap-1 flex-shrink-0">
                           <button
                             onClick={() => handleApprovePendingReview(r.id)}
-                            className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded font-medium transition-colors"
+                            disabled={isReadOnly}
+                            title={readOnlyTitle}
+                            className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Approve
                           </button>
                           <button
                             onClick={() => handleDeletePendingReview(r.id)}
-                            className="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors"
+                            disabled={isReadOnly}
+                            title={readOnlyTitle}
+                            className="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Reject
                           </button>
@@ -2321,7 +2350,8 @@ export default function AdminDashboard() {
                           <span>{f.label}</span>
                           <button
                             onClick={handleUpdateWalkTimes}
-                            disabled={walkTimesRunning}
+                            disabled={walkTimesRunning || isReadOnly}
+                            title={readOnlyTitle}
                             className="px-2 py-0.5 text-xs bg-purple-700 hover:bg-purple-600 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {walkTimesRunning ? "Updating…" : "Update"}
@@ -2409,8 +2439,9 @@ export default function AdminDashboard() {
                           <button
                             type="button"
                             onClick={() => handleDeleteRow(rowId)}
-                            className="p-1 rounded text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Delete row"
+                            disabled={isReadOnly}
+                            className="p-1 rounded text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={isReadOnly ? readOnlyTitle : "Delete row"}
                           >
                             <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -2449,8 +2480,9 @@ export default function AdminDashboard() {
                                             <button
                                               type="button"
                                               onClick={() => handleDeleteUnit(rowId, unit.id)}
-                                              className="text-gray-300 hover:text-red-500 transition-colors leading-none text-base px-1"
-                                              title="Delete unit"
+                                              disabled={isReadOnly}
+                                              className="text-gray-300 hover:text-red-500 transition-colors leading-none text-base px-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                                              title={isReadOnly ? readOnlyTitle : "Delete unit"}
                                             >
                                               &times;
                                             </button>
@@ -2480,7 +2512,9 @@ export default function AdminDashboard() {
                                 <button
                                   type="button"
                                   onClick={() => openAddUnit(rowId)}
-                                  className="px-2 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded"
+                                  disabled={isReadOnly}
+                                  title={readOnlyTitle}
+                                  className="px-2 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   + Add Unit
                                 </button>

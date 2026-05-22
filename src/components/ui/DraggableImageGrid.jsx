@@ -17,15 +17,24 @@ export default function DraggableImageGrid({ images, onReorder, onRemove, saving
 
   if (!images?.length) return null;
 
-  const handleDragStart = (i) => { dragIdx.current = i; };
+  const handleDragStart = (e, i) => {
+    dragIdx.current = i;
+    if (e?.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      // Some browsers (Firefox especially) won't initiate a drag unless setData is called.
+      try { e.dataTransfer.setData("text/plain", String(i)); } catch {}
+    }
+  };
 
   const handleDragOver = (e, i) => {
     e.preventDefault();
+    if (e?.dataTransfer) e.dataTransfer.dropEffect = "move";
     if (dragIdx.current !== null && dragIdx.current !== i) setDragOver(i);
   };
 
   const handleDrop = (e, dropIdx) => {
     e.preventDefault();
+    e.stopPropagation();
     const from = dragIdx.current;
     if (from === null || from === dropIdx) { dragIdx.current = null; setDragOver(null); return; }
     const next = [...images];
@@ -51,7 +60,7 @@ export default function DraggableImageGrid({ images, onReorder, onRemove, saving
           <div
             key={url}
             draggable
-            onDragStart={() => handleDragStart(i)}
+            onDragStart={(e) => handleDragStart(e, i)}
             onDragOver={(e) => handleDragOver(e, i)}
             onDrop={(e) => handleDrop(e, i)}
             onDragEnd={handleDragEnd}

@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 
-async function requireSuper() {
+async function getRoleUser() {
   const session = await auth();
   if (!session?.user?.email) return null;
   const { data: user } = await supabase
@@ -11,13 +11,24 @@ async function requireSuper() {
     .select("id, roles!role_id(name)")
     .eq("email", session.user.email.toLowerCase())
     .single();
+  return user;
+}
+
+async function requireSuper() {
+  const user = await getRoleUser();
   if (!user || user.roles?.name !== "super") return null;
+  return user;
+}
+
+async function requireSuperOrAdmin() {
+  const user = await getRoleUser();
+  if (!user || (user.roles?.name !== "super" && user.roles?.name !== "admin")) return null;
   return user;
 }
 
 export async function GET() {
   try {
-    const user = await requireSuper();
+    const user = await requireSuperOrAdmin();
     if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { data: reviews, error } = await supabase
