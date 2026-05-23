@@ -110,6 +110,7 @@ function buildListing(row, owner = null, reviews = []) {
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         leaseAvailability: nextAvailable,
+        available: u.available ?? true,
       };
     }),
     leaseType: (row.listing_units ?? []).some((u) =>
@@ -139,7 +140,11 @@ function buildListing(row, owner = null, reviews = []) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: row.unavailable ?? false,
+    unavailable: (() => {
+      if (row.unavailable) return true;
+      const units = row.listing_units ?? [];
+      return units.length > 0 && units.every((u) => u.available === false);
+    })(),
     amenities: amenitiesRowToArray(row.listing_amenities),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
@@ -192,7 +197,7 @@ export async function GET(req, { params }) {
         min_bathrooms, max_bathrooms, min_area, max_area,
         home_types(label),
         listing_units(
-          id, bedrooms, bathrooms, area,
+          id, bedrooms, bathrooms, area, available,
           unit_leases(rent, is_active, available_from, sublease)
         ),
         listing_landlords(user_id, is_primary),

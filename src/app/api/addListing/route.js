@@ -224,6 +224,7 @@ export async function POST(req) {
       area: unit.area ?? null,
       rent: unit.rent ?? null,
       leaseAvailability: unit.leaseAvailability ?? null,
+      available: unit.available !== false,
     }));
 
     // All DB writes in one transaction — sets app.current_user_id for action_log attribution

@@ -99,6 +99,7 @@ export function buildListing(row, owner = null) {
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+        available: u.available ?? true,
       };
     }),
     leaseType: (row.listing_units ?? []).some((u) =>
@@ -128,7 +129,13 @@ export function buildListing(row, owner = null) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: row.unavailable ?? false,
+    unavailable: (() => {
+      if (row.unavailable) return true;
+      const units = row.listing_units ?? [];
+      // Treat the listing as unavailable if it has units and none of them are available.
+      // Empty unit lists do NOT flip the listing — that's a separate data issue.
+      return units.length > 0 && units.every((u) => u.available === false);
+    })(),
     amenities: amenitiesRowToArray(row.listing_amenities),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
@@ -171,7 +178,7 @@ export async function GET() {
         min_rent, max_rent, min_bedrooms, max_bedrooms,
         min_bathrooms, max_bathrooms, min_area, max_area,
         home_types(label),
-        listing_units(id, bedrooms, bathrooms, area, unit_leases(rent, is_active, sublease)),
+        listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease)),
         listing_landlords(user_id, is_primary),
         listing_amenities(
           air_conditioning, dishwasher, gym, laundry, mailroom, microwave,

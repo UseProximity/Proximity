@@ -946,7 +946,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
   // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
   const sortedUnits = useMemo(() => {
-    const units = listing.unitTypes ?? [];
+    const units = (listing.unitTypes ?? []).filter((u) => u.available !== false);
     const isStudio = (u) => (u.bedrooms ?? 0) === 0;
 
     // Deduplicate: if two units share the same beds, baths, rent, and area they are identical

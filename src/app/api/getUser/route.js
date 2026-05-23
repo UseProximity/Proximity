@@ -52,6 +52,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+        available: u.available ?? true,
       };
     }),
     leaseType: l.lease_type ?? null,
@@ -99,7 +100,7 @@ const LISTING_SELECT = `
   min_rent, max_rent, min_bedrooms, max_bedrooms,
   min_bathrooms, max_bathrooms, min_area, max_area,
   home_types!home_type_id(label),
-  listing_units!listing_id(bedrooms, bathrooms, area,
+  listing_units!listing_id(bedrooms, bathrooms, area, available,
     unit_leases!unit_id(rent, is_active)),
   listing_landlords!listing_id(user_id, is_primary),
   listing_amenities!listing_id(
