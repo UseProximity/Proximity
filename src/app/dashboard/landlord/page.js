@@ -437,7 +437,7 @@ const UTILITY_LABELS = {
 const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "other"];
 const LEASE_TYPES = ["standard", "sublease", "short-term"];
 
-const emptyUnit = () => ({ bedrooms: "", bathrooms: "", rent: "", area: "" });
+const emptyUnit = () => ({ bedrooms: "", bathrooms: "", rent: "", area: "", available: true });
 
 function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const isEdit = !!listing;
@@ -472,6 +472,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
           bathrooms: u.bathrooms ?? "",
           rent: u.rent ?? "",
           area: u.area ?? "",
+          available: u.available ?? true,
         }))
       : [emptyUnit()]
   );
@@ -669,6 +670,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
         bathrooms: Number(u.bathrooms),
         rent: u.rent !== "" ? Number(u.rent) : null,
         area: u.area !== "" ? Number(u.area) : null,
+        available: u.available !== false,
       }));
 
       let res;
@@ -1054,6 +1056,15 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                         />
                       </div>
                     ))}
+                    <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-4">
+                      <input
+                        type="checkbox"
+                        checked={unit.available !== false}
+                        onChange={(e) => updateUnit(i, "available", e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      />
+                      Available
+                    </label>
                   </div>
                   {units.length > 1 && (
                     <button type="button" onClick={() => removeUnit(i)}
