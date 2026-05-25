@@ -76,3 +76,5 @@ mcp/knowledge/
 docs
 supabase
 data
+# Local MCP server config (contains secrets) — never commit
+.mcp.json
