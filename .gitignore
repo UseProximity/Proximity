@@ -65,6 +65,9 @@ today.md
 .claude/
 .claude-flow/
 
+# Codex local state
+.codex
+
 # MCP server dependencies
 mcp/node_modules/
 # MCP knowledge base — auto-generated, never commit
