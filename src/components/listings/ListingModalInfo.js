@@ -1069,6 +1069,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
       toast.success(
         "Review submitted! It will appear after landlord approval."
       );
+      trackEvent("Review Submitted", { listingId: listing._id, rating });
       setReviewText("");
       setRating(0);
       setCommRating(0);
@@ -1106,7 +1107,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
         });
-        setTimeout(() => trackEvent("contact_submit", { listingId: listing._id, address: listing.address }), 0);
+        setTimeout(() => trackEvent("Contact Submitted", { listingId: listing._id, address: listing.address }), 0);
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
