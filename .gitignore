@@ -73,5 +73,8 @@ mcp/knowledge/
 !mcp/scripts/
 !mcp/scripts/**
 
-docs
+.mcp.json
+
+# Local documentation — not version controlled
+docs/
 supabase
