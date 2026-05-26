@@ -5,7 +5,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
-import MapPopupCard, { ListingCard, MobileMapPopup } from "@/components/listings/MapPopupCard";
+import MapPopupCard, {
+  ListingCard,
+  MobileMapPopup,
+} from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
 import {
   getAreaRangeLabel,
@@ -24,7 +27,9 @@ import {
   SHTT_STEPS,
 } from "@/components/listings/FilterComponents";
 
-const MapView = dynamic(() => import("@/components/listings/MapView"), { ssr: false });
+const MapView = dynamic(() => import("@/components/listings/MapView"), {
+  ssr: false,
+});
 
 export default function AvailableListings({
   session,
@@ -92,8 +97,10 @@ export default function AvailableListings({
     const match = listings.find((l) => String(l._id) === panelId);
     if (match) setExpandedListing(match);
     fetch(`/api/listing/${panelId}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setExpandedListing(data); })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setExpandedListing(data);
+      })
       .catch(() => {});
   }, [panelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,8 +111,10 @@ export default function AvailableListings({
     router.push(`/browse?${params.toString()}`);
     // Fetch full detail (unit_leases for rent, review IDs for voting)
     fetch(`/api/listing/${listing._id}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setExpandedListing(data); })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setExpandedListing(data);
+      })
       .catch(() => {});
   };
 
@@ -139,7 +148,12 @@ export default function AvailableListings({
   const handleBrowseArea = (bounds) => {
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
-    setViewportBounds({ swLat: sw.lat, swLng: sw.lng, neLat: ne.lat, neLng: ne.lng });
+    setViewportBounds({
+      swLat: sw.lat,
+      swLng: sw.lng,
+      neLat: ne.lat,
+      neLng: ne.lng,
+    });
   };
 
   const visibleListings = useMemo(() => {
@@ -154,19 +168,24 @@ export default function AvailableListings({
             l.longitude >= viewportBounds.swLng &&
             l.longitude <= viewportBounds.neLng
         );
-    return [...filtered].sort((a, b) => (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0));
+    return [...filtered].sort(
+      (a, b) => (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0)
+    );
   }, [listings, viewportBounds]);
 
   /* ── Mobile UI state ── */
   const [mobileView, setMobileView] = useState(() => {
-    if (typeof window === "undefined") return "map";
-    return new URLSearchParams(window.location.search).get("view") === "listings" ? "listings" : "map";
+    if (typeof window === "undefined") return "listings";
+    // Default to listings unless URL explicitly requests the map tab.
+    return new URLSearchParams(window.location.search).get("view") === "map"
+      ? "map"
+      : "listings";
   });
 
   // Sync mobileView when URL changes (back/forward navigation)
   useEffect(() => {
     const v = searchParams.get("view");
-    setMobileView(v === "listings" ? "listings" : "map");
+    setMobileView(v === "map" ? "map" : "listings");
   }, [searchParams]);
 
   const switchMobileView = (view) => {
@@ -279,12 +298,20 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto transition-[width] duration-300 ${expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"}`}
+        className={`hidden md:block shrink-0 overflow-y-auto transition-[width] duration-300 ${
+          expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"
+        }`}
         style={{ height: "100%", minHeight: 0 }}
       >
         <AnimatePresence initial={false} mode="wait">
           {expandedListing ? (
-            <motion.div key={`detail-${expandedListing._id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <motion.div
+              key={`detail-${expandedListing._id}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
               <ListDetailPanel
                 listing={expandedListing}
                 onBack={() => {
@@ -294,7 +321,11 @@ export default function AvailableListings({
               />
             </motion.div>
           ) : (
-            <motion.div key="grid" exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <motion.div
+              key="grid"
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
               <div className="flex items-center gap-2 px-1 mb-4">
                 <p className="text-sm font-semibold text-gray-500">
                   {visibleListings.length}{" "}
@@ -369,10 +400,12 @@ export default function AvailableListings({
       </div>
 
       {/* ── Mobile layout ── */}
-      <div className="md:hidden flex flex-col w-full" style={{ height: "100%" }}>
+      <div
+        className="md:hidden flex flex-col w-full"
+        style={{ height: "100%" }}
+      >
         {/* Content area: map or listings */}
         <div className="flex-1 relative overflow-hidden min-h-0">
-
           {/* MAP VIEW */}
           {mobileView === "map" && (
             <>
@@ -427,7 +460,9 @@ export default function AvailableListings({
                       : "bg-white border-gray-200"
                   }`}
                   aria-label={
-                    filters.savedOnly ? "Show all listings" : "Show saved listings"
+                    filters.savedOnly
+                      ? "Show all listings"
+                      : "Show saved listings"
                   }
                 >
                   <svg
@@ -768,12 +803,15 @@ export default function AvailableListings({
                       { label: "Single Bedroom", value: "singleBedroom" },
                       { label: "Condo", value: "condo" },
                     ].map((opt) => {
-                      const selected = mobileDraft.homeType?.includes(opt.value) || false;
+                      const selected =
+                        mobileDraft.homeType?.includes(opt.value) || false;
                       return (
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => toggleMobileArray("homeType", opt.value)}
+                          onClick={() =>
+                            toggleMobileArray("homeType", opt.value)
+                          }
                           className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                             selected
                               ? "bg-red-500 text-white border-red-500"
@@ -795,12 +833,16 @@ export default function AvailableListings({
                       { label: "10-Month Lease", value: "10-month" },
                       { label: "12-Month Lease", value: "12-month" },
                     ].map((opt) => {
-                      const selected = mobileDraft.leaseAvailability?.includes(opt.value) || false;
+                      const selected =
+                        mobileDraft.leaseAvailability?.includes(opt.value) ||
+                        false;
                       return (
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => toggleMobileArray("leaseAvailability", opt.value)}
+                          onClick={() =>
+                            toggleMobileArray("leaseAvailability", opt.value)
+                          }
                           className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                             selected
                               ? "bg-red-500 text-white border-red-500"
@@ -829,12 +871,15 @@ export default function AvailableListings({
                       { label: "Study Rooms", value: "studyRooms" },
                       { label: "Gym / Fitness", value: "gym" },
                     ].map((opt) => {
-                      const selected = mobileDraft.amenities?.includes(opt.value) || false;
+                      const selected =
+                        mobileDraft.amenities?.includes(opt.value) || false;
                       return (
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => toggleMobileArray("amenities", opt.value)}
+                          onClick={() =>
+                            toggleMobileArray("amenities", opt.value)
+                          }
                           className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                             selected
                               ? "bg-red-500 text-white border-red-500"
@@ -850,7 +895,9 @@ export default function AvailableListings({
 
                 {/* Utilities Included */}
                 <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-2">Utilities Included</p>
+                  <p className="font-semibold text-gray-900 text-sm mb-2">
+                    Utilities Included
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {[
                       { value: "water", label: "Water" },
@@ -862,7 +909,9 @@ export default function AvailableListings({
                       { value: "sewer", label: "Sewer" },
                       { value: "yardCare", label: "Yard Care" },
                     ].map(({ value, label }) => {
-                      const selected = (mobileDraft.utilitiesIncluded || []).includes(value);
+                      const selected = (
+                        mobileDraft.utilitiesIncluded || []
+                      ).includes(value);
                       return (
                         <button
                           key={value}

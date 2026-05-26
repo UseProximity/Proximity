@@ -13,9 +13,10 @@
  */
 
 import { useState, useEffect } from "react";
-import { useSession, signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import AuthCard from "@/components/auth/AuthCard";
 
 const INPUT_CLASS =
   "w-full px-3 py-2.5 text-[15px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400";
@@ -197,22 +198,20 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
 
   // Gate: a signed-in WashU account is required to review.
   if (status !== "loading" && (!loggedIn || !isWustl)) {
-    const callbackUrl = `/refer/${referrerId}`;
     return (
-      <div className="max-w-lg mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Leave a review</h1>
-        <p className="text-gray-600 mb-6">
-          Referred by <span className="font-semibold">{referrerName}</span>.
-          {loggedIn && !isWustl
-            ? " Reviews can only be left from a WashU (@wustl.edu) account. Please sign in with your WashU email."
-            : " Sign in with your WashU (@wustl.edu) email to share your experience."}
-        </p>
-        <button
-          onClick={() => signIn(undefined, { callbackUrl })}
-          className="px-6 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
-        >
-          {loggedIn && !isWustl ? "Sign in with WashU" : "Sign in to continue"}
-        </button>
+      <div className="max-w-md mx-auto px-4 py-12">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Leave a review</h1>
+          <p className="text-gray-600">
+            Referred by <span className="font-semibold">{referrerName}</span>.
+            {loggedIn && !isWustl
+              ? " Reviews can only be left from a WashU (@wustl.edu) account — sign in with your WashU email below."
+              : " Sign in or create an account with your WashU (@wustl.edu) email to share your experience."}
+          </p>
+        </div>
+        <div className="flex justify-center">
+          <AuthCard callbackUrl={`/refer/${referrerId}`} initialTab="signin" />
+        </div>
       </div>
     );
   }
