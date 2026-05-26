@@ -12,6 +12,7 @@ import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { trackEvent } from "@/utils/analytics";
 
 export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "signin", showBackHome = false }) {
   const searchParams = useSearchParams();
@@ -94,6 +95,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
       setError("Invalid email or password.");
       return;
     }
+    trackEvent("Sign In Completed", { provider: "email" });
     window.location.href = result.url ?? callbackUrl;
   };
 
@@ -112,6 +114,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
       if (!res.ok) {
         setError(data.error ?? "Sign up failed. Please try again.");
       } else {
+        trackEvent("Sign Up Completed", { provider: "email" });
         setVerificationSentTo(data.email);
         setName("");
         setEmail("");
@@ -337,7 +340,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
           </div>
 
           <button
-            onClick={() => signIn("google", { callbackUrl })}
+            onClick={() => { trackEvent("Sign In Started", { provider: "google" }); signIn("google", { callbackUrl }); }}
             className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 rounded-lg transition"
           >
             Continue with Google

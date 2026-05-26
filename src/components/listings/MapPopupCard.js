@@ -66,7 +66,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
       onClick={() => {
         onCardClick(listing._id);
-        setTimeout(() => trackEvent("listing_click", { listingId: listing._id, address: listing.address }), 0);
+        setTimeout(() => trackEvent("Listing Opened", { listingId: listing._id, address: listing.address }), 0);
       }}
     >
       <div
