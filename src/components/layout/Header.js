@@ -72,7 +72,7 @@ export function Header({ session }) {
             searchOpen ? "hidden md:flex" : ""
           }`}
         >
-          <Link href="/" className="flex items-center gap-3 flex-shrink-0">
+          <Link href="/" className="flex items-center gap-5 flex-shrink-0">
             <div className="h-[56px] w-auto">
               <Image
                 src={Logo}
