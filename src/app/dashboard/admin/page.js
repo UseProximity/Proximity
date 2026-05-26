@@ -1273,7 +1273,7 @@ export default function AdminDashboard() {
     setReferralsLoading(true);
     setReferralsError(null);
     try {
-      const res = await fetch("/api/admin/referrals");
+      const res = await fetch("/api/admin/referrals", { headers: { "x-db-target": dbTarget } });
       if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
       setReferrals(Array.isArray(data.leaderboard) ? data.leaderboard : []);
@@ -1291,7 +1291,7 @@ export default function AdminDashboard() {
       return;
     }
     try {
-      const res = await fetch(`/api/admin/referrals?q=${encodeURIComponent(q.trim())}`);
+      const res = await fetch(`/api/admin/referrals?q=${encodeURIComponent(q.trim())}`, { headers: { "x-db-target": dbTarget } });
       const data = await res.json();
       setReferralSearchResults(Array.isArray(data.results) ? data.results : []);
     } catch {
@@ -1320,7 +1320,7 @@ export default function AdminDashboard() {
     if (!referrerDetails[id]) {
       setDetailsLoadingId(id);
       try {
-        const res = await fetch(`/api/admin/referrals?details=${id}`);
+        const res = await fetch(`/api/admin/referrals?details=${id}`, { headers: { "x-db-target": dbTarget } });
         const data = await res.json();
         setReferrerDetails((prev) => ({ ...prev, [id]: Array.isArray(data.reviews) ? data.reviews : [] }));
       } catch {
@@ -1363,6 +1363,18 @@ export default function AdminDashboard() {
   // DB environment toggle — "prod" or "dev"
   const [dbTarget, setDbTarget] = useState("dev");
   const isProd = dbTarget === "prod";
+
+  // The referral panel reads from the switched database, so flush its cached
+  // data when the target flips and reload the leaderboard if the panel is open.
+  useEffect(() => {
+    setReferrals([]);
+    setReferralSearch("");
+    setReferralSearchResults(null);
+    setReferrerDetails({});
+    setExpandedReferrer(null);
+    if (referralsOpen) loadReferrals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbTarget]);
 
   // FK lookup maps — id → human-readable label for reference columns
   const [refMaps, setRefMaps] = useState({
