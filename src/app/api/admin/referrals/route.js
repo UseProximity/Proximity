@@ -9,9 +9,16 @@
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import supabase from "@/lib/supabase";
+import supabase, { getSupabaseClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
+
+// Respect the admin dashboard's dev/prod switch (sent as the x-db-target header).
+// Falls back to NODE_ENV when absent, matching the other admin routes.
+function getDbTarget(req) {
+  const header = req.headers.get("x-db-target");
+  return header === "prod" || header === "dev" ? header : undefined;
+}
 
 async function requireSuperOrAdmin() {
   const session = await auth();
@@ -26,9 +33,9 @@ async function requireSuperOrAdmin() {
 }
 
 // Build a { userId: { total, approved, pending } } map from referred reviews.
-async function countsForReferrerIds(ids) {
+async function countsForReferrerIds(db, ids) {
   if (!ids?.length) return {};
-  const { data: rows } = await supabase
+  const { data: rows } = await db
     .from("listing_reviews")
     .select("referrer_id, legitimacy")
     .in("referrer_id", ids)
@@ -49,13 +56,16 @@ export async function GET(req) {
     const user = await requireSuperOrAdmin();
     if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    // Data queries target whichever database the dashboard is switched to.
+    const db = getSupabaseClient(getDbTarget(req));
+
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
     const details = (searchParams.get("details") || "").trim();
 
     // ── Details mode: every referred review for one ambassador ────────────────
     if (details) {
-      const { data: rows, error } = await supabase
+      const { data: rows, error } = await db
         .from("listing_reviews")
         .select("id, created_at, rating, reviewer:users!user_id(name, email), listings!listing_id(address)")
         .eq("referrer_id", details)
@@ -75,7 +85,7 @@ export async function GET(req) {
 
     // ── Search mode: any user matching name/email, with their referral counts ──
     if (q.length >= 2) {
-      const { data: users, error } = await supabase
+      const { data: users, error } = await db
         .from("users")
         .select("id, name, email")
         .or(`name.ilike.%${q}%,email.ilike.%${q}%`)
@@ -83,7 +93,7 @@ export async function GET(req) {
         .limit(10);
       if (error) throw error;
 
-      const counts = await countsForReferrerIds((users || []).map((u) => u.id));
+      const counts = await countsForReferrerIds(db, (users || []).map((u) => u.id));
       const results = (users || []).map((u) => ({
         id: u.id,
         name: u.name || "Unknown",
@@ -94,7 +104,7 @@ export async function GET(req) {
     }
 
     // ── Leaderboard mode: everyone who has driven at least one review ──────────
-    const { data: refRows, error } = await supabase
+    const { data: refRows, error } = await db
       .from("listing_reviews")
       .select("referrer_id, legitimacy")
       .not("referrer_id", "is", null)
@@ -113,7 +123,7 @@ export async function GET(req) {
     const ids = Object.keys(counts);
     let usersById = {};
     if (ids.length) {
-      const { data: us } = await supabase
+      const { data: us } = await db
         .from("users")
         .select("id, name, email")
         .in("id", ids);
