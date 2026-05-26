@@ -1259,44 +1259,53 @@ export default function AdminDashboard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Pending reviews moderation
-  const [pendingReviewsOpen, setPendingReviewsOpen] = useState(false);
-  const [pendingReviews, setPendingReviews] = useState([]);
-  const [pendingReviewsLoading, setPendingReviewsLoading] = useState(false);
-  const [pendingReviewsError, setPendingReviewsError] = useState(null);
 
-  async function loadPendingReviews() {
-    setPendingReviewsLoading(true);
-    setPendingReviewsError(null);
+  // Ambassador referral leaderboard
+  const [referralsOpen, setReferralsOpen] = useState(false);
+  const [referrals, setReferrals] = useState([]);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+  const [referralsError, setReferralsError] = useState(null);
+  const [referralSearch, setReferralSearch] = useState("");
+  const [referralSearchResults, setReferralSearchResults] = useState(null);
+  const [copiedRefId, setCopiedRefId] = useState(null);
+
+  async function loadReferrals() {
+    setReferralsLoading(true);
+    setReferralsError(null);
     try {
-      const res = await fetch("/api/admin/pending-reviews");
+      const res = await fetch("/api/admin/referrals");
       if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
-      setPendingReviews(Array.isArray(data) ? data : []);
+      setReferrals(Array.isArray(data.leaderboard) ? data.leaderboard : []);
     } catch {
-      setPendingReviewsError("Failed to load pending reviews.");
+      setReferralsError("Failed to load referral leaderboard.");
     } finally {
-      setPendingReviewsLoading(false);
+      setReferralsLoading(false);
     }
   }
 
-  async function handleApprovePendingReview(reviewId) {
-    await fetch("/api/admin/pending-reviews", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reviewId }),
-    });
-    setPendingReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  async function searchReferralUsers(q) {
+    setReferralSearch(q);
+    if (q.trim().length < 2) {
+      setReferralSearchResults(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/referrals?q=${encodeURIComponent(q.trim())}`);
+      const data = await res.json();
+      setReferralSearchResults(Array.isArray(data.results) ? data.results : []);
+    } catch {
+      setReferralSearchResults([]);
+    }
   }
 
-  async function handleDeletePendingReview(reviewId) {
-    await fetch("/api/admin/pending-reviews", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reviewId }),
-    });
-    setPendingReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  function copyReferralLink(userId) {
+    const link = `${window.location.origin}/refer/${userId}`;
+    navigator.clipboard?.writeText(link);
+    setCopiedRefId(userId);
+    setTimeout(() => setCopiedRefId((cur) => (cur === userId ? null : cur)), 1500);
   }
+
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [searchColumn, setSearchColumn] = useState("all");
@@ -2149,80 +2158,92 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Moderation — Pending Reviews */}
+        {/* Ambassador referral leaderboard */}
         <div className="mb-5">
           <button
             onClick={() => {
-              const next = !pendingReviewsOpen;
-              setPendingReviewsOpen(next);
-              if (next && pendingReviews.length === 0) loadPendingReviews();
+              const next = !referralsOpen;
+              setReferralsOpen(next);
+              if (next && referrals.length === 0) loadReferrals();
             }}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
           >
-            <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
-            Pending Reviews
-            {pendingReviews.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 bg-orange-500 text-white text-xs rounded-full font-bold">
-                {pendingReviews.length}
-              </span>
-            )}
-            <svg className={`w-3.5 h-3.5 transition-transform ${pendingReviewsOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <span className="inline-block w-2 h-2 rounded-full bg-indigo-400" />
+            Referral Leaderboard
+            <svg className={`w-3.5 h-3.5 transition-transform ${referralsOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
 
-          {pendingReviewsOpen && (
-            <div className="mt-2 bg-white border border-orange-200 rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-gray-800">Reviews awaiting approval</p>
-                <button
-                  onClick={loadPendingReviews}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Refresh
-                </button>
+          {referralsOpen && (
+            <div className="mt-2 bg-white border border-indigo-200 rounded-xl p-4 shadow-sm">
+              {/* Find any user → copy their referral link */}
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-800 mb-1.5">Get a referral link</p>
+                <input
+                  type="text"
+                  value={referralSearch}
+                  onChange={(e) => searchReferralUsers(e.target.value)}
+                  placeholder="Search a user by name or email…"
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+                {referralSearchResults !== null && (
+                  <div className="mt-2 space-y-1.5">
+                    {referralSearchResults.length === 0 ? (
+                      <p className="text-xs text-gray-400">No matching users.</p>
+                    ) : (
+                      referralSearchResults.map((u) => (
+                        <div key={u.id} className="flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2 bg-gray-50">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-gray-800 truncate">{u.name}</p>
+                            <p className="text-xs text-gray-400 truncate">{u.email} · {u.total} referral{u.total === 1 ? "" : "s"}</p>
+                          </div>
+                          <button
+                            onClick={() => copyReferralLink(u.id)}
+                            className="px-2.5 py-1 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium whitespace-nowrap"
+                          >
+                            {copiedRefId === u.id ? "Copied!" : "Copy link"}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
-              {pendingReviewsLoading ? (
+              <div className="flex items-center justify-between mb-3 border-t border-gray-100 pt-3">
+                <p className="text-sm font-semibold text-gray-800">Top ambassadors</p>
+                <button onClick={loadReferrals} className="text-xs text-indigo-600 hover:underline">Refresh</button>
+              </div>
+
+              {referralsLoading ? (
                 <p className="text-sm text-gray-400 py-4 text-center">Loading…</p>
-              ) : pendingReviewsError ? (
-                <p className="text-sm text-red-500">{pendingReviewsError}</p>
-              ) : pendingReviews.length === 0 ? (
-                <p className="text-sm text-gray-400 py-2">No pending reviews.</p>
+              ) : referralsError ? (
+                <p className="text-sm text-red-500">{referralsError}</p>
+              ) : referrals.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">No referrals yet.</p>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {pendingReviews.map((r) => (
-                    <div key={r.id} className="border border-gray-100 rounded-lg p-3 flex flex-col gap-1 bg-gray-50">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 truncate">
-                            {r.reviewer?.name || "Unknown"}{" "}
-                            <span className="font-normal text-gray-400">({r.reviewer?.email || "—"})</span>
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {r.listings?.title || r.listings?.address || "Unknown listing"}
-                          </p>
-                          <p className="text-xs text-gray-500">Rating: {r.rating}/5</p>
-                          <p className="text-xs text-gray-700 mt-1 line-clamp-3">{r.text}</p>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {referrals.map((r, i) => (
+                    <div key={r.id} className="flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold text-gray-400 w-5 text-right">{i + 1}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{r.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{r.email}</p>
                         </div>
-                        <div className="flex flex-col gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => handleApprovePendingReview(r.id)}
-                            disabled={isReadOnly}
-                            title={readOnlyTitle}
-                            className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => handleDeletePendingReview(r.id)}
-                            disabled={isReadOnly}
-                            title={readOnlyTitle}
-                            className="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Reject
-                          </button>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-gray-900">{r.total}</p>
+                          <p className="text-[10px] text-gray-400 leading-tight">{r.approved} live · {r.pending} pending</p>
                         </div>
+                        <button
+                          onClick={() => copyReferralLink(r.id)}
+                          className="px-2.5 py-1 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium whitespace-nowrap"
+                        >
+                          {copiedRefId === r.id ? "Copied!" : "Copy link"}
+                        </button>
                       </div>
                     </div>
                   ))}

@@ -72,3 +72,8 @@ mcp/knowledge/
 # Allow mcp/scripts/ even though root-level `scripts` is ignored
 !mcp/scripts/
 !mcp/scripts/**
+
+.mcp.json
+
+# Local documentation — not version controlled
+docs/
