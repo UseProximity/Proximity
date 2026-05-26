@@ -1237,7 +1237,8 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                 <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
               )}
             </div>
-            {!listing.unavailable && (
+            <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
+              {!listing.unavailable && (
               <button
                 onClick={() => {
                   setActiveTab("contact");
@@ -1247,7 +1248,18 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
               >
                 Contact Manager
               </button>
-            )}
+              )}
+              {!listing.furnished && (
+                <a
+                  href="https://cort.sjv.io/zzb9y0"
+                  target="_blank"
+                  rel="noopener noreferrer sponsored nofollow"
+                  className="shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg bg-red-50 text-red-700 border border-red-200 shadow-sm hover:bg-red-100 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
+                >
+                  Furnish This Property
+                </a>
+              )}
+            </div>
           </div>
 
           {/* ── Unit Selector ── */}
