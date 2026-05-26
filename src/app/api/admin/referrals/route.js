@@ -51,6 +51,27 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
+    const details = (searchParams.get("details") || "").trim();
+
+    // ── Details mode: every referred review for one ambassador ────────────────
+    if (details) {
+      const { data: rows, error } = await supabase
+        .from("listing_reviews")
+        .select("id, created_at, rating, reviewer:users!user_id(name, email), listings!listing_id(address)")
+        .eq("referrer_id", details)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const reviews = (rows || []).map((r) => ({
+        id: r.id,
+        date: r.created_at,
+        rating: r.rating,
+        reviewerName: r.reviewer?.name || "Anonymous",
+        reviewerEmail: r.reviewer?.email || null,
+        address: r.listings?.address || "—",
+      }));
+      return NextResponse.json({ reviews });
+    }
 
     // ── Search mode: any user matching name/email, with their referral counts ──
     if (q.length >= 2) {
