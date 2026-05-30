@@ -51,7 +51,7 @@ import {
   getUnitValuesLabel,
   calcAge,
 } from "@/utils/listingFormatters";
-
+import ReviewReplySection from "@/components/listings/ReviewReplySection";
 
 // Simple components
 const Card = ({ children, className = "", onClick }) => (
@@ -207,7 +207,10 @@ function ProfileSection({
                 {user.listings.length} active listings
               </p>{" "}
               <p className="text-gray-400 text-sm sm:text-base mt-2">
-                {calcAge(user.birthday) != null ? `${calcAge(user.birthday)} years old` : null}{user.gender ? ` • ${user.gender}` : ""}
+                {calcAge(user.birthday) != null
+                  ? `${calcAge(user.birthday)} years old`
+                  : null}
+                {user.gender ? ` • ${user.gender}` : ""}
               </p>
               <p className="text-gray-500 text-sm sm:text-base mt-2 break-words">
                 📞 {user.phone} • ✉️ {user.email}
@@ -396,46 +399,71 @@ function AnalyticsDashboardSection({ viewAsId }) {
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 // The API writes `row[name] = true` for each, so anything not in these lists is dropped.
 const AMENITY_OPTIONS = [
-  "air_conditioning", "dishwasher", "gym", "laundry", "mailroom",
-  "microwave", "oven", "parking", "pets_allowed", "pool",
-  "refrigerator", "rooftop", "storage", "stove", "study_room",
+  "air_conditioning",
+  "dishwasher",
+  "gym",
+  "laundry",
+  "mailroom",
+  "microwave",
+  "oven",
+  "parking",
+  "pets_allowed",
+  "pool",
+  "refrigerator",
+  "rooftop",
+  "storage",
+  "stove",
+  "study_room",
 ];
 const AMENITY_LABELS = {
   air_conditioning: "Air Conditioning",
-  dishwasher:       "Dishwasher",
-  gym:              "Gym",
-  laundry:          "Laundry",
-  mailroom:         "Mailroom",
-  microwave:        "Microwave",
-  oven:             "Oven",
-  parking:          "Parking",
-  pets_allowed:     "Pets Allowed",
-  pool:             "Pool",
-  refrigerator:     "Refrigerator",
-  rooftop:          "Rooftop",
-  storage:          "Storage",
-  stove:            "Stove",
-  study_room:       "Study Room",
+  dishwasher: "Dishwasher",
+  gym: "Gym",
+  laundry: "Laundry",
+  mailroom: "Mailroom",
+  microwave: "Microwave",
+  oven: "Oven",
+  parking: "Parking",
+  pets_allowed: "Pets Allowed",
+  pool: "Pool",
+  refrigerator: "Refrigerator",
+  rooftop: "Rooftop",
+  storage: "Storage",
+  stove: "Stove",
+  study_room: "Study Room",
 };
 const UTILITY_OPTIONS = [
-  "electric", "gas", "heat", "water", "internet",
-  "trash", "cable", "sewer", "cooling",
+  "electric",
+  "gas",
+  "heat",
+  "water",
+  "internet",
+  "trash",
+  "cable",
+  "sewer",
+  "cooling",
 ];
 const UTILITY_LABELS = {
   electric: "Electric",
-  gas:      "Gas",
-  heat:     "Heat",
-  water:    "Water",
+  gas: "Gas",
+  heat: "Heat",
+  water: "Water",
   internet: "Internet",
-  trash:    "Trash",
-  cable:    "Cable",
-  sewer:    "Sewer",
-  cooling:  "Cooling",
+  trash: "Trash",
+  cable: "Cable",
+  sewer: "Sewer",
+  cooling: "Cooling",
 };
 const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "other"];
 const LEASE_TYPES = ["standard", "sublease", "short-term"];
 
-const emptyUnit = () => ({ bedrooms: "", bathrooms: "", rent: "", area: "", available: true });
+const emptyUnit = () => ({
+  bedrooms: "",
+  bathrooms: "",
+  rent: "",
+  area: "",
+  available: true,
+});
 
 function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const isEdit = !!listing;
@@ -443,23 +471,40 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     address: listing?.address ?? "",
     title: listing?.title ?? "",
     description: listing?.description ?? "",
-    home_type: (listing?.home_type ?? listing?.homeType ?? "apartment").toLowerCase(),
+    home_type: (
+      listing?.home_type ??
+      listing?.homeType ??
+      "apartment"
+    ).toLowerCase(),
     lease_type: listing?.lease_type ?? listing?.leaseType ?? "standard",
     furnished: listing?.furnished ?? false,
-    sublease_friendly: listing?.sublease_friendly ?? listing?.subleaseFriendly ?? false,
-    twenty_one_plus: listing?.twenty_one_plus ?? listing?.twentyOnePlus ?? false,
-    move_in_date: listing?.move_in_date ?? (listing?.moveInDate ? listing.moveInDate.slice(0, 10) : ""),
+    sublease_friendly:
+      listing?.sublease_friendly ?? listing?.subleaseFriendly ?? false,
+    twenty_one_plus:
+      listing?.twenty_one_plus ?? listing?.twentyOnePlus ?? false,
+    move_in_date:
+      listing?.move_in_date ??
+      (listing?.moveInDate ? listing.moveInDate.slice(0, 10) : ""),
     // Auto-fill contact info from the landlord's profile for new listings
-    contact_email: listing?.contact_email ?? listing?.contactEmail ?? user?.email ?? "",
-    contact_phone: listing?.contact_phone ?? listing?.contactPhone ?? user?.phone ?? "",
-    contact_name: listing?.contact_name ?? listing?.contactName ?? user?.name ?? "",
+    contact_email:
+      listing?.contact_email ?? listing?.contactEmail ?? user?.email ?? "",
+    contact_phone:
+      listing?.contact_phone ?? listing?.contactPhone ?? user?.phone ?? "",
+    contact_name:
+      listing?.contact_name ?? listing?.contactName ?? user?.name ?? "",
     amenities: listing?.amenities ?? [],
-    utilities_included: listing?.utilities_included ?? listing?.utilitiesIncluded ?? [],
+    utilities_included:
+      listing?.utilities_included ?? listing?.utilitiesIncluded ?? [],
     lease_availability: (() => {
-      const raw = listing?.lease_availability ?? listing?.leaseAvailability ?? [];
+      const raw =
+        listing?.lease_availability ?? listing?.leaseAvailability ?? [];
       const canon = ["Semester", "10-Month", "12-Month", "Summer"];
       const byLower = new Map(canon.map((v) => [v.toLowerCase(), v]));
-      return Array.from(new Set(raw.map((v) => byLower.get(String(v).toLowerCase())).filter(Boolean)));
+      return Array.from(
+        new Set(
+          raw.map((v) => byLower.get(String(v).toLowerCase())).filter(Boolean)
+        )
+      );
     })(),
   });
   const rawUnits = listing?.listing_units ?? listing?.unitTypes ?? [];
@@ -572,7 +617,10 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     setForm((f) => ({
       ...f,
       address: suggestion.label,
-      title: (!f.title || f.title === (f.address || "").split(",")[0].trim()) ? autoTitle : f.title,
+      title:
+        !f.title || f.title === (f.address || "").split(",")[0].trim()
+          ? autoTitle
+          : f.title,
     }));
     setAddressSuggestions([]);
     setAddressDropdownOpen(false);
@@ -581,7 +629,10 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const compressImage = (file) =>
     new Promise((resolve) => {
       // Skip files already under 1 MB
-      if (file.size < 1 * 1024 * 1024) { resolve(file); return; }
+      if (file.size < 1 * 1024 * 1024) {
+        resolve(file);
+        return;
+      }
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
@@ -599,14 +650,24 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
         canvas.toBlob(
           (blob) => {
-            if (!blob || blob.size >= file.size) { resolve(file); return; }
-            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+            if (!blob || blob.size >= file.size) {
+              resolve(file);
+              return;
+            }
+            resolve(
+              new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
+                type: "image/jpeg",
+              })
+            );
           },
           "image/jpeg",
           0.85
         );
       };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
       img.src = url;
     });
 
@@ -653,9 +714,18 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    if (!form.address.trim()) { setError("Address is required."); return; }
-    if (!form.description.trim()) { setError("Description is required."); return; }
-    if (units.length === 0) { setError("At least one unit is required."); return; }
+    if (!form.address.trim()) {
+      setError("Address is required.");
+      return;
+    }
+    if (!form.description.trim()) {
+      setError("Description is required.");
+      return;
+    }
+    if (units.length === 0) {
+      setError("At least one unit is required.");
+      return;
+    }
     if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
       setError("Each unit needs bedrooms and bathrooms.");
       return;
@@ -673,30 +743,33 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
 
       let res;
       if (isEdit) {
-        res = await fetch(`/api/landlord/listings/${listing._id || listing.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            address: form.address,
-            title: form.title,
-            description: form.description,
-            home_type: form.home_type,
-            lease_type: form.lease_type,
-            furnished: form.furnished,
-            sublease_friendly: form.sublease_friendly,
-            twenty_one_plus: form.twenty_one_plus,
-            move_in_date: form.move_in_date || null,
-            contact_email: form.contact_email || null,
-            contact_phone: form.contact_phone || null,
-            contact_name: form.contact_name || null,
-            amenities: form.amenities,
-            utilities_included: form.utilities_included,
-            lease_availability: form.lease_availability,
-            // persist any existing-image removals
-            images: existingImages,
-            units: unitPayload,
-          }),
-        });
+        res = await fetch(
+          `/api/landlord/listings/${listing._id || listing.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              address: form.address,
+              title: form.title,
+              description: form.description,
+              home_type: form.home_type,
+              lease_type: form.lease_type,
+              furnished: form.furnished,
+              sublease_friendly: form.sublease_friendly,
+              twenty_one_plus: form.twenty_one_plus,
+              move_in_date: form.move_in_date || null,
+              contact_email: form.contact_email || null,
+              contact_phone: form.contact_phone || null,
+              contact_name: form.contact_name || null,
+              amenities: form.amenities,
+              utilities_included: form.utilities_included,
+              lease_availability: form.lease_availability,
+              // persist any existing-image removals
+              images: existingImages,
+              units: unitPayload,
+            }),
+          }
+        );
       } else {
         res = await fetch("/api/addListing", {
           method: "POST",
@@ -713,14 +786,15 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
       }
 
       const data = await res.json();
-      if (!res.ok) { setError(data.error || "Something went wrong."); return; }
+      if (!res.ok) {
+        setError(data.error || "Something went wrong.");
+        return;
+      }
 
       // Upload staged images via presigned URLs so files go directly from the
       // browser to R2, bypassing Vercel's 4.5 MB serverless body limit.
       if (stagedFiles.length > 0) {
-        const listingId = isEdit
-          ? (listing._id || listing.id)
-          : data.listing?.id;
+        const listingId = isEdit ? listing._id || listing.id : data.listing?.id;
         if (listingId) {
           // Step 1: get presigned PUT URLs for each file
           const presignRes = await fetch("/api/upload", {
@@ -733,8 +807,15 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
           });
           if (!presignRes.ok) {
             const presignData = await presignRes.json().catch(() => ({}));
-            console.error("[upload] failed to get presigned URLs:", presignData.error);
-            setError(`Listing saved, but images failed to upload: ${presignData.error || `server error ${presignRes.status}`}`);
+            console.error(
+              "[upload] failed to get presigned URLs:",
+              presignData.error
+            );
+            setError(
+              `Listing saved, but images failed to upload: ${
+                presignData.error || `server error ${presignRes.status}`
+              }`
+            );
             setSubmitting(false);
             return;
           }
@@ -750,10 +831,17 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
               })
             )
           );
-          const failedUploads = uploadResults.filter((r) => r.status === "rejected" || !r.value?.ok);
+          const failedUploads = uploadResults.filter(
+            (r) => r.status === "rejected" || !r.value?.ok
+          );
           if (failedUploads.length > 0) {
-            console.error("[upload] some files failed to upload to R2:", failedUploads);
-            setError(`Listing saved, but ${failedUploads.length} image(s) failed to upload. Please try re-uploading them.`);
+            console.error(
+              "[upload] some files failed to upload to R2:",
+              failedUploads
+            );
+            setError(
+              `Listing saved, but ${failedUploads.length} image(s) failed to upload. Please try re-uploading them.`
+            );
             setSubmitting(false);
             return;
           }
@@ -769,8 +857,15 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
           });
           if (!confirmRes.ok) {
             const confirmData = await confirmRes.json().catch(() => ({}));
-            console.error("[upload] failed to confirm image URLs:", confirmData.error);
-            setError(`Listing saved, but images were uploaded and could not be saved: ${confirmData.error || `server error ${confirmRes.status}`}`);
+            console.error(
+              "[upload] failed to confirm image URLs:",
+              confirmData.error
+            );
+            setError(
+              `Listing saved, but images were uploaded and could not be saved: ${
+                confirmData.error || `server error ${confirmRes.status}`
+              }`
+            );
             setSubmitting(false);
             return;
           }
@@ -780,13 +875,22 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
       // Check if the contact info differs from the landlord's profile
       const diff = {};
       const trim = (v) => (v ?? "").trim();
-      if (trim(form.contact_name) && trim(form.contact_name) !== trim(user?.name)) {
+      if (
+        trim(form.contact_name) &&
+        trim(form.contact_name) !== trim(user?.name)
+      ) {
         diff.name = trim(form.contact_name);
       }
-      if (trim(form.contact_email) && trim(form.contact_email) !== trim(user?.email)) {
+      if (
+        trim(form.contact_email) &&
+        trim(form.contact_email) !== trim(user?.email)
+      ) {
         diff.email = trim(form.contact_email);
       }
-      if (trim(form.contact_phone) && trim(form.contact_phone) !== trim(user?.phone)) {
+      if (
+        trim(form.contact_phone) &&
+        trim(form.contact_phone) !== trim(user?.phone)
+      ) {
         diff.phone = trim(form.contact_phone);
       }
 
@@ -810,8 +914,18 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             onClick={onClose}
             className="p-2 rounded-full hover:bg-gray-100 transition-colors"
           >
-            <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="h-5 w-5 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -830,13 +944,18 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2 relative" ref={addressRef}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Address *
+                </label>
                 <div className="relative">
                   <input
                     name="address"
                     value={form.address}
                     onChange={handleAddressInput}
-                    onFocus={() => addressSuggestions.length > 0 && setAddressDropdownOpen(true)}
+                    onFocus={() =>
+                      addressSuggestions.length > 0 &&
+                      setAddressDropdownOpen(true)
+                    }
                     required
                     autoComplete="off"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 pr-8"
@@ -844,9 +963,24 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                   />
                   {addressLoading && (
                     <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      <svg className="animate-spin h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      <svg
+                        className="animate-spin h-4 w-4 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v8z"
+                        />
                       </svg>
                     </div>
                   )}
@@ -861,9 +995,24 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                           onClick={() => selectAddressSuggestion(s)}
                           className="w-full text-left px-3 py-2.5 text-sm text-gray-700 hover:bg-red-50 active:bg-red-100 flex items-start gap-2 border-b border-gray-100 last:border-0"
                         >
-                          <svg className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <svg
+                            className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
                           </svg>
                           <span className="leading-snug">{s.label}</span>
                         </button>
@@ -873,58 +1022,86 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                 )}
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Display Name
+                </label>
                 <input
-                  name="title" value={form.title} onChange={handleChange}
+                  name="title"
+                  value={form.title}
+                  onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="e.g. Cozy Studio Near Campus"
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description *
+                </label>
                 <textarea
-                  name="description" value={form.description} onChange={handleChange} required rows={3}
+                  name="description"
+                  value={form.description}
+                  onChange={handleChange}
+                  required
+                  rows={3}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Describe the property..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Home Type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Home Type
+                </label>
                 <select
-                  name="home_type" value={form.home_type} onChange={handleChange}
+                  name="home_type"
+                  value={form.home_type}
+                  onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   {HOME_TYPES.map((t) => (
-                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                    <option key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lease Type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Lease Type
+                </label>
                 <select
-                  name="lease_type" value={form.lease_type} onChange={handleChange}
+                  name="lease_type"
+                  value={form.lease_type}
+                  onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   {LEASE_TYPES.map((t) => (
-                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                    <option key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Lease Availability</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Lease Availability
+                </label>
                 <div className="flex flex-wrap gap-2">
                   {["Semester", "10-Month", "12-Month", "Summer"].map((opt) => {
-                    const selected = (form.lease_availability || []).includes(opt);
+                    const selected = (form.lease_availability || []).includes(
+                      opt
+                    );
                     return (
                       <button
                         key={opt}
                         type="button"
-                        onClick={() => setForm((prev) => ({
-                          ...prev,
-                          lease_availability: selected
-                            ? prev.lease_availability.filter((v) => v !== opt)
-                            : [...(prev.lease_availability || []), opt],
-                        }))}
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            lease_availability: selected
+                              ? prev.lease_availability.filter((v) => v !== opt)
+                              : [...(prev.lease_availability || []), opt],
+                          }))
+                        }
                         className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                           selected
                             ? "bg-red-500 text-white border-red-500"
@@ -938,23 +1115,46 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Move-in Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Move-in Date
+                </label>
                 <input
-                  type="date" name="move_in_date" value={form.move_in_date} onChange={handleChange}
+                  type="date"
+                  name="move_in_date"
+                  value={form.move_in_date}
+                  onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               <div className="flex items-center gap-4 pt-5">
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input type="checkbox" name="furnished" checked={form.furnished} onChange={handleChange} className="accent-red-600" />
+                  <input
+                    type="checkbox"
+                    name="furnished"
+                    checked={form.furnished}
+                    onChange={handleChange}
+                    className="accent-red-600"
+                  />
                   Furnished
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input type="checkbox" name="sublease_friendly" checked={form.sublease_friendly} onChange={handleChange} className="accent-red-600" />
+                  <input
+                    type="checkbox"
+                    name="sublease_friendly"
+                    checked={form.sublease_friendly}
+                    onChange={handleChange}
+                    className="accent-red-600"
+                  />
                   Sublease Friendly
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input type="checkbox" name="twenty_one_plus" checked={form.twenty_one_plus} onChange={handleChange} className="accent-red-600" />
+                  <input
+                    type="checkbox"
+                    name="twenty_one_plus"
+                    checked={form.twenty_one_plus}
+                    onChange={handleChange}
+                    className="accent-red-600"
+                  />
                   21+ Only
                 </label>
               </div>
@@ -968,12 +1168,16 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             </h3>
             <div className="flex flex-wrap gap-2">
               {AMENITY_OPTIONS.map((a) => (
-                <button key={a} type="button" onClick={() => toggleMulti("amenities", a)}
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => toggleMulti("amenities", a)}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                     form.amenities.includes(a)
                       ? "bg-red-600 text-white border-red-600"
                       : "bg-white text-gray-600 border-gray-300 hover:border-red-400"
-                  }`}>
+                  }`}
+                >
                   {AMENITY_LABELS[a]}
                 </button>
               ))}
@@ -987,12 +1191,16 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             </h3>
             <div className="flex flex-wrap gap-2">
               {UTILITY_OPTIONS.map((u) => (
-                <button key={u} type="button" onClick={() => toggleMulti("utilities_included", u)}
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => toggleMulti("utilities_included", u)}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                     form.utilities_included.includes(u)
                       ? "bg-red-600 text-white border-red-600"
                       : "bg-white text-gray-600 border-gray-300 hover:border-red-400"
-                  }`}>
+                  }`}
+                >
                   {UTILITY_LABELS[u]}
                 </button>
               ))}
@@ -1011,9 +1219,14 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                 { name: "contact_phone", label: "Phone", type: "text" },
               ].map(({ name, label, type }) => (
                 <div key={name}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {label}
+                  </label>
                   <input
-                    name={name} type={type} value={form[name]} onChange={handleChange}
+                    name={name}
+                    type={type}
+                    value={form[name]}
+                    onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   />
                 </div>
@@ -1027,19 +1240,30 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Units *
               </h3>
-              <button type="button" onClick={addUnit}
-                className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium">
+              <button
+                type="button"
+                onClick={addUnit}
+                className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
+              >
                 <Plus className="h-4 w-4" />
                 Add Unit
               </button>
             </div>
             <div className="space-y-3">
               {units.map((unit, i) => (
-                <div key={i} className="flex items-end gap-3 p-3 bg-gray-50 rounded-lg">
+                <div
+                  key={i}
+                  className="flex items-end gap-3 p-3 bg-gray-50 rounded-lg"
+                >
                   <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
                       { field: "bedrooms", label: "Beds *", min: "0" },
-                      { field: "bathrooms", label: "Baths *", min: "0", step: "0.5" },
+                      {
+                        field: "bathrooms",
+                        label: "Baths *",
+                        min: "0",
+                        step: "0.5",
+                      },
                       { field: "rent", label: "Rent ($/mo)", min: "0" },
                       { field: "area", label: "Area (sq ft)", min: "0" },
                     ].map(({ field, label, min, step }) => (
@@ -1048,7 +1272,10 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                           {label}
                         </label>
                         <input
-                          type="number" min={min} step={step} value={unit[field]}
+                          type="number"
+                          min={min}
+                          step={step}
+                          value={unit[field]}
                           onChange={(e) => updateUnit(i, field, e.target.value)}
                           className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
@@ -1058,17 +1285,32 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                       <input
                         type="checkbox"
                         checked={unit.available !== false}
-                        onChange={(e) => updateUnit(i, "available", e.target.checked)}
+                        onChange={(e) =>
+                          updateUnit(i, "available", e.target.checked)
+                        }
                         className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
                       />
                       Available
                     </label>
                   </div>
                   {units.length > 1 && (
-                    <button type="button" onClick={() => removeUnit(i)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <button
+                      type="button"
+                      onClick={() => removeUnit(i)}
+                      className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   )}
@@ -1148,12 +1390,22 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
 
           {/* Footer */}
           <div className="flex gap-3 pt-2 border-t border-gray-100">
-            <button type="submit" disabled={submitting}
-              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors">
-              {submitting ? "Saving..." : isEdit ? "Save Changes" : "Create Listing"}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+            >
+              {submitting
+                ? "Saving..."
+                : isEdit
+                ? "Save Changes"
+                : "Create Listing"}
             </button>
-            <button type="button" onClick={onClose}
-              className="px-6 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
               Cancel
             </button>
           </div>
@@ -1173,12 +1425,15 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
   const [removing, setRemoving] = useState(null);
   const [promoting, setPromoting] = useState(null);
 
-  const currentIsPrimary = landlords.find((l) => l.userId === currentUserId)?.isPrimary ?? false;
+  const currentIsPrimary =
+    landlords.find((l) => l.userId === currentUserId)?.isPrimary ?? false;
 
   useEffect(() => {
     fetch(`/api/landlord/listings/${listingId}/landlords`)
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setLandlords(data); })
+      .then((data) => {
+        if (Array.isArray(data)) setLandlords(data);
+      })
       .catch(() => setError("Failed to load co-owners."))
       .finally(() => setLoading(false));
   }, [listingId]);
@@ -1194,7 +1449,10 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Failed to add co-owner."); return; }
+      if (!res.ok) {
+        setError(data.error ?? "Failed to add co-owner.");
+        return;
+      }
       setLandlords((prev) => [...prev, data]);
       setEmail("");
     } catch {
@@ -1207,7 +1465,10 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
   const handleMakePrimary = async (userId) => {
     const target = landlords.find((l) => l.userId === userId);
     const name = target?.name || target?.email || "this person";
-    if (!confirm(`Make ${name} the primary owner? You will lose primary status.`)) return;
+    if (
+      !confirm(`Make ${name} the primary owner? You will lose primary status.`)
+    )
+      return;
     setError(null);
     setPromoting(userId);
     try {
@@ -1217,8 +1478,13 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
         body: JSON.stringify({ userId }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Failed to transfer primary."); return; }
-      setLandlords((prev) => prev.map((l) => ({ ...l, isPrimary: l.userId === userId })));
+      if (!res.ok) {
+        setError(data.error ?? "Failed to transfer primary.");
+        return;
+      }
+      setLandlords((prev) =>
+        prev.map((l) => ({ ...l, isPrimary: l.userId === userId }))
+      );
     } catch {
       setError("Network error.");
     } finally {
@@ -1236,7 +1502,10 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
         body: JSON.stringify({ userId }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Failed to remove co-owner."); return; }
+      if (!res.ok) {
+        setError(data.error ?? "Failed to remove co-owner.");
+        return;
+      }
       setLandlords((prev) => prev.filter((l) => l.userId !== userId));
     } catch {
       setError("Network error.");
@@ -1255,14 +1524,19 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
               {listing.title || listing.address}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+          >
             <X className="h-4 w-4 text-gray-500" />
           </button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
           {error && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+              {error}
+            </p>
           )}
 
           <div>
@@ -1274,7 +1548,10 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
             ) : (
               <ul className="space-y-2">
                 {landlords.map((l) => (
-                  <li key={l.userId} className="flex items-center justify-between gap-3 py-1">
+                  <li
+                    key={l.userId}
+                    className="flex items-center justify-between gap-3 py-1"
+                  >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
                         <User className="h-4 w-4 text-gray-500" />
@@ -1289,7 +1566,9 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
                           )}
                         </p>
                         {l.name && l.email && (
-                          <p className="text-xs text-gray-400 truncate">{l.email}</p>
+                          <p className="text-xs text-gray-400 truncate">
+                            {l.email}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1301,7 +1580,9 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
                             disabled={!!promoting}
                             className="text-xs text-purple-600 hover:text-purple-700 font-medium px-2 py-1 rounded-md hover:bg-purple-50 transition-colors disabled:opacity-50"
                           >
-                            {promoting === l.userId ? "Saving…" : "Make Primary"}
+                            {promoting === l.userId
+                              ? "Saving…"
+                              : "Make Primary"}
                           </button>
                         )}
                         {l.userId !== currentUserId && (
@@ -1354,7 +1635,16 @@ function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
 }
 
 // Properties Page Content
-function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddListing, onEditListing, onDeleteListing, onManageCoOwners }) {
+function PropertiesSection({
+  user,
+  setUser,
+  handlePropertySelect,
+  router,
+  onAddListing,
+  onEditListing,
+  onDeleteListing,
+  onManageCoOwners,
+}) {
   const [togglingId, setTogglingId] = useState(null);
 
   async function handleToggleUnavailable(e, property) {
@@ -1459,8 +1749,18 @@ function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddL
                   className="w-full h-48 object-cover"
                 />
               ) : (
-                <div className={`w-full h-48 bg-gradient-to-br flex items-center justify-center ${property.unavailable ? "from-gray-100 to-gray-200" : "from-red-100 to-red-200"}`}>
-                  <Home className={`h-16 w-16 ${property.unavailable ? "text-gray-400" : "text-red-400"}`} />
+                <div
+                  className={`w-full h-48 bg-gradient-to-br flex items-center justify-center ${
+                    property.unavailable
+                      ? "from-gray-100 to-gray-200"
+                      : "from-red-100 to-red-200"
+                  }`}
+                >
+                  <Home
+                    className={`h-16 w-16 ${
+                      property.unavailable ? "text-gray-400" : "text-red-400"
+                    }`}
+                  />
                 </div>
               )}
               <Badge
@@ -1536,28 +1836,40 @@ function PropertiesSection({ user, setUser, handlePropertySelect, router, onAddL
                 <div className="flex items-center gap-1.5 text-xs text-gray-500">
                   <User className="h-3 w-3 shrink-0" />
                   <span className="truncate">
-                    Shared with: {property.coOwners.map((o) => o.name || "Unknown").join(", ")}
+                    Shared with:{" "}
+                    {property.coOwners
+                      .map((o) => o.name || "Unknown")
+                      .join(", ")}
                   </span>
                 </div>
               )}
 
               <div className="flex gap-2 pt-2 border-t border-gray-100">
                 <button
-                  onClick={(e) => { e.stopPropagation(); onEditListing(property); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditListing(property);
+                  }}
                   className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); onManageCoOwners(property); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onManageCoOwners(property);
+                  }}
                   className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-purple-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-purple-50 transition-colors"
                 >
                   <Users className="h-3.5 w-3.5" />
                   Co-owners
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); onDeleteListing(property); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteListing(property);
+                  }}
                   className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -1581,20 +1893,31 @@ function ReviewsSection({ user, viewAsId }) {
   const reviewsPerPage = 5;
 
   useEffect(() => {
-    fetch(`/api/landlord/reviews${viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : ""}`)
+    fetch(
+      `/api/landlord/reviews${
+        viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : ""
+      }`
+    )
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setReviews(data); })
+      .then((data) => {
+        if (Array.isArray(data)) setReviews(data);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
   const filteredReviews = reviews.filter((r) => {
-    const matchesListing = selectedListingId === "all" || r.listing?.id === selectedListingId;
-    const matchesRating = selectedRating === "all" || r.rating === Number(selectedRating);
+    const matchesListing =
+      selectedListingId === "all" || r.listing?.id === selectedListingId;
+    const matchesRating =
+      selectedRating === "all" || r.rating === Number(selectedRating);
     return matchesListing && matchesRating;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredReviews.length / reviewsPerPage));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredReviews.length / reviewsPerPage)
+  );
   const paginatedReviews = filteredReviews.slice(
     (currentPage - 1) * reviewsPerPage,
     currentPage * reviewsPerPage
@@ -1619,12 +1942,16 @@ function ReviewsSection({ user, viewAsId }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-48 text-gray-400">Loading…</div>
+        <div className="flex items-center justify-center h-48 text-gray-400">
+          Loading…
+        </div>
       ) : reviews.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">
           <Star className="h-8 w-8 text-gray-300" />
           <p className="text-gray-500 font-medium">No reviews yet</p>
-          <p className="text-sm text-gray-400">Approved tenant reviews will appear here.</p>
+          <p className="text-sm text-gray-400">
+            Approved tenant reviews will appear here.
+          </p>
         </div>
       ) : (
         <>
@@ -1633,7 +1960,9 @@ function ReviewsSection({ user, viewAsId }) {
             <div className="flex items-center gap-3">
               <Star className="h-6 w-6 text-yellow-400" />
               <span className="text-3xl font-bold">{avgRating}</span>
-              <span className="text-sm text-gray-500">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</span>
+              <span className="text-sm text-gray-500">
+                {reviews.length} review{reviews.length !== 1 ? "s" : ""}
+              </span>
             </div>
             <div className="flex items-end gap-2">
               {ratingCounts.map(({ stars, count }) => (
@@ -1641,7 +1970,9 @@ function ReviewsSection({ user, viewAsId }) {
                   <span className="text-xs text-gray-500">{count}</span>
                   <div
                     className="w-5 bg-red-500 rounded-t"
-                    style={{ height: `${Math.max(4, (count / maxCount) * 48)}px` }}
+                    style={{
+                      height: `${Math.max(4, (count / maxCount) * 48)}px`,
+                    }}
                   />
                   <span className="text-xs text-gray-400">{stars}★</span>
                 </div>
@@ -1653,7 +1984,10 @@ function ReviewsSection({ user, viewAsId }) {
           <div className="flex flex-wrap gap-3">
             <select
               value={selectedListingId}
-              onChange={(e) => { setSelectedListingId(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setSelectedListingId(e.target.value);
+                setCurrentPage(1);
+              }}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               <option value="all">All Properties</option>
@@ -1665,12 +1999,17 @@ function ReviewsSection({ user, viewAsId }) {
             </select>
             <select
               value={selectedRating}
-              onChange={(e) => { setSelectedRating(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setSelectedRating(e.target.value);
+                setCurrentPage(1);
+              }}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               <option value="all">All Ratings</option>
               {[5, 4, 3, 2, 1].map((n) => (
-                <option key={n} value={n}>{n} Stars</option>
+                <option key={n} value={n}>
+                  {n} Stars
+                </option>
               ))}
             </select>
           </div>
@@ -1679,14 +2018,23 @@ function ReviewsSection({ user, viewAsId }) {
           <Card>
             <CardContent className="p-6">
               {paginatedReviews.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">No reviews match the selected filters.</p>
+                <p className="text-sm text-gray-400 text-center py-8">
+                  No reviews match the selected filters.
+                </p>
               ) : (
                 <div className="space-y-6">
                   {paginatedReviews.map((review) => (
-                    <div key={review.id} className="border-b border-gray-100 last:border-0 pb-6 last:pb-0">
+                    <div
+                      key={review.id}
+                      className="border-b border-gray-100 last:border-0 pb-6 pt-6 last:pb-0"
+                    >
                       <div className="flex items-start gap-3">
                         {review.reviewer?.image ? (
-                          <img src={review.reviewer.image} alt="" className="h-9 w-9 rounded-full object-cover" />
+                          <img
+                            src={review.reviewer.image}
+                            alt=""
+                            className="h-9 w-9 rounded-full object-cover"
+                          />
                         ) : (
                           <div className="h-9 w-9 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                             <User className="h-4 w-4 text-gray-500" />
@@ -1694,7 +2042,9 @@ function ReviewsSection({ user, viewAsId }) {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-sm">{review.reviewer?.name || "Anonymous"}</span>
+                            <span className="font-medium text-sm">
+                              {review.reviewer?.name || "Anonymous"}
+                            </span>
                             <StarRating rating={review.rating} />
                             <span className="text-xs text-gray-400">
                               {new Date(review.createdAt).toLocaleDateString()}
@@ -1706,8 +2056,16 @@ function ReviewsSection({ user, viewAsId }) {
                             </p>
                           )}
                           {review.comment && (
-                            <p className="text-sm text-gray-700 mt-2">{review.comment}</p>
+                            <p className="text-sm text-gray-700 mt-2">
+                              {review.comment}
+                            </p>
                           )}
+                          {/* Landlord Reply */}
+                          <ReviewReplySection
+                            review={review}
+                            owner={user}
+                            isLandlord={true}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1727,9 +2085,13 @@ function ReviewsSection({ user, viewAsId }) {
               >
                 Previous
               </button>
-              <span className="text-sm text-gray-600">Page {currentPage} of {totalPages}</span>
+              <span className="text-sm text-gray-600">
+                Page {currentPage} of {totalPages}
+              </span>
               <button
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(p + 1, totalPages))
+                }
                 disabled={currentPage === totalPages}
                 className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50"
               >
@@ -1743,7 +2105,11 @@ function ReviewsSection({ user, viewAsId }) {
   );
 }
 
-const METRIC_COLORS = { clicks: "#dc2626", saves: "#d97706", contacts: "#2563eb" };
+const METRIC_COLORS = {
+  clicks: "#dc2626",
+  saves: "#d97706",
+  contacts: "#2563eb",
+};
 const METRIC_LABELS = { clicks: "Views", saves: "Saves", contacts: "Contacts" };
 const RANGE_OPTIONS_CHART = [
   { value: "7d", label: "7 days" },
@@ -1768,7 +2134,11 @@ function ListingMetricsChart({ listingId, viewAsId }) {
   const [range, setRange] = useState("30d");
   const [metrics, setMetrics] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedMetrics, setSelectedMetrics] = useState(["clicks", "saves", "contacts"]);
+  const [selectedMetrics, setSelectedMetrics] = useState([
+    "clicks",
+    "saves",
+    "contacts",
+  ]);
 
   useEffect(() => {
     if (!listingId) return;
@@ -1786,15 +2156,21 @@ function ListingMetricsChart({ listingId, viewAsId }) {
   const chartData = dates.map((d) => {
     const row = { date: fmtDate(d) };
     ["clicks", "saves", "contacts"].forEach((type) => {
-      const m = metrics.find((x) => x.metric_type === type && x.recorded_date === d);
+      const m = metrics.find(
+        (x) => x.metric_type === type && x.recorded_date === d
+      );
       row[type] = m?.count ?? 0;
     });
     return row;
   });
 
-  const maxValue = selectedMetrics.length > 0
-    ? Math.max(...chartData.flatMap((d) => selectedMetrics.map((t) => d[t] ?? 0)), 1)
-    : 1;
+  const maxValue =
+    selectedMetrics.length > 0
+      ? Math.max(
+          ...chartData.flatMap((d) => selectedMetrics.map((t) => d[t] ?? 0)),
+          1
+        )
+      : 1;
 
   const toggleMetric = (type) => {
     setSelectedMetrics((prev) =>
@@ -1807,7 +2183,9 @@ function ListingMetricsChart({ listingId, viewAsId }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">Engagement Over Time</CardTitle>
+        <CardTitle className="text-sm font-medium">
+          Engagement Over Time
+        </CardTitle>
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
             {["clicks", "saves", "contacts"].map((type) => {
@@ -1817,9 +2195,18 @@ function ListingMetricsChart({ listingId, viewAsId }) {
                   key={type}
                   onClick={() => toggleMetric(type)}
                   className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors border ${
-                    active ? "text-white" : "bg-white text-gray-400 border-gray-200"
+                    active
+                      ? "text-white"
+                      : "bg-white text-gray-400 border-gray-200"
                   }`}
-                  style={active ? { backgroundColor: METRIC_COLORS[type], borderColor: METRIC_COLORS[type] } : {}}
+                  style={
+                    active
+                      ? {
+                          backgroundColor: METRIC_COLORS[type],
+                          borderColor: METRIC_COLORS[type],
+                        }
+                      : {}
+                  }
                 >
                   {METRIC_LABELS[type]}
                 </button>
@@ -1845,29 +2232,47 @@ function ListingMetricsChart({ listingId, viewAsId }) {
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Loading…</div>
+          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+            Loading…
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <LineChart
+              data={chartData}
+              margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={tickInterval} />
-              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} domain={[0, maxValue]} />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11 }}
+                interval={tickInterval}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                allowDecimals={false}
+                domain={[0, maxValue]}
+              />
               <Tooltip
                 contentStyle={{ fontSize: 12 }}
                 formatter={(val, name) => [val, METRIC_LABELS[name] ?? name]}
               />
-              <Legend formatter={(name) => METRIC_LABELS[name] ?? name} wrapperStyle={{ fontSize: 12 }} />
-              {["clicks", "saves", "contacts"].filter((t) => selectedMetrics.includes(t)).map((type) => (
-                <Line
-                  key={type}
-                  type="monotone"
-                  dataKey={type}
-                  stroke={METRIC_COLORS[type]}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              ))}
+              <Legend
+                formatter={(name) => METRIC_LABELS[name] ?? name}
+                wrapperStyle={{ fontSize: 12 }}
+              />
+              {["clicks", "saves", "contacts"]
+                .filter((t) => selectedMetrics.includes(t))
+                .map((type) => (
+                  <Line
+                    key={type}
+                    type="monotone"
+                    dataKey={type}
+                    stroke={METRIC_COLORS[type]}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                ))}
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -1877,7 +2282,12 @@ function ListingMetricsChart({ listingId, viewAsId }) {
 }
 
 // Property Detail View
-function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p, onEditListing, viewAsId }) {
+function PropertyAnalyticsSection({
+  handleBackToProperties,
+  selectedProperty: p,
+  onEditListing,
+  viewAsId,
+}) {
   const router = useRouter();
   const [allTimeMetrics, setAllTimeMetrics] = useState([]);
   const [contactTotals, setContactTotals] = useState({});
@@ -1898,14 +2308,20 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
 
   if (!p) return null;
 
-  const totalViews = allTimeMetrics.filter((m) => m.metric_type === "clicks").reduce((sum, m) => sum + m.count, 0);
-  const totalSaves = allTimeMetrics.filter((m) => m.metric_type === "saves").reduce((sum, m) => sum + m.count, 0);
+  const totalViews = allTimeMetrics
+    .filter((m) => m.metric_type === "clicks")
+    .reduce((sum, m) => sum + m.count, 0);
+  const totalSaves = allTimeMetrics
+    .filter((m) => m.metric_type === "saves")
+    .reduce((sum, m) => sum + m.count, 0);
   const totalContacts = contactTotals[listingId] ?? 0;
 
   const units = p.unitTypes ?? [];
   const images = Array.isArray(p.images) ? p.images : [];
   const amenities = Array.isArray(p.amenities) ? p.amenities : [];
-  const utilities = Array.isArray(p.utilitiesIncluded) ? p.utilitiesIncluded : [];
+  const utilities = Array.isArray(p.utilitiesIncluded)
+    ? p.utilitiesIncluded
+    : [];
 
   const handleViewAsStudent = () => {
     window.open(`/browse?panel=${p._id || p.id}`, "_blank");
@@ -1929,13 +2345,13 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
           <h1 className="text-lg font-semibold text-gray-900">
             {p.title || p.address}
           </h1>
-          {p.title && (
-            <p className="text-sm text-gray-500">{p.address}</p>
-          )}
+          {p.title && <p className="text-sm text-gray-500">{p.address}</p>}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Badge
-            className={`${p.unavailable ? "bg-gray-500" : "bg-green-600"} text-white`}
+            className={`${
+              p.unavailable ? "bg-gray-500" : "bg-green-600"
+            } text-white`}
           >
             {p.unavailable ? "Unavailable" : "Available"}
           </Badge>
@@ -1975,11 +2391,32 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
       {/* Stat cards */}
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         {[
-          { label: "Views", value: totalViews, icon: <Eye className="h-4 w-4 text-red-600" /> },
-          { label: "Saves", value: totalSaves, icon: <Star className="h-4 w-4 text-yellow-500" /> },
-          { label: "Contacts", value: totalContacts, icon: <MessageSquare className="h-4 w-4 text-blue-500" /> },
-          { label: "Reviews", value: p.numReviews ?? 0, icon: <MessageSquare className="h-4 w-4 text-purple-500" /> },
-          { label: "Rating", value: p.numReviews > 0 ? `${Number(p.rating).toFixed(1)} / 5` : "—", icon: <ThumbsUp className="h-4 w-4 text-green-500" /> },
+          {
+            label: "Views",
+            value: totalViews,
+            icon: <Eye className="h-4 w-4 text-red-600" />,
+          },
+          {
+            label: "Saves",
+            value: totalSaves,
+            icon: <Star className="h-4 w-4 text-yellow-500" />,
+          },
+          {
+            label: "Contacts",
+            value: totalContacts,
+            icon: <MessageSquare className="h-4 w-4 text-blue-500" />,
+          },
+          {
+            label: "Reviews",
+            value: p.numReviews ?? 0,
+            icon: <MessageSquare className="h-4 w-4 text-purple-500" />,
+          },
+          {
+            label: "Rating",
+            value:
+              p.numReviews > 0 ? `${Number(p.rating).toFixed(1)} / 5` : "—",
+            icon: <ThumbsUp className="h-4 w-4 text-green-500" />,
+          },
         ].map(({ label, value, icon }) => (
           <Card key={label}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1998,20 +2435,32 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
 
       {/* Details */}
       <Card>
-        <CardHeader><CardTitle>Property Details</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Property Details</CardTitle>
+        </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 text-sm">
             {[
               { label: "Home type", value: p.homeType },
               { label: "Lease type", value: p.leaseType },
               { label: "Furnished", value: p.furnished ? "Yes" : "No" },
-              { label: "Sublease friendly", value: p.subleaseFriendly ? "Yes" : "No" },
-              { label: "Move-in date", value: p.moveInDate ? new Date(p.moveInDate).toLocaleDateString() : "—" },
+              {
+                label: "Sublease friendly",
+                value: p.subleaseFriendly ? "Yes" : "No",
+              },
+              {
+                label: "Move-in date",
+                value: p.moveInDate
+                  ? new Date(p.moveInDate).toLocaleDateString()
+                  : "—",
+              },
               { label: "Rent range", value: getRentRangeLabel(units) || "—" },
             ].map(({ label, value }) => (
               <div key={label}>
                 <dt className="text-gray-500 font-medium">{label}</dt>
-                <dd className="text-gray-900 capitalize mt-0.5">{value ?? "—"}</dd>
+                <dd className="text-gray-900 capitalize mt-0.5">
+                  {value ?? "—"}
+                </dd>
               </div>
             ))}
           </dl>
@@ -2021,25 +2470,47 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
       {/* Units */}
       {units.length > 0 && (
         <Card>
-          <CardHeader><CardTitle>Units ({units.length})</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Units ({units.length})</CardTitle>
+          </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-left">
-                    {["Beds", "Baths", "Rent / mo", "Area (sq ft)", "Availability"].map((h) => (
-                      <th key={h} className="px-4 py-2.5 font-medium text-gray-500 whitespace-nowrap">{h}</th>
+                    {[
+                      "Beds",
+                      "Baths",
+                      "Rent / mo",
+                      "Area (sq ft)",
+                      "Availability",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-2.5 font-medium text-gray-500 whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {units.map((u, i) => (
-                    <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                    <tr
+                      key={i}
+                      className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
+                    >
                       <td className="px-4 py-2.5">{u.bedrooms ?? "—"}</td>
                       <td className="px-4 py-2.5">{u.bathrooms ?? "—"}</td>
-                      <td className="px-4 py-2.5">{u.rent != null ? `$${u.rent.toLocaleString()}` : "—"}</td>
-                      <td className="px-4 py-2.5">{u.area != null ? u.area.toLocaleString() : "—"}</td>
-                      <td className="px-4 py-2.5">{u.leaseAvailability ?? "—"}</td>
+                      <td className="px-4 py-2.5">
+                        {u.rent != null ? `$${u.rent.toLocaleString()}` : "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {u.area != null ? u.area.toLocaleString() : "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {u.leaseAvailability ?? "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2054,11 +2525,18 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
         <div className="grid gap-4 sm:grid-cols-2">
           {amenities.length > 0 && (
             <Card>
-              <CardHeader><CardTitle>Amenities</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Amenities</CardTitle>
+              </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
                   {amenities.map((a) => (
-                    <span key={a} className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">{a}</span>
+                    <span
+                      key={a}
+                      className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium"
+                    >
+                      {a}
+                    </span>
                   ))}
                 </div>
               </CardContent>
@@ -2066,11 +2544,18 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
           )}
           {utilities.length > 0 && (
             <Card>
-              <CardHeader><CardTitle>Utilities Included</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Utilities Included</CardTitle>
+              </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
                   {utilities.map((u) => (
-                    <span key={u} className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">{u}</span>
+                    <span
+                      key={u}
+                      className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium"
+                    >
+                      {u}
+                    </span>
                   ))}
                 </div>
               </CardContent>
@@ -2082,12 +2567,29 @@ function PropertyAnalyticsSection({ handleBackToProperties, selectedProperty: p,
       {/* Contact info */}
       {(p.contactName || p.contactEmail || p.contactPhone) && (
         <Card>
-          <CardHeader><CardTitle>Contact Info</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Contact Info</CardTitle>
+          </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-              {p.contactName  && <div><dt className="text-gray-500 font-medium">Name</dt><dd className="mt-0.5">{p.contactName}</dd></div>}
-              {p.contactEmail && <div><dt className="text-gray-500 font-medium">Email</dt><dd className="mt-0.5 break-all">{p.contactEmail}</dd></div>}
-              {p.contactPhone && <div><dt className="text-gray-500 font-medium">Phone</dt><dd className="mt-0.5">{p.contactPhone}</dd></div>}
+              {p.contactName && (
+                <div>
+                  <dt className="text-gray-500 font-medium">Name</dt>
+                  <dd className="mt-0.5">{p.contactName}</dd>
+                </div>
+              )}
+              {p.contactEmail && (
+                <div>
+                  <dt className="text-gray-500 font-medium">Email</dt>
+                  <dd className="mt-0.5 break-all">{p.contactEmail}</dd>
+                </div>
+              )}
+              {p.contactPhone && (
+                <div>
+                  <dt className="text-gray-500 font-medium">Phone</dt>
+                  <dd className="mt-0.5">{p.contactPhone}</dd>
+                </div>
+              )}
             </dl>
           </CardContent>
         </Card>
@@ -2240,7 +2742,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     const propertyId = params.get("property");
     if (tab) setActiveView(tab);
     if (propertyId) {
-      const listing = user.listings?.find((l) => l._id === propertyId || l.id === propertyId);
+      const listing = user.listings?.find(
+        (l) => l._id === propertyId || l.id === propertyId
+      );
       if (listing) setSelectedProperty(listing);
     }
   }, [user]);
@@ -2262,7 +2766,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       name: user.name || "",
       phone: user.phone || "",
       description: user.description || "",
-      birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
+      birthday: user.birthday
+        ? new Date(user.birthday).toISOString().split("T")[0]
+        : "",
       gender: user.gender || "unspecified",
       referralSource: user.referralSource || "",
       role: (user.role || "landlord").toLowerCase(),
@@ -2298,7 +2804,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         name: user.name || "",
         phone: user.phone || "",
         description: user.description || "",
-        birthday: user.birthday ? new Date(user.birthday).toISOString().split("T")[0] : "",
+        birthday: user.birthday
+          ? new Date(user.birthday).toISOString().split("T")[0]
+          : "",
         gender: user.gender || "unspecified",
         referralSource: user.referralSource || "",
         role: (user.role || "landlord").toLowerCase(),
@@ -2333,9 +2841,18 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       const newRole = (updated?.role ?? form.role ?? "").toLowerCase();
       if (newRole && newRole !== initialRole) {
         await updateSession({ role: newRole });
-        if (newRole === "student") { router.replace("/dashboard/student"); return; }
-        if (newRole === "parent" || newRole === "other") { router.replace("/dashboard/student"); return; }
-        if (newRole === "super" || newRole === "admin") { router.replace("/dashboard/admin"); return; }
+        if (newRole === "student") {
+          router.replace("/dashboard/student");
+          return;
+        }
+        if (newRole === "parent" || newRole === "other") {
+          router.replace("/dashboard/student");
+          return;
+        }
+        if (newRole === "super" || newRole === "admin") {
+          router.replace("/dashboard/admin");
+          return;
+        }
       }
     } catch (e) {
       console.error(e);
@@ -2346,14 +2863,23 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   };
 
   const handleAddListing = () => setListingModal({ mode: "add" });
-  const handleEditListing = (listing) => setListingModal({ mode: "edit", listing });
+  const handleEditListing = (listing) =>
+    setListingModal({ mode: "edit", listing });
   const handleManageCoOwners = (listing) => setCoOwnersModal(listing);
   const handleDeleteListing = async (property) => {
-    if (!confirm(`Delete "${property.title || property.address}"? This cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Delete "${property.title || property.address}"? This cannot be undone.`
+      )
+    )
+      return;
     try {
-      const res = await fetch(`/api/landlord/listings/${property._id || property.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/landlord/listings/${property._id || property.id}`,
+        {
+          method: "DELETE",
+        }
+      );
       if (res.ok) {
         setUser((prev) => ({
           ...prev,
@@ -2368,7 +2894,10 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       alert("Network error.");
     }
   };
-  const handleListingModalSuccess = async (updatedUnits = null, profileDiff = null) => {
+  const handleListingModalSuccess = async (
+    updatedUnits = null,
+    profileDiff = null
+  ) => {
     if (updatedUnits && listingModal?.listing) {
       const listingId = listingModal.listing._id || listingModal.listing.id;
       setUser((prev) => ({
@@ -2394,16 +2923,23 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   };
 
   const handleProfileUpdate = async (shouldUpdate) => {
-    if (!shouldUpdate) { setProfileUpdatePrompt(null); return; }
+    if (!shouldUpdate) {
+      setProfileUpdatePrompt(null);
+      return;
+    }
     setUpdatingProfile(true);
     try {
       await fetch("/api/editProfile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(profileUpdatePrompt.name  && { name:  profileUpdatePrompt.name }),
-          ...(profileUpdatePrompt.email && { email: profileUpdatePrompt.email }),
-          ...(profileUpdatePrompt.phone && { phone: profileUpdatePrompt.phone }),
+          ...(profileUpdatePrompt.name && { name: profileUpdatePrompt.name }),
+          ...(profileUpdatePrompt.email && {
+            email: profileUpdatePrompt.email,
+          }),
+          ...(profileUpdatePrompt.phone && {
+            phone: profileUpdatePrompt.phone,
+          }),
         }),
       });
       await fetchUser();
@@ -2428,7 +2964,10 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   const handlePropertySelect = (property) => {
     setSelectedProperty(property);
     setActiveView("property-analytics");
-    const p = new URLSearchParams({ tab: "properties", property: property._id || property.id });
+    const p = new URLSearchParams({
+      tab: "properties",
+      property: property._id || property.id,
+    });
     if (viewAsId) p.set("viewAs", viewAsId);
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
@@ -2528,17 +3067,27 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
               Update your Proximity profile?
             </h3>
             <p className="text-sm text-gray-600">
-              The contact info you entered is different from what&apos;s on your profile. Would you like to update your profile too?
+              The contact info you entered is different from what&apos;s on your
+              profile. Would you like to update your profile too?
             </p>
             <ul className="text-sm text-gray-800 space-y-1 bg-gray-50 rounded-lg p-3">
               {profileUpdatePrompt.name && (
-                <li><span className="font-medium">Name:</span> {profileUpdatePrompt.name}</li>
+                <li>
+                  <span className="font-medium">Name:</span>{" "}
+                  {profileUpdatePrompt.name}
+                </li>
               )}
               {profileUpdatePrompt.email && (
-                <li><span className="font-medium">Email:</span> {profileUpdatePrompt.email}</li>
+                <li>
+                  <span className="font-medium">Email:</span>{" "}
+                  {profileUpdatePrompt.email}
+                </li>
               )}
               {profileUpdatePrompt.phone && (
-                <li><span className="font-medium">Phone:</span> {profileUpdatePrompt.phone}</li>
+                <li>
+                  <span className="font-medium">Phone:</span>{" "}
+                  {profileUpdatePrompt.phone}
+                </li>
               )}
             </ul>
             <div className="flex gap-2 justify-end pt-2">
@@ -2562,125 +3111,133 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           </div>
         </div>
       )}
-    <div className="w-full min-h-screen bg-gray-50 font-sans">
-      {isViewingAs && user && (
-        <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
-          <span>
-            Viewing as <span className="font-semibold">{user.name || user.email}</span>
-            <span className="ml-2 text-gray-400 font-mono text-xs">{user.id}</span>
-          </span>
-          <a href="/dashboard/admin" className="text-gray-300 hover:text-white underline">← Exit</a>
-        </div>
-      )}
-      <div className="flex">
-        {/* Mobile backdrop — only visible when sidebar is open on < md */}
-        {sidebarOpen && (
-          <div
-            className="md:hidden fixed inset-0 bg-black/40 z-30"
-            onClick={() => setSidebarOpen(false)}
-            aria-hidden="true"
-          />
+      <div className="w-full min-h-screen bg-gray-50 font-sans">
+        {isViewingAs && user && (
+          <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
+            <span>
+              Viewing as{" "}
+              <span className="font-semibold">{user.name || user.email}</span>
+              <span className="ml-2 text-gray-400 font-mono text-xs">
+                {user.id}
+              </span>
+            </span>
+            <a
+              href="/dashboard/admin"
+              className="text-gray-300 hover:text-white underline"
+            >
+              ← Exit
+            </a>
+          </div>
         )}
-
-        {/* Sidebar: fixed drawer on mobile, sticky column on desktop */}
-        <aside
-          className={`${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
-        >
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
-                P
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold">Proximity</span>
-                <span className="text-xs text-gray-500">Landlord Portal</span>
-              </div>
-            </div>
-            <button
+        <div className="flex">
+          {/* Mobile backdrop — only visible when sidebar is open on < md */}
+          {sidebarOpen && (
+            <div
+              className="md:hidden fixed inset-0 bg-black/40 z-30"
               onClick={() => setSidebarOpen(false)}
-              className="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-md"
-              aria-label="Close menu"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+              aria-hidden="true"
+            />
+          )}
 
-          <div className="p-4 space-y-6">
-            <div>
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                Overview
-              </h3>
-              <div className="space-y-1">
-                <button
-                  onClick={() => handleNavigation("profile")}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "profile"
-                      ? "bg-red-50 text-red-700"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <User className="h-4 w-4" />
-                  My Profile
-                </button>
-                <button
-                  onClick={() => handleNavigation("analytics")}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "analytics"
-                      ? "bg-red-50 text-red-700"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Analytics
-                </button>
-                <button
-                  onClick={() => handleNavigation("properties")}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "properties" || selectedProperty
-                      ? "bg-red-50 text-red-700"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <MapPin className="h-4 w-4" />
-                  Properties
-                </button>
-                <button
-                  onClick={() => handleNavigation("reviews")}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                    activeView === "reviews"
-                      ? "bg-red-50 text-red-700"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <Star className="h-4 w-4" />
-                  Reviews
-                </button>
+          {/* Sidebar: fixed drawer on mobile, sticky column on desktop */}
+          <aside
+            className={`${
+              sidebarOpen ? "translate-x-0" : "-translate-x-full"
+            } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
+          >
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
+                  P
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold">Proximity</span>
+                  <span className="text-xs text-gray-500">Landlord Portal</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-md"
+                aria-label="Close menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-6">
+              <div>
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                  Overview
+                </h3>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => handleNavigation("profile")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "profile"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <User className="h-4 w-4" />
+                    My Profile
+                  </button>
+                  <button
+                    onClick={() => handleNavigation("analytics")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "analytics"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics
+                  </button>
+                  <button
+                    onClick={() => handleNavigation("properties")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "properties" || selectedProperty
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <MapPin className="h-4 w-4" />
+                    Properties
+                  </button>
+                  <button
+                    onClick={() => handleNavigation("reviews")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "reviews"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Star className="h-4 w-4" />
+                    Reviews
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </aside>
+          </aside>
 
-        {/* Main Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-20">
-            <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate min-w-0">
-              {getPageTitle()}
-            </h1>
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="md:hidden p-2 -mr-2 text-gray-700 hover:bg-gray-100 rounded-md flex-shrink-0"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-          </div>
+          {/* Main Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-20">
+              <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate min-w-0">
+                {getPageTitle()}
+              </h1>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden p-2 -mr-2 text-gray-700 hover:bg-gray-100 rounded-md flex-shrink-0"
+                aria-label="Open menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            </div>
 
-          <main className="p-4 sm:p-6">{renderContent()}</main>
+            <main className="p-4 sm:p-6">{renderContent()}</main>
+          </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

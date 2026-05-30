@@ -24,6 +24,7 @@ import {
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { trackEvent } from "@/utils/analytics";
+import ReviewReplySection from "./ReviewReplySection";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -455,8 +456,6 @@ function ReviewsTab({
   // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
   const [voteOverrides, setVoteOverrides] = useState({});
 
-  const [replyTexts, setReplyTexts] = useState({});
-
   async function handleVote(reviewId, vote) {
     if (!session?.user) return;
     try {
@@ -476,36 +475,7 @@ function ReviewsTab({
   const userId = session?.user?.id;
   const isLandlord =
     listing?.owner?._id === userId || listing?.owner?.id === userId;
-
-  async function handleReplySubmit(reviewId) {
-    const reply = replyTexts[reviewId];
-
-    if (!reply?.trim()) return;
-
-    try {
-      const res = await fetch("/api/replyReview", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          reviewId,
-          reply,
-        }),
-      });
-
-      if (!res.ok) {
-        toast.error("Failed to post reply");
-        return;
-      }
-
-      toast.success("Reply posted!");
-
-      window.location.reload();
-    } catch {
-      toast.error("Something went wrong");
-    }
-  }
+  console.log("Listing:\n", listing);
 
   return (
     <div>
@@ -626,55 +596,11 @@ function ReviewsTab({
                     <p className="text-gray-700 text-sm leading-relaxed">
                       {review.comment}
                     </p>
-                    {review.landlordReply && (
-                      <div className="mt-3 ml-4 border-l-2 border-red-200 pl-3">
-                        <div className="text-xs font-semibold text-red-600 mb-1">
-                          Landlord Reply
-                        </div>
-
-                        <p className="text-sm text-gray-600 leading-relaxed">
-                          {review.landlordReply.reply}
-                        </p>
-
-                        {review.landlordReply.createdAt && (
-                          <div className="text-[11px] text-gray-400 mt-1">
-                            {new Date(
-                              review.landlordReply.createdAt
-                            ).toLocaleDateString("en-US", {
-                              month: "long",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {isLandlord && !review.landlordReply && (
-                      <div className="mt-4 border-t border-gray-100 pt-3">
-                        <textarea
-                          value={replyTexts[review._id] || ""}
-                          onChange={(e) =>
-                            setReplyTexts((prev) => ({
-                              ...prev,
-                              [review._id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Reply to this review..."
-                          rows={3}
-                          className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
-                        />
-
-                        <div className="flex justify-end mt-2">
-                          <button
-                            type="button"
-                            onClick={() => handleReplySubmit(review._id)}
-                            className="bg-red-600 text-white text-xs font-medium px-4 py-2 rounded-full hover:bg-red-700 transition"
-                          >
-                            Reply
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <ReviewReplySection
+                      review={review}
+                      owner={listing?.owner}
+                      isLandlord={isLandlord}
+                    />
                   </div>
                   <div className="flex gap-4 text-xs text-gray-400">
                     {(() => {
