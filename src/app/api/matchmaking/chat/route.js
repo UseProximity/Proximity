@@ -48,7 +48,7 @@ export async function POST(request) {
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const body = await request.json();
-    const { sessionId, message } = body;
+    const { sessionId, message, answer, preferences, weights, action, transcript } = body;
 
     let chatSession;
 
@@ -85,14 +85,37 @@ export async function POST(request) {
       chatSession = data;
     }
 
-    const { assistantMessage, session: updatedSession } = await handleTurn({
+    // Rewind: the user clicked "edit" on a past prompt. Replace the session's
+    // prefs/weights/transcript with the client's truncated, authoritative copy.
+    if (action === "rewind") {
+      const { error: rewindErr } = await supabase
+        .from("matchmaking_chat_sessions")
+        .update({
+          preferences: preferences ?? chatSession.preferences,
+          weights: weights ?? chatSession.weights,
+          transcript: transcript ?? chatSession.transcript,
+          recommendations: [],
+          status: "in_progress",
+        })
+        .eq("id", chatSession.id);
+      if (rewindErr) {
+        return NextResponse.json({ error: "Failed to rewind session" }, { status: 500 });
+      }
+      return NextResponse.json({ sessionId: chatSession.id, status: "in_progress", nextQuestion: null });
+    }
+
+    const { assistantMessage, nextQuestion, session: updatedSession } = await handleTurn({
       session: chatSession,
-      userMessage: message ?? "",
+      answer: answer ?? null,
+      message: message ?? "",
+      preferences: preferences ?? null,
+      weights: weights ?? null,
     });
 
     return NextResponse.json({
       sessionId: updatedSession.id,
       assistantMessage,
+      nextQuestion,
       preferences: updatedSession.preferences,
       weights: updatedSession.weights,
       candidates: updatedSession.candidates,

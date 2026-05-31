@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble";
+import RecommendationCards from "./RecommendationCards";
 
 function TypingDots() {
   return (
@@ -22,20 +23,32 @@ function TypingDots() {
   );
 }
 
-export default function ChatWindow({ messages, loading, onSend }) {
+export default function ChatWindow({ messages, loading, onSend, onAnswer, onEdit }) {
   const scrollRef = useRef(null);
   const lastMsgRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Scroll so the TOP of the newest message is visible; input stays pinned below
+  // Scroll the chat container ONLY (never the page) so the top of the newest
+  // message is visible. Using scrollIntoView here would bubble up and scroll the
+  // whole page; instead we adjust this container's own scrollTop.
   useEffect(() => {
-    if (lastMsgRef.current) {
-      lastMsgRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else if (scrollRef.current) {
-      // No messages yet (loading state) — scroll to top to show typing dots
-      scrollRef.current.scrollTop = 0;
+    const container = scrollRef.current;
+    if (!container) return;
+    const el = lastMsgRef.current;
+    if (el) {
+      const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTo({ top: container.scrollTop + delta, behavior: "smooth" });
+    } else {
+      container.scrollTop = 0;
     }
   }, [messages.length, loading]);
+
+  // Once a bubble finishes typing (and its chips render), scroll so the WHOLE
+  // bubble is in view — the bubble's height isn't known until typing completes.
+  const scrollToBottom = useCallback(() => {
+    const container = scrollRef.current;
+    if (container) container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  }, []);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -61,18 +74,39 @@ export default function ChatWindow({ messages, loading, onSend }) {
     <div className="flex-1 min-h-0 flex flex-col">
 
       {/* Scrollable message list — grows, shrinks, scrolls internally */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-8 space-y-3">
         {messages.length === 0 && loading && (
           <p className="text-xs text-gray-400 text-center pt-2">Proxy is starting up…</p>
         )}
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            ref={i === messages.length - 1 ? lastMsgRef : null}
-          >
-            <MessageBubble message={msg} />
-          </div>
-        ))}
+        {messages.map((msg, i) => {
+          const isLast = i === messages.length - 1;
+          return (
+            <div key={i} ref={isLast ? lastMsgRef : null}>
+              {msg.recommendations ? (
+                // Cards first, then Proxy's message beneath them, then chat continues
+                <div className="space-y-3">
+                  <RecommendationCards recommendations={msg.recommendations} />
+                  <div className="flex items-end gap-2">
+                    <div className="w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                      P
+                    </div>
+                    <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm leading-snug">
+                      {msg.content}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <MessageBubble
+                  message={msg}
+                  // The latest question is answerable; past prompts get an Edit button
+                  onAnswer={isLast && msg.question && !loading ? onAnswer : undefined}
+                  onEdit={msg.question && !(isLast && !loading) && onEdit ? () => onEdit(msg.question.id) : undefined}
+                  onReady={isLast ? scrollToBottom : undefined}
+                />
+              )}
+            </div>
+          );
+        })}
         {loading && (
           <div ref={messages.length === 0 ? lastMsgRef : null}>
             <TypingDots />
@@ -87,7 +121,7 @@ export default function ChatWindow({ messages, loading, onSend }) {
             ref={inputRef}
             type="text"
             onKeyDown={handleKeyDown}
-            placeholder="Type a message…"
+            placeholder="Tap an option above, or type instead…"
             disabled={loading}
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50"
           />
