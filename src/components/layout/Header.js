@@ -132,11 +132,11 @@ export function Header({ session }) {
 
         {/* ── Right: Search + Auth + Hamburger ── */}
         <div className="flex items-center gap-2">
-          {/* Search */}
+          {/* Search 
           <div className="relative flex-shrink-0">
             {searchOpen ? (
               <>
-                {/* Spacer keeps the close-button slot in flow so auth buttons don't shift */}
+                Spacer keeps the close-button slot in flow so auth buttons don't shift
                 <div
                   className="w-11 h-11 opacity-0 pointer-events-none"
                   aria-hidden="true"
@@ -174,6 +174,7 @@ export function Header({ session }) {
               </button>
             )}
           </div>
+          */}
 
           {/* Auth buttons — desktop only */}
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
@@ -307,13 +308,19 @@ export function Header({ session }) {
               {/* Log In + Sign Up side by side */}
               <div className="flex gap-2 w-full">
                 <button
-                  onClick={() => { setMobileMenuOpen(false); router.push("/login"); }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push("/login");
+                  }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 transition-all text-center"
                 >
                   Log In
                 </button>
                 <button
-                  onClick={() => { setMobileMenuOpen(false); router.push("/login?tab=signup"); }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push("/login?tab=signup");
+                  }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-white bg-red-500 hover:bg-red-600 transition-all text-center"
                 >
                   Sign Up

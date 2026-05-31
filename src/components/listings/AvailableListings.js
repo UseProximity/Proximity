@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
 import MapPopupCard, {
@@ -10,11 +10,6 @@ import MapPopupCard, {
   MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
-import {
-  getAreaRangeLabel,
-  getRentRangeLabel,
-  getUnitValuesLabel,
-} from "@/utils/listingFormatters";
 import {
   SLIDER_CSS,
   FilterSection,
@@ -231,13 +226,6 @@ export default function AvailableListings({
     params.delete("panel");
     const qs = params.toString();
     router.replace("/browse" + (qs ? "?" + qs : ""));
-  };
-
-  const handleListingClick = (listingId) => {
-    if (!listingId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("listing", listingId);
-    router.push(`/browse?${params.toString()}`);
   };
 
   const toggleMobileArray = (field, value) => {
@@ -501,6 +489,76 @@ export default function AvailableListings({
                     Show all
                   </button>
                 )}
+              </div>
+              {/* Search */}
+              <div className="px-4 pt-2 pb-3 bg-gray-50">
+                <label className="mb-2 ml-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                  Search
+                </label>
+
+                <div
+                  className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3.5 py-3 shadow-sm transition
+               focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-500/10"
+                >
+                  <svg
+                    className="h-4 w-4 text-red-500 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"
+                    />
+                  </svg>
+
+                  <input
+                    type="text"
+                    placeholder="Search location or home"
+                    value={search || ""}
+                    onChange={(e) => setSearch && setSearch(e.target.value)}
+                    onBlur={() => {
+                      const url = new URL(window.location);
+                      if (search) {
+                        url.searchParams.set("search", search);
+                      } else {
+                        url.searchParams.delete("search");
+                      }
+                      window.history.replaceState({}, "", url);
+                    }}
+                    className="min-w-0 flex-1 border-0 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-400"
+                  />
+
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch && setSearch("");
+                        const url = new URL(window.location);
+                        url.searchParams.delete("search");
+                        window.history.replaceState({}, "", url);
+                      }}
+                      className="grid h-7 w-7 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:scale-95"
+                      aria-label="Clear search"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2.5}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="px-4 pb-3 flex items-center gap-2">
                 <button
