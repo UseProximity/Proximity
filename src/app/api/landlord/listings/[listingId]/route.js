@@ -95,6 +95,25 @@ export async function PATCH(req, { params }) {
     return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
   })();
 
+  // rpc_edit_listing deletes + reinserts unit_leases when p_units is supplied,
+  // so carry the canonical sublease flag (unit_leases.sublease) through. Derive
+  // it from lease_type in the edit; if the edit omits lease_type, fall back to
+  // the listing's stored value so an unrelated edit doesn't clear the flag.
+  let unitsPayload = null;
+  if (Array.isArray(units)) {
+    let leaseType = safeUpdates.lease_type;
+    if (leaseType === undefined) {
+      const { data: existing } = await supabase
+        .from("listings")
+        .select("lease_type")
+        .eq("id", listingId)
+        .maybeSingle();
+      leaseType = existing?.lease_type;
+    }
+    const isSublease = String(leaseType ?? "").toLowerCase() === "sublease";
+    unitsPayload = units.map((u) => ({ ...u, sublease: isSublease }));
+  }
+
   // All writes in one RPC transaction so fn_action_log captures the real user ID
   // Convert units → listing_leases format for dual-write during transition.
   const leasesPayload = Array.isArray(units)
@@ -117,7 +136,7 @@ export async function PATCH(req, { params }) {
     p_amenities: amenities !== undefined ? boolRow(AMENITY_COLS, amenities) : null,
     p_utilities: utilities_included !== undefined ? boolRow(UTILITY_COLS, utilities_included) : null,
     p_images_keep: Array.isArray(images) ? images.filter((u) => typeof u === "string" && u) : null,
-    p_units: Array.isArray(units) ? units : null,
+    p_units: unitsPayload,
     p_lease_availability: leaseAvailabilityVal,
     p_leases: leasesPayload,
   });

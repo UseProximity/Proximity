@@ -2234,6 +2234,11 @@ export default function AdminDashboard() {
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-gray-800 truncate">{u.name}</p>
                             <p className="text-xs text-gray-400 truncate">{u.email} · {u.total} referral{u.total === 1 ? "" : "s"}</p>
+                            {u.paymentHandle && (
+                              <p className="text-[10px] text-emerald-600 truncate">
+                                {u.paymentMethod === "venmo" ? "Venmo" : u.paymentMethod === "zelle" ? "Zelle" : "Pay"}: {u.paymentHandle}
+                              </p>
+                            )}
                           </div>
                           <button
                             onClick={() => copyReferralLink(u.id)}
@@ -2276,6 +2281,11 @@ export default function AdminDashboard() {
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-gray-800 truncate">{r.name}</p>
                             <p className="text-xs text-gray-400 truncate">{r.email}</p>
+                            {r.paymentHandle && (
+                              <p className="text-[10px] text-emerald-600 truncate">
+                                {r.paymentMethod === "venmo" ? "Venmo" : r.paymentMethod === "zelle" ? "Zelle" : "Pay"}: {r.paymentHandle}
+                              </p>
+                            )}
                           </div>
                         </button>
                         <div className="flex items-center gap-3 flex-shrink-0">
