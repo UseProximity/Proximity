@@ -218,7 +218,15 @@ export async function POST(req) {
       console.error("[addListing] Failed to resolve walk times:", wtErr?.message);
     }
 
+    // A listing is a sublease when its lease type is "sublease". The dashboard
+    // "Add Sublease" modal sends snake_case lease_type; the public form sends
+    // camelCase leaseType — accept either. unit_leases.sublease is the canonical
+    // per-lease flag the app reads.
+    const resolvedLeaseType = leaseType ?? body.lease_type ?? "standard";
+    const isSublease = String(resolvedLeaseType).toLowerCase() === "sublease";
+
     // Build leases array — accept new `leases` payload or convert legacy `unitTypes`.
+    // A per-lease `sublease` flag wins when provided, else fall back to the listing-level type.
     const leaseData = (body.leases ?? unitTypes).map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
@@ -228,7 +236,7 @@ export async function POST(req) {
       beds_in_lease: unit.beds_in_lease ?? null,
       lease_term_months: unit.lease_term_months ?? 12,
       available_from: unit.available_from ?? unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
-      sublease: unit.sublease ?? false,
+      sublease: unit.sublease ?? isSublease,
       summer_only: unit.summer_only ?? false,
       semester_only: unit.semester_only ?? false,
       unit_group_label: unit.unit_group_label ?? null,
@@ -242,7 +250,7 @@ export async function POST(req) {
         longitude: resolvedLng,
         latitude: resolvedLat,
         description,
-        lease_type: leaseType || "standard",
+        lease_type: resolvedLeaseType,
         home_type_id: homeTypeId,
         lease_structure: leaseStructure ?? null,
         sublease_friendly: subleaseFriendly ?? false,
