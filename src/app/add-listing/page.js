@@ -26,7 +26,7 @@ export default function AddListing() {
   });
 
   const [unitTypes, setUnitTypes] = useState([
-    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
   ]);
 
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -237,7 +237,7 @@ export default function AddListing() {
   const handleAddUnitType = () => {
     setUnitTypes((prev) => [
       ...prev,
-      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
     ]);
   };
 
@@ -328,6 +328,7 @@ export default function AddListing() {
           area: unit.area == "" ? undefined : Number(unit.area),
           bedrooms: Number(unit.bedrooms),
           bathrooms: Number(unit.bathrooms),
+          available: unit.available !== false,
         })),
         longitude: Number(formData.longitude),
         latitude: Number(formData.latitude),
@@ -412,7 +413,7 @@ export default function AddListing() {
         images: [],
       });
       setUnitTypes([
-        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
       ]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -605,6 +606,21 @@ export default function AddListing() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={unit.available !== false}
+                        onChange={(e) =>
+                          handleUnitTypeChange(
+                            index,
+                            "available",
+                            e.target.checked
+                          )
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      />
+                      Available
+                    </label>
                   </div>
                 </div>
               ))}
