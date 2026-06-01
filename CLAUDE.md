@@ -8,6 +8,7 @@ This file mirrors the authoritative project knowledge served by the local **`pro
 
 - **Branch & PR flow**: For every fix/feature, branch off `staging` (e.g. `feat/...`, `fix/...`). Implement the change, then give the user a **test plan and wait for approval** — do not push before approval. After approval, push the branch and open a **PR into `staging`**.
 - **Keep knowledge current**: After any substantial architectural change (new/removed/changed API route, component, page, util, env var, DB schema change, or convention), update the MCP knowledge — call the `update-knowledge` tool (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase.
+- **No AI attribution in git**: Never add a "Co-Authored-By: Claude" trailer or a "Generated with Claude Code" footer to commit messages or PR descriptions — write them as a normal contributor would.
 - Do what's asked — nothing more, nothing less. Prefer editing existing files over creating new ones. Don't create docs/README files unless asked.
 - Always read a file before editing it. Never commit secrets, credentials, or `.env*` files.
 

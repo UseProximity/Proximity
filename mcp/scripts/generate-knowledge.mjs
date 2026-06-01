@@ -267,6 +267,8 @@ function generateDomain() {
       ],
       knowledgeMaintenance:
         "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase.",
+      commitStyle:
+        "Do NOT add AI/Claude attribution to commit messages or PR descriptions — no 'Co-Authored-By: Claude' trailer and no 'Generated with Claude Code' footer. Write them as a normal human contributor would.",
     },
 
     keyWorkflows: {
