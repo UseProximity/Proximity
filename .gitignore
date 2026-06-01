@@ -76,7 +76,8 @@ mcp/knowledge/
 !mcp/scripts/
 !mcp/scripts/**
 
-.mcp.json
+# .mcp.json is committed so the team shares MCP server setup. It contains no
+# secrets — the Supabase access token is env-interpolated (${SUPABASE_ACCESS_TOKEN}).
 
 # Local documentation — not version controlled
 docs/

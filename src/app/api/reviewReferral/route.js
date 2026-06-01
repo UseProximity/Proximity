@@ -21,6 +21,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 
 export const dynamic = "force-dynamic";
@@ -420,6 +421,19 @@ export async function POST(req) {
       }
       resolvedListingId = stubId;
       isNewProperty = true;
+
+      // Give the new stub a default Street View photo (best-effort; never blocks the review).
+      try {
+        await fetchAndStoreStreetView({
+          supabase,
+          listingId: resolvedListingId,
+          address: addressText,
+          lat: latitude,
+          lng: longitude,
+        });
+      } catch (svErr) {
+        console.error("reviewReferral: Street View attach failed:", svErr?.message);
+      }
     }
 
     // ── Insert the review (auto-published) ──────────────────────────────────

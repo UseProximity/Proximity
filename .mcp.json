@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "proximity": {
+      "command": "node",
+      "args": [
+        "./mcp/src/index.mjs"
+      ]
+    },
+    "supabase-prod": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref=imawamfhakroxtugmlne"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    },
+    "supabase-dev": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref=ngytjsckypjxddzpaekt"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    }
+  }
+}

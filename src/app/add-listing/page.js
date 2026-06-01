@@ -26,10 +26,17 @@ export default function AddListing() {
   });
 
   const [unitTypes, setUnitTypes] = useState([
-    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
   ]);
 
   const [imagePreviews, setImagePreviews] = useState([]);
+
+  // Auto Street View default photo (fetched once an address is selected). The user can delete
+  // it; if kept, /api/addListing downloads + stores it server-side as the cover photo.
+  const [streetView, setStreetView] = useState({ available: false, url: null });
+  const [streetViewDeleted, setStreetViewDeleted] = useState(false);
+  const [streetViewLoading, setStreetViewLoading] = useState(false);
+  const showStreetView = streetView.available && !streetViewDeleted;
 
   const leaseStructureOptions = [
     { value: "individual", label: "Individual" },
@@ -144,6 +151,34 @@ export default function AddListing() {
 
     // Show success message
     toast.success("Address selected and coordinates auto-filled!");
+
+    // Fetch a default Street View photo for the selected address.
+    fetchStreetViewPreview(fullAddress, latitude, longitude);
+  };
+
+  // Ask the server whether Street View imagery exists for this address and, if so, get a
+  // building-oriented preview image URL. Preview only — not persisted until submit.
+  const fetchStreetViewPreview = async (address, latitude, longitude) => {
+    setStreetViewDeleted(false);
+    setStreetView({ available: false, url: null });
+    setStreetViewLoading(true);
+    try {
+      const params = new URLSearchParams({
+        address,
+        lat: String(latitude),
+        lng: String(longitude),
+      });
+      const res = await fetch(`/api/streetview/preview?${params.toString()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.available && data?.url) {
+        setStreetView({ available: true, url: data.url });
+      }
+    } catch (err) {
+      console.error("Street View preview error:", err);
+    } finally {
+      setStreetViewLoading(false);
+    }
   };
 
   const mergeUniqueFiles = (currentFiles, nextFiles) => {
@@ -237,7 +272,7 @@ export default function AddListing() {
   const handleAddUnitType = () => {
     setUnitTypes((prev) => [
       ...prev,
-      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
     ]);
   };
 
@@ -328,6 +363,7 @@ export default function AddListing() {
           area: unit.area == "" ? undefined : Number(unit.area),
           bedrooms: Number(unit.bedrooms),
           bathrooms: Number(unit.bathrooms),
+          available: unit.available !== false,
         })),
         longitude: Number(formData.longitude),
         latitude: Number(formData.latitude),
@@ -337,6 +373,7 @@ export default function AddListing() {
         subleaseFriendly: !!formData.subleaseFriendly,
         twenty_one_plus: !!formData.twentyOnePlus,
         images: [],
+        attachStreetView: showStreetView,
       };
 
       const addResponse = await axios.post("/api/addListing", dataToSend);
@@ -411,8 +448,10 @@ export default function AddListing() {
         twentyOnePlus: false,
         images: [],
       });
+      setStreetView({ available: false, url: null });
+      setStreetViewDeleted(false);
       setUnitTypes([
-        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "" },
+        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
       ]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -605,6 +644,21 @@ export default function AddListing() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={unit.available !== false}
+                        onChange={(e) =>
+                          handleUnitTypeChange(
+                            index,
+                            "available",
+                            e.target.checked
+                          )
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      />
+                      Available
+                    </label>
                   </div>
                 </div>
               ))}
@@ -845,8 +899,39 @@ export default function AddListing() {
               <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP</p>
             </div>
 
-            {imagePreviews.length > 0 && (
+            {streetViewLoading && (
+              <p className="mt-3 text-xs text-gray-500 flex items-center gap-1.5">
+                <span className="w-3 h-3 border border-gray-300 border-t-red-500 rounded-full animate-spin" />
+                Looking for a Street View photo…
+              </p>
+            )}
+
+            {(showStreetView || imagePreviews.length > 0) && (
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {showStreetView && (
+                  <div className="relative aspect-square overflow-hidden rounded-md border border-gray-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={streetView.url}
+                      alt="Street View of the property"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-black/60 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-full">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      Street View
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStreetViewDeleted(true)}
+                      aria-label="Remove Street View photo"
+                      className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-black/80 transition"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
                 {imagePreviews.map((src, index) => (
                   <div
                     key={`${src}-${index}`}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 
 const _emailTransporter = nodemailer.createTransport({
@@ -89,6 +90,7 @@ export async function POST(req) {
       contactPhone,
       contactName,
       title,
+      attachStreetView,
     } = body;
 
     // Validate required fields
@@ -218,6 +220,13 @@ export async function POST(req) {
       console.error("[addListing] Failed to resolve walk times:", wtErr?.message);
     }
 
+    // A listing is a sublease when its lease type is "sublease". The dashboard
+    // "Add Sublease" modal sends snake_case lease_type; the public form sends
+    // camelCase leaseType — accept either. unit_leases.sublease is the canonical
+    // per-lease flag the app reads.
+    const resolvedLeaseType = leaseType ?? body.lease_type ?? "standard";
+    const isSublease = String(resolvedLeaseType).toLowerCase() === "sublease";
+
     const unitData = unitTypes.map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
@@ -225,6 +234,7 @@ export async function POST(req) {
       rent: unit.rent ?? null,
       leaseAvailability: unit.leaseAvailability ?? null,
       available: unit.available !== false,
+      sublease: isSublease,
     }));
 
     // All DB writes in one transaction — sets app.current_user_id for action_log attribution
@@ -236,7 +246,7 @@ export async function POST(req) {
         longitude: resolvedLng,
         latitude: resolvedLat,
         description,
-        lease_type: leaseType || "standard",
+        lease_type: resolvedLeaseType,
         home_type_id: homeTypeId,
         lease_structure: leaseStructure ?? null,
         sublease_friendly: subleaseFriendly ?? false,
@@ -259,6 +269,22 @@ export async function POST(req) {
     if (listingError) {
       console.error("Error creating listing:", listingError.message);
       return NextResponse.json({ error: listingError.message }, { status: 500 });
+    }
+
+    // Best-effort default photo from Google Street View. Stored at sort_order 0 (cover);
+    // any user uploads land after it via /api/upload. Never blocks listing creation.
+    if (attachStreetView) {
+      try {
+        await fetchAndStoreStreetView({
+          supabase,
+          listingId,
+          address,
+          lat: resolvedLat,
+          lng: resolvedLng,
+        });
+      } catch (svErr) {
+        console.error("[addListing] Street View attach failed:", svErr?.message);
+      }
     }
 
     // Notify landlord of their new listing

@@ -24,6 +24,7 @@ import {
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { trackEvent } from "@/utils/analytics";
+import ReviewReplySection from "./ReviewReplySection";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -32,7 +33,10 @@ function scrollIntoContainer(el) {
   let parent = el.parentElement;
   while (parent && parent !== document.body) {
     const cs = window.getComputedStyle(parent);
-    if (/auto|scroll/.test(cs.overflowY) && parent.scrollHeight > parent.clientHeight) {
+    if (
+      /auto|scroll/.test(cs.overflowY) &&
+      parent.scrollHeight > parent.clientHeight
+    ) {
       const elTop = el.getBoundingClientRect().top;
       const parentTop = parent.getBoundingClientRect().top;
       parent.scrollBy({ top: elTop - parentTop, behavior: "smooth" });
@@ -65,7 +69,9 @@ function LeaseStatCell({ leaseAvailability }) {
   const [open, setOpen] = useState(false);
   const arr = Array.isArray(leaseAvailability)
     ? leaseAvailability.filter(Boolean)
-    : leaseAvailability ? [leaseAvailability] : [];
+    : leaseAvailability
+    ? [leaseAvailability]
+    : [];
   const labels = arr.map((v) => leaseAvailabilityMap[v] || v);
 
   if (labels.length === 0) {
@@ -80,7 +86,9 @@ function LeaseStatCell({ leaseAvailability }) {
   if (labels.length === 1) {
     return (
       <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-        <div className="text-sm sm:text-lg font-semibold text-gray-900">{labels[0]}</div>
+        <div className="text-sm sm:text-lg font-semibold text-gray-900">
+          {labels[0]}
+        </div>
         <div className="text-xs text-gray-500 mt-0.5">Lease</div>
       </div>
     );
@@ -117,7 +125,6 @@ function LeaseStatCell({ leaseAvailability }) {
     </div>
   );
 }
-
 
 const TABS = [
   { id: "amenities", label: "Overview" },
@@ -192,7 +199,9 @@ function AmenityPill({ label }) {
 function StatCell({ label, value }) {
   return (
     <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-      <div className="text-sm sm:text-lg font-semibold text-gray-900 break-words">{value}</div>
+      <div className="text-sm sm:text-lg font-semibold text-gray-900 break-words">
+        {value}
+      </div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
     </div>
   );
@@ -203,52 +212,59 @@ function StatCell({ label, value }) {
 // Keys are the boolean column names from listing_amenities / listing_utilities.
 const AMENITY_LABELS = {
   air_conditioning: "Air Conditioning",
-  dishwasher:       "Dishwasher",
-  gym:              "Gym",
-  laundry:          "Laundry",
-  mailroom:         "Mailroom",
-  microwave:        "Microwave",
-  oven:             "Oven",
-  parking:          "Parking",
-  pets_allowed:     "Pets Allowed",
-  pool:             "Pool",
-  refrigerator:     "Refrigerator",
-  rooftop:          "Rooftop",
-  storage:          "Storage",
-  stove:            "Stove",
-  study_room:       "Study Room",
+  dishwasher: "Dishwasher",
+  gym: "Gym",
+  laundry: "Laundry",
+  mailroom: "Mailroom",
+  microwave: "Microwave",
+  oven: "Oven",
+  parking: "Parking",
+  pets_allowed: "Pets Allowed",
+  pool: "Pool",
+  refrigerator: "Refrigerator",
+  rooftop: "Rooftop",
+  storage: "Storage",
+  stove: "Stove",
+  study_room: "Study Room",
 };
 
 const UTILITY_LABELS = {
   electric: "Electric",
-  gas:      "Gas",
-  heat:     "Heat",
-  water:    "Water",
+  gas: "Gas",
+  heat: "Heat",
+  water: "Water",
   internet: "Internet",
-  trash:    "Trash",
-  cable:    "Cable",
-  sewer:    "Sewer",
-  cooling:  "Cooling",
+  trash: "Trash",
+  cable: "Cable",
+  sewer: "Sewer",
+  cooling: "Cooling",
 };
 
 function toTitleCase(str) {
   return str
     .replace(/_/g, " ")
     .replace(/-/g, "-")
-    .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    .replace(
+      /\w\S*/g,
+      (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+    );
 }
 
 function AmenitiesTab({ listing }) {
-  const amenities = [...new Set(
-    (listing.amenities || [])
-      .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()])
-      .filter(Boolean)
-  )];
-  const utilities = [...new Set(
-    (listing.utilitiesIncluded || [])
-      .map((u) => UTILITY_LABELS[u] || UTILITY_LABELS[u?.toLowerCase()])
-      .filter(Boolean)
-  )];
+  const amenities = [
+    ...new Set(
+      (listing.amenities || [])
+        .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()])
+        .filter(Boolean)
+    ),
+  ];
+  const utilities = [
+    ...new Set(
+      (listing.utilitiesIncluded || [])
+        .map((u) => UTILITY_LABELS[u] || UTILITY_LABELS[u?.toLowerCase()])
+        .filter(Boolean)
+    ),
+  ];
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
@@ -265,7 +281,9 @@ function AmenitiesTab({ listing }) {
       )}
       {utilities.length > 0 && (
         <>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Utilities Included</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">
+            Utilities Included
+          </h2>
           <div className="flex flex-wrap gap-2 mb-6">
             {utilities.map((u) => (
               <AmenityPill key={u} label={u} />
@@ -449,10 +467,15 @@ function ReviewsTab({
       if (!res.ok) return;
       const data = await res.json();
       setVoteOverrides((prev) => ({ ...prev, [reviewId]: data }));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const userId = session?.user?.id;
+  const isLandlord =
+    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  console.log("Listing:\n", listing);
 
   return (
     <div>
@@ -569,14 +592,25 @@ function ReviewsTab({
                       ))}
                     </div>
                   </div>
-                  <p className="text-gray-700 text-sm leading-relaxed mb-3">
-                    {review.comment}
-                  </p>
+                  <div className="mb-3">
+                    <p className="text-gray-700 text-sm leading-relaxed">
+                      {review.comment}
+                    </p>
+                    <ReviewReplySection
+                      review={review}
+                      owner={listing?.owner}
+                      isLandlord={isLandlord}
+                    />
+                  </div>
                   <div className="flex gap-4 text-xs text-gray-400">
                     {(() => {
                       const override = voteOverrides[review._id];
-                      const upCount = override ? override.upvotes : (review.upvotes ?? 0);
-                      const downCount = override ? override.downvotes : (review.downvotes ?? 0);
+                      const upCount = override
+                        ? override.upvotes
+                        : review.upvotes ?? 0;
+                      const downCount = override
+                        ? override.downvotes
+                        : review.downvotes ?? 0;
                       const userVote = override
                         ? override.userVote
                         : review.userVote ?? null;
@@ -585,14 +619,22 @@ function ReviewsTab({
                           <button
                             type="button"
                             onClick={() => handleVote(review._id, "up")}
-                            className={`flex items-center gap-1 transition ${userVote === "up" ? "text-green-500" : "hover:text-green-500"}`}
+                            className={`flex items-center gap-1 transition ${
+                              userVote === "up"
+                                ? "text-green-500"
+                                : "hover:text-green-500"
+                            }`}
                           >
                             <ThumbsUp size={13} /> <span>{upCount}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleVote(review._id, "down")}
-                            className={`flex items-center gap-1 transition ${userVote === "down" ? "text-red-500" : "hover:text-red-500"}`}
+                            className={`flex items-center gap-1 transition ${
+                              userVote === "down"
+                                ? "text-red-500"
+                                : "hover:text-red-500"
+                            }`}
                           >
                             <ThumbsDown size={13} /> <span>{downCount}</span>
                           </button>
@@ -633,8 +675,16 @@ function ReviewsTab({
                 value={commRating}
                 onChange={setCommRating}
               />
-              <StarRow label="Location" value={locRating} onChange={setLocRating} />
-              <StarRow label="Value" value={valRating} onChange={setValRating} />
+              <StarRow
+                label="Location"
+                value={locRating}
+                onChange={setLocRating}
+              />
+              <StarRow
+                label="Value"
+                value={valRating}
+                onChange={setValRating}
+              />
               <textarea
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
@@ -661,8 +711,9 @@ function ReviewsTab({
           </>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Reviews are only open to verified WashU students. Please sign in with your{" "}
-            <span className="font-semibold">@wustl.edu</span> Google account.
+            Reviews are only open to verified WashU students. Please sign in
+            with your <span className="font-semibold">@wustl.edu</span> Google
+            account.
           </div>
         )}
       </div>
@@ -681,7 +732,9 @@ function ContactTab({
   contactLoading,
   contactSent,
 }) {
-  const [ageStatus, setAgeStatus] = useState(listing.twentyOnePlus ? "loading" : "ok");
+  const [ageStatus, setAgeStatus] = useState(
+    listing.twentyOnePlus ? "loading" : "ok"
+  );
 
   useEffect(() => {
     if (!listing.twentyOnePlus) return;
@@ -698,13 +751,18 @@ function ContactTab({
   }, [listing.twentyOnePlus]);
 
   if (listing.twentyOnePlus && ageStatus === "loading") {
-    return <div className="py-8 text-center text-sm text-gray-400">Verifying eligibility...</div>;
+    return (
+      <div className="py-8 text-center text-sm text-gray-400">
+        Verifying eligibility...
+      </div>
+    );
   }
 
   if (listing.twentyOnePlus && ageStatus === "no_birthday") {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-        This property requires residents to be 21+. Please add your birthday in your{" "}
+        This property requires residents to be 21+. Please add your birthday in
+        your{" "}
         <a href="/dashboard/student" className="underline font-medium">
           profile settings
         </a>{" "}
@@ -841,7 +899,9 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
   const [loaded, setLoaded] = useState(false);
   return (
     <div
-      className={`relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20${onClick ? " cursor-zoom-in" : ""}`}
+      className={`relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20${
+        onClick ? " cursor-zoom-in" : ""
+      }`}
       onClick={onClick}
     >
       {!loaded && (
@@ -874,9 +934,14 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
         width={1200}
         height={900}
         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-        className={`w-full h-auto block rounded-lg shadow transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`w-full h-auto block rounded-lg shadow transition-opacity duration-300 ${
+          loaded ? "opacity-100" : "opacity-0"
+        }`}
         loading="lazy"
-        onLoad={() => { setLoaded(true); onImageLoad(src); }}
+        onLoad={() => {
+          setLoaded(true);
+          onImageLoad?.(src);
+        }}
       />
     </div>
   );
@@ -884,7 +949,12 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function ListingModalInfo({ session, listing, excludeTabs = [], compact = false }) {
+export default function ListingModalInfo({
+  session,
+  listing,
+  excludeTabs = [],
+  compact = false,
+}) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
@@ -892,7 +962,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {
     if (!isGalleryOpen) return;
-    const handler = (e) => { if (e.key === "Escape" && !lightboxSrc) setIsGalleryOpen(false); };
+    const handler = (e) => {
+      if (e.key === "Escape" && !lightboxSrc) setIsGalleryOpen(false);
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isGalleryOpen, lightboxSrc]);
@@ -900,7 +972,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   // Esc closes lightbox
   useEffect(() => {
     if (!lightboxSrc) return;
-    const handler = (e) => { if (e.key === "Escape") setLightboxSrc(null); };
+    const handler = (e) => {
+      if (e.key === "Escape") setLightboxSrc(null);
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [lightboxSrc]);
@@ -946,34 +1020,49 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
   // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
   const sortedUnits = useMemo(() => {
-    const units = (listing.unitTypes ?? []).filter((u) => u.available !== false);
+    const units = (listing.unitTypes ?? []).filter(
+      (u) => u.available !== false
+    );
     const isStudio = (u) => (u.bedrooms ?? 0) === 0;
 
     // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
     const seen = new Set();
     const deduped = units.filter((u) => {
-      const key = `${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${u.rent ?? ""}|${u.area ?? ""}|${u.leaseType ?? ""}`;
+      const key = `${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${u.rent ?? ""}|${
+        u.area ?? ""
+      }|${u.leaseType ?? ""}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    // Build base labels in original order for stable disambiguation numbering
+    // Build base labels in original order for stable disambiguation numbering.
+    // Each entry has a full label ("2 Bed / 1 Bath") and a short label
+    // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
     const baseLabelOf = deduped.map((u) => {
-      if (isStudio(u)) return "Studio";
-      const beds = u.bedrooms != null ? `${u.bedrooms} Bed` : "? Bed";
-      const baths = u.bathrooms != null ? `${u.bathrooms} Bath` : "? Bath";
-      return `${beds} / ${baths}`;
+      if (isStudio(u)) return { full: "Studio", short: "Studio" };
+      const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
+      const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
+      return {
+        full: `${beds} Bed / ${baths} Bath`,
+        short: `${beds} Br / ${baths} Ba`,
+      };
     });
     const counts = {};
-    for (const lbl of baseLabelOf) counts[lbl] = (counts[lbl] || 0) + 1;
+    for (const { full } of baseLabelOf) counts[full] = (counts[full] || 0) + 1;
     const counters = {};
-    const labels = baseLabelOf.map((lbl) => {
-      if (counts[lbl] > 1) {
-        counters[lbl] = (counters[lbl] || 0) + 1;
-        return { base: lbl, num: counters[lbl], label: `${lbl} (${counters[lbl]})` };
+    const labels = baseLabelOf.map(({ full, short }) => {
+      if (counts[full] > 1) {
+        counters[full] = (counters[full] || 0) + 1;
+        const n = counters[full];
+        return {
+          base: full,
+          num: n,
+          label: `${full} (${n})`,
+          shortLabel: `${short} (${n})`,
+        };
       }
-      return { base: lbl, num: 0, label: lbl };
+      return { base: full, num: 0, label: full, shortLabel: short };
     });
     return deduped
       .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
@@ -990,6 +1079,24 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
 
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
 
+  // When the unit tabs don't all fit, the selector scrolls horizontally and
+  // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
+  // full-label row so the decision never feeds back into its own measurement.
+  const unitTrackRef = useRef(null);
+  const unitMeasureRef = useRef(null);
+  const [unitsScroll, setUnitsScroll] = useState(false);
+  useEffect(() => {
+    const track = unitTrackRef.current;
+    const measure = unitMeasureRef.current;
+    if (!track || !measure) return;
+    const check = () =>
+      setUnitsScroll(measure.scrollWidth > track.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [sortedUnits]);
+
   // Images — respect the landlord-chosen order (sort_order from listing_images).
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
   const images = Array.isArray(listing?.images)
@@ -1000,8 +1107,13 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   const thirdImage = images[2] || images[1] || images[0] || null;
 
   // Address
-  const { street, cityStateZip: parsedCityStateZip } = parseAddress(listing.address);
-  const cityStateZip = (listing.title && listing.title !== street) ? listing.address : parsedCityStateZip;
+  const { street, cityStateZip: parsedCityStateZip } = parseAddress(
+    listing.address
+  );
+  const cityStateZip =
+    listing.title && listing.title !== street
+      ? listing.address
+      : parsedCityStateZip;
 
   // Reviews
   const legitimateReviews = (listing.reviews || [])
@@ -1067,9 +1179,7 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
         toast.error(data.error || "Failed to submit review.");
         return;
       }
-      toast.success(
-        "Review submitted! It will appear after landlord approval."
-      );
+      toast.success("Thanks for reviewing!");
       trackEvent("Review Submitted", { listingId: listing._id, rating });
       setReviewText("");
       setRating(0);
@@ -1108,7 +1218,14 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
         });
-        setTimeout(() => trackEvent("Contact Submitted", { listingId: listing._id, address: listing.address }), 0);
+        setTimeout(
+          () =>
+            trackEvent("Contact Submitted", {
+              listingId: listing._id,
+              address: listing.address,
+            }),
+          0
+        );
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
@@ -1123,13 +1240,23 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
   return (
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
-        <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
+        <div
+          className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
+        >
           {/* ── Photo Grid ── */}
-          <div className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${compact ? "md:h-[300px]" : "md:h-[520px]"}`}>
+          <div
+            className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+              compact ? "md:h-[300px]" : "md:h-[520px]"
+            }`}
+          >
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
               ref={heroImgWrapperRef}
-              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
+              className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
+                images.length > 1
+                  ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
+                  : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
+              }`}
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
@@ -1154,6 +1281,15 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   No photos available
                 </div>
               )}
+              {/* Tag listings whose cover photo was auto-pulled from Google Street View */}
+              {coverImage && listing.imageFromStreetView && (
+                <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                  Street View
+                </div>
+              )}
               {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
               {!compact && (
                 <div
@@ -1165,7 +1301,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
               )}
             </div>
 
-            {/* Two stacked thumbnails — fill remaining width, desktop only */}
+            {/* Two stacked thumbnails — fill remaining width, desktop only.
+                Hidden when there's a single photo so it doesn't render as repeated frames. */}
+            {images.length > 1 && (
             <motion.div
               className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
@@ -1207,9 +1345,10 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                 )}
               </div>
             </motion.div>
+            )}
 
-            {/* Always-visible "See all photos" button */}
-            {images.length > 0 && (
+            {/* "See all photos" button — only when there's more than one photo */}
+            {images.length > 1 && (
               <button
                 onClick={() => setIsGalleryOpen(true)}
                 className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
@@ -1224,187 +1363,245 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
             animate={{ opacity: 1 }}
             transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
           >
-
-          {/* ── Header Info ── */}
-          {listing.unavailable && (
-            <div className="bg-gray-100 border border-gray-300 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-gray-600 text-sm font-medium">
-              <span className="inline-block w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-              This listing is currently unavailable
-            </div>
-          )}
-          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-            <div>
-              <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">{listing.title || street}</h1>
-              {cityStateZip && (
-                <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
-              )}
-            </div>
-            <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
-              <button
-                onClick={() => {
-                  setActiveTab("contact");
-                  setTimeout(() => scrollIntoContainer(document.getElementById("listing-tabs")), 50);
-                }}
-                className={`shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg transition ${
-                  listing.unavailable
-                    ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
-                    : "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-1 ring-red-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                }`}
-              >
-                Contact Manager
-              </button>
-              {!listing.furnished && (
-                <a
-                  href="https://cort.sjv.io/zzb9y0"
-                  target="_blank"
-                  rel="noopener noreferrer sponsored nofollow"
-                  className="shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg bg-red-50 text-red-700 border border-red-200 shadow-sm hover:bg-red-100 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                >
-                  Furnish This Property
-                </a>
-              )}
-            </div>
-	          </div>
-
-          {/* ── Unit Selector ── */}
-          {sortedUnits.length > 0 && (
-            <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
-              <div className="flex w-full">
-                {sortedUnits.map(({ origIdx, label }, sortedIdx) => (
-                  <button
-                    key={origIdx}
-                    type="button"
-                    onClick={() => setSelectedUnitIdx(sortedIdx)}
-                    className={`flex-1 py-2.5 px-2 text-sm font-semibold text-center transition border-b-2 ${
-                      selectedUnitIdx === sortedIdx
-                        ? "bg-red-600 text-white border-red-600"
-                        : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+            {/* ── Header Info ── */}
+            {listing.unavailable && (
+              <div className="bg-gray-100 border border-gray-300 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-gray-600 text-sm font-medium">
+                <span className="inline-block w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+                This listing is currently unavailable
               </div>
-            </div>
-          )}
-
-          {/* ── Stats Bar ── */}
-          <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
-            <StatCell
-              label="/ mo"
-              value={selectedUnit ? (
-                selectedUnit.rent != null ? `$${selectedUnit.rent.toLocaleString()}` : "TBD"
-              ) : (() => {
-                const label = getRentRangeLabel(listing.unitTypes);
-                if (label === "Contact for Pricing") return "TBD";
-                const dashIdx = label.indexOf("-");
-                if (dashIdx === -1) return label;
-                return (
-                  <>
-                    <span className="whitespace-nowrap">{label.slice(0, dashIdx + 1)}</span>
-                    <wbr />
-                    <span className="whitespace-nowrap">{label.slice(dashIdx + 1)}</span>
-                  </>
-                );
-              })()}
-            />
-            <StatCell
-              label="Beds"
-              value={selectedUnit ? (selectedUnit.bedrooms != null ? String(selectedUnit.bedrooms) : "—") : getUnitValuesLabel(listing.unitTypes, "bedrooms")}
-            />
-            <StatCell
-              label="Baths"
-              value={selectedUnit ? (selectedUnit.bathrooms != null ? String(selectedUnit.bathrooms) : "—") : getUnitValuesLabel(listing.unitTypes, "bathrooms")}
-            />
-            <StatCell
-              label="Sq Ft"
-              value={selectedUnit ? (selectedUnit.area ? selectedUnit.area.toLocaleString() : "—") : getAreaRangeLabel(listing.unitTypes)}
-            />
-            <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
-            <StatCell
-              label="Rating"
-              value={overallAvg ? `★ ${overallAvg}` : "—"}
-            />
-          </div>
-
-          {/* ── Sticky Tab Bar ── */}
-          <div
-            id="listing-tabs"
-            className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${compact ? "top-[52px]" : "top-0 px-4"}`}
-          >
-            <nav className={`flex ${compact ? "justify-center" : "overflow-x-auto max-w-7xl mx-auto"}`}>
-              {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map((tab) => (
+            )}
+            <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+              <div>
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">
+                  {listing.title || street}
+                </h1>
+                {cityStateZip && (
+                  <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
+                )}
+              </div>
+              <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
                 <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
-                    activeTab === tab.id
-                      ? "text-red-600 border-red-600"
-                      : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                  onClick={() => {
+                    setActiveTab("contact");
+                    setTimeout(
+                      () =>
+                        scrollIntoContainer(
+                          document.getElementById("listing-tabs")
+                        ),
+                      50
+                    );
+                  }}
+                  className={`shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg transition ${
+                    listing.unavailable
+                      ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
+                      : "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-1 ring-red-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
                   }`}
                 >
-                  {tab.label}
+                  Contact Manager
                 </button>
-              ))}
-            </nav>
-          </div>
+                {!listing.furnished && (
+                  <a
+                    href="https://cort.sjv.io/zzb9y0"
+                    target="_blank"
+                    rel="noopener noreferrer sponsored nofollow"
+                    className="shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg bg-red-50 text-red-700 border border-red-200 shadow-sm hover:bg-red-100 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
+                  >
+                    Furnish This Property
+                  </a>
+                )}
+              </div>
+            </div>
 
-          {/* ── Tab Content ── */}
-          <div className="bg-white rounded-xl shadow p-6">
-            {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
-            {activeTab === "map" && <MapTab listing={listing} />}
-            {activeTab === "places" && (
-              <PlacesTab
-                walkTimes={walkTimes}
-                walkLoading={walkLoading}
-                shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
+            {/* ── Unit Selector ── */}
+            {sortedUnits.length > 0 && (
+              <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
+                <div ref={unitTrackRef} className="flex w-full overflow-x-auto">
+                  {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
+                    <button
+                      key={origIdx}
+                      type="button"
+                      onClick={() => setSelectedUnitIdx(sortedIdx)}
+                      className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
+                        selectedUnitIdx === sortedIdx
+                          ? "bg-red-600 text-white border-red-600"
+                          : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                      }`}
+                    >
+                      {unitsScroll ? shortLabel : label}
+                    </button>
+                  ))}
+                </div>
+                {/* Hidden full-label row used only to measure natural width */}
+                <div
+                  ref={unitMeasureRef}
+                  aria-hidden="true"
+                  className="absolute top-0 left-0 flex invisible pointer-events-none"
+                >
+                  {sortedUnits.map(({ origIdx, label }) => (
+                    <span
+                      key={origIdx}
+                      className="whitespace-nowrap py-2.5 px-3 text-sm font-semibold"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Stats Bar ── */}
+            <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
+              <StatCell
+                label="/ mo"
+                value={
+                  selectedUnit
+                    ? selectedUnit.rent != null
+                      ? `$${selectedUnit.rent.toLocaleString()}`
+                      : "TBD"
+                    : (() => {
+                        const label = getRentRangeLabel(listing.unitTypes);
+                        if (label === "Contact for Pricing") return "TBD";
+                        const dashIdx = label.indexOf("-");
+                        if (dashIdx === -1) return label;
+                        return (
+                          <>
+                            <span className="whitespace-nowrap">
+                              {label.slice(0, dashIdx + 1)}
+                            </span>
+                            <wbr />
+                            <span className="whitespace-nowrap">
+                              {label.slice(dashIdx + 1)}
+                            </span>
+                          </>
+                        );
+                      })()
+                }
               />
-            )}
-            {activeTab === "reviews" && !session && (
-              <SignInPrompt message="Sign in to view and leave reviews." />
-            )}
-            {activeTab === "reviews" && session && (
-              <ReviewsTab
-                legitimateReviews={legitimateReviews}
-                overallAvg={overallAvg}
-                starCounts={starCounts}
-                commAvg={commAvg}
-                locAvg={locAvg}
-                valAvg={valAvg}
-                showAllReviews={showAllReviews}
-                setShowAllReviews={setShowAllReviews}
-                session={session}
-                listing={listing}
-                reviewText={reviewText}
-                setReviewText={setReviewText}
-                rating={rating}
-                setRating={setRating}
-                commRating={commRating}
-                setCommRating={setCommRating}
-                locRating={locRating}
-                setLocRating={setLocRating}
-                valRating={valRating}
-                setValRating={setValRating}
-                reviewLoading={reviewLoading}
-                handleReviewSubmit={handleReviewSubmit}
+              <StatCell
+                label="Beds"
+                value={
+                  selectedUnit
+                    ? selectedUnit.bedrooms != null
+                      ? String(selectedUnit.bedrooms)
+                      : "—"
+                    : getUnitValuesLabel(listing.unitTypes, "bedrooms")
+                }
               />
-            )}
-            {activeTab === "contact" && !session && (
-              <SignInPrompt message="Sign in to contact the property manager." />
-            )}
-            {activeTab === "contact" && session && (
-              <ContactTab
-                listing={listing}
-                session={session}
-                contactForm={contactForm}
-                setContactForm={setContactForm}
-                handleContactSubmit={handleContactSubmit}
-                contactLoading={contactLoading}
-                contactSent={contactSent}
+              <StatCell
+                label="Baths"
+                value={
+                  selectedUnit
+                    ? selectedUnit.bathrooms != null
+                      ? String(selectedUnit.bathrooms)
+                      : "—"
+                    : getUnitValuesLabel(listing.unitTypes, "bathrooms")
+                }
               />
-            )}
-          </div>
+              <StatCell
+                label="Sq Ft"
+                value={
+                  selectedUnit
+                    ? selectedUnit.area
+                      ? selectedUnit.area.toLocaleString()
+                      : "—"
+                    : getAreaRangeLabel(listing.unitTypes)
+                }
+              />
+              <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
+              <StatCell
+                label="Rating"
+                value={overallAvg ? `★ ${overallAvg}` : "—"}
+              />
+            </div>
+
+            {/* ── Sticky Tab Bar ── */}
+            <div
+              id="listing-tabs"
+              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+                compact ? "top-[52px]" : "top-0 px-4"
+              }`}
+            >
+              <nav
+                className={`flex ${
+                  compact
+                    ? "justify-center"
+                    : "overflow-x-auto max-w-7xl mx-auto"
+                }`}
+              >
+                {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
+                  (tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
+                        activeTab === tab.id
+                          ? "text-red-600 border-red-600"
+                          : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  )
+                )}
+              </nav>
+            </div>
+
+            {/* ── Tab Content ── */}
+            <div className="bg-white rounded-xl shadow p-6">
+              {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
+              {activeTab === "map" && <MapTab listing={listing} />}
+              {activeTab === "places" && (
+                <PlacesTab
+                  walkTimes={walkTimes}
+                  walkLoading={walkLoading}
+                  shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
+                />
+              )}
+              {activeTab === "reviews" && !session && (
+                <SignInPrompt message="Sign in to view and leave reviews." />
+              )}
+              {activeTab === "reviews" && session && (
+                <ReviewsTab
+                  legitimateReviews={legitimateReviews}
+                  overallAvg={overallAvg}
+                  starCounts={starCounts}
+                  commAvg={commAvg}
+                  locAvg={locAvg}
+                  valAvg={valAvg}
+                  showAllReviews={showAllReviews}
+                  setShowAllReviews={setShowAllReviews}
+                  session={session}
+                  listing={listing}
+                  reviewText={reviewText}
+                  setReviewText={setReviewText}
+                  rating={rating}
+                  setRating={setRating}
+                  commRating={commRating}
+                  setCommRating={setCommRating}
+                  locRating={locRating}
+                  setLocRating={setLocRating}
+                  valRating={valRating}
+                  setValRating={setValRating}
+                  reviewLoading={reviewLoading}
+                  handleReviewSubmit={handleReviewSubmit}
+                />
+              )}
+              {activeTab === "contact" && !session && (
+                <SignInPrompt message="Sign in to contact the property manager." />
+              )}
+              {activeTab === "contact" && session && (
+                <ContactTab
+                  listing={listing}
+                  session={session}
+                  contactForm={contactForm}
+                  setContactForm={setContactForm}
+                  handleContactSubmit={handleContactSubmit}
+                  contactLoading={contactLoading}
+                  contactSent={contactSent}
+                />
+              )}
+            </div>
           </motion.div>
         </div>
       </div>
@@ -1438,7 +1635,10 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   key={src}
                   src={src}
                   index={images.indexOf(src)}
-                  onClick={(e) => { e.stopPropagation(); setLightboxSrc(src); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxSrc(src);
+                  }}
                 />
               ))}
             </div>
@@ -1460,7 +1660,10 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
           >
             ×
           </button>
-          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative max-w-[90vw] max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Image
               src={lightboxSrc}
               alt="Fullscreen photo"

@@ -87,7 +87,7 @@ export async function GET(req) {
     if (q.length >= 2) {
       const { data: users, error } = await db
         .from("users")
-        .select("id, name, email")
+        .select("id, name, email, payment_method, payment_handle")
         .or(`name.ilike.%${q}%,email.ilike.%${q}%`)
         .is("deleted_at", null)
         .limit(10);
@@ -98,6 +98,8 @@ export async function GET(req) {
         id: u.id,
         name: u.name || "Unknown",
         email: u.email || null,
+        paymentMethod: u.payment_method || null,
+        paymentHandle: u.payment_handle || null,
         ...(counts[u.id] || { total: 0, approved: 0, pending: 0 }),
       }));
       return NextResponse.json({ results });
@@ -125,7 +127,7 @@ export async function GET(req) {
     if (ids.length) {
       const { data: us } = await db
         .from("users")
-        .select("id, name, email")
+        .select("id, name, email, payment_method, payment_handle")
         .in("id", ids);
       for (const u of us || []) usersById[u.id] = u;
     }
@@ -135,6 +137,8 @@ export async function GET(req) {
         id,
         name: usersById[id]?.name || "Unknown",
         email: usersById[id]?.email || null,
+        paymentMethod: usersById[id]?.payment_method || null,
+        paymentHandle: usersById[id]?.payment_handle || null,
         ...counts[id],
       }))
       .sort((a, b) => b.total - a.total || b.approved - a.approved);
