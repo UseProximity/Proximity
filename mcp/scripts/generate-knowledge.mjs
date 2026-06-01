@@ -8,7 +8,7 @@
  *   cd mcp && node scripts/generate-knowledge.mjs
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync } from "fs";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 
@@ -77,9 +77,9 @@ function inferRouteDetails(routePath, content) {
   const tables = [...new Set(tableMatches.map((m) => m[1]))];
 
   // Derive URL path from filesystem path
-  // e.g. app/api/favorites/[listingId]/route.js → /api/favorites/[listingId]
+  // e.g. src/app/api/favorites/[listingId]/route.js → /api/favorites/[listingId]
   const urlPath = relPath
-    .replace(/^app/, "")
+    .replace(/^src\/app/, "")
     .replace(/\/route\.js$/, "")
     .replace(/\\/g, "/");
 
@@ -87,7 +87,7 @@ function inferRouteDetails(routePath, content) {
 }
 
 function generateApiRoutes() {
-  const apiDir = join(ROOT, "app", "api");
+  const apiDir = join(ROOT, "src", "app", "api");
   const routeFiles = walk(apiDir, "route.js");
 
   const routes = routeFiles.map((filepath) => {
@@ -153,12 +153,12 @@ const COMPONENT_DESCRIPTIONS = {
 };
 
 function generateComponents() {
-  const componentsDir = join(ROOT, "components");
-  const files = walk(componentsDir, ".js");
+  const componentsDir = join(ROOT, "src", "components");
+  const files = [...walk(componentsDir, ".js"), ...walk(componentsDir, ".jsx")];
 
   const components = files.map((filepath) => {
     const rel = relative(ROOT, filepath);
-    const key = rel.replace("components/", "");
+    const key = rel.replace("src/components/", "");
     return {
       name: filepath.split("/").pop().replace(".js", ""),
       file: rel,
@@ -195,9 +195,10 @@ function generateDomain() {
       auth: "NextAuth v5 (beta) — Google OAuth only, JWT strategy",
       db: "Supabase (PostgreSQL)",
       fileStorage: "AWS S3 + Cloudflare R2 (libs/r2.js)",
-      maps: "Mapbox GL + Leaflet",
+      maps: "Mapbox GL + Leaflet (geocoding + walk times); Google Street View Static API for default listing photos",
       email: "Nodemailer (SMTP)",
       ui: "Radix UI, Lucide React, Framer Motion, Recharts, @chatscope/chat-ui-kit-react",
+      sourceLayout: "All app code lives under src/ — src/app (App Router pages + api), src/components, src/lib, src/utils.",
     },
 
     roles: {
@@ -251,8 +252,21 @@ function generateDomain() {
     },
 
     dbAccess: {
-      supabaseImport: "import supabase from '@/libs/supabase';",
-      supabaseTargetedImport: "import { getSupabaseClient } from '@/libs/supabase'; // use for admin routes that need prod/dev toggle",
+      supabaseImport: "import supabase from '@/lib/supabase';",
+      supabaseTargetedImport: "import { getSupabaseClient } from '@/lib/supabase'; // use for admin routes that need prod/dev toggle",
+      note: "Default client targets dev/prod by NODE_ENV. There are two Supabase projects (dev + prod); schema migrations must be applied to BOTH (supabase-dev and supabase-prod MCP).",
+    },
+
+    // ── Process / working agreement ───────────────────────────────────────────
+    workflow: {
+      branchAndPr: [
+        "For every fix or feature, create a branch off `staging` (e.g. `feat/...` or `fix/...`).",
+        "Implement the change on that branch.",
+        "Give the user a test plan and WAIT for approval — do not push before the user approves.",
+        "After approval, push the branch and open a PR into `staging`.",
+      ],
+      knowledgeMaintenance:
+        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase.",
     },
 
     keyWorkflows: {
@@ -306,6 +320,105 @@ function generateDomain() {
   write("domain.json", domain);
 }
 
+// ── 5. Pages ──────────────────────────────────────────────────────────────────
+
+function generatePages() {
+  const appDir = join(ROOT, "src", "app");
+  const pageFiles = walk(appDir, "page.js");
+
+  const pages = pageFiles.map((filepath) => {
+    const rel = relative(ROOT, filepath);
+    // src/app/dashboard/landlord/page.js → /dashboard/landlord ; src/app/page.js → /
+    const path =
+      rel.replace(/^src\/app/, "").replace(/\/page\.js$/, "").replace(/\\/g, "/") || "/";
+    return { path, file: rel };
+  });
+  pages.sort((a, b) => a.path.localeCompare(b.path));
+
+  write("pages.json", {
+    _description: "All Next.js page routes (non-API): URL path and file location.",
+    _generated: new Date().toISOString(),
+    count: pages.length,
+    pages,
+  });
+}
+
+// ── 6. Utils & libs ─────────────────────────────────────────────────────────
+
+function generateUtils() {
+  const dirs = [join(ROOT, "src", "lib"), join(ROOT, "src", "utils")];
+  const files = dirs.flatMap((d) => (existsSync(d) ? walk(d, ".js") : []));
+
+  const utils = files.map((filepath) => {
+    const rel = relative(ROOT, filepath);
+    // Use the file's top-of-file block comment (if any) as the description.
+    const content = readFile(filepath);
+    const block = content.match(/\/\*+([\s\S]*?)\*\//);
+    const description = block
+      ? block[1].replace(/^\s*\*?/gm, "").trim().split("\n")[0].trim()
+      : "No description — add a top-of-file comment.";
+    return { file: rel, description };
+  });
+  utils.sort((a, b) => a.file.localeCompare(b.file));
+
+  write("utils.json", {
+    _description: "All files in src/lib and src/utils: path + first line of their file header comment.",
+    _generated: new Date().toISOString(),
+    count: utils.length,
+    utils,
+  });
+}
+
+// ── 7. Env vars ───────────────────────────────────────────────────────────────
+
+function generateEnvVars() {
+  const srcDir = join(ROOT, "src");
+  const files = [...walk(srcDir, ".js"), ...walk(srcDir, ".jsx")];
+  const names = new Set();
+  for (const f of files) {
+    for (const m of readFile(f).matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
+      names.add(m[1]);
+    }
+  }
+  const envVars = [...names].sort().map((name) => ({
+    name,
+    public: name.startsWith("NEXT_PUBLIC_"),
+  }));
+
+  write("env-vars.json", {
+    _description: "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
+    _generated: new Date().toISOString(),
+    count: envVars.length,
+    envVars,
+  });
+}
+
+// ── 8. Living logs (seed only — never clobber existing) ───────────────────────
+
+function seedLivingLogs() {
+  const seeds = {
+    "active-tasks.json": {
+      _description: "Living log of in-progress tasks, architectural decisions, known bugs, and ongoing migrations. Updated via the log-task tool.",
+      tasks: [],
+      decisions: [],
+      bugs: [],
+      migrations: [],
+    },
+    "agent-sessions.json": {
+      _description: "Live log of spawned agent swarms. Updated via spawn-agents / log-agent-step tools.",
+      sessions: [],
+    },
+  };
+  for (const [filename, seed] of Object.entries(seeds)) {
+    const path = join(OUT, filename);
+    if (existsSync(path)) {
+      console.log(`• ${filename} (kept existing)`);
+      continue;
+    }
+    write(filename, seed);
+  }
+}
+
 // ── Run all ───────────────────────────────────────────────────────────────────
 
 console.log("Generating Proximity knowledge files...\n");
@@ -313,4 +426,8 @@ generateApiRoutes();
 generateDbSchema();
 generateComponents();
 generateDomain();
+generatePages();
+generateUtils();
+generateEnvVars();
+seedLivingLogs();
 console.log("\nDone. Files written to mcp/knowledge/");

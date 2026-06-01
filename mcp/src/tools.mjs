@@ -460,7 +460,9 @@ function fmtSchema(doc) {
 // Keep this short. Agents copy-paste briefings into Task tool prompts — long preambles eat context.
 const WORKING_PRINCIPLES = `## Working Principles (apply before every action)
 - **Ask before assuming**: If the goal, file locations, naming, or scope are ambiguous, ask one focused clarifying question before writing code. Don't guess on behalf of the user.
-- **Narrate changes**: Before each file edit or SQL migration, output one short sentence naming the file and what you're changing (e.g. "Updating app/api/foo/route.js: fix role lookup to use roles!role_id(name)"). Skip this for read-only exploration.`;
+- **Narrate changes**: Before each file edit or SQL migration, output one short sentence naming the file and what you're changing (e.g. "Updating src/app/api/foo/route.js: fix role lookup to use roles!role_id(name)"). Skip this for read-only exploration.
+- **Branch & PR flow**: For each fix/feature, branch off \`staging\`, implement the change, then give the user a test plan and WAIT for approval. Only after approval push the branch and open a PR into \`staging\`.
+- **Keep knowledge current**: After any substantial architectural change (new/removed/changed API route, component, page, util, env var, schema change, or convention), call \`mcp__proximity__update-knowledge\` (and \`mcp__proximity__log-task\` for notable decisions) so the MCP knowledge stays accurate.`;
 
 function fmtActiveTasks(doc) {
   if (!doc) return "";

@@ -1129,7 +1129,11 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
               ref={heroImgWrapperRef}
-              className="relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl overflow-hidden md:flex-shrink-0 md:w-[65%] aspect-[4/3] md:aspect-auto"
+              className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
+                images.length > 1
+                  ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
+                  : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
+              }`}
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
               {coverImage ? (
@@ -1154,6 +1158,15 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                   No photos available
                 </div>
               )}
+              {/* Tag listings whose cover photo was auto-pulled from Google Street View */}
+              {coverImage && listing.imageFromStreetView && (
+                <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                  Street View
+                </div>
+              )}
               {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
               {!compact && (
                 <div
@@ -1165,7 +1178,9 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
               )}
             </div>
 
-            {/* Two stacked thumbnails — fill remaining width, desktop only */}
+            {/* Two stacked thumbnails — fill remaining width, desktop only.
+                Hidden when there's a single photo so it doesn't render as repeated frames. */}
+            {images.length > 1 && (
             <motion.div
               className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
@@ -1207,9 +1222,10 @@ export default function ListingModalInfo({ session, listing, excludeTabs = [], c
                 )}
               </div>
             </motion.div>
+            )}
 
-            {/* Always-visible "See all photos" button */}
-            {images.length > 0 && (
+            {/* "See all photos" button — only when there's more than one photo */}
+            {images.length > 1 && (
               <button
                 onClick={() => setIsGalleryOpen(true)}
                 className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
