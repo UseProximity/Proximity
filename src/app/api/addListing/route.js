@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 
 const _emailTransporter = nodemailer.createTransport({
@@ -89,6 +90,7 @@ export async function POST(req) {
       contactPhone,
       contactName,
       title,
+      attachStreetView,
     } = body;
 
     // Validate required fields
@@ -267,6 +269,22 @@ export async function POST(req) {
     if (listingError) {
       console.error("Error creating listing:", listingError.message);
       return NextResponse.json({ error: listingError.message }, { status: 500 });
+    }
+
+    // Best-effort default photo from Google Street View. Stored at sort_order 0 (cover);
+    // any user uploads land after it via /api/upload. Never blocks listing creation.
+    if (attachStreetView) {
+      try {
+        await fetchAndStoreStreetView({
+          supabase,
+          listingId,
+          address,
+          lat: resolvedLat,
+          lng: resolvedLng,
+        });
+      } catch (svErr) {
+        console.error("[addListing] Street View attach failed:", svErr?.message);
+      }
     }
 
     // Notify landlord of their new listing

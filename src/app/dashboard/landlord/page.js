@@ -483,6 +483,31 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const [existingImages, setExistingImages] = useState(listing?.images ?? []);
   const [savingImageOrder, setSavingImageOrder] = useState(false);
 
+  // Auto Street View default photo (new listings only). Coordinates come from the selected
+  // address suggestion; if kept, /api/addListing stores it server-side as the cover photo.
+  const [coords, setCoords] = useState({ lat: null, lng: null });
+  const [streetView, setStreetView] = useState({ available: false, url: null });
+  const [streetViewDeleted, setStreetViewDeleted] = useState(false);
+  const [streetViewLoading, setStreetViewLoading] = useState(false);
+  const showStreetView = !isEdit && streetView.available && !streetViewDeleted;
+
+  const fetchStreetViewPreview = async (address, lat, lng) => {
+    setStreetViewDeleted(false);
+    setStreetView({ available: false, url: null });
+    setStreetViewLoading(true);
+    try {
+      const params = new URLSearchParams({ address, lat: String(lat), lng: String(lng) });
+      const res = await fetch(`/api/streetview/preview?${params.toString()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.available && data?.url) setStreetView({ available: true, url: data.url });
+    } catch (err) {
+      console.error("Street View preview error:", err);
+    } finally {
+      setStreetViewLoading(false);
+    }
+  };
+
   const handleReorderExistingImages = async (nextUrls) => {
     const prev = existingImages;
     setExistingImages(nextUrls);
@@ -576,6 +601,13 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     }));
     setAddressSuggestions([]);
     setAddressDropdownOpen(false);
+
+    // Mapbox center is [lng, lat]. Capture it and fetch a Street View default (new listings).
+    const [lng, lat] = suggestion.center ?? [];
+    if (lat != null && lng != null) {
+      setCoords({ lat, lng });
+      if (!isEdit) fetchStreetViewPreview(suggestion.label, lat, lng);
+    }
   };
 
   const compressImage = (file) =>
@@ -708,6 +740,12 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
+            // Pass selected coordinates so the server skips re-geocoding and the stored
+            // Street View shot matches the preview orientation.
+            ...(coords.lat != null && coords.lng != null
+              ? { longitude: coords.lng, latitude: coords.lat }
+              : {}),
+            attachStreetView: showStreetView,
           }),
         });
       }
@@ -1092,6 +1130,37 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                   onRemove={removeExistingImage}
                   saving={savingImageOrder}
                 />
+              </div>
+            )}
+
+            {/* Street View default (new listings) */}
+            {streetViewLoading && (
+              <p className="text-xs text-gray-500 mb-3 flex items-center gap-1.5">
+                <span className="w-3 h-3 border border-gray-300 border-t-red-500 rounded-full animate-spin" />
+                Looking for a Street View photo…
+              </p>
+            )}
+            {showStreetView && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                <div className="relative w-20 h-20 flex-shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={streetView.url}
+                    alt="Street View of the property"
+                    className="w-full h-full object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStreetViewDeleted(true)}
+                    aria-label="Remove Street View photo"
+                    className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center shadow transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5 rounded-b-lg">
+                    Street View
+                  </div>
+                </div>
               </div>
             )}
 

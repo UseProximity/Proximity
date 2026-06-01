@@ -108,6 +108,12 @@ export function buildListing(row, owner = null) {
     images: (row.listing_images ?? [])
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((img) => img.url),
+    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
+    imageFromStreetView:
+      (row.listing_images ?? [])
+        .slice()
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
+      "street_view",
     numReviews: legitReviews.length,
     rating:
       legitReviews.length
@@ -188,7 +194,7 @@ export async function GET() {
         listing_utilities(
           electric, gas, heat, water, internet, trash, cable, sewer, cooling
         ),
-        listing_images(url, sort_order),
+        listing_images(url, sort_order, source),
         listing_reviews(rating, legitimacy, deleted_at),
         listing_walk_times(minutes, locations(name))
         `
