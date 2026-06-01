@@ -1036,26 +1036,33 @@ export default function ListingModalInfo({
       return true;
     });
 
-    // Build base labels in original order for stable disambiguation numbering
+    // Build base labels in original order for stable disambiguation numbering.
+    // Each entry has a full label ("2 Bed / 1 Bath") and a short label
+    // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
     const baseLabelOf = deduped.map((u) => {
-      if (isStudio(u)) return "Studio";
-      const beds = u.bedrooms != null ? `${u.bedrooms} Bed` : "? Bed";
-      const baths = u.bathrooms != null ? `${u.bathrooms} Bath` : "? Bath";
-      return `${beds} / ${baths}`;
+      if (isStudio(u)) return { full: "Studio", short: "Studio" };
+      const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
+      const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
+      return {
+        full: `${beds} Bed / ${baths} Bath`,
+        short: `${beds} Br / ${baths} Ba`,
+      };
     });
     const counts = {};
-    for (const lbl of baseLabelOf) counts[lbl] = (counts[lbl] || 0) + 1;
+    for (const { full } of baseLabelOf) counts[full] = (counts[full] || 0) + 1;
     const counters = {};
-    const labels = baseLabelOf.map((lbl) => {
-      if (counts[lbl] > 1) {
-        counters[lbl] = (counters[lbl] || 0) + 1;
+    const labels = baseLabelOf.map(({ full, short }) => {
+      if (counts[full] > 1) {
+        counters[full] = (counters[full] || 0) + 1;
+        const n = counters[full];
         return {
-          base: lbl,
-          num: counters[lbl],
-          label: `${lbl} (${counters[lbl]})`,
+          base: full,
+          num: n,
+          label: `${full} (${n})`,
+          shortLabel: `${short} (${n})`,
         };
       }
-      return { base: lbl, num: 0, label: lbl };
+      return { base: full, num: 0, label: full, shortLabel: short };
     });
     return deduped
       .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
@@ -1071,6 +1078,24 @@ export default function ListingModalInfo({
   }, [listing.unitTypes]);
 
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
+
+  // When the unit tabs don't all fit, the selector scrolls horizontally and
+  // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
+  // full-label row so the decision never feeds back into its own measurement.
+  const unitTrackRef = useRef(null);
+  const unitMeasureRef = useRef(null);
+  const [unitsScroll, setUnitsScroll] = useState(false);
+  useEffect(() => {
+    const track = unitTrackRef.current;
+    const measure = unitMeasureRef.current;
+    if (!track || !measure) return;
+    const check = () =>
+      setUnitsScroll(measure.scrollWidth > track.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [sortedUnits]);
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
@@ -1389,21 +1414,36 @@ export default function ListingModalInfo({
 
             {/* ── Unit Selector ── */}
             {sortedUnits.length > 0 && (
-              <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div className="flex w-full">
-                  {sortedUnits.map(({ origIdx, label }, sortedIdx) => (
+              <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
+                <div ref={unitTrackRef} className="flex w-full overflow-x-auto">
+                  {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
                     <button
                       key={origIdx}
                       type="button"
                       onClick={() => setSelectedUnitIdx(sortedIdx)}
-                      className={`flex-1 py-2.5 px-2 text-sm font-semibold text-center transition border-b-2 ${
+                      className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
                         selectedUnitIdx === sortedIdx
                           ? "bg-red-600 text-white border-red-600"
                           : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
                       }`}
                     >
-                      {label}
+                      {unitsScroll ? shortLabel : label}
                     </button>
+                  ))}
+                </div>
+                {/* Hidden full-label row used only to measure natural width */}
+                <div
+                  ref={unitMeasureRef}
+                  aria-hidden="true"
+                  className="absolute top-0 left-0 flex invisible pointer-events-none"
+                >
+                  {sortedUnits.map(({ origIdx, label }) => (
+                    <span
+                      key={origIdx}
+                      className="whitespace-nowrap py-2.5 px-3 text-sm font-semibold"
+                    >
+                      {label}
+                    </span>
                   ))}
                 </div>
               </div>
