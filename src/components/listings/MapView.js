@@ -62,6 +62,7 @@ export default function MapView({
   onListingSelect,
   selectedListingId,
   searchLocation = null,
+  onSearchLocationConsumed = null,
   isActive = true,
   heroMode = false,
   onBrowseArea = null,
@@ -608,11 +609,16 @@ export default function MapView({
     setShowShuttleStops((v) => !v);
   }, []);
 
-  // Zoom to a searched address and show a dot marker
+  // Zoom to a searched address (?lat=&lng=) and drop a dot marker — regardless
+  // of whether a listing sits there. Once the camera settles we notify the
+  // parent so it can strip the params; otherwise any later re-render would
+  // re-fire this zoom and hijack the user's browsing.
   useEffect(() => {
     if (!isActive) return;
     const map = mapRef.current;
     if (!map || !searchLocation) return;
+
+    let settledHandler = null;
 
     const process = () => {
       if (map._searchMarker) {
@@ -622,41 +628,43 @@ export default function MapView({
 
       const { lat, lng } = searchLocation;
 
-      // Select the listing if one exists at this address, otherwise show a dot
-      const R = 6371000;
-      const haversine = (la1, ln1, la2, ln2) => {
-        const dLat = ((la2 - la1) * Math.PI) / 180;
-        const dLng = ((ln2 - ln1) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos((la1 * Math.PI) / 180) *
-            Math.cos((la2 * Math.PI) / 180) *
-            Math.sin(dLng / 2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      };
-      const match = listings.find(
-        (l) =>
-          l.latitude &&
-          l.longitude &&
-          haversine(lat, lng, l.latitude, l.longitude) <= 80
-      );
+      const el = document.createElement("div");
+      el.style.cssText =
+        "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
+      map._searchMarker = new mapboxgl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(map);
 
-      if (match) {
-        onListingSelect?.(match);
-      } else {
-        map.flyTo({ center: [lng, lat], zoom: 16, duration: 1000 });
-        const el = document.createElement("div");
-        el.style.cssText =
-          "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
-        map._searchMarker = new mapboxgl.Marker({ element: el })
-          .setLngLat([lng, lat])
-          .addTo(map);
-      }
+      // Hand control back to /browse only after the camera has actually
+      // arrived at the searched address. Other movements (the view-switch
+      // resize on mobile, the fit-to-listings flyTo) also fire moveend, so we
+      // ignore any that aren't centered on the target — otherwise the URL is
+      // cleared mid-flight and the zoom looks like it instantly reverts.
+      settledHandler = () => {
+        const c = map.getCenter();
+        if (Math.abs(c.lng - lng) > 1e-4 || Math.abs(c.lat - lat) > 1e-4) {
+          return;
+        }
+        map.off("moveend", settledHandler);
+        settledHandler = null;
+        onSearchLocationConsumed?.();
+      };
+      map.on("moveend", settledHandler);
+      map.flyTo({
+        center: [lng, lat],
+        zoom: 16,
+        duration: 1000,
+        essential: true,
+      });
     };
 
     if (map.isStyleLoaded()) process();
     else map.once("load", process);
-  }, [isActive, searchLocation, listings]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      if (settledHandler) map.off("moveend", settledHandler);
+    };
+  }, [isActive, searchLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative w-full h-full">

@@ -132,11 +132,11 @@ export function Header({ session }) {
 
         {/* ── Right: Search + Auth + Hamburger ── */}
         <div className="flex items-center gap-2">
-          {/* Search 
+          {/* Search */}
           <div className="relative flex-shrink-0">
             {searchOpen ? (
               <>
-                Spacer keeps the close-button slot in flow so auth buttons don't shift
+                {/* Spacer keeps the close-button slot in flow so auth buttons don't shift */}
                 <div
                   className="w-11 h-11 opacity-0 pointer-events-none"
                   aria-hidden="true"
@@ -174,7 +174,6 @@ export function Header({ session }) {
               </button>
             )}
           </div>
-          */}
 
           {/* Auth buttons — desktop only */}
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
