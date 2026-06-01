@@ -482,20 +482,26 @@ export default function TopFilterBar({
                 <div className="space-y-6">
                   {/* Lease Availability */}
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-2">Lease Availability</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">
+                      Lease Availability
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {[
                         { label: "Semester Lease", value: "semester" },
                         { label: "10-Month Lease", value: "10-month" },
                         { label: "12-Month Lease", value: "12-month" },
-                        { label: "Summer Lease",   value: "summer"   },
+                        { label: "Summer Lease", value: "summer" },
                       ].map(({ value, label }) => {
-                        const selected = (draft.leaseAvailability || []).includes(value);
+                        const selected = (
+                          draft.leaseAvailability || []
+                        ).includes(value);
                         return (
                           <button
                             key={value}
                             type="button"
-                            onClick={() => toggleArray("leaseAvailability", value)}
+                            onClick={() =>
+                              toggleArray("leaseAvailability", value)
+                            }
                             className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                               selected
                                 ? "bg-red-500 text-white border-red-500"
@@ -526,7 +532,9 @@ export default function TopFilterBar({
 
                   {/* Home Type */}
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-2">Home Type</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">
+                      Home Type
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {[
                         { label: "Apartment", value: "apartment" },
@@ -557,22 +565,26 @@ export default function TopFilterBar({
 
                   {/* Amenities */}
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-2">Amenities</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">
+                      Amenities
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {[
-                        { label: "Dishwasher",      value: "dishwasher"      },
+                        { label: "Dishwasher", value: "dishwasher" },
                         { label: "In-Unit Laundry", value: "in_unit_laundry" },
-                        { label: "AC / Heating",    value: "ac_heating"      },
-                        { label: "Mailroom",        value: "mailroom"        },
-                        { label: "Pets Allowed",    value: "pets_allowed"    },
-                        { label: "Extra Storage",   value: "extra_storage"   },
-                        { label: "Fireplace",       value: "fireplace"       },
+                        { label: "AC / Heating", value: "ac_heating" },
+                        { label: "Mailroom", value: "mailroom" },
+                        { label: "Pets Allowed", value: "pets_allowed" },
+                        { label: "Extra Storage", value: "extra_storage" },
+                        { label: "Fireplace", value: "fireplace" },
                         { label: "Private Parking", value: "private_parking" },
-                        { label: "Pool",            value: "pool"            },
-                        { label: "Study Rooms",     value: "study_room"      },
-                        { label: "Gym / Fitness",   value: "gym"             },
+                        { label: "Pool", value: "pool" },
+                        { label: "Study Rooms", value: "study_room" },
+                        { label: "Gym / Fitness", value: "gym" },
                       ].map(({ value, label }) => {
-                        const selected = (draft.amenities || []).includes(value);
+                        const selected = (draft.amenities || []).includes(
+                          value
+                        );
                         return (
                           <button
                             key={value}
@@ -593,7 +605,9 @@ export default function TopFilterBar({
 
                   {/* Utilities Included */}
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-2">Utilities Included</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">
+                      Utilities Included
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {[
                         { value: "water", label: "Water" },
@@ -605,7 +619,9 @@ export default function TopFilterBar({
                         { value: "sewer", label: "Sewer" },
                         { value: "yardCare", label: "Yard Care" },
                       ].map(({ value, label }) => {
-                        const selected = (draft.utilitiesIncluded || []).includes(value);
+                        const selected = (
+                          draft.utilitiesIncluded || []
+                        ).includes(value);
                         return (
                           <button
                             key={value}
