@@ -1154,9 +1154,7 @@ export default function ListingModalInfo({
         toast.error(data.error || "Failed to submit review.");
         return;
       }
-      toast.success(
-        "Review submitted! It will appear after landlord approval."
-      );
+      toast.success("Thanks for reviewing!");
       trackEvent("Review Submitted", { listingId: listing._id, rating });
       setReviewText("");
       setRating(0);
