@@ -23,14 +23,7 @@ export async function POST(req) {
 
     const { data: review } = await supabase
       .from("listing_reviews")
-      .select(
-        `
-        id,
-        listing:listings!listing_id(
-          primary_landlord_id
-        )
-      `
-      )
+      .select("id, listing_id")
       .eq("id", reviewId)
       .single();
 
@@ -39,12 +32,14 @@ export async function POST(req) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
 
-    if (!review.listing) {
-      console.log("POST /api/reviewReply failed: Listing not found for review");
-      return NextResponse.json({ error: "Listing not found" }, { status: 404 });
-    }
+    const { data: landlordLink } = await supabase
+      .from("listing_landlords")
+      .select("is_primary")
+      .eq("listing_id", review.listing_id)
+      .eq("user_id", session.user.id)
+      .maybeSingle();
 
-    if (review.listing.primary_landlord_id !== session.user.id) {
+    if (!landlordLink?.is_primary) {
       console.log("POST /api/reviewReply failed: User not authorized to reply");
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
