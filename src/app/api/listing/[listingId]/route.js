@@ -86,7 +86,9 @@ function walkTimesToMap(walkTimes) {
 
 function buildListing(row, owner = null, reviews = []) {
   const walkTimes = row.listing_walk_times ?? [];
-  const shuttle = walkTimes.find((wt) => wt.locations?.name === "shuttle_nearest");
+  const shuttle = walkTimes.find(
+    (wt) => wt.locations?.name === "shuttle_nearest"
+  );
 
   // Compute rating from passed-in reviews (already filtered to legit + not deleted)
   const legitReviews = reviews.filter((r) => r.legitimacy && !r.deletedAt);
@@ -100,10 +102,12 @@ function buildListing(row, owner = null, reviews = []) {
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
       const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
-      const nextAvailable = (u.unit_leases ?? [])
-        .filter((l) => l.available_from)
-        .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
-        ?.available_from ?? null;
+      const nextAvailable =
+        (u.unit_leases ?? [])
+          .filter((l) => l.available_from)
+          .sort(
+            (a, b) => new Date(a.available_from) - new Date(b.available_from)
+          )[0]?.available_from ?? null;
       return {
         rent: activeRent != null ? Number(activeRent) : null,
         area: u.area != null ? Number(u.area) : null,
@@ -115,7 +119,9 @@ function buildListing(row, owner = null, reviews = []) {
     }),
     leaseType: (row.listing_units ?? []).some((u) =>
       (u.unit_leases ?? []).some((l) => l.is_active && l.sublease)
-    ) ? "Sublease" : "Standard",
+    )
+      ? "Sublease"
+      : "Standard",
     images: (row.listing_images ?? [])
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((img) => img.url),
@@ -126,12 +132,13 @@ function buildListing(row, owner = null, reviews = []) {
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
       "street_view",
     numReviews: legitReviews.length,
-    rating:
-      legitReviews.length
-        ? Math.round(
-            (legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length) * 10
-          ) / 10
-        : 0,
+    rating: legitReviews.length
+      ? Math.round(
+          (legitReviews.reduce((s, r) => s + r.rating, 0) /
+            legitReviews.length) *
+            10
+        ) / 10
+      : 0,
     reviews,
     placeWalkMinutes: walkTimesToMap(walkTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
@@ -186,7 +193,10 @@ export async function GET(req, { params }) {
     const currentUserId = session?.user?.id ?? null;
 
     if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
-      return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing listing ID" },
+        { status: 400 }
+      );
     }
 
     // Fetch listing with all v4 related tables
@@ -250,7 +260,11 @@ export async function GET(req, { params }) {
         p_metric_name: "clicks",
       })
       .then(({ error: rpcErr }) => {
-        if (rpcErr) console.error("[listing GET] increment_listing_metric failed:", rpcErr.message);
+        if (rpcErr)
+          console.error(
+            "[listing GET] increment_listing_metric failed:",
+            rpcErr.message
+          );
       });
 
     // Fetch reviews from listing_reviews (renamed from reviews in v4)
@@ -258,7 +272,28 @@ export async function GET(req, { params }) {
     // only legit + not-deleted count toward the rating (handled in buildListing)
     const { data: reviewRows, error: reviewErr } = await supabase
       .from("listing_reviews")
-      .select("id, rating, comment, legitimacy, communication_rating, location_rating, value_rating, created_at, deleted_at, user_id, name")
+      .select(
+        `
+    id,
+    rating,
+    comment,
+    legitimacy,
+    communication_rating,
+    location_rating,
+    value_rating,
+    created_at,
+    deleted_at,
+    user_id,
+    name,
+    listing_review_replies (
+      id,
+      reply,
+      created_at,
+      updated_at,
+      user_id
+    )
+  `
+      )
       .eq("listing_id", listingId)
       .is("deleted_at", null);
 
@@ -267,7 +302,9 @@ export async function GET(req, { params }) {
     }
 
     // Batch-fetch reviewer profiles
-    const reviewerIds = [...new Set((reviewRows ?? []).map((r) => r.user_id).filter(Boolean))];
+    const reviewerIds = [
+      ...new Set((reviewRows ?? []).map((r) => r.user_id).filter(Boolean)),
+    ];
     let reviewerMap = {};
     if (reviewerIds.length > 0) {
       const { data: reviewerUsers, error: reviewerErr } = await supabase
@@ -292,10 +329,12 @@ export async function GET(req, { params }) {
         console.error("[listing GET] vote fetch error:", voteErr);
       }
       for (const v of voteRows ?? []) {
-        if (!votesByReview[v.review_id]) votesByReview[v.review_id] = { up: 0, down: 0, userVote: null };
+        if (!votesByReview[v.review_id])
+          votesByReview[v.review_id] = { up: 0, down: 0, userVote: null };
         if (v.vote === "up") votesByReview[v.review_id].up += 1;
         else if (v.vote === "down") votesByReview[v.review_id].down += 1;
-        if (currentUserId && v.user_id === currentUserId) votesByReview[v.review_id].userVote = v.vote;
+        if (currentUserId && v.user_id === currentUserId)
+          votesByReview[v.review_id].userVote = v.vote;
       }
     }
 
@@ -316,9 +355,22 @@ export async function GET(req, { params }) {
         downvotes: votes.down,
         userVote: votes.userVote,
         reviewer: reviewer
-          ? { _id: reviewer.id, name: reviewer.name, image: reviewer.image ?? null }
+          ? {
+              _id: reviewer.id,
+              name: reviewer.name,
+              image: reviewer.image ?? null,
+            }
           : r.name
           ? { _id: null, name: r.name, image: null }
+          : null,
+        landlordReply: r.listing_review_replies
+          ? {
+              id: r.listing_review_replies.id,
+              reply: r.listing_review_replies.reply,
+              createdAt: r.listing_review_replies.created_at,
+              updatedAt: r.listing_review_replies.updated_at,
+              userId: r.listing_review_replies.user_id,
+            }
           : null,
       };
     });
@@ -328,7 +380,10 @@ export async function GET(req, { params }) {
     return NextResponse.json(safeListing);
   } catch (err) {
     console.error("[listing GET] unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -345,7 +400,10 @@ export async function PATCH(req, { params }) {
 
     const { listingId } = await params;
     if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
-      return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing listing ID" },
+        { status: 400 }
+      );
     }
 
     // Verify listing exists
@@ -369,7 +427,10 @@ export async function PATCH(req, { params }) {
 
     if (ownershipErr) {
       console.error("[listing PATCH] ownership check error:", ownershipErr);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 }
+      );
     }
 
     if (!landlordRow) {
@@ -378,7 +439,10 @@ export async function PATCH(req, { params }) {
 
     const { unavailable } = await req.json();
     if (typeof unavailable !== "boolean") {
-      return NextResponse.json({ error: "Invalid value for unavailable" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid value for unavailable" },
+        { status: 400 }
+      );
     }
 
     const { error: updateError } = await supabase
@@ -388,12 +452,18 @@ export async function PATCH(req, { params }) {
 
     if (updateError) {
       console.error("[listing PATCH] update error:", updateError);
-      return NextResponse.json({ error: "Failed to update listing" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to update listing" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true, unavailable });
   } catch (err) {
     console.error("[listing PATCH] unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
