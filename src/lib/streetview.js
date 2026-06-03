@@ -13,7 +13,10 @@
  * the building's coordinates. This points the camera at the correct side of the street instead of
  * whatever direction a bare coordinate lookup happens to default to.
  *
- * The key is NEXT_PUBLIC_GOOGLE_MAPS_KEY (a public, referer-restrictable Maps key).
+ * Key: prefer GOOGLE_MAPS_SERVER_KEY (a server-only, unrestricted/IP-restricted key) and fall
+ * back to NEXT_PUBLIC_GOOGLE_MAPS_KEY. The public key is typically HTTP-referer restricted for the
+ * browser, which causes Google to DENY these server-side calls (no Referer header) — so a separate
+ * server key is required for this to work in production.
  */
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/lib/r2";
@@ -72,9 +75,9 @@ function bearing(lat1, lng1, lat2, lng2) {
  * (image bytes), only set when available. Never throws; returns { available: false } on error.
  */
 export async function getStreetViewShot({ address, lat, lng }) {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const key = process.env.GOOGLE_MAPS_SERVER_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
   if (!key) {
-    console.warn("[streetview] NEXT_PUBLIC_GOOGLE_MAPS_KEY not set");
+    console.warn("[streetview] no Google Maps key set (GOOGLE_MAPS_SERVER_KEY / NEXT_PUBLIC_GOOGLE_MAPS_KEY)");
     return { available: false };
   }
 
@@ -93,7 +96,15 @@ export async function getStreetViewShot({ address, lat, lng }) {
       `${META_URL}?location=${locationParam}&source=outdoor&key=${key}`
     );
     const meta = await metaRes.json();
-    if (meta?.status !== "OK") return { available: false };
+    if (meta?.status !== "OK") {
+      // Surface the reason instead of failing silently. REQUEST_DENIED here almost always means
+      // the key is HTTP-referer restricted and rejects this server-side (refererless) call.
+      console.warn(
+        `[streetview] metadata not OK — status=${meta?.status || "unknown"}` +
+          (meta?.error_message ? ` (${meta.error_message})` : "")
+      );
+      return { available: false };
+    }
 
     const panoLat = meta?.location?.lat ?? null;
     const panoLng = meta?.location?.lng ?? null;
