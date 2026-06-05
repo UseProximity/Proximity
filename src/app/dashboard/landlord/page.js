@@ -541,11 +541,16 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
     setStreetView({ available: false, url: null });
     setStreetViewLoading(true);
     try {
-      const params = new URLSearchParams({ address, lat: String(lat), lng: String(lng) });
+      const params = new URLSearchParams({
+        address,
+        lat: String(lat),
+        lng: String(lng),
+      });
       const res = await fetch(`/api/streetview/preview?${params.toString()}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data?.available && data?.url) setStreetView({ available: true, url: data.url });
+      if (data?.available && data?.url)
+        setStreetView({ available: true, url: data.url });
     } catch (err) {
       console.error("Street View preview error:", err);
     } finally {
@@ -2007,7 +2012,7 @@ function ReviewsSection({ user, viewAsId }) {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Reviews</h1>
-        <p className="text-gray-500">Approved reviews from tenants</p>
+        <p className="text-gray-500">Verified reviews from tenants</p>
       </div>
 
       {loading ? (

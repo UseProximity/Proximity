@@ -119,7 +119,7 @@ export default function TopFilterBar({
     filters.leaseAvailability?.length > 0 ||
     filters.amenities?.length > 0 ||
     filters.furnished ||
-    filters.utilitiesIncluded ||
+    filters.utilitiesIncluded?.length > 0 ||
     filters.subleaseFriendly ||
     filters.leaseStructure ||
     filters.savedOnly ||
