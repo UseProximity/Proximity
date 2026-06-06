@@ -81,44 +81,14 @@ function walkTimesToMap(walkTimes) {
 }
 
 // ---------------------------------------------------------------------------
-// Compute per-bed-normalised rent + dimension aggregates from listing_leases.
-// Rent normalised to per-bed so filter ranges are apples-to-apples.
-// ---------------------------------------------------------------------------
-
-function computeLeaseAggregates(leases) {
-  const active = (leases ?? []).filter((l) => l.is_active && !l.deleted_at);
-  if (!active.length) {
-    return { minRent: null, maxRent: null, minBedrooms: null, maxBedrooms: null,
-             minBathrooms: null, maxBathrooms: null, minArea: null, maxArea: null };
-  }
-  const perBedRent = (l) => {
-    if (l.pricing_basis === "per_bed") return Number(l.rent);
-    if (l.pricing_basis === "per_unit" && l.bedrooms > 0) return Number(l.rent) / l.bedrooms;
-    return Number(l.rent);
-  };
-  const rents = active.map(perBedRent);
-  const beds  = active.map((l) => l.bedrooms).filter((v) => v != null);
-  const baths = active.map((l) => l.bathrooms).filter((v) => v != null);
-  const areas = active.map((l) => l.area).filter((v) => v != null);
-  return {
-    minRent:      rents.length ? Math.min(...rents) : null,
-    maxRent:      rents.length ? Math.max(...rents) : null,
-    minBedrooms:  beds.length  ? Math.min(...beds)  : null,
-    maxBedrooms:  beds.length  ? Math.max(...beds)  : null,
-    minBathrooms: baths.length ? Math.min(...baths) : null,
-    maxBathrooms: baths.length ? Math.max(...baths) : null,
-    minArea:      areas.length ? Math.min(...areas) : null,
-    maxArea:      areas.length ? Math.max(...areas) : null,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // buildListing — inline (includes reviews with votes + full walk times)
 // ---------------------------------------------------------------------------
 
 function buildListing(row, owner = null, reviews = []) {
   const walkTimes = row.listing_walk_times ?? [];
-  const shuttle = walkTimes.find((wt) => wt.locations?.name === "shuttle_nearest");
+  const shuttle = walkTimes.find(
+    (wt) => wt.locations?.name === "shuttle_nearest"
+  );
 
   // Compute rating from passed-in reviews (already filtered to legit + not deleted)
   const legitReviews = reviews.filter((r) => r.legitimacy && !r.deletedAt);
@@ -130,29 +100,45 @@ function buildListing(row, owner = null, reviews = []) {
     longitude: row.longitude != null ? Number(row.longitude) : null,
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
-    unitTypes: (row.listing_leases ?? [])
-      .filter((l) => l.is_active && !l.deleted_at)
-      .map((l) => ({
-        rent: l.rent != null ? Number(l.rent) : null,
-        area: l.area != null ? Number(l.area) : null,
-        bedrooms: l.bedrooms != null ? Number(l.bedrooms) : null,
-        bathrooms: l.bathrooms != null ? Number(l.bathrooms) : null,
-        pricingBasis: l.pricing_basis,
-        leaseTermMonths: l.lease_term_months,
-        leaseAvailability: l.available_from ?? null,
-      })),
-    leaseType: (row.listing_leases ?? []).some((l) => l.is_active && !l.deleted_at && l.sublease)
-      ? "Sublease" : "Standard",
+    unitTypes: (row.listing_units ?? []).map((u) => {
+      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      const nextAvailable =
+        (u.unit_leases ?? [])
+          .filter((l) => l.available_from)
+          .sort(
+            (a, b) => new Date(a.available_from) - new Date(b.available_from)
+          )[0]?.available_from ?? null;
+      return {
+        rent: activeRent != null ? Number(activeRent) : null,
+        area: u.area != null ? Number(u.area) : null,
+        bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
+        bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+        leaseAvailability: nextAvailable,
+        available: u.available ?? true,
+      };
+    }),
+    leaseType: (row.listing_units ?? []).some((u) =>
+      (u.unit_leases ?? []).some((l) => l.is_active && l.sublease)
+    )
+      ? "Sublease"
+      : "Standard",
     images: (row.listing_images ?? [])
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((img) => img.url),
+    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
+    imageFromStreetView:
+      (row.listing_images ?? [])
+        .slice()
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
+      "street_view",
     numReviews: legitReviews.length,
-    rating:
-      legitReviews.length
-        ? Math.round(
-            (legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length) * 10
-          ) / 10
-        : 0,
+    rating: legitReviews.length
+      ? Math.round(
+          (legitReviews.reduce((s, r) => s + r.rating, 0) /
+            legitReviews.length) *
+            10
+        ) / 10
+      : 0,
     reviews,
     placeWalkMinutes: walkTimesToMap(walkTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
@@ -167,9 +153,20 @@ function buildListing(row, owner = null, reviews = []) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: row.unavailable ?? false,
+    unavailable: (() => {
+      if (row.unavailable) return true;
+      const units = row.listing_units ?? [];
+      return units.length > 0 && units.every((u) => u.available === false);
+    })(),
     amenities: amenitiesRowToArray(row.listing_amenities),
-    ...computeLeaseAggregates(row.listing_leases),
+    minRent: row.min_rent != null ? Number(row.min_rent) : null,
+    maxRent: row.max_rent != null ? Number(row.max_rent) : null,
+    minBedrooms: row.min_bedrooms != null ? Number(row.min_bedrooms) : null,
+    maxBedrooms: row.max_bedrooms != null ? Number(row.max_bedrooms) : null,
+    minBathrooms: row.min_bathrooms != null ? Number(row.min_bathrooms) : null,
+    maxBathrooms: row.max_bathrooms != null ? Number(row.max_bathrooms) : null,
+    minArea: row.min_area != null ? Number(row.min_area) : null,
+    maxArea: row.max_area != null ? Number(row.max_area) : null,
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
@@ -196,7 +193,10 @@ export async function GET(req, { params }) {
     const currentUserId = session?.user?.id ?? null;
 
     if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
-      return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing listing ID" },
+        { status: 400 }
+      );
     }
 
     // Fetch listing with all v4 related tables
@@ -209,8 +209,13 @@ export async function GET(req, { params }) {
         lease_structure, furnished, move_in_date,
         sublease_friendly, twenty_one_plus, unavailable,
         city, state, zipcode, created_at,
+        min_rent, max_rent, min_bedrooms, max_bedrooms,
+        min_bathrooms, max_bathrooms, min_area, max_area,
         home_types(label),
-        listing_leases(bedrooms, bathrooms, area, rent, pricing_basis, is_active, sublease, available_from, lease_term_months, deleted_at),
+        listing_units(
+          id, bedrooms, bathrooms, area, available,
+          unit_leases(rent, is_active, available_from, sublease)
+        ),
         listing_landlords(user_id, is_primary),
         listing_amenities(
           air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
@@ -220,7 +225,7 @@ export async function GET(req, { params }) {
         listing_utilities(
           electric, gas, heat, water, internet, trash, cable, sewer, cooling
         ),
-        listing_images(url, sort_order),
+        listing_images(url, sort_order, source),
         listing_walk_times(minutes, locations(name))
         `
       )
@@ -255,7 +260,11 @@ export async function GET(req, { params }) {
         p_metric_name: "clicks",
       })
       .then(({ error: rpcErr }) => {
-        if (rpcErr) console.error("[listing GET] increment_listing_metric failed:", rpcErr.message);
+        if (rpcErr)
+          console.error(
+            "[listing GET] increment_listing_metric failed:",
+            rpcErr.message
+          );
       });
 
     // Fetch reviews from listing_reviews (renamed from reviews in v4)
@@ -263,7 +272,28 @@ export async function GET(req, { params }) {
     // only legit + not-deleted count toward the rating (handled in buildListing)
     const { data: reviewRows, error: reviewErr } = await supabase
       .from("listing_reviews")
-      .select("id, rating, comment, legitimacy, communication_rating, location_rating, value_rating, created_at, deleted_at, user_id, name")
+      .select(
+        `
+    id,
+    rating,
+    comment,
+    legitimacy,
+    communication_rating,
+    location_rating,
+    value_rating,
+    created_at,
+    deleted_at,
+    user_id,
+    name,
+    listing_review_replies (
+      id,
+      reply,
+      created_at,
+      updated_at,
+      user_id
+    )
+  `
+      )
       .eq("listing_id", listingId)
       .is("deleted_at", null);
 
@@ -272,7 +302,9 @@ export async function GET(req, { params }) {
     }
 
     // Batch-fetch reviewer profiles
-    const reviewerIds = [...new Set((reviewRows ?? []).map((r) => r.user_id).filter(Boolean))];
+    const reviewerIds = [
+      ...new Set((reviewRows ?? []).map((r) => r.user_id).filter(Boolean)),
+    ];
     let reviewerMap = {};
     if (reviewerIds.length > 0) {
       const { data: reviewerUsers, error: reviewerErr } = await supabase
@@ -297,10 +329,12 @@ export async function GET(req, { params }) {
         console.error("[listing GET] vote fetch error:", voteErr);
       }
       for (const v of voteRows ?? []) {
-        if (!votesByReview[v.review_id]) votesByReview[v.review_id] = { up: 0, down: 0, userVote: null };
+        if (!votesByReview[v.review_id])
+          votesByReview[v.review_id] = { up: 0, down: 0, userVote: null };
         if (v.vote === "up") votesByReview[v.review_id].up += 1;
         else if (v.vote === "down") votesByReview[v.review_id].down += 1;
-        if (currentUserId && v.user_id === currentUserId) votesByReview[v.review_id].userVote = v.vote;
+        if (currentUserId && v.user_id === currentUserId)
+          votesByReview[v.review_id].userVote = v.vote;
       }
     }
 
@@ -321,9 +355,22 @@ export async function GET(req, { params }) {
         downvotes: votes.down,
         userVote: votes.userVote,
         reviewer: reviewer
-          ? { _id: reviewer.id, name: reviewer.name, image: reviewer.image ?? null }
+          ? {
+              _id: reviewer.id,
+              name: reviewer.name,
+              image: reviewer.image ?? null,
+            }
           : r.name
           ? { _id: null, name: r.name, image: null }
+          : null,
+        landlordReply: r.listing_review_replies
+          ? {
+              id: r.listing_review_replies.id,
+              reply: r.listing_review_replies.reply,
+              createdAt: r.listing_review_replies.created_at,
+              updatedAt: r.listing_review_replies.updated_at,
+              userId: r.listing_review_replies.user_id,
+            }
           : null,
       };
     });
@@ -333,7 +380,10 @@ export async function GET(req, { params }) {
     return NextResponse.json(safeListing);
   } catch (err) {
     console.error("[listing GET] unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -350,7 +400,10 @@ export async function PATCH(req, { params }) {
 
     const { listingId } = await params;
     if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
-      return NextResponse.json({ error: "Missing listing ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing listing ID" },
+        { status: 400 }
+      );
     }
 
     // Verify listing exists
@@ -374,7 +427,10 @@ export async function PATCH(req, { params }) {
 
     if (ownershipErr) {
       console.error("[listing PATCH] ownership check error:", ownershipErr);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 }
+      );
     }
 
     if (!landlordRow) {
@@ -383,7 +439,10 @@ export async function PATCH(req, { params }) {
 
     const { unavailable } = await req.json();
     if (typeof unavailable !== "boolean") {
-      return NextResponse.json({ error: "Invalid value for unavailable" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid value for unavailable" },
+        { status: 400 }
+      );
     }
 
     const { error: updateError } = await supabase
@@ -393,12 +452,18 @@ export async function PATCH(req, { params }) {
 
     if (updateError) {
       console.error("[listing PATCH] update error:", updateError);
-      return NextResponse.json({ error: "Failed to update listing" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to update listing" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true, unavailable });
   } catch (err) {
     console.error("[listing PATCH] unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

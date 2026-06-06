@@ -7,8 +7,9 @@ const LISTING_SELECT = `
   id, title, address, description, latitude, longitude, created_at,
   lease_type, lease_structure, lease_availability, furnished, move_in_date, unavailable,
   sublease_friendly, twenty_one_plus, contact_email, contact_phone, contact_name,
+  min_rent, max_rent, min_bedrooms, max_bedrooms,
   home_types(label),
-  listing_leases(bedrooms, bathrooms, area, rent, pricing_basis, is_active, deleted_at),
+  listing_units(bedrooms, bathrooms, area),
   listing_landlords(user_id, is_primary),
   listing_amenities(air_conditioning, dishwasher, gym, laundry, mailroom, microwave, oven, parking, pets_allowed, pool, refrigerator, rooftop, storage, stove, study_room),
   listing_utilities(electric, gas, heat, water, internet, trash, cable, sewer, cooling),
@@ -29,33 +30,6 @@ function utilitiesRowToArray(row) {
     .filter(k => row[k] === true);
 }
 
-function computeLeaseAggregates(leases) {
-  const active = (leases ?? []).filter((l) => l.is_active && !l.deleted_at);
-  if (!active.length) {
-    return { minRent: null, maxRent: null, minBedrooms: null, maxBedrooms: null,
-             minBathrooms: null, maxBathrooms: null, minArea: null, maxArea: null };
-  }
-  const perBedRent = (l) => {
-    if (l.pricing_basis === "per_bed") return Number(l.rent);
-    if (l.pricing_basis === "per_unit" && l.bedrooms > 0) return Number(l.rent) / l.bedrooms;
-    return Number(l.rent);
-  };
-  const rents = active.map(perBedRent);
-  const beds  = active.map((l) => l.bedrooms).filter((v) => v != null);
-  const baths = active.map((l) => l.bathrooms).filter((v) => v != null);
-  const areas = active.map((l) => l.area).filter((v) => v != null);
-  return {
-    minRent:      rents.length ? Math.min(...rents) : null,
-    maxRent:      rents.length ? Math.max(...rents) : null,
-    minBedrooms:  beds.length  ? Math.min(...beds)  : null,
-    maxBedrooms:  beds.length  ? Math.max(...beds)  : null,
-    minBathrooms: baths.length ? Math.min(...baths) : null,
-    maxBathrooms: baths.length ? Math.max(...baths) : null,
-    minArea:      areas.length ? Math.min(...areas) : null,
-    maxArea:      areas.length ? Math.max(...areas) : null,
-  };
-}
-
 function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
   const legitReviews = (l.listing_reviews ?? []).filter(r => r.legitimacy && !r.deleted_at);
   const landlordRows = l.listing_landlords ?? [];
@@ -69,14 +43,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
     title: l.title ?? null,
     address: l.address,
     description: l.description ?? null,
-    unitTypes: (l.listing_leases ?? [])
-      .filter((ll) => ll.is_active && !ll.deleted_at)
-      .map((ll) => ({
-        rent: ll.rent != null ? Number(ll.rent) : null,
-        area: ll.area != null ? Number(ll.area) : null,
-        bedrooms: ll.bedrooms != null ? Number(ll.bedrooms) : null,
-        bathrooms: ll.bathrooms != null ? Number(ll.bathrooms) : null,
-      })),
+    unitTypes: (l.listing_units ?? []).map(u => ({ bedrooms: u.bedrooms, bathrooms: u.bathrooms, area: u.area, rent: null })),
     leaseType: l.lease_type ?? null,
     leaseStructure: l.lease_structure ?? null,
     leaseAvailability: Array.isArray(l.lease_availability) ? l.lease_availability : [],
@@ -91,7 +58,10 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}) {
     contactPhone: l.contact_phone ?? null,
     contactName: l.contact_name ?? null,
     unavailable: l.unavailable ?? false,
-    ...computeLeaseAggregates(l.listing_leases),
+    minRent: l.min_rent,
+    maxRent: l.max_rent,
+    minBedrooms: l.min_bedrooms,
+    maxBedrooms: l.max_bedrooms,
     images: (l.listing_images ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map(i => i.url),
     numClicks: 0,
     numSaves: 0,

@@ -21,6 +21,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 
 export const dynamic = "force-dynamic";
@@ -93,10 +94,41 @@ async function resolveProximityLandlordId() {
   return created?.id ?? null;
 }
 
-// Normalize the street-address line (drop city/state/zip) for exact matching.
+// Canonical forms for common USPS street-type suffixes + directionals. Lets equivalent
+// address spellings compare equal — the same building is entered as "Ave" by one source
+// (a hand-typed listing) and "Avenue" by another (the Mapbox autocomplete), and both must
+// resolve to the same listing instead of spawning a duplicate.
+const STREET_TOKEN_SYNONYMS = {
+  ave: "avenue", av: "avenue", avenu: "avenue",
+  st: "street", str: "street",
+  rd: "road",
+  dr: "drive", drv: "drive",
+  blvd: "boulevard", blv: "boulevard",
+  ln: "lane",
+  ct: "court", crt: "court",
+  pl: "place",
+  ter: "terrace", terr: "terrace",
+  cir: "circle",
+  pkwy: "parkway", pky: "parkway",
+  hwy: "highway",
+  sq: "square",
+  trl: "trail",
+  pt: "point",
+  // directionals
+  n: "north", s: "south", e: "east", w: "west",
+  ne: "northeast", nw: "northwest", se: "southeast", sw: "southwest",
+};
+
+// Normalize the street-address line (drop city/state/zip) and canonicalize common
+// abbreviations so equivalent forms compare equal ("608 Kingsland Ave" == "608 Kingsland Avenue").
 function normStreet(addr) {
   const line = String(addr || "").split(",")[0].trim().toLowerCase();
-  return line.replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  const cleaned = line.replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned
+    .split(" ")
+    .map((tok) => STREET_TOKEN_SYNONYMS[tok] || tok)
+    .join(" ");
 }
 
 // Compute listing_walk_times rows (campus places + nearest shuttle) for a coordinate —
@@ -129,7 +161,8 @@ async function buildWalkTimeRows(lat, lng) {
   return rows;
 }
 
-// Find an existing listing whose street address exactly matches the searched address.
+// Find an existing listing whose street address matches the searched address (after
+// canonicalizing suffix/directional abbreviations; see normStreet), within a tight geo box.
 // Same-address ties: prefer a non-sublease, then one whose owner has the 'landlord' role.
 async function findExactAddressListingId({ address, lat, lng }) {
   const target = normStreet(address);
@@ -420,6 +453,19 @@ export async function POST(req) {
       }
       resolvedListingId = stubId;
       isNewProperty = true;
+
+      // Give the new stub a default Street View photo (best-effort; never blocks the review).
+      try {
+        await fetchAndStoreStreetView({
+          supabase,
+          listingId: resolvedListingId,
+          address: addressText,
+          lat: latitude,
+          lng: longitude,
+        });
+      } catch (svErr) {
+        console.error("reviewReferral: Street View attach failed:", svErr?.message);
+      }
     }
 
     // ── Insert the review (auto-published) ──────────────────────────────────

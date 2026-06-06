@@ -307,13 +307,19 @@ export function Header({ session }) {
               {/* Log In + Sign Up side by side */}
               <div className="flex gap-2 w-full">
                 <button
-                  onClick={() => { setMobileMenuOpen(false); router.push("/login"); }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push("/login");
+                  }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 transition-all text-center"
                 >
                   Log In
                 </button>
                 <button
-                  onClick={() => { setMobileMenuOpen(false); router.push("/login?tab=signup"); }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push("/login?tab=signup");
+                  }}
                   className="flex-1 py-3 rounded-xl text-[16px] font-medium text-white bg-red-500 hover:bg-red-600 transition-all text-center"
                 >
                   Sign Up

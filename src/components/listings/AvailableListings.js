@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
 import MapPopupCard, {
@@ -10,11 +10,6 @@ import MapPopupCard, {
   MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
-import {
-  getAreaRangeLabel,
-  getRentRangeLabel,
-  getUnitValuesLabel,
-} from "@/utils/listingFormatters";
 import {
   SLIDER_CSS,
   FilterSection,
@@ -73,8 +68,26 @@ export default function AvailableListings({
 
   const rawLat = parseFloat(searchParams.get("lat"));
   const rawLng = parseFloat(searchParams.get("lng"));
-  const searchLocation =
-    !isNaN(rawLat) && !isNaN(rawLng) ? { lat: rawLat, lng: rawLng } : null;
+  // Memoize so the map's zoom effect runs once per coordinate set, not on
+  // every render.
+  const searchLocation = useMemo(
+    () =>
+      !isNaN(rawLat) && !isNaN(rawLng) ? { lat: rawLat, lng: rawLng } : null,
+    [rawLat, rawLng]
+  );
+
+  // After the map finishes flying to a searched address, strip lat/lng from the
+  // URL so we land back on a normal /browse and the zoom can't re-trigger.
+  // Read the live URL (not the closed-over searchParams, which can be stale by
+  // the time the fly-in settles) so other params like view=map are preserved.
+  const handleSearchLocationConsumed = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("lat") && !params.has("lng")) return;
+    params.delete("lat");
+    params.delete("lng");
+    const qs = params.toString();
+    router.replace(`/browse${qs ? `?${qs}` : ""}`);
+  };
 
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
@@ -196,7 +209,16 @@ export default function AvailableListings({
     router.push(`/browse?${params.toString()}`);
   };
 
+  // On mobile, a ?lat=&lng= deep link should open the map tab so the zoom to
+  // the searched address is visible.
+  useEffect(() => {
+    if (searchLocation && !isDesktop && mobileView !== "map") {
+      switchMobileView("map");
+    }
+  }, [searchLocation, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileDraft, setMobileDraft] = useState(filters);
 
   // Sync mobileDraft when filter panel opens
@@ -231,13 +253,6 @@ export default function AvailableListings({
     params.delete("panel");
     const qs = params.toString();
     router.replace("/browse" + (qs ? "?" + qs : ""));
-  };
-
-  const handleListingClick = (listingId) => {
-    if (!listingId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("listing", listingId);
-    router.push(`/browse?${params.toString()}`);
   };
 
   const toggleMobileArray = (field, value) => {
@@ -381,6 +396,7 @@ export default function AvailableListings({
           }}
           selectedListingId={expandedListing?._id || selectedListing?._id}
           searchLocation={searchLocation}
+          onSearchLocationConsumed={handleSearchLocationConsumed}
           isActive={isDesktop}
           onBrowseArea={handleBrowseArea}
           panelExpanded={!!expandedListing}
@@ -419,6 +435,7 @@ export default function AvailableListings({
                 }}
                 selectedListingId={selectedListing?._id}
                 searchLocation={searchLocation}
+                onSearchLocationConsumed={handleSearchLocationConsumed}
                 isActive={!isDesktop}
                 onBrowseArea={handleBrowseArea}
               />
@@ -502,46 +519,131 @@ export default function AvailableListings({
                   </button>
                 )}
               </div>
-              <div className="px-4 pb-3 flex items-center gap-2">
-                <button
-                  onClick={() => setMobileFiltersOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-medium text-gray-700 shadow-sm active:bg-gray-50"
-                >
-                  <img
-                    src="/assets/filter-icon.svg"
-                    alt=""
-                    className="w-3.5 h-3.5"
-                    style={{ filter: "brightness(0) opacity(0.7)" }}
-                  />
-                  Filters
-                </button>
-                <button
-                  onClick={() =>
-                    setFilters({ ...filters, savedOnly: !filters.savedOnly })
-                  }
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors active:opacity-80 shadow-sm ${
-                    filters.savedOnly
-                      ? "bg-red-500 border-red-500 text-white"
-                      : "bg-white border-gray-200 text-gray-700"
-                  }`}
-                >
-                  <svg
-                    className={`w-3.5 h-3.5 ${
-                      filters.savedOnly ? "text-white" : "text-gray-700"
-                    }`}
-                    fill={filters.savedOnly ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 016.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z"
+              <div className="px-4 pt-2 pb-3 flex items-center gap-2">
+                {mobileSearchOpen ? (
+                  <div className="flex-1 flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 py-2 shadow-sm transition focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/10">
+                    <svg
+                      className="h-4 w-4 text-red-500 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"
+                      />
+                    </svg>
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search for existing listings"
+                      value={search || ""}
+                      onChange={(e) => setSearch && setSearch(e.target.value)}
+                      onBlur={() => {
+                        const url = new URL(window.location);
+                        if (search) {
+                          url.searchParams.set("search", search);
+                        } else {
+                          url.searchParams.delete("search");
+                        }
+                        window.history.replaceState({}, "", url);
+                      }}
+                      className="min-w-0 flex-1 border-0 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-400"
                     />
-                  </svg>
-                  Saved
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch && setSearch("");
+                        const url = new URL(window.location);
+                        url.searchParams.delete("search");
+                        window.history.replaceState({}, "", url);
+                        setMobileSearchOpen(false);
+                      }}
+                      className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:scale-95"
+                      aria-label="Close search"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2.5}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setMobileFiltersOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-medium text-gray-700 shadow-sm active:bg-gray-50"
+                    >
+                      <img
+                        src="/assets/filter-icon.svg"
+                        alt=""
+                        className="w-3.5 h-3.5"
+                        style={{ filter: "brightness(0) opacity(0.7)" }}
+                      />
+                      Filters
+                    </button>
+                    <button
+                      onClick={() =>
+                        setFilters({
+                          ...filters,
+                          savedOnly: !filters.savedOnly,
+                        })
+                      }
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors active:opacity-80 shadow-sm ${
+                        filters.savedOnly
+                          ? "bg-red-500 border-red-500 text-white"
+                          : "bg-white border-gray-200 text-gray-700"
+                      }`}
+                    >
+                      <svg
+                        className={`w-3.5 h-3.5 ${
+                          filters.savedOnly ? "text-white" : "text-gray-700"
+                        }`}
+                        fill={filters.savedOnly ? "currentColor" : "none"}
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 016.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z"
+                        />
+                      </svg>
+                      Saved
+                    </button>
+                    <button
+                      onClick={() => setMobileSearchOpen(true)}
+                      className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm active:bg-gray-50"
+                      aria-label="Search existing listings"
+                    >
+                      <svg
+                        className="h-4 w-4 text-gray-600"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"
+                        />
+                      </svg>
+                    </button>
+                  </>
+                )}
               </div>
               <div className="px-4 pb-6 space-y-4">
                 {visibleListings.length === 0
@@ -655,69 +757,6 @@ export default function AvailableListings({
 
               {/* Body */}
               <div className="overflow-y-auto flex-1 px-4 py-4 space-y-6">
-                {/* Search */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Search
-                  </label>
-                  <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2.5 focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500">
-                    <svg
-                      className="w-4 h-4 text-red-500 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"
-                      />
-                    </svg>
-                    <input
-                      type="text"
-                      placeholder="Search location or home"
-                      value={search || ""}
-                      onChange={(e) => setSearch && setSearch(e.target.value)}
-                      onBlur={() => {
-                        const url = new URL(window.location);
-                        if (search) {
-                          url.searchParams.set("search", search);
-                        } else {
-                          url.searchParams.delete("search");
-                        }
-                        window.history.replaceState({}, "", url);
-                      }}
-                      className="flex-1 outline-none text-sm bg-transparent text-gray-700 placeholder-gray-400"
-                    />
-                    {search && (
-                      <button
-                        onClick={() => {
-                          setSearch && setSearch("");
-                          const url = new URL(window.location);
-                          url.searchParams.delete("search");
-                          window.history.replaceState({}, "", url);
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <svg
-                          className="w-3.5 h-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={2.5}
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 {/* Price Range */}
                 <div>
                   <p className="font-semibold text-gray-900 text-sm mb-3">
