@@ -33,8 +33,22 @@ const FilterResponseSchema = z.object({
   ranked: z.array(RankedItemSchema),
 });
 
+// Flatten the units model into a lease-like list: one entry per active priced
+// unit lease, carrying the unit's physical dimensions (bedrooms/bathrooms/area)
+// onto each lease so the rest of the ranking logic stays unit-agnostic.
 function activeLeasesOf(listing) {
-  return (listing.listing_leases ?? []).filter((l) => l.is_active && !l.deleted_at && l.rent > 0);
+  return (listing.listing_units ?? []).flatMap((u) =>
+    (u.unit_leases ?? [])
+      .filter((l) => l.is_active && l.rent > 0)
+      .map((l) => ({
+        rent: Number(l.rent),
+        bedrooms: u.bedrooms,
+        bathrooms: u.bathrooms,
+        area: u.area,
+        sublease: l.sublease,
+        available_from: l.available_from,
+      }))
+  );
 }
 
 // Cheapest per-person option for a listing (null if no priced lease).

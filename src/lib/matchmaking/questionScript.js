@@ -74,9 +74,13 @@ export const QUESTION_PLAN = [
   },
   {
     id: "priorities",
+    // Reliable-mode adaptive pairwise ranking: a series of "Which matters more,
+    // A or B?" questions builds the top-3 from prior signal in as few taps as
+    // possible (see questionEngine pairwise* helpers). The drag-to-rank survives
+    // as the editor in PreferencePanel for fine-tuning afterward.
     field: "priorities",
-    kind: "rank",
-    prompt: "Drag these to rank them from most to least important.",
+    kind: "pairwise_rank",
+    prompt: "A couple quick either/or questions to see what matters most.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
     allowUnsure: true,
   },
@@ -134,9 +138,10 @@ export function isAnswered(question, preferences) {
     // Budget can be answered with a number or marked unsure (no cap).
     case "budget":
       return isFilled(p.budget_max) || !!p._budget_unsure;
-    // Priorities answered via a ranking or marked unsure (no ranking).
+    // Priorities answered once the pairwise flow finishes (or a ranking exists,
+    // e.g. from a panel edit / rewind replay), or marked unsure (no ranking).
     case "priorities":
-      return isFilled(p.priorities) || !!p._priorities_unsure;
+      return !!p._pairwise?.done || isFilled(p.priorities) || !!p._priorities_unsure;
     // Open-ended extras: answered once submitted or skipped.
     case "extras":
       return !!p._extras_done;

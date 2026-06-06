@@ -29,6 +29,10 @@ function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
 }
 
+// Identity for the "don't repeat the latest question" guard. Pairwise pairs all
+// share id "priorities", so fold in the per-pair stepKey to keep them distinct.
+const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
+
 export default function ChatClient() {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -99,7 +103,7 @@ export default function ChatClient() {
       setMessages((prev) => {
         const next = [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }];
         // Guard against repeating a question that's already the latest one.
-        if (upcoming && prev[prev.length - 1]?.question?.id !== upcoming.id) {
+        if (upcoming && qKey(prev[prev.length - 1]?.question) !== qKey(upcoming)) {
           next.push(questionToMessage(upcoming, true));
         }
         return next;
@@ -160,7 +164,7 @@ export default function ChatClient() {
             }
             if (data.nextQuestion) {
               setMessages((prev) =>
-                prev[prev.length - 1]?.question?.id === data.nextQuestion.id
+                qKey(prev[prev.length - 1]?.question) === qKey(data.nextQuestion)
                   ? prev
                   : [...prev, questionToMessage(data.nextQuestion, true)]
               );
@@ -274,6 +278,19 @@ export default function ChatClient() {
   const handlePanelUpdate = useCallback(
     (data) => {
       applyServerState(data);
+      // Cards live inside a chat message, so a panel re-rank (priorities reorder
+      // after the picks exist) must refresh that message in place — otherwise the
+      // visible cards go stale even though state updated.
+      if (data.status === "recommendations_ready" && data.recommendations) {
+        setMessages((prev) => {
+          const rev = [...prev].reverse().findIndex((m) => m.recommendations);
+          if (rev === -1) return prev;
+          const idx = prev.length - 1 - rev;
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], recommendations: data.recommendations };
+          return copy;
+        });
+      }
     },
     [applyServerState]
   );

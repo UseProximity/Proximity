@@ -117,6 +117,26 @@ function QuestionControls({ question, onAnswer }) {
     );
   }
 
+  if (kind === "pairwise") {
+    // One A-vs-B comparison. Two roomy chips (priority labels run long) plus an
+    // optional "no preference" skip for the whole ranking.
+    return (
+      <div className="mt-2 flex flex-col gap-1.5 items-start">
+        {options.map((opt) => (
+          <button
+            key={opt}
+            className="w-full text-left px-3 py-2 rounded-xl bg-white border border-red-300 text-red-700 text-xs font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-default"
+            disabled={!interactive}
+            onClick={() => submit(opt)}
+          >
+            {opt}
+          </button>
+        ))}
+        <UnsureChip />
+      </div>
+    );
+  }
+
   if (kind === "rank") {
     return (
       <RankControl

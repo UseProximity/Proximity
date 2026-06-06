@@ -200,6 +200,19 @@ async function rankTop3(session) {
   }
 }
 
+// Re-rank the top 3 from a given prefs/weights snapshot (used by the panel's
+// live priority-reorder, which re-ranks immediately when picks already exist).
+export async function computeRecommendations(preferences, weights) {
+  const intentions = pickIntentions(weights);
+  const { ranked } = await rankListings({
+    preferences,
+    weights,
+    requestedIntentions: intentions,
+    limit: 3,
+  });
+  return ranked.slice(0, 3);
+}
+
 export async function handleTurn({ session, answer = null, message = "", preferences = null, weights = null }) {
   // Adopt the client's authoritative snapshot when provided, preserving the
   // server-only cumulative usage tally (the client never sends it back).

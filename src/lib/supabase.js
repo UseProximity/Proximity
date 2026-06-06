@@ -11,7 +11,14 @@
 import { createClient } from "@supabase/supabase-js";
 
 function makeSupabaseClient(dbTarget) {
-  const isProd = dbTarget === "prod" || (!dbTarget && process.env.NODE_ENV === "production");
+  // FORCE_DB_TARGET (set in .env.local, never committed) lets local dev point the
+  // default client at a specific database — e.g. FORCE_DB_TARGET=prod to demo against
+  // production data. An explicit dbTarget argument still wins over it.
+  const forced = process.env.FORCE_DB_TARGET;
+  const effectiveTarget = dbTarget ?? (forced === "prod" || forced === "dev" ? forced : undefined);
+  const isProd =
+    effectiveTarget === "prod" ||
+    (!effectiveTarget && process.env.NODE_ENV === "production");
   const supabaseUrl = isProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL;
   const supabaseServiceRoleKey = isProd
     ? process.env.PROD_SUPABASE_SERVICE_KEY
