@@ -61,6 +61,11 @@ export default function Footer() {
     });
   }
 
+  // Opens the site-wide FeedbackWidget modal (mounted in the root layout).
+  function handleOpenFeedback() {
+    window.dispatchEvent(new Event("proximity:open-feedback"));
+  }
+
   return (
     <footer className="bg-gray-950 text-white">
       <div className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-6 md:pt-10 md:pb-8">
@@ -195,9 +200,17 @@ export default function Footer() {
           <p className="text-sm text-gray-600">
             © 2026 Proximity. All rights reserved.
           </p>
-          <p className="text-sm text-gray-600">
-            Made for students, by students.
-          </p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleOpenFeedback}
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Report a bug / suggest a fix
+            </button>
+            <p className="text-sm text-gray-600">
+              Made for students, by students.
+            </p>
+          </div>
         </div>
       </div>
     </footer>
