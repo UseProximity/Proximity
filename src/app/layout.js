@@ -16,6 +16,7 @@ import { Header } from "@/components/layout/Header";
 import { auth } from "@/auth";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
+import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import Providers from "@/components/layout/Providers";
 import { Analytics } from '@vercel/analytics/next';
 import { GoogleAnalytics } from '@next/third-parties/google';
@@ -56,6 +57,7 @@ export default async function RootLayout({ children }) {
           <Header session={session} />
           <ProfileCompletionModal session={session} />
           <GlobalListingModal />
+          <FeedbackWidget />
           {children}
           <Analytics />
           <GoogleAnalytics gaId="G-QJCHSZJXQY" />

@@ -285,6 +285,7 @@ export async function GET(req, { params }) {
     deleted_at,
     user_id,
     name,
+    anonymous,
     listing_review_replies (
       id,
       reply,
@@ -339,7 +340,9 @@ export async function GET(req, { params }) {
     }
 
     const reviews = (reviewRows ?? []).map((r) => {
-      const reviewer = r.user_id ? reviewerMap[r.user_id] : null;
+      // Anonymous reviews never expose the author — drop the profile join entirely
+      // so the UI falls back to "Anonymous" + default avatar.
+      const reviewer = r.anonymous || !r.user_id ? null : reviewerMap[r.user_id];
       const votes = votesByReview[r.id] ?? { up: 0, down: 0, userVote: null };
       return {
         _id: r.id,

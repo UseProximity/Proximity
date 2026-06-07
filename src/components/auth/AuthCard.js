@@ -193,6 +193,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
               <p>We sent a reset link to <span className="font-medium">{forgotEmail}</span>.</p>
+              <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
             </div>
           ) : (
             <>
@@ -236,6 +237,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
               We sent a verification link to{" "}
               <span className="font-medium">{verificationSentTo}</span>.
             </p>
+            <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
           </div>
           <p className="text-sm text-gray-500 mb-3">Didn&apos;t get it?</p>
           <button
