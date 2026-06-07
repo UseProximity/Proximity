@@ -43,6 +43,31 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
   });
 }
 
+export async function sendLandlordNudgeEmail({ email, name }) {
+  const firstName = name ? name.split(" ")[0] : "";
+  await transporter.sendMail({
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    replyTo: "info@useproximity.org",
+    subject: "Having trouble getting your listing up?",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111">Welcome to Proximity${firstName ? `, ${firstName}` : ""}!</h2>
+        <p>I noticed you created a landlord account but haven't posted a listing yet.</p>
+        <p>If something's getting in the way — photos, the address, lease details, anything —
+           just reply to this email and we'll help you get your place live in a few minutes.</p>
+        <a href="https://useproximity.org/dashboard/landlord"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Post your listing
+        </a>
+        <p style="color:#666;font-size:14px">WashU students are searching for off-campus housing right now —
+           getting listed takes about five minutes.</p>
+        <p style="color:#999;font-size:12px">— The Proximity team</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendVerificationEmail({ email, name, token, baseUrl }) {
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
   await transporter.sendMail({
