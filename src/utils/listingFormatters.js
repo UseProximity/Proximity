@@ -14,6 +14,33 @@ function formatRentRange(min, max) {
     : `$${min.toLocaleString()}-$${max.toLocaleString()}`;
 }
 
+// ─── Lease terms ──────────────────────────────────────────────────────────────
+
+// A unit's lease durations are stored as month counts (unit_leases.lease_term_months).
+// These map to the canonical lease_availability labels used by filters + display.
+export function leaseMonthsToLabel(months) {
+  const n = Number(months);
+  if (n === 4) return "summer";
+  if (n === 5) return "semester";
+  return `${n}-month`;
+}
+
+// Derive a listing's lease_availability label array from the union of its units'
+// lease term months. Sorted by month so display order is stable.
+export function deriveLeaseAvailability(unitTypes = []) {
+  const months = new Set();
+  for (const u of unitTypes ?? []) {
+    const terms = Array.isArray(u?.leaseTermMonths) ? u.leaseTermMonths : [];
+    for (const m of terms) {
+      const n = Number(m);
+      if (Number.isFinite(n) && n > 0) months.add(n);
+    }
+  }
+  return Array.from(months)
+    .sort((a, b) => a - b)
+    .map(leaseMonthsToLabel);
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 export const getRentRangeLabel = (unitTypes = []) => {

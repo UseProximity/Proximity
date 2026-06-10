@@ -11,6 +11,7 @@ import {
   ThumbsDown,
   PersonStanding,
   Bus,
+  FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
@@ -21,6 +22,7 @@ import {
   getRentRangeLabel,
   getUnitValuesLabel,
   calcAge,
+  leaseMonthsToLabel,
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { trackEvent } from "@/utils/analytics";
@@ -58,11 +60,19 @@ const leaseAvailabilityMap = {
   summer: "Summer",
 };
 
+// Map a single lease-term value to a display label, including custom "<n>-month".
+function leaseLabel(v) {
+  if (leaseAvailabilityMap[v]) return leaseAvailabilityMap[v];
+  const m = /^(\d+)[-_]month$/.exec(String(v));
+  if (m) return `${m[1]} Month`;
+  return v;
+}
+
 function formatLeaseAvailability(val) {
   if (!val) return "—";
   const arr = Array.isArray(val) ? val : [val];
   if (arr.length === 0) return "—";
-  return arr.map((v) => leaseAvailabilityMap[v] || v).join(" · ");
+  return arr.map(leaseLabel).join(" · ");
 }
 
 function LeaseStatCell({ leaseAvailability }) {
@@ -72,7 +82,7 @@ function LeaseStatCell({ leaseAvailability }) {
     : leaseAvailability
     ? [leaseAvailability]
     : [];
-  const labels = arr.map((v) => leaseAvailabilityMap[v] || v);
+  const labels = arr.map(leaseLabel);
 
   if (labels.length === 0) {
     return (
@@ -131,7 +141,7 @@ const TABS = [
   { id: "map", label: "Map" },
   { id: "places", label: "Places" },
   { id: "reviews", label: "Reviews" },
-  { id: "contact", label: "Contact Manager" },
+  { id: "contact", label: "Contact" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -207,6 +217,36 @@ function StatCell({ label, value }) {
   );
 }
 
+// Clickable stat cell for the selected unit's floor plan. Images open in the
+// shared lightbox; PDFs open in a new tab (they can't render as <img>).
+function FloorPlanStatCell({ url, onOpen }) {
+  const isPdf = /\.pdf($|\?)/i.test(url);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex-1 px-4 py-3 text-center min-w-[80px] group focus:outline-none"
+      aria-label="View floor plan"
+    >
+      <div className="flex items-center justify-center h-[28px]">
+        {isPdf ? (
+          <FileText className="h-6 w-6 text-gray-800 group-hover:text-red-600 transition" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt="Floor plan"
+            className="h-7 w-7 object-cover rounded border border-gray-200 group-hover:ring-2 group-hover:ring-red-400 transition"
+          />
+        )}
+      </div>
+      <div className="text-xs text-gray-500 mt-0.5 group-hover:text-red-600 transition">
+        Floor Plan
+      </div>
+    </button>
+  );
+}
+
 // ─── Tab: Amenities ───────────────────────────────────────────────────────────
 
 // Keys are the boolean column names from listing_amenities / listing_utilities.
@@ -252,11 +292,13 @@ function toTitleCase(str) {
 
 function AmenitiesTab({ listing }) {
   const amenities = [
-    ...new Set(
-      (listing.amenities || [])
+    ...new Set([
+      ...(listing.amenities || [])
         .map((a) => AMENITY_LABELS[a] || AMENITY_LABELS[a?.toLowerCase()])
-        .filter(Boolean)
-    ),
+        .filter(Boolean),
+      // Landlord-entered "other" amenities are free text — display as-is.
+      ...(listing.customAmenities || []).filter(Boolean),
+    ]),
   ];
   const utilities = [
     ...new Set(
@@ -1028,9 +1070,11 @@ export default function ListingModalInfo({
     // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
     const seen = new Set();
     const deduped = units.filter((u) => {
-      const key = `${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${u.rent ?? ""}|${
-        u.area ?? ""
-      }|${u.leaseType ?? ""}`;
+      const key = `${u.title ?? ""}|${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${
+        u.rent ?? ""
+      }|${u.area ?? ""}|${u.leaseType ?? ""}|${
+        Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths.join(",") : ""
+      }`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -1040,6 +1084,8 @@ export default function ListingModalInfo({
     // Each entry has a full label ("2 Bed / 1 Bath") and a short label
     // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
     const baseLabelOf = deduped.map((u) => {
+      // Landlord-named units/floor plans display their custom title instead of "2 Bed / 1 Bath".
+      if (u.title) return { full: u.title, short: u.title };
       if (isStudio(u)) return { full: "Studio", short: "Studio" };
       const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
       const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
@@ -1397,7 +1443,7 @@ export default function ListingModalInfo({
                       : "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-1 ring-red-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
                   }`}
                 >
-                  Contact Manager
+                  Contact
                 </button>
                 {!listing.furnished && (
                   <a
@@ -1507,7 +1553,32 @@ export default function ListingModalInfo({
                     : getAreaRangeLabel(listing.unitTypes)
                 }
               />
-              <LeaseStatCell leaseAvailability={listing.leaseAvailability} />
+              <LeaseStatCell
+                leaseAvailability={
+                  // Strictly the selected unit's own terms — never borrow another unit's
+                  // (a unit with no terms shows "—"). Only fall back to the listing-level
+                  // union when there is no selected unit at all.
+                  selectedUnit
+                    ? (Array.isArray(selectedUnit.leaseTermMonths)
+                        ? selectedUnit.leaseTermMonths
+                        : []
+                      ).map(leaseMonthsToLabel)
+                    : listing.leaseAvailability
+                }
+              />
+              {selectedUnit?.floorPlanImageUrl && (
+                <FloorPlanStatCell
+                  url={selectedUnit.floorPlanImageUrl}
+                  onOpen={() => {
+                    const url = selectedUnit.floorPlanImageUrl;
+                    if (/\.pdf($|\?)/i.test(url)) {
+                      window.open(url, "_blank", "noopener");
+                    } else {
+                      setLightboxSrc(url);
+                    }
+                  }}
+                />
+              )}
               <StatCell
                 label="Rating"
                 value={overallAvg ? `★ ${overallAvg}` : "—"}

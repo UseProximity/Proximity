@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { deleteAsUser } from "@/lib/supabaseWithUser";
+import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -63,6 +64,7 @@ export async function PATCH(req, { params }) {
   const {
     units,
     amenities,
+    custom_amenities,
     utilities_included,
     images,
     home_type,
@@ -74,6 +76,20 @@ export async function PATCH(req, { params }) {
   const safeUpdates = {};
   for (const [k, v] of Object.entries(rest)) {
     if (LISTING_COLS.has(k)) safeUpdates[k] = v;
+  }
+
+  // listings.lease_availability (text[] of term labels, e.g. ["semester","12-month"]) is now
+  // DERIVED from the per-unit lease terms (unit_leases.lease_term_months) so the two never drift.
+  // When units are part of this edit, recompute it from them; otherwise fall back to an
+  // explicitly-supplied array (legacy callers).
+  if (Array.isArray(units)) {
+    safeUpdates.lease_availability = deriveLeaseAvailability(units);
+  } else if (lease_availability !== undefined) {
+    safeUpdates.lease_availability = Array.isArray(lease_availability)
+      ? lease_availability
+          .filter((v) => typeof v === "string" && v.trim())
+          .map((v) => v.trim().toLowerCase())
+      : [];
   }
 
   // home_type (label) → home_type_id (FK)
@@ -124,6 +140,9 @@ export async function PATCH(req, { params }) {
     p_images_keep: Array.isArray(images) ? images.filter((u) => typeof u === "string" && u) : null,
     p_units: unitsPayload,
     p_lease_availability: leaseAvailabilityVal,
+    p_custom_amenities: Array.isArray(custom_amenities)
+      ? custom_amenities.map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean)
+      : null,
   });
 
   if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 });

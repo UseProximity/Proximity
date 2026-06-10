@@ -3,6 +3,7 @@ import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
+import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import nodemailer from "nodemailer";
 
 const _emailTransporter = nodemailer.createTransport({
@@ -90,6 +91,8 @@ export async function POST(req) {
       contactPhone,
       contactName,
       title,
+      customAmenities,
+      custom_amenities,
       attachStreetView,
     } = body;
 
@@ -191,6 +194,14 @@ export async function POST(req) {
       return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
     })();
 
+    // Free-text "other" amenities (array of strings)
+    const customAmenityArr = (() => {
+      const val = customAmenities ?? custom_amenities ?? [];
+      return Array.isArray(val)
+        ? val.map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean)
+        : [];
+    })();
+
     // Build amenity and utility boolean maps
     const amenityObj = Object.fromEntries([...AMENITY_COLS].map((c) => [c, false]));
     for (const name of (amenities ?? [])) {
@@ -232,10 +243,21 @@ export async function POST(req) {
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
       rent: unit.rent ?? null,
+      title: unit.title ?? null,
+      floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
+      // A unit can be offered for several lease durations (months).
+      leaseTermMonths: Array.isArray(unit.leaseTermMonths)
+        ? unit.leaseTermMonths
+            .map((m) => Number(m))
+            .filter((m) => Number.isFinite(m) && m > 0)
+        : [],
       leaseAvailability: unit.leaseAvailability ?? null,
       available: unit.available !== false,
       sublease: isSublease,
     }));
+
+    // listings.lease_availability is derived from the union of the units' lease terms.
+    const leaseAvailabilityArr = deriveLeaseAvailability(unitData);
 
     // All DB writes in one transaction — sets app.current_user_id for action_log attribution
     const { data: listingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
@@ -256,6 +278,7 @@ export async function POST(req) {
         contact_email: contactEmail ?? null,
         contact_phone: contactPhone ?? null,
         contact_name: contactName ?? null,
+        lease_availability: leaseAvailabilityArr,
         unavailable: false,
         deleted_at: null,
       },
@@ -264,6 +287,7 @@ export async function POST(req) {
       p_walk_times: walkTimeRows,
       p_units: unitData,
       p_lease_availability: leaseAvailabilityVal,
+      p_custom_amenities: customAmenityArr,
     });
 
     if (listingError) {
