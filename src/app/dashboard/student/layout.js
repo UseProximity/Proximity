@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { getDbRole } from "@/lib/userRole";
 
 export default async function StudentDashboard({ children }) {
   const session = await auth();
@@ -8,7 +9,9 @@ export default async function StudentDashboard({ children }) {
     redirect("/");
   }
 
-  const role = session.user.role;
+  // Resolve role from the DB (not the JWT) — a landlord with a stale `student`
+  // token must still be bounced to their landlord dashboard.
+  const role = (await getDbRole(session.user.email)) ?? session.user.role;
   if (role === "landlord") redirect("/dashboard/landlord");
   if (role === "admin") redirect("/dashboard/admin");
 

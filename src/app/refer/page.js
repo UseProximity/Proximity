@@ -114,7 +114,7 @@ export default async function ReferHome() {
           </h1>
           <p className="text-gray-600">
             Get a personal link to share with fellow students. Earn $3 for every property
-            review submitted through your link — and compete for cash prizes on the
+            review submitted through your link and compete for cash prizes on the
             ambassador leaderboard.
           </p>
         </div>
@@ -168,7 +168,7 @@ export default async function ReferHome() {
             </li>
             <li>
               Earn <span className="font-semibold text-gray-900">${PER_REVIEW}</span> for every
-              review submitted through your link — no cap.
+              review submitted through your link
             </li>
             <li>
               When the competition ends, the top ambassadors win bonus prizes:{" "}
@@ -228,7 +228,7 @@ export default async function ReferHome() {
             {cards.length > 0 && !userShown && (
               <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
                 {userCount === 0 ? (
-                  <>You haven’t driven any reviews yet — share your link to get on the board!</>
+                  <>You haven’t driven any reviews yet. Share your link to get on the board!</>
                 ) : (
                   <>
                     You’re currently{" "}
