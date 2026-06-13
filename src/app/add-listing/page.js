@@ -480,7 +480,12 @@ export default function AddListing() {
         subleaseFriendly: !!formData.subleaseFriendly,
         twenty_one_plus: !!formData.twentyOnePlus,
         images: [],
-        attachStreetView: showStreetView,
+        // Attach a default Street View cover whenever the landlord supplied no photos of
+        // their own and hasn't dismissed the preview. The server re-checks imagery
+        // availability and no-ops if none exists, so this doesn't hinge on the browser
+        // preview image having successfully resolved (a transient Google/network hiccup
+        // there used to silently skip Street View even when imagery existed).
+        attachStreetView: !streetViewDeleted && formData.images.length === 0,
       };
 
       const addResponse = await axios.post("/api/addListing", dataToSend);

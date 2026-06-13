@@ -925,7 +925,11 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             ...(coords.lat != null && coords.lng != null
               ? { longitude: coords.lng, latitude: coords.lat }
               : {}),
-            attachStreetView: showStreetView,
+            // Default Street View cover when the landlord uploaded no photos of their own
+            // and hasn't dismissed the preview. Server re-validates imagery and no-ops if
+            // none, so this doesn't depend on the browser preview having resolved. (This
+            // branch is create-only — the edit path above never attaches Street View.)
+            attachStreetView: !streetViewDeleted && stagedFiles.length === 0,
           }),
         });
       }
