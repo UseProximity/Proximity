@@ -3,6 +3,7 @@
 import axios from "axios";
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
+import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 
 export default function AddListing() {
   const [isLoading, setIsLoading] = useState(false);
@@ -26,10 +27,97 @@ export default function AddListing() {
   });
 
   const [unitTypes, setUnitTypes] = useState([
-    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
+    { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true, floorPlanImageUrl: "", leaseTermMonths: [] },
   ]);
 
   const [imagePreviews, setImagePreviews] = useState([]);
+
+  const [customAmenities, setCustomAmenities] = useState([]);
+  const [customAmenityInput, setCustomAmenityInput] = useState("");
+  const [floorPlanUploading, setFloorPlanUploading] = useState({});
+
+  // Named lease-term presets map to month counts; landlords can also type any number.
+  const leaseTermPresets = [
+    { label: "Summer", months: 4 },
+    { label: "Semester", months: 5 },
+    { label: "10-Month", months: 10 },
+    { label: "12-Month", months: 12 },
+  ];
+
+  const uploadFloorPlan = async (index, file) => {
+    if (!file) return;
+    setFloorPlanUploading((p) => ({ ...p, [index]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload/floor-plan", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      handleUnitTypeChange(index, "floorPlanImageUrl", data.url);
+    } catch (err) {
+      toast.error(err.message || "Floor plan upload failed.");
+    } finally {
+      setFloorPlanUploading((p) => ({ ...p, [index]: false }));
+    }
+  };
+
+  const addCustomAmenity = () => {
+    const v = customAmenityInput.trim();
+    if (!v) return;
+    setCustomAmenities((prev) =>
+      prev.some((a) => a.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]
+    );
+    setCustomAmenityInput("");
+  };
+  const removeCustomAmenity = (val) =>
+    setCustomAmenities((prev) => prev.filter((a) => a !== val));
+
+  // Per-unit lease-term multi-select (months a unit is offered for).
+  const [customTermInput, setCustomTermInput] = useState({});
+  const toggleUnitTerm = (index, months) => {
+    setUnitTypes((prev) =>
+      prev.map((u, i) => {
+        if (i !== index) return u;
+        const cur = Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths : [];
+        const next = cur.includes(months)
+          ? cur.filter((m) => m !== months)
+          : [...cur, months].sort((a, b) => a - b);
+        return { ...u, leaseTermMonths: next };
+      })
+    );
+  };
+  const addCustomUnitTerm = (index) => {
+    const n = Number(customTermInput[index]);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setUnitTypes((prev) =>
+      prev.map((u, i) => {
+        if (i !== index) return u;
+        const cur = Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths : [];
+        if (cur.includes(n)) return u;
+        return { ...u, leaseTermMonths: [...cur, n].sort((a, b) => a - b) };
+      })
+    );
+    setCustomTermInput((prev) => ({ ...prev, [index]: "" }));
+  };
+
+  // Reorder / remove staged (not-yet-uploaded) photos. DraggableImageGrid works on the
+  // preview object-URLs; we mirror the change onto the underlying File array by index.
+  const handleReorderStagedImages = (newUrls) => {
+    setFormData((prev) => {
+      const reordered = newUrls
+        .map((u) => prev.images[imagePreviews.indexOf(u)])
+        .filter(Boolean);
+      return { ...prev, images: reordered };
+    });
+  };
+  const handleRemoveStagedImage = (url) => {
+    const idx = imagePreviews.indexOf(url);
+    if (idx < 0) return;
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== idx),
+    }));
+  };
 
   // Auto Street View default photo (fetched once an address is selected). The user can delete
   // it; if kept, /api/addListing downloads + stores it server-side as the cover photo.
@@ -272,7 +360,7 @@ export default function AddListing() {
   const handleAddUnitType = () => {
     setUnitTypes((prev) => [
       ...prev,
-      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
+      { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true, floorPlanImageUrl: "", leaseTermMonths: [] },
     ]);
   };
 
@@ -331,6 +419,19 @@ export default function AddListing() {
       toast.error("All unit types require number of bedrooms and bathrooms.");
       return;
     }
+    // An available unit must offer at least one lease term.
+    if (
+      unitTypes.some(
+        (unit) =>
+          unit.available !== false &&
+          !(Array.isArray(unit.leaseTermMonths) && unit.leaseTermMonths.length > 0)
+      )
+    ) {
+      toast.error(
+        "Each available unit needs at least one lease term (or mark it unavailable)."
+      );
+      return;
+    }
 
     setIsLoading(true);
 
@@ -359,12 +460,18 @@ export default function AddListing() {
         ...updatedFormData,
         unitTypes: unitTypes.map((unit) => ({
           name: unit.name,
+          title: (unit.name ?? "").trim() || null,
           rent: unit.rent == "" ? undefined : Number(unit.rent),
           area: unit.area == "" ? undefined : Number(unit.area),
           bedrooms: Number(unit.bedrooms),
           bathrooms: Number(unit.bathrooms),
           available: unit.available !== false,
+          floorPlanImageUrl: unit.floorPlanImageUrl || null,
+          leaseTermMonths: Array.isArray(unit.leaseTermMonths)
+            ? unit.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+            : [],
         })),
+        customAmenities,
         longitude: Number(formData.longitude),
         latitude: Number(formData.latitude),
         moveInDate: formData.moveInDate || undefined,
@@ -451,7 +558,7 @@ export default function AddListing() {
       setStreetView({ available: false, url: null });
       setStreetViewDeleted(false);
       setUnitTypes([
-        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true },
+        { name: "", rent: "", area: "", bedrooms: "", bathrooms: "", available: true, floorPlanImageUrl: "", leaseTermMonths: [] },
       ]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -644,6 +751,117 @@ export default function AddListing() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Lease Terms — select all this unit is offered for
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {leaseTermPresets.map((p) => {
+                          const on = (unit.leaseTermMonths || []).includes(p.months);
+                          return (
+                            <button
+                              key={p.label}
+                              type="button"
+                              onClick={() => toggleUnitTerm(index, p.months)}
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                on
+                                  ? "bg-red-600 text-white border-red-600"
+                                  : "bg-white text-gray-600 border-gray-300 hover:border-red-400"
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
+                        {(unit.leaseTermMonths || [])
+                          .filter(
+                            (m) => !leaseTermPresets.some((p) => p.months === m)
+                          )
+                          .map((m) => (
+                            <span
+                              key={m}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border bg-red-600 text-white border-red-600"
+                            >
+                              {m}-Month
+                              <button
+                                type="button"
+                                onClick={() => toggleUnitTerm(index, m)}
+                                className="ml-0.5 text-white/80 hover:text-white"
+                                aria-label={`Remove ${m}-month term`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        <input
+                          type="number"
+                          min="1"
+                          value={customTermInput[index] ?? ""}
+                          onChange={(e) =>
+                            setCustomTermInput((prev) => ({
+                              ...prev,
+                              [index]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addCustomUnitTerm(index);
+                            }
+                          }}
+                          placeholder="Custom #"
+                          className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => addCustomUnitTerm(index)}
+                          className="px-2.5 py-1 rounded-md text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Floor Plan Image / PDF (optional)
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadFloorPlan(index, f);
+                            e.target.value = "";
+                          }}
+                          className="text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:bg-gray-200 file:px-3 file:py-1.5 file:text-xs file:font-medium hover:file:bg-gray-300"
+                        />
+                        {floorPlanUploading[index] && (
+                          <span className="text-xs text-gray-500">Uploading…</span>
+                        )}
+                        {unit.floorPlanImageUrl && !floorPlanUploading[index] && (
+                          <>
+                            <a
+                              href={unit.floorPlanImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-red-600 hover:underline"
+                            >
+                              View
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUnitTypeChange(index, "floorPlanImageUrl", "")
+                              }
+                              className="text-xs text-gray-400 hover:text-red-600"
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                     <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-2">
                       <input
                         type="checkbox"
@@ -797,6 +1015,48 @@ export default function AddListing() {
                 </label>
               ))}
             </div>
+            {customAmenities.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {customAmenities.map((a) => (
+                  <span
+                    key={a}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border bg-red-600 text-white border-red-600"
+                  >
+                    {a}
+                    <button
+                      type="button"
+                      onClick={() => removeCustomAmenity(a)}
+                      className="ml-0.5 text-white/80 hover:text-white"
+                      aria-label={`Remove ${a}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="text"
+                value={customAmenityInput}
+                onChange={(e) => setCustomAmenityInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomAmenity();
+                  }
+                }}
+                placeholder="Add other amenity…"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+              <button
+                type="button"
+                onClick={addCustomAmenity}
+                className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+              >
+                Add
+              </button>
+            </div>
           </div>
 
           {/* Utilities Included */}
@@ -907,43 +1167,40 @@ export default function AddListing() {
             )}
 
             {(showStreetView || imagePreviews.length > 0) && (
-              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="mt-3 space-y-3">
                 {showStreetView && (
-                  <div className="relative aspect-square overflow-hidden rounded-md border border-gray-200">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={streetView.url}
-                      alt="Street View of the property"
-                      className="h-full w-full object-cover"
-                    />
-                    <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-black/60 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-full">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                      </svg>
-                      Street View
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="relative aspect-square overflow-hidden rounded-md border border-gray-200">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={streetView.url}
+                        alt="Street View of the property"
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-black/60 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-full">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        Street View
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setStreetViewDeleted(true)}
+                        aria-label="Remove Street View photo"
+                        className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-black/80 transition"
+                      >
+                        ×
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setStreetViewDeleted(true)}
-                      aria-label="Remove Street View photo"
-                      className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-black/80 transition"
-                    >
-                      ×
-                    </button>
                   </div>
                 )}
-                {imagePreviews.map((src, index) => (
-                  <div
-                    key={`${src}-${index}`}
-                    className="aspect-square overflow-hidden rounded-md border border-gray-200"
-                  >
-                    <img
-                      src={src}
-                      alt={`Selected ${index + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ))}
+                {imagePreviews.length > 0 && (
+                  <DraggableImageGrid
+                    images={imagePreviews}
+                    onReorder={handleReorderStagedImages}
+                    onRemove={handleRemoveStagedImage}
+                  />
+                )}
               </div>
             )}
           </div>

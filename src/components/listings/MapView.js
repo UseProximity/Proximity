@@ -323,8 +323,22 @@ export default function MapView({
 
       const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
       const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
-      const starFill = isActive ? "#FFA2A2" : "#FFFFF6";
-      const starStroke = isActive ? "#FFA2A2" : "#FFFFF6";
+      // An exactly-5.0 rating fills the star with a gold gradient; the red teardrop
+      // pin is unchanged. The active/clicked state keeps the old look (red star on a
+      // lighter body), so gold only applies when not active.
+      const isGold = rating >= 5 && !isActive;
+      const goldGradient = `<linearGradient id="sg_${safeId}" x1="17.5" y1="8.2" x2="17.5" y2="31.4" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#D69121"/>
+            <stop offset="0.45" stop-color="#F7D14A"/>
+            <stop offset="0.78" stop-color="#F7EF84"/>
+            <stop offset="1" stop-color="#FFFDEB"/>
+          </linearGradient>`;
+      const starFill = isGold
+        ? `url(#sg_${safeId})`
+        : isActive
+        ? "#FFA2A2"
+        : "#FFFFF6";
+      const starStroke = isGold ? `url(#sg_${safeId})` : isActive ? "#FFA2A2" : "#FFFFF6";
 
       el.innerHTML = `<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -332,6 +346,7 @@ export default function MapView({
             <stop stop-color="white"/>
             <stop offset="0.18" stop-color="${pinBodyStop2}"${pinBodyOpacity}/>
           </linearGradient>
+          ${isGold ? goldGradient : ""}
           <clipPath id="sc_${safeId}">
             <rect x="4" y="${clipY}" width="27" height="${fillHeight}"/>
           </clipPath>

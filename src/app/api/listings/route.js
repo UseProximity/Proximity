@@ -127,7 +127,7 @@ export function buildListing(row, owner = null) {
     contactEmail: row.contact_email ?? null,
     contactPhone: row.contact_phone ?? null,
     contactName: row.contact_name ?? null,
-    leaseAvailability: [],
+    leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
     leaseStructure: row.lease_structure ?? null,
     homeType: row.home_types?.label ?? "Other",
     furnished: row.furnished ?? false,
@@ -178,7 +178,7 @@ export async function GET() {
         `
         id, title, address, longitude, latitude, description,
         lease_type, contact_email, contact_phone, contact_name,
-        lease_structure, furnished, move_in_date,
+        lease_structure, furnished, move_in_date, lease_availability,
         sublease_friendly, twenty_one_plus, unavailable,
         city, state, zipcode, created_at,
         min_rent, max_rent, min_bedrooms, max_bedrooms,

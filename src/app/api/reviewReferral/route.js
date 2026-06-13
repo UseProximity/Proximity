@@ -324,6 +324,7 @@ export async function POST(req) {
       landlordEmail,
       landlordPhone,
       noLandlordContact,
+      anonymous,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
@@ -481,7 +482,10 @@ export async function POST(req) {
         communication_rating: communicationRating,
         location_rating: locationRating,
         value_rating: valueRating,
-        name: session?.user?.name || null,
+        anonymous: !!anonymous,
+        // When anonymous, don't even store the display name — identity lives only
+        // in user_id (for moderation), never surfaced in public/landlord views.
+        name: anonymous ? null : session?.user?.name || null,
         unit_number: unitNumber?.trim() || null,
         landlord_name: landlordName.trim(),
         landlord_email: landlordEmailNorm,

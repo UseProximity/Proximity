@@ -96,6 +96,7 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
   const [landlordEmail, setLandlordEmail] = useState("");
   const [landlordPhone, setLandlordPhone] = useState("");
   const [noContact, setNoContact] = useState(false);
+  const [anonymous, setAnonymous] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -161,6 +162,7 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
       landlordEmail: landlordEmail.trim() || null,
       landlordPhone: landlordPhone.trim() || null,
       noLandlordContact: noContact,
+      anonymous,
     };
 
     setSubmitting(true);
@@ -361,6 +363,23 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
               I do not have their contact information
             </label>
           </div>
+
+          {/* Anonymous posting */}
+          <label className="flex items-start gap-2.5 border-t pt-5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={anonymous}
+              onChange={(e) => setAnonymous(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-400"
+            />
+            <span className="text-sm text-gray-700">
+              <span className="font-semibold">Post anonymously</span>
+              <span className="block text-gray-500">
+                Your name and photo won&apos;t appear on the listing — it&apos;ll show as
+                “Anonymous.”
+              </span>
+            </span>
+          </label>
 
           <button
             type="submit"
