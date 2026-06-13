@@ -3,9 +3,13 @@ import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 
+// Roles a user is allowed to self-assign at signup. Privileged roles (super,
+// admin, …) can never be granted here — only via an admin-side role change.
+const SIGNUP_ROLES = new Set(["student", "landlord"]);
+
 export async function POST(req) {
   try {
-    const { name, email, password } = await req.json();
+    const { name, email, password, role } = await req.json();
 
     if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 });
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -14,6 +18,11 @@ export async function POST(req) {
     if (!password || password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
+
+    // Honor the role chosen on the signup form; default to student. This lets an
+    // email/password landlord be created with the right role from the start so
+    // their first session token is correct (mirrors Google's "Login as Landlord").
+    const signupRole = SIGNUP_ROLES.has(role) ? role : "student";
 
     const { data: existing } = await supabase
       .from("users")
@@ -33,10 +42,10 @@ export async function POST(req) {
 
     const password_hash = await bcrypt.hash(password, 12);
 
-    const { data: studentRole } = await supabase
+    const { data: roleRow } = await supabase
       .from("roles")
       .select("id")
-      .eq("name", "student")
+      .eq("name", signupRole)
       .single();
 
     const { data: newUser, error: insertError } = await supabase
@@ -45,7 +54,7 @@ export async function POST(req) {
         email,
         name: name.trim(),
         password_hash,
-        role_id: studentRole?.id,
+        role_id: roleRow?.id,
         email_verified: false,
         profile_complete: false,
         gender: "unspecified",
