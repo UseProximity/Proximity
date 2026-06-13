@@ -34,6 +34,7 @@ const DEFAULT_FILTERS = {
   furnished: "", // '' | 'furnished' | 'unfurnished'
   utilitiesIncluded: [], // ['water','electric','gas', ...]
   subleaseFriendly: false,
+  subleaseOnly: false, // only show actual sublease listings
   leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
 };
@@ -263,6 +264,13 @@ export default function BrowseContent({ session }) {
             desc.includes("subletting allowed");
         }
 
+        // Sublease only — actual sublease listings (a unit lease flagged sublease)
+        let matchSubleaseOnly = true;
+        if (filters.subleaseOnly) {
+          matchSubleaseOnly =
+            String(listing?.leaseType ?? "").toLowerCase() === "sublease";
+        }
+
         // Lease structure
         let matchLeaseStructure = true;
         if (filters.leaseStructure === "individual") {
@@ -305,6 +313,7 @@ export default function BrowseContent({ session }) {
           matchFurnished &&
           matchUtilities &&
           matchSublease &&
+          matchSubleaseOnly &&
           matchLeaseStructure &&
           matchMoveInDate &&
           matchSaved

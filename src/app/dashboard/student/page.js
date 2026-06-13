@@ -6,6 +6,7 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Camera, X } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
+import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 
 // ─── Add/Edit Sublease Modal ───────────────────────────────────────────────────
 
@@ -209,6 +210,35 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const removeExistingImage = (url) =>
     setExistingImages((prev) => prev.filter((u) => u !== url));
 
+  // Drag-reorder staged (not-yet-uploaded) photos — keep files + previews in lockstep.
+  const handleReorderStaged = (nextUrls) => {
+    const order = nextUrls.map((u) => stagedPreviews.indexOf(u));
+    setStagedFiles((prev) => order.map((idx) => prev[idx]).filter(Boolean));
+    setStagedPreviews((prev) => order.map((idx) => prev[idx]).filter(Boolean));
+  };
+
+  const [savingImageOrder, setSavingImageOrder] = useState(false);
+  // Drag-reorder existing photos (edit mode) — persist sort_order to the server.
+  const handleReorderExisting = async (nextUrls) => {
+    const prev = existingImages;
+    setExistingImages(nextUrls);
+    if (!isEdit) return;
+    setSavingImageOrder(true);
+    try {
+      const listingId = listing._id || listing.id;
+      const res = await fetch(`/api/landlord/listings/${listingId}/images`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls: nextUrls }),
+      });
+      if (!res.ok) setExistingImages(prev);
+    } catch {
+      setExistingImages(prev);
+    } finally {
+      setSavingImageOrder(false);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
@@ -239,14 +269,30 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
       setError("Each unit needs bedrooms and bathrooms.");
       return;
     }
+    if (!(Array.isArray(form.lease_availability) && form.lease_availability.length > 0)) {
+      setError("Select at least one lease term.");
+      return;
+    }
 
     setSubmitting(true);
     try {
+      // The sublease form keeps one term selector for the whole listing; apply those
+      // durations to every unit so listings.lease_availability derives correctly.
+      const termMonths = (form.lease_availability || [])
+        .map((v) => {
+          const s = String(v).toLowerCase();
+          if (s === "summer") return 4;
+          if (s === "semester") return 5;
+          const n = parseInt(s, 10);
+          return Number.isFinite(n) ? n : null;
+        })
+        .filter((n) => n != null);
       const unitPayload = units.map((u) => ({
         bedrooms: Number(u.bedrooms),
         bathrooms: Number(u.bathrooms),
         rent: u.rent !== "" ? Number(u.rent) : null,
         area: u.area !== "" ? Number(u.area) : null,
+        leaseTermMonths: termMonths,
       }));
 
       let res;
@@ -614,31 +660,25 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Photos</h3>
 
             {isEdit && existingImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {existingImages.map((url) => (
-                  <div key={url} className="relative w-20 h-20 flex-shrink-0">
-                    <img src={url} alt="" className="w-full h-full object-cover rounded-lg border border-gray-200" />
-                    <button type="button" onClick={() => removeExistingImage(url)}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center shadow transition-colors">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+              <div className="mb-3">
+                <DraggableImageGrid
+                  images={existingImages}
+                  onReorder={handleReorderExisting}
+                  onRemove={removeExistingImage}
+                  saving={savingImageOrder}
+                />
               </div>
             )}
 
             {stagedPreviews.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {stagedPreviews.map((url, i) => (
-                  <div key={i} className="relative w-20 h-20 flex-shrink-0">
-                    <img src={url} alt="" className="w-full h-full object-cover rounded-lg border border-gray-200" />
-                    <button type="button" onClick={() => removeStagedImage(i)}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center shadow transition-colors">
-                      <X className="h-3 w-3" />
-                    </button>
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-[9px] text-center py-0.5 rounded-b-lg">new</div>
-                  </div>
-                ))}
+              <div className="mb-3">
+                <DraggableImageGrid
+                  images={stagedPreviews}
+                  onReorder={handleReorderStaged}
+                  onRemove={(url) =>
+                    removeStagedImage(stagedPreviews.indexOf(url))
+                  }
+                />
               </div>
             )}
 
@@ -1043,7 +1083,10 @@ function ListingCard({ listing, badge }) {
           <div className="mt-auto pt-2">
             <span className="text-gray-500 text-xs">
               {bedLabel} bed {" | "} {bathLabel} bath
-              {listing.leaseAvailability ? ` | ${listing.leaseAvailability}` : ""}
+              {Array.isArray(listing.leaseAvailability) &&
+              listing.leaseAvailability.length > 0
+                ? ` | ${listing.leaseAvailability.join(", ")}`
+                : ""}
             </span>
           </div>
         </div>

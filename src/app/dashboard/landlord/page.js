@@ -463,7 +463,18 @@ const emptyUnit = () => ({
   rent: "",
   area: "",
   available: true,
+  title: "",
+  floorPlanImageUrl: "",
+  leaseTermMonths: [], // months a unit can be leased for (multi-select)
 });
+
+// Named lease-term presets map to month counts; landlords can also type any number.
+const LEASE_TERM_PRESETS = [
+  { label: "Summer", months: 4 },
+  { label: "Semester", months: 5 },
+  { label: "10-Month", months: 10 },
+  { label: "12-Month", months: 12 },
+];
 
 function AddEditListingModal({ listing, onClose, onSuccess, user }) {
   const isEdit = !!listing;
@@ -516,9 +527,22 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
           rent: u.rent ?? "",
           area: u.area ?? "",
           available: u.available ?? true,
+          title: u.title ?? "",
+          floorPlanImageUrl: u.floorPlanImageUrl ?? u.floor_plan_image_url ?? "",
+          leaseTermMonths: Array.isArray(u.leaseTermMonths)
+            ? u.leaseTermMonths.map(Number)
+            : Array.isArray(u.lease_term_months)
+            ? u.lease_term_months.map(Number)
+            : [],
         }))
       : [emptyUnit()]
   );
+  const [customAmenities, setCustomAmenities] = useState(
+    Array.isArray(listing?.customAmenities) ? listing.customAmenities : []
+  );
+  const [customAmenityInput, setCustomAmenityInput] = useState("");
+  // Per-unit floor-plan upload progress (keyed by unit index)
+  const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -748,6 +772,63 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
       u.map((unit, idx) => (idx === i ? { ...unit, [field]: val } : unit))
     );
 
+  const uploadFloorPlan = async (i, file) => {
+    if (!file) return;
+    setFloorPlanUploading((p) => ({ ...p, [i]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload/floor-plan", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      updateUnit(i, "floorPlanImageUrl", data.url);
+    } catch (err) {
+      setError(err.message || "Floor plan upload failed.");
+    } finally {
+      setFloorPlanUploading((p) => ({ ...p, [i]: false }));
+    }
+  };
+
+  const addCustomAmenity = () => {
+    const v = customAmenityInput.trim();
+    if (!v) return;
+    setCustomAmenities((prev) =>
+      prev.some((a) => a.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]
+    );
+    setCustomAmenityInput("");
+  };
+  const removeCustomAmenity = (val) =>
+    setCustomAmenities((prev) => prev.filter((a) => a !== val));
+
+  // Toggle / add / remove a lease-term (months) on a unit's multi-select.
+  const toggleUnitTerm = (i, months) => {
+    setUnits((u) =>
+      u.map((unit, idx) => {
+        if (idx !== i) return unit;
+        const cur = Array.isArray(unit.leaseTermMonths) ? unit.leaseTermMonths : [];
+        const next = cur.includes(months)
+          ? cur.filter((m) => m !== months)
+          : [...cur, months].sort((a, b) => a - b);
+        return { ...unit, leaseTermMonths: next };
+      })
+    );
+  };
+  const removeUnitTerm = (i, months) => toggleUnitTerm(i, months);
+  const [customTermInput, setCustomTermInput] = useState({});
+  const addCustomUnitTerm = (i) => {
+    const n = Number(customTermInput[i]);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setUnits((u) =>
+      u.map((unit, idx) => {
+        if (idx !== i) return unit;
+        const cur = Array.isArray(unit.leaseTermMonths) ? unit.leaseTermMonths : [];
+        if (cur.includes(n)) return unit;
+        return { ...unit, leaseTermMonths: [...cur, n].sort((a, b) => a - b) };
+      })
+    );
+    setCustomTermInput((prev) => ({ ...prev, [i]: "" }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -767,6 +848,20 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
       setError("Each unit needs bedrooms and bathrooms.");
       return;
     }
+    // An available unit must offer at least one lease term, otherwise it would
+    // show up with no availability (or borrow another unit's).
+    if (
+      units.some(
+        (u) =>
+          u.available !== false &&
+          !(Array.isArray(u.leaseTermMonths) && u.leaseTermMonths.length > 0)
+      )
+    ) {
+      setError(
+        "Each available unit needs at least one lease term (or mark it unavailable)."
+      );
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -776,6 +871,11 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
         rent: u.rent !== "" ? Number(u.rent) : null,
         area: u.area !== "" ? Number(u.area) : null,
         available: u.available !== false,
+        title: (u.title ?? "").trim() || null,
+        floorPlanImageUrl: u.floorPlanImageUrl || null,
+        leaseTermMonths: Array.isArray(u.leaseTermMonths)
+          ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+          : [],
       }));
 
       let res;
@@ -799,8 +899,9 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
               contact_phone: form.contact_phone || null,
               contact_name: form.contact_name || null,
               amenities: form.amenities,
+              custom_amenities: customAmenities,
               utilities_included: form.utilities_included,
-              lease_availability: form.lease_availability,
+              // lease_availability is derived server-side from each unit's lease terms
               // persist any existing-image removals
               images: existingImages,
               units: unitPayload,
@@ -814,6 +915,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
           body: JSON.stringify({
             ...form,
             unitTypes: unitPayload,
+            customAmenities,
             // addListing expects camelCase for contact fields
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
@@ -974,12 +1076,6 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-              {error}
-            </div>
-          )}
-
           {/* Listing Details */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
@@ -1124,39 +1220,7 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Lease Availability
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Semester", "10-Month", "12-Month", "Summer"].map((opt) => {
-                    const selected = (form.lease_availability || []).includes(
-                      opt
-                    );
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() =>
-                          setForm((prev) => ({
-                            ...prev,
-                            lease_availability: selected
-                              ? prev.lease_availability.filter((v) => v !== opt)
-                              : [...(prev.lease_availability || []), opt],
-                          }))
-                        }
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                          selected
-                            ? "bg-red-500 text-white border-red-500"
-                            : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Lease availability is now set per-unit (Lease Terms) and derived automatically. */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Move-in Date
@@ -1224,6 +1288,44 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                   {AMENITY_LABELS[a]}
                 </button>
               ))}
+              {customAmenities.map((a) => (
+                <span
+                  key={a}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border bg-red-600 text-white border-red-600"
+                >
+                  {a}
+                  <button
+                    type="button"
+                    onClick={() => removeCustomAmenity(a)}
+                    className="ml-0.5 text-white/80 hover:text-white"
+                    aria-label={`Remove ${a}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="text"
+                value={customAmenityInput}
+                onChange={(e) => setCustomAmenityInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomAmenity();
+                  }
+                }}
+                placeholder="Add other amenity…"
+                className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+              <button
+                type="button"
+                onClick={addCustomAmenity}
+                className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+              >
+                Add
+              </button>
             </div>
           </div>
 
@@ -1324,6 +1426,128 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
                         />
                       </div>
                     ))}
+                    <div className="sm:col-span-4">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Unit / Floor Plan Name
+                      </label>
+                      <input
+                        type="text"
+                        value={unit.title ?? ""}
+                        onChange={(e) => updateUnit(i, "title", e.target.value)}
+                        placeholder='e.g. "The Loft" or "Penthouse A" (shown instead of "2 Bed / 1 Bath")'
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Lease Terms — select all this unit is offered for
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {LEASE_TERM_PRESETS.map((p) => {
+                          const on = (unit.leaseTermMonths || []).includes(p.months);
+                          return (
+                            <button
+                              key={p.label}
+                              type="button"
+                              onClick={() => toggleUnitTerm(i, p.months)}
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                on
+                                  ? "bg-red-600 text-white border-red-600"
+                                  : "bg-white text-gray-600 border-gray-300 hover:border-red-400"
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
+                        {/* Custom-month terms not covered by a preset */}
+                        {(unit.leaseTermMonths || [])
+                          .filter(
+                            (m) => !LEASE_TERM_PRESETS.some((p) => p.months === m)
+                          )
+                          .map((m) => (
+                            <span
+                              key={m}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border bg-red-600 text-white border-red-600"
+                            >
+                              {m}-Month
+                              <button
+                                type="button"
+                                onClick={() => removeUnitTerm(i, m)}
+                                className="ml-0.5 text-white/80 hover:text-white"
+                                aria-label={`Remove ${m}-month term`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        <input
+                          type="number"
+                          min="1"
+                          value={customTermInput[i] ?? ""}
+                          onChange={(e) =>
+                            setCustomTermInput((prev) => ({
+                              ...prev,
+                              [i]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addCustomUnitTerm(i);
+                            }
+                          }}
+                          placeholder="Custom #"
+                          className="w-24 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => addCustomUnitTerm(i)}
+                          className="px-2.5 py-1 rounded-md text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-4">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Floor Plan Image / PDF
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadFloorPlan(i, f);
+                            e.target.value = "";
+                          }}
+                          className="text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:bg-gray-200 file:px-3 file:py-1.5 file:text-xs file:font-medium hover:file:bg-gray-300"
+                        />
+                        {floorPlanUploading[i] && (
+                          <span className="text-xs text-gray-500">Uploading…</span>
+                        )}
+                        {unit.floorPlanImageUrl && !floorPlanUploading[i] && (
+                          <>
+                            <a
+                              href={unit.floorPlanImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-red-600 hover:underline"
+                            >
+                              View
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => updateUnit(i, "floorPlanImageUrl", "")}
+                              className="text-xs text-gray-400 hover:text-red-600"
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                     <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-4">
                       <input
                         type="checkbox"
@@ -1461,6 +1685,12 @@ function AddEditListingModal({ listing, onClose, onSuccess, user }) {
               </span>
             </label>
           </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+              {error}
+            </div>
+          )}
 
           {/* Footer */}
           <div className="flex gap-3 pt-2 border-t border-gray-100">

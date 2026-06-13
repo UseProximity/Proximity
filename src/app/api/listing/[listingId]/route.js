@@ -108,11 +108,18 @@ function buildListing(row, owner = null, reviews = []) {
           .sort(
             (a, b) => new Date(a.available_from) - new Date(b.available_from)
           )[0]?.available_from ?? null;
+      const activeLease = (u.unit_leases ?? []).find((l) => l.is_active);
       return {
+        id: u.id,
         rent: activeRent != null ? Number(activeRent) : null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+        title: u.title ?? null,
+        floorPlanImageUrl: u.floor_plan_image_url ?? null,
+        leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
+          ? activeLease.lease_term_months.map(Number)
+          : [],
         leaseAvailability: nextAvailable,
         available: u.available ?? true,
       };
@@ -145,7 +152,10 @@ function buildListing(row, owner = null, reviews = []) {
     contactEmail: row.contact_email ?? null,
     contactPhone: row.contact_phone ?? null,
     contactName: row.contact_name ?? null,
-    leaseAvailability: [],
+    leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
+    customAmenities: (row.listing_custom_amenities ?? [])
+      .map((a) => a.label)
+      .filter(Boolean),
     leaseStructure: row.lease_structure ?? null,
     homeType: row.home_types?.label ?? "Other",
     furnished: row.furnished ?? false,
@@ -206,16 +216,17 @@ export async function GET(req, { params }) {
         `
         id, title, address, longitude, latitude, description,
         lease_type, contact_email, contact_phone, contact_name,
-        lease_structure, furnished, move_in_date,
+        lease_structure, furnished, move_in_date, lease_availability,
         sublease_friendly, twenty_one_plus, unavailable,
         city, state, zipcode, created_at,
         min_rent, max_rent, min_bedrooms, max_bedrooms,
         min_bathrooms, max_bathrooms, min_area, max_area,
         home_types(label),
         listing_units(
-          id, bedrooms, bathrooms, area, available,
-          unit_leases(rent, is_active, available_from, sublease)
+          id, bedrooms, bathrooms, area, available, title, floor_plan_image_url,
+          unit_leases(rent, is_active, available_from, sublease, lease_term_months)
         ),
+        listing_custom_amenities(label),
         listing_landlords(user_id, is_primary),
         listing_amenities(
           air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
