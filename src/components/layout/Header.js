@@ -13,7 +13,7 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 const Logo = "/logo.svg";
-import { Search, X, Menu, Plus } from "lucide-react";
+import { Search, X, Menu } from "lucide-react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
@@ -70,6 +70,7 @@ export function Header({ session }) {
     { href: "/browse", label: "Browse Listings" },
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/matchmaking", label: "Matchmaking" },
+    { href: addHref, label: addLabel },
     { href: "/about", label: "Meet the Founder" },
   ];
 
@@ -187,13 +188,6 @@ export function Header({ session }) {
 
           {/* Auth buttons — desktop only */}
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
-            <Link
-              href={addHref}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[17px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all duration-150 shadow-sm shadow-red-400/25"
-            >
-              <Plus className="h-5 w-5" />
-              {addLabel}
-            </Link>
             {session?.user ? (
               <>
                 <Link
@@ -266,14 +260,6 @@ export function Header({ session }) {
       {/* Mobile menu — absolute overlay so it doesn't push content down */}
       {mobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 z-50 border-t border-gray-100 bg-white/95 backdrop-blur-lg shadow-xl px-4 py-4 flex flex-col gap-1">
-          <Link
-            href={addHref}
-            onClick={() => setMobileMenuOpen(false)}
-            className="flex items-center justify-center gap-1.5 mb-2 px-4 py-3 rounded-xl text-[17px] font-semibold text-white bg-red-500 hover:bg-red-600 transition-all"
-          >
-            <Plus className="h-5 w-5" />
-            {addLabel}
-          </Link>
           {navLinks.map(({ href, label }) => (
             <Link
               key={href}
