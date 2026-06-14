@@ -107,6 +107,40 @@ function classifySurface(relPath) {
   return null;
 }
 
+// ── Runtime API-call detection ──────────────────────────────────────────────
+// Import edges miss a key relationship: a changed page/component that calls an
+// endpoint at runtime via fetch("/api/..."). Detect those string literals and
+// match them to known routes so the endpoints they hit get tested too.
+
+function pathSegs(p) {
+  return p.replace(/\/+$/, "").split("/").filter(Boolean);
+}
+
+// Does a called path correspond to this route path? Dynamic [segments] match anything.
+// A shorter call matches a longer route only if the extra route segments are all dynamic
+// (e.g. call "/api/x" hitting collection route "/api/x/[id]" after interpolation was stripped).
+function callMatchesRoute(callPath, routePath) {
+  const C = pathSegs(callPath);
+  const R = pathSegs(routePath);
+  if (C.length === R.length) return R.every((s, i) => s.startsWith("[") || s === C[i]);
+  if (C.length < R.length) {
+    for (let i = 0; i < C.length; i++) if (!(R[i].startsWith("[") || R[i] === C[i])) return false;
+    for (let i = C.length; i < R.length; i++) if (!R[i].startsWith("[")) return false;
+    return true;
+  }
+  return false;
+}
+
+// Extract "/api/..." paths from string/template literals (stops at quote or ${interpolation}).
+function extractApiCalls(content) {
+  const calls = new Set();
+  for (const m of content.matchAll(/["'`](\/api\/[^"'`$]*)/g)) {
+    const path = m[1].split("?")[0].split("#")[0].replace(/\/+$/, "");
+    if (path.length > 1) calls.add(path);
+  }
+  return [...calls];
+}
+
 // A layout/template change affects every page nested under its directory.
 function pagesUnderLayout(relPath) {
   const m = relPath.match(/^(src\/app\/.*?)\/?(layout|template)\.js$/);
@@ -235,6 +269,28 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
     }
   }
 
+  // Runtime endpoints: scan changed frontend files for fetch("/api/...") calls and
+  // match them to known routes. Catches form→endpoint links that imports don't show.
+  const calledApi = new Map();
+  const routeList = [...routeMeta.values()];
+  for (const f of srcChanged) {
+    if (classifySurface(f)?.kind === "api") continue; // route files handled as direct
+    for (const callPath of extractApiCalls(read(join(ROOT, f)))) {
+      const matches = routeList.filter((r) => callMatchesRoute(callPath, r.path));
+      for (const r of matches) {
+        if (!calledApi.has(r.path)) {
+          calledApi.set(r.path, { path: r.path, file: r.file, methods: r.methods, auth: r.auth, tables: r.tables });
+        }
+        (triggers[r.file] ??= new Set()).add(f);
+      }
+      if (!matches.length) {
+        // Called path with no known route — surface it so it isn't silently dropped.
+        const key = `?${callPath}`;
+        if (!calledApi.has(key)) calledApi.set(key, { path: callPath, unmatched: true });
+      }
+    }
+  }
+
   // Schema/migration changes: map affected tables → routes touching them.
   // SQL is parsed loosely, so guard against noise (aliases, CTE names, comment words):
   // accept DDL table names outright, but only accept other identifiers if they match a
@@ -279,7 +335,11 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
     totalPages,
     changedFiles: { src: srcChanged, migrations: migrationChanged, other: otherChanged },
     affected: {
-      apiEndpoints: { direct: [...directApi.values()], indirect: [...indirectApi.values()] },
+      apiEndpoints: {
+        direct: [...directApi.values()],
+        indirect: [...indirectApi.values()],
+        called: [...calledApi.values()],
+      },
       pages: { direct: [...directPage.values()], indirect: [...indirectPage.values()] },
       schemaRoutes: schemaAffectedRoutes,
       tablesTouched: [...tablesTouched],
@@ -324,14 +384,24 @@ export function formatImpactReport(result) {
 
   const { apiEndpoints, pages, schemaRoutes, tablesTouched } = affected;
 
+  const called = apiEndpoints.called ?? [];
+  const calledKnown = called.filter((e) => !e.unmatched);
+  const calledUnknown = called.filter((e) => e.unmatched);
+
   out += `### 🔌 Affected API endpoints\n`;
   if (apiEndpoints.direct.length) {
     out += `**Directly changed:**\n${apiEndpoints.direct.map(fmtEndpoint).join("\n")}\n`;
   }
+  if (calledKnown.length) {
+    out += `**Called at runtime by changed UI (fetch):**\n${calledKnown.map(fmtEndpoint).join("\n")}\n`;
+  }
   if (apiEndpoints.indirect.length) {
     out += `**Indirectly affected (via shared code):**\n${apiEndpoints.indirect.map(fmtEndpoint).join("\n")}\n`;
   }
-  if (!apiEndpoints.direct.length && !apiEndpoints.indirect.length) out += `_None._\n`;
+  if (calledUnknown.length) {
+    out += `**Called but not in route knowledge (verify these exist):**\n${calledUnknown.map((e) => `  - \`${e.path}\``).join("\n")}\n`;
+  }
+  if (!apiEndpoints.direct.length && !calledKnown.length && !apiEndpoints.indirect.length && !calledUnknown.length) out += `_None._\n`;
 
   // A change that reaches most pages is a root-level/shared component (Header,
   // Providers, root layout). Enumerating every page isn't actionable — collapse it.
@@ -363,7 +433,7 @@ export function formatImpactReport(result) {
   }
 
   // Suggested test checklist
-  const allApi = [...apiEndpoints.direct, ...apiEndpoints.indirect, ...schemaRoutes];
+  const allApi = [...apiEndpoints.direct, ...calledKnown, ...apiEndpoints.indirect, ...schemaRoutes];
   const seenApi = new Set();
   const apiChecklist = allApi.filter((e) => (seenApi.has(e.path) ? false : seenApi.add(e.path)));
   // When fan-out is broad, only the directly-changed pages plus a small sample go
