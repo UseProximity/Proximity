@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { readKnowledge, getKnowledgePath } from "./resources.mjs";
 import { analyzeImpact, formatImpactReport } from "./impact.mjs";
+import { runImpactTests, formatTestReport } from "./runner.mjs";
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
@@ -206,6 +207,38 @@ export const TOOLS = [
           description:
             "Optional. Explicit list of changed file paths (repo-relative) to analyze instead of running git. " +
             "Useful for CI where the diff is computed elsewhere.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "run-impact-tests",
+    description:
+      "Run the analyze-impact checklist against a running app. Exercises each affected API endpoint " +
+      "and page and reports pass/warn/fail. Endpoints are judged by their auth level: public routes must " +
+      "respond without crashing; guarded routes must reject unauthenticated requests (401/403) — a guarded " +
+      "route that returns 2xx unauthenticated is flagged as a security bug. Pages are checked for load errors. " +
+      "v1 is unauthenticated (no secrets needed); it does not yet exercise authenticated happy-paths. " +
+      "Requires the app running at baseUrl (default http://localhost:3000).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base: { type: "string", description: "Git ref to diff against (default: 'staging')." },
+        head: { type: "string", description: "Optional git ref for the changed side; omit to use the working tree." },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional explicit list of changed files (repo-relative) instead of running git.",
+        },
+        baseUrl: {
+          type: "string",
+          description: "Base URL of the running app to test (default: http://localhost:3000). Point at a Vercel preview for deployed testing.",
+        },
+        include: {
+          type: "string",
+          enum: ["all", "endpoints", "pages"],
+          description: "Which surfaces to test (default: all).",
         },
       },
       required: [],
@@ -894,10 +927,20 @@ function handleAnalyzeImpact({ base, head, files }) {
   }
 }
 
+async function handleRunImpactTests({ base, head, files, baseUrl, include }) {
+  try {
+    const out = await runImpactTests({ base, head, files, baseUrl, include });
+    return { content: [{ type: "text", text: formatTestReport(out) }] };
+  } catch (err) {
+    return { isError: true, content: [{ type: "text", text: `run-impact-tests failed: ${err.message}` }] };
+  }
+}
+
 export function callTool(name, args) {
   switch (name) {
     case "spawn-agents":       return handleSpawnAgents(args);
     case "analyze-impact":     return handleAnalyzeImpact(args);
+    case "run-impact-tests":   return handleRunImpactTests(args);
     case "log-agent-step":     return handleLogAgentStep(args);
     case "get-agent-status":   return handleGetAgentStatus(args);
     case "update-knowledge":   return handleUpdateKnowledge(args);
