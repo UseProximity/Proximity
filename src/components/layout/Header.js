@@ -56,10 +56,21 @@ export function Header({ session }) {
 
   const isActive = (path) => pathname === path;
 
+  // Adaptive "Add" CTA: landlords/super post full listings, everyone else posts
+  // subleases. Logged-out users go to /add-listing, whose layout bounces them
+  // through login and then to the right form for their role.
+  const isLandlordType =
+    session?.user?.role === "landlord" || session?.user?.role === "super";
+  const addHref =
+    session?.user && !isLandlordType ? "/add-sublease" : "/add-listing";
+  const addLabel =
+    session?.user && !isLandlordType ? "Add Sublease" : "Add Listing";
+
   const navLinks = [
     { href: "/browse", label: "Browse Listings" },
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/matchmaking", label: "Matchmaking" },
+    { href: addHref, label: addLabel },
     { href: "/about", label: "Meet the Founder" },
   ];
 
