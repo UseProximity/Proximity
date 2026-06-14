@@ -2,12 +2,14 @@
  * Daily cron: nudge new landlords who haven't listed yet.
  *
  * Triggered once a day by Vercel Cron (see vercel.json). Finds landlord accounts
- * created in the last 24 hours that have zero listings, and emails each a friendly
- * "Having trouble?" nudge offering help posting their first listing.
+ * created between 12 and 36 hours ago that have zero listings, and emails each a
+ * friendly "Having trouble?" nudge offering help posting their first listing.
  *
- * Windowing: a fixed daily run + an exact 24h lookback tiles the timeline into
- * back-to-back, non-overlapping windows, so each new landlord is caught exactly
- * once — no duplicates, no misses (barring a fully failed run that day).
+ * Windowing: nudging is delayed by at least 12h so a landlord isn't emailed
+ * immediately after signing up. The window is still 24h wide (12h–36h ago), so a
+ * fixed daily run tiles the timeline into back-to-back, non-overlapping windows,
+ * and each new landlord is caught exactly once — no duplicates, no misses
+ * (barring a fully failed run that day).
  *
  * Security: protected by a CRON_SECRET bearer token. Vercel Cron automatically
  * sends `Authorization: Bearer ${CRON_SECRET}` when the env var is set.
@@ -18,7 +20,8 @@ import { sendLandlordNudgeEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+const MIN_AGE_MS = 12 * 60 * 60 * 1000; // skip landlords newer than this (don't nudge right after signup)
+const MAX_AGE_MS = 36 * 60 * 60 * 1000; // and older than this (already covered by a previous run)
 
 export async function GET(req) {
   const auth = req.headers.get("authorization");
@@ -36,15 +39,18 @@ export async function GET(req) {
     return NextResponse.json({ error: "landlord role not found" }, { status: 500 });
   }
 
-  const since = new Date(Date.now() - WINDOW_MS).toISOString();
+  const now = Date.now();
+  const since = new Date(now - MAX_AGE_MS).toISOString(); // oldest: 36h ago
+  const until = new Date(now - MIN_AGE_MS).toISOString(); // newest: 12h ago
 
-  // New landlords created in the last 24h (exclude soft-deleted accounts).
+  // New landlords created between 12h and 36h ago (exclude soft-deleted accounts).
   const { data: newLandlords, error: usersError } = await supabase
     .from("users")
     .select("id, name, email")
     .eq("role_id", landlordRole.id)
     .is("deleted_at", null)
-    .gte("created_at", since);
+    .gte("created_at", since)
+    .lte("created_at", until);
 
   if (usersError) {
     return NextResponse.json({ error: usersError.message }, { status: 500 });
