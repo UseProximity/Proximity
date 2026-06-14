@@ -88,7 +88,8 @@ Run `npm run build` (and `npm run lint`) before opening a PR. There is no unit-t
 A local MCP **knowledge server** for this app (`node mcp/src/index.mjs`, registered in `.mcp.json`).
 
 - **Resources** (`proximity://…`): `domain`, `db-schema`, `api-routes`, `components`, `pages`, `utils`, `env-vars`, `active-tasks`, `agent-sessions`. Backed by JSON in `mcp/knowledge/` (gitignored, auto-generated).
-- **Tools**: `update-knowledge`, `log-task`, `spawn-agents`, `log-agent-step`, `get-agent-status`.
+- **Tools**: `update-knowledge`, `log-task`, `spawn-agents`, `log-agent-step`, `get-agent-status`, `analyze-impact`.
+- **`analyze-impact`**: maps a set of code changes to the testable surfaces they affect. Builds a reverse-dependency graph of `src/` and walks outward from each changed file to find every API endpoint and page downstream of it (directly or via shared components/libs/utils); also maps DB migration changes to routes querying the affected tables. Returns an impact report + suggested test checklist. Inputs: `base` (default `staging`), optional `head` ref, or an explicit `files` list (for CI).
 - **Prompts**: scaffold/debug routes, components, pages, auth; plus role briefings.
 - **Regenerate knowledge**: `node mcp/scripts/generate-knowledge.mjs` (rescans `src/` for routes, components, pages, utils, env vars; `db-schema.json` is hand-maintained against the live DB).
 - After editing the MCP server code, restart Claude Code so the updated tools/resources load.

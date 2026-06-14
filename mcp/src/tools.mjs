@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { readKnowledge, getKnowledgePath } from "./resources.mjs";
+import { analyzeImpact, formatImpactReport } from "./impact.mjs";
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
@@ -175,6 +176,39 @@ export const TOOLS = [
         },
       },
       required: ["type", "title", "description", "status"],
+    },
+  },
+  {
+    name: "analyze-impact",
+    description:
+      "Map a set of code changes to the testable surfaces they affect. " +
+      "Builds a reverse-dependency graph of src/ (who imports whom) and walks outward from each " +
+      "changed file to find every API endpoint and app page downstream of it — directly or via shared " +
+      "components/libs/utils. Also maps DB migration changes to the routes that query the affected tables. " +
+      "Returns a per-surface impact report plus a suggested test checklist. " +
+      "Use this before opening a PR (and after each push) to test only what changed instead of the whole app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base: {
+          type: "string",
+          description: "Git ref to diff against (default: 'staging'). The branch the change will merge into.",
+        },
+        head: {
+          type: "string",
+          description:
+            "Optional. Git ref for the changed side (e.g. a branch or PR head). " +
+            "If omitted, analyzes the current working tree: committed-since-base + staged + unstaged + untracked files.",
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional. Explicit list of changed file paths (repo-relative) to analyze instead of running git. " +
+            "Useful for CI where the diff is computed elsewhere.",
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -851,9 +885,19 @@ function handleSpawnAgents({ goal, roles, interface_contract, notes }) {
   };
 }
 
+function handleAnalyzeImpact({ base, head, files }) {
+  try {
+    const result = analyzeImpact({ base, head, files });
+    return { content: [{ type: "text", text: formatImpactReport(result) }] };
+  } catch (err) {
+    return { isError: true, content: [{ type: "text", text: `analyze-impact failed: ${err.message}` }] };
+  }
+}
+
 export function callTool(name, args) {
   switch (name) {
     case "spawn-agents":       return handleSpawnAgents(args);
+    case "analyze-impact":     return handleAnalyzeImpact(args);
     case "log-agent-step":     return handleLogAgentStep(args);
     case "get-agent-status":   return handleGetAgentStatus(args);
     case "update-knowledge":   return handleUpdateKnowledge(args);
