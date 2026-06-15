@@ -1043,9 +1043,14 @@ export default function ListingFormPanel({
                         min: "0",
                         step: "0.5",
                       },
-                      { field: "rent", label: "Rent ($/mo)", min: "0" },
+                      {
+                        field: "rent",
+                        label: "Rent ($/mo)",
+                        min: "0",
+                        hint: "Whole unit, not per student",
+                      },
                       { field: "area", label: "Area (sq ft)", min: "0" },
-                    ].map(({ field, label, min, step }) => (
+                    ].map(({ field, label, min, step, hint }) => (
                       <div key={field}>
                         <label className="block text-xs font-medium text-gray-600 mb-1">
                           {label}
@@ -1058,6 +1063,11 @@ export default function ListingFormPanel({
                           onChange={(e) => updateUnit(i, field, e.target.value)}
                           className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
+                        {hint && (
+                          <p className="mt-1 text-[11px] leading-tight text-gray-400">
+                            {hint}
+                          </p>
+                        )}
                       </div>
                     ))}
                     <div className="sm:col-span-4">
