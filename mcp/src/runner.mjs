@@ -36,6 +36,10 @@ async function request(url, method, cookie) {
   }
   try {
     const res = await fetch(url, opts);
+    // Drain the body so undici can release the keep-alive socket. We only need
+    // the status; an unread body keeps the connection (and the event loop) open,
+    // which leaves the CI process hanging after all probes finish.
+    await res.body?.cancel().catch(() => {});
     return { status: res.status };
   } catch (err) {
     return { error: err.name === "AbortError" ? "timeout" : err.message };

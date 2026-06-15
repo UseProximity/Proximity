@@ -118,7 +118,13 @@ async function main() {
   console.log(`ci-impact: ${runs.length} run(s); ${fail} fail, ${warn} warn. Reports in ${outDir}`);
 }
 
-main().catch((err) => {
+main()
+  .then(() => {
+    // All work is done; exit explicitly so any lingering keep-alive sockets
+    // from fetch() can't hold the event loop open and hang the CI step.
+    process.exit(0);
+  })
+  .catch((err) => {
   console.error("ci-impact crashed:", err);
   // Don't block the comment — record the crash so the narrator can mention it.
   try {
