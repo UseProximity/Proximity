@@ -9,7 +9,7 @@ name: Weekly prod → dev snapshot
 
 on:
   schedule:
-    - cron: "0 10 * * 0" # Sundays 10:00 UTC (~3am PT)
+    - cron: "0 8 * * 0" # Sundays 08:00 UTC = 3am EST (4am EDT during daylight saving)
   workflow_dispatch: {} # manual "Run workflow" button
 
 # Never run two snapshots at once.
