@@ -18,11 +18,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env.snapshot.local"
 
-[[ -f "$ENV_FILE" ]] || { echo "ABORT: missing $ENV_FILE (set PROD_DB_URL, DEV_DB_URL)"; exit 1; }
-set -a; source "$ENV_FILE"; set +a
+# Local runs read connection strings from .env.snapshot.local; CI (GitHub Actions) passes
+# PROD_DB_URL / DEV_DB_URL via env from repo secrets, so the file is optional.
+if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi
 
-: "${PROD_DB_URL:?ABORT: set PROD_DB_URL in .env.snapshot.local}"
-: "${DEV_DB_URL:?ABORT: set DEV_DB_URL in .env.snapshot.local}"
+: "${PROD_DB_URL:?ABORT: set PROD_DB_URL (in .env.snapshot.local or the environment)}"
+: "${DEV_DB_URL:?ABORT: set DEV_DB_URL (in .env.snapshot.local or the environment)}"
 
 if [[ "${1:-}" != "--confirm" ]]; then
   echo "This OVERWRITES the DEV database's public schema with PROD data."
