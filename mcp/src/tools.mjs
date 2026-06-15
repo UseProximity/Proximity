@@ -240,6 +240,12 @@ export const TOOLS = [
           enum: ["all", "endpoints", "pages"],
           description: "Which surfaces to test (default: all).",
         },
+        allowMutations: {
+          type: "boolean",
+          description:
+            "Allow authenticated POST/PUT/PATCH/DELETE requests (default: false). Leave OFF against a prod-backed " +
+            "environment — these write real data / send real emails. Only enable against a safe/snapshot DB.",
+        },
       },
       required: [],
     },
@@ -927,9 +933,9 @@ function handleAnalyzeImpact({ base, head, files }) {
   }
 }
 
-async function handleRunImpactTests({ base, head, files, baseUrl, include }) {
+async function handleRunImpactTests({ base, head, files, baseUrl, include, allowMutations }) {
   try {
-    const out = await runImpactTests({ base, head, files, baseUrl, include });
+    const out = await runImpactTests({ base, head, files, baseUrl, include, allowMutations });
     return { content: [{ type: "text", text: formatTestReport(out) }] };
   } catch (err) {
     return { isError: true, content: [{ type: "text", text: `run-impact-tests failed: ${err.message}` }] };
