@@ -1,0 +1,115 @@
+name: Release PR check (staging → main)
+
+# Runs only on PRs into main whose source branch is `staging` — i.e. a release.
+# Analyzes the full main→staging diff, exercises every affected surface against
+# the staging deployment, and posts a Claude-written review + test plan as a
+# sticky PR comment.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    # Gate: only release PRs (head branch is staging).
+    if: github.head_ref == 'staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure base ref is present
+        run: git fetch --no-tags origin main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate MCP knowledge graph
+        # impact analysis needs api-routes.json (gitignored, machine-generated).
+        run: node mcp/scripts/generate-knowledge.mjs
+
+      - name: Analyze impact + run tests against staging
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          IMPACT_BASE: origin/main
+          IMPACT_HEAD: HEAD
+          OUT_DIR: ci-out
+          TEST_LANDLORD_EMAIL: ${{ vars.TEST_LANDLORD_EMAIL }}
+          TEST_LANDLORD_PASSWORD: ${{ secrets.TEST_LANDLORD_PASSWORD }}
+          TEST_LANDLORD_ROLE: ${{ vars.TEST_LANDLORD_ROLE }}
+          TEST_STUDENT_EMAIL: ${{ vars.TEST_STUDENT_EMAIL }}
+          TEST_STUDENT_PASSWORD: ${{ secrets.TEST_STUDENT_PASSWORD }}
+          TEST_STUDENT_ROLE: ${{ vars.TEST_STUDENT_ROLE }}
+        run: node mcp/scripts/ci-impact.mjs
+
+      - name: Write release review with Claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OUT_DIR: ci-out
+        run: node mcp/scripts/ci-narrate.mjs
+
+      - name: Assemble PR comment
+        run: |
+          {
+            echo "<!-- release-pr-check -->"
+            echo "# 🚦 Release review: \`staging\` → \`main\`"
+            echo ""
+            cat ci-out/narrative.md
+            echo ""
+            echo "<details><summary>📊 Affected surfaces (impact report)</summary>"
+            echo ""
+            cat ci-out/impact.md
+            echo ""
+            echo "</details>"
+            for f in ci-out/tests-*.md; do
+              [ -e "$f" ] || continue
+              echo ""
+              echo "<details><summary>🧪 $(basename "$f")</summary>"
+              echo ""
+              cat "$f"
+              echo ""
+              echo "</details>"
+            done
+            echo ""
+            echo "_Generated automatically — public routes are probed, guarded routes are checked for auth, and reads are verified as the test landlord/student. Mutations are not run._"
+          } > ci-out/comment.md
+
+      - name: Post sticky PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('ci-out/comment.md', 'utf8');
+            const marker = '<!-- release-pr-check -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail the check if live tests failed
+        run: |
+          fails=$(node -e "process.stdout.write(String((require('./ci-out/status.json').fail)||0))")
+          echo "Test failures: $fails"
+          if [ "$fails" -gt 0 ]; then
+            echo "::error::Impact tests reported $fails failure(s) against staging — see the PR comment."
+            exit 1
+          fi
