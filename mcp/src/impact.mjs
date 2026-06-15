@@ -95,7 +95,6 @@ function buildReverseGraph() {
 // ── Surface classification ──────────────────────────────────────────────────
 
 function classifySurface(relPath) {
-  const apiMatch = relPath.match(/^src\/app\/(.*)\/route\.js$/) || relPath.match(/^src\/app\/route\.js$/);
   if (/^src\/app\/.*route\.js$/.test(relPath)) {
     const path = "/" + relPath.replace(/^src\/app\//, "").replace(/\/?route\.js$/, "");
     return { kind: "api", path: path.replace(/\/+$/, "") || "/" };
