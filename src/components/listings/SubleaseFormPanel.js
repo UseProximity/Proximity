@@ -122,6 +122,7 @@ export default function SubleaseFormPanel({
   const [stagedFiles, setStagedFiles] = useState([]);
   const [stagedPreviews, setStagedPreviews] = useState([]);
   const [existingImages, setExistingImages] = useState(listing?.images ?? []);
+  const stagedPreviewsRef = useRef([]);
 
   // Address autocomplete
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -129,6 +130,18 @@ export default function SubleaseFormPanel({
   const [addressDropdownOpen, setAddressDropdownOpen] = useState(false);
   const addressRef = useRef(null);
   const addressDebounceRef = useRef(null);
+
+  useEffect(() => {
+    stagedPreviewsRef.current = stagedPreviews;
+  }, [stagedPreviews]);
+
+  // Cleanup: cancel pending debounced requests and release object URLs on unmount.
+  useEffect(() => {
+    return () => {
+      if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
+      for (const url of stagedPreviewsRef.current) URL.revokeObjectURL(url);
+    };
+  }, []);
 
   useEffect(() => {
     function onOutsideClick(e) {
