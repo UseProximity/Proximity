@@ -9,9 +9,12 @@
  * NODE_ENV, used by auth.js and the majority of API routes.
  */
 import { createClient } from "@supabase/supabase-js";
+import { isProdData } from "./appEnv";
 
 function makeSupabaseClient(dbTarget) {
-  const isProd = dbTarget === "prod" || (!dbTarget && process.env.NODE_ENV === "production");
+  // Default target follows isProdData(): real production → prod DB; staging & local → dev DB.
+  // An explicit dbTarget ("prod"|"dev") still overrides (used by the admin dev/prod toggle).
+  const isProd = dbTarget === "prod" || (!dbTarget && isProdData());
   const supabaseUrl = isProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL;
   const supabaseServiceRoleKey = isProd
     ? process.env.PROD_SUPABASE_SERVICE_KEY

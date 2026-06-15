@@ -5,10 +5,11 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/lib/r2";
 import { auth } from "@/auth";
+import { isProdData } from "@/lib/appEnv";
 
 function isProdBucket(db) {
   if (db === "prod") return true;
-  if (!db && process.env.NODE_ENV === "production") return true;
+  if (!db && isProdData()) return true;
   return false;
 }
 function getBucket(db) {

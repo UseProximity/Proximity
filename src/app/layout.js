@@ -13,6 +13,7 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { Header } from "@/components/layout/Header";
+import StagingBanner from "@/components/layout/StagingBanner";
 import { auth } from "@/auth";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }) {
         />
       </head>
       <body className={inter.className}>
+        <StagingBanner />
         <div>
           <Toaster />
         </div>
