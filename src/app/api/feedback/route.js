@@ -12,6 +12,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import nodemailer from "nodemailer";
+import { sendMailSafe } from "@/lib/outreach";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,7 @@ export async function POST(req) {
       );
     }
 
-    await _mailer.sendMail({
+    await sendMailSafe(_mailer, {
       from: `"Proximity Feedback" <${process.env.EMAIL_USER}>`,
       to: TEAM_EMAILS.join(", "),
       replyTo: providedEmail || undefined,

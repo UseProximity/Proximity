@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { auth } from "@/auth";
 import { getSupabaseClient } from "@/lib/supabase";
 import nodemailer from "nodemailer";
+import { sendMailSafe } from "@/lib/outreach";
 
 const _adminEmailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -17,7 +18,7 @@ async function sendNewListingEmail(toEmail, toName, address, listingId) {
     return;
   }
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
-  await _adminEmailTransporter.sendMail({
+  await sendMailSafe(_adminEmailTransporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "You have a new listing on Proximity!",
@@ -44,7 +45,7 @@ async function sendCoLandlordAddedEmail(toEmail, toName, newLandlordName, newLan
     return;
   }
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
-  await _adminEmailTransporter.sendMail({
+  await sendMailSafe(_adminEmailTransporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "A co-owner has been added to your listing on Proximity",
