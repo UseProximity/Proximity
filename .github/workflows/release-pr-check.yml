@@ -1,9 +1,10 @@
 name: Release PR check (staging → main)
 
 # Runs only on PRs into main whose source branch is `staging` — i.e. a release.
-# Analyzes the full main→staging diff, exercises every affected surface against
-# the staging deployment, and posts a Claude-written review + test plan as a
-# sticky PR comment.
+# Each push posts a NEW comment (a per-commit history): it reads the bug ledger
+# from the most recent prior comment, re-tests only the surfaces changed since the
+# last reviewed commit, marks tracked bugs fixed/still-open, and embeds the updated
+# ledger as a hidden state block for the next run to read.
 on:
   pull_request:
     branches: [main]
@@ -40,12 +41,41 @@ jobs:
         # impact analysis needs api-routes.json (gitignored, machine-generated).
         run: node mcp/scripts/generate-knowledge.mjs
 
+      - name: Fetch prior ledger state
+        # Pull the hidden state block from the most recent prior check comment so
+        # this run knows what it already tested and which bugs are still open.
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            fs.mkdirSync('ci-out', { recursive: true });
+            const begin = '<!--release-pr-check:state';
+            const end = '-->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number,
+            });
+            // listComments is chronological; the last match is the newest state.
+            let state = 'null';
+            for (const c of comments) {
+              const body = c.body || '';
+              const s = body.indexOf(begin);
+              if (s === -1) continue;
+              const e = body.indexOf(end, s + begin.length);
+              if (e === -1) continue;
+              state = body.slice(s + begin.length, e).trim() || 'null';
+            }
+            fs.writeFileSync('ci-out/prev-state.json', state);
+            core.info(state === 'null' ? 'No prior ledger — first run.' : `Loaded prior ledger (${state.length} chars).`);
+
       - name: Analyze impact + run tests against staging
         env:
           STAGING_URL: ${{ vars.STAGING_URL }}
           IMPACT_BASE: origin/main
           IMPACT_HEAD: HEAD
           OUT_DIR: ci-out
+          PREV_STATE_FILE: ci-out/prev-state.json
           TEST_LANDLORD_EMAIL: ${{ vars.TEST_LANDLORD_EMAIL }}
           TEST_LANDLORD_PASSWORD: ${{ secrets.TEST_LANDLORD_PASSWORD }}
           TEST_LANDLORD_ROLE: ${{ vars.TEST_LANDLORD_ROLE }}
@@ -62,13 +92,17 @@ jobs:
 
       - name: Assemble PR comment
         run: |
+          RUN=$(node -e "process.stdout.write(String(require('./ci-out/data.json').runNumber||1))")
+          SHA=$(node -e "process.stdout.write(String(require('./ci-out/data.json').headShort||''))")
           {
             echo "<!-- release-pr-check -->"
-            echo "# 🚦 Release review: \`staging\` → \`main\`"
+            echo "# 🚦 Release review: \`staging\` → \`main\` — run ${RUN} (\`${SHA}\`)"
+            echo ""
+            cat ci-out/ledger.md
             echo ""
             cat ci-out/narrative.md
             echo ""
-            echo "<details><summary>📊 Affected surfaces (impact report)</summary>"
+            echo "<details><summary>📊 Affected surfaces (full release)</summary>"
             echo ""
             cat ci-out/impact.md
             echo ""
@@ -76,40 +110,33 @@ jobs:
             for f in ci-out/tests-*.md; do
               [ -e "$f" ] || continue
               echo ""
-              echo "<details><summary>🧪 $(basename "$f")</summary>"
+              echo "<details><summary>🧪 $(basename "$f") (surfaces tested this run)</summary>"
               echo ""
               cat "$f"
               echo ""
               echo "</details>"
             done
             echo ""
-            echo "_Generated automatically — public routes are probed, guarded routes are checked for auth, and reads are verified as the test landlord/student. Mutations are not run._"
+            echo "_Incremental release check — each push re-tests only what changed since the last reviewed commit and updates the bug ledger above. Public routes are probed, guarded routes are checked for auth, and reads are verified as the test landlord/student. Mutations are not run._"
+            echo ""
+            cat ci-out/state-block.txt
           } > ci-out/comment.md
 
-      - name: Post sticky PR comment
+      - name: Post a new PR comment for this commit
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('ci-out/comment.md', 'utf8');
-            const marker = '<!-- release-pr-check -->';
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number,
-            });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
 
-      - name: Fail the check if live tests failed
+      - name: Fail the check if any bug is open
         run: |
           fails=$(node -e "process.stdout.write(String((require('./ci-out/status.json').fail)||0))")
-          echo "Test failures: $fails"
+          echo "Open bugs: $fails"
           if [ "$fails" -gt 0 ]; then
-            echo "::error::Impact tests reported $fails failure(s) against staging — see the PR comment."
+            echo "::error::$fails open bug(s) tracked against this release — see the latest PR comment."
             exit 1
           fi
