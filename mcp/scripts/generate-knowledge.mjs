@@ -49,27 +49,63 @@ function write(filename, data) {
 
 // ── 1. API Routes ─────────────────────────────────────────────────────────────
 
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+// auth levels, weakest → strongest. "optional" means the handler consults the
+// session to personalize but still serves anonymous callers a safe response
+// (e.g. an empty list) — it is NOT a missing guard.
+const AUTH_RANK = { public: 0, optional: 1, any: 2, "landlord+": 3, super: 4 };
+
+// Slice each `export async function METHOD(...) {…}` body out of the route file so
+// auth can be judged per method (a route's GET may be a public read while its POST
+// is a guarded mutation).
+function extractHandlerBodies(content) {
+  const positions = [];
+  for (const m of HTTP_METHODS) {
+    const idx = content.search(new RegExp(`export\\s+async\\s+function\\s+${m}\\b`));
+    if (idx !== -1) positions.push({ method: m, idx });
+  }
+  positions.sort((a, b) => a.idx - b.idx);
+  const bodies = {};
+  for (let i = 0; i < positions.length; i++) {
+    const end = i + 1 < positions.length ? positions[i + 1].idx : content.length;
+    bodies[positions[i].method] = content.slice(positions[i].idx, end);
+  }
+  return bodies;
+}
+
+// True when the handler's missing-session branch returns a normal response (no
+// 401/403) — i.e. it degrades gracefully for anonymous users rather than rejecting.
+// We can't brace-balance with a regex, so we scan a window right after the
+// `if (!session …)` guard and look for the hallmarks of a rejection.
+function noSessionIsSoft(body) {
+  const m = body.match(/if\s*\(\s*!session[^)]*\)/);
+  if (!m) return false; // no explicit `if (!session …)` guard → treat as guarded
+  const branch = body.slice(m.index, m.index + 240);
+  const rejects = /status:\s*4\d\d/.test(branch) || /Unauthorized|Forbidden/i.test(branch);
+  return !rejects;
+}
+
+function classifyHandlerAuth(body) {
+  if (/requireSuper\(\)/.test(body) || /role\s*!==\s*["']super["']/.test(body)) return "super";
+  if (!/\bauth\(\)/.test(body)) return "public"; // never consults the session
+  if (noSessionIsSoft(body)) return "optional";  // personalizes but serves anon
+  return /role[^;\n]*landlord/.test(body) ? "landlord+" : "any";
+}
+
 function inferRouteDetails(routePath, content) {
   const relPath = relative(ROOT, routePath);
 
-  // Extract HTTP methods defined in the file
-  const methods = [];
-  if (/export async function GET/.test(content)) methods.push("GET");
-  if (/export async function POST/.test(content)) methods.push("POST");
-  if (/export async function PUT/.test(content)) methods.push("PUT");
-  if (/export async function PATCH/.test(content)) methods.push("PATCH");
-  if (/export async function DELETE/.test(content)) methods.push("DELETE");
+  // Extract HTTP methods defined in the file + judge each one's auth level.
+  const bodies = extractHandlerBodies(content);
+  const methods = HTTP_METHODS.filter((m) => bodies[m]);
+  const methodAuth = {};
+  for (const m of methods) methodAuth[m] = classifyHandlerAuth(bodies[m]);
 
-  // Detect auth level
+  // Route-level auth = the strongest guard across its methods (for summaries).
   let auth = "public";
-  if (/requireSuper\(\)/.test(content) || /role !== ["']super["']/.test(content)) {
-    auth = "super";
-  } else if (/await auth\(\)/.test(content)) {
-    if (/role.*landlord/.test(content)) {
-      auth = "landlord+";
-    } else {
-      auth = "any";
-    }
+  for (const m of methods) {
+    if (AUTH_RANK[methodAuth[m]] > AUTH_RANK[auth]) auth = methodAuth[m];
   }
 
   // Detect Supabase tables accessed
@@ -83,7 +119,7 @@ function inferRouteDetails(routePath, content) {
     .replace(/\/route\.js$/, "")
     .replace(/\\/g, "/");
 
-  return { path: urlPath, methods, auth, tables, file: relPath };
+  return { path: urlPath, methods, auth, methodAuth, tables, file: relPath };
 }
 
 function generateApiRoutes() {
@@ -100,7 +136,7 @@ function generateApiRoutes() {
 
   write("api-routes.json", {
     _description:
-      "All Next.js API routes. auth: public=no auth, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
+      "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
     _generated: new Date().toISOString(),
     count: routes.length,
     routes,
