@@ -65,8 +65,20 @@ if [[ "${USERS:-0}" -lt 1 ]]; then
 fi
 echo "    dev users restored: $USERS"
 
-echo "[3/3] Stamping snapshot timestamp in DEV (app_metadata)…"
+echo "[3/3] Re-granting Supabase role privileges + stamping snapshot date…"
+# The dump used --no-privileges and --clean dropped the originals, so the PostgREST roles
+# (anon/authenticated/service_role) lose table access after a restore — which makes the app's
+# API return permission errors (500s). Re-grant Supabase's standard privileges, set default
+# privileges for future objects, then reload the API schema cache.
 psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables    in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all routines  in schema public to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on tables    to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on routines  to anon, authenticated, service_role;
+
 create table if not exists app_metadata (
   key text primary key,
   value text,
@@ -75,6 +87,8 @@ create table if not exists app_metadata (
 insert into app_metadata (key, value, updated_at)
 values ('snapshot_taken_at', now()::text, now())
 on conflict (key) do update set value = excluded.value, updated_at = now();
+
+notify pgrst, 'reload schema';
 SQL
 
-echo "✓ Done. DEV now mirrors PROD; snapshot_taken_at stamped for the staging banner."
+echo "✓ Done. DEV mirrors PROD; role grants re-applied; snapshot_taken_at stamped."
