@@ -24,6 +24,7 @@ export default function StagingEmailPicker() {
   const [selected, setSelected] = useState("");
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!ENABLED) return;
@@ -34,14 +35,17 @@ export default function StagingEmailPicker() {
   }, []);
 
   useEffect(() => {
-    if (!open || recipients.length) return;
+    if (!open || loaded) return;
     setLoading(true);
     fetch("/api/staging/email-recipients")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
       .then((d) => setRecipients(d.recipients || []))
       .catch(() => setRecipients([]))
-      .finally(() => setLoading(false));
-  }, [open, recipients.length]);
+      .finally(() => {
+        setLoading(false);
+        setLoaded(true);
+      });
+  }, [open, loaded]);
 
   if (!ENABLED) return null;
 
