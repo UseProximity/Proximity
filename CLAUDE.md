@@ -57,13 +57,28 @@ Session shape: `session.user.{id, email, role, name, profileComplete}`. `profile
 ## DB Access
 
 ```js
-import supabase from "@/lib/supabase";                 // default: targets dev/prod by NODE_ENV
+import supabase from "@/lib/supabase";                 // default target via isProdData() (see Environments)
 import { getSupabaseClient } from "@/lib/supabase";     // pass "dev"|"prod" for admin dev/prod toggle
 ```
 
 - Columns are **snake_case** in Supabase; convert to **camelCase** in the JS layer.
 - Aggregate listing columns (`min_rent`, `max_rent`, bedroom/bath ranges, etc.) are maintained by DB triggers — don't set them by hand.
 - **Schema migrations must be applied to BOTH dev and prod** (via the `supabase-dev` and `supabase-prod` MCP tools, or matching `apply_migration` calls). Verify columns against the live DB before changing schema-related code.
+
+## Environments (`src/lib/appEnv.js`)
+
+Three environments, distinguished by **`APP_ENV`** (falls back to `NODE_ENV` when unset):
+
+- **production** — the real site (useproximity.org): prod DB, prod R2 bucket, outreach ON.
+- **staging** — Vercel staging deploy (`APP_ENV=staging`): **dev DB + dev bucket, outreach OFF**, shows a banner. A sandbox on a prod-data snapshot.
+- **development** — local.
+
+Use the helpers — don't check `NODE_ENV` directly for data/outreach decisions:
+- `isProdData()` — selects prod vs dev DB/bucket (used by `supabase.js`, `upload`, `streetview`).
+- `outreachEnabled()` — gate all external outreach (email, Airtable, Formspree) behind this.
+- `isStaging()` — staging-only UI (e.g. `StagingBanner`).
+
+The dev snapshot is refreshed by `scripts/snapshot-prod-to-dev.sh` (clones prod `public` → dev, stamps `app_metadata.snapshot_taken_at`).
 
 ## API Conventions
 
@@ -88,7 +103,9 @@ Run `npm run build` (and `npm run lint`) before opening a PR. There is no unit-t
 A local MCP **knowledge server** for this app (`node mcp/src/index.mjs`, registered in `.mcp.json`).
 
 - **Resources** (`proximity://…`): `domain`, `db-schema`, `api-routes`, `components`, `pages`, `utils`, `env-vars`, `active-tasks`, `agent-sessions`. Backed by JSON in `mcp/knowledge/` (gitignored, auto-generated).
-- **Tools**: `update-knowledge`, `log-task`, `spawn-agents`, `log-agent-step`, `get-agent-status`.
+- **Tools**: `update-knowledge`, `log-task`, `spawn-agents`, `log-agent-step`, `get-agent-status`, `analyze-impact`, `run-impact-tests`.
+- **`analyze-impact`**: maps a set of code changes to the testable surfaces they affect. Builds a reverse-dependency graph of `src/` and walks outward from each changed file to find every API endpoint and page downstream of it (directly or via shared components/libs/utils); also maps DB migration changes to routes querying the affected tables. Returns an impact report + suggested test checklist. Inputs: `base` (default `staging`), optional `head` ref, or an explicit `files` list (for CI).
+- **`run-impact-tests`**: executes the `analyze-impact` checklist against a running app (`baseUrl`, default `http://localhost:3000`; point at a deployment to test it). Endpoints are judged by auth level — public must respond without crashing; guarded routes must reject anonymous calls (401/403). If test credentials are present in `.env.test.local` (gitignored: `TEST_SESSION_COOKIE`, or `TEST_EMAIL`/`TEST_PASSWORD` + `TEST_ROLE`), it also logs in and verifies guarded **reads** work for a real user. Authenticated **mutations** are skipped unless `allowMutations:true` — leave OFF against a prod-backed environment (real writes/emails).
 - **Prompts**: scaffold/debug routes, components, pages, auth; plus role briefings.
 - **Regenerate knowledge**: `node mcp/scripts/generate-knowledge.mjs` (rescans `src/` for routes, components, pages, utils, env vars; `db-schema.json` is hand-maintained against the live DB).
 - After editing the MCP server code, restart Claude Code so the updated tools/resources load.

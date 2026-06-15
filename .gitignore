@@ -81,3 +81,5 @@ mcp/knowledge/
 
 # Local documentation — not version controlled
 docs/
+# CI impact-check artifacts (generated)
+ci-out/

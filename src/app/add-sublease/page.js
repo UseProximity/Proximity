@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import ListingFormPanel from "@/components/listings/ListingFormPanel";
+import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 
-// Full-page "Add Listing" flow for landlords (and super). The shared
-// ListingFormPanel renders inline (asPage) instead of as a modal; on success we
-// drop the landlord back on their dashboard. Role gating lives in layout.js.
-export default function AddListingPage() {
+// Full-page "Add Sublease" flow for students (and super). The shared
+// SubleaseFormPanel renders inline (asPage) instead of as a modal; on success we
+// drop the student back on their dashboard. Role gating lives in layout.js.
+export default function AddSubleasePage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   // The form prefills contact fields from `user` on its first render, so wait
@@ -26,13 +26,13 @@ export default function AddListingPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-4">
       {ready ? (
-        <ListingFormPanel
+        <SubleaseFormPanel
           asPage
           user={user}
-          onClose={() => router.push("/dashboard/landlord")}
+          onClose={() => router.push("/dashboard/student")}
           onSuccess={() => {
-            toast.success("Listing created!");
-            router.push("/dashboard/landlord");
+            toast.success("Sublease posted!");
+            router.push("/dashboard/student");
           }}
         />
       ) : (
