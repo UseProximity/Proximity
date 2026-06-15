@@ -1047,7 +1047,7 @@ export default function ListingFormPanel({
                         field: "rent",
                         label: "Rent ($/mo)",
                         min: "0",
-                        hint: "Whole unit, not per student",
+                        hint: "Whole unit, not per person",
                       },
                       { field: "area", label: "Area (sq ft)", min: "0" },
                     ].map(({ field, label, min, step, hint }) => (
