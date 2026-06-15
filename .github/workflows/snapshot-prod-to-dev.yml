@@ -1,0 +1,41 @@
+name: Weekly prod → dev snapshot
+
+# Refreshes the dev database (which staging points at) with a clone of production data,
+# so staging + local always have realistic, up-to-date data. Runs weekly, plus on demand.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   PROD_DB_URL  — prod Supabase Session-pooler connection string (port 5432)
+#   DEV_DB_URL   — dev  Supabase Session-pooler connection string (port 5432)
+
+on:
+  schedule:
+    - cron: "0 10 * * 0" # Sundays 10:00 UTC (~3am PT)
+  workflow_dispatch: {} # manual "Run workflow" button
+
+# Never run two snapshots at once.
+concurrency:
+  group: snapshot-prod-to-dev
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Run prod → dev snapshot
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          DEV_DB_URL: ${{ secrets.DEV_DB_URL }}
+          # Safety guard: abort unless DEV_DB_URL references the dev project (ref appears in
+          # the Session-pooler username), so a swapped secret can't overwrite prod.
+          DEV_DB_HOST_MUST_CONTAIN: ngytjsckypjxddzpaekt
+        run: bash ./scripts/snapshot-prod-to-dev.sh --confirm
