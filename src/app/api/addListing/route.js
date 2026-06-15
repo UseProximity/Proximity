@@ -5,6 +5,7 @@ import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import nodemailer from "nodemailer";
+import { sendMailSafe } from "@/lib/outreach";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -19,7 +20,7 @@ async function sendNewListingEmail(toEmail, toName, address, listingId) {
     return;
   }
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
-  await _emailTransporter.sendMail({
+  await sendMailSafe(_emailTransporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "You have a new listing on Proximity!",

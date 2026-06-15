@@ -23,6 +23,7 @@ import { insertAsUser } from "@/lib/supabaseWithUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
+import { sendMailSafe } from "@/lib/outreach";
 
 export const dynamic = "force-dynamic";
 
@@ -247,7 +248,7 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
     ctaUrl = loginUrl;
   }
 
-  await _mailer.sendMail({
+  await sendMailSafe(_mailer, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     bcc: TEAM_EMAIL,
@@ -273,7 +274,7 @@ async function sendContactMismatchAlert({ listingAddress, listingId, ownerEmail,
     return;
   }
   const listingUrl = `${SITE_URL}/browse?listing=${listingId}`;
-  await _mailer.sendMail({
+  await sendMailSafe(_mailer, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: TEAM_EMAIL,
     subject: "⚠️ Review landlord-email mismatch on Proximity",

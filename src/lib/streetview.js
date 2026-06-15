@@ -20,15 +20,16 @@
  */
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/lib/r2";
+import { isProdData } from "@/lib/appEnv";
 
 const META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
 const IMG_URL = "https://maps.googleapis.com/maps/api/streetview";
 const IMG_SIZE = "640x640";
 
-// Mirror /api/upload's bucket selection: explicit "prod" or production NODE_ENV → prod bucket.
+// Mirror /api/upload's bucket selection: explicit "prod" or real production → prod bucket.
 function isProdBucket(db) {
   if (db === "prod") return true;
-  if (!db && process.env.NODE_ENV === "production") return true;
+  if (!db && isProdData()) return true;
   return false;
 }
 function getBucket(db) {

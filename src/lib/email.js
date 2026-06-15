@@ -8,6 +8,7 @@
  * are read from EMAIL_HOST, EMAIL_PORT, EMAIL_USER, and EMAIL_PASS environment variables.
  */
 import nodemailer from "nodemailer";
+import { sendMailSafe } from "./outreach";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -24,7 +25,7 @@ export function getBaseUrl(req) {
 
 export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-  await transporter.sendMail({
+  await sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "Reset your Proximity password",
@@ -45,7 +46,7 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
 
 export async function sendLandlordNudgeEmail({ email, name }) {
   const firstName = name ? name.split(" ")[0] : "";
-  await transporter.sendMail({
+  await sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: "info@useproximity.org",
@@ -70,7 +71,7 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 
 export async function sendVerificationEmail({ email, name, token, baseUrl }) {
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
-  await transporter.sendMail({
+  await sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "Verify your Proximity account",

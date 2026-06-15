@@ -57,13 +57,28 @@ Session shape: `session.user.{id, email, role, name, profileComplete}`. `profile
 ## DB Access
 
 ```js
-import supabase from "@/lib/supabase";                 // default: targets dev/prod by NODE_ENV
+import supabase from "@/lib/supabase";                 // default target via isProdData() (see Environments)
 import { getSupabaseClient } from "@/lib/supabase";     // pass "dev"|"prod" for admin dev/prod toggle
 ```
 
 - Columns are **snake_case** in Supabase; convert to **camelCase** in the JS layer.
 - Aggregate listing columns (`min_rent`, `max_rent`, bedroom/bath ranges, etc.) are maintained by DB triggers — don't set them by hand.
 - **Schema migrations must be applied to BOTH dev and prod** (via the `supabase-dev` and `supabase-prod` MCP tools, or matching `apply_migration` calls). Verify columns against the live DB before changing schema-related code.
+
+## Environments (`src/lib/appEnv.js`)
+
+Three environments, distinguished by **`APP_ENV`** (falls back to `NODE_ENV` when unset):
+
+- **production** — the real site (useproximity.org): prod DB, prod R2 bucket, outreach ON.
+- **staging** — Vercel staging deploy (`APP_ENV=staging`): **dev DB + dev bucket, outreach OFF**, shows a banner. A sandbox on a prod-data snapshot.
+- **development** — local.
+
+Use the helpers — don't check `NODE_ENV` directly for data/outreach decisions:
+- `isProdData()` — selects prod vs dev DB/bucket (used by `supabase.js`, `upload`, `streetview`).
+- `outreachEnabled()` — gate all external outreach (email, Airtable, Formspree) behind this.
+- `isStaging()` — staging-only UI (e.g. `StagingBanner`).
+
+The dev snapshot is refreshed by `scripts/snapshot-prod-to-dev.sh` (clones prod `public` → dev, stamps `app_metadata.snapshot_taken_at`).
 
 ## API Conventions
 
