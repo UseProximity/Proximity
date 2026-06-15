@@ -248,7 +248,7 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
       bucket.set(s.file, {
         path: s.path,
         file: s.file,
-        ...(meta ? { methods: meta.methods, auth: meta.auth, tables: meta.tables } : {}),
+        ...(meta ? { methods: meta.methods, auth: meta.auth, methodAuth: meta.methodAuth, tables: meta.tables } : {}),
       });
     }
     (triggers[s.file] ??= new Set()).add(viaFile);
@@ -278,7 +278,7 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
       const matches = routeList.filter((r) => callMatchesRoute(callPath, r.path));
       for (const r of matches) {
         if (!calledApi.has(r.path)) {
-          calledApi.set(r.path, { path: r.path, file: r.file, methods: r.methods, auth: r.auth, tables: r.tables });
+          calledApi.set(r.path, { path: r.path, file: r.file, methods: r.methods, auth: r.auth, methodAuth: r.methodAuth, tables: r.tables });
         }
         (triggers[r.file] ??= new Set()).add(f);
       }
@@ -317,7 +317,7 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
   if (tablesTouched.size) {
     for (const r of routeMeta.values()) {
       if ((r.tables ?? []).some((t) => tablesTouched.has(t))) {
-        schemaAffectedRoutes.push({ path: r.path, file: r.file, methods: r.methods, auth: r.auth, tables: r.tables });
+        schemaAffectedRoutes.push({ path: r.path, file: r.file, methods: r.methods, auth: r.auth, methodAuth: r.methodAuth, tables: r.tables });
       }
     }
   }

@@ -50,6 +50,15 @@ function judgeEndpoint(auth, method, result) {
   const s = result.status;
   if (s >= 500) return { verdict: "fail", note: `server error ${s} — endpoint crashed` };
 
+  // "optional" auth: the handler consults the session to personalize but is meant
+  // to serve anonymous callers a safe response. So a 2xx to anon is correct (not a
+  // missing guard), and a 401/403 is fine too — only a crash fails.
+  if (auth === "optional") {
+    if (s >= 200 && s < 300) return { verdict: "pass", note: `optional auth — serves anonymous a safe response (${s})` };
+    if (s === 401 || s === 403) return { verdict: "pass", note: `auth guard active (${s})` };
+    return { verdict: "warn", note: `responded ${s} (optional-auth read returned non-2xx)` };
+  }
+
   const guarded = auth && auth !== "public";
   if (guarded) {
     if (s === 401 || s === 403) return { verdict: "pass", note: `auth guard active (${s})` };
@@ -121,25 +130,30 @@ export async function runImpactTests({
   if (include === "all" || include === "endpoints") {
     for (const e of endpointMap.values()) {
       const methods = e.methods?.length ? e.methods : ["GET"];
-      const guarded = e.auth && e.auth !== "public";
       for (const method of methods) {
+        // Judge each method by its own auth level (a route's GET may be a public/
+        // optional read while its POST is a guarded mutation). Fall back to the
+        // route-level auth for older knowledge without methodAuth.
+        const mAuth = e.methodAuth?.[method] ?? e.auth ?? "public";
+        const consultsSession = mAuth && mAuth !== "public";
         const url = root + concretePath(e.path);
 
         // 1. Unauthenticated probe — confirms reachability + guard behavior.
         const res = await request(url, method);
-        const judged = judgeEndpoint(e.auth, method, res);
-        results.endpoints.push({ method, path: e.path, auth: e.auth ?? "?", mode: "anon", status: res.status ?? null, ...judged });
+        const judged = judgeEndpoint(mAuth, method, res);
+        results.endpoints.push({ method, path: e.path, auth: mAuth, mode: "anon", status: res.status ?? null, ...judged });
 
-        // 2. Authenticated probe — only for guarded reads, only if logged in.
-        if (session && guarded) {
+        // 2. Authenticated probe — for endpoints that consult the session
+        //    (guarded or optional), reads only, only if logged in.
+        if (session && consultsSession) {
           const isRead = method === "GET" || method === "HEAD";
           if (isRead) {
             const aRes = await request(url, method, session.cookie);
             const aJudged = judgeAuthedEndpoint(aRes, session.role);
-            results.endpoints.push({ method, path: e.path, auth: e.auth, mode: "auth", status: aRes.status ?? null, ...aJudged });
+            results.endpoints.push({ method, path: e.path, auth: mAuth, mode: "auth", status: aRes.status ?? null, ...aJudged });
           } else if (!allowMutations) {
             results.endpoints.push({
-              method, path: e.path, auth: e.auth, mode: "auth", status: null,
+              method, path: e.path, auth: mAuth, mode: "auth", status: null,
               verdict: "skip", note: "authenticated mutation skipped (would write to live DB) — enable allowMutations only against a safe/snapshot DB",
             });
           }
