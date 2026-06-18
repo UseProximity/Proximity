@@ -576,7 +576,9 @@ function PopularRentals() {
   const visibleListings = isMobile ? listings.slice(0, 3) : listings;
 
   useEffect(() => {
-    fetch("/api/listings")
+    // Server ranks these by recent saves + contacts (last week → month → all
+    // time), so render them as-is rather than re-sorting on the client.
+    fetch("/api/listings/popular")
       .then((r) => r.json())
       .then((data) => {
         const all = Array.isArray(data)
@@ -584,11 +586,7 @@ function PopularRentals() {
           : Array.isArray(data?.listings)
           ? data.listings
           : [];
-        const sorted = [...all].sort(
-          (a, b) =>
-            (b.numSaves * 5 + b.numClicks) - (a.numSaves * 5 + a.numClicks)
-        );
-        setListings(sorted.slice(0, 6));
+        setListings(all.slice(0, 6));
       })
       .catch(() => {})
       .finally(() => setLoading(false));

@@ -170,74 +170,79 @@ export function buildListing(row, owner = null) {
 // GET /api/listings
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch every non-deleted listing, fully built into the frontend shape.
+ * Exported so other routes (e.g. the popular-listings ranking) can reuse the
+ * exact same data path instead of duplicating the select + landlord join.
+ * Throws on a DB error — callers handle the response.
+ */
+export async function fetchListings() {
+  const { data: listings, error } = await supabase
+    .from("listings")
+    .select(
+      `
+      id, title, address, longitude, latitude, description,
+      lease_type, contact_email, contact_phone, contact_name,
+      lease_structure, furnished, move_in_date, lease_availability,
+      sublease_friendly, twenty_one_plus, unavailable,
+      city, state, zipcode, created_at,
+      min_rent, max_rent, min_bedrooms, max_bedrooms,
+      min_bathrooms, max_bathrooms, min_area, max_area,
+      home_types(label),
+      listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease)),
+      listing_landlords(user_id, is_primary),
+      listing_amenities(
+        air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
+        oven, parking, pets_allowed, pool, refrigerator, rooftop,
+        storage, stove, study_room
+      ),
+      listing_utilities(
+        electric, gas, heat, water, internet, trash, cable, sewer, cooling
+      ),
+      listing_images(url, sort_order, source),
+      listing_reviews(rating, legitimacy, deleted_at),
+      listing_walk_times(minutes, locations(name))
+      `
+    )
+    .is("deleted_at", null);
+
+  if (error) throw error;
+
+  // Collect unique primary-landlord user IDs for a single batch fetch
+  const primaryLandlordIds = [
+    ...new Set(
+      (listings ?? []).flatMap((l) => {
+        const ll = l.listing_landlords ?? [];
+        const primary = ll.find((x) => x.is_primary) ?? ll[0];
+        return primary ? [primary.user_id] : [];
+      })
+    ),
+  ];
+
+  let landlordMap = {};
+  if (primaryLandlordIds.length > 0) {
+    const { data: landlordUsers, error: landlordErr } = await supabase
+      .from("users")
+      .select("id, name, email, image")
+      .in("id", primaryLandlordIds);
+
+    if (landlordErr) {
+      console.error("[listings] landlord batch fetch error:", landlordErr);
+    }
+    for (const u of landlordUsers ?? []) landlordMap[u.id] = u;
+  }
+
+  return (listings ?? []).map((row) => {
+    const ll = row.listing_landlords ?? [];
+    const primaryLandlord = ll.find((x) => x.is_primary) ?? ll[0] ?? null;
+    const owner = primaryLandlord ? (landlordMap[primaryLandlord.user_id] ?? null) : null;
+    return buildListing(row, owner);
+  });
+}
+
 export async function GET() {
   try {
-    const { data: listings, error } = await supabase
-      .from("listings")
-      .select(
-        `
-        id, title, address, longitude, latitude, description,
-        lease_type, contact_email, contact_phone, contact_name,
-        lease_structure, furnished, move_in_date, lease_availability,
-        sublease_friendly, twenty_one_plus, unavailable,
-        city, state, zipcode, created_at,
-        min_rent, max_rent, min_bedrooms, max_bedrooms,
-        min_bathrooms, max_bathrooms, min_area, max_area,
-        home_types(label),
-        listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease)),
-        listing_landlords(user_id, is_primary),
-        listing_amenities(
-          air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
-          oven, parking, pets_allowed, pool, refrigerator, rooftop,
-          storage, stove, study_room
-        ),
-        listing_utilities(
-          electric, gas, heat, water, internet, trash, cable, sewer, cooling
-        ),
-        listing_images(url, sort_order, source),
-        listing_reviews(rating, legitimacy, deleted_at),
-        listing_walk_times(minutes, locations(name))
-        `
-      )
-      .is("deleted_at", null);
-
-    if (error) {
-      console.error("[listings GET] fetch error:", error);
-      return Response.json({ error: "Failed to fetch listings" }, { status: 500 });
-    }
-
-    // Collect unique primary-landlord user IDs for a single batch fetch
-    const primaryLandlordIds = [
-      ...new Set(
-        (listings ?? []).flatMap((l) => {
-          const ll = l.listing_landlords ?? [];
-          const primary = ll.find((x) => x.is_primary) ?? ll[0];
-          return primary ? [primary.user_id] : [];
-        })
-      ),
-    ];
-
-    let landlordMap = {};
-    if (primaryLandlordIds.length > 0) {
-      const { data: landlordUsers, error: landlordErr } = await supabase
-        .from("users")
-        .select("id, name, email, image")
-        .in("id", primaryLandlordIds);
-
-      if (landlordErr) {
-        console.error("[listings GET] landlord batch fetch error:", landlordErr);
-      }
-      for (const u of landlordUsers ?? []) landlordMap[u.id] = u;
-    }
-
-    const safeListings = (listings ?? []).map((row) => {
-      const ll = row.listing_landlords ?? [];
-      const primaryLandlord = ll.find((x) => x.is_primary) ?? ll[0] ?? null;
-      const owner = primaryLandlord ? (landlordMap[primaryLandlord.user_id] ?? null) : null;
-      return buildListing(row, owner);
-    });
-
-    return Response.json(safeListings);
+    return Response.json(await fetchListings());
   } catch (err) {
     console.error("[listings GET] unexpected error:", err);
     return Response.json({ error: "Failed to fetch listings" }, { status: 500 });

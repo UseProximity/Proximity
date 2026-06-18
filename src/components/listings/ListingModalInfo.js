@@ -996,6 +996,7 @@ export default function ListingModalInfo({
   listing,
   excludeTabs = [],
   compact = false,
+  tabBarAction = null,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -1615,6 +1616,11 @@ export default function ListingModalInfo({
                     </button>
                   )
                 )}
+                {tabBarAction ? (
+                  <div className="ml-auto flex items-center pl-3 pr-8">
+                    {tabBarAction}
+                  </div>
+                ) : null}
               </nav>
             </div>
 
