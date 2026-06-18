@@ -34,17 +34,29 @@ export function Header({ session }) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  // Build a /browse URL from the given params, preserving the current map/list
+  // view when the user searches while already on the browse page — otherwise a
+  // search from map view would bounce them back to the list view on mobile.
+  const buildBrowseUrl = (params) => {
+    const search = new URLSearchParams(params);
+    if (pathname === "/browse" && typeof window !== "undefined") {
+      const view = new URLSearchParams(window.location.search).get("view");
+      if (view) search.set("view", view);
+    }
+    return `/browse?${search.toString()}`;
+  };
+
   const submitSearch = (e) => {
     e.preventDefault();
     if (!query.trim()) return;
-    router.push(`/browse?search=${encodeURIComponent(query.trim())}`);
+    router.push(buildBrowseUrl({ search: query.trim() }));
     setSearchOpen(false);
     setQuery("");
   };
 
   const handleSuggestionSelect = (feature) => {
     const [lng, lat] = feature.center;
-    router.push(`/browse?lat=${lat}&lng=${lng}`);
+    router.push(buildBrowseUrl({ lat, lng }));
     setSearchOpen(false);
     setQuery("");
   };

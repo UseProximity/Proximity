@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent } from "@/utils/analytics";
 
 function WalkScale({ minutes, label }) {
@@ -141,7 +142,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
           const campusMin = pwm && typeof pwm === "object"
             ? (() => {
                 const vals = Object.entries(pwm)
-                  .filter(([k]) => !k.toLowerCase().includes("grocery"))
+                  .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
                   .map(([, v]) => v)
                   .filter(Number.isFinite);
                 return vals.length > 0 ? Math.min(...vals) : null;

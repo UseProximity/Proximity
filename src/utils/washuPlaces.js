@@ -68,3 +68,10 @@ export const SHUTTLE_STOPS = [
 
 // Canonical campus destination (Danforth University Center)
 export const CAMPUS = WASHU_PLACES.find((p) => p.name === "Danforth University Center");
+
+// Places excluded from the "closest campus walk" metric — the browse distance
+// filter and the map-card campus walk badge. The grocery store isn't campus,
+// and the Med Campus sits ~2mi east of Danforth, so a listing near it should
+// not read as a close walk to campus. (These still appear individually in the
+// listing's "Places" tab — they're only excluded from the single min figure.)
+export const NON_CAMPUS_WALK_PLACES = ["Schnucks (Grocery)", "Med Campus"];
