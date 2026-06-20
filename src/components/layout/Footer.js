@@ -15,7 +15,7 @@ const NAV_COLS = [
       { label: "Browse Listings", href: "/browse" },
       { label: "On Campus Hub", href: "/CampusHub" },
       { label: "Matchmaking", href: "/matchmaking" },
-      { label: "Add Sublease", href: "/dashboard/student?addSublease=1" },
+      { label: "Add Sublease", href: "/add-sublease" },
     ],
   },
   {
@@ -59,6 +59,11 @@ export default function Footer() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     });
+  }
+
+  // Opens the site-wide FeedbackWidget modal (mounted in the root layout).
+  function handleOpenFeedback() {
+    window.dispatchEvent(new Event("proximity:open-feedback"));
   }
 
   return (
@@ -195,9 +200,17 @@ export default function Footer() {
           <p className="text-sm text-gray-600">
             © 2026 Proximity. All rights reserved.
           </p>
-          <p className="text-sm text-gray-600">
-            Made for students, by students.
-          </p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleOpenFeedback}
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Report a bug / suggest a fix
+            </button>
+            <p className="text-sm text-gray-600">
+              Made for students, by students.
+            </p>
+          </div>
         </div>
       </div>
     </footer>

@@ -134,10 +134,15 @@ export default function HeroMapPreview({
           Math.max(Math.round(listing.rating || 5), 1),
           5
         );
+        // A perfect, exactly-5.0 rating gets the gold star pin; everything else
+        // (incl. rounds-to-5 and no-rating listings) uses the standard icons.
+        // The active/clicked state always uses the standard per-rating "-a" icon.
+        const isPerfect = typeof listing.rating === "number" && listing.rating >= 5;
+        const defaultIcon = isPerfect ? "map-5-gold" : `map-${starRating}`;
         const markerEl = document.createElement("div");
         markerEl.style.cssText = "width:36px;height:44px;cursor:pointer;";
         const markerImg = document.createElement("img");
-        markerImg.src = `/assets/map-icons/map-${starRating}.svg`;
+        markerImg.src = `/assets/map-icons/${defaultIcon}.svg`;
         markerImg.style.cssText = "width:100%;height:100%;";
         markerEl.appendChild(markerImg);
 
@@ -147,6 +152,7 @@ export default function HeroMapPreview({
         marker._listing = listing;
         marker._markerImg = markerImg;
         marker._starRating = starRating;
+        marker._defaultIcon = defaultIcon;
 
         markerEl.addEventListener("click", () => {
           pinJustClickedRef.current = true; // prevent map click from closing the card
@@ -157,7 +163,7 @@ export default function HeroMapPreview({
             map._activeMarker !== marker
           ) {
             const prev = map._activeMarker;
-            prev._markerImg.src = `/assets/map-icons/map-${prev._starRating}.svg`;
+            prev._markerImg.src = `/assets/map-icons/${prev._defaultIcon}.svg`;
           }
 
           markerImg.src = `/assets/map-icons/map-${starRating}-a.svg`;

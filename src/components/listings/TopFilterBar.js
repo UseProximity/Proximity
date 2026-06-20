@@ -119,8 +119,9 @@ export default function TopFilterBar({
     filters.leaseAvailability?.length > 0 ||
     filters.amenities?.length > 0 ||
     filters.furnished ||
-    filters.utilitiesIncluded ||
+    filters.utilitiesIncluded?.length > 0 ||
     filters.subleaseFriendly ||
+    filters.subleaseOnly ||
     filters.leaseStructure ||
     filters.savedOnly ||
     search;
@@ -789,6 +790,7 @@ export default function TopFilterBar({
                   {/* Boolean toggles */}
                   <div className="space-y-3">
                     {[
+                      { label: "Sublease Only", field: "subleaseOnly" },
                       { label: "Sublease Friendly", field: "subleaseFriendly" },
                     ].map(({ label, field }) => (
                       <label

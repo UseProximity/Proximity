@@ -1,5 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { readKnowledge, getKnowledgePath } from "./resources.mjs";
+import { analyzeImpact, formatImpactReport } from "./impact.mjs";
+import { runImpactTests, formatTestReport } from "./runner.mjs";
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
@@ -175,6 +177,77 @@ export const TOOLS = [
         },
       },
       required: ["type", "title", "description", "status"],
+    },
+  },
+  {
+    name: "analyze-impact",
+    description:
+      "Map a set of code changes to the testable surfaces they affect. " +
+      "Builds a reverse-dependency graph of src/ (who imports whom) and walks outward from each " +
+      "changed file to find every API endpoint and app page downstream of it — directly or via shared " +
+      "components/libs/utils. Also maps DB migration changes to the routes that query the affected tables. " +
+      "Returns a per-surface impact report plus a suggested test checklist. " +
+      "Use this before opening a PR (and after each push) to test only what changed instead of the whole app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base: {
+          type: "string",
+          description: "Git ref to diff against (default: 'staging'). The branch the change will merge into.",
+        },
+        head: {
+          type: "string",
+          description:
+            "Optional. Git ref for the changed side (e.g. a branch or PR head). " +
+            "If omitted, analyzes the current working tree: committed-since-base + staged + unstaged + untracked files.",
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional. Explicit list of changed file paths (repo-relative) to analyze instead of running git. " +
+            "Useful for CI where the diff is computed elsewhere.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "run-impact-tests",
+    description:
+      "Run the analyze-impact checklist against a running app. Exercises each affected API endpoint " +
+      "and page and reports pass/warn/fail. Endpoints are judged by their auth level: public routes must " +
+      "respond without crashing; guarded routes must reject unauthenticated requests (401/403) — a guarded " +
+      "route that returns 2xx unauthenticated is flagged as a security bug. Pages are checked for load errors. " +
+      "v1 is unauthenticated (no secrets needed); it does not yet exercise authenticated happy-paths. " +
+      "Requires the app running at baseUrl (default http://localhost:3000).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base: { type: "string", description: "Git ref to diff against (default: 'staging')." },
+        head: { type: "string", description: "Optional git ref for the changed side; omit to use the working tree." },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional explicit list of changed files (repo-relative) instead of running git.",
+        },
+        baseUrl: {
+          type: "string",
+          description: "Base URL of the running app to test (default: http://localhost:3000). Point at a Vercel preview for deployed testing.",
+        },
+        include: {
+          type: "string",
+          enum: ["all", "endpoints", "pages"],
+          description: "Which surfaces to test (default: all).",
+        },
+        allowMutations: {
+          type: "boolean",
+          description:
+            "Allow authenticated POST/PUT/PATCH/DELETE requests (default: false). Leave OFF against a prod-backed " +
+            "environment — these write real data / send real emails. Only enable against a safe/snapshot DB.",
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -851,9 +924,29 @@ function handleSpawnAgents({ goal, roles, interface_contract, notes }) {
   };
 }
 
+function handleAnalyzeImpact({ base, head, files }) {
+  try {
+    const result = analyzeImpact({ base, head, files });
+    return { content: [{ type: "text", text: formatImpactReport(result) }] };
+  } catch (err) {
+    return { isError: true, content: [{ type: "text", text: `analyze-impact failed: ${err.message}` }] };
+  }
+}
+
+async function handleRunImpactTests({ base, head, files, baseUrl, include, allowMutations }) {
+  try {
+    const out = await runImpactTests({ base, head, files, baseUrl, include, allowMutations });
+    return { content: [{ type: "text", text: formatTestReport(out) }] };
+  } catch (err) {
+    return { isError: true, content: [{ type: "text", text: `run-impact-tests failed: ${err.message}` }] };
+  }
+}
+
 export function callTool(name, args) {
   switch (name) {
     case "spawn-agents":       return handleSpawnAgents(args);
+    case "analyze-impact":     return handleAnalyzeImpact(args);
+    case "run-impact-tests":   return handleRunImpactTests(args);
     case "log-agent-step":     return handleLogAgentStep(args);
     case "get-agent-status":   return handleGetAgentStatus(args);
     case "update-knowledge":   return handleUpdateKnowledge(args);

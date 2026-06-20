@@ -15,7 +15,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
-import { WASHU_PLACES } from "@/utils/washuPlaces";
+import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
 
 const DEFAULT_FILTERS = {
@@ -34,6 +34,7 @@ const DEFAULT_FILTERS = {
   furnished: "", // '' | 'furnished' | 'unfurnished'
   utilitiesIncluded: [], // ['water','electric','gas', ...]
   subleaseFriendly: false,
+  subleaseOnly: false, // only show actual sublease listings
   leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
 };
@@ -126,19 +127,19 @@ export default function BrowseContent({ session }) {
             listing?.minBathrooms <= Number(filters.maxBathrooms));
 
         // Walking distance to campus — use the minimum walk time among all
-        // non-grocery WashU places stored in placeWalkMinutes.
+        // WashU places that count as "campus" (grocery + Med Campus excluded).
         let matchDistance = true;
         if (filters.distance) {
           const maxMinutes = parseFloat(filters.distance);
           const pwm = listing.placeWalkMinutes;
-          const nonGroceryMins = WASHU_PLACES.filter(
-            (p) => p.name !== "Schnucks (Grocery)"
+          const campusMins = WASHU_PLACES.filter(
+            (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
           )
             .map((p) => pwm?.[p.name])
             .filter((m) => m != null);
           matchDistance =
-            nonGroceryMins.length > 0 &&
-            Math.min(...nonGroceryMins) <= maxMinutes;
+            campusMins.length > 0 &&
+            Math.min(...campusMins) <= maxMinutes;
         }
 
         // Walking time to nearest shuttle stop (use pre-computed DB value)
@@ -263,6 +264,13 @@ export default function BrowseContent({ session }) {
             desc.includes("subletting allowed");
         }
 
+        // Sublease only — actual sublease listings (a unit lease flagged sublease)
+        let matchSubleaseOnly = true;
+        if (filters.subleaseOnly) {
+          matchSubleaseOnly =
+            String(listing?.leaseType ?? "").toLowerCase() === "sublease";
+        }
+
         // Lease structure
         let matchLeaseStructure = true;
         if (filters.leaseStructure === "individual") {
@@ -305,16 +313,31 @@ export default function BrowseContent({ session }) {
           matchFurnished &&
           matchUtilities &&
           matchSublease &&
+          matchSubleaseOnly &&
           matchLeaseStructure &&
           matchMoveInDate &&
           matchSaved
         );
       })
       .sort((a, b) => {
+        // 1) Listings with photos rank above photoless ones.
         const aHasImages = a.images?.length > 0;
         const bHasImages = b.images?.length > 0;
-        if (aHasImages === bHasImages) return 0;
-        return aHasImages ? -1 : 1;
+        if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
+
+        // 2) Within the same photo tier, reviewed listings rank first.
+        const aReviews = a.numReviews ?? 0;
+        const bReviews = b.numReviews ?? 0;
+        const aHasReviews = aReviews > 0;
+        const bHasReviews = bReviews > 0;
+        if (aHasReviews !== bHasReviews) return aHasReviews ? -1 : 1;
+
+        // 3) Among reviewed listings, higher rating wins, then more reviews.
+        if (aHasReviews && bHasReviews) {
+          if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
+          return bReviews - aReviews;
+        }
+        return 0;
       });
   }, [listings, search, filters]);
 

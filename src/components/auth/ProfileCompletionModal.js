@@ -51,6 +51,14 @@ export default function ProfileCompletionModal({ session }) {
     if (session?.user?.profileComplete === false) {
       setIsOpen(true);
     }
+    // Pre-select the role the user already has (e.g. a landlord who chose that
+    // on the signup form) so they don't have to re-pick it — and can't silently
+    // overwrite it back to student.
+    const sessionRole = session?.user?.role;
+    if (sessionRole) {
+      const match = ROLES.find((r) => r.toLowerCase() === sessionRole.toLowerCase());
+      if (match) setFormData((prev) => (prev.role ? prev : { ...prev, role: match }));
+    }
   }, [session]);
 
   const handleInputChange = (e) => {

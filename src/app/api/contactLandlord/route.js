@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { sendMailSafe } from "@/lib/outreach";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { calcAge } from "@/utils/listingFormatters";
@@ -191,10 +192,10 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, dev: true });
     }
 
-    const landlordInfo = await transporter.sendMail(landlordMailOptions);
+    const landlordInfo = await sendMailSafe(transporter, landlordMailOptions);
     console.log(`[contactLandlord] Landlord email sent to ${landlordEmail} — messageId: ${landlordInfo.messageId}`);
 
-    const studentInfo = await transporter.sendMail(studentConfirmationOptions);
+    const studentInfo = await sendMailSafe(transporter, studentConfirmationOptions);
     console.log(`[contactLandlord] Student confirmation sent to ${email} — messageId: ${studentInfo.messageId}`);
 
     return NextResponse.json({ ok: true });

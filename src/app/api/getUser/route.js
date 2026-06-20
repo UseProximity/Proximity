@@ -46,12 +46,18 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     address: l.address,
     description: l.description ?? null,
     unitTypes: (l.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((lease) => lease.is_active)?.rent;
+      const activeLease = (u.unit_leases ?? []).find((lease) => lease.is_active);
       return {
-        rent: activeRent != null ? Number(activeRent) : null,
+        id: u.id,
+        rent: activeLease?.rent != null ? Number(activeLease.rent) : null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+        title: u.title ?? null,
+        floorPlanImageUrl: u.floor_plan_image_url ?? null,
+        leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
+          ? activeLease.lease_term_months.map(Number)
+          : [],
         available: u.available ?? true,
       };
     }),
@@ -61,6 +67,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     moveInDate: l.move_in_date ? new Date(l.move_in_date).toISOString() : null,
     homeType: l.home_types?.label ?? null,
     amenities: amenitiesRowToArray(l.listing_amenities),
+    customAmenities: (l.listing_custom_amenities ?? []).map((a) => a.label).filter(Boolean),
     furnished: l.furnished ?? false,
     utilitiesIncluded: utilitiesRowToArray(l.listing_utilities),
     subleaseFriendly: l.sublease_friendly ?? false,
@@ -100,8 +107,9 @@ const LISTING_SELECT = `
   min_rent, max_rent, min_bedrooms, max_bedrooms,
   min_bathrooms, max_bathrooms, min_area, max_area,
   home_types!home_type_id(label),
-  listing_units!listing_id(bedrooms, bathrooms, area, available,
-    unit_leases!unit_id(rent, is_active)),
+  listing_units!listing_id(id, bedrooms, bathrooms, area, available, title, floor_plan_image_url,
+    unit_leases!unit_id(rent, is_active, sublease, lease_term_months)),
+  listing_custom_amenities!listing_id(label),
   listing_landlords!listing_id(user_id, is_primary),
   listing_amenities!listing_id(
     air_conditioning, dishwasher, gym, laundry, mailroom, microwave,

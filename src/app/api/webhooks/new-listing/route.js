@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import supabase from '@/lib/supabase';
+import { outreachEnabled } from '@/lib/appEnv';
 
 const AIRTABLE_BASE = 'appm77rMuwqoMG0HW';
 const LANDLORDS_TABLE = 'tblB7mcwzBupm7kDS';
@@ -108,6 +109,13 @@ export async function POST(request) {
   }
 
   const results = [];
+
+  // Airtable sync is external outreach — skip on staging/local so test listings don't
+  // create real Airtable records.
+  if (!outreachEnabled()) {
+    console.log('[outreach disabled] skipped Airtable landlord sync');
+    return NextResponse.json({ success: true, skipped: 'outreach disabled', results });
+  }
 
   for (const landlordUser of landlordUsers ?? []) {
     if (!landlordUser.email) {

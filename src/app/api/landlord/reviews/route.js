@@ -52,7 +52,9 @@ export async function GET(req) {
       locationRating: r.location_rating ?? null,
       valueRating: r.value_rating ?? null,
       createdAt: r.created_at,
-      reviewer: r.reviewer
+      reviewer: r.anonymous
+        ? { id: null, name: "Anonymous", image: null }
+        : r.reviewer
         ? { id: r.reviewer.id, name: r.reviewer.name, image: r.reviewer.image }
         : r.name
         ? { id: null, name: r.name, image: null }

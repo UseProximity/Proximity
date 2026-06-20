@@ -12,6 +12,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { MapPin } from "lucide-react";
 import ModalListing from "@/components/listings/ModalListing";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 
@@ -55,6 +56,14 @@ function GlobalListingModalInner() {
     router.replace(pathname + (qs ? "?" + qs : ""));
   };
 
+  // Open this listing's panel on the browse map. Only offered when the modal is
+  // launched from the homepage (e.g. the "Popular rentals" cards) — elsewhere
+  // the user is already in a browse/map context.
+  const handleViewOnMap = () => {
+    router.push(`/browse?panel=${listingId}&view=map`);
+  };
+  const showViewOnMap = pathname === "/" && !!modalData;
+
   if (!listingId) return null;
 
   return (
@@ -76,7 +85,21 @@ function GlobalListingModalInner() {
           </button>
         </div>
       ) : (
-        <ListingModalInfo session={session} listing={modalData} />
+        <ListingModalInfo
+          session={session}
+          listing={modalData}
+          tabBarAction={
+            showViewOnMap ? (
+              <button
+                onClick={handleViewOnMap}
+                className="flex items-center gap-1.5 px-1 py-2 text-sm font-semibold text-red-600 whitespace-nowrap hover:text-red-700 transition-colors"
+              >
+                <MapPin className="h-4 w-4" />
+                View on map
+              </button>
+            ) : null
+          }
+        />
       )}
     </ModalListing>
   );

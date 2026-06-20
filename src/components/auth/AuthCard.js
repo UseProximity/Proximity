@@ -20,6 +20,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [role, setRole] = useState("student");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [verificationSentTo, setVerificationSentTo] = useState("");
@@ -108,7 +109,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, role }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -193,6 +194,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
               <p>We sent a reset link to <span className="font-medium">{forgotEmail}</span>.</p>
+              <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
             </div>
           ) : (
             <>
@@ -236,6 +238,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
               We sent a verification link to{" "}
               <span className="font-medium">{verificationSentTo}</span>.
             </p>
+            <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
           </div>
           <p className="text-sm text-gray-500 mb-3">Didn&apos;t get it?</p>
           <button
@@ -323,6 +326,30 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
                 required
                 className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-red-400 transition"
               />
+              {/* Role intent — lets landlords be created with the right role from
+                  the start, so their first session is correct. */}
+              <div>
+                <span className="block text-xs font-medium text-gray-500 mb-1.5">I am a…</span>
+                <div className="flex rounded-xl bg-gray-100 p-1">
+                  {[
+                    { value: "student", label: "Student" },
+                    { value: "landlord", label: "Landlord" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setRole(opt.value)}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                        role === opt.value
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 type="submit"
                 disabled={loading}

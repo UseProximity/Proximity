@@ -5,6 +5,7 @@ import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
+import { isProdData } from "@/lib/appEnv";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,10 +13,11 @@ function isValidId(id) {
   return typeof id === "string" && UUID_RE.test(id);
 }
 
-// When db is explicitly "prod", or when no db is given and we're in production, use the prod bucket.
+// When db is explicitly "prod", or when no db is given and we're on the real production
+// site, use the prod bucket. Staging & local fall through to the dev bucket.
 function isProdBucket(db) {
   if (db === "prod") return true;
-  if (!db && process.env.NODE_ENV === "production") return true;
+  if (!db && isProdData()) return true;
   return false;
 }
 
