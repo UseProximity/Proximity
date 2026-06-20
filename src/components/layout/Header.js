@@ -61,6 +61,7 @@ export function Header({ session }) {
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/matchmaking", label: "Matchmaking" },
     { href: "/about", label: "Meet the Founder" },
+    { href: "/guides", label: "Guides" },
   ];
 
   return (
