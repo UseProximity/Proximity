@@ -124,11 +124,17 @@ function buildListing(row, owner = null, reviews = []) {
         available: u.available ?? true,
       };
     }),
-    leaseType: (row.listing_units ?? []).some((u) =>
-      (u.unit_leases ?? []).some((l) => l.is_active && l.sublease)
-    )
-      ? "Sublease"
-      : "Standard",
+    leaseType: (() => {
+      const units = row.listing_units ?? [];
+      const activeLeases = (us) =>
+        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
+      // Decide the listing's label from its AVAILABLE units when it has any, so an
+      // available sublease surfaces as "Sublease" even alongside an unavailable
+      // standard lease (and an unavailable sublease no longer forces the badge).
+      const availablePool = activeLeases(units.filter((u) => u.available !== false));
+      const pool = availablePool.length ? availablePool : activeLeases(units);
+      return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
+    })(),
     images: (row.listing_images ?? [])
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((img) => img.url),
