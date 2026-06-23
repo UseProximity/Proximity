@@ -11,10 +11,14 @@
  * account, with real walk-times computed (same as the landlord add-listing flow).
  *
  * Emails (best-effort, never block the review):
- *   - The landlord is notified; messaging depends on whether they have an account and
- *     whether the property is new. info@useproximity.org is BCC'd on every notification.
+ *   - Recipient is entered-email-first: if the reviewer typed a landlord email, that
+ *     address is notified (even if the listing already has an owner on file). Otherwise
+ *     we fall back to the listing owner — but never when the listing is a sublease or the
+ *     owner is a student (i.e. a sublease manager); those cases send no landlord email.
+ *   - Messaging depends on whether the recipient has an account and whether the property
+ *     is new. info@useproximity.org is BCC'd on every notification.
  *   - For an existing listing, if the landlord email entered in the review differs from
- *     the listing owner's email, an alert is sent to info@useproximity.org.
+ *     the listing owner's email, a mismatch alert is sent to info@useproximity.org.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -211,10 +215,10 @@ async function findExactAddressListingId({ address, lat, lng }) {
 async function getRealOwner(listingId, proximityId) {
   const { data } = await supabase
     .from("listing_landlords")
-    .select("is_primary, owner:users!user_id(id, name, email, is_system, deleted_at)")
+    .select("is_primary, owner:users!user_id(id, name, email, is_system, deleted_at, roles!role_id(name))")
     .eq("listing_id", listingId);
   const owners = (data || [])
-    .map((o) => ({ is_primary: o.is_primary, ...(o.owner || {}) }))
+    .map((o) => ({ is_primary: o.is_primary, ...(o.owner || {}), role: o.owner?.roles?.name ?? null }))
     .filter((u) => u.id && !u.is_system && !u.deleted_at && u.id !== proximityId && u.email);
   if (!owners.length) return null;
   owners.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
@@ -506,16 +510,18 @@ export async function POST(req) {
       const proximityId = await resolveProximityLandlordId();
       const { data: listingRow } = await supabase
         .from("listings")
-        .select("address")
+        .select("address, lease_type")
         .eq("id", resolvedListingId)
         .maybeSingle();
       const owner = isNewProperty ? null : await getRealOwner(resolvedListingId, proximityId);
+      const isSubleaseListing = String(listingRow?.lease_type || "").toLowerCase() === "sublease";
 
-      // Decide recipient + message.
+      // Decide recipient + message. Entered-email-first: a landlord email typed into the
+      // review always wins (even if it belongs to a student). Only when none was entered do
+      // we fall back to the listing owner — and never to a sublease manager: skip the
+      // fallback when the listing is a sublease or the owner is a student.
       let recipient = null;
-      if (owner) {
-        recipient = { to: owner.email, toName: owner.name || landlordName.trim(), scenario: "alert_old" };
-      } else if (landlordEmailNorm) {
+      if (landlordEmailNorm) {
         const { data: u } = await supabase
           .from("users")
           .select("id, name")
@@ -524,6 +530,8 @@ export async function POST(req) {
           .maybeSingle();
         const scenario = u ? (isNewProperty ? "claim_new" : "alert_old") : "create_account";
         recipient = { to: landlordEmailNorm, toName: u?.name || landlordName.trim(), scenario };
+      } else if (owner && !isSubleaseListing && owner.role !== "student") {
+        recipient = { to: owner.email, toName: owner.name || landlordName.trim(), scenario: "alert_old" };
       }
       if (recipient?.to) {
         await sendLandlordReviewEmail({
