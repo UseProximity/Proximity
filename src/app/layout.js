@@ -28,6 +28,12 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata = {
   title: "WashU Student Housing Matchmaking | Honest Peer Reviews | Pre-Vetted Listings | Proximity",
   description: "Proximity helps WashU students find the perfect off-campus apartment. Verified listings, honest peer reviews, and free personalized matchmaking near Washington University in St. Louis.",
+  openGraph: {
+    siteName: "WashU Student Housing",
+    title: "WashU Student Housing Matchmaking | Honest Peer Reviews | Pre-Vetted Listings | Proximity",
+    description: "Proximity helps WashU students find the perfect off-campus apartment. Verified listings, honest peer reviews, and free personalized matchmaking near Washington University in St. Louis.",
+    url: "https://useproximity.org/",
+  },
 };
 
 export default async function RootLayout({ children }) {
@@ -44,8 +50,8 @@ export default async function RootLayout({ children }) {
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "WebSite",
-              name: "Proximity",
-              alternateName: "useproximity.org",
+              name: "WashU Student Housing",
+              alternateName: "Proximity",
               url: "https://useproximity.org/",
             }),
           }}

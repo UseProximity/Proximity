@@ -84,6 +84,7 @@ export function Header({ session }) {
     { href: "/matchmaking", label: "Matchmaking" },
     { href: addHref, label: addLabel },
     { href: "/about", label: "Meet the Founder" },
+    { href: "/guides", label: "Guides" },
   ];
 
   return (
