@@ -12,6 +12,9 @@ export default function AdminExportPage() {
   const [dbTarget, setDbTarget] = useState(undefined);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState(null);
+  const [format, setFormat] = useState("csv");
+  const [roles, setRoles] = useState([]);
+  const [roleFilter, setRoleFilter] = useState(() => new Set());
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -41,6 +44,37 @@ export default function AdminExportPage() {
     return () => { cancelled = true; };
   }, [dbTarget]);
 
+  // Load role names so users exports can be filtered by role.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRoles() {
+      try {
+        const headers = dbTarget ? { "x-db-target": dbTarget } : {};
+        const res = await fetch("/api/admin/roles", { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data)) {
+          setRoles(data.map((r) => r.name).filter(Boolean).sort());
+        }
+      } catch {
+        /* role filter is optional — ignore */
+      }
+    }
+    loadRoles();
+    return () => { cancelled = true; };
+  }, [dbTarget]);
+
+  const usersSelected = selected.has("users");
+  const csvMultiTable = format === "csv" && selected.size > 1;
+
+  function toggleRole(name) {
+    setRoleFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tables;
@@ -68,16 +102,18 @@ export default function AdminExportPage() {
   }
 
   async function handleExport() {
-    if (selected.size === 0) return;
+    if (selected.size === 0 || csvMultiTable) return;
     setExporting(true);
     setExportError(null);
     try {
       const headers = { "Content-Type": "application/json" };
       if (dbTarget) headers["x-db-target"] = dbTarget;
+      const payload = { tables: Array.from(selected), format };
+      if (usersSelected && roleFilter.size > 0) payload.roleFilter = Array.from(roleFilter);
       const res = await fetch("/api/admin/export", {
         method: "POST",
         headers,
-        body: JSON.stringify({ tables: Array.from(selected) }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -87,7 +123,7 @@ export default function AdminExportPage() {
       const url = URL.createObjectURL(blob);
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename="?([^"]+)"?/);
-      const filename = match?.[1] || `proximity-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const filename = match?.[1] || `proximity-export-${new Date().toISOString().slice(0, 10)}.${format}`;
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
@@ -127,9 +163,49 @@ export default function AdminExportPage() {
 
       <div className="px-6 py-5 max-w-3xl mx-auto">
         <p className="text-sm text-gray-600 mb-4">
-          Pick any tables to include. The export is a single .xlsx file with one sheet per table.
+          Pick any tables to include. CSV exports one table; .xlsx bundles multiple tables into one
+          file (one sheet per table). The <span className="font-medium">users</span> export includes a
+          readable <span className="font-mono text-xs">role</span> column and can be filtered by role.
           Each table is capped at 50,000 rows.
         </p>
+
+        <div className="flex flex-wrap items-center gap-4 mb-4">
+          <span className="text-sm font-medium text-gray-700">Format</span>
+          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            {["csv", "xlsx"].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFormat(f)}
+                className={`px-4 py-1.5 text-sm font-medium ${
+                  format === f ? "bg-indigo-600 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {f.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {usersSelected && roles.length > 0 && (
+          <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+            <p className="text-sm font-medium text-gray-800 mb-2">
+              Filter users by role <span className="font-normal text-gray-500">(optional — none = all roles)</span>
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {roles.map((r) => (
+                <label key={r} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={roleFilter.has(r)}
+                    onChange={() => toggleRole(r)}
+                    className="w-4 h-4 accent-indigo-600"
+                  />
+                  {r}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 mb-4 items-center">
           <input
@@ -189,13 +265,16 @@ export default function AdminExportPage() {
             {selected.size} selected
           </p>
           <div className="flex items-center gap-3">
+            {csvMultiTable && (
+              <span className="text-sm text-amber-600">CSV exports one table — pick one or switch to .xlsx.</span>
+            )}
             {exportError && <span className="text-sm text-red-600">{exportError}</span>}
             <button
               onClick={handleExport}
-              disabled={selected.size === 0 || exporting}
+              disabled={selected.size === 0 || exporting || csvMultiTable}
               className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {exporting ? "Exporting…" : "Export .xlsx"}
+              {exporting ? "Exporting…" : `Export ${format === "csv" ? ".csv" : ".xlsx"}`}
             </button>
           </div>
         </div>
