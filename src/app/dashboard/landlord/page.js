@@ -864,6 +864,56 @@ function PropertiesSection({
   );
 }
 
+// Shareable per-landlord review-invite link, copied to clipboard from the
+// Reviews tab. `userId` is the LANDLORD's id, even under super/admin
+// `?viewAs=` impersonation, because `user` here comes from /api/admin/viewUser
+// (which returns the target landlord). Never substitute the session id.
+function InviteLinkCard({ userId }) {
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const link = origin && userId ? `${origin}/review-invite/${userId}` : "";
+
+  function copy() {
+    if (!link) return;
+    navigator.clipboard?.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-xl p-5">
+      <h3 className="text-base font-semibold text-gray-900">
+        Build trust. Get more reviews.
+      </h3>
+      <p className="text-sm text-gray-700 mt-1">
+        Students rely on verified WashU-student reviews to decide who to
+        contact. Send this link to past tenants — they&rsquo;ll pick which
+        property they&rsquo;re reviewing and submit it in under a minute.
+      </p>
+      <div className="flex gap-2 mt-3">
+        <input
+          readOnly
+          value={link}
+          placeholder="Loading…"
+          onFocus={(e) => e.target.select()}
+          className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700"
+        />
+        <button
+          type="button"
+          onClick={copy}
+          disabled={!link}
+          className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold whitespace-nowrap disabled:opacity-50"
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ReviewsSection({ user, viewAsId }) {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -920,6 +970,8 @@ function ReviewsSection({ user, viewAsId }) {
         <h1 className="text-2xl font-bold text-gray-900">Reviews</h1>
         <p className="text-gray-500">Verified reviews from tenants</p>
       </div>
+
+      <InviteLinkCard userId={user?.id} />
 
       {loading ? (
         <div className="flex items-center justify-center h-48 text-gray-400">
