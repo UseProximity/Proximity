@@ -169,19 +169,22 @@ export default function ReviewInviteClient({ landlord, listings }) {
   if (submittedListingId) {
     return (
       <div className={PAGE_WRAPPER_CLASS}>
-        <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-12 text-center">
-          <div className="text-5xl mb-4">🎉</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Thank you!</h1>
-          <p className="text-sm text-gray-600 mb-6">
+        <div className="max-w-md mx-auto bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-10 text-center">
+          <h2 className="text-xl font-bold text-gray-900">
+            Thanks for sharing!
+          </h2>
+          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
             Your review of{" "}
-            <span className="font-semibold">{submittedListingLabel}</span> has
-            been posted. It will help other WashU students decide where to live.
+            <span className="font-semibold text-gray-900">
+              {submittedListingLabel}
+            </span>{" "}
+            is now live. It’ll help other WashU students decide where to live.
           </p>
           <Link
             href={`/browse?listing=${submittedListingId}`}
-            className="inline-block px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition"
+            className="mt-6 inline-flex items-center justify-center w-full sm:w-auto px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition"
           >
-            View your review →
+            See your review →
           </Link>
         </div>
       </div>
