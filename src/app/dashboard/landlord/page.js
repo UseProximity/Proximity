@@ -865,52 +865,17 @@ function PropertiesSection({
   );
 }
 
-const REVIEW_IMPACT_TIERS = ["0", "1-2", "3-4", "5-9", "10+"];
-
-const REVIEW_IMPACT_THRESHOLDS = {
-  baselineMinN: 10,
-  comparisonMinN: 5,
-  minLift: 1.5,
-};
-
-function reviewImpactTierLabel(tier) {
-  if (tier === "10+") return "10+";
-  return tier.replace("-", "–");
-}
-
-function nextValidReviewImpactTier(impact, currentBucket, { enforceThresholds = true } = {}) {
-  if (!impact?.lift || !impact?.summary) return null;
-  if ((impact.summary["0"]?.n ?? 0) < REVIEW_IMPACT_THRESHOLDS.baselineMinN) {
-    return null;
-  }
-
-  const startIdx = REVIEW_IMPACT_TIERS.indexOf(currentBucket) + 1;
-  for (let i = startIdx; i < REVIEW_IMPACT_TIERS.length; i++) {
-    const tier = REVIEW_IMPACT_TIERS[i];
-    const n = impact.summary[tier]?.n ?? 0;
-    const lift = impact.lift[tier];
-    if (n < REVIEW_IMPACT_THRESHOLDS.comparisonMinN || typeof lift !== "number") {
-      continue;
-    }
-    if (!enforceThresholds || lift >= REVIEW_IMPACT_THRESHOLDS.minLift) {
-      return { tier, lift };
-    }
-  }
-  return null;
-}
-
 // Shareable per-landlord review-invite link, copied to clipboard from the
 // Reviews tab. `userId` is the LANDLORD's id, even under super/admin
 // `?viewAs=` impersonation, because `user` here comes from /api/admin/viewUser
 // (which returns the target landlord). Never substitute the session id.
-function InviteLinkCard({ userId, impact, enforceThresholds }) {
+function InviteLinkCard({ userId }) {
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
   const link = origin && userId ? `${origin}/review-invite/${userId}` : "";
-  const stat = nextValidReviewImpactTier(impact, "0", { enforceThresholds });
 
   function copy() {
     if (!link) return;
@@ -924,31 +889,12 @@ function InviteLinkCard({ userId, impact, enforceThresholds }) {
       <CardContent className="!p-5 space-y-4">
         <div>
           <h3 className="text-base font-semibold text-gray-900">
-            {stat
-              ? "Reviews build trust on Proximity"
-              : "Build trust with verified reviews"}
+            Build trust with verified reviews
           </h3>
           <p className="mt-1.5 text-sm text-gray-600 leading-relaxed">
-            {stat ? (
-              <>
-                Listings with{" "}
-                <span className="font-medium text-gray-900">
-                  {reviewImpactTierLabel(stat.tier)}
-                </span>{" "}
-                reviews have received{" "}
-                <span className="font-medium text-gray-900">
-                  {stat.lift.toFixed(1)}&times; more contact requests
-                </span>{" "}
-                than listings with none. Share your invite link with past
-                tenants — they pick which property to review.
-              </>
-            ) : (
-              <>
-                Students rely on verified WashU-student reviews when deciding
-                who to contact. Share this link with past tenants — they pick
-                which property to review and submit in under a minute.
-              </>
-            )}
+            Students rely on verified WashU-student reviews when deciding who to
+            contact. Share this link with past tenants — they pick which property
+            to review and submit in under a minute.
           </p>
         </div>
         <div className="flex gap-2">
@@ -974,96 +920,12 @@ function InviteLinkCard({ userId, impact, enforceThresholds }) {
   );
 }
 
-function ReviewImpactDevPanel({ impact, bypassThresholds, onBypassChange }) {
-  const statEnforced = impact
-    ? nextValidReviewImpactTier(impact, "0", { enforceThresholds: true })
-    : null;
-  const statRaw = impact
-    ? nextValidReviewImpactTier(impact, "0", { enforceThresholds: false })
-    : null;
-
-  return (
-    <div className="mt-8 border-t border-gray-200 pt-6">
-      <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
-        Dev preview — review impact stat
-      </p>
-      <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-        State A (stat in card) only shows when all thresholds pass: baseline
-        bucket <code className="text-xs bg-gray-100 px-1 rounded">0</code> has
-        n&thinsp;&ge;&thinsp;{REVIEW_IMPACT_THRESHOLDS.baselineMinN}, comparison
-        bucket has n&thinsp;&ge;&thinsp;{REVIEW_IMPACT_THRESHOLDS.comparisonMinN},
-        and lift&thinsp;&ge;&thinsp;{REVIEW_IMPACT_THRESHOLDS.minLift}&times; vs
-        zero-review listings. Otherwise the card shows qualitative State B copy.
-      </p>
-
-      <label className="mt-4 flex cursor-pointer items-center gap-3">
-        <input
-          type="checkbox"
-          checked={bypassThresholds}
-          onChange={(e) => onBypassChange(e.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-        />
-        <span className="text-sm text-gray-800">
-          Bypass thresholds — show raw platform stat in card
-        </span>
-      </label>
-
-      {impact?.summary && (
-        <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-2 font-medium">Reviews</th>
-                <th className="px-4 py-2 font-medium">Listings (n)</th>
-                <th className="px-4 py-2 font-medium">Avg contacts</th>
-                <th className="px-4 py-2 font-medium">Lift vs 0</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {REVIEW_IMPACT_TIERS.map((tier) => {
-                const row = impact.summary[tier];
-                const lift = impact.lift?.[tier];
-                return (
-                  <tr key={tier} className="text-gray-700">
-                    <td className="px-4 py-2 font-medium">
-                      {reviewImpactTierLabel(tier)}
-                    </td>
-                    <td className="px-4 py-2">{row?.n ?? 0}</td>
-                    <td className="px-4 py-2">
-                      {row?.n ? row.avgContacts.toFixed(2) : "—"}
-                    </td>
-                    <td className="px-4 py-2">
-                      {typeof lift === "number" ? `${lift.toFixed(2)}×` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <p className="mt-3 text-xs text-gray-400">
-        {impact?.computedAt
-          ? `Data from GET /api/stats/review-impact · computed ${new Date(impact.computedAt).toLocaleString()}`
-          : "Loading platform stats…"}
-        {impact &&
-          ` · Card mode: ${bypassThresholds ? "raw" : "thresholds"} → ${
-            (bypassThresholds ? statRaw : statEnforced) ? "State A" : "State B"
-          }`}
-      </p>
-    </div>
-  );
-}
-
 function ReviewsSection({ user, viewAsId }) {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedListingId, setSelectedListingId] = useState("all");
   const [selectedRating, setSelectedRating] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [impact, setImpact] = useState(null);
-  const [bypassStatThresholds, setBypassStatThresholds] = useState(false);
   const reviewsPerPage = 5;
 
   useEffect(() => {
@@ -1078,15 +940,6 @@ function ReviewsSection({ user, viewAsId }) {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/stats/review-impact")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data && !data.error) setImpact(data);
-      })
-      .catch(() => {});
   }, []);
 
   const filteredReviews = reviews.filter((r) => {
@@ -1123,11 +976,7 @@ function ReviewsSection({ user, viewAsId }) {
         <h1 className="text-2xl font-bold text-gray-900">Reviews</h1>
       </div>
 
-      <InviteLinkCard
-        userId={user?.id}
-        impact={impact}
-        enforceThresholds={!bypassStatThresholds}
-      />
+      <InviteLinkCard userId={user?.id} />
 
       {loading ? (
         <div className="flex items-center justify-center h-48 text-gray-400">
@@ -1289,12 +1138,6 @@ function ReviewsSection({ user, viewAsId }) {
           )}
         </>
       )}
-
-      <ReviewImpactDevPanel
-        impact={impact}
-        bypassThresholds={bypassStatThresholds}
-        onBypassChange={setBypassStatThresholds}
-      />
     </div>
   );
 }
