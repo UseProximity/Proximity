@@ -1,0 +1,26 @@
+{
+  "name": "@proximity/mobile",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@proximity/api-client": "*",
+    "@proximity/auth-core": "*",
+    "@proximity/shared": "*",
+    "expo": "~56.0.12",
+    "expo-auth-session": "*",
+    "expo-crypto": "*",
+    "expo-router": "*",
+    "expo-secure-store": "*",
+    "expo-status-bar": "~56.0.4",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "zustand": "*"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

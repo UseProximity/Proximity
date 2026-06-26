@@ -11,21 +11,21 @@ backup_*.sql
 supabase/.temp/
 supabase/.branches/
 
-# dependencies
-/node_modules
-/.pnp
+# dependencies (match at any depth for monorepo)
+node_modules/
+.pnp
 .pnp.js
 .yarn/install-state.gz
 
 # testing
-/coverage
+coverage/
 
-# next.js
-/.next/
-/out/
+# next.js (match at any depth for monorepo)
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
@@ -54,7 +54,6 @@ TODO.md
 public/listing-pics
 .swarm/memory.db
 .swarm
-.next
 .agents
 CLAUDE.md
 sync-scripts
