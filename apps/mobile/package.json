@@ -1,7 +1,7 @@
 {
   "name": "@proximity/mobile",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "expo-router/entry",
   "dependencies": {
     "@proximity/api-client": "*",
     "@proximity/auth-core": "*",
