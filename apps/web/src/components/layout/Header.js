@@ -13,7 +13,7 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 const Logo = "/logo.svg";
-import { Search, X, Menu } from "lucide-react";
+import { Search, X, Menu, ChevronDown } from "lucide-react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,7 +22,10 @@ export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const inputRef = useRef(null);
+  const moreRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -32,7 +35,21 @@ export function Header({ session }) {
 
   useEffect(() => {
     setMobileMenuOpen(false);
+    setMoreOpen(false);
+    setMobileMoreOpen(false);
   }, [pathname]);
+
+  // Close the desktop "More" dropdown when clicking outside of it.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handleClick = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [moreOpen]);
 
   // Build a /browse URL from the given params, preserving the current map/list
   // view when the user searches while already on the browse page — otherwise a
@@ -81,13 +98,18 @@ export function Header({ session }) {
   const addLabel =
     session?.user && !isLandlordType ? "Add Sublease" : "Add Listing";
 
-  const navLinks = [
+  // Primary links live inline in the bar; secondary links are tucked under "More".
+  const primaryLinks = [
     { href: "/browse", label: "Browse Listings" },
-    { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/matchmaking", label: "Matchmaking" },
     { href: addHref, label: addLabel },
+  ];
+  const moreLinks = [
+    { href: "/about", label: "Meet the Founder" },
+    { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/guides", label: "Guides" },
   ];
+  const moreActive = moreLinks.some(({ href }) => isActive(href));
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
@@ -114,7 +136,7 @@ export function Header({ session }) {
             </span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
-            {navLinks.map(({ href, label }) => (
+            {primaryLinks.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}
@@ -127,6 +149,45 @@ export function Header({ session }) {
                 {label}
               </Link>
             ))}
+
+            {/* "More" dropdown — secondary links */}
+            <div className="relative" ref={moreRef}>
+              <button
+                onClick={() => setMoreOpen((v) => !v)}
+                aria-haspopup="true"
+                aria-expanded={moreOpen}
+                className={`flex items-center gap-1 px-4 py-2.5 rounded-lg text-[17px] font-medium transition-all duration-150 whitespace-nowrap ${
+                  moreActive || moreOpen
+                    ? "text-red-500 bg-red-50/80"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                }`}
+              >
+                More
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform duration-200 ${
+                    moreOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {moreOpen && (
+                <div className="absolute left-0 top-full mt-2 min-w-[220px] rounded-xl border border-gray-100 bg-white shadow-xl py-2 z-50">
+                  {moreLinks.map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setMoreOpen(false)}
+                      className={`block px-4 py-2.5 text-[16px] font-medium transition-all ${
+                        isActive(href)
+                          ? "text-red-500 bg-red-50/80"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                      }`}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
@@ -275,7 +336,7 @@ export function Header({ session }) {
       {/* Mobile menu — absolute overlay so it doesn't push content down */}
       {mobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 z-50 border-t border-gray-100 bg-white/95 backdrop-blur-lg shadow-xl px-4 py-4 flex flex-col gap-1">
-          {navLinks.map(({ href, label }) => (
+          {primaryLinks.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
@@ -289,6 +350,40 @@ export function Header({ session }) {
               {label}
             </Link>
           ))}
+
+          {/* Collapsible "More" section */}
+          <button
+            onClick={() => setMobileMoreOpen((v) => !v)}
+            aria-expanded={mobileMoreOpen}
+            className={`flex items-center justify-between px-4 py-3 rounded-xl text-[17px] font-medium transition-all ${
+              moreActive
+                ? "text-red-500 bg-red-50/80"
+                : "text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            More
+            <ChevronDown
+              className={`h-5 w-5 transition-transform duration-200 ${
+                mobileMoreOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+          {mobileMoreOpen &&
+            moreLinks.map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`px-4 py-3 pl-8 rounded-xl text-[16px] font-medium transition-all ${
+                  isActive(href)
+                    ? "text-red-500 bg-red-50/80"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
+
           <div className="h-px bg-gray-100 my-2" />
           {session?.user ? (
             <>
