@@ -94,3 +94,7 @@ mcp/knowledge/
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
+
+# next-sitemap generated files (regenerated on every build)
+apps/web/public/sitemap*.xml
+apps/web/public/robots.txt
