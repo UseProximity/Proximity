@@ -66,7 +66,10 @@ export function Header({ session }) {
     setQuery("");
   };
 
-  const isActive = (path) => pathname === path;
+  const isActive = (path) => {
+    if (path === "/") return pathname === "/";
+    return pathname === path || pathname.startsWith(`${path}/`);
+  };
 
   // Adaptive "Add" CTA: landlords/super post full listings, everyone else posts
   // subleases. Logged-out users go to /add-listing, whose layout bounces them
@@ -83,7 +86,6 @@ export function Header({ session }) {
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/matchmaking", label: "Matchmaking" },
     { href: addHref, label: addLabel },
-    { href: "/about", label: "Meet the Founder" },
     { href: "/guides", label: "Guides" },
   ];
 
