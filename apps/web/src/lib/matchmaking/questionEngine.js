@@ -3,105 +3,12 @@
 // client (ChatClient) so the next question can render instantly with no round-trip.
 import {
   QUESTION_PLAN,
-  QUESTION_BY_ID,
   WEIGHT_MAP,
   PRIORITY_WEIGHTS,
   RANK_BUMPS,
   UNSURE,
   isAnswered,
 } from "./questionScript";
-
-// ── Reliable-mode pairwise ranking ─────────────────────────────────────────
-// Instead of a drag-to-rank, the `priorities` step asks a short series of
-// "Which matters more, A or B?" questions. We seed a likely order from signal
-// already collected (budget/area/commute/etc.), then ask only enough pairwise
-// comparisons to lock the top 3 — comparing each new item against the current
-// #3 first so the (many) low-signal items usually drop out in a single tap.
-// State lives on `preferences._pairwise`; everything here is pure so it runs
-// identically on client and server.
-const PRIORITY_OPTIONS = QUESTION_BY_ID.priorities.options;
-const PAIRWISE_CAP = 7; // hard ceiling; remaining items fall back to seed order
-
-// Seed score for a priority = sum of the weights its dimensions already carry.
-function seedScore(label, weights) {
-  return (PRIORITY_WEIGHTS[label] ?? []).reduce((sum, dim) => sum + (weights?.[dim] ?? 0), 0);
-}
-
-// The 7 priorities sorted most-likely-important first; ties keep canonical order.
-function seedPriorities(weights) {
-  return PRIORITY_OPTIONS.map((label, i) => ({ label, i, s: seedScore(label, weights) }))
-    .sort((a, b) => b.s - a.s || a.i - b.i)
-    .map((x) => x.label);
-}
-
-// Build the wire pair + key for the comparison the state is currently awaiting.
-function advancePairwise(s) {
-  if (s.queue.length === 0) return finalizePairwise(s);
-  const cand = s.queue[0];
-  const idx = s.order.length; // start by comparing against the current bottom
-  return { ...s, cand, queue: s.queue.slice(1), idx, pair: [cand, s.order[idx - 1]], stepKey: `${s.asked}` };
-}
-
-function finalizePairwise(s) {
-  const tail = s.seedOrder.filter((l) => !s.order.includes(l));
-  return { ...s, cand: null, pair: null, done: true, result: [...s.order, ...tail] };
-}
-
-// Insert the current candidate at `pos`, spill anything past the top-3 into the
-// tail, then move on (respecting the question cap).
-function placeAndAdvance(s, pos) {
-  const cand = s.cand;
-  const order = [...s.order];
-  order.splice(pos, 0, cand);
-  let rest = s.rest;
-  if (order.length > 3) rest = [...rest, order.pop()];
-  const ns = { ...s, order, rest, cand: null, pair: null };
-  return ns.asked >= PAIRWISE_CAP ? finalizePairwise(ns) : advancePairwise(ns);
-}
-
-// Fresh pairwise state, seeded from prior weights and ready to ask its first pair.
-export function initPairwise(weights) {
-  const seedOrder = seedPriorities(weights);
-  const state = {
-    seedOrder,
-    order: [seedOrder[0]], // top seed seats for free
-    queue: seedOrder.slice(1),
-    rest: [],
-    cand: null,
-    idx: 0,
-    asked: 0,
-    done: false,
-    result: null,
-    pair: null,
-    stepKey: "",
-  };
-  return advancePairwise(state);
-}
-
-// Advance the state by one answered comparison. `winner` is the chosen label.
-export function pairwiseStep(state, winner) {
-  if (!state || state.done) return state;
-  const s = { ...state, asked: state.asked + 1 };
-  if (winner === s.cand) {
-    // Candidate climbs; if it beat the #1 slot it lands on top, else ask the
-    // next-higher matchup.
-    const idx = s.idx - 1;
-    if (idx === 0) return placeAndAdvance(s, 0);
-    return { ...s, idx, pair: [s.cand, s.order[idx - 1]], stepKey: `${s.asked}` };
-  }
-  // Candidate lost — it belongs at the current boundary (or out of the top-3).
-  return placeAndAdvance(s, s.idx);
-}
-
-// Seed the pairwise state the moment `priorities` becomes the next question and
-// no state exists yet — done here (inside applyAnswer) because this is where the
-// up-to-date weights are available.
-function maybeSeedPairwise(prefs, weights) {
-  if (prefs._pairwise) return;
-  if (isAnswered(QUESTION_BY_ID.priorities, prefs)) return;
-  const next = QUESTION_PLAN.find((q) => !isAnswered(q, prefs));
-  if (next?.id === "priorities") prefs._pairwise = initPairwise(weights);
-}
 
 // Build the wire descriptor for a question (sent to the client / stored on the
 // assistant message). Interpolates {{name}} and attaches kind-specific meta.
@@ -113,18 +20,11 @@ export function describeQuestion(question, preferences) {
   if (question.kind === "budget_max") meta.maxLabel = question.maxLabel;
   if (question.kind === "month_select") meta.others = question.others ?? [];
   if (question.kind === "open_text") meta.placeholder = question.placeholder ?? "";
-  // Pairwise renders the CURRENT A-vs-B pair, not the full option list. stepKey
-  // makes each pair distinct so the client doesn't dedupe consecutive comparisons.
-  if (question.kind === "pairwise_rank") {
-    const pw = p._pairwise;
-    return {
-      id: question.id,
-      field: question.field,
-      kind: "pairwise",
-      prompt: "Which matters more?",
-      options: pw?.pair ?? [],
-      meta: { stepKey: pw?.stepKey ?? "", allowUnsure: true },
-    };
+  if (question.kind === "slider") {
+    meta.min = question.min ?? 1;
+    meta.max = question.max ?? 6;
+    meta.plusOnMax = !!question.plusOnMax;
+    meta.unit = question.unit ?? "";
   }
   if (question.allowUnsure) meta.allowUnsure = true;
   return {
@@ -185,7 +85,19 @@ export function applyAnswer(preferences, weights, answer) {
       prefs._extras_done = true;
       break;
     case "multi":
-      prefs[field] = unsure ? ["No preference"] : Array.isArray(value) ? value : [value];
+      // Priorities is a multi-select whose "unsure" means no ranking at all
+      // (equal weighting downstream) rather than a literal "No preference" tag.
+      if (field === "priorities") {
+        if (unsure) {
+          prefs.priorities = [];
+          prefs._priorities_unsure = true;
+        } else {
+          prefs.priorities = Array.isArray(value) ? value : [value];
+          delete prefs._priorities_unsure;
+        }
+      } else {
+        prefs[field] = unsure ? ["No preference"] : Array.isArray(value) ? value : [value];
+      }
       break;
     case "rank":
       if (unsure) {
@@ -196,28 +108,6 @@ export function applyAnswer(preferences, weights, answer) {
         delete prefs._priorities_unsure;
       }
       break;
-    case "pairwise": {
-      // One A-vs-B comparison. Mid-flow we only advance the state; weights are
-      // applied (via RANK_BUMPS) once the full order is locked.
-      if (unsure) {
-        prefs.priorities = [];
-        prefs._priorities_unsure = true;
-        if (prefs._pairwise) prefs._pairwise = { ...prefs._pairwise, done: true, pair: null };
-        break;
-      }
-      if (!prefs._pairwise) break;
-      const ns = pairwiseStep(prefs._pairwise, value);
-      prefs._pairwise = ns;
-      if (ns.done && Array.isArray(ns.result)) {
-        prefs.priorities = ns.result;
-        delete prefs._priorities_unsure;
-        ns.result.forEach((label, i) => {
-          const bump = RANK_BUMPS[i] ?? RANK_BUMPS[RANK_BUMPS.length - 1];
-          for (const key of PRIORITY_WEIGHTS[label] ?? []) bumpWeight(w, key, bump);
-        });
-      }
-      break;
-    }
     default: // choice, yesno_pref, month_select
       prefs[field] = unsure ? "No preference" : value;
   }
@@ -235,7 +125,8 @@ export function applyAnswer(preferences, weights, answer) {
     if (direct) {
       for (const [key, amount] of Object.entries(direct)) bumpWeight(w, key, amount);
     }
-    // Priorities ranking: top-ranked items get the biggest weight bump.
+    // Priorities multi-select: earlier taps (treated as more important) get the
+    // bigger weight bump, so a student who taps "Good value" first leans value.
     if (answer.questionId === "priorities" && Array.isArray(value)) {
       value.forEach((label, i) => {
         const bump = RANK_BUMPS[i] ?? RANK_BUMPS[RANK_BUMPS.length - 1];
@@ -243,9 +134,6 @@ export function applyAnswer(preferences, weights, answer) {
       });
     }
   }
-
-  // Seed the pairwise flow the instant `priorities` becomes the next question.
-  maybeSeedPairwise(prefs, w);
 
   const weightsChanged = JSON.stringify(w) !== JSON.stringify(weights ?? {});
   return { preferences: prefs, weights: w, prefsChanged: true, weightsChanged };
@@ -327,7 +215,10 @@ export function recomputeFromPreferences(preferences) {
 // Human-readable rendering of an answer, for the user's chat bubble.
 export function answerToLabel(answer) {
   const { kind, value } = answer;
-  if (kind === "pairwise") return value === UNSURE ? "No strong preference" : String(value);
+  // When the control supplied an explicit display label (e.g. the "Yes, that's
+  // me" name-confirm chip), show that in the bubble rather than the raw value.
+  if (answer.label) return answer.label;
+  if (kind === "tradeoff") return String(value ?? "");
   if (value === UNSURE) return kind === "open_text" ? "Nothing else" : "Not sure";
   if (kind === "budget_max") return value ? `$${value}/mo max` : "No budget set";
   if (kind === "open_text") return value || "Nothing else";

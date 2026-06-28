@@ -42,6 +42,7 @@ export default function ChatClient() {
   const [recommendations, setRecommendations] = useState([]);
   const [status, setStatus] = useState("in_progress");
   const [loading, setLoading] = useState(false);
+  const [recsUpdating, setRecsUpdating] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const hadCache = useRef(false);
 
@@ -89,10 +90,66 @@ export default function ChatClient() {
     recommendations: data.recommendations,
   });
 
+  // Tradeoff answer — a "Would you X for Y?" narrowing pick. The server owns this
+  // phase (it needs live listing data), so unlike scripted chips this is NOT
+  // optimistic: we post the choice and append whatever comes back (the next
+  // tradeoff, or the final recommendations).
+  const handleTradeoffAnswer = useCallback(
+    (answer) => {
+      setMessages((prev) => [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }]);
+      setLoading(true);
+      postChain.current = postChain.current.then(async () => {
+        try {
+          const res = await fetch("/api/matchmaking/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              tradeoff: { chosen: answer.value },
+              preferences: prefsRef.current,
+              weights: weightsRef.current,
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            applyRanking(data);
+            if (data.preferences) {
+              setPreferences(data.preferences);
+              prefsRef.current = data.preferences;
+            }
+            if (data.weights) {
+              setWeights(data.weights);
+              weightsRef.current = data.weights;
+            }
+            if (data.nextQuestion) {
+              setMessages((prev) =>
+                qKey(prev[prev.length - 1]?.question) === qKey(data.nextQuestion)
+                  ? prev
+                  : [...prev, questionToMessage(data.nextQuestion, true)]
+              );
+            } else if (data.recommendations?.length) {
+              setMessages((prev) => [...prev, inlineRecsMessage(data)]);
+            }
+          }
+        } catch (err) {
+          console.error("[ChatClient] handleTradeoffAnswer failed:", err);
+        } finally {
+          setLoading(false);
+        }
+      });
+    },
+    [sessionId, applyRanking]
+  );
+
   // Chip answer — render the next question instantly (optimistic); the POST just
   // persists + ranks in the background. Client is authoritative for the flow.
   const handleAnswer = useCallback(
     (answer) => {
+      // Tradeoff narrowing is server-driven — route it out of the optimistic path.
+      if (answer.kind === "tradeoff") {
+        handleTradeoffAnswer(answer);
+        return;
+      }
       const applied = applyAnswer(prefsRef.current, weightsRef.current, answer);
       const upcoming = nextQuestion(applied.preferences);
 
@@ -123,8 +180,29 @@ export default function ChatClient() {
           const data = await res.json();
           if (res.ok) {
             applyRanking(data);
-            if (finalizing && data.recommendations?.length) {
-              setMessages((prev) => [...prev, inlineRecsMessage(data)]);
+            if (finalizing) {
+              // Carry the server's hidden narrowing state (pending tradeoff,
+              // exclusions) so subsequent posts stay in sync.
+              if (data.preferences) {
+                setPreferences(data.preferences);
+                prefsRef.current = data.preferences;
+              }
+              if (data.weights) {
+                setWeights(data.weights);
+                weightsRef.current = data.weights;
+              }
+              // After the last scripted answer the server either opens the
+              // narrowing phase with a tradeoff question, or (≤3 fits) returns
+              // the final picks.
+              if (data.nextQuestion) {
+                setMessages((prev) =>
+                  qKey(prev[prev.length - 1]?.question) === qKey(data.nextQuestion)
+                    ? prev
+                    : [...prev, questionToMessage(data.nextQuestion, true)]
+                );
+              } else if (data.recommendations?.length) {
+                setMessages((prev) => [...prev, inlineRecsMessage(data)]);
+              }
             }
           }
         } catch (err) {
@@ -134,7 +212,7 @@ export default function ChatClient() {
         }
       });
     },
-    [sessionId, applyRanking]
+    [sessionId, applyRanking, handleTradeoffAnswer]
   );
 
   // Free-text composer — parses an answer mid-flow, or refines the picks after
@@ -358,7 +436,7 @@ export default function ChatClient() {
         applyServerState(data);
         setMessages([
           data.nextQuestion
-            ? questionToMessage(data.nextQuestion)
+            ? questionToMessage(data.nextQuestion, true)
             : { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString() },
         ]);
       }
@@ -370,8 +448,11 @@ export default function ChatClient() {
   }, [applyServerState]);
 
   return (
-    // 70vh keeps both the top of the chat and the composer visible without dominating the page
-    <div className="h-[70vh] bg-gray-50 flex flex-col overflow-hidden">
+    // Fill the viewport beneath the chrome above us so the chat is tall but the composer
+    // stays on screen. Subtracts the sticky header (83px mobile / 104px desktop) plus the
+    // ~26px localhost/staging banner; on production (no banner) this just leaves a small
+    // gap above the footer. The footer sits below the fold.
+    <div className="h-[calc(100dvh-109px)] md:h-[calc(100dvh-130px)] bg-gray-50 flex flex-col overflow-hidden">
 
       {/* Mobile: thin bar to open the answers drawer */}
       <div className="md:hidden flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100">
@@ -394,7 +475,16 @@ export default function ChatClient() {
             className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl h-[60vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-end px-4 pt-3 pb-1">
+            <div className="flex items-center justify-between px-4 pt-3 pb-1">
+              <button
+                onClick={() => {
+                  startOver();
+                  setPanelOpen(false);
+                }}
+                className="text-xs text-gray-400 hover:text-red-600 transition"
+              >
+                Start over
+              </button>
               <button
                 onClick={() => setPanelOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -409,18 +499,22 @@ export default function ChatClient() {
               weights={weights}
               sessionId={sessionId}
               onUpdated={handlePanelUpdate}
+              onUpdating={setRecsUpdating}
             />
           </div>
         </div>
       )}
 
-      {/* Main row — fills remaining height; min-h-0 prevents flex blowout */}
-      <div className="flex-1 min-h-0 flex max-w-5xl w-full mx-auto px-4 py-4 gap-4">
+      {/* Main row — fills remaining height; min-h-0 prevents flex blowout.
+          On mobile the chat goes edge-to-edge (no padding/card chrome) so it reads as
+          one full-screen window under the bar; desktop keeps the framed card + side panel. */}
+      <div className="flex-1 min-h-0 flex max-w-6xl w-full mx-auto px-0 py-0 gap-0 md:px-4 md:py-4 md:gap-4">
 
         {/* Chat column */}
-        <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          {/* Slim header with a restart control */}
-          <div className="flex-shrink-0 flex items-center justify-end px-3 py-1.5 border-b border-gray-100">
+        <div className="flex-1 min-h-0 flex flex-col bg-white border-0 rounded-none md:rounded-2xl md:border md:border-gray-200 overflow-hidden">
+          {/* Slim header with a restart control. On mobile "Start over" lives inside
+              the answers sheet instead, so this header is desktop-only. */}
+          <div className="flex-shrink-0 hidden md:flex items-center justify-end px-3 py-1.5 border-b border-gray-100">
             <button
               onClick={startOver}
               className="text-xs text-gray-400 hover:text-red-600 transition"
@@ -433,6 +527,8 @@ export default function ChatClient() {
           <ChatWindow
             messages={messages}
             loading={loading}
+            recsUpdating={recsUpdating}
+            userInitial={(preferences?.name ?? "").trim().charAt(0).toUpperCase()}
             onSend={handleUserSend}
             onAnswer={handleAnswer}
             onEdit={handleEditFrom}
@@ -446,6 +542,7 @@ export default function ChatClient() {
             weights={weights}
             sessionId={sessionId}
             onUpdated={handlePanelUpdate}
+            onUpdating={setRecsUpdating}
           />
         </div>
       </div>

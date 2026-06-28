@@ -51,24 +51,30 @@ export default function RecommendationCards({ recommendations }) {
   if (!recommendations?.length) return null;
 
   return (
-    <div className="space-y-3">
+    // Desktop: three picks side by side for at-a-glance comparison. Mobile: stack them
+    // in a single column so each card is full width and all its info stays readable.
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
       {recommendations.map((rec) => {
         const listing = listingsById[rec.listing_id];
         const intentionClass = INTENTION_COLORS[rec.intention] ?? "bg-gray-100 text-gray-700";
         return (
-          <div key={rec.listing_id} className="space-y-1.5 w-2/3 min-w-[12rem]">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div key={rec.listing_id} className="space-y-1.5 min-w-0">
+            {/* Main idea on top, then the card, then the supporting reason underneath */}
+            <div className="flex items-center gap-2 flex-wrap mt-2">
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${intentionClass}`}>
                 {rec.intention}
               </span>
             </div>
-            {rec.reason && (
-              <p className="text-[11px] text-gray-500 italic leading-snug line-clamp-2">{rec.reason}</p>
-            )}
             {listing ? (
-              <ListingCard listing={listing} onCardClick={openListing} />
+              <ListingCard listing={listing} onCardClick={openListing} compact />
             ) : (
               <div className="aspect-video rounded-2xl bg-gray-100 animate-pulse" />
+            )}
+            {rec.reason && (
+              // One line, cut off with an ellipsis; hover shows the full reason as a tooltip.
+              <p title={rec.reason} className="text-[11px] text-gray-500 italic leading-snug truncate">
+                {rec.reason}
+              </p>
             )}
           </div>
         );

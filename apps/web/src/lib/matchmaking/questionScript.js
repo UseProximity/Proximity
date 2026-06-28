@@ -7,7 +7,8 @@ export const QUESTION_PLAN = [
     id: "name_confirm",
     field: "name",
     kind: "confirm_or_replace",
-    prompt: "I've got your name as {{name}} — that right, or do you go by something else?",
+    prompt:
+      "Hi there, I'm Proxy, your personal housing matchmaker. Let's find your place. First, I have your name as {{name}}. Is that right, or do you go by something else?",
   },
   {
     id: "year",
@@ -19,9 +20,14 @@ export const QUESTION_PLAN = [
   {
     id: "group_size",
     field: "group_size",
-    kind: "choice",
+    kind: "slider",
     prompt: "How many people are you looking to live with (including you)?",
-    options: ["1", "2", "3", "4", "5", "6+"],
+    // Rendered as a 1–6 slider; the top stop reads "6+" and submits "6+" (which
+    // parseGroupSize floors to 6). `unit` drives the "1 person" / "3 people" label.
+    min: 1,
+    max: 6,
+    plusOnMax: true,
+    unit: "person",
     allowUnsure: true,
   },
   {
@@ -53,7 +59,7 @@ export const QUESTION_PLAN = [
     kind: "month_select",
     prompt: "When are you looking to move in?",
     // Two prominent chips; everything else lives in the "Other month" dropdown.
-    options: ["August — start of the year", "January — spring semester"],
+    options: ["August (start of the year)", "January (spring semester)"],
     others: ["September", "October", "November", "December", "February", "March", "April", "May", "June", "July"],
     allowUnsure: true,
   },
@@ -74,13 +80,15 @@ export const QUESTION_PLAN = [
   },
   {
     id: "priorities",
-    // Reliable-mode adaptive pairwise ranking: a series of "Which matters more,
-    // A or B?" questions builds the top-3 from prior signal in as few taps as
-    // possible (see questionEngine pairwise* helpers). The drag-to-rank survives
-    // as the editor in PreferencePanel for fine-tuning afterward.
+    // Multi-select: the student taps everything that matters to them (in tap
+    // order, which we treat as importance — see the priorities weighting in
+    // applyAnswer). The drag-to-rank in PreferencePanel fine-tunes the order
+    // afterward. The real fine-grained narrowing happens after this, via the
+    // listing-aware "Would you X for Y?" tradeoff questions (see narrowing.js).
     field: "priorities",
-    kind: "pairwise_rank",
-    prompt: "A couple quick either/or questions to see what matters most.",
+    kind: "multi",
+    prompt:
+      "What matters most in your place? Tap everything that fits. The more you pick, the more personalized your matches.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
     allowUnsure: true,
   },
@@ -89,7 +97,7 @@ export const QUESTION_PLAN = [
     field: "notes",
     kind: "open_text",
     prompt:
-      "Last thing — anything else I should factor in? Must-haves, dealbreakers, vibe, a specific street… tell me anything, or just say you're good.",
+      "Last thing: anything else I should factor in? Must-haves, dealbreakers, vibe, a specific street… tell me anything, or just say you're good.",
     placeholder: "e.g. in-unit laundry is a must, no busy roads…",
   },
 ];
@@ -144,10 +152,10 @@ export function isAnswered(question, preferences) {
     // Budget can be answered with a number or marked unsure (no cap).
     case "budget":
       return isFilled(p.budget_max) || !!p._budget_unsure;
-    // Priorities answered once the pairwise flow finishes (or a ranking exists,
-    // e.g. from a panel edit / rewind replay), or marked unsure (no ranking).
+    // Priorities answered once the student has picked at least one (the array is
+    // filled), or marked unsure (no preference).
     case "priorities":
-      return !!p._pairwise?.done || isFilled(p.priorities) || !!p._priorities_unsure;
+      return isFilled(p.priorities) || !!p._priorities_unsure;
     // Open-ended extras: answered once submitted or skipped.
     case "extras":
       return !!p._extras_done;

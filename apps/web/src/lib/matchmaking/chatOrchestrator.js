@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
 import { rankListings } from "./listingFilter";
+import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
 import {
   nextQuestion,
@@ -122,14 +123,16 @@ async function parseFreeText(message, question) {
   }
 }
 
-const REFINE_SYSTEM = `The user already received 3 housing recommendations and wants to adjust them. You are given their message, current preferences and weights, and shownListings — the listings they're looking at right now, each {id, title, perPerson, amenities}. Output JSON ONLY:
+const REFINE_SYSTEM = `You are Proxy, a housing matchmaker for WashU students. Your personality is playful but serious: warm and a little fun, never silly, and always genuinely helpful. Always write the "reply" in correct, grammatical English with proper spelling, punctuation, and capitalization.
+The user already received 3 housing recommendations and wants to adjust them. You are given their message, current preferences and weights, and shownListings — the listings they're looking at right now, each {id, title, perPerson, amenities}. Output JSON ONLY:
 {"reply": "<one short, friendly sentence>", "preferences": { ...only keys to change... }, "weights": { ...only dimensions to change, each 0..1... }, "exclude": [ ...listing ids to never show again... ]}
-Preference keys you may set: budget_max (number), area (array of neighborhoods), group_size (number of people to live with, including them), furnished ("Yes"|"No"|"No preference"), lease_term, move_in_month, proximity_targets (array; allowed values: "campus", "med_campus", "grocery").
+Preference keys you may set: budget_max (number), area (array of neighborhoods), group_size (number of people to live with, including them), furnished ("Yes"|"No"|"No preference"), lease_term, move_in_month, proximity_targets (array; allowed values: "campus", "med_campus", "grocery"), exclude_subleases (boolean).
 Weight dimensions: budget, location, value, reviews, amenities, walkability, lease_flexibility, social, group_fit, neighborhood. Raise toward 1 to emphasize, lower toward 0 to de-emphasize.
 Referencing a listing they were shown — match the name in their message to a shownListings entry by title (case-insensitive, partial match is fine) and use its id:
 - "not <name>" / "anything but <name>" / "something other than <name>" / "don't show me <name>" -> add that id to exclude.
 - "not as expensive as <name>" / "cheaper than <name>" / "less than <name>" -> add that id to exclude AND set budget_max to a round number just below that listing's perPerson.
-Guidance: "cheaper"/"too expensive" -> raise value+budget weights (and/or lower budget_max); "fit more people"/"bigger"/"more roommates"/"a larger group" -> raise group_size to the number implied and never below the current value; "closer to campus" -> proximity_targets ["campus"] + raise walkability+location; "close to the med campus / medical school" -> proximity_targets ["med_campus"] + raise walkability; "close to groceries / Schnucks" -> proximity_targets ["grocery"] + raise walkability; "in/near a neighborhood (The Loop / Central West End / Clayton / DeMun / DeBaliviere)" -> set area [that neighborhood] + raise neighborhood toward 1; "nicer"/"more amenities" -> raise amenities; "better reviews" -> raise reviews. Preserve any existing proximity_targets the user still wants. If nothing actionable, return empty preferences, weights, and exclude with a brief acknowledging reply.`;
+Guidance: "cheaper"/"too expensive" -> raise value+budget weights (and/or lower budget_max); "fit more people"/"bigger"/"more roommates"/"a larger group" -> raise group_size to the number implied and never below the current value; "closer to campus" -> proximity_targets ["campus"] + raise walkability+location; "close to the med campus / medical school" -> proximity_targets ["med_campus"] + raise walkability; "close to groceries / Schnucks" -> proximity_targets ["grocery"] + raise walkability; "in/near a neighborhood (The Loop / Central West End / Clayton / DeMun / DeBaliviere)" -> set area [that neighborhood] + raise neighborhood toward 1; "nicer"/"more amenities" -> raise amenities; "better reviews" -> raise reviews; "no sublease(s)"/"not a sublease"/"don't want a sublease"/"no subletting"/"I want a real/full lease" -> set exclude_subleases true (and "subleases are fine"/"open to a sublease" -> exclude_subleases false). Preserve any existing proximity_targets the user still wants. If nothing actionable, return empty preferences, weights, and exclude with a brief acknowledging reply.
+Never use em dashes (—) in the reply. Use commas, periods, or parentheses instead.`;
 
 // Interpret a post-recommendation refinement request into pref/weight changes.
 async function interpretRefinement(session, message) {
@@ -199,7 +202,7 @@ async function persistSession(session) {
 async function rankTop3(session) {
   const intentions = pickIntentions(session.weights);
   try {
-    const { ranked, usage, groupNote } = await rankListings({
+    const { ranked, usage, groupNote, budgetNote } = await rankListings({
       preferences: session.preferences,
       weights: session.weights,
       requestedIntentions: intentions,
@@ -207,18 +210,80 @@ async function rankTop3(session) {
     });
     addUsage(session, usage);
     session.recommendations = ranked.slice(0, 3);
-    // Transient (not a DB column) — read within this turn to flag group fit.
+    // Transient (not DB columns) — read within this turn to flag budget/group fit.
     session._groupNote = groupNote ?? null;
+    session._budgetNote = budgetNote ?? null;
   } catch (err) {
     console.error("[chatOrchestrator] rankTop3 failed:", err);
     session.recommendations = [];
     session._groupNote = null;
+    session._budgetNote = null;
   }
 }
 
-// Append the honest group-fit note (if any) to an assistant message.
-function withGroupNote(text, session) {
-  return session._groupNote ? `${text}\n\n${session._groupNote}` : text;
+// Append the honest budget/group-fit notes (if any) to an assistant message.
+function withNotes(text, session) {
+  const notes = [session._budgetNote, session._groupNote].filter(Boolean);
+  return notes.length ? `${text}\n\n${notes.join("\n\n")}` : text;
+}
+
+// Finalize: rank the deterministic top 3, mark the session done, push the
+// closing message, persist, and return the turn payload.
+async function finalizeRecommendations(session) {
+  await rankTop3(session);
+  logConversationCost(session);
+  session.status = "recommendations_ready";
+  const closing = withNotes(
+    "All set. Here are your top three matches. Want to tweak anything? Just tell me (e.g. “cheaper” or “closer to campus”).",
+    session
+  );
+  session.transcript.push({
+    role: "assistant",
+    content: closing,
+    ts: new Date().toISOString(),
+    recommendations: session.recommendations,
+  });
+  await persistSession(session);
+  return {
+    session,
+    nextQuestion: null,
+    assistantMessage: closing,
+    recommendations: session.recommendations,
+  };
+}
+
+// The narrowing phase: after the scripted questions, if more than 3 listings
+// still fit, ask a listing-aware "Would you X for Y?" tradeoff question;
+// otherwise finalize the top 3. Each tradeoff answer re-enters here.
+async function runNarrowing(session) {
+  let turn;
+  try {
+    turn = await buildNarrowingTurn(session);
+    addUsage(session, turn.usage);
+  } catch (err) {
+    console.error("[chatOrchestrator] runNarrowing failed:", err);
+    return finalizeRecommendations(session);
+  }
+
+  if (turn.kind === "tradeoff" && turn.question) {
+    // Stash the server-only id mapping so the next turn can prune the loser.
+    session.preferences._pendingTradeoff = turn.serverOptions;
+    session.transcript.push({
+      role: "assistant",
+      content: turn.question.prompt,
+      ts: new Date().toISOString(),
+      question: turn.question,
+    });
+    await persistSession(session);
+    return {
+      session,
+      nextQuestion: turn.question,
+      assistantMessage: turn.question.prompt,
+      recommendations: session.recommendations ?? [],
+    };
+  }
+
+  return finalizeRecommendations(session);
 }
 
 // Re-rank the top 3 from a given prefs/weights snapshot (used by the panel's
@@ -234,19 +299,31 @@ export async function computeRecommendations(preferences, weights) {
   return ranked.slice(0, 3);
 }
 
-export async function handleTurn({ session, answer = null, message = "", preferences = null, weights = null }) {
+export async function handleTurn({ session, answer = null, message = "", preferences = null, weights = null, tradeoff = null }) {
   // Adopt the client's authoritative snapshot when provided, preserving the
   // server-only cumulative usage tally (the client never sends it back).
   if (preferences) {
     // Carry server-only hidden keys the client doesn't manage: the cumulative
-    // usage tally and the persistent set of listings the user has rejected.
+    // usage tally, the persistent rejected-listing set, and the narrowing-phase
+    // state (pending tradeoff + how many we've asked + their history). The DB
+    // copy is authoritative for these, so they always override the client echo.
     const prev = session.preferences ?? {};
     const carried = {};
-    if (prev._usage) carried._usage = prev._usage;
-    if (prev._excluded) carried._excluded = prev._excluded;
+    for (const k of ["_usage", "_excluded", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender"]) {
+      if (prev[k] !== undefined) carried[k] = prev[k];
+    }
     session.preferences = { ...preferences, ...carried };
   }
   if (weights) session.weights = weights;
+
+  // Narrowing path: the user answered a "Would you X for Y?" tradeoff. Prune the
+  // losing side, then ask the next tradeoff (or finalize if ≤3 / cap reached).
+  if (tradeoff) {
+    const chosen = tradeoff.chosen ?? "";
+    session.transcript.push({ role: "user", content: String(chosen), ts: new Date().toISOString() });
+    session.preferences = applyTradeoffChoice(session.preferences, chosen);
+    return runNarrowing(session);
+  }
 
   // Refine path: recommendations already exist and the user typed a tweak.
   if (message && session.status === "recommendations_ready") {
@@ -275,7 +352,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     }
     await rankTop3(session);
     logConversationCost(session);
-    const refineReply = withGroupNote(reply, session);
+    const refineReply = withNotes(reply, session);
     session.transcript.push({
       role: "assistant",
       content: refineReply,
@@ -332,27 +409,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     return { session, nextQuestion: upcoming, assistantMessage: upcoming.prompt };
   }
 
-  // Script complete — rank the three recommendations (the only slow step).
-  await rankTop3(session);
-  logConversationCost(session);
-  session.status = "recommendations_ready";
-
-  const closing = withGroupNote(
-    "All set — here are your top three matches. Want to tweak anything? Just tell me (e.g. “cheaper” or “closer to campus”).",
-    session
-  );
-  session.transcript.push({
-    role: "assistant",
-    content: closing,
-    ts: new Date().toISOString(),
-    recommendations: session.recommendations,
-  });
-
-  await persistSession(session);
-  return {
-    session,
-    nextQuestion: null,
-    assistantMessage: closing,
-    recommendations: session.recommendations,
-  };
+  // Scripted questions complete — enter the narrowing phase (tradeoff questions
+  // when >3 listings still fit), which finalizes the top 3 when it's done.
+  return runNarrowing(session);
 }

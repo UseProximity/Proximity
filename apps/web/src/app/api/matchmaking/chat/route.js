@@ -13,7 +13,7 @@ const GUEST_EMAIL = "guest@proximity.test";
 async function resolveUserId(email) {
   const { data: user } = await supabase
     .from("users")
-    .select("id, name")
+    .select("id, name, gender")
     .eq("email", email.toLowerCase())
     .single();
   return user;
@@ -67,7 +67,7 @@ export async function POST(request) {
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
 
     const body = await request.json();
-    const { sessionId, message, answer, preferences, weights, action, transcript } = body;
+    const { sessionId, message, answer, preferences, weights, action, transcript, tradeoff } = body;
 
     let chatSession;
 
@@ -89,7 +89,8 @@ export async function POST(request) {
         .from("matchmaking_chat_sessions")
         .insert({
           user_id: actor.id,
-          preferences: { name: actor.name ?? "" },
+          // Greet on a first-name basis: take the first token of the stored name.
+          preferences: { name: (actor.name ?? "").trim().split(/\s+/)[0] ?? "" },
           weights: {},
           transcript: [],
           candidates: [],
@@ -123,12 +124,18 @@ export async function POST(request) {
       return NextResponse.json({ sessionId: chatSession.id, status: "in_progress", nextQuestion: null });
     }
 
+    // Stamp the student's account gender onto the session prefs (server-only,
+    // hidden key) so the ranker can hard-exclude listings whose descriptions
+    // restrict occupants to a gender they aren't. See listingConstraints.
+    chatSession.preferences = { ...(chatSession.preferences ?? {}), _viewerGender: actor.gender ?? null };
+
     const { assistantMessage, nextQuestion, session: updatedSession } = await handleTurn({
       session: chatSession,
       answer: answer ?? null,
       message: message ?? "",
       preferences: preferences ?? null,
       weights: weights ?? null,
+      tradeoff: tradeoff ?? null,
     });
 
     return NextResponse.json({
@@ -170,7 +177,7 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const updatedPreferences = { ...chatSession.preferences, ...patch };
+    const updatedPreferences = { ...chatSession.preferences, ...patch, _viewerGender: actor.gender ?? null };
     // The panel may send freshly recomputed weights (e.g. reordered priorities).
     const updatedWeights = weights ?? chatSession.weights;
 
@@ -190,9 +197,21 @@ export async function PATCH(request) {
     // If the user already has their 3 picks, reordering priorities should refresh
     // them right away rather than waiting for a chat refine.
     let recommendations = chatSession.recommendations;
+    let transcript = chatSession.transcript;
     if (chatSession.status === "recommendations_ready") {
       try {
         recommendations = await computeRecommendations(updatedPreferences, updatedWeights);
+        // The chat is rebuilt from the transcript on reload, and each "here are
+        // your matches" message embeds its own copy of the picks. Rewrite the
+        // latest such message so a refresh shows the NEW matches, not the old set.
+        if (Array.isArray(transcript)) {
+          for (let i = transcript.length - 1; i >= 0; i--) {
+            if (Array.isArray(transcript[i].recommendations) && transcript[i].recommendations.length) {
+              transcript = transcript.map((m, idx) => (idx === i ? { ...m, recommendations } : m));
+              break;
+            }
+          }
+        }
       } catch (err) {
         console.error("[matchmaking/chat PATCH] computeRecommendations failed:", err);
       }
@@ -200,7 +219,7 @@ export async function PATCH(request) {
 
     const { error: updateError } = await supabase
       .from("matchmaking_chat_sessions")
-      .update({ preferences: updatedPreferences, weights: updatedWeights, candidates, recommendations })
+      .update({ preferences: updatedPreferences, weights: updatedWeights, candidates, recommendations, transcript })
       .eq("id", sessionId);
     if (updateError) {
       return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
