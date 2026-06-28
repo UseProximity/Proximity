@@ -13,7 +13,8 @@ import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "..", ".."); // repo root
+const REPO_ROOT = join(__dirname, "..", ".."); // monorepo root (contains apps/, packages/, mcp/)
+const ROOT = join(REPO_ROOT, "apps", "web"); // Next.js app root — all scanned src/ lives here
 const OUT = join(__dirname, "..", "knowledge");
 
 mkdirSync(OUT, { recursive: true });
@@ -226,7 +227,7 @@ function generateDomain() {
 
     techStack: {
       framework: "Next.js 15 (App Router)",
-      language: "JavaScript (no TypeScript in src — only middleware.ts)",
+      language: "JavaScript (App Router in JS; a few TypeScript files — middleware.ts, src/lib/supabase/*.ts)",
       styling: "Tailwind CSS 3",
       auth: "NextAuth v5 (beta) — Google OAuth only, JWT strategy",
       db: "Supabase (PostgreSQL)",
@@ -234,7 +235,7 @@ function generateDomain() {
       maps: "Mapbox GL + Leaflet (geocoding + walk times); Google Street View Static API for default listing photos",
       email: "Nodemailer (SMTP)",
       ui: "Radix UI, Lucide React, Framer Motion, Recharts, @chatscope/chat-ui-kit-react",
-      sourceLayout: "All app code lives under src/ — src/app (App Router pages + api), src/components, src/lib, src/utils.",
+      sourceLayout: "Monorepo: the Next.js app lives in apps/web (with packages/ for shared code and mcp/ for the knowledge server). Within apps/web, all app code is under src/ — src/app (App Router pages + api), src/components, src/lib, src/utils.",
     },
 
     roles: {
