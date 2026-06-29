@@ -203,6 +203,33 @@ export default function QuestionControls({ question, onAnswer }) {
     );
   }
 
+  if (kind === "contact") {
+    // "Want me to reach out to any of these owners?" — pick any subset of the 3
+    // matches (no free-text "Other"), or decline with "No thanks".
+    const toggle = (opt) =>
+      setSelected((cur) => (cur.includes(opt) ? cur.filter((o) => o !== opt) : [...cur, opt]));
+    return (
+      <div onKeyDown={onEnter(() => selected.length && submit(selected))} className="flex items-end gap-2">
+        <div className="flex flex-wrap gap-1.5 flex-1">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              className={selected.includes(opt) ? CHIP_ON : CHIP}
+              disabled={!interactive}
+              onClick={() => toggle(opt)}
+            >
+              {opt}
+            </button>
+          ))}
+          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit([], "No thanks")}>
+            No thanks
+          </button>
+        </div>
+        <SendButton onClick={() => selected.length && submit(selected)} disabled={!interactive || selected.length === 0} />
+      </div>
+    );
+  }
+
   if (kind === "pairwise") {
     // One A-vs-B comparison. Two roomy chips (priority labels run long) plus an
     // optional "no preference" skip for the whole ranking. Pick one, then send.

@@ -5,6 +5,7 @@ import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
 import { QUESTION_BY_ID } from "@/lib/matchmaking/questionScript";
+import { defaultInquiryNote } from "@/lib/matchmaking/contactNote";
 
 const LS_KEY = "prx_chat_v2";
 
@@ -52,6 +53,9 @@ export default function ChatClient() {
   const prefsRef = useRef({});
   const weightsRef = useRef({});
   const postChain = useRef(Promise.resolve());
+  // Maps the contact question's option labels (each match's intention tag) back to
+  // its listing id, so a selection can be turned into the listings to email.
+  const contactMapRef = useRef({});
   useEffect(() => {
     prefsRef.current = preferences;
   }, [preferences]);
@@ -89,6 +93,137 @@ export default function ChatClient() {
     ts: new Date().toISOString(),
     recommendations: data.recommendations,
   });
+
+  // Build the "want me to reach out to any of these owners?" question that follows
+  // the matches — a multi-select whose options are each pick's listing title. Also
+  // refreshes the label→listing map the send handler reads. Returns null if no recs.
+  const buildContactMessage = useCallback((recommendations, animate = true) => {
+    const recs = (recommendations ?? []).filter((r) => r?.listing_id);
+    if (!recs.length) return null;
+    // Label each option by its listing title (fall back to address / intention),
+    // de-duping so two identical titles still map to distinct options.
+    const seen = new Map();
+    const options = recs.map((r) => {
+      const base = (r.card_data?.title || r.card_data?.address || r.intention || "Listing").trim();
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      return n === 0 ? base : `${base} (${n + 1})`;
+    });
+    contactMapRef.current = Object.fromEntries(recs.map((r, i) => [options[i], r.listing_id]));
+    return questionToMessage(
+      {
+        id: "contact_owners",
+        kind: "contact",
+        prompt: "Want me to reach out to any of these owners for you? I'll email them and CC you. Pick all that apply.",
+        options,
+        meta: { contact: true },
+      },
+      animate
+    );
+  }, []);
+
+  // Append the matches followed by the contact offer in one update.
+  const appendRecsWithContact = useCallback(
+    (data) => {
+      setMessages((prev) => {
+        const next = [...prev, inlineRecsMessage(data)];
+        const contact = buildContactMessage(data.recommendations);
+        if (contact) next.push(contact);
+        return next;
+      });
+    },
+    [buildContactMessage]
+  );
+
+  // Append an editable email-draft message (used by both the multi-select offer
+  // and the agent when the user asks Proxy to email an owner mid-conversation).
+  const appendDraftMessage = useCallback((content, { listingIds, recipientsLabel, message }) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content,
+        ts: new Date().toISOString(),
+        draft: {
+          draftId: String(Date.now()),
+          listingIds,
+          recipientsLabel,
+          selectionLabel: `Reach out to: ${recipientsLabel}`,
+          message,
+        },
+      },
+    ]);
+  }, []);
+
+  // The student answered the contact offer. Instead of sending right away, Proxy
+  // shows an editable draft of the note (one shared message for the owners they
+  // picked); nothing goes out until they hit send (handleSendDraft).
+  const handleContactOwners = useCallback(
+    (answer) => {
+      const labels = Array.isArray(answer.value) ? answer.value : [];
+      const listingIds = labels.map((l) => contactMapRef.current[l]).filter(Boolean);
+      const selectionLabel = labels.length ? `Reach out to: ${labels.join(", ")}` : "No thanks";
+      setMessages((prev) => [...prev, { role: "user", content: selectionLabel, ts: new Date().toISOString() }]);
+
+      if (!listingIds.length) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "No problem, just let me know if you'd like me to reach out later.", ts: new Date().toISOString() },
+        ]);
+        return;
+      }
+
+      const defaultNote = defaultInquiryNote(prefsRef.current?.name);
+      const recipientsLabel = labels.join(" & ");
+
+      appendDraftMessage(
+        `Here's the note I'll send to the owner${listingIds.length > 1 ? "s" : ""} of ${recipientsLabel}. Edit anything you'd like, then hit send and I'll reach out (and CC you).`,
+        { listingIds, recipientsLabel, message: defaultNote }
+      );
+    },
+    [appendDraftMessage]
+  );
+
+  // Send the (possibly edited) draft. Marks the draft sent in place, then asks the
+  // server to email each selected owner with the student's note.
+  const handleSendDraft = useCallback(
+    (draft, message) => {
+      const { draftId, listingIds, selectionLabel } = draft;
+      setMessages((prev) =>
+        prev.map((m) => (m.draft?.draftId === draftId ? { ...m, draft: { ...m.draft, message, sent: true } } : m))
+      );
+      setLoading(true);
+      postChain.current = postChain.current.then(async () => {
+        try {
+          const res = await fetch("/api/matchmaking/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId, action: "contact_owners", listingIds, message, selectionLabel }),
+          });
+          const data = await res.json();
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: res.ok
+                ? data.assistantMessage || "Done! I've reached out on your behalf."
+                : "I couldn't reach out just now, please try again in a bit.",
+              ts: new Date().toISOString(),
+            },
+          ]);
+        } catch (err) {
+          console.error("[ChatClient] handleSendDraft failed:", err);
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "Something went wrong reaching out, please try again.", ts: new Date().toISOString() },
+          ]);
+        } finally {
+          setLoading(false);
+        }
+      });
+    },
+    [sessionId]
+  );
 
   // Tradeoff answer — a "Would you X for Y?" narrowing pick. The server owns this
   // phase (it needs live listing data), so unlike scripted chips this is NOT
@@ -128,7 +263,7 @@ export default function ChatClient() {
                   : [...prev, questionToMessage(data.nextQuestion, true)]
               );
             } else if (data.recommendations?.length) {
-              setMessages((prev) => [...prev, inlineRecsMessage(data)]);
+              appendRecsWithContact(data);
             }
           }
         } catch (err) {
@@ -138,7 +273,7 @@ export default function ChatClient() {
         }
       });
     },
-    [sessionId, applyRanking]
+    [sessionId, applyRanking, appendRecsWithContact]
   );
 
   // Chip answer — render the next question instantly (optimistic); the POST just
@@ -148,6 +283,11 @@ export default function ChatClient() {
       // Tradeoff narrowing is server-driven — route it out of the optimistic path.
       if (answer.kind === "tradeoff") {
         handleTradeoffAnswer(answer);
+        return;
+      }
+      // The "contact owners" offer is its own server-driven path (sends email).
+      if (answer.kind === "contact") {
+        handleContactOwners(answer);
         return;
       }
       const applied = applyAnswer(prefsRef.current, weightsRef.current, answer);
@@ -201,7 +341,7 @@ export default function ChatClient() {
                     : [...prev, questionToMessage(data.nextQuestion, true)]
                 );
               } else if (data.recommendations?.length) {
-                setMessages((prev) => [...prev, inlineRecsMessage(data)]);
+                appendRecsWithContact(data);
               }
             }
           }
@@ -212,7 +352,7 @@ export default function ChatClient() {
         }
       });
     },
-    [sessionId, applyRanking, handleTradeoffAnswer]
+    [sessionId, applyRanking, handleTradeoffAnswer, handleContactOwners, appendRecsWithContact]
   );
 
   // Free-text composer — parses an answer mid-flow, or refines the picks after
@@ -240,14 +380,27 @@ export default function ChatClient() {
               setWeights(data.weights);
               weightsRef.current = data.weights;
             }
-            if (data.nextQuestion) {
+            if (data.mode === "agent") {
+              // Post-recommendations conversational turn. Re-rank → show new
+              // matches; draft → editable email compose; otherwise a plain reply.
+              if (data.reranked && data.recommendations?.length) {
+                appendRecsWithContact(data);
+              } else if (data.draft?.listingIds?.length) {
+                appendDraftMessage(data.assistantMessage || "Here's a draft, edit and send when ready:", data.draft);
+              } else if (data.assistantMessage) {
+                setMessages((prev) => [
+                  ...prev,
+                  { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString() },
+                ]);
+              }
+            } else if (data.nextQuestion) {
               setMessages((prev) =>
                 qKey(prev[prev.length - 1]?.question) === qKey(data.nextQuestion)
                   ? prev
                   : [...prev, questionToMessage(data.nextQuestion, true)]
               );
             } else if (data.recommendations?.length) {
-              setMessages((prev) => [...prev, inlineRecsMessage(data)]);
+              appendRecsWithContact(data);
             }
           }
         } catch (err) {
@@ -257,7 +410,7 @@ export default function ChatClient() {
         }
       });
     },
-    [sessionId, applyRanking]
+    [sessionId, applyRanking, appendRecsWithContact, appendDraftMessage]
   );
 
   useEffect(() => {
@@ -308,7 +461,15 @@ export default function ChatClient() {
           setRecommendations(session.recommendations ?? []);
           setStatus(session.status);
           if (serverMessages.length > 0) {
-            setMessages(serverMessages);
+            // If the matches are the last thing shown (the offer hasn't been answered
+            // yet), re-add the "contact owners?" question so a reload still offers it.
+            const last = serverMessages[serverMessages.length - 1];
+            if (session.status === "recommendations_ready" && last?.recommendations) {
+              const contact = buildContactMessage(session.recommendations, false);
+              setMessages(contact ? [...serverMessages, contact] : serverMessages);
+            } else {
+              setMessages(serverMessages);
+            }
           } else if (!hadCache.current) {
             await startFresh();
             return;
@@ -351,7 +512,7 @@ export default function ChatClient() {
     }
 
     init();
-  }, [applyServerState]);
+  }, [applyServerState, buildContactMessage]);
 
   const handlePanelUpdate = useCallback(
     (data) => {
@@ -531,6 +692,7 @@ export default function ChatClient() {
             userInitial={(preferences?.name ?? "").trim().charAt(0).toUpperCase()}
             onSend={handleUserSend}
             onAnswer={handleAnswer}
+            onSendDraft={handleSendDraft}
             onEdit={handleEditFrom}
           />
         </div>

@@ -64,7 +64,45 @@ function RecommendationsSkeleton() {
   );
 }
 
-export default function ChatWindow({ messages, loading, recsUpdating, userInitial, onSend, onAnswer, onEdit }) {
+// Editable preview of the note Proxy will email the selected owners. The student
+// can tweak it freely and send when ready; once sent it locks to a read-only quote.
+function DraftCompose({ draft, loading, onSend }) {
+  const [text, setText] = useState(draft.message);
+  if (draft.sent) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+        <p className="italic whitespace-pre-wrap">&ldquo;{draft.message}&rdquo;</p>
+        <p className="mt-1.5 text-[11px] font-semibold text-green-600">Sent ✓</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={4}
+        disabled={loading}
+        className="w-full resize-none text-xs leading-relaxed text-gray-800 bg-transparent outline-none p-1.5 disabled:opacity-50"
+      />
+      <div className="flex items-center justify-between pt-1">
+        <span className="text-[10px] text-gray-400">You can edit this before sending.</span>
+        <button
+          onClick={() => text.trim() && onSend(draft, text.trim())}
+          disabled={loading || !text.trim()}
+          className="inline-flex items-center gap-1.5 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-semibold px-3 py-1.5 transition"
+        >
+          Send
+          <svg className="w-3 h-3 translate-x-px" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function ChatWindow({ messages, loading, recsUpdating, userInitial, onSend, onAnswer, onSendDraft, onEdit }) {
   const scrollRef = useRef(null);
   const lastMsgRef = useRef(null);
   const inputRef = useRef(null);
@@ -181,13 +219,28 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
                     )}
                   </div>
                 </div>
+              ) : msg.draft ? (
+                // Proxy speaks, then shows the editable email draft in its column.
+                <div className="space-y-2">
+                  <div className="flex items-end gap-2">
+                    <div className="w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                      P
+                    </div>
+                    <div className="max-w-[75%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm leading-snug">
+                      {msg.content}
+                    </div>
+                  </div>
+                  <div className="ml-9 mr-9 mt-1">
+                    <DraftCompose draft={msg.draft} loading={loading} onSend={onSendDraft} />
+                  </div>
+                </div>
               ) : (
                 <MessageBubble
                   message={msg}
                   userInitial={userInitial}
                   // The latest question is answered down in the composer; past
                   // prompts get an Edit button beneath the bubble.
-                  onEdit={msg.question && !(isLast && !loading) && onEdit ? () => onEdit(msg.question.id) : undefined}
+                  onEdit={msg.question && msg.question.kind !== "contact" && !(isLast && !loading) && onEdit ? () => onEdit(msg.question.id) : undefined}
                   onReady={
                     isLast
                       ? () => {

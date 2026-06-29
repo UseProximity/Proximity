@@ -16,6 +16,7 @@ import { Header } from "@/components/layout/Header";
 import StagingBanner from "@/components/layout/StagingBanner";
 import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
+import { appEnv } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
@@ -66,7 +67,7 @@ export default async function RootLayout({ children }) {
       </head>
       <body className={inter.className}>
         <StagingBanner />
-        <StagingEmailPicker />
+        <StagingEmailPicker env={appEnv()} />
         <div>
           <Toaster />
         </div>

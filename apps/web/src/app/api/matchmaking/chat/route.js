@@ -4,11 +4,34 @@ import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
 import { handleTurn, computeRecommendations } from "@/lib/matchmaking/chatOrchestrator";
 import { rankListings } from "@/lib/matchmaking/listingFilter";
+import { sendOwnerInquiryEmail } from "@/lib/email";
 
 // Shared identity for anonymous, no-login testing. Used ONLY outside production
 // (staging / Vercel previews / local) so anyone can try the matchmaker from a
 // test URL without an account. Must exist in the dev database.
 const GUEST_EMAIL = "guest@proximity.test";
+
+// Resolve a listing's primary-landlord contact (server-side, never trusting the
+// client) for the "have Proxy contact the owner" flow. Falls back to the listing's
+// own contact_email when there's no linked landlord account.
+async function resolveOwnerForListing(listingId) {
+  const { data: row } = await supabase
+    .from("listings")
+    .select("id, address, title, contact_email, contact_name, listing_landlords(user_id, is_primary)")
+    .eq("id", listingId)
+    .single();
+  if (!row) return null;
+  const links = row.listing_landlords ?? [];
+  const primary = links.find((l) => l.is_primary) ?? links[0];
+  let owner = null;
+  if (primary?.user_id) {
+    const { data: u } = await supabase.from("users").select("name, email").eq("id", primary.user_id).single();
+    owner = u;
+  }
+  const email = owner?.email || row.contact_email || null;
+  if (!email) return null;
+  return { email, name: owner?.name || row.contact_name || null, address: row.address, title: row.title };
+}
 
 async function resolveUserId(email) {
   const { data: user } = await supabase
@@ -63,7 +86,8 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { actor, error: actorError } = await resolveActor(await auth());
+    const session = await auth();
+    const { actor, error: actorError } = await resolveActor(session);
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
 
     const body = await request.json();
@@ -124,12 +148,59 @@ export async function POST(request) {
       return NextResponse.json({ sessionId: chatSession.id, status: "in_progress", nextQuestion: null });
     }
 
+    // Contact owners: the student picked listings (from their 3 matches) and asked
+    // Proxy to reach out. Identity is the signed-in account; outside production an
+    // anonymous tester sends as a generic "Proximity Tester" (and every email is
+    // redirected to the staging test inbox by sendMailSafe — real owners are never hit).
+    if (action === "contact_owners") {
+      const listingIds = Array.isArray(body.listingIds) ? [...new Set(body.listingIds.filter(Boolean))] : [];
+      const student = session?.user?.email
+        ? { name: (session.user.name || actor.name || "A Proximity student").trim(), email: session.user.email }
+        : { name: "Proximity Tester", email: GUEST_EMAIL };
+
+      let sent = 0;
+      for (const listingId of listingIds) {
+        const owner = await resolveOwnerForListing(listingId);
+        if (!owner) continue;
+        try {
+          await sendOwnerInquiryEmail({
+            to: owner.email,
+            landlordName: owner.name,
+            student,
+            listingAddress: owner.title || owner.address,
+            message: typeof body.message === "string" ? body.message : null,
+          });
+          sent += 1;
+        } catch (err) {
+          console.error("[matchmaking/chat contact_owners] send failed:", err);
+        }
+      }
+
+      const assistantMessage =
+        sent > 0
+          ? `Done! I've emailed ${sent === 1 ? "the owner" : `${sent} owners`} on your behalf and CC'd you (${student.email}), so their replies land straight in your inbox.`
+          : "I couldn't reach those owners just now — please try again in a moment.";
+
+      // Persist the exchange so a page reload still shows that Proxy reached out.
+      const newTranscript = [
+        ...(chatSession.transcript ?? []),
+        { role: "user", content: body.selectionLabel || "Reach out to the selected owners", ts: new Date().toISOString() },
+        { role: "assistant", content: assistantMessage, ts: new Date().toISOString() },
+      ];
+      await supabase
+        .from("matchmaking_chat_sessions")
+        .update({ transcript: newTranscript })
+        .eq("id", chatSession.id);
+
+      return NextResponse.json({ sessionId: chatSession.id, assistantMessage, contactedCount: sent });
+    }
+
     // Stamp the student's account gender onto the session prefs (server-only,
     // hidden key) so the ranker can hard-exclude listings whose descriptions
     // restrict occupants to a gender they aren't. See listingConstraints.
     chatSession.preferences = { ...(chatSession.preferences ?? {}), _viewerGender: actor.gender ?? null };
 
-    const { assistantMessage, nextQuestion, session: updatedSession } = await handleTurn({
+    const turn = await handleTurn({
       session: chatSession,
       answer: answer ?? null,
       message: message ?? "",
@@ -137,16 +208,21 @@ export async function POST(request) {
       weights: weights ?? null,
       tradeoff: tradeoff ?? null,
     });
+    const updatedSession = turn.session;
 
     return NextResponse.json({
       sessionId: updatedSession.id,
-      assistantMessage,
-      nextQuestion,
+      assistantMessage: turn.assistantMessage,
+      nextQuestion: turn.nextQuestion,
       preferences: updatedSession.preferences,
       weights: updatedSession.weights,
       candidates: updatedSession.candidates,
       recommendations: updatedSession.recommendations,
       status: updatedSession.status,
+      // Conversational-agent extras (post-recommendations free-text turns).
+      mode: turn.mode ?? null,
+      reranked: turn.reranked ?? false,
+      draft: turn.draft ?? null,
     });
   } catch (err) {
     console.error("[matchmaking/chat POST]", err);

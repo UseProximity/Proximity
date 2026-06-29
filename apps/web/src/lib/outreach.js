@@ -4,17 +4,17 @@
  * the data is a prod snapshot containing real customer emails.
  *
  * sendMailSafe() wraps a Nodemailer transporter:
- *   - production: sends normally.
- *   - staging: if a developer has chosen a test recipient (the staging email picker sets the
- *     `staging_email_to` cookie), the email is REDIRECTED to that inbox with the original
- *     recipient noted in the subject — so flows can be tested end-to-end safely. If no
- *     recipient is chosen, the email is suppressed.
- *   - local / no recipient: suppressed (logged only).
+ *   - production: sends normally to the real recipient.
+ *   - any non-production env (staging OR local): NEVER emails the real recipient. If a
+ *     tester has chosen a destination via the email picker (the `staging_email_to` cookie),
+ *     every email is REDIRECTED to that inbox (cc/bcc dropped, original recipient noted in
+ *     the subject) so flows can be tested end-to-end safely. With no recipient chosen, the
+ *     email is suppressed (logged only).
  *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  */
-import { outreachEnabled, isStaging } from "./appEnv";
+import { outreachEnabled } from "./appEnv";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
@@ -37,17 +37,21 @@ export async function sendMailSafe(transporter, message) {
     return transporter.sendMail(message);
   }
 
-  if (isStaging()) {
-    const to = await stagingTestRecipient();
-    if (to) {
-      const original = message?.to ?? "(none)";
-      console.log(`[outreach staging] redirecting email (was ${original}) → ${to}`);
-      return transporter.sendMail({
-        ...message,
-        to,
-        subject: `[STAGING → was: ${original}] ${message?.subject ?? ""}`,
-      });
-    }
+  // Non-production (staging or local): redirect to the tester-chosen inbox if set,
+  // otherwise suppress. The real recipient is never contacted off production.
+  const to = await stagingTestRecipient();
+  if (to) {
+    const original = message?.to ?? "(none)";
+    console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);
+    // Collapse everything to the single test inbox — drop cc/bcc so a real (or
+    // placeholder) carbon-copy recipient is never emailed off production.
+    return transporter.sendMail({
+      ...message,
+      to,
+      cc: undefined,
+      bcc: undefined,
+      subject: `[TEST → was: ${original}] ${message?.subject ?? ""}`,
+    });
   }
 
   console.log(`[outreach suppressed] would send → to=${message?.to} subject=${message?.subject}`);

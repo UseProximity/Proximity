@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
 import { rankListings } from "./listingFilter";
+import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
 import {
@@ -28,6 +29,12 @@ const DIMENSION_TO_INTENTION = {
   social: "Best social fit",
   group_fit: "Best social fit",
 };
+
+// Belt-and-suspenders: the prompts forbid em dashes, but never let one reach the
+// user. Collapse " — " to a comma and any stray em dash to a hyphen.
+function stripEmDashes(s) {
+  return typeof s === "string" ? s.replace(/\s*—\s*/g, ", ").replace(/—/g, "-") : s;
+}
 
 let _client = null;
 function getClient() {
@@ -123,58 +130,247 @@ async function parseFreeText(message, question) {
   }
 }
 
-const REFINE_SYSTEM = `You are Proxy, a housing matchmaker for WashU students. Your personality is playful but serious: warm and a little fun, never silly, and always genuinely helpful. Always write the "reply" in correct, grammatical English with proper spelling, punctuation, and capitalization.
-The user already received 3 housing recommendations and wants to adjust them. You are given their message, current preferences and weights, and shownListings — the listings they're looking at right now, each {id, title, perPerson, amenities}. Output JSON ONLY:
-{"reply": "<one short, friendly sentence>", "preferences": { ...only keys to change... }, "weights": { ...only dimensions to change, each 0..1... }, "exclude": [ ...listing ids to never show again... ]}
-Preference keys you may set: budget_max (number), area (array of neighborhoods), group_size (number of people to live with, including them), furnished ("Yes"|"No"|"No preference"), lease_term, move_in_month, proximity_targets (array; allowed values: "campus", "med_campus", "grocery"), exclude_subleases (boolean).
-Weight dimensions: budget, location, value, reviews, amenities, walkability, lease_flexibility, social, group_fit, neighborhood. Raise toward 1 to emphasize, lower toward 0 to de-emphasize.
-Referencing a listing they were shown — match the name in their message to a shownListings entry by title (case-insensitive, partial match is fine) and use its id:
-- "not <name>" / "anything but <name>" / "something other than <name>" / "don't show me <name>" -> add that id to exclude.
-- "not as expensive as <name>" / "cheaper than <name>" / "less than <name>" -> add that id to exclude AND set budget_max to a round number just below that listing's perPerson.
-Guidance: "cheaper"/"too expensive" -> raise value+budget weights (and/or lower budget_max); "fit more people"/"bigger"/"more roommates"/"a larger group" -> raise group_size to the number implied and never below the current value; "closer to campus" -> proximity_targets ["campus"] + raise walkability+location; "close to the med campus / medical school" -> proximity_targets ["med_campus"] + raise walkability; "close to groceries / Schnucks" -> proximity_targets ["grocery"] + raise walkability; "in/near a neighborhood (The Loop / Central West End / Clayton / DeMun / DeBaliviere)" -> set area [that neighborhood] + raise neighborhood toward 1; "nicer"/"more amenities" -> raise amenities; "better reviews" -> raise reviews; "no sublease(s)"/"not a sublease"/"don't want a sublease"/"no subletting"/"I want a real/full lease" -> set exclude_subleases true (and "subleases are fine"/"open to a sublease" -> exclude_subleases false). Preserve any existing proximity_targets the user still wants. If nothing actionable, return empty preferences, weights, and exclude with a brief acknowledging reply.
-Never use em dashes (—) in the reply. Use commas, periods, or parentheses instead.`;
+// ── Post-recommendation conversational agent ────────────────────────────────
+// Once the 3 matches exist, free-text turns are handled by a tool-using agent
+// (not a one-shot parse). It has the full transcript + the live matches as
+// context, and can: re-rank the search, open an email draft to an owner, or just
+// answer questions about the listings. This is what makes Proxy feel like a
+// chatbot rather than a script.
+const AGENT_SYSTEM = `You are Proxy, a warm, playful-but-serious housing matchmaker for WashU (Washington University in St. Louis) students. The student has already received their top 3 matches and is now chatting with you. You can see the whole conversation and their current matches.
 
-// Interpret a post-recommendation refinement request into pref/weight changes.
-async function interpretRefinement(session, message) {
-  // The listings the user is currently looking at, so the model can resolve
-  // references like "not as expensive as LOCAL" to a real listing + price.
-  const shownListings = (session.recommendations ?? []).map((r) => ({
-    id: r.listing_id,
-    title: r.card_data?.title ?? null,
-    perPerson: r.card_data?.min_rent ?? null,
-    amenities: r.card_data?.top_amenities ?? [],
-  }));
-  try {
-    const response = await getClient().messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 300,
-      system: [{ type: "text", text: REFINE_SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify({
-            message,
-            preferences: session.preferences,
-            weights: session.weights,
-            shownListings,
-          }),
+What you can do:
+- Answer questions about the matches using the data you are given (per-person rent, beds/baths, furnished, lease type, amenities, and the highlight note which often includes walk times). Be short and specific. If a detail truly isn't in your data, say so honestly and suggest opening the listing's page; never invent facts.
+- Change their search and re-rank: call update_search with ONLY the keys to change. Use this for "cheaper", "closer to campus", "bigger group / more roommates", "no subleases", "change my budget to X", "I actually have 5 people", or to exclude a listing they dislike.
+- Email an owner for them: when they ask you to email, contact, or reach out to a listing's owner, call open_contact_draft with that listing's title. You CAN do this — never say you can't contact landlords. The student reviews and edits the draft before it sends, and they are CC'd.
+
+Rules:
+- Only re-rank when the student actually wants different options. For a plain question, just answer — do not call update_search.
+- The 3 matches are numbered by "position" in the data (1 = first/top, 2 = second, 3 = third), in the exact order the student sees them. When they say "the first/second/third one", "the second", or "number 2", that means that POSITION. When they name a listing ("Five-Nine", "the Kingsbury place"), match it by title. In either case, when you call a tool, pass the listing's exact title OR its position number (1, 2, or 3) — for an ordinal reference, prefer passing the position number so there is no ambiguity.
+- After you use a tool, briefly tell the student what you did, naming the listing the tool reported back (do not guess the name yourself).
+- Reply in one to three short, friendly, grammatical sentences. Never use em dashes (—); use commas, periods, or parentheses.`;
+
+const AGENT_TOOLS = [
+  {
+    name: "update_search",
+    description:
+      "Adjust the student's search and re-rank their top 3 matches. Use for cheaper/closer/bigger-group/no-subleases requests, budget or group-size edits, or excluding a disliked listing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        preferences: {
+          type: "object",
+          description:
+            "Only the preference keys to change. Allowed: budget_max (number, per-person monthly), area (array of neighborhoods like 'The Loop'), group_size (number of people incl. them), furnished ('Yes'|'No'|'No preference'), lease_term (string), move_in_month (string), proximity_targets (array of 'campus'|'med_campus'|'grocery'), exclude_subleases (boolean).",
         },
-      ],
-    });
-    const raw = response.content.find((b) => b.type === "text")?.text ?? "{}";
-    const jsonText = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```\s*$/m, "").trim();
-    const parsed = JSON.parse(jsonText);
-    return {
-      reply: typeof parsed.reply === "string" ? parsed.reply : "Updated your matches.",
-      preferences: parsed.preferences && typeof parsed.preferences === "object" ? parsed.preferences : {},
-      weights: parsed.weights && typeof parsed.weights === "object" ? parsed.weights : {},
-      exclude: Array.isArray(parsed.exclude) ? parsed.exclude : [],
-      usage: response.usage,
-    };
-  } catch (err) {
-    console.error("[chatOrchestrator] interpretRefinement failed:", err);
-    return { reply: "Here are some updated options.", preferences: {}, weights: {}, exclude: [], usage: null };
+        weights: {
+          type: "object",
+          description:
+            "Only weight dimensions to change, each 0..1 (raise to emphasize). Dimensions: budget, location, value, reviews, amenities, walkability, lease_flexibility, social, group_fit, neighborhood.",
+        },
+        exclude: {
+          type: "array",
+          items: { type: "string" },
+          description: "Shown listings to never show again — each the listing's exact title or its position number ('1', '2', '3').",
+        },
+      },
+    },
+  },
+  {
+    name: "open_contact_draft",
+    description:
+      "Open an editable email draft to the owner(s) of specific shown listings so the student can review and send it. Use whenever the student asks you to email, contact, or reach out to a listing's owner.",
+    input_schema: {
+      type: "object",
+      properties: {
+        listings: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Which shown listings' owners to contact. Each item is the listing's exact title OR its position number ('1', '2', '3'). Use the position number for ordinal references like 'the third one'.",
+        },
+      },
+      required: ["listings"],
+    },
+  },
+];
+
+// Ordinal / position words → 1-based index, so "the third one" resolves to match #3.
+const ORDINAL_POS = { first: 1, "1st": 1, second: 2, "2nd": 2, third: 3, "3rd": 3 };
+function refPosition(s) {
+  for (const [word, pos] of Object.entries(ORDINAL_POS)) {
+    if (new RegExp(`\\b${word}\\b`).test(s)) return pos;
   }
+  // "number 2", "#3", or a bare "2" (1–3 only, to avoid matching street numbers).
+  const m = s.match(/(?:^|#|\bnumber\s*|\boption\s*|\bmatch\s*)\s*([123])\b/);
+  return m ? Number(m[1]) : null;
+}
+
+// Resolve a free-text listing reference to a shown listing id. Tries, in order:
+// exact id, name match (title OR address), then ordinal/position ("the third", "#2").
+function resolveShownId(session, ref) {
+  const shown = session.recommendations ?? [];
+  if (shown.some((r) => r.listing_id === ref)) return ref;
+  const s = String(ref).toLowerCase().trim();
+  const hit = shown.find((r) => {
+    const t = (r.card_data?.title ?? "").toLowerCase();
+    const a = (r.card_data?.address ?? "").toLowerCase();
+    return (t && (t === s || t.includes(s) || s.includes(t))) || (a && s.length >= 3 && a.includes(s));
+  });
+  if (hit) return hit.listing_id;
+  const pos = refPosition(s);
+  if (pos && shown[pos - 1]) return shown[pos - 1].listing_id;
+  return null;
+}
+
+// Richer per-listing facts for the 3 shown matches, so the agent can answer
+// questions (furnished, lease, beds/baths, sublease) beyond what the card carries.
+async function shownListingsContext(session) {
+  const recs = session.recommendations ?? [];
+  if (!recs.length) return [];
+  let rows = {};
+  try {
+    const { data } = await supabase
+      .from("listings")
+      .select(
+        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly"
+      )
+      .in("id", recs.map((r) => r.listing_id));
+    rows = Object.fromEntries((data ?? []).map((r) => [r.id, r]));
+  } catch (err) {
+    console.error("[chatOrchestrator] shownListingsContext failed:", err);
+  }
+  const range = (a, b) => (a == null ? null : a === b ? `${a}` : `${a}-${b}`);
+  return recs.map((r, i) => {
+    const row = rows[r.listing_id] ?? {};
+    return {
+      // 1-based position in the order shown, so "the first/second/third one" is unambiguous.
+      position: i + 1,
+      title: r.card_data?.title ?? row.title ?? null,
+      tag: r.intention,
+      address: r.card_data?.address ?? row.address ?? null,
+      perPersonRent: r.card_data?.min_rent ?? null,
+      amenities: r.card_data?.top_amenities ?? [],
+      furnished: row.furnished ?? null,
+      leaseType: row.lease_type ?? null,
+      subleaseFriendly: row.sublease_friendly ?? null,
+      bedrooms: range(row.min_bedrooms, row.max_bedrooms),
+      bathrooms: range(row.min_bathrooms, row.max_bathrooms),
+      highlight: r.reason ?? null,
+    };
+  });
+}
+
+// Run one tool call and mutate the session. Returns a compact result for the model.
+async function runAgentTool(session, name, input) {
+  if (name === "update_search") {
+    const prefPatch = input?.preferences && typeof input.preferences === "object" ? input.preferences : {};
+    const weightPatch = input?.weights && typeof input.weights === "object" ? input.weights : {};
+    session.preferences = { ...session.preferences, ...prefPatch };
+    session.weights = { ...session.weights, ...weightPatch };
+    if (Array.isArray(input?.exclude) && input.exclude.length) {
+      const ids = input.exclude.map((ref) => resolveShownId(session, ref)).filter(Boolean);
+      const prev = session.preferences._excluded ?? [];
+      session.preferences._excluded = [...new Set([...prev, ...ids])];
+    }
+    await rankTop3(session);
+    session._reranked = true;
+    return {
+      ok: true,
+      matches: (session.recommendations ?? []).map((r) => ({
+        title: r.card_data?.title ?? null,
+        perPerson: r.card_data?.min_rent ?? null,
+      })),
+    };
+  }
+
+  if (name === "open_contact_draft") {
+    const refs = Array.isArray(input?.listings) ? input.listings : [];
+    const ids = [...new Set(refs.map((ref) => resolveShownId(session, ref)).filter(Boolean))];
+    if (!ids.length) return { ok: false, error: "No matching shown listing found for that name." };
+    const titleFor = (id) => (session.recommendations ?? []).find((r) => r.listing_id === id)?.card_data?.title ?? "this listing";
+    const recipientsLabel = ids.map(titleFor).join(" & ");
+    const message = defaultInquiryNote(session.preferences?.name);
+    session._draft = { listingIds: ids, recipientsLabel, message };
+    return { ok: true, recipients: ids.map(titleFor) };
+  }
+
+  return { ok: false, error: "Unknown tool." };
+}
+
+// Map the stored transcript into alternating chat turns for the model, merging
+// consecutive same-role entries and noting when matches were shown.
+function transcriptToMessages(session) {
+  const entries = (session.transcript ?? []).slice(-16);
+  const out = [];
+  for (const m of entries) {
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    let text = m.content ?? "";
+    if (m.recommendations?.length) {
+      const titles = m.recommendations.map((r) => r.card_data?.title).filter(Boolean).join(", ");
+      if (titles) text += `\n(showed matches: ${titles})`;
+    }
+    if (!text.trim()) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) last.content += `\n${text}`;
+    else out.push({ role: m.role, content: text });
+  }
+  if (out.length === 0 || out[0].role !== "user") out.unshift({ role: "user", content: "(start)" });
+  return out;
+}
+
+// Drive the agent: a short tool-use loop. Mutates the session (re-rank / draft)
+// and returns the final reply text.
+async function runAgentTurn(session) {
+  const context = {
+    preferences: Object.fromEntries(
+      Object.entries(session.preferences ?? {}).filter(([k]) => !k.startsWith("_"))
+    ),
+    matches: await shownListingsContext(session),
+  };
+  const system = [
+    { type: "text", text: AGENT_SYSTEM, cache_control: { type: "ephemeral" } },
+    { type: "text", text: `Current preferences and the matches the student is looking at:\n${JSON.stringify(context)}` },
+  ];
+  const messages = transcriptToMessages(session);
+
+  let reply = "";
+  try {
+    for (let i = 0; i < 4; i++) {
+      const resp = await getClient().messages.create({
+        model: HAIKU_MODEL,
+        max_tokens: 600,
+        system,
+        tools: AGENT_TOOLS,
+        messages,
+      });
+      addUsage(session, resp.usage);
+      if (resp.stop_reason === "tool_use") {
+        messages.push({ role: "assistant", content: resp.content });
+        const results = [];
+        for (const block of resp.content) {
+          if (block.type === "tool_use") {
+            const result = await runAgentTool(session, block.name, block.input);
+            results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+          }
+        }
+        messages.push({ role: "user", content: results });
+        continue;
+      }
+      reply = resp.content.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
+      break;
+    }
+  } catch (err) {
+    console.error("[chatOrchestrator] runAgentTurn failed:", err);
+  }
+
+  if (!reply) {
+    reply = session._draft
+      ? "I've put together a draft for you, take a look below and send when you're ready."
+      : session._reranked
+      ? "Here are some updated matches."
+      : "I'm here. Want me to tweak your matches or reach out to an owner?";
+  }
+  return stripEmDashes(reply);
 }
 
 async function persistSession(session) {
@@ -209,10 +405,10 @@ async function rankTop3(session) {
       limit: 3,
     });
     addUsage(session, usage);
-    session.recommendations = ranked.slice(0, 3);
+    session.recommendations = ranked.slice(0, 3).map((r) => ({ ...r, reason: stripEmDashes(r.reason) }));
     // Transient (not DB columns) — read within this turn to flag budget/group fit.
-    session._groupNote = groupNote ?? null;
-    session._budgetNote = budgetNote ?? null;
+    session._groupNote = stripEmDashes(groupNote ?? null);
+    session._budgetNote = stripEmDashes(budgetNote ?? null);
   } catch (err) {
     console.error("[chatOrchestrator] rankTop3 failed:", err);
     session.recommendations = [];
@@ -266,6 +462,9 @@ async function runNarrowing(session) {
   }
 
   if (turn.kind === "tradeoff" && turn.question) {
+    // Strip any em dash from the model's prompt (option labels are left intact so
+    // they still match the stored serverOptions when the answer comes back).
+    turn.question.prompt = stripEmDashes(turn.question.prompt);
     // Stash the server-only id mapping so the next turn can prune the loser.
     session.preferences._pendingTradeoff = turn.serverOptions;
     session.transcript.push({
@@ -296,7 +495,7 @@ export async function computeRecommendations(preferences, weights) {
     requestedIntentions: intentions,
     limit: 3,
   });
-  return ranked.slice(0, 3);
+  return ranked.slice(0, 3).map((r) => ({ ...r, reason: stripEmDashes(r.reason) }));
 }
 
 export async function handleTurn({ session, answer = null, message = "", preferences = null, weights = null, tradeoff = null }) {
@@ -325,47 +524,36 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     return runNarrowing(session);
   }
 
-  // Refine path: recommendations already exist and the user typed a tweak.
+  // Conversational agent: recommendations already exist and the user typed a
+  // message. A tool-using agent (full transcript + live matches) handles it — it
+  // may re-rank, open an email draft to an owner, or just answer a question.
   if (message && session.status === "recommendations_ready") {
+    session._reranked = false;
+    session._draft = null;
     session.transcript.push({ role: "user", content: message, ts: new Date().toISOString() });
-    const { reply, preferences: prefPatch, weights: weightPatch, exclude, usage } = await interpretRefinement(session, message);
-    addUsage(session, usage);
-    session.preferences = { ...session.preferences, ...prefPatch };
-    session.weights = { ...session.weights, ...weightPatch };
-    // Add any listings the user rejected to the persistent exclude set, resolving
-    // the model's references (an id, or a title it matched) back to listing ids
-    // using the cards the user was just shown.
-    if (Array.isArray(exclude) && exclude.length) {
-      const shown = session.recommendations ?? [];
-      const resolveId = (ref) => {
-        const s = String(ref).toLowerCase();
-        if (shown.some((r) => r.listing_id === ref)) return ref;
-        const byTitle = shown.find((r) => {
-          const t = (r.card_data?.title ?? "").toLowerCase();
-          return t && (t === s || t.includes(s) || s.includes(t));
-        });
-        return byTitle?.listing_id ?? null;
-      };
-      const ids = exclude.map(resolveId).filter(Boolean);
-      const prevExcluded = session.preferences._excluded ?? [];
-      session.preferences._excluded = [...new Set([...prevExcluded, ...ids])];
-    }
-    await rankTop3(session);
+    const reply = await runAgentTurn(session);
     logConversationCost(session);
-    const refineReply = withNotes(reply, session);
-    session.transcript.push({
-      role: "assistant",
-      content: refineReply,
-      ts: new Date().toISOString(),
-      recommendations: session.recommendations,
-    });
+    // Only a re-rank changes the cards; append the matches to that message so a
+    // reload renders them. A plain answer / draft is a normal text turn.
+    const finalReply = session._reranked ? withNotes(reply, session) : reply;
+    session.transcript.push(
+      session._reranked
+        ? { role: "assistant", content: finalReply, ts: new Date().toISOString(), recommendations: session.recommendations }
+        : { role: "assistant", content: finalReply, ts: new Date().toISOString() }
+    );
     await persistSession(session);
-    return {
+    const result = {
       session,
       nextQuestion: null,
-      assistantMessage: refineReply,
+      assistantMessage: finalReply,
       recommendations: session.recommendations,
+      mode: "agent",
+      reranked: !!session._reranked,
+      draft: session._draft ?? null,
     };
+    session._reranked = false;
+    session._draft = null;
+    return result;
   }
 
   // The question currently awaiting a reply (computed before we apply anything).
