@@ -5,6 +5,7 @@ import { isProdData } from "@/lib/appEnv";
 import { handleTurn, computeRecommendations } from "@/lib/matchmaking/chatOrchestrator";
 import { rankListings } from "@/lib/matchmaking/listingFilter";
 import { sendOwnerInquiryEmail } from "@/lib/email";
+import { recordListingContact } from "@/lib/contactTracking";
 
 // Shared identity for anonymous, no-login testing. Used ONLY outside production
 // (staging / Vercel previews / local) so anyone can try the matchmaker from a
@@ -171,6 +172,12 @@ export async function POST(request) {
             message: typeof body.message === "string" ? body.message : null,
           });
           sent += 1;
+          // Same markup as the browse-page contact flow (POST /api/contacted):
+          // contacted interaction + "contacts" listing metric.
+          const { error: trackErr } = await recordListingContact({ userId: actor.id, listingId });
+          if (trackErr) {
+            console.error("[matchmaking/chat contact_owners] contact tracking failed:", trackErr);
+          }
         } catch (err) {
           console.error("[matchmaking/chat contact_owners] send failed:", err);
         }
@@ -178,8 +185,8 @@ export async function POST(request) {
 
       const assistantMessage =
         sent > 0
-          ? `Done! I've emailed ${sent === 1 ? "the owner" : `${sent} owners`} on your behalf and CC'd you (${student.email}), so their replies land straight in your inbox.`
-          : "I couldn't reach those owners just now — please try again in a moment.";
+          ? `Done! I've emailed ${sent === 1 ? "the owner" : `${sent} owners`} on your behalf and CC'd you (${student.email}), so their replies land straight in your inbox. Anything else I can do? I'm happy to fine-tune your matches, compare these places, or pull up more details on any of them.`
+          : "I couldn't reach those owners just now, please try again in a moment. In the meantime, want me to refine your matches or tell you more about any of these places?";
 
       // Persist the exchange so a page reload still shows that Proxy reached out.
       const newTranscript = [

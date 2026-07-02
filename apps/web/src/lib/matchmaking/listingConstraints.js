@@ -128,3 +128,47 @@ export function isListingExcludedForViewer(listing, preferences) {
   if (!gender) return false;
   return viewerGenderOf(preferences) !== gender;
 }
+
+// Phrases that NEGATE a pet/parking need even though the keyword appears, e.g.
+// "I prefer no pets" or "I won't be bringing a car". Checked first so a mention
+// of the thing-they-don't-want isn't read as a requirement.
+const NO_PET_RE = /\bno\s+pets?\b|without (?:the |a )?pets?|prefer(?:s)? no pets?|not bringing (?:a )?pet/;
+const NO_CAR_RE = /\bno\s+car\b|without (?:a )?car|won'?t (?:be )?bring\w* (?:a )?car|do(?:n'?t| not) (?:have|need) (?:a )?(?:car|parking)/;
+
+// Does the student's free-text "anything else?" note ask for a pet-friendly place?
+// Driven entirely by the extras note (there is no dedicated pet question), so a
+// student who mentions a cat/dog or "pet friendly" gets pet-friendliness factored
+// into ranking. Returns false when a negation phrase is present.
+export function needsPetFriendly(preferences) {
+  const t = (preferences?.notes ?? "").toString().toLowerCase();
+  if (!t || NO_PET_RE.test(t)) return false;
+  return /\b(?:cat|cats|kitten|dog|dogs|puppy|pet|pets)\b|pet[-\s]?friendly/.test(t);
+}
+
+// Does the note ask for parking / mention bringing a car? Same extras-note source.
+export function needsParking(preferences) {
+  const t = (preferences?.notes ?? "").toString().toLowerCase();
+  if (!t || NO_CAR_RE.test(t)) return false;
+  return /\b(?:car|parking|garage)\b|parking spot|park my/.test(t);
+}
+
+// Whether a listing's free-text DESCRIPTION says pets are allowed — used to
+// OVERRIDE the unreliable `pets_allowed` amenity flag, which is often left false
+// for places that actually allow pets "with approval" (e.g. "cats allowed with
+// permission, no dogs"). Matches a pet word followed shortly by an allow word
+// (and "pet-friendly"), rejecting a directly-negated match ("no pets allowed").
+// Returns false when the description explicitly bans pets. Untrusted text: only
+// pattern-matched, never executed.
+const PETS_OK_RE =
+  /\b(?:cats?|dogs?|pets?)\b[^.!?\n]{0,24}\b(?:ok|okay|allow(?:ed)?|welcome|friendly|permitted|considered|with (?:permission|approval))\b|pet[-\s]?friendly/;
+export function descriptionAllowsPets(listing) {
+  const desc = (listing?.description ?? "").toString().toLowerCase();
+  if (!desc) return false;
+  // An explicit ban in the description wins over any positive phrasing.
+  if (DEALBREAKER_PATTERNS.some(({ tag, re }) => tag === "no pets" && re.test(desc))) return false;
+  const m = PETS_OK_RE.exec(desc);
+  if (!m) return false;
+  // Reject when a negation sits right before the matched pet phrase.
+  const pre = desc.slice(Math.max(0, m.index - 8), m.index);
+  return !/\b(?:no|not|cannot|can'?t)\s*$/.test(pre);
+}

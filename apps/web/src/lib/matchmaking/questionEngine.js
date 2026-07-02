@@ -8,6 +8,7 @@ import {
   RANK_BUMPS,
   UNSURE,
   isAnswered,
+  peopleLabel,
 } from "./questionScript";
 
 // Build the wire descriptor for a question (sent to the client / stored on the
@@ -114,7 +115,7 @@ export function applyAnswer(preferences, weights, answer) {
 
   // Med students orient around the MEDICAL campus, not the Danforth campus — seed
   // that proximity target so their very first ranking already accounts for it.
-  if (answer.questionId === "year" && value === "Med") {
+  if (answer.questionId === "program" && value === "Med") {
     prefs.proximity_targets = [...new Set([...(prefs.proximity_targets ?? []), "med_campus"])];
     bumpWeight(w, "walkability", 0.5);
   }
@@ -220,6 +221,8 @@ export function answerToLabel(answer) {
   if (answer.label) return answer.label;
   if (kind === "tradeoff") return String(value ?? "");
   if (value === UNSURE) return kind === "open_text" ? "Nothing else" : "Not sure";
+  // Group size answers read as people, not a bare number ("3 people", "1 person").
+  if (answer.questionId === "group_size") return peopleLabel(value);
   if (kind === "budget_max") return value ? `$${value}/mo max` : "No budget set";
   if (kind === "open_text") return value || "Nothing else";
   if (kind === "rank" && Array.isArray(value)) {

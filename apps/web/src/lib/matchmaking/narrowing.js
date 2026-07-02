@@ -100,8 +100,12 @@ export async function generateTradeoff(candidates, preferences, weights, askedAn
     // A real split needs a non-empty losing side on EITHER choice.
     if (aIds.length === 0 || bIds.length === 0) return { question: null, usage: response.usage };
 
-    const labelA = parsed.data.optionA.label.trim();
-    const labelB = parsed.data.optionB.label.trim();
+    // Strip any em dash from the chips the same way the prompt is sanitized; both
+    // the client option and the serverOptions key derive from these, so they stay
+    // matched. (The system prompt forbids them, this is belt-and-suspenders.)
+    const stripDash = (s) => s.replace(/\s*—\s*/g, ", ").replace(/—/g, "-");
+    const labelA = stripDash(parsed.data.optionA.label.trim());
+    const labelB = stripDash(parsed.data.optionB.label.trim());
     // Guard against identical labels (can't tell the answers apart).
     if (labelA.toLowerCase() === labelB.toLowerCase()) return { question: null, usage: response.usage };
 

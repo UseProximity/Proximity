@@ -2,18 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { recomputeFromPreferences } from "@/lib/matchmaking/questionEngine";
-import { QUESTION_BY_ID } from "@/lib/matchmaking/questionScript";
+import { QUESTION_BY_ID, peopleLabel } from "@/lib/matchmaking/questionScript";
 
 const FIELD_LABELS = {
   name: "Name",
-  year_of_school: "Year",
+  program: "Program",
+  grad_year: "Grad year",
   group_size: "Group size",
   budget_max: "Max rent ($/mo)",
   area: "Preferred area",
   lease_term: "Lease term",
   move_in_month: "Move-in",
   furnished: "Furnished",
-  commute: "Commute",
   priorities: "Priorities",
   notes: "Other notes",
 };
@@ -21,14 +21,14 @@ const FIELD_LABELS = {
 // A panel field maps back to the scripted question whose options drive its editor.
 const FIELD_TO_QID = {
   name: "name_confirm",
-  year_of_school: "year",
+  program: "program",
+  grad_year: "grad_year",
   group_size: "group_size",
   budget_max: "budget",
   area: "area",
   lease_term: "lease_term",
   move_in_month: "move_in_window",
   furnished: "furnished",
-  commute: "commute",
   priorities: "priorities",
   notes: "extras",
 };
@@ -308,6 +308,7 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
 
   const display = (field, value) => {
     if (field === "budget_max") return `$${value}`;
+    if (field === "group_size") return value === "No preference" ? value : peopleLabel(value);
     if (Array.isArray(value)) return value.join(", ");
     return String(value);
   };
@@ -376,7 +377,6 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
         set("_name_confirmed", true);
         break;
       case "area":
-      case "commute":
         set(field, Array.isArray(rawValue) ? rawValue : [rawValue]);
         break;
       default:

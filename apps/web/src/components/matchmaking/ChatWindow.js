@@ -115,7 +115,11 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
   const lastMsg = messages[messages.length - 1];
   const activeQuestion = !loading && lastMsg?.question ? lastMsg.question : null;
   const activeKey = qKey(activeQuestion);
-  const controlsReady = !!activeQuestion && revealedKey === activeKey;
+  // A freshly-typed question reveals its controls once the typewriter signals
+  // done (onReady → revealedKey). A non-animated question (re-asked via Edit, or
+  // restored from the server transcript) is ready immediately — its bubble may
+  // not re-fire onReady, so don't gate the controls on it.
+  const controlsReady = !!activeQuestion && (revealedKey === activeKey || !lastMsg?.animate);
 
   // The free-text composer only appears once the first batch of listings has
   // been shown — before that, the conversation is driven entirely by the
@@ -238,9 +242,9 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
                 <MessageBubble
                   message={msg}
                   userInitial={userInitial}
-                  // The latest question is answered down in the composer; past
-                  // prompts get an Edit button beneath the bubble.
-                  onEdit={msg.question && msg.question.kind !== "contact" && !(isLast && !loading) && onEdit ? () => onEdit(msg.question.id) : undefined}
+                  // Edit lives under the user's OWN answer bubble: tapping it
+                  // rewinds the flow to that question, as if answering it fresh.
+                  onEdit={msg.role === "user" && msg.questionId && onEdit ? () => onEdit(msg.questionId) : undefined}
                   onReady={
                     isLast
                       ? () => {

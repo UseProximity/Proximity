@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
-import { rankListings } from "./listingFilter";
+import { rankListings, filterEligible, fetchActiveListings, slimCandidate } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
@@ -147,6 +147,7 @@ Rules:
 - Only re-rank when the student actually wants different options. For a plain question, just answer — do not call update_search.
 - The 3 matches are numbered by "position" in the data (1 = first/top, 2 = second, 3 = third), in the exact order the student sees them. When they say "the first/second/third one", "the second", or "number 2", that means that POSITION. When they name a listing ("Five-Nine", "the Kingsbury place"), match it by title. In either case, when you call a tool, pass the listing's exact title OR its position number (1, 2, or 3) — for an ordinal reference, prefer passing the position number so there is no ambiguity.
 - After you use a tool, briefly tell the student what you did, naming the listing the tool reported back (do not guess the name yourself).
+- Never end the conversation or imply you are done helping. End every reply by leaving the door open and inviting a natural next step in their housing search (refine the matches, compare places, get more details on a listing, or have you reach out to an owner), worded for the moment rather than as a canned line.
 - Reply in one to three short, friendly, grammatical sentences. Never use em dashes (—); use commas, periods, or parentheses.`;
 
 const AGENT_TOOLS = [
@@ -448,6 +449,68 @@ async function finalizeRecommendations(session) {
   };
 }
 
+// Beyond this walk (minutes) a place realistically needs a car or the shuttle to
+// reach campus. We replaced the upfront "how do you get to campus?" question with
+// this just-in-time check so we only raise it when it actually matters.
+const COMMUTE_WALK_LIMIT = 20;
+
+// Before finalizing, if the student's surviving matches are split between
+// walkable places and ones that realistically need a car or the shuttle, ask
+// ONCE whether to keep the far ones in the mix. "No" excludes them and re-ranks.
+// Reuses the tradeoff pruning machinery. Returns a turn payload (the confirm
+// question) when it fires, or null to proceed straight to finalizing.
+async function maybeCommuteConfirm(session) {
+  const prefs = session.preferences ?? {};
+  if (prefs._commuteAsked) return null;
+
+  let eligible;
+  try {
+    eligible = filterEligible(await fetchActiveListings(), prefs);
+  } catch (err) {
+    console.error("[chatOrchestrator] maybeCommuteConfirm fetch failed:", err);
+    return null;
+  }
+
+  const slim = eligible.map((e) => slimCandidate(e.listing));
+  const walk = (c) => (typeof c.walk_to_campus_min === "number" ? c.walk_to_campus_min : null);
+  const far = slim.filter((c) => walk(c) !== null && walk(c) > COMMUTE_WALK_LIMIT);
+  const near = slim.filter((c) => walk(c) !== null && walk(c) <= COMMUTE_WALK_LIMIT);
+
+  // Only worth asking when the pool is genuinely mixed: some far places that
+  // would otherwise surface, AND nearer alternatives to fall back on if they say
+  // no. Otherwise mark it asked so we don't reconsider on re-entry.
+  if (far.length === 0 || near.length === 0) {
+    prefs._commuteAsked = true;
+    session.preferences = prefs;
+    return null;
+  }
+
+  const minFarWalk = Math.round(Math.min(...far.map((c) => c.walk_to_campus_min)));
+  const KEEP = "Yes, keep them";
+  const DROP = "No, walking distance only";
+  const prompt = `Heads up: a few of your best matches are about a ${minFarWalk}-minute walk from campus, so you'd want a car or the shuttle to get there. Want me to keep those in the mix?`;
+
+  prefs._commuteAsked = true;
+  // Tradeoff pruning: picking DROP excludes the listings filed under KEEP (the
+  // far ones); picking KEEP excludes nothing. See applyTradeoffChoice.
+  prefs._pendingTradeoff = { prompt, options: { [KEEP]: far.map((c) => c.listing_id), [DROP]: [] } };
+  session.preferences = prefs;
+
+  const question = {
+    id: "commute_confirm",
+    field: "_commute",
+    kind: "tradeoff",
+    prompt,
+    options: [KEEP, DROP],
+    // stepKey keeps this distinct from the numbered narrowing tradeoffs so the
+    // client never dedupes it against them.
+    meta: { stepKey: "commute" },
+  };
+  session.transcript.push({ role: "assistant", content: prompt, ts: new Date().toISOString(), question });
+  await persistSession(session);
+  return { session, nextQuestion: question, assistantMessage: prompt, recommendations: session.recommendations ?? [] };
+}
+
 // The narrowing phase: after the scripted questions, if more than 3 listings
 // still fit, ask a listing-aware "Would you X for Y?" tradeoff question;
 // otherwise finalize the top 3. Each tradeoff answer re-enters here.
@@ -482,6 +545,11 @@ async function runNarrowing(session) {
     };
   }
 
+  // Narrowing is done. Before showing the picks, raise the car/shuttle check once
+  // if the surviving pool is split between walkable and far-from-campus places.
+  const commute = await maybeCommuteConfirm(session);
+  if (commute) return commute;
+
   return finalizeRecommendations(session);
 }
 
@@ -508,7 +576,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     // copy is authoritative for these, so they always override the client echo.
     const prev = session.preferences ?? {};
     const carried = {};
-    for (const k of ["_usage", "_excluded", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender"]) {
+    for (const k of ["_usage", "_excluded", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked"]) {
       if (prev[k] !== undefined) carried[k] = prev[k];
     }
     session.preferences = { ...preferences, ...carried };
@@ -579,6 +647,8 @@ export async function handleTurn({ session, answer = null, message = "", prefere
       role: "user",
       content: answerToLabel(effectiveAnswer),
       ts: new Date().toISOString(),
+      // Lets a reloaded transcript keep the per-answer "Edit" affordance.
+      questionId: effectiveAnswer.questionId,
     });
     // Chip path: snapshot already adopted above. Free-text path: apply the
     // parsed answer onto the current (snapshot) preferences.

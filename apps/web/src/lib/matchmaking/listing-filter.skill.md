@@ -12,12 +12,14 @@ intention.
 
 ## Inputs
 - `preferences`: structured student prefs. Keys you may see:
-  `name`, `year_of_school`, `group_size`, `budget_max` (max monthly rent **per
-  person**; may be null/absent = no budget cap), `area` (array of preferred
-  neighborhoods, or "No preference"), `lease_term` ("Semester only" | "Full year
-  only" | "Open to either" | "No preference"), `move_in_month` (e.g. "August —
-  start of the year"), `furnished` ("Yes" | "No" | "No preference"), `commute`
-  (array of "Walk"/"Bike"/"Drive"/"Transit"), `priorities` (an array **ranked
+  `name`, `program` ("Undergrad"/"Grad"/"Med"/"Law"/"Business"/"Other"),
+  `grad_year` (graduating class, e.g. "2028"), `group_size`, `budget_max` (max
+  monthly rent **per person**; may be null/absent = no budget cap), `area` (array
+  of preferred neighborhoods, or "No preference"), `lease_term` ("Semester only" |
+  "Academic year (~10 months)" | "Full year only" | "Open to either" | "No
+  preference"; hard-filters the pool by lease length), `move_in_month` (e.g.
+  "August, start of the year"), `furnished` ("Yes" | "No" | "No preference"),
+  `priorities` (an array **ranked
   most-important first**; may be empty), `notes` (free-text extra requirements
   the student typed — honor any must-haves/dealbreakers here), `proximity_targets`
   (array of the places the student wants to be near — any of `"campus"` (main

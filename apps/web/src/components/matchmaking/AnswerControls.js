@@ -8,8 +8,6 @@ const CHIP =
 const CHIP_ON = "px-2.5 py-1 rounded-full bg-red-600 border border-red-600 text-white text-xs font-medium transition";
 const UNSURE_CHIP =
   "px-2.5 py-1 rounded-full bg-gray-100 border border-gray-300 text-gray-500 text-xs font-medium hover:bg-gray-200 transition disabled:opacity-50";
-const UNSURE_CHIP_ON =
-  "px-2.5 py-1 rounded-full bg-gray-500 border border-gray-500 text-white text-xs font-medium transition disabled:opacity-50";
 
 // Round paper-airplane send button — the single "submit this answer" affordance,
 // matching the chat composer's send button. Replaces the old text "Done"/"Send".
@@ -46,7 +44,6 @@ export default function QuestionControls({ question, onAnswer }) {
   };
 
   const [selected, setSelected] = useState([]); // multi-select set
-  const [choice, setChoice] = useState(null); // single-select pick (chip kinds)
   const [max, setMax] = useState("");
   const [name, setName] = useState("");
   const [text, setText] = useState("");
@@ -99,37 +96,22 @@ export default function QuestionControls({ question, onAnswer }) {
       );
     }
 
-    const send = () => {
-      if (choice) submit(choice);
-    };
-
+    // Single-pick: tapping an option submits it immediately (no separate send).
     return (
-      <div onKeyDown={onEnter(send)} className="flex items-end gap-2">
-        <div className="flex flex-wrap gap-1.5 flex-1">
-          {baseOpts.map((opt) => (
-            <button
-              key={opt}
-              className={choice === opt ? CHIP_ON : CHIP}
-              disabled={!interactive}
-              onClick={() => setChoice(opt)}
-            >
-              {opt}
-            </button>
-          ))}
-          <button className={CHIP} disabled={!interactive} onClick={() => setOtherMode(true)}>
-            Something else…
+      <div className="flex flex-wrap gap-1.5">
+        {baseOpts.map((opt) => (
+          <button key={opt} className={CHIP} disabled={!interactive} onClick={() => submit(opt)}>
+            {opt}
           </button>
-          {meta?.allowUnsure && (
-            <button
-              className={choice === UNSURE ? UNSURE_CHIP_ON : UNSURE_CHIP}
-              disabled={!interactive}
-              onClick={() => setChoice(UNSURE)}
-            >
-              No Preference
-            </button>
-          )}
-        </div>
-        <SendButton onClick={send} disabled={!interactive || !choice} />
+        ))}
+        <button className={CHIP} disabled={!interactive} onClick={() => setOtherMode(true)}>
+          Something else…
+        </button>
+        {meta?.allowUnsure && (
+          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
+            No Preference
+          </button>
+        )}
       </div>
     );
   }
@@ -233,37 +215,24 @@ export default function QuestionControls({ question, onAnswer }) {
   if (kind === "pairwise") {
     // One A-vs-B comparison. Two roomy chips (priority labels run long) plus an
     // optional "no preference" skip for the whole ranking. Pick one, then send.
-    const send = () => {
-      if (choice) submit(choice);
-    };
+    // Tapping a side submits it immediately (no separate send).
     return (
-      <div className="flex flex-col gap-1.5 items-start" onKeyDown={onEnter(send)}>
+      <div className="flex flex-col gap-1.5 items-start">
         {options.map((opt) => (
           <button
             key={opt}
-            className={`w-full text-left px-3 py-2 rounded-xl border text-xs font-medium transition disabled:opacity-50 disabled:cursor-default ${
-              choice === opt
-                ? "bg-red-600 border-red-600 text-white"
-                : "bg-white border-red-300 text-red-700 hover:bg-red-50"
-            }`}
+            className="w-full text-left px-3 py-2 rounded-xl border text-xs font-medium transition disabled:opacity-50 disabled:cursor-default bg-white border-red-300 text-red-700 hover:bg-red-50"
             disabled={!interactive}
-            onClick={() => setChoice(opt)}
+            onClick={() => submit(opt)}
           >
             {opt}
           </button>
         ))}
         {meta?.allowUnsure && (
-          <button
-            className={choice === UNSURE ? UNSURE_CHIP_ON : UNSURE_CHIP}
-            disabled={!interactive}
-            onClick={() => setChoice(UNSURE)}
-          >
+          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
             No Preference
           </button>
         )}
-        <div className="w-full flex justify-end pt-1">
-          <SendButton onClick={send} disabled={!interactive || !choice} />
-        </div>
       </div>
     );
   }
@@ -273,33 +242,19 @@ export default function QuestionControls({ question, onAnswer }) {
     // answers (e.g. "Yes, worth it" / "No, keep it cheaper"), plus an optional
     // skip that prunes nothing. Rendered as compact pills in a wrapping row to
     // match the other answer kinds rather than full-width stacked boxes.
-    const send = () => {
-      if (choice) submit(choice);
-    };
+    // Tapping an answer submits it immediately (no separate send).
     return (
-      <div onKeyDown={onEnter(send)} className="flex items-end gap-2">
-        <div className="flex flex-wrap gap-1.5 flex-1">
-          {options.map((opt) => (
-            <button
-              key={opt}
-              className={choice === opt ? CHIP_ON : CHIP}
-              disabled={!interactive}
-              onClick={() => setChoice(opt)}
-            >
-              {opt}
-            </button>
-          ))}
-          {meta?.allowUnsure && (
-            <button
-              className={choice === UNSURE ? UNSURE_CHIP_ON : UNSURE_CHIP}
-              disabled={!interactive}
-              onClick={() => setChoice(UNSURE)}
-            >
-              No strong preference
-            </button>
-          )}
-        </div>
-        <SendButton onClick={send} disabled={!interactive || !choice} />
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((opt) => (
+          <button key={opt} className={CHIP} disabled={!interactive} onClick={() => submit(opt)}>
+            {opt}
+          </button>
+        ))}
+        {meta?.allowUnsure && (
+          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
+            No strong preference
+          </button>
+        )}
       </div>
     );
   }
@@ -369,24 +324,18 @@ export default function QuestionControls({ question, onAnswer }) {
   }
 
   if (kind === "confirm_or_replace") {
-    // "Yes, that's me" selects (rather than auto-sends): the user confirms with
-    // the send button or Enter. Its value is the name, but the bubble shows the
-    // chip label. Typing a name clears the chip, and vice versa.
+    // "Yes, that's me" auto-submits the stored name; typing a different name is
+    // confirmed with the send button or Enter (the bubble shows what they chose).
     const send = () => {
-      if (choice === "self" && meta?.currentName) submit(meta.currentName, "Yes, that's me");
-      else if (name.trim()) submit(name.trim());
+      if (name.trim()) submit(name.trim());
     };
-    const canSend = (choice === "self" && !!meta?.currentName) || !!name.trim();
     return (
       <div className="flex items-center gap-2" onKeyDown={onEnter(send)}>
         {meta?.currentName && (
           <button
-            className={choice === "self" ? CHIP_ON : CHIP}
+            className={CHIP}
             disabled={!interactive}
-            onClick={() => {
-              setChoice("self");
-              setName("");
-            }}
+            onClick={() => submit(meta.currentName, "Yes, that's me")}
           >
             Yes, that&apos;s me
           </button>
@@ -396,13 +345,10 @@ export default function QuestionControls({ question, onAnswer }) {
           placeholder="Or type a name…"
           value={name}
           disabled={!interactive}
-          onChange={(e) => {
-            setName(e.target.value);
-            setChoice(null);
-          }}
+          onChange={(e) => setName(e.target.value)}
           className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
         />
-        <SendButton onClick={send} disabled={!interactive || !canSend} />
+        <SendButton onClick={send} disabled={!interactive || !name.trim()} />
       </div>
     );
   }

@@ -11,23 +11,30 @@ export const QUESTION_PLAN = [
       "Hi there, I'm Proxy, your personal housing matchmaker. Let's find your place. First, I have your name as {{name}}. Is that right, or do you go by something else?",
   },
   {
-    id: "year",
-    field: "year_of_school",
+    id: "program",
+    field: "program",
     kind: "choice",
-    prompt: "What year are you?",
-    options: ["Freshman", "Sophomore", "Junior", "Senior", "Grad", "Med", "Other"],
+    prompt: "Which program are you in?",
+    options: ["Undergrad", "Grad", "Med", "Law", "Business", "Other"],
+  },
+  {
+    // Asked instead of "what year" so it stays unambiguous when we test/launch
+    // over the summer (when "rising junior" vs "junior" is unclear) and tells us
+    // how long this student stays a warm lead. Not used by the ranker.
+    id: "grad_year",
+    field: "grad_year",
+    kind: "choice",
+    prompt: "When do you graduate?",
+    options: ["2026", "2027", "2028", "2029", "2030+"],
   },
   {
     id: "group_size",
     field: "group_size",
-    kind: "slider",
-    prompt: "How many people are you looking to live with (including you)?",
-    // Rendered as a 1–6 slider; the top stop reads "6+" and submits "6+" (which
-    // parseGroupSize floors to 6). `unit` drives the "1 person" / "3 people" label.
-    min: 1,
-    max: 6,
-    plusOnMax: true,
-    unit: "person",
+    kind: "choice",
+    prompt: "How many people are you planning to live with (including you)?",
+    // Tappable count cards; "6+" submits "6+" (parseGroupRange reads it as "at
+    // least 6"). answerToLabel renders the pick as "3 people" / "1 person".
+    options: ["1", "2", "3", "4", "5", "6+"],
     allowUnsure: true,
   },
   {
@@ -48,9 +55,9 @@ export const QUESTION_PLAN = [
   {
     id: "lease_term",
     field: "lease_term",
-    kind: "choice",
-    prompt: "What lease length works for you?",
-    options: ["Semester only", "Full year only", "Open to either"],
+    kind: "multi",
+    prompt: "What lease length works for you? Pick all that fit.",
+    options: ["Semester only", "Academic year (~10 months)", "Full year only"],
     allowUnsure: true,
   },
   {
@@ -71,14 +78,6 @@ export const QUESTION_PLAN = [
     options: ["Yes", "No", "No preference"],
   },
   {
-    id: "commute",
-    field: "commute",
-    kind: "multi",
-    prompt: "How do you plan to get to campus? Pick all that apply.",
-    options: ["Walk", "Bike", "Drive", "Transit"],
-    allowUnsure: true,
-  },
-  {
     id: "priorities",
     // Multi-select: the student taps everything that matters to them (in tap
     // order, which we treat as importance — see the priorities weighting in
@@ -87,8 +86,7 @@ export const QUESTION_PLAN = [
     // listing-aware "Would you X for Y?" tradeoff questions (see narrowing.js).
     field: "priorities",
     kind: "multi",
-    prompt:
-      "What matters most in your place? Tap everything that fits. The more you pick, the more personalized your matches.",
+    prompt: "What matters most in your place? Tap everything that fits.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
     allowUnsure: true,
   },
@@ -105,6 +103,15 @@ export const QUESTION_PLAN = [
 // Sentinel submitted when a user taps an "unsure / no preference" option.
 export const UNSURE = "__unsure__";
 
+// Render a group-size value as people-friendly text: "1 person", "3 people",
+// "6+ people". Used for the chat bubble and the answers panel.
+export function peopleLabel(value) {
+  const s = String(value ?? "").trim();
+  if (!s || s === "No preference") return s;
+  const n = parseInt(s.replace(/\+/g, ""), 10);
+  return `${s} ${n === 1 ? "person" : "people"}`;
+}
+
 export const QUESTION_BY_ID = Object.fromEntries(QUESTION_PLAN.map((q) => [q.id, q]));
 
 // Direct answer→weight bumps (applied deterministically server- and client-side).
@@ -113,7 +120,6 @@ export const WEIGHT_MAP = {
   area:       { neighborhood: 1.0, walkability: 0.3 },
   lease_term: { lease_flexibility: 0.6 },
   furnished:  { amenities: 0.3 },
-  commute:    { walkability: 0.6 },
 };
 
 // Each priority label maps to the weight dimensions it implies. Higher-ranked
