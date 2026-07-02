@@ -78,7 +78,10 @@ export default async function RootLayout({ children }) {
           <FeedbackWidget />
           {children}
           <Analytics />
-          <GoogleAnalytics gaId="G-QJCHSZJXQY" />
+          {/* GA only on the real site — staging/preview/local sessions would land in
+              the same property and skew the funnels. Vercel Analytics separates
+              environments on its own, so it stays mounted everywhere. */}
+          {appEnv() === "production" && <GoogleAnalytics gaId="G-QJCHSZJXQY" />}
         </Providers>
       </body>
     </html>

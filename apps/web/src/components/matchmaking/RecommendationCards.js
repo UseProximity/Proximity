@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ListingCard } from "@/components/listings/MapPopupCard";
+import { trackEvent, setListingSource } from "@/utils/analytics";
 
 const INTENTION_COLORS = {
   "Best overall match": "bg-red-100 text-red-700",
@@ -14,8 +15,13 @@ const INTENTION_COLORS = {
 };
 
 // Open the browse page in a new tab with this listing's detail panel open.
-function openListing(listingId) {
-  window.open(`/browse?panel=${listingId}`, "_blank", "noopener,noreferrer");
+// `src=matchmaking` lets the browse tab attribute the open (and any save/contact
+// that follows) back to the matchmaking flow.
+function openListing(listingId, intention, position) {
+  trackEvent("Proxy Listing Clicked", { listingId, intention, position });
+  // Mark this tab too — the card's own "Listing Opened" event reads it back.
+  setListingSource(listingId, "matchmaking");
+  window.open(`/browse?panel=${listingId}&src=matchmaking`, "_blank", "noopener,noreferrer");
 }
 
 export default function RecommendationCards({ recommendations }) {
@@ -54,7 +60,7 @@ export default function RecommendationCards({ recommendations }) {
     // Desktop: three picks side by side for at-a-glance comparison. Mobile: stack them
     // in a single column so each card is full width and all its info stays readable.
     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-      {recommendations.map((rec) => {
+      {recommendations.map((rec, i) => {
         const listing = listingsById[rec.listing_id];
         const intentionClass = INTENTION_COLORS[rec.intention] ?? "bg-gray-100 text-gray-700";
         return (
@@ -66,7 +72,7 @@ export default function RecommendationCards({ recommendations }) {
               </span>
             </div>
             {listing ? (
-              <ListingCard listing={listing} onCardClick={openListing} compact />
+              <ListingCard listing={listing} onCardClick={(id) => openListing(id, rec.intention, i + 1)} compact />
             ) : (
               <div className="aspect-video rounded-2xl bg-gray-100 animate-pulse" />
             )}

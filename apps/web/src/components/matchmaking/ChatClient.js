@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
-import { QUESTION_BY_ID } from "@/lib/matchmaking/questionScript";
+import { QUESTION_BY_ID, QUESTION_PLAN } from "@/lib/matchmaking/questionScript";
 import { defaultInquiryNote } from "@/lib/matchmaking/contactNote";
+import { trackEvent, getPreviousPath } from "@/utils/analytics";
 
 const LS_KEY = "prx_chat_v2";
 
@@ -62,6 +63,56 @@ export default function ChatClient() {
   useEffect(() => {
     weightsRef.current = weights;
   }, [weights]);
+
+  // Analytics refs — mirror flow position so the exit listener (bound once) can
+  // report exactly where the user was when they left.
+  const statusRef = useRef("in_progress");
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+  // "none" → contact offer not yet answered; "offer_answered"; "sent"
+  const contactStageRef = useRef("none");
+  const lastHiddenStageRef = useRef(null);
+
+  // Where the user currently is in the flow, for exit/abandonment events.
+  const currentStage = useCallback(() => {
+    if (statusRef.current === "recommendations_ready") {
+      if (contactStageRef.current === "sent") return { stage: "contact_sent" };
+      if (contactStageRef.current === "offer_answered") return { stage: "post_contact_offer" };
+      return { stage: "recommendations" };
+    }
+    const upcoming = nextQuestion(prefsRef.current);
+    if (!upcoming) return { stage: "narrowing" };
+    const idx = QUESTION_PLAN.findIndex((q) => q.id === upcoming.id);
+    return { stage: upcoming.id, step: idx + 1, totalSteps: QUESTION_PLAN.length };
+  }, []);
+
+  // Entry event + exit beacon. "hidden" = tab switched/minimized (deduped per
+  // stage so tab-flippers don't spam); "leave" = tab closed or hard navigation;
+  // "navigate" = client-side navigation to another page (unmount).
+  useEffect(() => {
+    trackEvent("Matchmaking Opened", { from: getPreviousPath("/matchmaking") });
+
+    const fireExit = (type) => {
+      const info = currentStage();
+      if (type === "hidden") {
+        if (lastHiddenStageRef.current === info.stage) return;
+        lastHiddenStageRef.current = info.stage;
+      }
+      trackEvent("Proxy Chat Exited", { ...info, type });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") fireExit("hidden");
+    };
+    const onPageHide = () => fireExit("leave");
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+      fireExit("navigate");
+    };
+  }, [currentStage]);
 
   // Persist chat state to localStorage on every meaningful change
   useEffect(() => {
@@ -125,6 +176,7 @@ export default function ChatClient() {
   // Append the matches followed by the contact offer in one update.
   const appendRecsWithContact = useCallback(
     (data) => {
+      trackEvent("Proxy Recommendations Shown", { count: data.recommendations?.length ?? 0 });
       setMessages((prev) => {
         const next = [...prev, inlineRecsMessage(data)];
         const contact = buildContactMessage(data.recommendations);
@@ -163,12 +215,19 @@ export default function ChatClient() {
       const labels = Array.isArray(answer.value) ? answer.value : [];
       const listingIds = labels.map((l) => contactMapRef.current[l]).filter(Boolean);
       const selectionLabel = labels.length ? `Reach out to: ${labels.join(", ")}` : "No thanks";
+      contactStageRef.current = "offer_answered";
+      trackEvent("Proxy Contact Offer Answered", { selected: listingIds.length });
       setMessages((prev) => [...prev, { role: "user", content: selectionLabel, ts: new Date().toISOString() }]);
 
       if (!listingIds.length) {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "No problem, just let me know if you'd like me to reach out later.", ts: new Date().toISOString() },
+          {
+            role: "assistant",
+            content:
+              "No problem, I can always reach out later. In the meantime, want me to fine-tune your matches, compare these places, or dig into the details on any of them? Just say the word.",
+            ts: new Date().toISOString(),
+          },
         ]);
         return;
       }
@@ -201,6 +260,10 @@ export default function ChatClient() {
             body: JSON.stringify({ sessionId, action: "contact_owners", listingIds, message, selectionLabel }),
           });
           const data = await res.json();
+          if (res.ok) {
+            contactStageRef.current = "sent";
+            trackEvent("Proxy Contact Email Sent", { listings: listingIds.length });
+          }
           setMessages((prev) => [
             ...prev,
             {
@@ -231,6 +294,7 @@ export default function ChatClient() {
   // tradeoff, or the final recommendations).
   const handleTradeoffAnswer = useCallback(
     (answer) => {
+      trackEvent("Proxy Question Answered", { questionId: "tradeoff", kind: "tradeoff", answer: answerToLabel(answer) });
       setMessages((prev) => [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }]);
       setLoading(true);
       postChain.current = postChain.current.then(async () => {
@@ -293,12 +357,24 @@ export default function ChatClient() {
       const applied = applyAnswer(prefsRef.current, weightsRef.current, answer);
       const upcoming = nextQuestion(applied.preferences);
 
+      const stepIdx = QUESTION_PLAN.findIndex((q) => q.id === answer.questionId);
+      trackEvent("Proxy Question Answered", {
+        questionId: answer.questionId,
+        kind: "scripted",
+        step: stepIdx + 1,
+        totalSteps: QUESTION_PLAN.length,
+        // The name question's label contains the student's name — keep it out of analytics.
+        ...(answer.questionId === "name_confirm" ? {} : { answer: answerToLabel(answer) }),
+      });
+
       prefsRef.current = applied.preferences;
       weightsRef.current = applied.weights;
       setPreferences(applied.preferences);
       setWeights(applied.weights);
       setMessages((prev) => {
-        const next = [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }];
+        // Stamp the question this answer belongs to so the user's own bubble can
+        // carry an "Edit" affordance that rewinds the flow to this point.
+        const next = [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString(), questionId: answer.questionId }];
         // Guard against repeating a question that's already the latest one.
         if (upcoming && qKey(prev[prev.length - 1]?.question) !== qKey(upcoming)) {
           next.push(questionToMessage(upcoming, true));
@@ -359,6 +435,10 @@ export default function ChatClient() {
   // recommendations are ready. Server interprets; we append its reply.
   const handleUserSend = useCallback(
     (text) => {
+      // Track that a free-text message was sent (never its content).
+      trackEvent("Proxy Message Sent", {
+        mode: statusRef.current === "recommendations_ready" ? "refine" : "flow",
+      });
       setMessages((prev) => [...prev, { role: "user", content: text, ts: new Date().toISOString() }]);
       setLoading(true);
       const snapshot = { preferences: prefsRef.current, weights: weightsRef.current };
@@ -441,6 +521,7 @@ export default function ChatClient() {
             content: m.content,
             ts: m.ts,
             ...(m.question ? { question: m.question } : {}),
+            ...(m.questionId ? { questionId: m.questionId } : {}),
             ...(m.recommendations ? { recommendations: m.recommendations } : {}),
           }));
           // A pre-rework session has messages but none carry a `question`
@@ -488,6 +569,7 @@ export default function ChatClient() {
     }
 
     async function startFresh() {
+      trackEvent("Proxy Chat Started", { restart: false });
       setLoading(true);
       try {
         const res = await fetch("/api/matchmaking/chat", {
@@ -538,6 +620,7 @@ export default function ChatClient() {
   // the chat back to it, and re-ask it (the user continues forward from there).
   const handleEditFrom = useCallback(
     (questionId) => {
+      trackEvent("Proxy Answer Edited", { questionId });
       const rewound = rewindTo(prefsRef.current, questionId);
       prefsRef.current = rewound.preferences;
       weightsRef.current = rewound.weights;
@@ -575,6 +658,8 @@ export default function ChatClient() {
 
   // Abandon the current chat and begin a brand-new session from question one.
   const startOver = useCallback(async () => {
+    trackEvent("Proxy Chat Started", { restart: true });
+    contactStageRef.current = "none";
     try {
       localStorage.removeItem(LS_KEY);
     } catch {}
@@ -608,6 +693,18 @@ export default function ChatClient() {
     }
   }, [applyServerState]);
 
+  // Flow progress for the header bar: how far through the scripted questions the
+  // student is. Sits near-complete during the narrowing phase, full once matches
+  // are in. Computed from the next unanswered question's position in the script.
+  const progress = (() => {
+    if (status === "recommendations_ready") return 1;
+    const upcoming = nextQuestion(preferences);
+    if (!upcoming) return 0.95;
+    const idx = QUESTION_PLAN.findIndex((q) => q.id === upcoming.id);
+    return Math.max(0, idx) / QUESTION_PLAN.length;
+  })();
+  const progressPct = Math.round(progress * 100);
+
   return (
     // Fill the viewport beneath the chrome above us so the chat is tall but the composer
     // stays on screen. Subtracts the sticky header (83px mobile / 104px desktop) plus the
@@ -615,15 +712,23 @@ export default function ChatClient() {
     // gap above the footer. The footer sits below the fold.
     <div className="h-[calc(100dvh-109px)] md:h-[calc(100dvh-130px)] bg-gray-50 flex flex-col overflow-hidden">
 
-      {/* Mobile: thin bar to open the answers drawer */}
-      <div className="md:hidden flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100">
-        <span className="text-sm font-semibold text-gray-900">Chat with Proxy</span>
-        <button
-          onClick={() => setPanelOpen((v) => !v)}
-          className="text-xs text-red-600 font-medium underline"
-        >
-          {panelOpen ? "Hide answers" : "View your answers"}
-        </button>
+      {/* Mobile: thin bar to open the answers drawer, with a progress line beneath */}
+      <div className="md:hidden flex-shrink-0 bg-white border-b border-gray-100">
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <span className="text-sm font-semibold text-gray-900">Chat with Proxy</span>
+          <button
+            onClick={() => setPanelOpen((v) => !v)}
+            className="text-xs text-red-600 font-medium underline"
+          >
+            {panelOpen ? "Hide answers" : "View your answers"}
+          </button>
+        </div>
+        <div className="h-1 bg-gray-100">
+          <div
+            className="h-full bg-red-600 transition-all duration-500 ease-out"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
       </div>
 
       {/* Mobile bottom sheet */}
@@ -675,10 +780,19 @@ export default function ChatClient() {
         <div className="flex-1 min-h-0 flex flex-col bg-white border-0 rounded-none md:rounded-2xl md:border md:border-gray-200 overflow-hidden">
           {/* Slim header with a restart control. On mobile "Start over" lives inside
               the answers sheet instead, so this header is desktop-only. */}
-          <div className="flex-shrink-0 hidden md:flex items-center justify-end px-3 py-1.5 border-b border-gray-100">
+          <div className="flex-shrink-0 hidden md:flex items-center gap-3 px-3 py-1.5 border-b border-gray-100">
+            <div className="flex-1 flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full bg-red-600 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-gray-400 tabular-nums w-7 text-right">{progressPct}%</span>
+            </div>
             <button
               onClick={startOver}
-              className="text-xs text-gray-400 hover:text-red-600 transition"
+              className="text-xs text-gray-400 hover:text-red-600 transition flex-shrink-0"
             >
               Start over
             </button>
