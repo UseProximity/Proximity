@@ -108,6 +108,8 @@ function normalizeDorm(d) {
   };
 }
 
+const dormSlug = (name) => name.replace(/\s+/g, "-");
+
 export default function CampusHub() {
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [ratingMin, setRatingMin] = useState(1);
@@ -121,6 +123,7 @@ export default function CampusHub() {
   const [allReviews, setAllReviews] = useState([]);
   const [dbReviews, setDbReviews] = useState([]);
   const [dormMeta, setDormMeta] = useState({});
+  const [loading, setLoading] = useState(true);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -128,11 +131,11 @@ export default function CampusHub() {
   const [formSuccess, setFormSuccess] = useState(false);
 
   useEffect(() => {
-    fetch("/api/dormReviews")
+    const loadReviews = fetch("/api/dormReviews")
       .then((r) => r.json())
       .then((data) => setAllReviews(Array.isArray(data) ? data.map(normalizeReview) : []))
       .catch(() => {});
-    fetch("/api/dorms")
+    const loadDorms = fetch("/api/dorms")
       .then((r) => r.json())
       .then((data) => {
         if (!Array.isArray(data)) return;
@@ -144,6 +147,7 @@ export default function CampusHub() {
         setDormMeta(map);
       })
       .catch(() => {});
+    Promise.all([loadReviews, loadDorms]).then(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -241,6 +245,43 @@ export default function CampusHub() {
       if (bCount !== aCount) return bCount - aCount;
       return a.localeCompare(b);
     });
+
+  const openDorm = (dorm, reviews) => {
+    setSelectedDorm({ name: dorm, reviews });
+    setModalOpen(true);
+    window.history.replaceState(
+      null,
+      "",
+      `#${encodeURIComponent(dormSlug(dorm))}`
+    );
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search
+    );
+  };
+
+  const initialHashHandled = useRef(false);
+  useEffect(() => {
+    if (loading || initialHashHandled.current) return;
+    initialHashHandled.current = true;
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    if (!hash) return;
+    const match = allDorms.find(
+      (d) => dormSlug(d).toLowerCase() === hash.toLowerCase()
+    );
+    if (match) {
+      setSelectedDorm({
+        name: match,
+        reviews: allReviews.filter((r) => r.dorm === match),
+      });
+      setModalOpen(true);
+    }
+  }, [loading, allReviews]);
 
   const handleReset = () => {
     setSelectedTypes([]);
@@ -502,6 +543,15 @@ export default function CampusHub() {
       </div>
 
       <div className="max-w-[1600px] mx-auto px-6 pb-6 md:p-6">
+        {loading ? (
+          <div className="min-h-[50vh] flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading dorms...</p>
+            </div>
+          </div>
+        ) : (
+        <>
         <div className="lg:hidden sticky top-[83px] z-40 bg-white/95 border-b border-gray-200 -mx-6 px-4 py-2 mb-4">
           <div className="flex items-center gap-2">
             <input
@@ -613,10 +663,7 @@ export default function CampusHub() {
                         transition:
                           "opacity 0.5s ease, transform 0.5s ease, box-shadow 0.2s ease",
                       }}
-                      onClick={() => {
-                        setSelectedDorm({ name: dorm, reviews: dormReviews });
-                        setModalOpen(true);
-                      }}
+                      onClick={() => openDorm(dorm, dormReviews)}
                     >
                       <Image
                         src={
@@ -662,8 +709,10 @@ export default function CampusHub() {
             )}
           </div>
         </div>
+        </>
+        )}
 
-        <ModalDorms isOpen={modalOpen} onClose={() => setModalOpen(false)}>
+        <ModalDorms isOpen={modalOpen} onClose={closeModal}>
           {selectedDorm &&
             (() => {
               const seen = new Set();
@@ -698,7 +747,7 @@ export default function CampusHub() {
                         <span />
                       )}
                       <button
-                        onClick={() => setModalOpen(false)}
+                        onClick={closeModal}
                         className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 shrink-0"
                       >
                         ×
