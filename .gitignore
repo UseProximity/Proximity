@@ -11,21 +11,33 @@ backup_*.sql
 supabase/.temp/
 supabase/.branches/
 
-# dependencies
-/node_modules
-/.pnp
+# dependencies (match at any depth for monorepo)
+node_modules/
+.pnp
 .pnp.js
 .yarn/install-state.gz
 
 # testing
-/coverage
+coverage/
 
-# next.js
-/.next/
-/out/
+# next.js (match at any depth for monorepo)
+.next/
+out/
 
 # production
-/build
+build/
+
+# Expo / React Native
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+android/
+ios/
 
 # misc
 .DS_Store
@@ -54,7 +66,6 @@ TODO.md
 public/listing-pics
 .swarm/memory.db
 .swarm
-.next
 .agents
 CLAUDE.md
 sync-scripts
@@ -83,3 +94,7 @@ mcp/knowledge/
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
+
+# next-sitemap generated files (regenerated on every build)
+apps/web/public/sitemap*.xml
+apps/web/public/robots.txt
