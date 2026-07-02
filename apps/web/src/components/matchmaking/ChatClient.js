@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
-import { QUESTION_BY_ID, QUESTION_PLAN } from "@/lib/matchmaking/questionScript";
+import { QUESTION_BY_ID, QUESTION_PLAN, MAX_TRADEOFFS } from "@/lib/matchmaking/questionScript";
 import { defaultInquiryNote } from "@/lib/matchmaking/contactNote";
 import { trackEvent, getPreviousPath } from "@/utils/analytics";
 
@@ -34,6 +34,15 @@ function questionToMessage(q, animate = false) {
 // Identity for the "don't repeat the latest question" guard. Pairwise pairs all
 // share id "priorities", so fold in the per-pair stepKey to keep them distinct.
 const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
+
+// Progress-bar shape: the scripted questions fill 0→90%; the narrowing phase
+// ("Would you X for Y?" tradeoffs) starts at 90% and steps toward — but never
+// reaches — 100% until the matches are in. The step is sized against the
+// WORST-CASE number of remaining questions (MAX_TRADEOFFS tradeoffs plus the
+// possible commute check) so the bar never has to stall or move backward when
+// another question arrives, with a 3-point floor so each answer visibly moves it.
+const NARROWING_START = 0.9;
+const NARROWING_STEP = Math.max(0.03, (1 - NARROWING_START) / (MAX_TRADEOFFS + 1));
 
 export default function ChatClient() {
   const [sessionId, setSessionId] = useState(null);
@@ -693,15 +702,18 @@ export default function ChatClient() {
     }
   }, [applyServerState]);
 
-  // Flow progress for the header bar: how far through the scripted questions the
-  // student is. Sits near-complete during the narrowing phase, full once matches
-  // are in. Computed from the next unanswered question's position in the script.
+  // Flow progress for the header bar (see NARROWING_START/STEP above): scripted
+  // position fills 0→90%, each answered tradeoff steps the bar up (capped at
+  // 99%), and it hits 100% only when the matches are in.
   const progress = (() => {
     if (status === "recommendations_ready") return 1;
     const upcoming = nextQuestion(preferences);
-    if (!upcoming) return 0.95;
+    if (!upcoming) {
+      const answered = preferences._tradeoffCount ?? 0;
+      return Math.min(NARROWING_START + answered * NARROWING_STEP, 0.99);
+    }
     const idx = QUESTION_PLAN.findIndex((q) => q.id === upcoming.id);
-    return Math.max(0, idx) / QUESTION_PLAN.length;
+    return (Math.max(0, idx) / QUESTION_PLAN.length) * NARROWING_START;
   })();
   const progressPct = Math.round(progress * 100);
 

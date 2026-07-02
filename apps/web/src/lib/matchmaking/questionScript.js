@@ -103,6 +103,11 @@ export const QUESTION_PLAN = [
 // Sentinel submitted when a user taps an "unsure / no preference" option.
 export const UNSURE = "__unsure__";
 
+// Cap on the narrowing phase's "Would you X for Y?" tradeoff questions. Lives
+// here (not narrowing.js, which imports the Anthropic SDK) so the client can
+// size the progress bar off the same number the server enforces.
+export const MAX_TRADEOFFS = 4;
+
 // Render a group-size value as people-friendly text: "1 person", "3 people",
 // "6+ people". Used for the chat bubble and the answers panel.
 export function peopleLabel(value) {
