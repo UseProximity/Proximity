@@ -56,6 +56,9 @@ const PERSONAS = [
   persona("group3:$400 impossible", { group_size: "3", budget_max: 400 }),
   // Big group leaning value (the multi-unit "live together" path).
   persona("group6:value / $1100", { group_size: "6+", budget_max: 1100, priorities: lead("Good value") }),
+  // Group bigger than any building's collective beds — the strict bed floor
+  // must return NO picks plus the honest group note, never too-small places.
+  persona("group50:strict floor -> empty", { group_size: "50", budget_max: null, _budget_unsure: true }),
   // Med student, mid group — proximity targeted at the medical campus.
   persona("med:group4 / med campus", { year_of_school: "Med", group_size: "4", proximity_targets: ["med_campus"], priorities: lead("Close to campus") }),
   // Neighborhood-strict pair in Clayton.
@@ -93,6 +96,8 @@ function rankOnce(allListings, prefs, saturation) {
       per_person: r.card_data?.min_rent,
       intention: r.intention,
       group_fit: r.group_fit,
+      unit_split: r.unit_split,
+      reason: r.reason,
       max_unit_beds: l ? maxBedsOf(l) : null,
       building_capacity: l ? capacityOf(l) : null,
     };

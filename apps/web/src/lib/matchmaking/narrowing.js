@@ -1,6 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { fetchActiveListings, filterEligible, slimCandidate } from "./listingFilter";
+import {
+  fetchActiveListings,
+  filterEligible,
+  slimCandidate,
+  parseGroupRange,
+  fitsInOneUnit,
+} from "./listingFilter";
+import { MAX_TRADEOFFS } from "./questionScript";
 
 // After the scripted questions, if MORE than three listings still fit the
 // student, Proxy narrows the field with listing-aware "Would you X for Y?"
@@ -11,7 +18,6 @@ import { fetchActiveListings, filterEligible, slimCandidate } from "./listingFil
 // top-3 ranking. This is the one place we let the LLM both phrase the question
 // AND choose the split, so the language stays organic and grounded in the data.
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
-export const MAX_TRADEOFFS = 3;
 
 // Cap how many candidates we hand the model per turn — plenty to find a real
 // split, bounded so the prompt stays cheap. Listings beyond the cap simply
@@ -35,8 +41,10 @@ const NARROW_SYSTEM = `You are Proxy, a housing matchmaker for WashU (Washington
 
 You are given:
 - preferences and weights (what they told us they care about)
-- candidates: the listings still in play, each { idx, title, per_person_rent, furnished, avg_review, amenities, bedrooms_max, lease_term_months, walk_to_campus_min, walk_to_shuttle_min, walk_to_med_campus_min, walk_to_grocery_min }. "idx" is a small integer id for the listing. A field may be null (unknown); never assert it.
+- candidates: the listings still in play, each { idx, title, per_person_rent, furnished, avg_review, amenities, bedrooms_max, beds_total, fits_group_in_one_unit, lease_term_months, walk_to_campus_min, walk_to_shuttle_min, walk_to_med_campus_min, walk_to_grocery_min }. "idx" is a small integer id for the listing. A field may be null (unknown); never assert it. bedrooms_max is the biggest single unit; beds_total is the collective beds across every unit in the building. fits_group_in_one_unit false means the student's whole group fits only by taking multiple units in the same building.
 - askedAngles: tradeoffs you've already asked. Pick a DIFFERENT angle.
+
+BEDS ANGLE (ask it FIRST when it applies): if the student is searching for a group (group_size 2 or more) and the candidates are genuinely split between places where one unit sleeps everyone (fits_group_in_one_unit true) and places where the group would take multiple units in the same building (false), that is usually the most decision-relevant tradeoff. Unless askedAngles shows you already asked it, lead with it, naming the real benefit the split places bring from the data (e.g. "Would you split across two 2-bed units in the same building if it meant saving about $200 a month?" or "...if it meant being 10 minutes closer to campus?").
 
 Find the most decision-relevant axis where these listings actually differ, then phrase a natural "Would you X for Y?"-style question using REAL numbers from the candidates (e.g. the typical price gap between the furnished and unfurnished ones, or the extra walking minutes for the cheaper cluster). Examples of the FEEL (do not copy verbatim): "Would you pay about $250 more a month for a furnished place?", "Would you be okay being about 12 minutes farther from campus if it means a lower rent and a shuttle stop nearby?", "Is it worth a bit more for the places with standout reviews?"
 
@@ -143,7 +151,17 @@ export async function buildNarrowingTurn(session) {
     return { kind: "final", count: eligible.length, usage: null };
   }
 
-  const candidates = eligible.slice(0, POOL_CAP).map((e) => slimCandidate(e.listing));
+  // Annotate each candidate with group fit so the model can ask the beds
+  // tradeoff ("would you split across two 2-bed units if it meant Y?") when the
+  // pool is genuinely mixed on it. `capacity` is the collective beds across the
+  // building's units — the same number the strict eligibility floor enforces.
+  const range = parseGroupRange(prefs.group_size);
+  const needsGroup = range.min >= 2;
+  const candidates = eligible.slice(0, POOL_CAP).map((e) => ({
+    ...slimCandidate(e.listing),
+    beds_total: e.capacity,
+    fits_group_in_one_unit: !needsGroup || fitsInOneUnit(e.listing, range),
+  }));
   const { question, serverOptions, usage } = await generateTradeoff(
     candidates,
     prefs,

@@ -430,8 +430,13 @@ async function finalizeRecommendations(session) {
   await rankTop3(session);
   logConversationCost(session);
   session.status = "recommendations_ready";
+  // With the strict group-size bed floor, ranking can now honestly come back
+  // empty (e.g. a big group nothing on the market can house) — say so instead
+  // of announcing matches that don't exist. The notes explain why.
   const closing = withNotes(
-    "All set. Here are your top three matches. Want to tweak anything? Just tell me (e.g. “cheaper” or “closer to campus”).",
+    session.recommendations?.length
+      ? "All set. Here are your top three matches. Want to tweak anything? Just tell me (e.g. “cheaper” or “closer to campus”)."
+      : "I came up empty: I don't have matches I can honestly recommend right now. Tell me what to adjust (like a smaller group or a different budget) and I'll look again.",
     session
   );
   session.transcript.push({

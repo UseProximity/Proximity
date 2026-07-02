@@ -33,7 +33,12 @@ intention.
 - `candidates`: array of listings. Each has `listing_id`, `title`, `address`,
   `home_type` ("Apartment" | "House" | "Other"), `per_person_rent` (**the
   per-person monthly cost — already per person; use it directly**),
-  `bedrooms_max`, `lease_term_months` (array), `furnished`, `avg_review`
+  `bedrooms_max` (biggest single unit), `beds_total` (collective beds across every
+  unit in the building), `requires_unit_split` (true = no single unit sleeps the
+  whole group; they'd rent multiple units in the same building),
+  `units_for_group` (when splitting: the number of units the group would take —
+  cite it verbatim, never guess a count), `lease_term_months` (array),
+  `furnished`, `avg_review`
   (1–5 or null), `amenities` (array), `walk_to_campus_min` (minutes walking to the
   main WashU **Danforth** campus, or **null when unknown**),
   `walk_to_med_campus_min` (minutes walking to the WashU **medical** campus — a
@@ -63,8 +68,15 @@ never let it stand in for "Best overall".
 Apply in this order:
 1. **Budget gate.** The "Best overall match" must never exceed `budget_max` when a
    candidate is within it. Beyond that gate, do not rank on price for "Best overall".
-2. **Bedrooms vs. group size.** Prefer `bedrooms_max` ≥ `group_size`. A listing one
-   bed short is acceptable only if it’s an excellent fit otherwise; never far too small.
+2. **Group fit is pre-enforced — be transparent about splits.** Every candidate
+   already has enough collective beds (`beds_total`) for the whole group; never
+   doubt that, and never pick around it. But a candidate with
+   `requires_unit_split: true` cannot sleep everyone in ONE unit — the group
+   would take multiple units in the same building. If you pick one, its `reason`
+   MUST say so plainly, citing its `units_for_group` count verbatim (e.g.
+   `units_for_group: 3` → "you'd take three units in the same building"); never
+   imply a single unit fits everyone, and never guess a unit count. All else
+   equal, prefer a place where one unit holds the whole group.
 3. **Weighted priority fit (the main signal).** Score each candidate against the
    `weights`: proximity (see #4), `avg_review`, amenity richness, per-person value,
    lease flexibility, social fit. The dimensions with the highest weights should
