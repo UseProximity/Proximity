@@ -1,0 +1,32 @@
+{
+  "_description": "Living log of in-progress tasks, architectural decisions, known bugs, and ongoing migrations. Updated via the log-task tool.",
+  "tasks": [],
+  "decisions": [
+    {
+      "id": "decision-1780854467717",
+      "title": "Landlord onboarding nudge: daily cron + 24h non-overlapping window",
+      "description": "Added a once-daily Vercel Cron (15:00 UTC) hitting /api/cron/landlord-nudge that emails landlords who signed up in the last 24h but have no listings. Chose an exact 24h lookback with no dedup column: a fixed daily run + 24h window tiles signups into non-overlapping windows, so each landlord is caught exactly once (no schema change needed). Accepted edge case: a fully failed run skips that day's cohort. Email copy is the warm 'Having trouble?' variant with reply-to info@useproximity.org as a support channel.",
+      "status": "active",
+      "context": "PR #59 into staging (feat/landlord-nudge-email). Files: vercel.json, src/app/api/cron/landlord-nudge/route.js, src/lib/email.js (sendLandlordNudgeEmail). Requires CRON_SECRET env var set in Vercel before it runs in prod.",
+      "created": "2026-06-07T17:47:47.717Z"
+    },
+    {
+      "id": "decision-1781990747027",
+      "title": "Matchmaking algorithm: budget-window + priority-met-at-budget headline + saturation spread",
+      "description": "How the proxy-chat matchmaking system works (feat/proxy-chat). PIPELINE: (1) Fixed deterministic question script (questionScript.js QUESTION_PLAN) -> answers become numeric `weights` over 9 dims via WEIGHT_MAP/PRIORITY_WEIGHTS + RANK_BUMPS (steep [1.0,0.5,0.3...] so #1 priority dominates). recomputeFromPreferences (questionEngine.js) re-derives weights identically from a completed prefs object. (2) chatOrchestrator.computeRecommendations -> listingFilter.rankListings. (3) rankListings: buildRankContext builds a DIVERSE pool (spanning price/reviews/proximity/amenities) and computes a deterministic per-listing fit score (computeFitScores) over data dims; Haiku (claude-haiku-4-5, PROXY_CHAT_KEY) ranks lower slots. THE TOP 3 ARE DETERMINISTIC (selectTopThree), not LLM: #1 = the most-EXPENSIVE IN-BUDGET listing that satisfies the student's #1 stated priority (we give them what they asked for at their budget, not what's 'objectively best'); #2/#3 = spinoffs on the SAME priority each leading a different plus (value/amenities/reviews/proximity). KEY POLICIES: budget is a hard WINDOW, not a cheaper-is-better gradient (the `budget` weight dim is excluded from fit; within budget all prices are equal). 'value' = bang-for-buck (quality per $), not absolute cheapness. Proximity is split into campus/med_campus/grocery via proximity_targets (med-year auto-seeds med_campus; free text parsed by REFINE_SYSTEM). Blank listing titles fall back to street address. SATURATION (new): fetchSaturation reads the live DB demand signal (user_listing_interactions 'contacted' = weight 2, prior matchmaking_chat_sessions.recommendations = weight 1) and uses it as a TIE-BREAKER ONLY among near-equal candidates in selectTopThree, so oversubscribed listings get edged out and demand spreads (never overrides priority or busts budget).",
+      "status": "active",
+      "context": "Files: src/lib/matchmaking/{listingFilter,questionEngine,chatOrchestrator,questionScript}.js, listing-filter.skill.md. Test harnesses (dev-only, reusable): /api/dev/matchmaking-probe + scripts/matchmaking-probe.mjs (bias/concentration); /api/dev/matchmaking-saturation-sim + scripts/matchmaking-saturation-sim.mjs (control vs saturation spread, in-memory). Sim result (150 students): distinct #1 picks 18->30, busiest-listing share 28%->15%, HHI 0.128->0.069, with a FLAT timeline (no penalty to early users). Open follow-ups: optional saturation decay window so filled listings aren't penalized forever; ability to turn saturation strength up past tie-break-only. Not yet pushed; branch feat/proxy-chat.",
+      "created": "2026-06-20T21:25:47.027Z"
+    },
+    {
+      "id": "decision-1783008692683",
+      "title": "MCP knowledge is committed to git (shared across machines and agents)",
+      "description": "mcp/knowledge/ is no longer gitignored (except agent-sessions.json, a machine-local runtime log). Every clone now ships the same repo knowledge, so any contributor's coding agent understands the repo and others' changes without running the MCP first. generate-knowledge.mjs is idempotent (skips rewrites when only the _generated timestamp would change), so regeneration is diff-clean. A CI workflow (.github/workflows/update-knowledge.yml) regenerates and auto-commits drift after pushes to staging/main that touch apps/web/src — this covers contributors who never run the MCP locally. Convention: regenerate and commit knowledge together with code changes; db-schema.json remains hand-maintained against the live DB.",
+      "status": "resolved",
+      "context": "Branch feat/shared-mcp-knowledge; also updated CLAUDE.md, .gitignore, release-pr-check.yml comment, and domain.json workflow.knowledgeMaintenance text.",
+      "created": "2026-07-02T16:11:32.683Z"
+    }
+  ],
+  "bugs": [],
+  "migrations": []
+}

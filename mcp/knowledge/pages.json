@@ -1,0 +1,111 @@
+{
+  "_description": "All Next.js page routes (non-API): URL path and file location.",
+  "_generated": "2026-07-02T04:06:19.219Z",
+  "count": 26,
+  "pages": [
+    {
+      "path": "/",
+      "file": "src/app/page.js"
+    },
+    {
+      "path": "/_landlord/[landlordId]",
+      "file": "src/app/_landlord/[landlordId]/page.js"
+    },
+    {
+      "path": "/about",
+      "file": "src/app/about/page.js"
+    },
+    {
+      "path": "/add-listing",
+      "file": "src/app/add-listing/page.js"
+    },
+    {
+      "path": "/add-sub-lease",
+      "file": "src/app/add-sub-lease/page.js"
+    },
+    {
+      "path": "/add-sublease",
+      "file": "src/app/add-sublease/page.js"
+    },
+    {
+      "path": "/browse",
+      "file": "src/app/browse/page.js"
+    },
+    {
+      "path": "/CampusHub",
+      "file": "src/app/CampusHub/page.js"
+    },
+    {
+      "path": "/dashboard",
+      "file": "src/app/dashboard/page.js"
+    },
+    {
+      "path": "/dashboard/admin",
+      "file": "src/app/dashboard/admin/page.js"
+    },
+    {
+      "path": "/dashboard/admin/export",
+      "file": "src/app/dashboard/admin/export/page.js"
+    },
+    {
+      "path": "/dashboard/landlord",
+      "file": "src/app/dashboard/landlord/page.js"
+    },
+    {
+      "path": "/dashboard/student",
+      "file": "src/app/dashboard/student/page.js"
+    },
+    {
+      "path": "/dashboard/view-as/[userId]",
+      "file": "src/app/dashboard/view-as/[userId]/page.js"
+    },
+    {
+      "path": "/guides",
+      "file": "src/app/guides/page.js"
+    },
+    {
+      "path": "/guides/four-types-washu-housing",
+      "file": "src/app/guides/four-types-washu-housing/page.js"
+    },
+    {
+      "path": "/guides/washu-apartment-checklist",
+      "file": "src/app/guides/washu-apartment-checklist/page.js"
+    },
+    {
+      "path": "/guides/washu-move-in-tips",
+      "file": "src/app/guides/washu-move-in-tips/page.js"
+    },
+    {
+      "path": "/guides/washu-off-campus-budget",
+      "file": "src/app/guides/washu-off-campus-budget/page.js"
+    },
+    {
+      "path": "/guides/washu-parent-guide",
+      "file": "src/app/guides/washu-parent-guide/page.js"
+    },
+    {
+      "path": "/listings/[id]",
+      "file": "src/app/listings/[id]/page.js"
+    },
+    {
+      "path": "/login",
+      "file": "src/app/login/page.js"
+    },
+    {
+      "path": "/matchmaking",
+      "file": "src/app/matchmaking/page.js"
+    },
+    {
+      "path": "/refer",
+      "file": "src/app/refer/page.js"
+    },
+    {
+      "path": "/refer/[ambassadorId]",
+      "file": "src/app/refer/[ambassadorId]/page.js"
+    },
+    {
+      "path": "/reset-password",
+      "file": "src/app/reset-password/page.js"
+    }
+  ]
+}

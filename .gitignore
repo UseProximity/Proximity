@@ -81,8 +81,12 @@ today.md
 
 # MCP server dependencies
 mcp/node_modules/
-# MCP knowledge base — auto-generated, never commit
-mcp/knowledge/
+# MCP knowledge base (mcp/knowledge/) is COMMITTED so every machine and coding
+# agent shares the same repo knowledge. Regenerate with
+# `node mcp/scripts/generate-knowledge.mjs` and commit alongside code changes;
+# CI (update-knowledge.yml) auto-commits any drift on staging/main.
+# Only the local agent-swarm runtime log stays machine-local:
+mcp/knowledge/agent-sessions.json
 # Allow mcp/scripts/ even though root-level `scripts` is ignored
 !mcp/scripts/
 !mcp/scripts/**
