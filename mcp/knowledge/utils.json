@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-02T16:11:02.155Z",
-  "count": 14,
+  "_generated": "2026-07-03T19:26:05.184Z",
+  "count": 23,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -12,11 +12,47 @@
       "description": "No description — add a top-of-file comment."
     },
     {
+      "file": "src/lib/contactTracking.js",
+      "description": "Single source of truth for recording that a student contacted a listing."
+    },
+    {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
     },
     {
       "file": "src/lib/guides.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/listings/listingSelect.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/chatOrchestrator.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/contactNote.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/listingConstraints.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/listingFilter.js",
+      "description": "best-effort"
+    },
+    {
+      "file": "src/lib/matchmaking/narrowing.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/questionEngine.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/questionScript.js",
       "description": "No description — add a top-of-file comment."
     },
     {
@@ -45,7 +81,7 @@
     },
     {
       "file": "src/utils/analytics.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "── Cross-page navigation source ──"
     },
     {
       "file": "src/utils/listingFormatters.js",

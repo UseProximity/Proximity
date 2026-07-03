@@ -537,7 +537,7 @@ function cardKey(r) {
   return `${normKey(r.card_data?.title)}|${normKey(r.card_data?.address)}`;
 }
 
-function extractCardData(listing) {
+export function extractCardData(listing) {
   const hero = (listing.listing_images ?? []).sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   )[0];
@@ -727,7 +727,9 @@ export async function fetchActiveListings() {
 export function filterEligible(allListings, preferences) {
   const budgetMax = preferences?.budget_max ?? Infinity;
   const groupRange = parseGroupRange(preferences?.group_size);
-  const excluded = new Set(preferences?._excluded ?? []);
+  // _excluded = explicit dislikes (permanent); _setAside = listings parked by a
+  // "show me more options" turn (cleared on any real preference change).
+  const excluded = new Set([...(preferences?._excluded ?? []), ...(preferences?._setAside ?? [])]);
 
   const withLeases = applyLeasePref(applySubleasePref(allListings, preferences), preferences)
     // Drop the student's explicitly-rejected listings AND any whose description
@@ -755,8 +757,9 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   const budgetMax = preferences.budget_max ?? Infinity;
   const groupRange = parseGroupRange(preferences.group_size);
   const groupSize = parseGroupSize(preferences.group_size); // representative size for prose
-  // Listings the user explicitly rejected in a refine turn — never resurface them.
-  const excluded = new Set(preferences._excluded ?? []);
+  // Listings the user explicitly rejected in a refine turn (never resurface)
+  // plus ones parked by a "show me more options" turn (until the search changes).
+  const excluded = new Set([...(preferences._excluded ?? []), ...(preferences._setAside ?? [])]);
 
   // All listings with a priced active lease, carrying per-person cost, the size
   // of its biggest single unit, and the building's total bedroom capacity. When

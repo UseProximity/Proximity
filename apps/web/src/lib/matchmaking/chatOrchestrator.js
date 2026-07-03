@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
-import { rankListings, filterEligible, fetchActiveListings, slimCandidate } from "./listingFilter";
+import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
@@ -140,7 +140,9 @@ const AGENT_SYSTEM = `You are Proxy, a warm, playful-but-serious housing matchma
 
 What you can do:
 - Answer questions about the matches using the data you are given (per-person rent, beds/baths, furnished, lease type, amenities, and the highlight note which often includes walk times). Be short and specific. If a detail truly isn't in your data, say so honestly and suggest opening the listing's page; never invent facts.
-- Change their search and re-rank: call update_search with ONLY the keys to change. Use this for "cheaper", "closer to campus", "bigger group / more roommates", "no subleases", "change my budget to X", "I actually have 5 people", or to exclude a listing they dislike.
+- See the whole market, not just the 3 matches: "market" in your data lists EVERY listing that currently fits the student's filters (budget, group size, lease, anything they've ruled out), and it refreshes whenever their preferences change. Use it to answer questions like "is there anything with a gym?", "what else is in the Loop?", or "anything cheaper than these?" by naming real listings with real facts from that data. If a listing is not in "market", it does not fit their current search: say so rather than inventing one, and offer to loosen a filter.
+- Find them different or additional listings: re-rank at any time by calling update_search with ONLY the keys to change. Use preference keys for "cheaper", "closer to campus", "bigger group / more roommates", "no subleases", "change my budget to X", "I actually have 5 people". Put any NEW must-have or dealbreaker that fits no other key (a gym, parking, pet friendly, a specific street) in preferences.notes. Set fresh_options true when they ask for more, new, other, or different options, so the current matches are set aside and fresh listings surface. Use exclude for a specific listing they dislike.
+- Put specific listings on their cards: when the student asks to see particular places from the market (e.g. "show me that Kingsbury one" or "let me see those two with gyms"), call show_listings with those listings' exact titles from "market". This swaps their match cards to exactly those listings.
 - Email an owner for them: when they ask you to email, contact, or reach out to a listing's owner, call open_contact_draft with that listing's title. You CAN do this — never say you can't contact landlords. The student reviews and edits the draft before it sends, and they are CC'd.
 
 Rules:
@@ -154,14 +156,19 @@ const AGENT_TOOLS = [
   {
     name: "update_search",
     description:
-      "Adjust the student's search and re-rank their top 3 matches. Use for cheaper/closer/bigger-group/no-subleases requests, budget or group-size edits, or excluding a disliked listing.",
+      "Adjust the student's search and re-rank their top 3 matches. Use for cheaper/closer/bigger-group/no-subleases requests, budget or group-size edits, new must-haves, excluding a disliked listing, or surfacing fresh options beyond the current matches.",
     input_schema: {
       type: "object",
       properties: {
         preferences: {
           type: "object",
           description:
-            "Only the preference keys to change. Allowed: budget_max (number, per-person monthly), area (array of neighborhoods like 'The Loop'), group_size (number of people incl. them), furnished ('Yes'|'No'|'No preference'), lease_term (string), move_in_month (string), proximity_targets (array of 'campus'|'med_campus'|'grocery'), exclude_subleases (boolean).",
+            "Only the preference keys to change. Allowed: budget_max (number, per-person monthly), area (array of neighborhoods like 'The Loop'), group_size (number of people incl. them), furnished ('Yes'|'No'|'No preference'), lease_term (string), move_in_month (string), proximity_targets (array of 'campus'|'med_campus'|'grocery'), exclude_subleases (boolean), notes (string: ONLY the new must-have/dealbreaker to add, e.g. 'needs a gym'; it is appended to their existing notes).",
+        },
+        fresh_options: {
+          type: "boolean",
+          description:
+            "Set true when the student asks for more/new/other/different options. Sets aside every listing currently shown so the re-rank surfaces fresh ones. Set-aside listings are NOT rejected: any real preference/weight change re-opens the full market and they may return if they fit best.",
         },
         weights: {
           type: "object",
@@ -174,6 +181,26 @@ const AGENT_TOOLS = [
           description: "Shown listings to never show again — each the listing's exact title or its position number ('1', '2', '3').",
         },
       },
+    },
+  },
+  {
+    name: "show_listings",
+    description:
+      "Swap the student's match cards to specific listings from the `market` data (up to 3), e.g. when they ask to see a particular place you mentioned. For broad requests (cheaper, closer, more options) prefer update_search.",
+    input_schema: {
+      type: "object",
+      properties: {
+        listings: {
+          type: "array",
+          items: { type: "string" },
+          description: "1-3 listings to show, each the exact title (or listing_id) of an entry in `market`.",
+        },
+        reason: {
+          type: "string",
+          description: "One short sentence, addressed to the student, on why these are worth a look.",
+        },
+      },
+      required: ["listings"],
     },
   },
   {
@@ -261,19 +288,92 @@ async function shownListingsContext(session) {
   });
 }
 
+// Proxy's knowledge base for the post-recommendation conversation: every active
+// listing that fits the student's CURRENT filters (budget, group size, lease,
+// gender restrictions, explicit dislikes), slimmed for the model. Re-derived from
+// preferences on every turn, so when the search changes the catalog changes with
+// it. Listings merely set aside by a "show me more" turn stay visible here — the
+// student saw them, and only explicit dislikes are truly gone.
+const MARKET_CATALOG_LIMIT = 60;
+async function eligibleCatalog(session) {
+  try {
+    const prefs = { ...(session.preferences ?? {}), _setAside: [] };
+    const eligible = filterEligible(await fetchActiveListings(), prefs);
+    const shownIds = new Set((session.recommendations ?? []).map((r) => r.listing_id));
+    return eligible.slice(0, MARKET_CATALOG_LIMIT).map(({ listing }) => {
+      const slim = slimCandidate(listing);
+      return shownIds.has(listing.id) ? { ...slim, currently_shown: true } : slim;
+    });
+  } catch (err) {
+    console.error("[chatOrchestrator] eligibleCatalog failed:", err);
+    return [];
+  }
+}
+
+// Resolve a reference (exact id, or title/address text) against the eligible
+// market catalog — NOT just the shown 3. Used by show_listings.
+function resolveEligibleListing(eligible, ref) {
+  const s = String(ref ?? "").toLowerCase().trim();
+  if (!s) return null;
+  return (
+    eligible.find(({ listing }) => listing.id === ref) ??
+    eligible.find(({ listing }) => {
+      const t = (slimCandidate(listing).title ?? "").toLowerCase();
+      const a = (listing.address ?? "").toLowerCase();
+      return (t && (t === s || t.includes(s) || s.includes(t))) || (a && s.length >= 3 && a.includes(s));
+    }) ??
+    null
+  );
+}
+
 // Run one tool call and mutate the session. Returns a compact result for the model.
 async function runAgentTool(session, name, input) {
   if (name === "update_search") {
-    const prefPatch = input?.preferences && typeof input.preferences === "object" ? input.preferences : {};
+    // Snapshot so a fresh-options ask that finds NOTHING new can keep the current
+    // matches on screen (and referenceable) instead of wiping them.
+    const prevRecs = session.recommendations ?? [];
+    const prevSetAside = session.preferences._setAside ?? [];
+    const prefPatch = input?.preferences && typeof input.preferences === "object" ? { ...input.preferences } : {};
     const weightPatch = input?.weights && typeof input.weights === "object" ? input.weights : {};
+    // Notes are cumulative must-haves: APPEND the new request so earlier ones
+    // (from the question flow or prior turns) keep steering the ranking.
+    if (typeof prefPatch.notes === "string") {
+      const addition = prefPatch.notes.trim();
+      const prev = (session.preferences.notes ?? "").toString().trim();
+      if (!addition) delete prefPatch.notes;
+      else if (prev && prev.toLowerCase().includes(addition.toLowerCase())) prefPatch.notes = prev;
+      else prefPatch.notes = prev ? `${prev}. ${addition}` : addition;
+    }
     session.preferences = { ...session.preferences, ...prefPatch };
     session.weights = { ...session.weights, ...weightPatch };
+    // Smart repeats: a real change to the search re-opens the whole market, so a
+    // listing set aside by an earlier "show me more" may return when it now fits
+    // best. Only explicit dislikes (_excluded below) never come back.
+    if (Object.keys(prefPatch).length || Object.keys(weightPatch).length) {
+      session.preferences._setAside = [];
+    }
+    // "More / new / different options": set aside what they're looking at so the
+    // re-rank must surface fresh listings. Stacks across consecutive asks.
+    if (input?.fresh_options) {
+      const shown = (session.recommendations ?? []).map((r) => r.listing_id);
+      session.preferences._setAside = [...new Set([...(session.preferences._setAside ?? []), ...shown])];
+    }
     if (Array.isArray(input?.exclude) && input.exclude.length) {
       const ids = input.exclude.map((ref) => resolveShownId(session, ref)).filter(Boolean);
       const prev = session.preferences._excluded ?? [];
       session.preferences._excluded = [...new Set([...prev, ...ids])];
     }
+    const searchChanged = Object.keys(prefPatch).length || Object.keys(weightPatch).length || (input?.exclude?.length ?? 0) > 0;
     await rankTop3(session);
+    if (input?.fresh_options && !searchChanged && !(session.recommendations ?? []).length && prevRecs.length) {
+      session.recommendations = prevRecs;
+      session.preferences._setAside = prevSetAside;
+      return {
+        ok: true,
+        no_new_options: true,
+        note: "No additional listings fit their search; their current matches are unchanged. Tell them these are the best fits on the market right now and suggest loosening a preference (budget, area, lease) to see more.",
+      };
+    }
     session._reranked = true;
     return {
       ok: true,
@@ -282,6 +382,42 @@ async function runAgentTool(session, name, input) {
         perPerson: r.card_data?.min_rent ?? null,
       })),
     };
+  }
+
+  if (name === "show_listings") {
+    const refs = Array.isArray(input?.listings) ? input.listings.slice(0, 3) : [];
+    if (!refs.length) return { ok: false, error: "No listings given." };
+    let eligible;
+    try {
+      // Match against everything the student could see (set-asides included);
+      // only explicit dislikes stay out.
+      eligible = filterEligible(await fetchActiveListings(), { ...(session.preferences ?? {}), _setAside: [] });
+    } catch (err) {
+      console.error("[chatOrchestrator] show_listings fetch failed:", err);
+      return { ok: false, error: "Could not load listings right now." };
+    }
+    const found = [];
+    const seen = new Set();
+    for (const ref of refs) {
+      const hit = resolveEligibleListing(eligible, ref);
+      if (hit && !seen.has(hit.listing.id)) {
+        seen.add(hit.listing.id);
+        found.push(hit.listing);
+      }
+    }
+    if (!found.length) {
+      return { ok: false, error: "None of those match a listing in the student's current market. Use exact titles from `market`." };
+    }
+    const reason = stripEmDashes((input?.reason ?? "").trim()) || "You asked to take a closer look at this one.";
+    session.recommendations = found.map((listing) => ({
+      listing_id: listing.id,
+      score: null,
+      intention: "Your pick",
+      reason,
+      card_data: extractCardData(listing),
+    }));
+    session._reranked = true;
+    return { ok: true, shown: found.map((l) => extractCardData(l).title) };
   }
 
   if (name === "open_contact_draft") {
@@ -327,10 +463,19 @@ async function runAgentTurn(session) {
       Object.entries(session.preferences ?? {}).filter(([k]) => !k.startsWith("_"))
     ),
     matches: await shownListingsContext(session),
+    // The full eligible market under their current filters — Proxy's knowledge
+    // base for "what else is out there" conversation. See eligibleCatalog.
+    market: await eligibleCatalog(session),
   };
   const system = [
     { type: "text", text: AGENT_SYSTEM, cache_control: { type: "ephemeral" } },
-    { type: "text", text: `Current preferences and the matches the student is looking at:\n${JSON.stringify(context)}` },
+    {
+      type: "text",
+      text: `Current preferences, the matches the student is looking at, and "market" (every listing that fits their current filters):\n${JSON.stringify(context)}`,
+      // The catalog is a few thousand tokens and stable between turns; cache it
+      // so the in-turn tool loop (and quick follow-ups) reread it at 0.1x.
+      cache_control: { type: "ephemeral" },
+    },
   ];
   const messages = transcriptToMessages(session);
 
@@ -581,7 +726,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     // copy is authoritative for these, so they always override the client echo.
     const prev = session.preferences ?? {};
     const carried = {};
-    for (const k of ["_usage", "_excluded", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked"]) {
+    for (const k of ["_usage", "_excluded", "_setAside", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked"]) {
       if (prev[k] !== undefined) carried[k] = prev[k];
     }
     session.preferences = { ...preferences, ...carried };

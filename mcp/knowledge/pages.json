@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-07-02T04:06:19.219Z",
-  "count": 26,
+  "_generated": "2026-07-03T19:26:05.179Z",
+  "count": 27,
   "pages": [
     {
       "path": "/",
@@ -106,6 +106,10 @@
     {
       "path": "/reset-password",
       "file": "src/app/reset-password/page.js"
+    },
+    {
+      "path": "/review-invite/[landlordId]",
+      "file": "src/app/review-invite/[landlordId]/page.js"
     }
   ]
 }
