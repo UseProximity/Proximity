@@ -1,0 +1,242 @@
+{
+  "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
+  "_generated": "2026-07-02T16:11:02.148Z",
+  "count": 47,
+  "components": [
+    {
+      "name": "AuthCard",
+      "file": "src/components/auth/AuthCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ButtonAuth",
+      "file": "src/components/auth/ButtonAuth.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ProfileCompletionModal",
+      "file": "src/components/auth/ProfileCompletionModal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ChatWidget",
+      "file": "src/components/chat/ChatWidget.js",
+      "description": "Floating chat widget UI using @chatscope/chat-ui-kit-react"
+    },
+    {
+      "name": "leasing-funnel",
+      "file": "src/components/dashboard/leasing-funnel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "market-comparisons",
+      "file": "src/components/dashboard/market-comparisons.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "trend-indicators",
+      "file": "src/components/dashboard/trend-indicators.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "FeedbackWidget",
+      "file": "src/components/feedback/FeedbackWidget.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "BackNav",
+      "file": "src/components/guides/BackNav.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GuideCTA",
+      "file": "src/components/guides/GuideCTA.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GuidesCarousel",
+      "file": "src/components/guides/GuidesCarousel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "RelatedArticlesMobile",
+      "file": "src/components/guides/RelatedArticlesMobile.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "RelatedArticlesSidebar",
+      "file": "src/components/guides/RelatedArticlesSidebar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ScrollToTop",
+      "file": "src/components/guides/ScrollToTop.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Footer",
+      "file": "src/components/layout/Footer.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Header",
+      "file": "src/components/layout/Header.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Providers",
+      "file": "src/components/layout/Providers.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StagingBanner",
+      "file": "src/components/layout/StagingBanner.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StagingEmailPicker",
+      "file": "src/components/layout/StagingEmailPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddressSearchInput",
+      "file": "src/components/listings/AddressSearchInput.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AvailableListings",
+      "file": "src/components/listings/AvailableListings.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "BrowseContent",
+      "file": "src/components/listings/BrowseContent.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "FilterComponents",
+      "file": "src/components/listings/FilterComponents.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GlobalListingModal",
+      "file": "src/components/listings/GlobalListingModal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "HeroMapPreview",
+      "file": "src/components/listings/HeroMapPreview.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "HeroSection",
+      "file": "src/components/listings/HeroSection.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListDetailPanel",
+      "file": "src/components/listings/ListDetailPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingFilters",
+      "file": "src/components/listings/ListingFilters.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingFormPanel",
+      "file": "src/components/listings/ListingFormPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingMap",
+      "file": "src/components/listings/ListingMap.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingModalInfo",
+      "file": "src/components/listings/ListingModalInfo.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "MapPopupCard",
+      "file": "src/components/listings/MapPopupCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "MapView",
+      "file": "src/components/listings/MapView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ModalDorms",
+      "file": "src/components/listings/ModalDorms.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ModalListing",
+      "file": "src/components/listings/ModalListing.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewReplySection",
+      "file": "src/components/listings/ReviewReplySection.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewsSection",
+      "file": "src/components/listings/ReviewsSection.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "SubleaseFormPanel",
+      "file": "src/components/listings/SubleaseFormPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "TopFilterBar",
+      "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Badge",
+      "file": "src/components/ui/Badge.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Button",
+      "file": "src/components/ui/Button.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Card",
+      "file": "src/components/ui/Card.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "HeartIcon",
+      "file": "src/components/ui/HeartIcon.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "Modal",
+      "file": "src/components/ui/Modal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StarRating",
+      "file": "src/components/ui/StarRating.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "UniversityLogosCarousel",
+      "file": "src/components/ui/UniversityLogosCarousel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "DraggableImageGridx",
+      "file": "src/components/ui/DraggableImageGrid.jsx",
+      "description": "No description — run generate after adding a description above."
+    }
+  ]
+}

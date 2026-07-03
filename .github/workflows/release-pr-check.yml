@@ -37,8 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate MCP knowledge graph
-        # impact analysis needs api-routes.json (gitignored, machine-generated).
+      - name: Refresh MCP knowledge graph
+        # Knowledge is committed, but regenerate so impact analysis always
+        # matches the exact commit under review (idempotent — no-op when current).
         run: node mcp/scripts/generate-knowledge.mjs
 
       - name: Fetch prior ledger state

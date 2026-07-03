@@ -1,0 +1,823 @@
+{
+  "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
+  "_generated": "2026-07-02T16:11:02.145Z",
+  "count": 54,
+  "routes": [
+    {
+      "path": "/api/addListing",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "home_types",
+        "locations",
+        "users"
+      ],
+      "file": "src/app/api/addListing/route.js"
+    },
+    {
+      "path": "/api/admin/[table]",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "super",
+        "PATCH": "super",
+        "DELETE": "super"
+      },
+      "tables": [
+        "listing_landlords",
+        "listings",
+        "users"
+      ],
+      "file": "src/app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/db-env",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/db-env/route.js"
+    },
+    {
+      "path": "/api/admin/export",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "roles"
+      ],
+      "file": "src/app/api/admin/export/route.js"
+    },
+    {
+      "path": "/api/admin/listing-images",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super",
+        "DELETE": "super"
+      },
+      "tables": [
+        "listings",
+        "listing_images"
+      ],
+      "file": "src/app/api/admin/listing-images/route.js"
+    },
+    {
+      "path": "/api/admin/pending-reviews",
+      "methods": [
+        "GET",
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "public",
+        "PATCH": "super",
+        "DELETE": "super"
+      },
+      "tables": [
+        "users",
+        "listing_reviews"
+      ],
+      "file": "src/app/api/admin/pending-reviews/route.js"
+    },
+    {
+      "path": "/api/admin/referrals",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "users",
+        "listing_reviews"
+      ],
+      "file": "src/app/api/admin/referrals/route.js"
+    },
+    {
+      "path": "/api/admin/schema",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/update-campus-walk-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "listings",
+        "locations",
+        "listing_walk_times"
+      ],
+      "file": "src/app/api/admin/update-campus-walk-times/route.js"
+    },
+    {
+      "path": "/api/admin/viewUser",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "users",
+        "interaction_types",
+        "listing_landlords",
+        "user_listing_interactions",
+        "listings"
+      ],
+      "file": "src/app/api/admin/viewUser/route.js"
+    },
+    {
+      "path": "/api/auth/[...nextauth]",
+      "methods": [],
+      "auth": "public",
+      "methodAuth": {},
+      "tables": [],
+      "file": "src/app/api/auth/[...nextauth]/route.js"
+    },
+    {
+      "path": "/api/auth/forgot-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/forgot-password/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/google",
+      "methods": [],
+      "auth": "public",
+      "methodAuth": {},
+      "tables": [],
+      "file": "src/app/api/auth/mobile/google/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/login",
+      "methods": [],
+      "auth": "public",
+      "methodAuth": {},
+      "tables": [],
+      "file": "src/app/api/auth/mobile/login/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/refresh",
+      "methods": [],
+      "auth": "public",
+      "methodAuth": {},
+      "tables": [],
+      "file": "src/app/api/auth/mobile/refresh/route.js"
+    },
+    {
+      "path": "/api/auth/resend-verification",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/resend-verification/route.js"
+    },
+    {
+      "path": "/api/auth/reset-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/reset-password/route.js"
+    },
+    {
+      "path": "/api/auth/signup",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
+      "file": "src/app/api/auth/signup/route.js"
+    },
+    {
+      "path": "/api/auth/verify-email",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/verify-email/route.js"
+    },
+    {
+      "path": "/api/contacted",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "interaction_types"
+      ],
+      "file": "src/app/api/contacted/route.js"
+    },
+    {
+      "path": "/api/contactLandlord",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listings",
+        "users"
+      ],
+      "file": "src/app/api/contactLandlord/route.js"
+    },
+    {
+      "path": "/api/cron/landlord-nudge",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "roles",
+        "users",
+        "listing_landlords"
+      ],
+      "file": "src/app/api/cron/landlord-nudge/route.js"
+    },
+    {
+      "path": "/api/dormReviews",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "dorm_reviews",
+        "dorms"
+      ],
+      "file": "src/app/api/dormReviews/route.js"
+    },
+    {
+      "path": "/api/dorms",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "dorms"
+      ],
+      "file": "src/app/api/dorms/route.js"
+    },
+    {
+      "path": "/api/editProfile",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
+      "file": "src/app/api/editProfile/route.js"
+    },
+    {
+      "path": "/api/favorites",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "optional",
+        "POST": "any"
+      },
+      "tables": [
+        "interaction_types",
+        "user_listing_interactions"
+      ],
+      "file": "src/app/api/favorites/route.js"
+    },
+    {
+      "path": "/api/favorites/[listingId]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "DELETE": "any"
+      },
+      "tables": [
+        "interaction_types",
+        "user_listing_interactions"
+      ],
+      "file": "src/app/api/favorites/[listingId]/route.js"
+    },
+    {
+      "path": "/api/feedback",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/feedback/route.js"
+    },
+    {
+      "path": "/api/getUser",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "users",
+        "interaction_types",
+        "user_listing_interactions",
+        "listing_landlords",
+        "listings",
+        "listing_metrics_daily"
+      ],
+      "file": "src/app/api/getUser/route.js"
+    },
+    {
+      "path": "/api/landlord/listings",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listing_landlords",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/listings/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "PATCH": "public",
+        "DELETE": "public"
+      },
+      "tables": [
+        "listing_landlords",
+        "home_types",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/images",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any"
+      },
+      "tables": [
+        "listing_landlords",
+        "listing_images"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/images/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/landlords",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public",
+        "PATCH": "super",
+        "DELETE": "public"
+      },
+      "tables": [
+        "listing_landlords",
+        "users"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/landlords/route.js"
+    },
+    {
+      "path": "/api/landlord/metrics",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "listing_landlords",
+        "listings",
+        "listing_metrics_daily",
+        "interaction_types",
+        "user_listing_interactions"
+      ],
+      "file": "src/app/api/landlord/metrics/route.js"
+    },
+    {
+      "path": "/api/landlord/reviews",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "listing_landlords",
+        "listing_reviews"
+      ],
+      "file": "src/app/api/landlord/reviews/route.js"
+    },
+    {
+      "path": "/api/listing/[listingId]",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "PATCH": "any"
+      },
+      "tables": [
+        "listings",
+        "users",
+        "listing_reviews",
+        "review_votes",
+        "listing_landlords"
+      ],
+      "file": "src/app/api/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/listings",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings",
+        "users"
+      ],
+      "file": "src/app/api/listings/route.js"
+    },
+    {
+      "path": "/api/listings/popular",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "interaction_types",
+        "user_listing_interactions"
+      ],
+      "file": "src/app/api/listings/popular/route.js"
+    },
+    {
+      "path": "/api/matchmaking",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "optional",
+        "POST": "public",
+        "PATCH": "any"
+      },
+      "tables": [
+        "users",
+        "matchmaking_preferences",
+        "roles"
+      ],
+      "file": "src/app/api/matchmaking/route.js"
+    },
+    {
+      "path": "/api/pendingReviews",
+      "methods": [
+        "GET",
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "PATCH": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "listing_landlords",
+        "listing_reviews"
+      ],
+      "file": "src/app/api/pendingReviews/route.js"
+    },
+    {
+      "path": "/api/referralPayment",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "PATCH": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/referralPayment/route.js"
+    },
+    {
+      "path": "/api/replyReview",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "listing_landlords"
+      ],
+      "file": "src/app/api/replyReview/route.js"
+    },
+    {
+      "path": "/api/reviewReferral",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "home_types",
+        "users",
+        "roles",
+        "locations",
+        "listings",
+        "listing_landlords"
+      ],
+      "file": "src/app/api/reviewReferral/route.js"
+    },
+    {
+      "path": "/api/reviewVote",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "review_votes"
+      ],
+      "file": "src/app/api/reviewVote/route.js"
+    },
+    {
+      "path": "/api/searchUsers",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/searchUsers/route.js"
+    },
+    {
+      "path": "/api/staging/email-recipients",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/staging/email-recipients/route.js"
+    },
+    {
+      "path": "/api/streetview/preview",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/streetview/preview/route.js"
+    },
+    {
+      "path": "/api/submitReview",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/submitReview/route.js"
+    },
+    {
+      "path": "/api/testimonials",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "testimonials"
+      ],
+      "file": "src/app/api/testimonials/route.js"
+    },
+    {
+      "path": "/api/upload",
+      "methods": [
+        "POST",
+        "PUT",
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super",
+        "PUT": "super",
+        "PATCH": "super"
+      },
+      "tables": [
+        "listings",
+        "listing_landlords",
+        "listing_images"
+      ],
+      "file": "src/app/api/upload/route.js"
+    },
+    {
+      "path": "/api/upload/floor-plan",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/upload/floor-plan/route.js"
+    },
+    {
+      "path": "/api/uploadProfilePhoto",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/uploadProfilePhoto/route.js"
+    },
+    {
+      "path": "/api/webhooks/new-listing",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "listing_landlords",
+        "users"
+      ],
+      "file": "src/app/api/webhooks/new-listing/route.js"
+    },
+    {
+      "path": "/api/webhooks/new-user",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/webhooks/new-user/route.js"
+    }
+  ]
+}
