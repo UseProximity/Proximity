@@ -102,24 +102,89 @@ function DraftCompose({ draft, loading, onSend }) {
   );
 }
 
+// A "matches" turn: Proxy's message types out first (markdown-aware), THEN the
+// listing cards render beneath it — which in turn hold their own skeletons until
+// each card's image has loaded (see RecommendationCards).
+function RecsTurn({ msg, updating, userInitial, onTyped }) {
+  const [textDone, setTextDone] = useState(!msg.animate);
+  const bubbleMsg = updating ? { ...msg, content: "Updating your matches…", animate: false } : msg;
+  return (
+    <div className="space-y-2">
+      <MessageBubble
+        message={bubbleMsg}
+        userInitial={userInitial}
+        onReady={() => {
+          setTextDone(true);
+          onTyped?.();
+        }}
+      />
+      {/* Indent past the "P" avatar on the left (w-7 + gap-2 = 2.25rem) and
+          reserve a matching gutter on the right so the cards stay inside
+          Proxy's column and never leak into the user's avatar column. */}
+      <div className="ml-9 mr-9 mt-1">
+        {updating ? (
+          <RecommendationsSkeleton />
+        ) : textDone ? (
+          <RecommendationCards recommendations={msg.recommendations} />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// An email-draft turn: Proxy's intro types out, then the editable draft appears.
+function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped }) {
+  const [textDone, setTextDone] = useState(!msg.animate);
+  return (
+    <div className="space-y-2">
+      <MessageBubble
+        message={msg}
+        userInitial={userInitial}
+        onReady={() => {
+          setTextDone(true);
+          onTyped?.();
+        }}
+      />
+      {textDone && (
+        <div className="ml-9 mr-9 mt-1">
+          <DraftCompose draft={msg.draft} loading={loading} onSend={onSendDraft} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ChatWindow({ messages, loading, recsUpdating, userInitial, onSend, onAnswer, onSendDraft, onEdit }) {
   const scrollRef = useRef(null);
   const lastMsgRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Sequential reveal: when several Proxy messages land in one update (e.g. the
+  // matches plus the contact offer), each animated bubble stays hidden until the
+  // one before it has finished typing — so Proxy "speaks" one message at a time.
+  const [typedMap, setTypedMap] = useState({});
+  const msgKey = (msg, i) => `${i}:${msg.ts ?? ""}`;
+  let firstPendingIdx = messages.length;
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].animate && !typedMap[msgKey(messages[i], i)]) {
+      firstPendingIdx = i;
+      break;
+    }
+  }
+
   // The active question lives at the end of the transcript while we're not
   // loading. Its answer controls render down in the composer (next to the text
-  // input), but only once the bubble has finished typing — `revealedKey` tracks
-  // which question's bubble has signalled it's done.
-  const [revealedKey, setRevealedKey] = useState(null);
+  // input), but only once ITS OWN bubble has finished typing. Gate on the
+  // message (typedMap), not the question id — a re-asked question (e.g. a second
+  // "contact owners?" offer) shares its predecessor's id, and an id-based gate
+  // would leak the new controls while the bubble is still typing. A non-animated
+  // question (re-asked via Edit, or restored from the server transcript) is
+  // ready immediately.
   const lastMsg = messages[messages.length - 1];
   const activeQuestion = !loading && lastMsg?.question ? lastMsg.question : null;
   const activeKey = qKey(activeQuestion);
-  // A freshly-typed question reveals its controls once the typewriter signals
-  // done (onReady → revealedKey). A non-animated question (re-asked via Edit, or
-  // restored from the server transcript) is ready immediately — its bubble may
-  // not re-fire onReady, so don't gate the controls on it.
-  const controlsReady = !!activeQuestion && (revealedKey === activeKey || !lastMsg?.animate);
+  const controlsReady =
+    !!activeQuestion && (!lastMsg?.animate || !!typedMap[msgKey(lastMsg, messages.length - 1)]);
 
   // The free-text composer only appears once the first batch of listings has
   // been shown — before that, the conversation is driven entirely by the
@@ -195,49 +260,23 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
           <p className="text-xs text-gray-400 text-center pt-2">Proxy is starting up…</p>
         )}
         {messages.map((msg, i) => {
+          // Hold back messages queued behind one that is still typing.
+          if (i > firstPendingIdx) return null;
           const isLast = i === messages.length - 1;
           const updatingThis = recsUpdating && i === lastRecsIdx;
+          // Fires when this bubble finishes typing: unblocks the next queued
+          // message (and, via typedMap, this question's answer controls) and
+          // keeps the newest content in view.
+          const onTyped = () => {
+            setTypedMap((m) => ({ ...m, [msgKey(msg, i)]: true }));
+            scrollToBottom();
+          };
           return (
             <div key={i} ref={isLast ? lastMsgRef : null}>
               {msg.recommendations ? (
-                // Proxy speaks first (avatar + message), then sends the listing
-                // cards just beneath, indented to line up under the message so the
-                // whole thing reads as one turn from Proxy.
-                <div className="space-y-2">
-                  <div className="flex items-end gap-2">
-                    <div className="w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                      P
-                    </div>
-                    <div className="max-w-[75%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm leading-snug">
-                      {updatingThis ? "Updating your matches…" : msg.content}
-                    </div>
-                  </div>
-                  {/* Indent past the "P" avatar on the left (w-7 + gap-2 = 2.25rem) and
-                      reserve a matching gutter on the right so the cards stay inside
-                      Proxy's column and never leak into the user's avatar column. */}
-                  <div className="ml-9 mr-9 mt-1">
-                    {updatingThis ? (
-                      <RecommendationsSkeleton />
-                    ) : (
-                      <RecommendationCards recommendations={msg.recommendations} />
-                    )}
-                  </div>
-                </div>
+                <RecsTurn msg={msg} updating={updatingThis} userInitial={userInitial} onTyped={onTyped} />
               ) : msg.draft ? (
-                // Proxy speaks, then shows the editable email draft in its column.
-                <div className="space-y-2">
-                  <div className="flex items-end gap-2">
-                    <div className="w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                      P
-                    </div>
-                    <div className="max-w-[75%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm leading-snug">
-                      {msg.content}
-                    </div>
-                  </div>
-                  <div className="ml-9 mr-9 mt-1">
-                    <DraftCompose draft={msg.draft} loading={loading} onSend={onSendDraft} />
-                  </div>
-                </div>
+                <DraftTurn msg={msg} loading={loading} userInitial={userInitial} onSendDraft={onSendDraft} onTyped={onTyped} />
               ) : (
                 <MessageBubble
                   message={msg}
@@ -245,15 +284,7 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
                   // Edit lives under the user's OWN answer bubble: tapping it
                   // rewinds the flow to that question, as if answering it fresh.
                   onEdit={msg.role === "user" && msg.questionId && onEdit ? () => onEdit(msg.questionId) : undefined}
-                  onReady={
-                    isLast
-                      ? () => {
-                          scrollToBottom();
-                          // Reveal this question's controls now that it's typed out.
-                          if (msg.question) setRevealedKey(qKey(msg.question));
-                        }
-                      : undefined
-                  }
+                  onReady={onTyped}
                 />
               )}
             </div>

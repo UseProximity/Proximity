@@ -2,6 +2,40 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// Minimal markdown for Proxy's replies: **bold** spans only. Tolerant of a
+// still-typing tail, an unclosed "**word" renders bold without the markers and a
+// dangling "*" / "**" at the end is hidden, so the typewriter never shows raw
+// asterisks mid-sentence.
+export function renderRichText(text) {
+  const src = (text ?? "").replace(/\*{1,2}$/, "");
+  const parts = [];
+  const re = /\*\*([\s\S]+?)\*\*/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(src))) {
+    if (m.index > last) parts.push(src.slice(last, m.index));
+    parts.push(
+      <strong key={m.index} className="font-semibold">
+        {m[1]}
+      </strong>
+    );
+    last = m.index + m[0].length;
+  }
+  const rest = src.slice(last);
+  const open = rest.indexOf("**");
+  if (open !== -1) {
+    if (open > 0) parts.push(rest.slice(0, open));
+    parts.push(
+      <strong key={`tail-${last}`} className="font-semibold">
+        {rest.slice(open + 2)}
+      </strong>
+    );
+  } else if (rest) {
+    parts.push(rest);
+  }
+  return parts;
+}
+
 function InlineDots() {
   return (
     <span className="inline-flex items-center gap-1 py-0.5">
@@ -84,7 +118,13 @@ export default function MessageBubble({ message, userInitial, onEdit, onReady })
               : "bg-gray-100 text-gray-800 rounded-bl-sm"
           }`}
         >
-          {showDots ? <InlineDots /> : animate ? shown : message.content}
+          {showDots ? (
+            <InlineDots />
+          ) : isUser ? (
+            message.content
+          ) : (
+            renderRichText(animate ? shown : message.content)
+          )}
 
           {message.tradeoff && (
             <div className="mt-2 flex flex-wrap gap-1.5">

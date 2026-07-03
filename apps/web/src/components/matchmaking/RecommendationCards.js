@@ -1,8 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ListingCard } from "@/components/listings/MapPopupCard";
 import { trackEvent, setListingSource } from "@/utils/analytics";
+
+// Placeholder shown while a card's data/image is still on its way.
+function CardGeneratingSkeleton() {
+  return (
+    <div className="aspect-video rounded-2xl bg-gray-100 animate-pulse flex items-center justify-center">
+      <span className="text-[11px] font-medium text-gray-400">Generating card…</span>
+    </div>
+  );
+}
+
+// Keep the skeleton up until the card's hero image has actually loaded, so a
+// card never appears with a blank/popping photo. The real card renders hidden
+// underneath (so next/image starts fetching the exact optimized asset), and is
+// swapped in when its <img> completes — or after a timeout so a broken image
+// can never hold a card hostage.
+const IMAGE_WAIT_CAP_MS = 6000;
+function CardRevealOnImage({ hasImage, children }) {
+  const wrapRef = useRef(null);
+  const [ready, setReady] = useState(!hasImage);
+  useEffect(() => {
+    if (ready) return;
+    const img = wrapRef.current?.querySelector("img");
+    if (!img) {
+      setReady(true);
+      return;
+    }
+    if (img.complete && img.naturalWidth > 0) {
+      setReady(true);
+      return;
+    }
+    const done = () => setReady(true);
+    img.addEventListener("load", done);
+    img.addEventListener("error", done);
+    const cap = setTimeout(done, IMAGE_WAIT_CAP_MS);
+    return () => {
+      img.removeEventListener("load", done);
+      img.removeEventListener("error", done);
+      clearTimeout(cap);
+    };
+  }, [ready]);
+  return (
+    <div className="relative">
+      <div ref={wrapRef} className={ready ? "" : "absolute inset-0 overflow-hidden opacity-0 pointer-events-none"} aria-hidden={!ready}>
+        {children}
+      </div>
+      {!ready && <CardGeneratingSkeleton />}
+    </div>
+  );
+}
 
 const INTENTION_COLORS = {
   "Best overall match": "bg-red-100 text-red-700",
@@ -72,9 +121,11 @@ export default function RecommendationCards({ recommendations }) {
               </span>
             </div>
             {listing ? (
-              <ListingCard listing={listing} onCardClick={(id) => openListing(id, rec.intention, i + 1)} compact />
+              <CardRevealOnImage hasImage={!!listing.images?.[0]}>
+                <ListingCard listing={listing} onCardClick={(id) => openListing(id, rec.intention, i + 1)} compact />
+              </CardRevealOnImage>
             ) : (
-              <div className="aspect-video rounded-2xl bg-gray-100 animate-pulse" />
+              <CardGeneratingSkeleton />
             )}
             {rec.reason && (
               // One line, cut off with an ellipsis; hover shows the full reason as a tooltip.

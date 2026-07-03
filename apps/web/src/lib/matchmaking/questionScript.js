@@ -95,7 +95,7 @@ export const QUESTION_PLAN = [
     field: "notes",
     kind: "open_text",
     prompt:
-      "Last thing: anything else I should factor in? Must-haves, dealbreakers, vibe, a specific street… tell me anything, or just say you're good.",
+      "Anything else I should factor in? Must-haves, dealbreakers, vibe, a specific street… tell me anything, or just say you're good.",
     placeholder: "e.g. in-unit laundry is a must, no busy roads…",
   },
 ];

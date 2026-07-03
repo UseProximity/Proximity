@@ -152,6 +152,7 @@ export default function ChatClient() {
     content: data.assistantMessage || "Here are your top matches:",
     ts: new Date().toISOString(),
     recommendations: data.recommendations,
+    animate: true,
   });
 
   // Build the "want me to reach out to any of these owners?" question that follows
@@ -205,6 +206,7 @@ export default function ChatClient() {
         role: "assistant",
         content,
         ts: new Date().toISOString(),
+        animate: true,
         draft: {
           draftId: String(Date.now()),
           listingIds,
@@ -236,6 +238,7 @@ export default function ChatClient() {
             content:
               "No problem, I can always reach out later. In the meantime, want me to fine-tune your matches, compare these places, or dig into the details on any of them? Just say the word.",
             ts: new Date().toISOString(),
+            animate: true,
           },
         ]);
         return;
@@ -281,13 +284,14 @@ export default function ChatClient() {
                 ? data.assistantMessage || "Done! I've reached out on your behalf."
                 : "I couldn't reach out just now, please try again in a bit.",
               ts: new Date().toISOString(),
+              animate: true,
             },
           ]);
         } catch (err) {
           console.error("[ChatClient] handleSendDraft failed:", err);
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: "Something went wrong reaching out, please try again.", ts: new Date().toISOString() },
+            { role: "assistant", content: "Something went wrong reaching out, please try again.", ts: new Date().toISOString(), animate: true },
           ]);
         } finally {
           setLoading(false);
@@ -479,7 +483,7 @@ export default function ChatClient() {
               } else if (data.assistantMessage) {
                 setMessages((prev) => [
                   ...prev,
-                  { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString() },
+                  { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString(), animate: true },
                 ]);
               }
             } else if (data.nextQuestion) {
@@ -507,7 +511,8 @@ export default function ChatClient() {
       // 1. Restore from localStorage immediately — no loading flash
       const cached = loadFromStorage();
       if (cached?.messages?.length) {
-        setMessages(cached.messages);
+        // Restored bubbles must never re-run the typewriter — strip the flag.
+        setMessages(cached.messages.map((m) => (m.animate ? { ...m, animate: false } : m)));
         if (cached.sessionId) setSessionId(cached.sessionId);
         if (cached.preferences) setPreferences(cached.preferences);
         if (cached.weights) setWeights(cached.weights);
