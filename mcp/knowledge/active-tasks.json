@@ -25,6 +25,14 @@
       "status": "resolved",
       "context": "Branch feat/shared-mcp-knowledge; also updated CLAUDE.md, .gitignore, release-pr-check.yml comment, and domain.json workflow.knowledgeMaintenance text.",
       "created": "2026-07-02T16:11:32.683Z"
+    },
+    {
+      "id": "decision-1783395520566",
+      "title": "Matchmaking excludes subleases by default; sublease ≠ sublease_friendly",
+      "description": "Proxy matchmaking now excludes sublease listings by default: applySubleasePref (listingFilter.js) drops any listing whose active unit_leases are ALL sublease rows (priced or not — unpriced sublease posts previously slipped through via the room-data path) unless preferences.exclude_subleases === false, which the chat agent sets only when the student explicitly asks for subleases. New exported predicate isSubleaseListing() is the single source of truth; slimCandidate exposes is_sublease to the ranking model and market catalog, and shownListingsContext exposes isSublease to the chat agent. Key semantics: unit_leases.sublease = the lease IS a sublease; listings.sublease_friendly = subletting is ALLOWED (the agent previously conflated these). Also fixed: tradeoff \"No strong preference\" chip rendered the raw __unsure__ sentinel in the user's bubble (answerToLabel checked kind before the UNSURE sentinel). Data fix: 6038 Westminster Place's active lease was mislabeled sublease=false — corrected in dev; SAME FIX STILL PENDING IN PROD (one-row UPDATE, awaiting approval).",
+      "status": "active",
+      "context": "Branch feat/proxy-chat. Files: apps/web/src/lib/matchmaking/{listingFilter.js,chatOrchestrator.js,questionEngine.js,listing-filter.skill.md}. Verified via scratchpad harness against dev DB: 10 subleases in universe, 0 in default search, all flagged is_sublease=true on opt-in.",
+      "created": "2026-07-07T03:38:40.566Z"
     }
   ],
   "bugs": [],

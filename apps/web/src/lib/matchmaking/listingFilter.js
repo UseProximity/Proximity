@@ -216,10 +216,21 @@ function activeLeasesOf(listing) {
   );
 }
 
+// Whether a listing IS a sublease: it has active leases and every one of them is
+// a sublease row (unit_leases.sublease). Deliberately ignores rent — a student's
+// sublease post often has no listed price, and an unpriced listing still ranks on
+// its room data, so a priced-leases-only check would let it slip through. Distinct
+// from listings.sublease_friendly, which only means subletting is ALLOWED there.
+export function isSubleaseListing(listing) {
+  const leases = (listing?.listing_units ?? []).flatMap((u) =>
+    (u.unit_leases ?? []).filter((l) => l.is_active)
+  );
+  return leases.length > 0 && leases.every((l) => !!l.sublease);
+}
+
 // Return a copy of a listing with every SUBLEASE lease removed from its units —
-// so a student who said "no subleases" is never priced on, scored on, or shown a
-// sublease. A listing left with no priced lease afterward drops out naturally
-// (minPerPerson → null). Used only when preferences.exclude_subleases is set.
+// so the student is never priced on, scored on, or shown a sublease. A listing
+// left with no priced lease afterward drops out naturally (minPerPerson → null).
 function stripSubleaseLeases(listing) {
   return {
     ...listing,
@@ -231,10 +242,16 @@ function stripSubleaseLeases(listing) {
 }
 
 // Apply the student's sublease preference to the raw listing universe before any
-// pricing/scoring. No-op unless they've opted out of subleases.
+// pricing/scoring. Subleases are excluded BY DEFAULT — Proxy should never surface
+// one unless the student explicitly asked for subleases, which the agent records
+// as exclude_subleases === false. (A lease being a sublease — unit_leases.sublease
+// — is distinct from listings.sublease_friendly, which means subletting is allowed.)
 export function applySubleasePref(listings, preferences) {
-  if (!preferences?.exclude_subleases) return listings ?? [];
-  return (listings ?? []).map(stripSubleaseLeases);
+  if (preferences?.exclude_subleases === false) return listings ?? [];
+  // Pure-sublease listings drop entirely (even unpriced ones, which would
+  // otherwise survive on room data alone); mixed listings just lose their
+  // sublease leases and stay priced on the real ones.
+  return (listings ?? []).filter((l) => !isSubleaseListing(l)).map(stripSubleaseLeases);
 }
 
 // The distinct lease-length options (in months) a listing actually offers across
@@ -570,6 +587,11 @@ export function slimCandidate(listing) {
       ...new Set(leases.flatMap((l) => l.lease_term_months ?? []).map(Number).filter(Number.isFinite)),
     ].sort((a, b) => a - b),
     furnished: listing.furnished ?? null,
+    // True when the place itself is offered as a sublease (someone's lease being
+    // taken over). Distinct from sublease_friendly (= subletting allowed). Only
+    // ever true when the student opted in to subleases — by default sublease
+    // listings are removed upstream (applySubleasePref) before this runs.
+    is_sublease: isSubleaseListing(listing),
     avg_review: avgReview(listing),
     amenities: topAmenitiesOf(listing),
     // null = no distance data on file — the ranker must not claim proximity.

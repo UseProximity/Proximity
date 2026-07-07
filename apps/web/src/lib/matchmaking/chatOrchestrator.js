@@ -147,6 +147,7 @@ What you can do:
 
 Rules:
 - Only re-rank when the student actually wants different options. For a plain question, just answer — do not call update_search.
+- Subleases: a listing IS a sublease only when its data says isSublease (matches) or is_sublease (market) is true, meaning the place is someone's existing lease being taken over. subleaseFriendly is a DIFFERENT thing: it means a tenant there would be allowed to sublet later. Never use subleaseFriendly to decide whether a place is a sublease. Subleases are already excluded from matches by default; only if the student explicitly asks to see subleases should you call update_search with exclude_subleases false.
 - The 3 matches are numbered by "position" in the data (1 = first/top, 2 = second, 3 = third), in the exact order the student sees them. When they say "the first/second/third one", "the second", or "number 2", that means that POSITION. When they name a listing ("Five-Nine", "the Kingsbury place"), match it by title. In either case, when you call a tool, pass the listing's exact title OR its position number (1, 2, or 3) — for an ordinal reference, prefer passing the position number so there is no ambiguity.
 - After you use a tool, briefly tell the student what you did, naming the listing the tool reported back (do not guess the name yourself).
 - Never end the conversation or imply you are done helping. End every reply by leaving the door open and inviting a natural next step in their housing search (refine the matches, compare places, get more details on a listing, or have you reach out to an owner), worded for the moment rather than as a canned line.
@@ -163,7 +164,7 @@ const AGENT_TOOLS = [
         preferences: {
           type: "object",
           description:
-            "Only the preference keys to change. Allowed: budget_max (number, per-person monthly), area (array of neighborhoods like 'The Loop'), group_size (number of people incl. them), furnished ('Yes'|'No'|'No preference'), lease_term (string), move_in_month (string), proximity_targets (array of 'campus'|'med_campus'|'grocery'), exclude_subleases (boolean), notes (string: ONLY the new must-have/dealbreaker to add, e.g. 'needs a gym'; it is appended to their existing notes).",
+            "Only the preference keys to change. Allowed: budget_max (number, per-person monthly), area (array of neighborhoods like 'The Loop'), group_size (number of people incl. them), furnished ('Yes'|'No'|'No preference'), lease_term (string), move_in_month (string), proximity_targets (array of 'campus'|'med_campus'|'grocery'), exclude_subleases (boolean — defaults to true, subleases are hidden; set false ONLY when the student explicitly asks to see subleases), notes (string: ONLY the new must-have/dealbreaker to add, e.g. 'needs a gym'; it is appended to their existing notes).",
         },
         fresh_options: {
           type: "boolean",
@@ -260,7 +261,7 @@ async function shownListingsContext(session) {
     const { data } = await supabase
       .from("listings")
       .select(
-        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly"
+        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly, listing_units!listing_id(unit_leases!unit_id(is_active, sublease))"
       )
       .in("id", recs.map((r) => r.listing_id));
     rows = Object.fromEntries((data ?? []).map((r) => [r.id, r]));
@@ -270,6 +271,12 @@ async function shownListingsContext(session) {
   const range = (a, b) => (a == null ? null : a === b ? `${a}` : `${a}-${b}`);
   return recs.map((r, i) => {
     const row = rows[r.listing_id] ?? {};
+    // A listing IS a sublease when its active leases are all sublease rows
+    // (unit_leases.sublease, rent listed or not) — NOT when sublease_friendly is
+    // set, which only means a tenant would be allowed to sublet.
+    const activeLeases = (row.listing_units ?? []).flatMap((u) =>
+      (u.unit_leases ?? []).filter((l) => l.is_active)
+    );
     return {
       // 1-based position in the order shown, so "the first/second/third one" is unambiguous.
       position: i + 1,
@@ -280,6 +287,7 @@ async function shownListingsContext(session) {
       amenities: r.card_data?.top_amenities ?? [],
       furnished: row.furnished ?? null,
       leaseType: row.lease_type ?? null,
+      isSublease: activeLeases.length ? activeLeases.every((l) => !!l.sublease) : false,
       subleaseFriendly: row.sublease_friendly ?? null,
       bedrooms: range(row.min_bedrooms, row.max_bedrooms),
       bathrooms: range(row.min_bathrooms, row.max_bathrooms),

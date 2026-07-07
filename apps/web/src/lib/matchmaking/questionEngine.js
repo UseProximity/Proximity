@@ -219,8 +219,14 @@ export function answerToLabel(answer) {
   // When the control supplied an explicit display label (e.g. the "Yes, that's
   // me" name-confirm chip), show that in the bubble rather than the raw value.
   if (answer.label) return answer.label;
+  // The UNSURE sentinel must be resolved before any kind-specific rendering, or
+  // the raw "__unsure__" string leaks into the bubble (tradeoff hit this).
+  if (value === UNSURE) {
+    if (kind === "open_text") return "Nothing else";
+    if (kind === "tradeoff" || kind === "rank") return "No strong preference";
+    return "Not sure";
+  }
   if (kind === "tradeoff") return String(value ?? "");
-  if (value === UNSURE) return kind === "open_text" ? "Nothing else" : "Not sure";
   // Group size answers read as people, not a bare number ("3 people", "1 person").
   if (answer.questionId === "group_size") return peopleLabel(value);
   if (kind === "budget_max") return value ? `$${value}/mo max` : "No budget set";
