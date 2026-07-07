@@ -33,6 +33,14 @@
       "status": "active",
       "context": "Branch feat/proxy-chat. Files: apps/web/src/lib/matchmaking/{listingFilter.js,chatOrchestrator.js,questionEngine.js,listing-filter.skill.md}. Verified via scratchpad harness against dev DB: 10 subleases in universe, 0 in default search, all flagged is_sublease=true on opt-in.",
       "created": "2026-07-07T03:38:40.566Z"
+    },
+    {
+      "id": "decision-1783396324933",
+      "title": "Matchmaking: description is primary evidence; re-ranks never repeat shown listings",
+      "description": "Two ranking-policy changes on feat/proxy-chat. (1) Listing descriptions are now a heavily-weighted, near-authoritative ranking signal: the listing-filter skill + runtime instruction tell the ranker to boost candidates whose description confirms a stated preference/note, demote on conflicts, rule out hard conflicts, and trust the description over structured fields when they disagree; the excerpt passed to the model widened from 320 to 600 chars. (2) Never-repeat re-ranks: any re-rank after recommendations exist (agent update_search, preference-panel PATCH in route.js, rewound answer edits) folds currently shown listing ids into preferences._setAside first, so refines always return entirely new cards. The old \"smart repeats\" behavior (preference changes cleared _setAside) is removed. Fallbacks: update_search restores previous cards with an honest note when nothing new fits (distinguishing \"seen everything that fits\" vs \"nothing fits at all\" via filterEligible without set-aside); finalizeRecommendations clears _setAside and retries rather than going empty on rewound flows; PATCH rolls back the set-aside when it can't produce fresh picks. update_search tool result now includes previous_top {title, still_best_overall} computed by deterministic fit comparison (buildRankContext over the unrestricted pool) so the agent can truthfully say the old #1 is still the best overall fit.",
+      "status": "active",
+      "context": "Files: apps/web/src/lib/matchmaking/{chatOrchestrator.js,listingFilter.js,listing-filter.skill.md}, apps/web/src/app/api/matchmaking/chat/route.js. Verified against dev DB: back-to-back re-rank returned 3/3 new listings, zero overlap; previous_top fit comparison behaves honestly.",
+      "created": "2026-07-07T03:52:04.933Z"
     }
   ],
   "bugs": [],

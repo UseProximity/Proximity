@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
-import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData } from "./listingFilter";
+import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
@@ -141,12 +141,13 @@ const AGENT_SYSTEM = `You are Proxy, a warm, playful-but-serious housing matchma
 What you can do:
 - Answer questions about the matches using the data you are given (per-person rent, beds/baths, furnished, lease type, amenities, and the highlight note which often includes walk times). Be short and specific. If a detail truly isn't in your data, say so honestly and suggest opening the listing's page; never invent facts.
 - See the whole market, not just the 3 matches: "market" in your data lists EVERY listing that currently fits the student's filters (budget, group size, lease, anything they've ruled out), and it refreshes whenever their preferences change. Use it to answer questions like "is there anything with a gym?", "what else is in the Loop?", or "anything cheaper than these?" by naming real listings with real facts from that data. If a listing is not in "market", it does not fit their current search: say so rather than inventing one, and offer to loosen a filter.
-- Find them different or additional listings: re-rank at any time by calling update_search with ONLY the keys to change. Use preference keys for "cheaper", "closer to campus", "bigger group / more roommates", "no subleases", "change my budget to X", "I actually have 5 people". Put any NEW must-have or dealbreaker that fits no other key (a gym, parking, pet friendly, a specific street) in preferences.notes. Set fresh_options true when they ask for more, new, other, or different options, so the current matches are set aside and fresh listings surface. Use exclude for a specific listing they dislike.
+- Find them different or additional listings: re-rank at any time by calling update_search with ONLY the keys to change. Use preference keys for "cheaper", "closer to campus", "bigger group / more roommates", "no subleases", "change my budget to X", "I actually have 5 people". Put any NEW must-have or dealbreaker that fits no other key (a gym, parking, pet friendly, a specific street) in preferences.notes. Set fresh_options true when they ask for more, new, other, or different options. Use exclude for a specific listing they dislike. Every re-rank returns ONLY listings the student has not been shown before; their previous matches never reappear on the cards (they stay referenceable, and show_listings can bring a specific one back if they ask).
 - Put specific listings on their cards: when the student asks to see particular places from the market (e.g. "show me that Kingsbury one" or "let me see those two with gyms"), call show_listings with those listings' exact titles from "market". This swaps their match cards to exactly those listings.
 - Email an owner for them: when they ask you to email, contact, or reach out to a listing's owner, call open_contact_draft with that listing's title. You CAN do this — never say you can't contact landlords. The student reviews and edits the draft before it sends, and they are CC'd.
 
 Rules:
 - Only re-rank when the student actually wants different options. For a plain question, just answer — do not call update_search.
+- After update_search, the new matches are always listings the student has NOT seen before. The tool result's previous_top names their earlier #1 match and whether it still scores as their best overall fit; when still_best_overall is true, tell them their earlier match is still their strongest overall fit and these three are fresh alternatives. Never present an old match as if it were a new find.
 - Subleases: a listing IS a sublease only when its data says isSublease (matches) or is_sublease (market) is true, meaning the place is someone's existing lease being taken over. subleaseFriendly is a DIFFERENT thing: it means a tenant there would be allowed to sublet later. Never use subleaseFriendly to decide whether a place is a sublease. Subleases are already excluded from matches by default; only if the student explicitly asks to see subleases should you call update_search with exclude_subleases false.
 - The 3 matches are numbered by "position" in the data (1 = first/top, 2 = second, 3 = third), in the exact order the student sees them. When they say "the first/second/third one", "the second", or "number 2", that means that POSITION. When they name a listing ("Five-Nine", "the Kingsbury place"), match it by title. In either case, when you call a tool, pass the listing's exact title OR its position number (1, 2, or 3) — for an ordinal reference, prefer passing the position number so there is no ambiguity.
 - After you use a tool, briefly tell the student what you did, naming the listing the tool reported back (do not guess the name yourself).
@@ -169,7 +170,7 @@ const AGENT_TOOLS = [
         fresh_options: {
           type: "boolean",
           description:
-            "Set true when the student asks for more/new/other/different options. Sets aside every listing currently shown so the re-rank surfaces fresh ones. Set-aside listings are NOT rejected: any real preference/weight change re-opens the full market and they may return if they fit best.",
+            "Set true when the student asks for more/new/other/different options without changing any preference. (Every re-rank already shows only never-before-shown listings; set-aside listings are NOT rejected — they stay referenceable and show_listings can bring one back on request.)",
         },
         weights: {
           type: "object",
@@ -354,37 +355,71 @@ async function runAgentTool(session, name, input) {
     }
     session.preferences = { ...session.preferences, ...prefPatch };
     session.weights = { ...session.weights, ...weightPatch };
-    // Smart repeats: a real change to the search re-opens the whole market, so a
-    // listing set aside by an earlier "show me more" may return when it now fits
-    // best. Only explicit dislikes (_excluded below) never come back.
-    if (Object.keys(prefPatch).length || Object.keys(weightPatch).length) {
-      session.preferences._setAside = [];
-    }
-    // "More / new / different options": set aside what they're looking at so the
-    // re-rank must surface fresh listings. Stacks across consecutive asks.
-    if (input?.fresh_options) {
-      const shown = (session.recommendations ?? []).map((r) => r.listing_id);
-      session.preferences._setAside = [...new Set([...(session.preferences._setAside ?? []), ...shown])];
+    // Never repeat: ANY refine (preference/weight change, "show me more", or an
+    // exclude) folds the currently shown listings into the set-aside, so every
+    // re-rank surfaces only listings the student hasn't been shown before. Only
+    // the nothing-new fallback below ever puts a shown listing back on the cards.
+    const shownNow = prevRecs.map((r) => r.listing_id).filter(Boolean);
+    if (shownNow.length) {
+      session.preferences._setAside = [...new Set([...(session.preferences._setAside ?? []), ...shownNow])];
     }
     if (Array.isArray(input?.exclude) && input.exclude.length) {
       const ids = input.exclude.map((ref) => resolveShownId(session, ref)).filter(Boolean);
       const prev = session.preferences._excluded ?? [];
       session.preferences._excluded = [...new Set([...prev, ...ids])];
     }
-    const searchChanged = Object.keys(prefPatch).length || Object.keys(weightPatch).length || (input?.exclude?.length ?? 0) > 0;
     await rankTop3(session);
-    if (input?.fresh_options && !searchChanged && !(session.recommendations ?? []).length && prevRecs.length) {
+    if (!(session.recommendations ?? []).length && prevRecs.length) {
+      // Nothing NEW surfaced. Be honest about which case this is before keeping
+      // their current cards: does ANYTHING fit these prefs, ignoring the
+      // never-repeat set-aside?
+      let anyFit = false;
+      try {
+        anyFit = filterEligible(await fetchActiveListings(), { ...session.preferences, _setAside: [] }).length > 0;
+      } catch (err) {
+        console.error("[chatOrchestrator] no-new-options check failed:", err);
+      }
       session.recommendations = prevRecs;
       session.preferences._setAside = prevSetAside;
       return {
         ok: true,
         no_new_options: true,
-        note: "No additional listings fit their search; their current matches are unchanged. Tell them these are the best fits on the market right now and suggest loosening a preference (budget, area, lease) to see more.",
+        note: anyFit
+          ? "They have already seen every listing that fits this search, so their current matches stay on screen. Tell them these remain the best fits on the market right now and suggest loosening a preference (budget, area, lease) to unlock more."
+          : "No listing on the market fits the new constraints at all. Their current matches are kept on screen so they aren't left empty-handed; tell them plainly that nothing fits that ask and suggest what to loosen.",
       };
     }
     session._reranked = true;
+    // Honest "your old #1 is still your best fit" signal: compare deterministic
+    // fit scores over the UNRESTRICTED pool (old and new listings normalized
+    // together), so the agent can truthfully say the earlier match still wins
+    // overall even though the cards now show all-new places.
+    let previousTop = null;
+    if (prevRecs.length && (session.recommendations ?? []).length) {
+      try {
+        const ctx = buildRankContext(
+          await fetchActiveListings(),
+          { ...session.preferences, _setAside: [] },
+          session.weights,
+          3
+        );
+        const fitOf = (id) => ctx.fitById?.[id];
+        const prevFit = fitOf(prevRecs[0]?.listing_id);
+        const newBest = Math.max(...session.recommendations.map((r) => fitOf(r.listing_id) ?? 0));
+        if (prevFit != null) {
+          previousTop = {
+            title: prevRecs[0]?.card_data?.title ?? null,
+            still_best_overall: prevFit >= newBest,
+          };
+        }
+      } catch (err) {
+        console.error("[chatOrchestrator] previous_top check failed:", err);
+      }
+    }
     return {
       ok: true,
+      all_new: true,
+      previous_top: previousTop,
       matches: (session.recommendations ?? []).map((r) => ({
         title: r.card_data?.title ?? null,
         perPerson: r.card_data?.min_rent ?? null,
@@ -581,6 +616,13 @@ function withNotes(text, session) {
 // closing message, persist, and return the turn payload.
 async function finalizeRecommendations(session) {
   await rankTop3(session);
+  // A rewound/edited flow carries the never-repeat set-aside from earlier
+  // refines; if that alone filtered out everything that fits, re-showing a
+  // previous match beats telling the student we came up empty.
+  if (!(session.recommendations ?? []).length && (session.preferences?._setAside ?? []).length) {
+    session.preferences._setAside = [];
+    await rankTop3(session);
+  }
   logConversationCost(session);
   session.status = "recommendations_ready";
   // With the strict group-size bed floor, ranking can now honestly come back

@@ -282,8 +282,23 @@ export async function PATCH(request) {
     let recommendations = chatSession.recommendations;
     let transcript = chatSession.transcript;
     if (chatSession.status === "recommendations_ready") {
+      // Never repeat: a panel edit is a preference change, so the currently
+      // shown picks are folded into the never-repeat set-aside and the re-rank
+      // must surface fresh listings (same policy as the chat agent's
+      // update_search). If nothing new fits, the current picks stay and the
+      // set-aside is rolled back so it isn't burned for nothing.
+      const prevSetAside = updatedPreferences._setAside ?? [];
+      const shownNow = (chatSession.recommendations ?? []).map((r) => r.listing_id).filter(Boolean);
+      if (shownNow.length) {
+        updatedPreferences._setAside = [...new Set([...prevSetAside, ...shownNow])];
+      }
       try {
-        recommendations = await computeRecommendations(updatedPreferences, updatedWeights);
+        const fresh = await computeRecommendations(updatedPreferences, updatedWeights);
+        if (!fresh.length && shownNow.length) {
+          updatedPreferences._setAside = prevSetAside;
+        } else {
+          recommendations = fresh;
+        }
         // The chat is rebuilt from the transcript on reload, and each "here are
         // your matches" message embeds its own copy of the picks. Rewrite the
         // latest such message so a refresh shows the NEW matches, not the old set.
@@ -297,6 +312,7 @@ export async function PATCH(request) {
         }
       } catch (err) {
         console.error("[matchmaking/chat PATCH] computeRecommendations failed:", err);
+        updatedPreferences._setAside = prevSetAside;
       }
     }
 
