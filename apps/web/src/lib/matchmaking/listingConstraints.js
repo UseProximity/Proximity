@@ -129,6 +129,88 @@ export function isListingExcludedForViewer(listing, preferences) {
   return viewerGenderOf(preferences) !== gender;
 }
 
+// ——— Sublease term evidence ———————————————————————————————————————————————
+// Structured lease_term_months on sublease rows is unreliable (most carry the
+// same bulk default, which satisfies every lease-length bucket), so the only
+// trustworthy statement of WHEN a sublease runs is its free-text description —
+// "subletting my room this summer", "June 1st thru August 15th", "August
+// 2026-May 2027". Extract every duration (in months) the description explicitly
+// states; empty array = no explicit term, and the matchmaking filter treats
+// that as "do not offer". Untrusted text: pattern-matched only, never executed.
+
+const MONTH_SRC =
+  "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+const DAY_YEAR_SRC = "(?:\\s+\\d{1,2}(?:st|nd|rd|th)?)?(?:,?\\s*(\\d{4}))?";
+// "June 1st thru August 15th", "May 25-July 31", "August 2026-May 2027", …
+const MONTH_RANGE_RE = new RegExp(
+  MONTH_SRC + DAY_YEAR_SRC + "\\s*(?:-|–|—|to|thru|through|until|till)\\s*(?:the\\s+end\\s+of\\s+)?" + MONTH_SRC + DAY_YEAR_SRC,
+  "gi"
+);
+const MONTH_INDEX = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+// Season/length keywords and the duration they imply. Only counted when a
+// lease-intent word sits nearby, so "great porch for the summer" is not term
+// evidence but "summer sublease" is.
+const TERM_KEYWORD_PATTERNS = [
+  { months: 3, re: /\bsummer\b/g },
+  { months: 4, re: /\bsemester\b/g },
+  { months: 9, re: /\b(?:academic|school)\s+year\b/g },
+  { months: 12, re: /\b(?:full|entire|whole)\s+year\b|\byear[-\s]?long\b/g },
+];
+const LEASE_INTENT_RE =
+  /\b(?:sublease\w*|sublet\w*|lease|rent\w*|available|term|looking|seeking|take\s*over|move)\b/g;
+// Wider than the gender window: term phrasing routinely puts a whole clause
+// between the intent word and the season ("Subletting a room in a 3 bedroom
+// duplex … over the summer").
+const TERM_NEAR_WINDOW = 90;
+// Explicit numeric lengths: "2 Month Lease", "a 12-month sublet".
+const N_MONTH_RE = /\b(\d{1,2})\s*[-\s]?\s*months?\b/g;
+
+const _termCache = new WeakMap();
+
+// Every lease duration (whole months, inclusive) a listing's description
+// explicitly states. Sorted, de-duplicated; [] when nothing explicit is said.
+export function subleaseTermMonthsFromDescription(listing) {
+  if (!listing || typeof listing !== "object") return [];
+  if (_termCache.has(listing)) return _termCache.get(listing);
+  const t = (listing.description ?? "").toString().toLowerCase();
+  const found = new Set();
+  if (t.trim()) {
+    let m;
+    MONTH_RANGE_RE.lastIndex = 0;
+    while ((m = MONTH_RANGE_RE.exec(t))) {
+      const [, startMon, startYear, endMon, endYear] = m;
+      const s = MONTH_INDEX[startMon.slice(0, 3)];
+      const e = MONTH_INDEX[endMon.slice(0, 3)];
+      // Inclusive month count; a year jump adds whole years ("May 2026-May 2027").
+      const years = startYear && endYear ? Number(endYear) - Number(startYear) : 0;
+      const span = years > 0 ? years * 12 + (e - s) + 1 : ((e - s + 12) % 12) + 1;
+      if (span >= 1 && span <= 24) found.add(span);
+    }
+    const intentIdx = [];
+    LEASE_INTENT_RE.lastIndex = 0;
+    while ((m = LEASE_INTENT_RE.exec(t))) intentIdx.push(m.index);
+    const nearIntent = (idx) => intentIdx.some((s) => Math.abs(idx - s) <= TERM_NEAR_WINDOW);
+    for (const { months, re } of TERM_KEYWORD_PATTERNS) {
+      re.lastIndex = 0;
+      while ((m = re.exec(t))) {
+        if (nearIntent(m.index)) { found.add(months); break; }
+      }
+    }
+    N_MONTH_RE.lastIndex = 0;
+    while ((m = N_MONTH_RE.exec(t))) {
+      const n = Number(m[1]);
+      if (n >= 1 && n <= 24 && nearIntent(m.index)) found.add(n);
+    }
+  }
+  const result = [...found].sort((a, b) => a - b);
+  _termCache.set(listing, result);
+  return result;
+}
+
 // Phrases that NEGATE a pet/parking need even though the keyword appears, e.g.
 // "I prefer no pets" or "I won't be bringing a car". Checked first so a mention
 // of the thing-they-don't-want isn't read as a requirement.

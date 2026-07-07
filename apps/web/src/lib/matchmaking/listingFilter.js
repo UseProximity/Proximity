@@ -10,6 +10,7 @@ import {
   needsPetFriendly,
   needsParking,
   descriptionAllowsPets,
+  subleaseTermMonthsFromDescription,
 } from "./listingConstraints";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
@@ -269,9 +270,10 @@ function leaseMonthsOf(listing) {
 
 // Map ONE lease-length label to a month predicate. Buckets are non-overlapping:
 // semester (<=7mo), academic year (8-10mo), full year (>=11mo). "No preference"
-// or anything unrecognized returns null (no constraint from that label).
+// or anything unrecognized returns null (no constraint from that label). The
+// agent may pass free-form strings ("summer sublet"), which bucket as semester.
 function leaseBucketTest(label) {
-  if (label === "Semester only") return (m) => m <= 7;
+  if (label === "Semester only" || /\b(?:summer|semester)\b/i.test(label ?? "")) return (m) => m <= 7;
   if (/academic/i.test(label ?? "")) return (m) => m >= 8 && m <= 10;
   if (label === "Full year only") return (m) => m >= 11;
   return null;
@@ -289,13 +291,22 @@ function leaseTestsFor(pref) {
 // the lengths the student selected. Listings with NO term data on file are kept
 // (we never assert an unknown). SAFETY: if applying the filter would leave too
 // thin a pool (< 4), it relaxes to the unfiltered set so a sparse-data area never
-// yields an empty result. No-op when the student is flexible / unsure.
+// yields an empty result — except subleases, whose description-term gate always
+// holds. No-op when the student is flexible / unsure.
 export function applyLeasePref(listings, preferences) {
   const tests = leaseTestsFor(preferences?.lease_term);
   if (!tests.length) return listings ?? [];
-  const all = listings ?? [];
   const matches = (m) => tests.some((t) => t(m));
+  // SUBLEASES are judged on the term their DESCRIPTION explicitly states, never
+  // on lease_term_months — sublease rows mostly carry the same bulk-default
+  // months array, which satisfies every bucket. A sublease whose description
+  // names no timeframe is never offered against a stated lease term, and this
+  // gate is unconditional: the thin-pool relaxation below cannot re-admit them.
+  const all = (listings ?? []).filter(
+    (l) => !isSubleaseListing(l) || subleaseTermMonthsFromDescription(l).some(matches)
+  );
   const filtered = all.filter((listing) => {
+    if (isSubleaseListing(listing)) return true; // already description-gated above
     const months = leaseMonthsOf(listing);
     return months.length === 0 || months.some(matches);
   });

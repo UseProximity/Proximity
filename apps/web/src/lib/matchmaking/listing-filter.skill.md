@@ -41,7 +41,9 @@ intention.
   `furnished`, `is_sublease` (true = the place itself is offered as a sublease —
   someone's existing lease being taken over; only ever true when the student has
   explicitly opted in to subleases, and worth flagging plainly in the reason when
-  it is), `avg_review`
+  it is. When the student also has a `lease_term`, only subleases whose free-text
+  description explicitly states an aligning timeframe reach the pool — their
+  structured `lease_term_months` is unreliable and is ignored), `avg_review`
   (1–5 or null), `amenities` (array), `walk_to_campus_min` (minutes walking to the
   main WashU **Danforth** campus, or **null when unknown**),
   `walk_to_med_campus_min` (minutes walking to the WashU **medical** campus — a
