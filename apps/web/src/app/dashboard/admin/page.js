@@ -2483,7 +2483,8 @@ export default function AdminDashboard() {
                           )}
                           <button
                             onClick={handleUpdateDriveTimes}
-                            disabled={driveTimesRunning}
+                            disabled={driveTimesRunning || isReadOnly}
+                            title={readOnlyTitle}
                             className="px-2 py-0.5 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {driveTimesRunning ? "Updating drive…" : "Update Drive Times"}

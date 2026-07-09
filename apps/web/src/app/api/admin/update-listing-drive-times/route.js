@@ -10,7 +10,7 @@ import { fetchAllDriveTimes } from "@/utils/driveTimes";
 export async function POST(req) {
   try {
     const session = await auth();
-    if (!session || !["super", "admin"].includes(session.user.role)) {
+    if (!session || session.user.role !== "super") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
