@@ -11,6 +11,7 @@ import {
   ThumbsDown,
   PersonStanding,
   Bus,
+  Car,
   FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -25,6 +26,12 @@ import {
   leaseMonthsToLabel,
 } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
+import {
+  DRIVE_PLACES,
+  NEAREST_DRIVE_POOLS,
+  DRIVE_CATEGORIES,
+  DRIVE_LABELS,
+} from "@/utils/drivePlaces";
 import { trackEvent } from "@/utils/analytics";
 import ReviewReplySection from "./ReviewReplySection";
 
@@ -377,47 +384,123 @@ function MapTab({ listing }) {
 
 // ─── Tab: Places ─────────────────────────────────────────────────────────────
 
-function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes }) {
+// A single place row: name on the left, "X min" + a trailing mode icon on the
+// right. The icon (walk/drive) conveys the mode, so the word is dropped.
+function PlaceRow({ label, minutes, Icon, loading }) {
+  return (
+    <li className="flex items-center gap-2 py-2 border-b border-gray-100 text-gray-700">
+      <span className="flex-1 truncate">{label}</span>
+      <span className="text-sm text-gray-500 font-medium whitespace-nowrap">
+        {loading ? "..." : minutes != null ? `${minutes} min` : "N/A"}
+      </span>
+      <Icon size={16} className="text-red-400 shrink-0" />
+    </li>
+  );
+}
+
+function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
+  const [mode, setMode] = useState("walking");
+  const hasDriveTimes = Object.keys(driveTimes ?? {}).length > 0;
+
+  // Combine fixed driving destinations + the synthetic nearest rows into one
+  // labeled, categorized list.
+  const driveItems = useMemo(
+    () => [
+      ...DRIVE_PLACES.map((p) => ({
+        key: p.name,
+        label: DRIVE_LABELS[p.name] ?? p.name,
+        category: p.category,
+        minutes: driveTimes?.[p.name],
+      })),
+      ...NEAREST_DRIVE_POOLS.map((p) => ({
+        key: p.resultName,
+        label: DRIVE_LABELS[p.resultName] ?? p.label,
+        category: p.category,
+        minutes: driveTimes?.[p.resultName],
+      })),
+    ],
+    [driveTimes]
+  );
+
+  const sortedWalkPlaces = useMemo(
+    () =>
+      [...WASHU_PLACES].sort(
+        (a, b) => (walkTimes[a.name] ?? Infinity) - (walkTimes[b.name] ?? Infinity)
+      ),
+    [walkTimes]
+  );
+
+  const toggleBtn = (value, Icon, text) => (
+    <button
+      type="button"
+      onClick={() => setMode(value)}
+      className={`flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+        mode === value ? "bg-white text-red-500 shadow-sm" : "text-gray-500 hover:text-gray-700"
+      }`}
+    >
+      <Icon size={16} /> {text}
+    </button>
+  );
+
   return (
     <div>
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">
-        Nearby Places
-      </h2>
-      <ul className="space-y-3">
-        {[...WASHU_PLACES]
-          .sort((a, b) => {
-            const aMin = walkTimes[a.name] ?? Infinity;
-            const bMin = walkTimes[b.name] ?? Infinity;
-            return aMin - bMin;
-          })
-          .map((p) => (
-            <li
-              key={p.name}
-              className="flex items-center gap-3 text-gray-700 py-2 border-b border-gray-100 last:border-0"
-            >
-              <PersonStanding size={18} className="text-red-400 shrink-0" />
-              <span className="flex-1">{p.name}</span>
-              <span className="text-sm text-gray-500 font-medium">
-                {walkLoading
-                  ? "..."
-                  : walkTimes[p.name] != null
-                  ? `${walkTimes[p.name]} min walk`
-                  : "N/A"}
-              </span>
-            </li>
-          ))}
-      </ul>
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="flex items-center gap-3 text-gray-700 py-2">
-          <Bus size={18} className="text-red-400 shrink-0" />
-          <span className="flex-1">Nearest Shuttle Stop</span>
-          <span className="text-sm text-gray-500 font-medium">
-            {shuttleWalkMinutes != null
-              ? `${shuttleWalkMinutes} min walk`
-              : "N/A"}
-          </span>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <h2 className="text-lg font-semibold text-gray-900">Nearby Places</h2>
+        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+          {toggleBtn("walking", PersonStanding, "Walking")}
+          {toggleBtn("driving", Car, "Driving")}
         </div>
       </div>
+
+      {mode === "walking" ? (
+        <>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+            {sortedWalkPlaces.map((p) => (
+              <PlaceRow
+                key={p.name}
+                label={p.name.replace(/\s*\(Grocery\)$/, "")}
+                minutes={walkTimes[p.name]}
+                loading={walkLoading}
+                Icon={PersonStanding}
+              />
+            ))}
+          </ul>
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <ul>
+              <PlaceRow
+                label="Nearest Shuttle Stop"
+                minutes={shuttleWalkMinutes}
+                Icon={Bus}
+              />
+            </ul>
+          </div>
+        </>
+      ) : !hasDriveTimes ? (
+        <p className="text-sm text-gray-500 py-6 text-center">
+          Driving times aren&apos;t available for this listing yet.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {DRIVE_CATEGORIES.map((cat) => {
+            const items = driveItems
+              .filter((it) => it.category === cat.key)
+              .sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
+            if (items.length === 0) return null;
+            return (
+              <div key={cat.key}>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                  {cat.label}
+                </h3>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                  {items.map((it) => (
+                    <PlaceRow key={it.key} label={it.label} minutes={it.minutes} Icon={Car} />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1036,6 +1119,10 @@ export default function ListingModalInfo({
   const storedTimes = listing?.placeWalkMinutes;
   const walkTimes = useMemo(() => storedTimes ?? {}, [storedTimes]);
 
+  // Drive times — pre-computed DB values keyed by locations name (incl. *_nearest)
+  const storedDriveTimes = listing?.placeDriveMinutes;
+  const driveTimes = useMemo(() => storedDriveTimes ?? {}, [storedDriveTimes]);
+
   // Contact form state
   const [contactForm, setContactForm] = useState({
     firstName: "",
@@ -1633,6 +1720,7 @@ export default function ListingModalInfo({
                   walkTimes={walkTimes}
                   walkLoading={walkLoading}
                   shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
+                  driveTimes={driveTimes}
                 />
               )}
               {activeTab === "reviews" && !session && (

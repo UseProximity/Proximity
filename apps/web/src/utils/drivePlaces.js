@@ -11,15 +11,12 @@
 //      and stores it under a synthetic `*_nearest` locations row.
 
 export const DRIVE_PLACES = [
-  // Grocery
-  { name: "Schnucks (Grocery)",            category: "grocery",     lat: 38.633335917020425, lng: -90.31473611720082 },
+  // Grocery + Shopping
   { name: "Trader Joe's (Brentwood)",      category: "grocery",     lat: 38.6273335,         lng: -90.3412312 },
   { name: "Whole Foods (Brentwood)",       category: "grocery",     lat: 38.6271091,         lng: -90.3478836 },
-
-  // Shopping
-  { name: "Costco (Manchester)",           category: "shopping",    lat: 38.5976541,         lng: -90.5066655 },
-  { name: "Target (Brentwood)",            category: "shopping",    lat: 38.6279480,         lng: -90.3434056 },
-  { name: "Galleria",                      category: "shopping",    lat: 38.6336406981314,   lng: -90.34618803034873, label: "Saint Louis Galleria" },
+  { name: "Costco (Olivette)",             category: "grocery",     lat: 38.676274,          lng: -90.358976 },
+  { name: "Target (Brentwood)",            category: "grocery",     lat: 38.6279480,         lng: -90.3434056 },
+  { name: "Galleria",                      category: "grocery",     lat: 38.6336406981314,   lng: -90.34618803034873, label: "Saint Louis Galleria" },
 
   // Attractions
   { name: "Forest Park (Skinker Entrance)", category: "attractions", lat: 38.6492020,        lng: -90.3006530 },
@@ -74,8 +71,7 @@ export const NEAREST_DRIVE_POOLS = [
 
 // Category display order + labels for the driving Places tab section headers.
 export const DRIVE_CATEGORIES = [
-  { key: "grocery",     label: "Grocery" },
-  { key: "shopping",    label: "Shopping" },
+  { key: "grocery",     label: "Grocery + Shopping" },
   { key: "attractions", label: "Attractions" },
   { key: "parking",     label: "Parking" },
   { key: "essentials",  label: "Essentials" },
