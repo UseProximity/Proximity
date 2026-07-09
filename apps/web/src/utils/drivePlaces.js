@@ -11,9 +11,8 @@
 //      and stores it under a synthetic `*_nearest` locations row.
 
 export const DRIVE_PLACES = [
-  // Grocery + Shopping
+  // Shopping
   { name: "Trader Joe's (Brentwood)",      category: "grocery",     lat: 38.6273335,         lng: -90.3412312 },
-  { name: "Whole Foods (Brentwood)",       category: "grocery",     lat: 38.6271091,         lng: -90.3478836 },
   { name: "Costco (Olivette)",             category: "grocery",     lat: 38.676274,          lng: -90.358976 },
   { name: "Target (Brentwood)",            category: "grocery",     lat: 38.6279480,         lng: -90.3434056 },
   { name: "Galleria",                      category: "grocery",     lat: 38.6336406981314,   lng: -90.34618803034873, label: "Saint Louis Galleria" },
@@ -27,10 +26,9 @@ export const DRIVE_PLACES = [
   { name: "East End Garage",               category: "parking",     lat: 38.64658300567168,  lng: -90.30413496240332 },
   { name: "Millbrook Garage",              category: "parking",     lat: 38.65011610139658,  lng: -90.31173531215816 },
   { name: "WC Lower Lot",                  category: "parking",     lat: 38.64913858541001,  lng: -90.32852434288556, label: "West Campus Garage" },
-  { name: "Snow Way",                      category: "parking",     lat: 38.65038035091168,  lng: -90.31381181873512 },
 
-  // Travel
-  { name: "Lambert Airport",               category: "travel",      lat: 38.7486982,         lng: -90.3700257 },
+  // Essentials (Lambert shown with nearest gas/pharmacy in the UI)
+  { name: "Lambert Airport",               category: "essentials",  lat: 38.7486982,         lng: -90.3700257 },
 ];
 
 // Candidate pools for the "nearest X" driving rows. Same idea as SHUTTLE_STOPS:
@@ -67,15 +65,6 @@ export const NEAREST_DRIVE_POOLS = [
   { resultName: "schnucks_nearest",    label: "Nearest Schnucks",     category: "grocery",    candidates: SCHNUCKS },
   { resultName: "gas_station_nearest", label: "Nearest gas station",  category: "essentials", candidates: GAS_STATIONS, mapboxCategory: "gas_station" },
   { resultName: "pharmacy_nearest",    label: "Nearest pharmacy",     category: "essentials", candidates: PHARMACIES,   mapboxCategory: "pharmacy" },
-];
-
-// Category display order + labels for the driving Places tab section headers.
-export const DRIVE_CATEGORIES = [
-  { key: "grocery",     label: "Grocery + Shopping" },
-  { key: "attractions", label: "Attractions" },
-  { key: "parking",     label: "Parking" },
-  { key: "essentials",  label: "Essentials" },
-  { key: "travel",      label: "Travel" },
 ];
 
 // Display label for a stored drive-time row, by its locations-table name.
