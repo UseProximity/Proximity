@@ -13,7 +13,8 @@ import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "..", ".."); // repo root
+const REPO_ROOT = join(__dirname, "..", ".."); // monorepo root (contains apps/, packages/, mcp/)
+const ROOT = join(REPO_ROOT, "apps", "web"); // Next.js app root — all scanned src/ lives here
 const OUT = join(__dirname, "..", "knowledge");
 
 mkdirSync(OUT, { recursive: true });
@@ -43,6 +44,21 @@ function readFile(path) {
 
 function write(filename, data) {
   const path = join(OUT, filename);
+  // Knowledge is committed to git, so regeneration must be idempotent: if the
+  // only difference from the existing file is the `_generated` timestamp, keep
+  // the old file so repeated runs (and CI) produce no diff.
+  if (existsSync(path)) {
+    try {
+      const prev = JSON.parse(readFileSync(path, "utf-8"));
+      const withoutTimestamp = (obj) => JSON.stringify({ ...obj, _generated: undefined }, null, 2);
+      if (withoutTimestamp(prev) === withoutTimestamp(data)) {
+        console.log(`• ${filename} (unchanged)`);
+        return;
+      }
+    } catch {
+      // unreadable/corrupt existing file — fall through and rewrite it
+    }
+  }
   writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
   console.log(`✓ ${filename}`);
 }
@@ -226,7 +242,7 @@ function generateDomain() {
 
     techStack: {
       framework: "Next.js 15 (App Router)",
-      language: "JavaScript (no TypeScript in src — only middleware.ts)",
+      language: "JavaScript (App Router in JS; a few TypeScript files — middleware.ts, src/lib/supabase/*.ts)",
       styling: "Tailwind CSS 3",
       auth: "NextAuth v5 (beta) — Google OAuth only, JWT strategy",
       db: "Supabase (PostgreSQL)",
@@ -234,7 +250,7 @@ function generateDomain() {
       maps: "Mapbox GL + Leaflet (geocoding + walk times); Google Street View Static API for default listing photos",
       email: "Nodemailer (SMTP)",
       ui: "Radix UI, Lucide React, Framer Motion, Recharts, @chatscope/chat-ui-kit-react",
-      sourceLayout: "All app code lives under src/ — src/app (App Router pages + api), src/components, src/lib, src/utils.",
+      sourceLayout: "Monorepo: the Next.js app lives in apps/web (with packages/ for shared code and mcp/ for the knowledge server). Within apps/web, all app code is under src/ — src/app (App Router pages + api), src/components, src/lib, src/utils.",
     },
 
     roles: {
@@ -302,7 +318,7 @@ function generateDomain() {
         "After approval, push the branch and open a PR into `staging`.",
       ],
       knowledgeMaintenance:
-        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase.",
+        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase. Knowledge files in mcp/knowledge/ are COMMITTED to git (shared across machines and agents) — commit regenerated knowledge together with the code change. A CI workflow (update-knowledge.yml) also regenerates and commits any drift after pushes to staging/main, covering contributors who don't run the MCP.",
       commitStyle:
         "Do NOT add AI/Claude attribution to commit messages or PR descriptions — no 'Co-Authored-By: Claude' trailer and no 'Generated with Claude Code' footer. Write them as a normal human contributor would.",
     },

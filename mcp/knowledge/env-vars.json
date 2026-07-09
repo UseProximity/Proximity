@@ -1,0 +1,131 @@
+{
+  "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
+  "_generated": "2026-07-02T16:11:02.177Z",
+  "count": 31,
+  "envVars": [
+    {
+      "name": "AIRTABLE_API_KEY",
+      "public": false
+    },
+    {
+      "name": "APP_ENV",
+      "public": false
+    },
+    {
+      "name": "CLOUDFLARE_ACCOUNT_ID",
+      "public": false
+    },
+    {
+      "name": "CRON_SECRET",
+      "public": false
+    },
+    {
+      "name": "DEV_SUPABASE_SERVICE_KEY",
+      "public": false
+    },
+    {
+      "name": "DEV_SUPABASE_URL",
+      "public": false
+    },
+    {
+      "name": "EMAIL_HOST",
+      "public": false
+    },
+    {
+      "name": "EMAIL_PASS",
+      "public": false
+    },
+    {
+      "name": "EMAIL_PORT",
+      "public": false
+    },
+    {
+      "name": "EMAIL_USER",
+      "public": false
+    },
+    {
+      "name": "GOOGLE_ID",
+      "public": false
+    },
+    {
+      "name": "GOOGLE_MAPS_SERVER_KEY",
+      "public": false
+    },
+    {
+      "name": "GOOGLE_SECRET",
+      "public": false
+    },
+    {
+      "name": "IMPORT_SECRET",
+      "public": false
+    },
+    {
+      "name": "NEXT_PUBLIC_APP_ENV",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_FORMSPREE_EXIT_POLL_URL",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_MAPBOX_TOKEN",
+      "public": true
+    },
+    {
+      "name": "NODE_ENV",
+      "public": false
+    },
+    {
+      "name": "PROD_SUPABASE_SERVICE_KEY",
+      "public": false
+    },
+    {
+      "name": "PROD_SUPABASE_URL",
+      "public": false
+    },
+    {
+      "name": "R2_ACCESS_KEY_ID",
+      "public": false
+    },
+    {
+      "name": "R2_BUCKET_NAME",
+      "public": false
+    },
+    {
+      "name": "R2_BUCKET_NAME_PROD",
+      "public": false
+    },
+    {
+      "name": "R2_PUBLIC_BASE_URL",
+      "public": false
+    },
+    {
+      "name": "R2_PUBLIC_BASE_URL_",
+      "public": false
+    },
+    {
+      "name": "R2_SECRET_ACCESS_KEY",
+      "public": false
+    },
+    {
+      "name": "RESEND_API_KEY",
+      "public": false
+    },
+    {
+      "name": "VERCEL_ENV",
+      "public": false
+    },
+    {
+      "name": "WEBHOOK_SECRET",
+      "public": false
+    }
+  ]
+}
