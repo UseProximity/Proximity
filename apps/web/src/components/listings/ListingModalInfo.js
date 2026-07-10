@@ -544,6 +544,7 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
             label="Essentials"
             items={walkEssentialsItems}
             loading={walkLoading}
+            twoColumn
           />
           <PlaceGroup
             label="Campus Buildings"
