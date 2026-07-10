@@ -6,14 +6,20 @@
     "@proximity/api-client": "*",
     "@proximity/auth-core": "*",
     "@proximity/shared": "*",
-    "expo": "~56.0.12",
-    "expo-auth-session": "*",
-    "expo-crypto": "*",
-    "expo-router": "*",
-    "expo-secure-store": "*",
-    "expo-status-bar": "~56.0.4",
-    "react": "19.2.3",
-    "react-native": "0.85.3",
+    "expo": "^57.0.0",
+    "expo-auth-session": "~57.0.2",
+    "expo-crypto": "~57.0.0",
+    "expo-router": "~57.0.4",
+    "expo-secure-store": "~57.0.0",
+    "expo-status-bar": "~57.0.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-native": "0.86.0",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-web": "^0.21.2",
     "zustand": "*"
   },
   "scripts": {
@@ -22,5 +28,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
 }

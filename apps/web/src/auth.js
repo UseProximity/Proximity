@@ -19,6 +19,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { AUTH_ERRORS } from "@proximity/auth-core";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
@@ -43,7 +44,7 @@ const config = {
           .single();
 
         if (!user || !user.password_hash) return null;
-        if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+        if (!user.email_verified) throw new Error(AUTH_ERRORS.EMAIL_NOT_VERIFIED);
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) return null;
