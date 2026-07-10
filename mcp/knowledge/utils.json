@@ -1,0 +1,63 @@
+{
+  "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
+  "_generated": "2026-07-02T16:11:02.155Z",
+  "count": 14,
+  "utils": [
+    {
+      "file": "src/lib/appEnv.js",
+      "description": "Central environment / data-target helper."
+    },
+    {
+      "file": "src/lib/authMobile.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/email.js",
+      "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
+    },
+    {
+      "file": "src/lib/guides.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/outreach.js",
+      "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
+    },
+    {
+      "file": "src/lib/r2.js",
+      "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
+    },
+    {
+      "file": "src/lib/streetview.js",
+      "description": "Google Street View Static API helper."
+    },
+    {
+      "file": "src/lib/supabase.js",
+      "description": "Server-side Supabase admin client using the service role key. The service role bypasses"
+    },
+    {
+      "file": "src/lib/supabaseWithUser.js",
+      "description": "Thin wrappers around the write-as-user RPCs defined in migration"
+    },
+    {
+      "file": "src/lib/userRole.js",
+      "description": "Resolve a user's authoritative role straight from the database."
+    },
+    {
+      "file": "src/utils/analytics.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/listingFormatters.js",
+      "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
+    },
+    {
+      "file": "src/utils/walkTimes.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/washuPlaces.js",
+      "description": "No description — add a top-of-file comment."
+    }
+  ]
+}

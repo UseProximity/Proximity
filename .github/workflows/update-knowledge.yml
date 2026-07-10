@@ -1,0 +1,51 @@
+name: Update MCP knowledge
+
+# Keeps the committed MCP knowledge (mcp/knowledge/) in sync with the code so
+# every machine and coding agent sees the same, current picture of the repo —
+# including changes from contributors who don't run the MCP locally. After each
+# push to staging/main that touches scanned code, it re-runs the knowledge scan
+# and commits any drift back to the branch. (Pushes made with GITHUB_TOKEN do
+# not re-trigger workflows, so this cannot loop.)
+on:
+  push:
+    branches: [staging, main]
+    paths:
+      - "apps/web/src/**"
+      - "mcp/scripts/generate-knowledge.mjs"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-knowledge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The generator uses only the Node standard library — no npm ci needed.
+      - name: Regenerate knowledge
+        run: node mcp/scripts/generate-knowledge.mjs
+
+      - name: Commit drift back to the branch
+        run: |
+          if git diff --quiet -- mcp/knowledge; then
+            echo "Knowledge already current — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mcp/knowledge
+          git commit -m "chore(mcp): sync knowledge with ${GITHUB_SHA::7}"
+          # Another push may have landed while this ran — rebase, then push.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

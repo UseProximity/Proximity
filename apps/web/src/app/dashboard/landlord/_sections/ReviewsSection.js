@@ -1,10 +1,61 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Star, User } from "lucide-react";
+import { Copy, Star, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { StarRating } from "@/components/ui/StarRating";
 import ReviewReplySection from "@/components/listings/ReviewReplySection";
+
+function InviteLinkCard({ userId }) {
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const link = origin && userId ? `${origin}/review-invite/${userId}` : "";
+
+  function copy() {
+    if (!link) return;
+    navigator.clipboard?.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <Card>
+      <CardContent className="!p-5 space-y-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">
+            Build trust with verified reviews
+          </h3>
+          <p className="mt-1.5 text-sm text-gray-600 leading-relaxed">
+          Students rely on reviews when deciding who to contact. Share this link with past 
+          tenants who are verified WashU students — they pick which property to 
+          review and submit in under a minute.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <input
+            readOnly
+            value={link}
+            placeholder="Loading…"
+            onFocus={(e) => e.target.select()}
+            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+          />
+          <button
+            type="button"
+            onClick={copy}
+            disabled={!link}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+} 
 
 export default function ReviewsSection({ user, viewAsId }) {
   const [reviews, setReviews] = useState([]);
@@ -62,6 +113,8 @@ export default function ReviewsSection({ user, viewAsId }) {
         <h1 className="text-2xl font-bold text-gray-900">Reviews</h1>
         <p className="text-gray-500">Verified reviews from tenants</p>
       </div>
+
+      <InviteLinkCard userId={user?.id} />
 
       {loading ? (
         <div className="flex items-center justify-center h-48 text-gray-400">
