@@ -416,7 +416,7 @@ const SCHEMAS = {
     { key: "school_id",            label: "School",             type: "readonly" },
     { key: "landlord_id",          label: "Landlord(s)",        type: "user-search-multi" },
     { key: "images",               label: "Images",             type: "images"   },
-    { key: "place_walk_minutes",   label: "Place Walk Times",   type: "walk-times" },
+    { key: "place_walk_minutes",   label: "Walk/Driving Backfill Controls",   type: "walk-times" },
     { key: "created_at",           label: "Created",            type: "readonly" },
     { key: "updated_at",           label: "Updated",            type: "readonly" },
     { key: "deleted_at",           label: "Deleted",            type: "readonly" },
@@ -1548,9 +1548,6 @@ export default function AdminDashboard() {
   const [driveTimesStatus, setDriveTimesStatus] = useState(null);
   const [driveTimesRunning, setDriveTimesRunning] = useState(false);
 
-  const [costcoDriveStatus, setCostcoDriveStatus] = useState(null);
-  const [costcoDriveRunning, setCostcoDriveRunning] = useState(false);
-
   // View As feature
   const [viewAsQuery, setViewAsQuery] = useState("");
   const [viewAsResults, setViewAsResults] = useState([]);
@@ -1598,37 +1595,6 @@ export default function AdminDashboard() {
       setDriveTimesStatus({ ok: false, msg: `Drive times error: ${e.message}` });
     } finally {
       setDriveTimesRunning(false);
-    }
-  }
-
-  async function handleUpdateCostcoDriveTimes() {
-    if (
-      isProd &&
-      !confirm(
-        "Refresh Costco drive times on PRODUCTION?\n\nThis will recalculate driving time to Costco for every listing."
-      )
-    ) {
-      return;
-    }
-    setCostcoDriveRunning(true);
-    setCostcoDriveStatus(null);
-    try {
-      const res = await fetch("/api/admin/update-listing-costco-drive-times", {
-        method: "POST",
-        headers: { "x-db-target": dbTarget },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Request failed");
-      setCostcoDriveStatus({
-        ok: true,
-        msg:
-          `${data.destination ?? "Costco"}: ${data.updated}/${data.total} listings` +
-          (data.failed ? ` (${data.failed} failed)` : ""),
-      });
-    } catch (e) {
-      setCostcoDriveStatus({ ok: false, msg: `Costco drive error: ${e.message}` });
-    } finally {
-      setCostcoDriveRunning(false);
     }
   }
 
@@ -2514,7 +2480,7 @@ export default function AdminDashboard() {
                             title={readOnlyTitle}
                             className="px-2 py-0.5 text-xs bg-purple-700 hover:bg-purple-600 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {walkTimesRunning ? "Updating…" : "Update"}
+                            {walkTimesRunning ? "Updating walk…" : "Update Walk Times"}
                           </button>
                           {walkTimesStatus && (
                             <span className={`text-xs font-normal ${walkTimesStatus.ok ? "text-green-500" : "text-red-500"}`}>
@@ -2523,26 +2489,15 @@ export default function AdminDashboard() {
                           )}
                           <button
                             onClick={handleUpdateDriveTimes}
-                            disabled={driveTimesRunning || costcoDriveRunning}
+                            disabled={driveTimesRunning || isReadOnly}
+                            title={readOnlyTitle}
                             className="px-2 py-0.5 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {driveTimesRunning ? "Updating drive…" : "Update Drive Times"}
                           </button>
-                          <button
-                            onClick={handleUpdateCostcoDriveTimes}
-                            disabled={costcoDriveRunning || driveTimesRunning}
-                            className="px-2 py-0.5 text-xs bg-blue-900 hover:bg-blue-800 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            {costcoDriveRunning ? "Updating Costco…" : "Refresh Costco"}
-                          </button>
                           {driveTimesStatus && (
                             <span className={`text-xs font-normal ${driveTimesStatus.ok ? "text-green-500" : "text-red-500"}`}>
                               {driveTimesStatus.msg}
-                            </span>
-                          )}
-                          {costcoDriveStatus && (
-                            <span className={`text-xs font-normal ${costcoDriveStatus.ok ? "text-green-500" : "text-red-500"}`}>
-                              {costcoDriveStatus.msg}
                             </span>
                           )}
                         </div>
