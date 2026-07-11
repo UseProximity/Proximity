@@ -80,12 +80,27 @@ function walkTimesToMap(walkTimes) {
   return map;
 }
 
+/**
+ * Convert drive-time rows to a plain { locationName: minutes } map. All rows are
+ * kept — including the synthetic *_nearest rows (gas_station_nearest, etc.),
+ * which the Places tab renders via DRIVE_LABELS.
+ */
+function driveTimesToMap(driveTimes) {
+  const map = {};
+  for (const dt of driveTimes ?? []) {
+    const name = dt.locations?.name;
+    if (name) map[name] = dt.minutes;
+  }
+  return map;
+}
+
 // ---------------------------------------------------------------------------
 // buildListing — inline (includes reviews with votes + full walk times)
 // ---------------------------------------------------------------------------
 
 function buildListing(row, owner = null, reviews = []) {
   const walkTimes = row.listing_walk_times ?? [];
+  const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find(
     (wt) => wt.locations?.name === "shuttle_nearest"
   );
@@ -154,6 +169,7 @@ function buildListing(row, owner = null, reviews = []) {
       : 0,
     reviews,
     placeWalkMinutes: walkTimesToMap(walkTimes),
+    placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
     contactEmail: row.contact_email ?? null,
     contactPhone: row.contact_phone ?? null,
@@ -243,7 +259,8 @@ export async function GET(req, { params }) {
           electric, gas, heat, water, internet, trash, cable, sewer, cooling
         ),
         listing_images(url, sort_order, source),
-        listing_walk_times(minutes, locations(name))
+        listing_walk_times(minutes, locations(name)),
+        listing_drive_times(minutes, locations(name))
         `
       )
       .eq("id", listingId)
