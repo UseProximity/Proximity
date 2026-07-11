@@ -6,7 +6,7 @@ import {
   adminFetch, insertRow, deleteRow, prodConfirm,
   fmtMoney, fmtDate, termLabel, shortId,
   Stars, Badge, GearButton, TrashButton,
-  InlineToggle, InlineNumber,
+  InlineToggle, InlineNumber, usePending,
 } from "@/components/admin/adminShared";
 
 const AMENITY_COLS = ["air_conditioning","dishwasher","gym","laundry","mailroom","microwave","oven","parking","pets_allowed","pool","refrigerator","rooftop","storage","stove","study_room"];
@@ -44,45 +44,29 @@ function unitLabel(u) {
 }
 
 // ─── Toggle-able chip grid for listing_amenities / listing_utilities ─────────
+// Toggles are staged (amber ring) and applied by the header "Save Changes".
 
-function BoolChipGrid({ listingId, table, row, cols, dbTarget, isProd, isReadOnly, onSaved }) {
-  const [saving, setSaving] = useState(false);
-  const current = row || {};
-
-  async function toggle(col) {
-    if (isReadOnly || saving) return;
-    const next = !(current[col] === true);
-    if (!prodConfirm(isProd, `Set ${col} = ${next} on this listing.`)) return;
-    setSaving(true);
-    try {
-      const boolMap = Object.fromEntries(cols.map((c) => [c, c === col ? next : current[c] === true]));
-      await adminFetch(`/api/admin/${table}`, dbTarget, {
-        method: "PATCH",
-        body: JSON.stringify({ listing_id: listingId, ...boolMap }),
-      });
-      onSaved?.();
-    } catch (err) {
-      alert(`Save failed: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  }
+function BoolChipGrid({ listingId, table, row, cols, isReadOnly }) {
+  const pending = usePending();
+  const base = row || {};
 
   return (
     <div className="flex flex-wrap gap-1">
       {cols.map((col) => {
-        const on = current[col] === true;
+        const staged = pending?.get(table, listingId, col);
+        const changed = staged !== undefined;
+        const on = changed ? staged === true : base[col] === true;
         return (
           <button
             key={col}
             type="button"
-            disabled={isReadOnly || saving}
-            onClick={() => toggle(col)}
+            disabled={isReadOnly}
+            onClick={() => pending.stage(table, listingId, col, !on, base[col] === true)}
             className={`px-2 py-0.5 text-[11px] rounded-full border transition-colors ${
               on
                 ? "bg-blue-50 border-blue-300 text-blue-700"
                 : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
-            } ${isReadOnly ? "cursor-default" : "cursor-pointer"}`}
+            } ${changed ? "ring-2 ring-amber-400" : ""} ${isReadOnly ? "cursor-default" : "cursor-pointer"}`}
           >
             {col.replace(/_/g, " ")}
           </button>
@@ -92,16 +76,21 @@ function BoolChipGrid({ listingId, table, row, cols, dbTarget, isProd, isReadOnl
   );
 }
 
-// ─── Landlord chips + add/remove (replaces the whole junction set on change) ──
+// ─── Landlord chips + add/remove ──────────────────────────────────────────────
+// Changes are staged as the full replacement user_ids set; applied on Save
+// Changes (the server emails newly added landlords at that point).
 
-function LandlordSection({ listing, allUsers, dbTarget, isProd, isReadOnly, onSaved }) {
+function LandlordSection({ listing, allUsers, isReadOnly }) {
+  const pending = usePending();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const ref = useRef(null);
 
   const links = listing.listing_landlords || [];
-  const currentIds = links.map((l) => l.user_id);
+  const baseIds = links.map((l) => l.user_id);
+  const staged = pending?.get("listing_landlords", listing.id, "user_ids");
+  const changed = staged !== undefined;
+  const currentIds = changed ? staged : baseIds;
 
   useEffect(() => {
     if (!open) return;
@@ -110,22 +99,17 @@ function LandlordSection({ listing, allUsers, dbTarget, isProd, isReadOnly, onSa
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  async function save(userIds, action) {
-    if (!prodConfirm(isProd, `${action} on listing ${listing.address}. Newly added landlords receive a notification email.`)) return;
-    setSaving(true);
-    try {
-      await adminFetch("/api/admin/listing_landlords", dbTarget, {
-        method: "PATCH",
-        body: JSON.stringify({ listing_id: listing.id, user_ids: userIds }),
-      });
-      onSaved?.();
-    } catch (err) {
-      alert(`Save failed: ${err.message}`);
-    } finally {
-      setSaving(false);
-      setOpen(false);
-      setQuery("");
-    }
+  function stageIds(ids) {
+    pending.stage("listing_landlords", listing.id, "user_ids", ids, baseIds);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function nameFor(id) {
+    const link = links.find((l) => l.user_id === id);
+    if (link) return link.users?.name || link.users?.email || shortId(id);
+    const u = allUsers.find((u) => u.id === id);
+    return u?.name || u?.email || shortId(id);
   }
 
   const lq = query.trim().toLowerCase();
@@ -136,21 +120,33 @@ function LandlordSection({ listing, allUsers, dbTarget, isProd, isReadOnly, onSa
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {links.length === 0 && <span className="text-xs text-gray-400 italic">No landlords linked</span>}
-      {links.map((l) => (
-        <span key={l.user_id} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 border border-blue-200 text-blue-800 rounded-full">
-          {l.is_primary && <span title="Primary landlord" className="text-amber-500">★</span>}
-          <span>{l.users?.name || l.users?.email || shortId(l.user_id)}</span>
-          {!isReadOnly && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => save(currentIds.filter((id) => id !== l.user_id), `Remove landlord ${l.users?.name || l.user_id}`)}
-              className="text-blue-300 hover:text-red-500 font-bold leading-none"
-            >
-              &times;
-            </button>
-          )}
+      {currentIds.length === 0 && <span className="text-xs text-gray-400 italic">No landlords linked</span>}
+      {currentIds.map((id) => {
+        const isPrimary = links.find((l) => l.user_id === id)?.is_primary;
+        const isNew = changed && !baseIds.includes(id);
+        return (
+          <span key={id} className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+            isNew ? "bg-amber-50 border-amber-400 text-amber-800" : "bg-blue-50 border-blue-200 text-blue-800"
+          }`}>
+            {isPrimary && <span title="Primary landlord" className="text-amber-500">★</span>}
+            <span>{nameFor(id)}</span>
+            {isNew && <span className="text-[9px] uppercase font-semibold text-amber-500">new</span>}
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={() => stageIds(currentIds.filter((x) => x !== id))}
+                className={`font-bold leading-none ${isNew ? "text-amber-400 hover:text-red-500" : "text-blue-300 hover:text-red-500"}`}
+              >
+                &times;
+              </button>
+            )}
+          </span>
+        );
+      })}
+      {changed && baseIds.filter((id) => !currentIds.includes(id)).map((id) => (
+        <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-red-200 bg-red-50 text-red-500 line-through">
+          {nameFor(id)}
+          <button type="button" onClick={() => stageIds([...currentIds, id])} className="no-underline text-red-400 hover:text-gray-600 font-bold leading-none" title="Undo removal">↺</button>
         </span>
       ))}
       {!isReadOnly && (
@@ -159,7 +155,6 @@ function LandlordSection({ listing, allUsers, dbTarget, isProd, isReadOnly, onSa
             type="text"
             value={query}
             placeholder="+ add landlord…"
-            disabled={saving}
             onFocus={() => setOpen(true)}
             onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
             className="w-36 px-2 py-0.5 text-xs border border-dashed border-gray-300 rounded-full focus:outline-none focus:border-blue-400"
@@ -170,7 +165,7 @@ function LandlordSection({ listing, allUsers, dbTarget, isProd, isReadOnly, onSa
                 <button
                   key={u.id}
                   type="button"
-                  onMouseDown={() => save([...currentIds, u.id], `Add landlord ${u.name || u.email}`)}
+                  onMouseDown={() => stageIds([...currentIds, u.id])}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2"
                 >
                   <span className="flex-1 truncate text-gray-800">{u.name || "(no name)"}</span>
@@ -455,9 +450,9 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                   <Badge color="blue">unit</Badge>
                   <span className="text-xs font-semibold text-gray-800 min-w-[110px]">{unitLabel(u)}</span>
                   <span className="text-xs text-gray-500">
-                    <InlineNumber table="listing_units" id={u.id} field="area" value={u.area} dbTarget={dbTarget} isProd={isProd} disabled={isReadOnly} onSaved={onRefresh} className="w-16" /> sqft
+                    <InlineNumber table="listing_units" id={u.id} field="area" value={u.area} disabled={isReadOnly} className="w-16" /> sqft
                   </span>
-                  <InlineToggle table="listing_units" id={u.id} field="available" value={u.available !== false} dbTarget={dbTarget} isProd={isProd} disabled={isReadOnly} onSaved={onRefresh} label="Available" />
+                  <InlineToggle table="listing_units" id={u.id} field="available" value={u.available !== false} disabled={isReadOnly} label="Available" />
                   {u.deleted_at && <Badge color="red">deleted</Badge>}
                   <span className="ml-auto flex items-center gap-0.5">
                     {!isReadOnly && <TrashButton title="Delete unit" onClick={() => handleDelete("listing_units", u.id, "unit")} />}
@@ -471,7 +466,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                     return (
                     <div key={l.id} className={`flex flex-wrap items-center gap-2 text-xs rounded border-l-4 py-1 pl-2 pr-1 ${l.is_active ? "border-l-purple-400 bg-purple-50/50" : "border-l-purple-200 bg-gray-50 opacity-70"}`}>
                       <Badge color="purple">lease</Badge>
-                      <InlineNumber table="unit_leases" id={l.id} field="rent" value={l.rent} dbTarget={dbTarget} isProd={isProd} disabled={isReadOnly} onSaved={onRefresh} prefix="$" className="w-20" />
+                      <InlineNumber table="unit_leases" id={l.id} field="rent" value={l.rent} disabled={isReadOnly} prefix="$" className="w-20" />
                       <span className="text-gray-500">
                         {(Array.isArray(l.lease_term_months) ? l.lease_term_months : []).map(termLabel).join(", ") || "no terms"}
                       </span>
@@ -483,7 +478,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                         <Badge color="green" title="Active — this lease's rent and terms display on the site">available now</Badge>
                       )}
                       {l.sublease && <Badge color="purple">sublease</Badge>}
-                      <InlineToggle table="unit_leases" id={l.id} field="is_active" value={l.is_active} dbTarget={dbTarget} isProd={isProd} disabled={isReadOnly} onSaved={onRefresh} label="Active" />
+                      <InlineToggle table="unit_leases" id={l.id} field="is_active" value={l.is_active} disabled={isReadOnly} label="Active" />
                       <span className="ml-auto flex items-center gap-0.5">
                         {!isReadOnly && <TrashButton title="Delete lease" onClick={() => handleDelete("unit_leases", l.id, "lease")} />}
                         <GearButton onClick={() => onOpenGear("unit_leases", l)} />
@@ -507,7 +502,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
 
       {/* Landlords */}
       <Section title="Landlords" count={(listing.listing_landlords || []).length}>
-        <LandlordSection listing={listing} allUsers={allUsers} dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} onSaved={onRefresh} />
+        <LandlordSection listing={listing} allUsers={allUsers} isReadOnly={isReadOnly} />
       </Section>
 
       {/* Photos */}
@@ -556,7 +551,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                   {r.deleted_at && " · deleted"}
                 </p>
               </div>
-              <InlineToggle table="listing_reviews" id={r.id} field="legitimacy" value={r.legitimacy} dbTarget={dbTarget} isProd={isProd} disabled={isReadOnly} onSaved={onRefresh} label="Verified" />
+              <InlineToggle table="listing_reviews" id={r.id} field="legitimacy" value={r.legitimacy} disabled={isReadOnly} label="Verified" />
               {!isReadOnly && <TrashButton title="Delete review" onClick={() => handleDelete("listing_reviews", r.id, "review")} />}
               <GearButton onClick={() => onOpenGear("listing_reviews", r)} />
             </div>
@@ -567,10 +562,10 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
       {/* Amenities & utilities */}
       <div className="grid sm:grid-cols-2 gap-4">
         <Section title="Amenities">
-          <BoolChipGrid listingId={listing.id} table="listing_amenities" row={amenities} cols={AMENITY_COLS} dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} onSaved={onRefresh} />
+          <BoolChipGrid listingId={listing.id} table="listing_amenities" row={amenities} cols={AMENITY_COLS} isReadOnly={isReadOnly} />
         </Section>
         <Section title="Utilities included">
-          <BoolChipGrid listingId={listing.id} table="listing_utilities" row={utilities} cols={UTILITY_COLS} dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} onSaved={onRefresh} />
+          <BoolChipGrid listingId={listing.id} table="listing_utilities" row={utilities} cols={UTILITY_COLS} isReadOnly={isReadOnly} />
         </Section>
       </div>
     </div>
@@ -661,7 +656,7 @@ export default function ListingsView({ data, search, dbTarget, isProd, isReadOnl
               )}
               {l.deleted_at && <Badge color="red">deleted</Badge>}
               <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
-                <InlineToggle table="listings" id={l.id} field="unavailable" value={l.unavailable} dbTarget={dbTarget} isProd={isProd} disabled={isReadOnly} onSaved={onRefresh} label="Hide" />
+                <InlineToggle table="listings" id={l.id} field="unavailable" value={l.unavailable} disabled={isReadOnly} label="Hide" />
                 <GearButton onClick={() => onOpenGear("listings", l)} />
               </span>
             </div>

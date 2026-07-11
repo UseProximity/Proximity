@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-11T17:27:48.018Z",
-  "count": 55,
+  "_generated": "2026-07-11T21:51:39.061Z",
+  "count": 56,
   "routes": [
     {
       "path": "/api/addListing",
@@ -15,6 +15,7 @@
       "tables": [
         "home_types",
         "locations",
+        "listing_drive_times",
         "users"
       ],
       "file": "src/app/api/addListing/route.js"
@@ -162,6 +163,22 @@
         "listing_walk_times"
       ],
       "file": "src/app/api/admin/update-campus-walk-times/route.js"
+    },
+    {
+      "path": "/api/admin/update-listing-drive-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "listings",
+        "locations",
+        "listing_drive_times"
+      ],
+      "file": "src/app/api/admin/update-listing-drive-times/route.js"
     },
     {
       "path": "/api/admin/viewUser",
@@ -678,7 +695,8 @@
         "roles",
         "locations",
         "listings",
-        "listing_landlords"
+        "listing_landlords",
+        "listing_drive_times"
       ],
       "file": "src/app/api/reviewReferral/route.js"
     },
