@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-02T16:11:02.155Z",
-  "count": 14,
+  "_generated": "2026-07-11T21:51:39.070Z",
+  "count": 16,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -45,6 +45,14 @@
     },
     {
       "file": "src/utils/analytics.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/drivePlaces.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/driveTimes.js",
       "description": "No description — add a top-of-file comment."
     },
     {
