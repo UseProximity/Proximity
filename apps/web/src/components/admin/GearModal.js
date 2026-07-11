@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { patchRow, deleteRow, prodConfirm, Badge } from "@/components/admin/adminShared";
+import { deleteRow, prodConfirm, Badge, usePending } from "@/components/admin/adminShared";
 
 // Columns that exist in the DB but are never read by the app — flagged so the
 // admin knows editing them has no effect on the product.
@@ -67,7 +67,10 @@ function displayValue(v) {
   return String(v);
 }
 
-export default function GearModal({ table, row, schema, dbTarget, isProd, isReadOnly, onClose, onSaved, onDeleted }) {
+export default function GearModal({ table, row, schema, dbTarget, isProd, isReadOnly, onClose, onDeleted }) {
+  const central = usePending();
+  // Local draft edits layered on top of anything already staged for this row.
+  // "Queue changes" moves them into the central store; the header Save applies them.
   const [pending, setPending] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -84,8 +87,14 @@ export default function GearModal({ table, row, schema, dbTarget, isProd, isRead
   const flags = FLAGGED_COLUMNS[table] || {};
   const dirtyCount = Object.keys(pending).length;
 
+  function stagedValue(key) {
+    return central?.get(table, row.id, key);
+  }
+
   function currentValue(key) {
-    return pending[key] !== undefined ? pending[key] : row[key];
+    if (pending[key] !== undefined) return pending[key];
+    const staged = stagedValue(key);
+    return staged !== undefined ? staged : row[key];
   }
 
   function setField(key, value) {
@@ -98,30 +107,21 @@ export default function GearModal({ table, row, schema, dbTarget, isProd, isRead
     });
   }
 
-  async function handleSave() {
+  // Move local drafts into the central pending store; the header
+  // "Save Changes" button is what actually writes to the database.
+  function handleQueue() {
     if (dirtyCount === 0) return;
-    if (!prodConfirm(isProd, `Save ${dirtyCount} field(s) on ${table} ${row.id}.`)) return;
-    setSaving(true);
-    setError(null);
-
-    // Parse JSON-looking strings back into arrays/objects
-    const updates = {};
     for (const [k, v] of Object.entries(pending)) {
+      let value = v;
+      // Parse JSON-looking strings back into arrays/objects
       if (typeof v === "string" && (v.trim().startsWith("[") || v.trim().startsWith("{"))) {
-        try { updates[k] = JSON.parse(v); } catch { updates[k] = v; }
-      } else {
-        updates[k] = v === "" ? null : v;
+        try { value = JSON.parse(v); } catch { /* keep raw string */ }
+      } else if (v === "") {
+        value = null;
       }
+      central.stage(table, row.id, k, value, row[k]);
     }
-
-    try {
-      const saved = await patchRow(table, row.id, updates, dbTarget);
-      onSaved?.(saved);
-      onClose();
-    } catch (err) {
-      setError(err.message);
-      setSaving(false);
-    }
+    onClose();
   }
 
   async function handleDelete() {
@@ -141,7 +141,7 @@ export default function GearModal({ table, row, schema, dbTarget, isProd, isRead
 
   function renderField(f) {
     const value = currentValue(f.key);
-    const changed = pending[f.key] !== undefined;
+    const changed = pending[f.key] !== undefined || stagedValue(f.key) !== undefined;
     const flag = flags[f.key];
     const locked = isReadOnly || READONLY_COLS.has(f.key) || flag === "derived";
 
@@ -265,11 +265,12 @@ export default function GearModal({ table, row, schema, dbTarget, isProd, isRead
             <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">Close</button>
             {!isReadOnly && (
               <button
-                onClick={handleSave}
+                onClick={handleQueue}
                 disabled={saving || dirtyCount === 0}
-                className="px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Stages these edits — apply them with the Save Changes button in the header"
+                className="px-4 py-2 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {saving ? "Saving…" : dirtyCount > 0 ? `Save ${dirtyCount} change${dirtyCount > 1 ? "s" : ""}` : "Save"}
+                {dirtyCount > 0 ? `Queue ${dirtyCount} change${dirtyCount > 1 ? "s" : ""}` : "Queue changes"}
               </button>
             )}
           </div>

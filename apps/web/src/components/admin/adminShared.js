@@ -1,6 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext } from "react";
+
+// ─── Pending-changes store ────────────────────────────────────────────────────
+// Edits made anywhere in the dashboard are staged here (and highlighted) but
+// only hit the database when the user clicks "Save Changes" in the header.
+// Keys are `${table}|${id}`; values are { field: stagedValue }.
+
+export const PendingContext = createContext(null);
+
+export function usePending() {
+  return useContext(PendingContext);
+}
+
+export function valuesEqual(a, b) {
+  if (Array.isArray(a) || Array.isArray(b) || (a && typeof a === "object") || (b && typeof b === "object")) {
+    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  }
+  return (a ?? null) === (b ?? null);
+}
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -124,66 +142,33 @@ export function TrashButton({ onClick, title = "Delete" }) {
   );
 }
 
-// ─── Inline editors (save immediately on commit) ──────────────────────────────
+// ─── Inline editors (stage into the pending store; saved from the header) ─────
 
-export function InlineToggle({ table, id, field, value, dbTarget, isProd, disabled, onSaved, label }) {
-  const [saving, setSaving] = useState(false);
-  const [current, setCurrent] = useState(value === true);
-
-  async function handleChange(e) {
-    const next = e.target.checked;
-    if (!prodConfirm(isProd, `Set ${field} = ${next} on this row.`)) return;
-    setSaving(true);
-    setCurrent(next);
-    try {
-      await patchRow(table, id, { [field]: next }, dbTarget);
-      onSaved?.(field, next);
-    } catch (err) {
-      setCurrent(!next);
-      alert(`Save failed: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  }
+export function InlineToggle({ table, id, field, value, disabled, label }) {
+  const pending = usePending();
+  const staged = pending?.get(table, id, field);
+  const changed = staged !== undefined;
+  const checked = changed ? staged === true : value === true;
 
   return (
     <label className={`inline-flex items-center gap-1.5 text-xs select-none ${disabled ? "opacity-50" : "cursor-pointer"}`} title={label}>
       <input
         type="checkbox"
-        checked={current}
-        disabled={disabled || saving}
-        onChange={handleChange}
-        className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => pending.stage(table, id, field, e.target.checked, value === true)}
+        className={`w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed ${changed ? "outline outline-2 outline-amber-400" : ""}`}
       />
-      {label && <span className="text-gray-600">{label}</span>}
+      {label && <span className={changed ? "text-amber-700 font-medium" : "text-gray-600"}>{label}</span>}
     </label>
   );
 }
 
-export function InlineNumber({ table, id, field, value, dbTarget, isProd, disabled, onSaved, prefix, className }) {
-  const [draft, setDraft] = useState(value == null ? "" : String(value));
-  const [saving, setSaving] = useState(false);
-  const dirty = draft !== (value == null ? "" : String(value));
-
-  async function commit() {
-    if (!dirty || saving) return;
-    const next = draft === "" ? null : Number(draft);
-    if (draft !== "" && isNaN(next)) { setDraft(value == null ? "" : String(value)); return; }
-    if (!prodConfirm(isProd, `Set ${field} = ${next} on this row.`)) {
-      setDraft(value == null ? "" : String(value));
-      return;
-    }
-    setSaving(true);
-    try {
-      await patchRow(table, id, { [field]: next }, dbTarget);
-      onSaved?.(field, next);
-    } catch (err) {
-      setDraft(value == null ? "" : String(value));
-      alert(`Save failed: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  }
+export function InlineNumber({ table, id, field, value, disabled, prefix, className }) {
+  const pending = usePending();
+  const staged = pending?.get(table, id, field);
+  const changed = staged !== undefined;
+  const current = changed ? staged : value;
 
   if (disabled) {
     return <span className={`text-xs text-gray-700 ${className || ""}`}>{prefix}{value == null ? "—" : value}</span>;
@@ -194,13 +179,13 @@ export function InlineNumber({ table, id, field, value, dbTarget, isProd, disabl
       {prefix && <span className="text-xs text-gray-500">{prefix}</span>}
       <input
         type="number"
-        value={draft}
-        disabled={saving}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setDraft(value == null ? "" : String(value)); }}
+        value={current == null ? "" : String(current)}
+        onChange={(e) => {
+          const next = e.target.value === "" ? null : Number(e.target.value);
+          pending.stage(table, id, field, next, value ?? null);
+        }}
         className={`px-1 py-0.5 text-xs border rounded focus:outline-none focus:border-blue-400 ${
-          dirty ? "border-amber-400 bg-amber-50" : "border-transparent hover:border-gray-300 bg-transparent"
+          changed ? "border-amber-400 bg-amber-50" : "border-transparent hover:border-gray-300 bg-transparent"
         } ${className || "w-16"}`}
       />
     </span>

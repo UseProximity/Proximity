@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { adminFetch } from "@/components/admin/adminShared";
+import { adminFetch, patchRow, prodConfirm, valuesEqual, PendingContext } from "@/components/admin/adminShared";
 import GearModal from "@/components/admin/GearModal";
 import ImageManagerPanel from "@/components/admin/ImageManagerPanel";
 import ListingsView from "@/components/admin/ListingsView";
@@ -26,6 +26,8 @@ function ToolsMenu({ dbTarget, isProd }) {
   const [open, setOpen] = useState(false);
   const [walkStatus, setWalkStatus] = useState(null);
   const [walkRunning, setWalkRunning] = useState(false);
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [driveRunning, setDriveRunning] = useState(false);
   const [viewAsQuery, setViewAsQuery] = useState("");
   const [viewAsResults, setViewAsResults] = useState([]);
   const timerRef = useRef(null);
@@ -49,6 +51,20 @@ function ToolsMenu({ dbTarget, isProd }) {
       setWalkStatus(`Error: ${err.message}`);
     } finally {
       setWalkRunning(false);
+    }
+  }
+
+  async function runDriveTimes() {
+    if (isProd && !confirm("Update drive times on PRODUCTION?\n\nThis recalculates driving times for all listings in the production database.")) return;
+    setDriveRunning(true);
+    setDriveStatus(null);
+    try {
+      const data = await adminFetch("/api/admin/update-listing-drive-times", dbTarget, { method: "POST" });
+      setDriveStatus(`Updated ${data.updated}/${data.total ?? "?"} listings${data.skipped ? ` (${data.skipped} already complete)` : ""}${data.failed ? ` (${data.failed} failed)` : ""}`);
+    } catch (err) {
+      setDriveStatus(`Error: ${err.message}`);
+    } finally {
+      setDriveRunning(false);
     }
   }
 
@@ -124,6 +140,19 @@ function ToolsMenu({ dbTarget, isProd }) {
             {walkStatus && <p className="mt-1 text-[11px] text-gray-500">{walkStatus}</p>}
           </div>
 
+          <div>
+            <p className="text-xs font-semibold text-gray-700 mb-1">Drive times</p>
+            <button
+              type="button"
+              onClick={runDriveTimes}
+              disabled={driveRunning}
+              className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40"
+            >
+              {driveRunning ? "Updating…" : "Backfill listing drive times"}
+            </button>
+            {driveStatus && <p className="mt-1 text-[11px] text-gray-500">{driveStatus}</p>}
+          </div>
+
           <div className="pt-1 border-t border-gray-100">
             <Link href="/dashboard/admin/export" className="text-xs text-blue-600 hover:underline">
               CSV export →
@@ -154,6 +183,52 @@ export default function AdminDashboard() {
   const [gear, setGear] = useState(null); // { table, row }
   const [imagePanel, setImagePanel] = useState(null); // { listingId, images }
 
+  // ── Pending changes ──────────────────────────────────────────────────────
+  // Every edit in the dashboard is staged here (shown immediately, highlighted
+  // amber) and only written to the DB when "Save Changes" is clicked.
+  // Shape: { "table|id": { field: stagedValue } }
+  const [pendingRows, setPendingRows] = useState({});
+  const [saveStatus, setSaveStatus] = useState(null);
+  const [savingAll, setSavingAll] = useState(false);
+
+  const pendingCount = Object.values(pendingRows).reduce((n, fields) => n + Object.keys(fields).length, 0);
+
+  const pendingCtx = useMemo(() => ({
+    get: (table, id, field) => pendingRows[`${table}|${id}`]?.[field],
+    stage: (table, id, field, value, base) => {
+      setSaveStatus(null);
+      setPendingRows((prev) => {
+        const key = `${table}|${id}`;
+        const fields = { ...(prev[key] || {}) };
+        // Editing back to the original value un-stages the field
+        if (valuesEqual(value, base)) delete fields[field];
+        else fields[field] = value;
+        const next = { ...prev };
+        if (Object.keys(fields).length > 0) next[key] = fields;
+        else delete next[key];
+        return next;
+      });
+    },
+  }), [pendingRows]);
+
+  function discardPending() {
+    if (pendingCount > 0 && !confirm(`Discard ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}?`)) return;
+    setPendingRows({});
+    setSaveStatus(null);
+  }
+
+  // Confirm before losing staged edits to navigation / view or DB switches
+  useEffect(() => {
+    if (pendingCount === 0) return;
+    function beforeUnload(e) { e.preventDefault(); e.returnValue = ""; }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [pendingCount]);
+
+  function confirmDiscardForSwitch() {
+    return pendingCount === 0 || confirm(`You have ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}. Discard them and switch?`);
+  }
+
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("admin_db_target") : null;
@@ -169,9 +244,57 @@ export default function AdminDashboard() {
 
   function toggleDbTarget() {
     const next = isProd ? "dev" : "prod";
+    if (!confirmDiscardForSwitch()) return;
     if (next === "prod" && !confirm("Switch to PRODUCTION database?\n\nAll reads and writes will affect real user data. Proceed?")) return;
+    setPendingRows({});
+    setSaveStatus(null);
     setDbTarget(next);
     if (typeof window !== "undefined") localStorage.setItem("admin_db_target", next);
+  }
+
+  // Apply every staged change to the DB in one pass (single prod confirm).
+  async function saveAll() {
+    const entries = Object.entries(pendingRows);
+    if (entries.length === 0 || savingAll) return;
+    if (!prodConfirm(isProd, `Save ${pendingCount} change(s) across ${entries.length} row(s) to the PRODUCTION database.`)) return;
+    setSavingAll(true);
+    setSaveStatus(null);
+    const errors = [];
+    const failedKeys = new Set();
+
+    for (const [key, fields] of entries) {
+      const [table, id] = key.split("|");
+      try {
+        if (table === "listing_amenities" || table === "listing_utilities") {
+          // Keyed by listing_id — upserts just the toggled columns
+          await adminFetch(`/api/admin/${table}`, dbTarget, {
+            method: "PATCH",
+            body: JSON.stringify({ listing_id: id, ...fields }),
+          });
+        } else if (table === "listing_landlords") {
+          // Replaces the junction set; server emails newly added landlords
+          await adminFetch("/api/admin/listing_landlords", dbTarget, {
+            method: "PATCH",
+            body: JSON.stringify({ listing_id: id, user_ids: fields.user_ids || [] }),
+          });
+        } else {
+          await patchRow(table, id, fields, dbTarget);
+        }
+      } catch (err) {
+        failedKeys.add(key);
+        errors.push(`${table.replace(/_/g, " ")} ${id.slice(0, 8)}…: ${err.message}`);
+      }
+    }
+
+    // Keep only the failed rows staged so nothing is silently lost
+    setPendingRows((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => failedKeys.has(k))));
+    setSavingAll(false);
+    if (errors.length === 0) {
+      setSaveStatus({ ok: true, msg: `${pendingCount} change(s) saved.` });
+    } else {
+      setSaveStatus({ ok: false, msg: `${errors.length} row(s) failed (still staged): ${errors.slice(0, 3).join("; ")}` });
+    }
+    refresh();
   }
 
   // Column definitions for the gear modal (from the live DB via PostgREST spec)
@@ -212,6 +335,7 @@ export default function AdminDashboard() {
   };
 
   return (
+    <PendingContext.Provider value={pendingCtx}>
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <div className={`text-white px-6 py-4 flex items-center gap-3 flex-wrap sticky top-0 z-40 ${isProd ? "bg-red-950" : "bg-gray-900"}`}>
@@ -234,10 +358,38 @@ export default function AdminDashboard() {
           <span className="px-2 py-0.5 text-[10px] font-semibold rounded bg-gray-700 text-gray-300 uppercase">read-only</span>
         )}
 
+        {/* Staged-changes controls */}
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveAll}
+              disabled={savingAll}
+              className="px-4 py-1.5 text-sm font-bold rounded-lg bg-amber-400 hover:bg-amber-300 text-gray-900 shadow disabled:opacity-60 disabled:cursor-not-allowed animate-none"
+            >
+              {savingAll ? "Saving…" : `Save Changes (${pendingCount})`}
+            </button>
+            <button
+              type="button"
+              onClick={discardPending}
+              disabled={savingAll}
+              className="px-3 py-1.5 text-xs rounded-lg border border-gray-500 text-gray-300 hover:bg-gray-700 disabled:opacity-60"
+            >
+              Discard
+            </button>
+          </div>
+        )}
+        {saveStatus && (
+          <span className={`text-xs font-medium ${saveStatus.ok ? "text-green-400" : "text-red-300"}`}>{saveStatus.msg}</span>
+        )}
+
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <select
             value={view}
             onChange={(e) => {
+              if (!confirmDiscardForSwitch()) { e.target.value = view; return; }
+              setPendingRows({});
+              setSaveStatus(null);
               // Clear synchronously so the next render never sees the old view's data shape
               setData(null);
               setLoading(true);
@@ -299,7 +451,6 @@ export default function AdminDashboard() {
           isProd={isProd}
           isReadOnly={isReadOnly}
           onClose={() => setGear(null)}
-          onSaved={refresh}
           onDeleted={refresh}
         />
       )}
@@ -315,5 +466,6 @@ export default function AdminDashboard() {
         />
       )}
     </div>
+    </PendingContext.Provider>
   );
 }
