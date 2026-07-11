@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import nodemailer from "nodemailer";
@@ -167,6 +168,14 @@ export async function POST(req) {
       console.error("[walkTimes] Failed to fetch walk times:", err?.message);
     }
 
+    // Calculate real driving times to fixed destinations + nearest grocery/gas/pharmacy via Mapbox
+    let placeDriveMinutes = {};
+    try {
+      ({ placeDriveMinutes } = await fetchAllDriveTimes(resolvedLat, resolvedLng));
+    } catch (err) {
+      console.error("[driveTimes] Failed to fetch drive times:", err?.message);
+    }
+
     // Look up home_type_id from home_types table
     let homeTypeId = null;
     if (homeType) {
@@ -214,8 +223,11 @@ export async function POST(req) {
       if (typeof name === "string" && UTILITY_COLS.has(name)) utilityObj[name] = true;
     }
 
-    // Resolve walk-time location IDs (read-only; insert happens inside rpc_create_listing)
+    // Resolve walk/drive-time location IDs by name (single locations read).
+    // Walk times are inserted inside rpc_create_listing (p_walk_times); drive
+    // times are upserted separately after the listing is created (see below).
     const walkTimeRows = [];
+    const driveTimeRows = [];
     try {
       const { data: locations } = await supabase.from("locations").select("id, name");
       if (locations?.length) {
@@ -227,9 +239,15 @@ export async function POST(req) {
           const shuttleLoc = locations.find((l) => l.name.toLowerCase() === "shuttle_nearest");
           if (shuttleLoc) walkTimeRows.push({ location_id: shuttleLoc.id, minutes: shuttleWalkMinutes });
         }
+        // Drive times mirror the walk-time name match. placeDriveMinutes is keyed
+        // by locations-table names, including synthetic *_nearest rows.
+        for (const [key, minutes] of Object.entries(placeDriveMinutes ?? {})) {
+          const loc = locations.find((l) => l.name.toLowerCase() === key.toLowerCase());
+          if (loc && minutes != null) driveTimeRows.push({ location_id: loc.id, minutes });
+        }
       }
     } catch (wtErr) {
-      console.error("[addListing] Failed to resolve walk times:", wtErr?.message);
+      console.error("[addListing] Failed to resolve walk/drive times:", wtErr?.message);
     }
 
     // A listing is a sublease when its lease type is "sublease". The dashboard
@@ -294,6 +312,25 @@ export async function POST(req) {
     if (listingError) {
       console.error("Error creating listing:", listingError.message);
       return NextResponse.json({ error: listingError.message }, { status: 500 });
+    }
+
+    // Persist driving times (best-effort; never blocks listing creation). Written
+    // after the create RPC rather than inside it — the service-role client bypasses
+    // RLS, and the UNIQUE (listing_id, location_id) constraint makes this idempotent.
+    if (driveTimeRows.length) {
+      try {
+        const { error: driveErr } = await supabase
+          .from("listing_drive_times")
+          .upsert(
+            driveTimeRows.map((r) => ({ ...r, listing_id: listingId })),
+            { onConflict: "listing_id,location_id" }
+          );
+        if (driveErr) {
+          console.error("[addListing] Failed to insert drive times:", driveErr.message);
+        }
+      } catch (dtErr) {
+        console.error("[addListing] Failed to insert drive times:", dtErr?.message);
+      }
     }
 
     // Best-effort default photo from Google Street View. Stored at sort_order 0 (cover);

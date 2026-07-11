@@ -1,8 +1,48 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-07-03T19:26:05.175Z",
-  "count": 53,
+  "_generated": "2026-07-11T22:05:59.031Z",
+  "count": 61,
   "components": [
+    {
+      "name": "DormsView",
+      "file": "src/components/admin/DormsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GearModal",
+      "file": "src/components/admin/GearModal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ImageManagerPanel",
+      "file": "src/components/admin/ImageManagerPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingsView",
+      "file": "src/components/admin/ListingsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReferenceView",
+      "file": "src/components/admin/ReferenceView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "TestimonialsView",
+      "file": "src/components/admin/TestimonialsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "UsersView",
+      "file": "src/components/admin/UsersView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "adminShared",
+      "file": "src/components/admin/adminShared.js",
+      "description": "No description — run generate after adding a description above."
+    },
     {
       "name": "AuthCard",
       "file": "src/components/auth/AuthCard.js",
