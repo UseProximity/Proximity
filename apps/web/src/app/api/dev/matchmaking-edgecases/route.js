@@ -102,7 +102,7 @@ function rankOnce(allListings, prefs, saturation) {
       building_capacity: l ? capacityOf(l) : null,
     };
   });
-  return { picks, groupNote: ctx.groupNote, poolSize: ctx.pool.length, budgetMax: ctx.budgetMax };
+  return { picks, groupNote: ctx.groupNote, budgetNote: ctx.budgetNote, relaxNote: ctx.relaxNote ?? null, poolSize: ctx.pool.length, budgetMax: ctx.budgetMax };
 }
 
 export async function GET() {

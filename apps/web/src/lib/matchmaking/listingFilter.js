@@ -960,32 +960,37 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
     }
   }
 
-  // HARD-COMBINATION COACH: when the strict pool is thin, work out which SINGLE
-  // relaxation unlocks the most listings and say so with real numbers, instead
-  // of leaving the student staring at weak matches wondering why.
+  // HARD-COMBINATION COACH: when the pool of CONFIRMED fits is thin, work out
+  // which SINGLE relaxation unlocks the most listings and say so with real
+  // numbers, instead of leaving the student staring at weak matches wondering
+  // why. With a budget set, a price-unknown listing is NOT a confirmed fit (it
+  // may work out, but we won't promise it), so the coach still speaks up when
+  // the only "fits" left are unpriced.
+  const confirmed = budgetMax !== Infinity ? strict.filter((x) => x.perPerson != null) : strict;
   let relaxNote = null;
-  if (strict.length < 3 && shadow.length > 0) {
+  if (confirmed.length < 3 && shadow.length > 0) {
     const byConstraint = {};
     for (const s of shadow) (byConstraint[s.relax.constraint] ??= []).push(s);
     const [bestKey, bestList] = Object.entries(byConstraint).sort((a, b) => b[1].length - a[1].length)[0];
-    const n = bestList.length;
-    const more = `${n} more place${n === 1 ? "" : "s"}`;
+    let n = bestList.length;
     let suggestion;
     if (bestKey === "budget") {
+      // Quote a budget that unlocks the nearest few misses, and count ONLY the
+      // listings that price point actually unlocks (never the whole tail).
       const prices = bestList.map((s) => s.perPerson).sort((a, b) => a - b);
       const unlockAt = Math.ceil(prices[Math.min(2, prices.length - 1)] / 25) * 25;
-      suggestion = `raising your budget to about $${unlockAt}/person would open up ${more}`;
-    } else if (bestKey === "lease_term") {
-      suggestion = `being flexible on lease length would open up ${more}`;
-    } else if (bestKey === "furnished") {
-      suggestion = `considering ${furnishedPref ? "unfurnished" : "furnished"} places too would open up ${more}`;
+      n = prices.filter((p) => p <= unlockAt).length;
+      suggestion = `raising your budget to about $${unlockAt}/person would open up ${n} more place${n === 1 ? "" : "s"}`;
     } else {
-      suggestion = `looking just outside the neighborhoods you named would open up ${more}`;
+      const more = `${n} more place${n === 1 ? "" : "s"}`;
+      if (bestKey === "lease_term") suggestion = `being flexible on lease length would open up ${more}`;
+      else if (bestKey === "furnished") suggestion = `considering ${furnishedPref ? "unfurnished" : "furnished"} places too would open up ${more}`;
+      else suggestion = `looking just outside the neighborhoods you named would open up ${more}`;
     }
     relaxNote =
-      strict.length === 0
-        ? `Honestly, this is a hard combination to fill right now: nothing on the market fits every one of your requirements at once. The good news is ${suggestion}.`
-        : `You're down to ${strict.length === 1 ? "just one place" : `only ${strict.length} places`} that fit everything, so this is a tight combination. If you're open to it, ${suggestion}.`;
+      confirmed.length === 0
+        ? `Honestly, this is a hard combination to fill right now: nothing on the market is confirmed to fit every one of your requirements at once. The good news is ${suggestion}.`
+        : `You're down to ${confirmed.length === 1 ? "just one confirmed place" : `only ${confirmed.length} confirmed places`} that fit everything, so this is a tight combination. If you're open to it, ${suggestion}.`;
   } else if (strict.length === 0 && shadow.length === 0 && candidates.length > 0) {
     relaxNote = `Honestly, this is a hard combination to fill right now: every available place would need you to relax more than one requirement (budget, lease length, furnished, or neighborhood). Loosening the one you care least about is the fastest way to real options.`;
   }
