@@ -79,15 +79,28 @@ export const QUESTION_PLAN = [
   },
   {
     id: "priorities",
-    // Multi-select: the student taps everything that matters to them (in tap
-    // order, which we treat as importance — see the priorities weighting in
-    // applyAnswer). The drag-to-rank in PreferencePanel fine-tunes the order
-    // afterward. The real fine-grained narrowing happens after this, via the
-    // listing-aware "Would you X for Y?" tradeoff questions (see narrowing.js).
+    // Multi-select: the student taps everything that matters to them. Tap order
+    // deliberately does NOT matter — every stated priority weighs the same
+    // (binary weights, see applyAnswer). The single headline anchor comes from
+    // the top_priority follow-up below. The real fine-grained narrowing happens
+    // via the listing-aware "Would you X for Y?" tradeoffs (see narrowing.js).
     field: "priorities",
     kind: "multi",
     prompt: "What matters most in your place? Tap everything that fits.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
+    allowUnsure: true,
+  },
+  {
+    id: "top_priority",
+    // Conditional follow-up, only asked when the student picked 2+ priorities
+    // (see isAnswered): one tap names the single priority the #1 card must be
+    // built around. This replaces the old tap-order ranking as the headline
+    // anchor. Options are the student's own picks (see describeQuestion).
+    field: "top_priority",
+    kind: "choice",
+    prompt: "Of those, which single one matters most?",
+    options: null, // filled from preferences.priorities at render time
+    optionsFromPriorities: true,
     allowUnsure: true,
   },
   {
@@ -120,15 +133,20 @@ export function peopleLabel(value) {
 export const QUESTION_BY_ID = Object.fromEntries(QUESTION_PLAN.map((q) => [q.id, q]));
 
 // Direct answer→weight bumps (applied deterministically server- and client-side).
+// BINARY by design: a stated preference weighs 1, no preference weighs 0. The
+// relative importance between dimensions is decided downstream (headline anchor
+// + the ranking LLM), never by hand-tuned magnitudes here. Note `furnished` is
+// its own dimension backed by listings.furnished — it is NOT an amenity.
 export const WEIGHT_MAP = {
-  budget:     { budget: 0.7 },
-  area:       { neighborhood: 1.0, walkability: 0.3 },
-  lease_term: { lease_flexibility: 0.6 },
-  furnished:  { amenities: 0.3 },
+  budget:     { budget: 1 },
+  area:       { neighborhood: 1 },
+  lease_term: { lease_flexibility: 1 },
+  furnished:  { furnished: 1 },
 };
 
-// Each priority label maps to the weight dimensions it implies. Higher-ranked
-// priorities get a bigger bump in order — see RANK_BUMPS.
+// Each priority label maps to the weight dimensions it implies. Every stated
+// priority gets the same binary weight of 1 (see applyAnswer) — the headline
+// anchor (top_priority) is what differentiates emphasis, not magnitudes.
 export const PRIORITY_WEIGHTS = {
   "Close to campus": ["walkability", "location"],
   "Good value": ["value", "budget"],
@@ -141,12 +159,6 @@ export const PRIORITY_WEIGHTS = {
   "Social/parties": ["social"],
   "Close to other WashU students": ["social", "group_fit"],
 };
-
-// Rank-position → weight bump for the priorities ranking (index 0 = top choice).
-// Steep contrast on purpose: the #1 priority should clearly dominate the ranking
-// so students who prioritize different things get meaningfully different matches,
-// instead of one strong all-rounder winning for everyone.
-export const RANK_BUMPS = [1.0, 0.5, 0.3, 0.18, 0.1, 0.06, 0.04];
 
 const isFilled = (v) =>
   v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0);
@@ -167,6 +179,11 @@ export function isAnswered(question, preferences) {
     // filled), or marked unsure (no preference).
     case "priorities":
       return isFilled(p.priorities) || !!p._priorities_unsure;
+    // Conditional: only asked when 2+ priorities were picked (with 0–1 there is
+    // nothing to choose between — the single pick IS the anchor). "Not sure"
+    // stores "No preference", which isFilled treats as answered.
+    case "top_priority":
+      return (p.priorities?.length ?? 0) < 2 || isFilled(p.top_priority);
     // Open-ended extras: answered once submitted or skipped.
     case "extras":
       return !!p._extras_done;

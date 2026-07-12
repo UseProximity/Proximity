@@ -5,7 +5,6 @@ import {
   QUESTION_PLAN,
   WEIGHT_MAP,
   PRIORITY_WEIGHTS,
-  RANK_BUMPS,
   UNSURE,
   isAnswered,
   peopleLabel,
@@ -28,12 +27,16 @@ export function describeQuestion(question, preferences) {
     meta.unit = question.unit ?? "";
   }
   if (question.allowUnsure) meta.allowUnsure = true;
+  // top_priority offers the student's OWN priority picks as its options.
+  const options = question.optionsFromPriorities
+    ? (Array.isArray(p.priorities) ? p.priorities : [])
+    : question.options ?? null;
   return {
     id: question.id,
     field: question.field,
     kind: question.kind,
     prompt,
-    options: question.options ?? null,
+    options,
     meta,
   };
 }
@@ -65,7 +68,13 @@ export function applyAnswer(preferences, weights, answer) {
   const prefs = { ...(preferences ?? {}) };
   const w = { ...(weights ?? {}) };
   const { kind, field, value } = answer;
-  const unsure = value === UNSURE;
+  // A literal "No preference" pick means exactly what the UNSURE sentinel means:
+  // no constraint and no weight. Normalize both so a tapped "No preference" chip
+  // can never bump a weight (binary weights: stated preference = 1, none = 0).
+  const unsure =
+    value === UNSURE ||
+    value === "No preference" ||
+    (Array.isArray(value) && value.length === 1 && value[0] === "No preference");
 
   switch (kind) {
     case "confirm_or_replace":
@@ -96,6 +105,11 @@ export function applyAnswer(preferences, weights, answer) {
           prefs.priorities = Array.isArray(value) ? value : [value];
           delete prefs._priorities_unsure;
         }
+        // A stale headline anchor (picked earlier, then removed from the
+        // priorities set) must not survive — dropping it re-asks top_priority.
+        if (prefs.top_priority && !(prefs.priorities ?? []).includes(prefs.top_priority)) {
+          delete prefs.top_priority;
+        }
       } else {
         prefs[field] = unsure ? ["No preference"] : Array.isArray(value) ? value : [value];
       }
@@ -117,22 +131,22 @@ export function applyAnswer(preferences, weights, answer) {
   // that proximity target so their very first ranking already accounts for it.
   if (answer.questionId === "program" && value === "Med") {
     prefs.proximity_targets = [...new Set([...(prefs.proximity_targets ?? []), "med_campus"])];
-    bumpWeight(w, "walkability", 0.5);
+    bumpWeight(w, "walkability", 1);
   }
 
-  // "Unsure" answers impose no constraint and add no weight.
+  // "Unsure" answers impose no constraint and add no weight. Everything else is
+  // BINARY: any stated preference weighs 1. Which dimension the ranking leans
+  // hardest on is decided downstream by the top_priority anchor and the ranking
+  // LLM — never by tap order or hand-tuned magnitudes.
   if (!unsure) {
     const direct = WEIGHT_MAP[answer.questionId];
     if (direct) {
       for (const [key, amount] of Object.entries(direct)) bumpWeight(w, key, amount);
     }
-    // Priorities multi-select: earlier taps (treated as more important) get the
-    // bigger weight bump, so a student who taps "Good value" first leans value.
     if (answer.questionId === "priorities" && Array.isArray(value)) {
-      value.forEach((label, i) => {
-        const bump = RANK_BUMPS[i] ?? RANK_BUMPS[RANK_BUMPS.length - 1];
-        for (const key of PRIORITY_WEIGHTS[label] ?? []) bumpWeight(w, key, bump);
-      });
+      for (const label of value) {
+        for (const key of PRIORITY_WEIGHTS[label] ?? []) bumpWeight(w, key, 1);
+      }
     }
   }
 
@@ -150,9 +164,8 @@ function reconstructAnswer(q, p) {
     case "budget":
       return { ...base, value: p._budget_unsure ? UNSURE : p.budget_max };
     case "priorities":
-      // Replay as a plain rank from the stored order so RANK_BUMPS weights
-      // rebuild deterministically (the live flow's pairwise state isn't needed
-      // once a final order exists).
+      // Replay the stored set (order carries no meaning under binary weights —
+      // every stated priority rebuilds to weight 1).
       return { ...base, kind: "rank", value: p._priorities_unsure ? UNSURE : p.priorities ?? [] };
     case "extras":
       return { ...base, value: p._extras_done ? p.notes || UNSURE : null };

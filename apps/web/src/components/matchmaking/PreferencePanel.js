@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { recomputeFromPreferences } from "@/lib/matchmaking/questionEngine";
 import { QUESTION_BY_ID, peopleLabel } from "@/lib/matchmaking/questionScript";
 
@@ -15,6 +15,7 @@ const FIELD_LABELS = {
   move_in_month: "Move-in",
   furnished: "Furnished",
   priorities: "Priorities",
+  top_priority: "Top priority",
   notes: "Other notes",
 };
 
@@ -30,6 +31,7 @@ const FIELD_TO_QID = {
   move_in_month: "move_in_window",
   furnished: "furnished",
   priorities: "priorities",
+  top_priority: "top_priority",
   notes: "extras",
 };
 
@@ -38,75 +40,11 @@ const CHIP =
 const CHIP_ON = "px-2.5 py-1 rounded-full bg-red-600 border border-red-600 text-white text-xs font-medium transition";
 const SAVE_BTN = "px-3 py-1 rounded-full bg-red-600 text-white text-xs font-semibold disabled:opacity-40";
 
-const sameArray = (a, b) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
-
-// Drag-and-drop (with arrow fallback) editor for the priority ranking. Commits
-// the new order to its parent on every change.
-function PriorityEditor({ order, onReorder, disabled }) {
-  const [local, setLocal] = useState(order);
-  const dragIndex = useRef(null);
-
-  // Keep in sync when the server/parent hands back a (possibly re-ranked) order.
-  useEffect(() => {
-    if (!sameArray(local, order)) setLocal(order);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order]);
-
-  const move = (from, to) => {
-    if (to < 0 || to >= local.length || from === to) return;
-    const next = [...local];
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    setLocal(next);
-    onReorder(next);
-  };
-
-  return (
-    <div className="space-y-1 mt-2">
-      {local.map((opt, i) => (
-        <div
-          key={opt}
-          draggable={!disabled}
-          onDragStart={() => (dragIndex.current = i)}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={() => {
-            if (dragIndex.current !== null) move(dragIndex.current, i);
-            dragIndex.current = null;
-          }}
-          className={`flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 ${
-            disabled ? "opacity-60" : "cursor-grab active:cursor-grabbing"
-          }`}
-        >
-          <span className="text-gray-300 select-none">⠿</span>
-          <span className="w-4 text-red-600 font-semibold">{i + 1}</span>
-          <span className="flex-1 leading-tight">{opt}</span>
-          <span className="flex flex-col leading-none">
-            <button
-              disabled={disabled || i === 0}
-              onClick={() => move(i, i - 1)}
-              className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-[10px]"
-              aria-label="Move up"
-            >
-              ▲
-            </button>
-            <button
-              disabled={disabled || i === local.length - 1}
-              onClick={() => move(i, i + 1)}
-              className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-[10px]"
-              aria-label="Move down"
-            >
-              ▼
-            </button>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // The drop-down editor for a single answer: renders that question's own options
 // (chips / number / text), with an "Other" escape, and commits on choice/Save.
-function FieldEditor({ field, value, onCommit, disabled }) {
+// `optionsOverride` replaces the question's static options — used by
+// top_priority, whose options are the student's own priority picks.
+function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
   const q = QUESTION_BY_ID[FIELD_TO_QID[field]];
   const kind = q?.kind;
   const [text, setText] = useState(
@@ -205,7 +143,7 @@ function FieldEditor({ field, value, onCommit, disabled }) {
   }
 
   if (kind === "multi") {
-    const opts = q.options ?? [];
+    const opts = optionsOverride ?? q.options ?? [];
     const customSel = selected.filter((s) => !opts.includes(s));
     const toggle = (o) => setSelected((cur) => (cur.includes(o) ? cur.filter((x) => x !== o) : [...cur, o]));
     const addOther = () => {
@@ -256,7 +194,7 @@ function FieldEditor({ field, value, onCommit, disabled }) {
   }
 
   // Single-pick (choice / yes-no / month): tapping an option commits it directly.
-  const baseOpts = (q.options ?? []).filter((o) => !/^other$/i.test(o));
+  const baseOpts = (optionsOverride ?? q.options ?? []).filter((o) => !/^other$/i.test(o));
   const opts = [...baseOpts, ...(q.others ?? [])];
   if (otherMode) {
     return (
@@ -337,15 +275,6 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
     }
   };
 
-  // Reorder priorities → recompute weights from scratch (bumps are monotonic, so
-  // a full replay is needed to actually lower a de-prioritized dimension).
-  const handleReorder = async (newOrder) => {
-    const nextPrefs = { ...preferences, priorities: newOrder };
-    delete nextPrefs._priorities_unsure;
-    const { weights: nextWeights } = recomputeFromPreferences(nextPrefs);
-    await persist({ priorities: newOrder, _priorities_unsure: false }, nextWeights);
-  };
-
   // Commit an edited answer: fold the new value into preferences, recompute the
   // weight stack from scratch, and persist just the changed keys.
   const commitEdit = async (field, rawValue) => {
@@ -356,6 +285,17 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
       patch[k] = v;
     };
     switch (field) {
+      case "priorities": {
+        // Orderless set (tap order carries no meaning under binary weights).
+        const next = Array.isArray(rawValue) ? rawValue : [rawValue];
+        set("priorities", next);
+        set("_priorities_unsure", false);
+        // Drop a headline anchor that's no longer among the picked priorities.
+        if (preferences.top_priority && !next.includes(preferences.top_priority)) {
+          set("top_priority", null);
+        }
+        break;
+      }
       case "budget_max":
         if (rawValue === "" || rawValue == null || Number.isNaN(Number(rawValue))) {
           setEditing(null);
@@ -427,12 +367,15 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                {isEditing &&
-                  (field === "priorities" && Array.isArray(value) ? (
-                    <PriorityEditor order={value} onReorder={handleReorder} disabled={saving} />
-                  ) : (
-                    <FieldEditor field={field} value={value} disabled={saving} onCommit={(v) => commitEdit(field, v)} />
-                  ))}
+                {isEditing && (
+                  <FieldEditor
+                    field={field}
+                    value={value}
+                    disabled={saving}
+                    optionsOverride={field === "top_priority" ? preferences?.priorities ?? [] : undefined}
+                    onCommit={(v) => commitEdit(field, v)}
+                  />
+                )}
               </div>
             );
           })

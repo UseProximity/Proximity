@@ -587,7 +587,7 @@ async function persistSession(session) {
 async function rankTop3(session) {
   const intentions = pickIntentions(session.weights);
   try {
-    const { ranked, usage, groupNote, budgetNote } = await rankListings({
+    const { ranked, usage, groupNote, budgetNote, relaxNote } = await rankListings({
       preferences: session.preferences,
       weights: session.weights,
       requestedIntentions: intentions,
@@ -598,17 +598,21 @@ async function rankTop3(session) {
     // Transient (not DB columns) — read within this turn to flag budget/group fit.
     session._groupNote = stripEmDashes(groupNote ?? null);
     session._budgetNote = stripEmDashes(budgetNote ?? null);
+    // Hard-combination coach: which single relaxation would open up the market.
+    session._relaxNote = stripEmDashes(relaxNote ?? null);
   } catch (err) {
     console.error("[chatOrchestrator] rankTop3 failed:", err);
     session.recommendations = [];
     session._groupNote = null;
     session._budgetNote = null;
+    session._relaxNote = null;
   }
 }
 
-// Append the honest budget/group-fit notes (if any) to an assistant message.
+// Append the honest budget/group-fit/hard-combination notes (if any) to an
+// assistant message.
 function withNotes(text, session) {
-  const notes = [session._budgetNote, session._groupNote].filter(Boolean);
+  const notes = [session._budgetNote, session._groupNote, session._relaxNote].filter(Boolean);
   return notes.length ? `${text}\n\n${notes.join("\n\n")}` : text;
 }
 

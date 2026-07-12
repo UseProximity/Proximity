@@ -85,6 +85,9 @@ function makeStream(n, seed) {
     users.push({
       ...BASE,
       priorities: [lead, ...rest],
+      // v2: the headline anchor is the explicit top_priority answer, not tap
+      // order. Seed it to the lead so v1-tag and v2 runs stay comparable.
+      top_priority: lead,
       budget_max: budget,
       _budget_unsure: budget == null,
       group_size: pick(rng, groups),
