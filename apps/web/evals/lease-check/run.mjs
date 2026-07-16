@@ -14,7 +14,7 @@ import { createRequire } from "module";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { CASES, ppm } from "./cases.mjs";
+import { CASES } from "./cases.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(HERE, "../..");
@@ -39,14 +39,9 @@ const FlagSchema = z.object({
   quote: z.string().nullable(),
   question: z.string(),
 });
-const RentSchema = z.object({
-  rentAsStated: z.number(), rentType: z.enum(["total", "per_month_all_tenants", "per_month_per_tenant"]),
-  numTenants: z.number(), leaseTermMonths: z.number(), evidence: z.string(), confidence: z.number(),
-});
 const LeaseAnalysisSchema = z.object({
   summary: z.string(), flags: z.array(FlagSchema), address: z.string().nullable(),
-  landlordName: z.string().nullable(), rent: RentSchema.nullable(), bedrooms: z.number().nullable(),
-  unreadablePages: z.array(z.number()), overallConfidence: z.number(),
+  landlordName: z.string().nullable(), unreadablePages: z.array(z.number()), overallConfidence: z.number(),
 });
 function stripEmDashes(v) {
   if (typeof v === "string") return v.replace(/\s*—\s*/g, ", ").replace(/—/g, "-");
@@ -122,12 +117,10 @@ async function runCase(c) {
   if (!analysis) {
     return { id: c.id, category: c.category, fatal: "parsed_output was null (model output did not conform)", results: [] };
   }
-  const perPerson = analysis.rent ? ppm(analysis.rent) : null;
-  const gateOpen = !!analysis.rent && analysis.bedrooms != null && (analysis.rent.confidence ?? 0) >= 0.7;
-  const ctx = { sourceText: built.sourceText, address: built.address, pii: built.pii, perPerson, gateOpen };
+  const ctx = { sourceText: built.sourceText, address: built.address, pii: built.pii };
 
   const results = [...c.check(analysis, ctx), ...universalChecks(analysis, ctx)];
-  return { id: c.id, category: c.category, results, analysis, raw, perPerson, gateOpen };
+  return { id: c.id, category: c.category, results, analysis, raw };
 }
 
 async function pool(items, n, fn) {

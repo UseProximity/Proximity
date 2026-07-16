@@ -1,6 +1,6 @@
 /*
  * Property context for Lease Check: geocode the extracted address, match it to a
- * Proximity listing, and pull reviews + cheaper comps.
+ * Proximity listing, and pull reviews for that listing and the landlord.
  *
  * The whole point of the confidence gate: a wrong-building match that attributes
  * someone else's bad reviews to a student's lease is the worst failure mode this
@@ -11,11 +11,9 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import supabase from "@/lib/supabase";
 import { haversineKm } from "@/utils/walkTimes";
-import { perPersonPerMonth, Anthropic } from "@/lib/leaseCheck/analyzeLease";
+import { Anthropic } from "@/lib/leaseCheck/analyzeLease";
 
 const MATCH_RADIUS_KM = 0.2; // ~200m
-const COMPS_RADIUS_KM = 1.5;
-const RENT_CONFIDENCE_FLOOR = 0.7;
 
 // Local copy of the private geocodeAddress in addListing/route.js — deliberately not
 // shared (that one is private to its route; this codebase duplicates such helpers).
@@ -340,88 +338,30 @@ export async function getLandlordReviewsByName(rawName) {
 }
 
 /*
- * Cheaper comps near the lease. Skips entirely (returns null) unless rent AND bedrooms
- * were confidently extracted — a missing comps section costs nothing; a wrong one costs
- * the student's trust. min_rent here is the trigger-maintained aggregate (the listing's
- * lowest advertised monthly per-person rate); never recompute it from unit joins.
- */
-export async function getComps({ geo, matchedListingId, rent, bedrooms }) {
-  if (!rent || bedrooms == null || (rent.confidence ?? 0) < RENT_CONFIDENCE_FLOOR) return null;
-
-  const leasePerPerson = perPersonPerMonth(rent);
-  if (leasePerPerson == null || !Number.isFinite(leasePerPerson) || leasePerPerson <= 0) return null;
-
-  const nearby = await listingsNear(geo.latitude, geo.longitude, COMPS_RADIUS_KM);
-  const qualifying = nearby.filter(
-    (l) =>
-      l.id !== matchedListingId &&
-      l.unavailable === false &&
-      l.min_rent != null &&
-      Number(l.min_rent) < leasePerPerson &&
-      l.min_bedrooms != null &&
-      l.min_bedrooms >= bedrooms
-  );
-
-  const top = qualifying.sort((a, b) => Number(a.min_rent) - Number(b.min_rent)).slice(0, 3);
-  if (top.length === 0) return null;
-
-  // Precomputed walk times only — never compute live (the Mapbox Directions path throws).
-  const { data: walkRows } = await supabase
-    .from("listing_walk_times")
-    .select("listing_id, minutes, locations(name)")
-    .in("listing_id", top.map((l) => l.id));
-
-  const walkByListing = {};
-  for (const row of walkRows || []) {
-    const current = walkByListing[row.listing_id];
-    if (!current || row.minutes < current.minutes) {
-      walkByListing[row.listing_id] = { minutes: row.minutes, place: row.locations?.name ?? null };
-    }
-  }
-
-  return {
-    leasePerPersonPerMonth: Math.round(leasePerPerson),
-    comps: top.map((l) => ({
-      id: l.id,
-      title: l.title,
-      address: l.address,
-      perPersonRent: Math.round(Number(l.min_rent)),
-      bedrooms: l.min_bedrooms,
-      distanceKm: Math.round(l.distanceKm * 10) / 10,
-      walk: walkByListing[l.id] ?? null,
-    })),
-  };
-}
-
-/*
  * Full context pipeline for an extracted analysis. Never throws — property context is
  * a bonus section; a failure here must not fail the analysis response.
  */
 export async function buildPropertyContext(analysis) {
   try {
-    if (!analysis?.address) return { matchConfidence: "none", listing: null, reviews: null, comps: null };
+    if (!analysis?.address) return { matchConfidence: "none", listing: null, reviews: null };
 
     const { confidence, listing, geo } = await matchListing(analysis.address);
 
-    // Only a high-confidence match gets reviews/comps rendered automatically; low/none
-    // get just the "tell us where" affordance client-side.
+    // Only a high-confidence match gets reviews rendered automatically; low/none get
+    // just the "tell us where" affordance client-side.
     if (confidence !== "high" || !listing || !geo) {
-      return { matchConfidence: confidence, listing: null, reviews: null, comps: null };
+      return { matchConfidence: confidence, listing: null, reviews: null };
     }
 
-    const [reviews, comps] = await Promise.all([
-      getReviews(listing),
-      getComps({ geo, matchedListingId: listing.id, rent: analysis.rent, bedrooms: analysis.bedrooms }),
-    ]);
+    const reviews = await getReviews(listing);
 
     return {
       matchConfidence: "high",
       listing: { id: listing.id, title: listing.title, address: listing.address },
       reviews,
-      comps,
     };
   } catch (error) {
     console.error("[lease-check] property context failed:", error);
-    return { matchConfidence: "none", listing: null, reviews: null, comps: null };
+    return { matchConfidence: "none", listing: null, reviews: null };
   }
 }

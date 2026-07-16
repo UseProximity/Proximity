@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Star, Footprints, Building2 } from "lucide-react";
+import { MapPin, Star, Building2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { trackEvent } from "@/utils/analytics";
 
@@ -63,13 +63,13 @@ function LandlordReviews({ landlord }) {
 }
 
 /*
- * Reviews + comps for a high-confidence match, plus two correction paths: by address
+ * Reviews for a high-confidence match, plus two correction paths: by address
  * and by landlord/company name. When the address match is low/none, ONLY the lookup
  * forms render. Showing another building's reviews is the one unforgivable bug here,
  * so nothing is ever attributed without either an exact match or the student's own
  * input.
  */
-export default function PropertyContext({ leaseCheckId, property, rentBasis, landlordName, onProperty }) {
+export default function PropertyContext({ leaseCheckId, property, landlordName, onProperty }) {
   const [address, setAddress] = useState("");
   const [landlordQuery, setLandlordQuery] = useState(landlordName || "");
   const [landlord, setLandlord] = useState(null);
@@ -87,12 +87,7 @@ export default function PropertyContext({ leaseCheckId, property, rentBasis, lan
       const res = await fetch("/api/lease-check/property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leaseCheckId,
-          address: address.trim(),
-          rent: rentBasis?.rent ?? null,
-          bedrooms: rentBasis?.bedrooms ?? null,
-        }),
+        body: JSON.stringify({ leaseCheckId, address: address.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lookup failed");
@@ -196,7 +191,7 @@ export default function PropertyContext({ leaseCheckId, property, rentBasis, lan
     );
   }
 
-  const { listing, reviews, comps } = property;
+  const { listing, reviews } = property;
 
   return (
     <div className="space-y-4">
@@ -250,44 +245,6 @@ export default function PropertyContext({ leaseCheckId, property, rentBasis, lan
                 ))}
               </>
             )}
-          </div>
-        )}
-
-        {comps?.comps?.length > 0 && (
-          <div className="p-6">
-            <h3 className="text-sm font-bold text-gray-900">Cheaper nearby, same or more bedrooms</h3>
-            <p className="mt-1 text-xs text-gray-500">
-              Compared per person, per month. Your lease works out to about $
-              {comps.leasePerPersonPerMonth}/mo per person.
-            </p>
-            <div className="mt-3 space-y-3">
-              {comps.comps.map((comp) => (
-                <a
-                  key={comp.id}
-                  href={`/listings/${comp.id}`}
-                  className="block rounded-xl border border-gray-200 p-4 transition hover:border-red-400 hover:bg-red-50"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-gray-900">
-                      {comp.title || comp.address}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 font-semibold uppercase tracking-[0.18em] text-red-600 text-[10px] shrink-0">
-                      ${comp.perPersonRent}/mo per person
-                    </span>
-                  </div>
-                  <p className="mt-1 flex items-center gap-3 text-xs text-gray-500">
-                    <span>{comp.bedrooms}+ bed</span>
-                    <span>{comp.distanceKm} km away</span>
-                    {comp.walk && (
-                      <span className="flex items-center gap-1">
-                        <Footprints size={12} />
-                        {comp.walk.minutes} min to {comp.walk.place}
-                      </span>
-                    )}
-                  </p>
-                </a>
-              ))}
-            </div>
           </div>
         )}
       </div>

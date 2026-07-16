@@ -263,10 +263,6 @@ export async function PUT(req) {
       // In-request only, echoed to the uploader for the correction affordances — never stored.
       address: analysis.address,
       landlordName: analysis.landlordName,
-      rentBasis:
-        analysis.rent && (analysis.rent.confidence ?? 0) >= 0.7 && analysis.bedrooms != null
-          ? { bedrooms: analysis.bedrooms, rent: analysis.rent }
-          : null,
       property: context,
       durationMs: Date.now() - startedAt,
     });

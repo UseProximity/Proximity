@@ -1,18 +1,13 @@
 /*
- * Manual property correction for a lease check: the student tells us the address,
- * we geocode + match and return fresh property context. A manual correction is
- * treated as high confidence — the student told us where they live.
- *
- * The optional rent/bedrooms come from the client's own in-memory analysis result
- * (the server discarded them by design). They only shape what this user sees, so
- * trusting them here leaks nothing — but they're still validated as numbers.
+ * Manual property correction for a lease check: the student tells us the address (or a
+ * landlord/company name), we geocode + match and return fresh property context. A manual
+ * address correction is treated as high confidence — the student told us where they live.
  */
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import {
   matchListing,
   getReviews,
-  getComps,
   getLandlordReviewsByName,
 } from "@/lib/leaseCheck/propertyContext";
 
@@ -65,32 +60,17 @@ export async function POST(req) {
 
     if (!listing || !geo) {
       return Response.json({
-        property: { matchConfidence: "none", listing: null, reviews: null, comps: null },
+        property: { matchConfidence: "none", listing: null, reviews: null },
       });
     }
 
-    const rent =
-      body.rent &&
-      Number.isFinite(body.rent.rentAsStated) &&
-      Number.isFinite(body.rent.numTenants) &&
-      Number.isFinite(body.rent.leaseTermMonths) &&
-      Number.isFinite(body.rent.confidence) &&
-      ["total", "per_month_all_tenants", "per_month_per_tenant"].includes(body.rent.rentType)
-        ? body.rent
-        : null;
-    const bedrooms = Number.isFinite(body.bedrooms) ? body.bedrooms : null;
-
-    const [reviews, comps] = await Promise.all([
-      getReviews(listing),
-      getComps({ geo, matchedListingId: listing.id, rent, bedrooms }),
-    ]);
+    const reviews = await getReviews(listing);
 
     return Response.json({
       property: {
         matchConfidence: "high",
         listing: { id: listing.id, title: listing.title, address: listing.address },
         reviews,
-        comps,
       },
     });
   } catch (error) {

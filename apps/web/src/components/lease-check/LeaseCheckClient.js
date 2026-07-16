@@ -425,7 +425,6 @@ export default function LeaseCheckClient() {
                 <PropertyContext
                   leaseCheckId={active.leaseCheckId}
                   property={active.property}
-                  rentBasis={active.rentBasis}
                   landlordName={active.landlordName}
                   onProperty={(property) => setResult((prev) => ({ ...prev, property }))}
                 />

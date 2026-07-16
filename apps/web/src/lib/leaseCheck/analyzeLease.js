@@ -1,11 +1,9 @@
 /*
  * Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)
- * to claude-sonnet-5 with a structured-output schema, and normalizes the extracted rent.
- *
- * Rent normalization is deliberately split from extraction: the model returns the raw
- * number as written plus its type (total / per-month-all-tenants / per-month-per-tenant)
- * and the tenant count, and perPersonPerMonth() does the arithmetic here. Comparing a
- * raw lease number against listings.min_rent is the trust-destroying bug this prevents.
+ * to claude-sonnet-5 with a structured-output schema and returns a severity-ranked flag
+ * list plus the summary. The address/landlordName are returned for the in-request
+ * property match only and are never stored (see route.js). Em dashes are stripped from
+ * every string as a backstop before results reach the student.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -28,22 +26,11 @@ const FlagSchema = z.object({
   question: z.string(),
 });
 
-const RentSchema = z.object({
-  rentAsStated: z.number(),
-  rentType: z.enum(["total", "per_month_all_tenants", "per_month_per_tenant"]),
-  numTenants: z.number(),
-  leaseTermMonths: z.number(),
-  evidence: z.string(),
-  confidence: z.number(),
-});
-
 const LeaseAnalysisSchema = z.object({
   summary: z.string(),
   flags: z.array(FlagSchema),
   address: z.string().nullable(),
   landlordName: z.string().nullable(),
-  rent: RentSchema.nullable(),
-  bedrooms: z.number().nullable(),
   unreadablePages: z.array(z.number()),
   overallConfidence: z.number(),
 });
@@ -58,22 +45,6 @@ function stripEmDashes(value) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripEmDashes(v)]));
   }
   return value;
-}
-
-// Normalize whatever the lease states to per-person-per-month — the unit the rest of
-// the app (listings.min_rent, comps) speaks. Never compare rentAsStated to anything.
-export function perPersonPerMonth({ rentAsStated, rentType, numTenants, leaseTermMonths }) {
-  const n = Math.max(1, numTenants);
-  switch (rentType) {
-    case "per_month_per_tenant":
-      return rentAsStated;
-    case "per_month_all_tenants":
-      return rentAsStated / n;
-    case "total":
-      return rentAsStated / Math.max(1, leaseTermMonths) / n;
-    default:
-      return null;
-  }
 }
 
 // claude-sonnet-5 pricing, USD per token (standard, non-intro rates).
