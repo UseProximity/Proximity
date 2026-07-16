@@ -7,9 +7,11 @@
  * feature has. Only a 'high' confidence match (within 200m AND exact street-number
  * match) renders the property panel automatically.
  */
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import supabase from "@/lib/supabase";
 import { haversineKm } from "@/utils/walkTimes";
-import { perPersonPerMonth } from "@/lib/leaseCheck/analyzeLease";
+import { perPersonPerMonth, Anthropic } from "@/lib/leaseCheck/analyzeLease";
 
 const MATCH_RADIUS_KM = 0.2; // ~200m
 const COMPS_RADIUS_KM = 1.5;
@@ -146,40 +148,170 @@ export async function getReviews(listing) {
 
 /*
  * Landlord/company-name lookup: the student typed the name themselves, so attribution
- * risk sits on their input (same spirit as the manual address correction). Matches
- * listings.contact_name and landlord users' names, case-insensitively. Returns null
- * when nothing matches; renders nothing rather than guessing.
+ * risk sits on their input (same spirit as the manual address correction).
+ *
+ * Two stages:
+ *   1. Broad candidate retrieval: token ilike over listings.contact_name AND
+ *      contact_email (an email domain like clocktowerstl.com should match a search
+ *      for "Clocktower"), plus landlord users' names/emails via listing_landlords.
+ *   2. Claude Haiku filters the candidates to the ones that clearly belong to the
+ *      named company; when unsure it excludes. Falls back to a strict name match
+ *      if the model call fails. Returns null when nothing survives.
  */
-export async function getLandlordReviewsByName(rawName) {
-  const name = (rawName || "").trim().replace(/[%_]/g, "");
-  if (name.length < 3) return null;
+const RETRIEVAL_STOPWORDS = new Set([
+  "llc", "inc", "co", "the", "and", "company", "companies", "property", "properties",
+  "management", "mgmt", "realty", "group", "apartments", "housing", "homes", "rentals",
+]);
 
-  const pattern = `%${name}%`;
+const LandlordMatchSchema = z.object({
+  matchingListingIds: z.array(z.string()),
+});
+
+let _matcherClient = null;
+function getMatcherClient() {
+  if (!_matcherClient) _matcherClient = new Anthropic({ apiKey: process.env.PROXY_CHAT_KEY });
+  return _matcherClient;
+}
+
+function searchTokens(name) {
+  const tokens = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !RETRIEVAL_STOPWORDS.has(t));
+  return tokens.length > 0 ? tokens : [name.toLowerCase().replace(/\s+/g, "")];
+}
+
+async function findLandlordCandidates(name) {
+  const tokens = searchTokens(name);
+  const listingOr = tokens
+    .flatMap((t) => [`contact_name.ilike.%${t}%`, `contact_email.ilike.%${t}%`])
+    .join(",");
+
   const { data: byContact } = await supabase
     .from("listings")
-    .select("id")
-    .ilike("contact_name", pattern)
+    .select("id, title, contact_name, contact_email")
+    .or(listingOr)
     .is("deleted_at", null)
-    .limit(50);
+    .limit(100);
 
-  const { data: landlordUsers } = await supabase
+  const userOr = tokens.flatMap((t) => [`name.ilike.%${t}%`, `email.ilike.%${t}%`]).join(",");
+  const { data: matchedUsers } = await supabase
     .from("users")
-    .select("id")
-    .ilike("name", pattern)
+    .select("id, name, email")
+    .or(userOr)
     .is("deleted_at", null)
-    .limit(20);
+    .limit(30);
 
-  let byUser = [];
-  if (landlordUsers?.length) {
-    const { data: joins } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .in("user_id", landlordUsers.map((u) => u.id));
-    byUser = (joins || []).map((j) => j.listing_id);
+  const candidates = new Map();
+  for (const l of byContact || []) {
+    candidates.set(l.id, {
+      id: l.id,
+      title: l.title,
+      contactName: l.contact_name,
+      contactEmail: l.contact_email,
+      landlordAccount: null,
+    });
   }
 
-  const listingIds = [...new Set([...(byContact || []).map((l) => l.id), ...byUser])];
+  if (matchedUsers?.length) {
+    const { data: joins } = await supabase
+      .from("listing_landlords")
+      .select("listing_id, user_id")
+      .in("user_id", matchedUsers.map((u) => u.id));
+    const userById = Object.fromEntries(matchedUsers.map((u) => [u.id, u]));
+    const extraIds = (joins || []).map((j) => j.listing_id).filter((id) => !candidates.has(id));
+    let extraListings = [];
+    if (extraIds.length > 0) {
+      const { data } = await supabase
+        .from("listings")
+        .select("id, title, contact_name, contact_email")
+        .in("id", extraIds)
+        .is("deleted_at", null);
+      extraListings = data || [];
+    }
+    for (const l of extraListings) {
+      candidates.set(l.id, {
+        id: l.id,
+        title: l.title,
+        contactName: l.contact_name,
+        contactEmail: l.contact_email,
+        landlordAccount: null,
+      });
+    }
+    for (const j of joins || []) {
+      const candidate = candidates.get(j.listing_id);
+      const u = userById[j.user_id];
+      if (candidate && u) candidate.landlordAccount = { name: u.name, email: u.email };
+    }
+  }
+
+  return [...candidates.values()];
+}
+
+const MATCHER_SYSTEM = `You match a landlord or property-management company name (typed by a student) against candidate rental listings. Return the ids of listings that clearly belong to that company.
+
+A listing belongs if any of these hold:
+- Its contact name is that company (including abbreviations, "The X Company" vs "X", suffix differences like LLC/Properties/Management).
+- Its contact email's domain is derived from the company name (e.g. "Clocktower" matches max@clocktowerstl.com or leasing@theclocktowercompany.com).
+- Its landlord account name or email matches the same way.
+
+Rules:
+- Generic mail domains (gmail, yahoo, outlook, hotmail, icloud, aol) prove nothing by themselves; for those, require the name or the email's local part to match the company.
+- A shared generic word is not a match ("City Properties" does not match "City Lights Apartments").
+- When unsure, EXCLUDE. A wrong match shows a student someone else's reviews, which is worse than showing nothing.`;
+
+async function filterCandidatesWithModel(name, candidates) {
+  const client = getMatcherClient();
+  const response = await client.messages.parse({
+    model: "claude-haiku-4-5",
+    max_tokens: 1000,
+    output_config: { format: zodOutputFormat(LandlordMatchSchema) },
+    system: [{ type: "text", text: MATCHER_SYSTEM }],
+    messages: [
+      {
+        role: "user",
+        content: `Company the student typed: "${name}"\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
+      },
+    ],
+  });
+  const parsed = response.parsed_output;
+  if (!parsed) return null;
+  const valid = new Set(candidates.map((c) => c.id));
+  return parsed.matchingListingIds.filter((id) => valid.has(id));
+}
+
+export async function getLandlordReviewsByName(rawName) {
+  const name = (rawName || "").trim().replace(/[%_,()]/g, "");
+  if (name.length < 3) return null;
+
+  const candidates = await findLandlordCandidates(name);
+  if (candidates.length === 0) return null;
+
+  let listingIds = null;
+  try {
+    listingIds = await filterCandidatesWithModel(name, candidates);
+  } catch (error) {
+    console.error("[lease-check] landlord matcher model failed:", error?.message);
+  }
+  if (listingIds == null) {
+    // Deterministic fallback: strict name containment only.
+    const q = name.toLowerCase();
+    listingIds = candidates
+      .filter((c) => (c.contactName || "").toLowerCase().includes(q))
+      .map((c) => c.id);
+  }
+  listingIds = listingIds.slice(0, 30);
   if (listingIds.length === 0) return null;
+
+  const matchedExamples = [
+    ...new Set(
+      candidates
+        .filter((c) => listingIds.includes(c.id))
+        .map((c) => c.contactName || c.contactEmail?.split("@")[1] || c.landlordAccount?.name)
+        .filter(Boolean)
+    ),
+  ].slice(0, 3);
 
   const { data: aggregates } = await supabase.rpc("fn_get_listing_aggregates", {
     p_listing_ids: listingIds,
@@ -196,6 +328,7 @@ export async function getLandlordReviewsByName(rawName) {
   return {
     query: name,
     listingCount: listingIds.length,
+    matchedExamples,
     reviewCount,
     avgRating: reviewCount > 0 ? weighted / reviewCount : null,
     lowReviews: reviews.map(({ rating, comment, created_at }) => ({

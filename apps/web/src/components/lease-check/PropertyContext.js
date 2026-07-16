@@ -45,6 +45,9 @@ function LandlordReviews({ landlord }) {
         </p>
         <p className="mt-1 text-xs text-gray-400">
           Matched by the name you entered, not by your exact building.
+          {landlord.matchedExamples?.length > 0 && (
+            <> Includes: {landlord.matchedExamples.join(", ")}.</>
+          )}
         </p>
       </div>
       {landlord.lowReviews?.length > 0 && (
