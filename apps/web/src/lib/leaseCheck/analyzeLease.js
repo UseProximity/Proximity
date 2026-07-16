@@ -48,6 +48,18 @@ const LeaseAnalysisSchema = z.object({
   overallConfidence: z.number(),
 });
 
+// Belt-and-suspenders (same rule as the matchmaking chat): the prompt forbids em
+// dashes, but never let one reach a student. Collapse " — " to ", " and any stray
+// em dash to a hyphen, recursively across every string in the analysis.
+function stripEmDashes(value) {
+  if (typeof value === "string") return value.replace(/\s*—\s*/g, ", ").replace(/—/g, "-");
+  if (Array.isArray(value)) return value.map(stripEmDashes);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripEmDashes(v)]));
+  }
+  return value;
+}
+
 // Normalize whatever the lease states to per-person-per-month — the unit the rest of
 // the app (listings.min_rent, comps) speaks. Never compare rentAsStated to anything.
 export function perPersonPerMonth({ rentAsStated, rentType, numTenants, leaseTermMonths }) {
@@ -130,7 +142,7 @@ export async function analyzeLease({ leaseCheckId, documents }) {
 
   // parsed_output is null when the model's output failed schema parsing — callers must
   // treat that as "couldn't read it", never as an empty success.
-  return response.parsed_output ?? null;
+  return response.parsed_output ? stripEmDashes(response.parsed_output) : null;
 }
 
 export { Anthropic };

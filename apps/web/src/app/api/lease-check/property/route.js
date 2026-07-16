@@ -9,7 +9,12 @@
  */
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
-import { matchListing, getReviews, getComps } from "@/lib/leaseCheck/propertyContext";
+import {
+  matchListing,
+  getReviews,
+  getComps,
+  getLandlordReviewsByName,
+} from "@/lib/leaseCheck/propertyContext";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +26,14 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { leaseCheckId, address } = body || {};
-    if (!leaseCheckId || typeof address !== "string" || address.trim().length < 5) {
-      return Response.json({ error: "Give us a street address" }, { status: 400 });
+    const { leaseCheckId, address, landlordName } = body || {};
+    const hasAddress = typeof address === "string" && address.trim().length >= 5;
+    const hasLandlord = typeof landlordName === "string" && landlordName.trim().length >= 3;
+    if (!leaseCheckId || (!hasAddress && !hasLandlord)) {
+      return Response.json(
+        { error: "Give us a street address or a landlord name" },
+        { status: 400 }
+      );
     }
 
     const { data: check } = await supabase
@@ -35,6 +45,13 @@ export async function POST(req) {
       .maybeSingle();
     if (!check) {
       return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Landlord/company-name lookup: reviews across that name's listings, no address
+    // match required. Nothing is persisted for this path.
+    if (!hasAddress) {
+      const landlord = await getLandlordReviewsByName(landlordName);
+      return Response.json({ landlord });
     }
 
     const { listing, geo } = await matchListing(address.trim());

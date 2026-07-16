@@ -58,7 +58,7 @@ function compressImage(file) {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      if (mustConvert) reject(new Error(`${file.name}: we can't read HEIC here — convert it to JPEG first.`));
+      if (mustConvert) reject(new Error(`${file.name}: we can't read HEIC here. Convert it to JPEG first.`));
       else resolve(file);
     };
     img.src = url;
@@ -75,10 +75,10 @@ function formatPageList(pages) {
       prev = p;
       continue;
     }
-    parts.push(start === prev ? `${start}` : `${start}–${prev}`);
+    parts.push(start === prev ? `${start}` : `${start}-${prev}`);
     start = prev = p;
   }
-  parts.push(start === prev ? `${start}` : `${start}–${prev}`);
+  parts.push(start === prev ? `${start}` : `${start}-${prev}`);
   return parts.join(", ");
 }
 
@@ -266,7 +266,7 @@ export default function LeaseCheckClient() {
         </p>
 
         {/* Upload */}
-        <div className="mt-10 max-w-2xl">
+        <div className="mt-10 max-w-3xl">
           <label
             className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-red-400 hover:bg-red-50 transition-colors"
             onDragOver={(e) => e.preventDefault()}
@@ -337,7 +337,7 @@ export default function LeaseCheckClient() {
               </div>
               {phase === "reading" && (
                 <p className="mt-2 text-xs text-gray-400">
-                  Leases are long. This takes a minute or two — worth it.
+                  Leases are long. This takes a minute or two. Worth it.
                 </p>
               )}
             </div>
@@ -356,73 +356,77 @@ export default function LeaseCheckClient() {
           )}
         </div>
 
-        {/* Results */}
+        {/* Results: flags on the left, property context in a right rail on desktop */}
         {active && (
-          <div className="mt-12 max-w-2xl space-y-4">
-            {active.isPast && (
-              <p className="text-xs text-gray-400">
-                A past check — property info isn&apos;t stored, so only the flags are shown.{" "}
-                <button
-                  type="button"
-                  className="underline hover:text-red-600 transition"
-                  onClick={() => setViewingPast(null)}
-                >
-                  Back
-                </button>
-              </p>
-            )}
-
-            <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm p-6">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.24em] text-red-500">
-                The read
-              </h2>
-              <p className="mt-2 text-base leading-7 text-gray-700">{active.summary}</p>
-            </div>
-
-            {active.unreadablePages?.length > 0 && (
-              <div className="rounded-2xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-900">
-                We couldn&apos;t read {active.unreadablePages.length === 1 ? "page" : "pages"}{" "}
-                {formatPageList(active.unreadablePages)}. Anything on{" "}
-                {active.unreadablePages.length === 1 ? "it" : "them"} isn&apos;t covered below.
-              </div>
-            )}
-
-            {active.flags.length === 0 ? (
-              <div className="rounded-[1.75rem] border border-dashed border-gray-300 bg-gray-50 p-10 text-center">
-                <p className="text-sm font-semibold text-gray-700">
-                  Nothing jumped out. That&apos;s a good sign — but read it anyway.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {active.flags.map((flag, i) => (
-                    <FlagCard key={i} flag={flag} />
-                  ))}
-                </div>
-                {!active.isPast && (
+          <div className="mt-12 grid gap-6 lg:grid-cols-5">
+            <div className="space-y-4 lg:col-span-3">
+              {active.isPast && (
+                <p className="text-xs text-gray-400">
+                  A past check. Property info isn&apos;t stored, so only the flags are shown.{" "}
                   <button
                     type="button"
-                    onClick={copyQuestions}
-                    className="inline-flex items-center justify-center rounded-2xl bg-gray-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-black gap-2"
+                    className="underline hover:text-red-600 transition"
+                    onClick={() => setViewingPast(null)}
                   >
-                    <Copy size={16} />
-                    Copy questions for your landlord
+                    Back
                   </button>
-                )}
-              </>
-            )}
+                </p>
+              )}
 
-            {!active.isPast && (
-              <PropertyContext
-                leaseCheckId={active.leaseCheckId}
-                property={active.property}
-                rentBasis={active.rentBasis}
-                onProperty={(property) => setResult((prev) => ({ ...prev, property }))}
-              />
-            )}
+              <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm p-6">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.24em] text-red-500">
+                  The read
+                </h2>
+                <p className="mt-2 text-base leading-7 text-gray-700">{active.summary}</p>
+              </div>
 
-            <LeaseDisclaimer variant="footer" />
+              {active.unreadablePages?.length > 0 && (
+                <div className="rounded-2xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-900">
+                  We couldn&apos;t read {active.unreadablePages.length === 1 ? "page" : "pages"}{" "}
+                  {formatPageList(active.unreadablePages)}. Anything on{" "}
+                  {active.unreadablePages.length === 1 ? "it" : "them"} isn&apos;t covered below.
+                </div>
+              )}
+
+              {active.flags.length === 0 ? (
+                <div className="rounded-[1.75rem] border border-dashed border-gray-300 bg-gray-50 p-10 text-center">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Nothing jumped out. That&apos;s a good sign. But read it anyway.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {active.flags.map((flag, i) => (
+                      <FlagCard key={i} flag={flag} />
+                    ))}
+                  </div>
+                  {!active.isPast && (
+                    <button
+                      type="button"
+                      onClick={copyQuestions}
+                      className="inline-flex items-center justify-center rounded-2xl bg-gray-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-black gap-2"
+                    >
+                      <Copy size={16} />
+                      Copy questions for your landlord
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="space-y-4 lg:col-span-2">
+              {!active.isPast && (
+                <PropertyContext
+                  leaseCheckId={active.leaseCheckId}
+                  property={active.property}
+                  rentBasis={active.rentBasis}
+                  landlordName={active.landlordName}
+                  onProperty={(property) => setResult((prev) => ({ ...prev, property }))}
+                />
+              )}
+              <LeaseDisclaimer variant="footer" />
+            </div>
           </div>
         )}
 

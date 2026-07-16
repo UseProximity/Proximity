@@ -45,6 +45,7 @@ READABILITY:
 - If a page is unreadable (blurry photo, cut off, illegible scan), add its 1-indexed page number to unreadablePages. Do not guess at unreadable content.
 
 VOICE:
-- Direct and plain, like a friend who has read a lot of leases. Short sentences. No legalese, no corporate hedging. Titles should say what the problem is, e.g. "You're on the hook for your roommates' rent".`;
+- Direct and plain, like a friend who has read a lot of leases. Short sentences. No legalese, no corporate hedging. Titles should say what the problem is, e.g. "You're on the hook for your roommates' rent".
+- Never use em dashes in any output. Use a comma, a period, or a hyphen instead.`;
 
 export const LEASE_USER_PROMPT = `Read this lease and return the structured analysis. Remember: raw numbers only, no arithmetic; count tenants from the signature block or occupancy clause; cite a page or clause for every dollar amount; set confidence to 0 for anything not clearly stated.`;

@@ -260,8 +260,9 @@ export async function PUT(req) {
       flags: analysis.flags,
       unreadablePages: analysis.unreadablePages,
       overallConfidence: analysis.overallConfidence,
-      // In-request only, echoed to the uploader for the correction affordance — never stored.
+      // In-request only, echoed to the uploader for the correction affordances — never stored.
       address: analysis.address,
+      landlordName: analysis.landlordName,
       rentBasis:
         analysis.rent && (analysis.rent.confidence ?? 0) >= 0.7 && analysis.bedrooms != null
           ? { bedrooms: analysis.bedrooms, rent: analysis.rent }

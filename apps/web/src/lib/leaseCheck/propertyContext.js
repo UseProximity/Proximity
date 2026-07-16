@@ -145,6 +145,68 @@ export async function getReviews(listing) {
 }
 
 /*
+ * Landlord/company-name lookup: the student typed the name themselves, so attribution
+ * risk sits on their input (same spirit as the manual address correction). Matches
+ * listings.contact_name and landlord users' names, case-insensitively. Returns null
+ * when nothing matches; renders nothing rather than guessing.
+ */
+export async function getLandlordReviewsByName(rawName) {
+  const name = (rawName || "").trim().replace(/[%_]/g, "");
+  if (name.length < 3) return null;
+
+  const pattern = `%${name}%`;
+  const { data: byContact } = await supabase
+    .from("listings")
+    .select("id")
+    .ilike("contact_name", pattern)
+    .is("deleted_at", null)
+    .limit(50);
+
+  const { data: landlordUsers } = await supabase
+    .from("users")
+    .select("id")
+    .ilike("name", pattern)
+    .is("deleted_at", null)
+    .limit(20);
+
+  let byUser = [];
+  if (landlordUsers?.length) {
+    const { data: joins } = await supabase
+      .from("listing_landlords")
+      .select("listing_id")
+      .in("user_id", landlordUsers.map((u) => u.id));
+    byUser = (joins || []).map((j) => j.listing_id);
+  }
+
+  const listingIds = [...new Set([...(byContact || []).map((l) => l.id), ...byUser])];
+  if (listingIds.length === 0) return null;
+
+  const { data: aggregates } = await supabase.rpc("fn_get_listing_aggregates", {
+    p_listing_ids: listingIds,
+  });
+  const aggRows = Array.isArray(aggregates) ? aggregates : aggregates ? [aggregates] : [];
+  const reviewCount = aggRows.reduce((sum, r) => sum + (r.review_count ?? 0), 0);
+  const weighted = aggRows.reduce(
+    (sum, r) => sum + (r.avg_rating ?? 0) * (r.review_count ?? 0),
+    0
+  );
+
+  const reviews = await reviewsForListings(listingIds, 5);
+
+  return {
+    query: name,
+    listingCount: listingIds.length,
+    reviewCount,
+    avgRating: reviewCount > 0 ? weighted / reviewCount : null,
+    lowReviews: reviews.map(({ rating, comment, created_at }) => ({
+      rating,
+      comment,
+      createdAt: created_at,
+    })),
+  };
+}
+
+/*
  * Cheaper comps near the lease. Skips entirely (returns null) unless rent AND bedrooms
  * were confidently extracted — a missing comps section costs nothing; a wrong one costs
  * the student's trust. min_rent here is the trigger-maintained aggregate (the listing's
