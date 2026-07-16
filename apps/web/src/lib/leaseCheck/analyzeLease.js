@@ -16,7 +16,7 @@ export const LEASE_MODEL = "claude-sonnet-5";
 
 let _client = null;
 function getClient() {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.PROXY_CHAT_KEY });
+  if (!_client) _client = new Anthropic({ apiKey: process.env.LEASE_SCANNER_KEY });
   return _client;
 }
 

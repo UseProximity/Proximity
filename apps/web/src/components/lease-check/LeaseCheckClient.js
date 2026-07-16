@@ -259,10 +259,10 @@ export default function LeaseCheckClient() {
           Lease Check
         </p>
         <h1 className="mt-5 text-4xl font-black tracking-tight text-gray-950 sm:text-5xl lg:text-6xl">
-          Don&apos;t sign a lease you haven&apos;t read.
+          We flag the stuff that&apos;s easy to miss and expensive to ignore.
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-gray-600 sm:text-xl">
-          Upload it. We&apos;ll flag what matters.
+          Upload your lease. We do the reading.
         </p>
 
         {/* Upload */}

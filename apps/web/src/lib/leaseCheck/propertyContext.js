@@ -169,7 +169,7 @@ const LandlordMatchSchema = z.object({
 
 let _matcherClient = null;
 function getMatcherClient() {
-  if (!_matcherClient) _matcherClient = new Anthropic({ apiKey: process.env.PROXY_CHAT_KEY });
+  if (!_matcherClient) _matcherClient = new Anthropic({ apiKey: process.env.LEASE_SCANNER_KEY });
   return _matcherClient;
 }
 
