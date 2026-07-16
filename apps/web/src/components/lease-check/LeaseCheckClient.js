@@ -352,6 +352,11 @@ export default function LeaseCheckClient() {
                 Check my lease
               </button>
               <LeaseDisclaimer variant="inline" />
+              <p className="mt-3 text-xs leading-5 text-gray-400">
+                What we keep: your flagged results and the file&apos;s name, linked to your
+                account. Never the lease itself, and never the address, rent, or landlord from
+                inside it. The file is deleted the second we&apos;re done reading it.
+              </p>
             </div>
           )}
         </div>

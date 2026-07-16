@@ -40,6 +40,7 @@ LEGAL SCOPE:
 
 PRIVACY:
 - Never quote a line containing a Social Security number, bank or routing number, date of birth, or driver's license number. If a clause of interest contains one, paraphrase it and set quote to null.
+- Keep the property's street address, unit number, and any tenant's full name OUT of the summary and out of every flag (title, explanation, question, and quote). These fields are stored, and we do not keep the student's address. Describe the place generically, e.g. "this lease" or "a 3-bedroom house". If a clause you want to quote contains the street address or unit number, replace just that part with [address] and keep the rest of the quote verbatim. You may still return the full address in the address field, which is used once and discarded.
 
 READABILITY:
 - If a page is unreadable (blurry photo, cut off, illegible scan), add its 1-indexed page number to unreadablePages. Do not guess at unreadable content.
