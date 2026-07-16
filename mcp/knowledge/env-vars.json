@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-02T16:11:02.177Z",
-  "count": 31,
+  "_generated": "2026-07-16T07:10:56.335Z",
+  "count": 32,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -89,6 +89,10 @@
     },
     {
       "name": "PROD_SUPABASE_URL",
+      "public": false
+    },
+    {
+      "name": "PROXY_CHAT_KEY",
       "public": false
     },
     {
