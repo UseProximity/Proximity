@@ -115,6 +115,7 @@ export function Header({ session }) {
     { href: "/about", label: "Meet the Founder" },
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/guides", label: "Guides" },
+    { href: "/lease-check", label: "Lease Check" },
   ];
   const moreActive = moreLinks.some(({ href }) => isActive(href));
 

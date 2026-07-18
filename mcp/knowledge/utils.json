@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-11T22:05:59.039Z",
-  "count": 25,
+  "_generated": "2026-07-18T23:45:00.690Z",
+  "count": 29,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -22,6 +22,22 @@
     {
       "file": "src/lib/guides.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/leaseCheck/analyzeLease.js",
+      "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
+    },
+    {
+      "file": "src/lib/leaseCheck/prompt.js",
+      "description": "System + user prompts for the student-side lease check. The model returns a"
+    },
+    {
+      "file": "src/lib/leaseCheck/propertyContext.js",
+      "description": "Property context for Lease Check: geocode the extracted address, match it to a"
+    },
+    {
+      "file": "src/lib/leaseCheck/rateLimit.js",
+      "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
     },
     {
       "file": "src/lib/listings/listingSelect.js",
