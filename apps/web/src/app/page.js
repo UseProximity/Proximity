@@ -10,7 +10,6 @@ import {
   ChevronRight,
   ArrowRight,
   X,
-  HandHeart,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -760,19 +759,20 @@ function MatchmakingPopup() {
           <X className="h-4 w-4" />
         </button>
 
-        <div className="flex items-center gap-2 mb-2">
-          <div className="flex-shrink-0 w-7 h-7 bg-red-50 rounded-lg flex items-center justify-center">
-            <HandHeart className="h-4 w-4 text-red-500" />
+        <div className="flex items-start gap-2.5 mb-3">
+          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center">
+            P
           </div>
-          <span className="text-sm font-bold text-gray-900">
-            Get personalized picks
-          </span>
+          <div className="flex-1 min-w-0">
+            <span className="block text-xs font-bold text-gray-900 mb-1">
+              Proxy
+            </span>
+            <p className="text-xs text-gray-600 leading-relaxed bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2">
+              Hey, I&apos;m Proxy! Answer a few quick questions and I&apos;ll
+              match you with your dream home. 🏡
+            </p>
+          </div>
         </div>
-
-        <p className="text-xs text-gray-500 leading-relaxed mb-3">
-          Fill out our quick matchmaking form and we&apos;ll hand-pick
-          apartments that match your budget, location, and lifestyle.
-        </p>
 
         <Link
           href="/matchmaking"

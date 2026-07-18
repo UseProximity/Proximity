@@ -16,6 +16,7 @@ import { Header } from "@/components/layout/Header";
 import StagingBanner from "@/components/layout/StagingBanner";
 import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
+import { appEnv } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
@@ -66,7 +67,7 @@ export default async function RootLayout({ children }) {
       </head>
       <body className={inter.className}>
         <StagingBanner />
-        <StagingEmailPicker />
+        <StagingEmailPicker env={appEnv()} />
         <div>
           <Toaster />
         </div>
@@ -77,7 +78,10 @@ export default async function RootLayout({ children }) {
           <FeedbackWidget />
           {children}
           <Analytics />
-          <GoogleAnalytics gaId="G-QJCHSZJXQY" />
+          {/* GA only on the real site — staging/preview/local sessions would land in
+              the same property and skew the funnels. Vercel Analytics separates
+              environments on its own, so it stays mounted everywhere. */}
+          {appEnv() === "production" && <GoogleAnalytics gaId="G-QJCHSZJXQY" />}
         </Providers>
       </body>
     </html>

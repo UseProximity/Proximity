@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-11T21:51:39.061Z",
-  "count": 56,
+  "_generated": "2026-07-11T22:05:59.028Z",
+  "count": 61,
   "routes": [
     {
       "path": "/api/addListing",
@@ -310,9 +310,7 @@
       "methodAuth": {
         "POST": "any"
       },
-      "tables": [
-        "interaction_types"
-      ],
+      "tables": [],
       "file": "src/app/api/contacted/route.js"
     },
     {
@@ -345,6 +343,60 @@
         "listing_landlords"
       ],
       "file": "src/app/api/cron/landlord-nudge/route.js"
+    },
+    {
+      "path": "/api/dev/matchmaking-edgecases",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/dev/matchmaking-edgecases/route.js"
+    },
+    {
+      "path": "/api/dev/matchmaking-personas",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/dev/matchmaking-personas/route.js"
+    },
+    {
+      "path": "/api/dev/matchmaking-probe",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/dev/matchmaking-probe/route.js"
+    },
+    {
+      "path": "/api/dev/matchmaking-saturation-sim",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/dev/matchmaking-saturation-sim/route.js"
     },
     {
       "path": "/api/dormReviews",
@@ -626,6 +678,26 @@
         "roles"
       ],
       "file": "src/app/api/matchmaking/route.js"
+    },
+    {
+      "path": "/api/matchmaking/chat",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any",
+        "PATCH": "any"
+      },
+      "tables": [
+        "listings",
+        "users",
+        "matchmaking_chat_sessions"
+      ],
+      "file": "src/app/api/matchmaking/chat/route.js"
     },
     {
       "path": "/api/pendingReviews",

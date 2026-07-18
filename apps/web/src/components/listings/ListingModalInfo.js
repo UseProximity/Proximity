@@ -29,7 +29,7 @@ import {
   NEAREST_DRIVE_POOLS,
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
-import { trackEvent } from "@/utils/analytics";
+import { trackEvent, getListingSource } from "@/utils/analytics";
 import ReviewReplySection from "./ReviewReplySection";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
@@ -1417,14 +1417,14 @@ export default function ListingModalInfo({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ listingId: listing._id }),
         });
-        setTimeout(
-          () =>
-            trackEvent("Contact Submitted", {
-              listingId: listing._id,
-              address: listing.address,
-            }),
-          0
-        );
+        setTimeout(() => {
+          const source = getListingSource(listing._id);
+          trackEvent("Contact Submitted", {
+            listingId: listing._id,
+            address: listing.address,
+            ...(source ? { source } : {}),
+          });
+        }, 0);
         setContactSent(true);
       } else {
         toast.error("Failed to send message. Please try again.");
