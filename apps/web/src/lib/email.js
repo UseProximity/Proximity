@@ -69,6 +69,38 @@ export async function sendLandlordNudgeEmail({ email, name }) {
   });
 }
 
+// Inquiry sent on a student's behalf by the matchmaking chatbot ("Proxy"). Goes to the
+// listing's owner with the student CC'd and set as reply-to, so the landlord replies
+// straight to the student. Routed through sendMailSafe, so on staging it's redirected to
+// the chosen test inbox (and the cc is dropped) — never reaching a real owner.
+export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message }) {
+  // The contact flow always supplies the student's note (the editable draft can't be
+  // sent empty), so use it directly. The short guard only avoids a blank quote if a
+  // future caller omits it — the real default lives in contactNote.js.
+  const note = (message && message.trim()) || "I'm a WashU student interested in this listing and would love to learn more.";
+  return sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
+    to,
+    cc: student.email || undefined,
+    replyTo: student.email || undefined,
+    subject: `New Inquiry: ${listingAddress || "Your Listing"} (via Proximity)`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
+        <p>Hi ${landlordName || "there"},</p>
+        <p>You've received a new inquiry${listingAddress ? ` about your listing at <strong>${listingAddress}</strong>` : ""} through Proximity.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p style="margin: 6px 0;"><strong>From:</strong> ${student.name}</p>
+        <p style="margin: 6px 0;"><strong>Email:</strong> <a href="mailto:${student.email}" style="color: #dc2626;">${student.email}</a></p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${note}"</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p>Reply directly to this email to respond to ${student.name}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
+        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+      </div>
+    `,
+  });
+}
+
 export async function sendVerificationEmail({ email, name, token, baseUrl }) {
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
   await sendMailSafe(transporter, {

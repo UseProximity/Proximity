@@ -5,7 +5,7 @@ import Image from "next/image";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
-import { trackEvent } from "@/utils/analytics";
+import { trackEvent, getListingSource } from "@/utils/analytics";
 
 function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
@@ -26,7 +26,7 @@ function WalkScale({ minutes, label }) {
   );
 }
 
-export function ListingCard({ listing, session, onCardClick, isSelected = false }) {
+export function ListingCard({ listing, session, onCardClick, isSelected = false, compact = false }) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const imgWrapperRef = useRef(null);
   const imageUrl = listing.images?.[0];
@@ -67,7 +67,10 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
       onClick={() => {
         onCardClick(listing._id);
-        setTimeout(() => trackEvent("Listing Opened", { listingId: listing._id, address: listing.address }), 0);
+        setTimeout(() => {
+          const source = getListingSource(listing._id);
+          trackEvent("Listing Opened", { listingId: listing._id, address: listing.address, ...(source ? { source } : {}) });
+        }, 0);
       }}
     >
       <div
@@ -101,7 +104,8 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
           </div>
         )}
         {imageCount > 1 && !listing.unavailable && (
-          <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+          // In the compact (matchmaking row) variant, hide on desktop where the card is small.
+          <div className={`absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full ${compact ? "md:hidden" : ""}`}>
             See all {imageCount} photos
           </div>
         )}
@@ -109,16 +113,16 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
       <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
         <div className="flex items-start justify-between gap-2 min-w-0">
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-sm text-gray-900 leading-snug truncate">
+            <h3 className={`font-bold text-gray-900 leading-snug truncate ${compact ? "text-sm md:text-xs" : "text-sm"}`}>
               {title}
             </h3>
-            {cityStateZip && (
+            {cityStateZip && !compact && (
               <p className="text-xs text-gray-500 font-normal mt-0.5 truncate">
                 {cityStateZip}
               </p>
             )}
           </div>
-          <span className={`font-bold text-sm whitespace-nowrap flex-shrink-0 ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
+          <span className={`font-bold whitespace-nowrap flex-shrink-0 ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
             {getRentRangeLabel(listing.unitTypes)}
             {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
               <span className="text-xs font-normal">/mo</span>
@@ -131,7 +135,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
-          {listing.owner?.name && (
+          {listing.owner?.name && !compact && (
             <span className="text-gray-400 text-xs truncate ml-2 max-w-[40%]">
               {listing.owner.name}
             </span>
@@ -163,9 +167,11 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false 
         })()}
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
-      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
-        <HeartIcon listingId={listing._id} />
-      </div>
+      {!compact && (
+        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
+          <HeartIcon listingId={listing._id} />
+        </div>
+      )}
     </div>
   );
 }

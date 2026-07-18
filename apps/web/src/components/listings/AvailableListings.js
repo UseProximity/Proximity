@@ -22,6 +22,8 @@ import {
   SHTT_STEPS,
 } from "@/components/listings/FilterComponents";
 
+import { setListingSource } from "@/utils/analytics";
+
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
   ssr: false,
 });
@@ -91,6 +93,21 @@ export default function AvailableListings({
 
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
+
+  // A panel deep-linked from matchmaking arrives with ?src=matchmaking. Remember
+  // the attribution for this tab (so save/contact events carry it), then strip
+  // the param so it doesn't linger in the URL. history.replaceState (not
+  // router.replace) so this can't race the other URL-writing effects here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const src = params.get("src");
+    const srcPanelId = params.get("panel");
+    if (!src) return;
+    if (src === "matchmaking" && srcPanelId) setListingSource(srcPanelId, "matchmaking");
+    params.delete("src");
+    const qs = params.toString();
+    window.history.replaceState(null, "", `/browse${qs ? `?${qs}` : ""}`);
+  }, []);
 
   /* ── Left panel expanded listing ── */
   const panelId = searchParams.get("panel");
