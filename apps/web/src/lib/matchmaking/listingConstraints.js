@@ -211,6 +211,50 @@ export function subleaseTermMonthsFromDescription(listing) {
   return result;
 }
 
+// ——— Room-share detection ———————————————————————————————————————————————
+// A "room-share" offers ONE private room inside an already-occupied unit ("we
+// are two engineers looking for one more person to join our lease", "subletting
+// a room in a 3 bedroom duplex", "1 bd in a 3 bd"). The structured data models
+// these as a whole multi-bed unit with a per-person lease, so group sizing
+// would happily tell three people they all fit — when only one bed is on offer.
+// Rents are stored per person, so price math can't tell either; the only
+// reliable signal is the free-text title/description. Patterns favor PRECISION
+// over recall: a whole-unit listing wrongly flagged is worse than a room-share
+// slipping through (the reason text still discloses roommates in most).
+// Untrusted text: pattern-matched only, never executed.
+const ROOM_SHARE_PATTERNS = [
+  // "subletting a room in...", "renting out my room"
+  /\b(?:sublett?ing|renting(?:\s+out)?)\s+(?:a|one|1|my|the)\s+(?:bed)?room\b/i,
+  // "room for rent", "room to rent"
+  /\b(?:bed)?room\s+(?:for|to)\s+rent\b/i,
+  // "1 bd in a 3 bd", "one bedroom in a 3 bedroom"
+  /\b(?:a|one|1)\s+(?:bd|bed(?:room)?)\s+in\s+an?\s+\d/i,
+  // occupants seeking someone to join them
+  /\bjoin\s+(?:our|my|the)\s+(?:lease|apartment|unit|house(?:hold)?)\b/i,
+  /\b(?:looking|searching)\s+(?:for\s+)?(?:\w+\s+){0,2}?more\s+(?:person|people|roommates?|housemates?)\b/i,
+  /\b(?:seeking|looking\s+for)\s+an?\s+(?:new\s+)?(?:roommate|housemate)\b/i,
+  /\b(?:third|fourth|fifth)\s+(?:roommate|housemate)\b/i,
+  /\bwill\s+have\s+\d+\s+(?:\w+\s+)?roommates?\b/i,
+  /\b(?:current|existing)\s+(?:roommates?|tenants?|occupants?)\b/i,
+  /\boccupants?\s+in\s+the\s+other\b/i,
+  /\bspare\s+(?:bed)?room\b/i,
+  /\bprivate\s+(?:bed)?room\s+in\s+an?\b/i,
+];
+
+const _roomShareCache = new WeakMap();
+
+// Whether a listing is really one room in an occupied unit rather than a whole
+// place. Group matching must treat its true capacity as ONE person, and a solo
+// student picking it must be told they'd live with the current tenants.
+export function isRoomShareListing(listing) {
+  if (!listing || typeof listing !== "object") return false;
+  if (_roomShareCache.has(listing)) return _roomShareCache.get(listing);
+  const text = `${listing.title ?? ""}\n${listing.description ?? ""}`;
+  const result = text.trim() ? ROOM_SHARE_PATTERNS.some((re) => re.test(text)) : false;
+  _roomShareCache.set(listing, result);
+  return result;
+}
+
 // Phrases that NEGATE a pet/parking need even though the keyword appears, e.g.
 // "I prefer no pets" or "I won't be bringing a car". Checked first so a mention
 // of the thing-they-don't-want isn't read as a requirement.
