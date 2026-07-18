@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-11T22:05:59.028Z",
-  "count": 61,
+  "_generated": "2026-07-18T23:45:00.678Z",
+  "count": 63,
   "routes": [
     {
       "path": "/api/addListing",
@@ -608,6 +608,38 @@
         "listing_reviews"
       ],
       "file": "src/app/api/landlord/reviews/route.js"
+    },
+    {
+      "path": "/api/lease-check",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any",
+        "PUT": "any"
+      },
+      "tables": [
+        "lease_checks"
+      ],
+      "file": "src/app/api/lease-check/route.js"
+    },
+    {
+      "path": "/api/lease-check/property",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "lease_checks"
+      ],
+      "file": "src/app/api/lease-check/property/route.js"
     },
     {
       "path": "/api/listing/[listingId]",

@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-07-11T22:05:59.031Z",
-  "count": 61,
+  "_generated": "2026-07-18T23:45:00.681Z",
+  "count": 66,
   "components": [
     {
       "name": "DormsView",
@@ -136,6 +136,31 @@
     {
       "name": "StagingEmailPicker",
       "file": "src/components/layout/StagingEmailPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "FlagCard",
+      "file": "src/components/lease-check/FlagCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseCheckClient",
+      "file": "src/components/lease-check/LeaseCheckClient.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseDisclaimer",
+      "file": "src/components/lease-check/LeaseDisclaimer.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PastChecks",
+      "file": "src/components/lease-check/PastChecks.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PropertyContext",
+      "file": "src/components/lease-check/PropertyContext.js",
       "description": "No description — run generate after adding a description above."
     },
     {
