@@ -25,6 +25,22 @@
       "status": "resolved",
       "context": "Branch feat/shared-mcp-knowledge; also updated CLAUDE.md, .gitignore, release-pr-check.yml comment, and domain.json workflow.knowledgeMaintenance text.",
       "created": "2026-07-02T16:11:32.683Z"
+    },
+    {
+      "id": "decision-1783395520566",
+      "title": "Matchmaking excludes subleases by default; sublease ≠ sublease_friendly",
+      "description": "Proxy matchmaking now excludes sublease listings by default: applySubleasePref (listingFilter.js) drops any listing whose active unit_leases are ALL sublease rows (priced or not — unpriced sublease posts previously slipped through via the room-data path) unless preferences.exclude_subleases === false, which the chat agent sets only when the student explicitly asks for subleases. New exported predicate isSubleaseListing() is the single source of truth; slimCandidate exposes is_sublease to the ranking model and market catalog, and shownListingsContext exposes isSublease to the chat agent. Key semantics: unit_leases.sublease = the lease IS a sublease; listings.sublease_friendly = subletting is ALLOWED (the agent previously conflated these). Also fixed: tradeoff \"No strong preference\" chip rendered the raw __unsure__ sentinel in the user's bubble (answerToLabel checked kind before the UNSURE sentinel). Data fix: 6038 Westminster Place's active lease was mislabeled sublease=false — corrected in dev; SAME FIX STILL PENDING IN PROD (one-row UPDATE, awaiting approval).",
+      "status": "active",
+      "context": "Branch feat/proxy-chat. Files: apps/web/src/lib/matchmaking/{listingFilter.js,chatOrchestrator.js,questionEngine.js,listing-filter.skill.md}. Verified via scratchpad harness against dev DB: 10 subleases in universe, 0 in default search, all flagged is_sublease=true on opt-in.",
+      "created": "2026-07-07T03:38:40.566Z"
+    },
+    {
+      "id": "decision-1783396324933",
+      "title": "Matchmaking: description is primary evidence; re-ranks never repeat shown listings",
+      "description": "Two ranking-policy changes on feat/proxy-chat. (1) Listing descriptions are now a heavily-weighted, near-authoritative ranking signal: the listing-filter skill + runtime instruction tell the ranker to boost candidates whose description confirms a stated preference/note, demote on conflicts, rule out hard conflicts, and trust the description over structured fields when they disagree; the excerpt passed to the model widened from 320 to 600 chars. (2) Never-repeat re-ranks: any re-rank after recommendations exist (agent update_search, preference-panel PATCH in route.js, rewound answer edits) folds currently shown listing ids into preferences._setAside first, so refines always return entirely new cards. The old \"smart repeats\" behavior (preference changes cleared _setAside) is removed. Fallbacks: update_search restores previous cards with an honest note when nothing new fits (distinguishing \"seen everything that fits\" vs \"nothing fits at all\" via filterEligible without set-aside); finalizeRecommendations clears _setAside and retries rather than going empty on rewound flows; PATCH rolls back the set-aside when it can't produce fresh picks. update_search tool result now includes previous_top {title, still_best_overall} computed by deterministic fit comparison (buildRankContext over the unrestricted pool) so the agent can truthfully say the old #1 is still the best overall fit.",
+      "status": "active",
+      "context": "Files: apps/web/src/lib/matchmaking/{chatOrchestrator.js,listingFilter.js,listing-filter.skill.md}, apps/web/src/app/api/matchmaking/chat/route.js. Verified against dev DB: back-to-back re-rank returned 3/3 new listings, zero overlap; previous_top fit comparison behaves honestly.",
+      "created": "2026-07-07T03:52:04.933Z"
     }
   ],
   "bugs": [],

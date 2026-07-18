@@ -1,6 +1,6 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-16T14:43:30.750Z",
+  "_generated": "2026-07-18T23:45:00.716Z",
   "count": 32,
   "envVars": [
     {
@@ -64,10 +64,6 @@
       "public": false
     },
     {
-      "name": "NEXT_PUBLIC_APP_ENV",
-      "public": true
-    },
-    {
       "name": "NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL",
       "public": true
     },
@@ -93,6 +89,10 @@
     },
     {
       "name": "PROD_SUPABASE_URL",
+      "public": false
+    },
+    {
+      "name": "PROXY_CHAT_KEY",
       "public": false
     },
     {
