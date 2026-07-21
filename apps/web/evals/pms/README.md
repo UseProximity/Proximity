@@ -39,4 +39,4 @@ cd apps/web && node evals/pms/run.mjs
 Fixtures approximate real Buildium/AppFolio/DoorLoop payloads from their public
 docs; they are not recorded from live accounts. Before enabling a provider in
 prod, run `verifyConnection` + `fetchSnapshot` against a sandbox account (see
-`docs/pms-setup.md`) and extend these fixtures with any shape differences found.
+`src/lib/pms/README.md`) and extend these fixtures with any shape differences found.

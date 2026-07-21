@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-18T23:45:00.690Z",
-  "count": 29,
+  "_generated": "2026-07-21T15:00:43.908Z",
+  "count": 38,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -74,6 +74,42 @@
     {
       "file": "src/lib/outreach.js",
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
+    },
+    {
+      "file": "src/lib/pms/appfolio.js",
+      "description": "AppFolio connector (via Nango Proxy — custom API config, key \"appfolio\")."
+    },
+    {
+      "file": "src/lib/pms/buildium.js",
+      "description": "Buildium connector (via Nango Proxy — provider config key \"buildium\")."
+    },
+    {
+      "file": "src/lib/pms/doorloop.js",
+      "description": "DoorLoop connector (via Nango Proxy — custom API config, key \"doorloop\")."
+    },
+    {
+      "file": "src/lib/pms/httpRetry.js",
+      "description": "fetch with timeout + backoff for PMS/Nango calls."
+    },
+    {
+      "file": "src/lib/pms/index.js",
+      "description": "PMS connector registry. Every connector implements the contract in types.js:"
+    },
+    {
+      "file": "src/lib/pms/ingest.js",
+      "description": "Create a Proximity listing from a normalized PMS property (shared by the"
+    },
+    {
+      "file": "src/lib/pms/mapping.js",
+      "description": "Mapping between PMS physical units and Proximity's listing model."
+    },
+    {
+      "file": "src/lib/pms/nango.js",
+      "description": "Nango hosted-auth helper."
+    },
+    {
+      "file": "src/lib/pms/types.js",
+      "description": "PMS connector contract + normalized shapes."
     },
     {
       "file": "src/lib/r2.js",

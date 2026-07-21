@@ -11,7 +11,7 @@
  *
  * Provider config keys must match the integrations configured in the Nango
  * dashboard: "buildium" (pre-built), "appfolio" + "doorloop" (custom API
- * configs — see docs/pms-setup.md).
+ * configs — see the README in this directory).
  */
 import { fetchWithRetry } from "./httpRetry.js";
 
