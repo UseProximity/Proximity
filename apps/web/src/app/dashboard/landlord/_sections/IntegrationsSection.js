@@ -23,6 +23,7 @@ const PROVIDERS = [
 
 export default function IntegrationsSection() {
   const [connections, setConnections] = useState(null);
+  const [allowDemo, setAllowDemo] = useState(false);
   const [connecting, setConnecting] = useState(null); // provider key while widget open
   const [consented, setConsented] = useState(false);
   const [discovery, setDiscovery] = useState(null); // discover response
@@ -36,6 +37,7 @@ export default function IntegrationsSection() {
       const res = await fetch("/api/landlord/pms/links");
       const data = await res.json();
       setConnections(res.ok ? data.connections : []);
+      setAllowDemo(res.ok ? !!data.allowDemo : false);
     } catch {
       setConnections([]);
     }
@@ -381,6 +383,38 @@ export default function IntegrationsSection() {
           Read-only. Your credentials are stored by Nango, our secure connection provider — never by
           Proximity. Your listing descriptions and photos are never overwritten.
         </p>
+
+        {/* Staging/local only: click through the whole flow with sample data, no PMS needed */}
+        {allowDemo && (
+          <Card className="border-dashed">
+            <CardContent className="p-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-gray-900 text-sm">Demo mode</div>
+                <p className="text-xs text-gray-500">
+                  Try the full flow with sample WashU-area properties — no PMS account or Nango
+                  setup needed. (Not shown on the live site.)
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={connecting === "demo"}
+                onClick={() => {
+                  setConnecting("demo");
+                  runDiscover("buildium", "mock-demo");
+                }}
+              >
+                {connecting === "demo" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Loading…
+                  </>
+                ) : (
+                  "Try the demo"
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
         {error && !discovery && <p className="text-sm text-red-600">{error}</p>}
       </div>
     </div>

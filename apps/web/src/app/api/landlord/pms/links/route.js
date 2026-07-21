@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { appEnv } from "@/lib/appEnv";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
@@ -44,6 +45,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    // Demo mode (sample-data connect flow) is available everywhere except prod.
+    allowDemo: appEnv() !== "production",
     connections: (connections ?? []).map((c) => ({
       ...c,
       links: links

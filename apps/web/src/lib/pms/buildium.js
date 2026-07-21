@@ -16,6 +16,7 @@
  * occupied (pre-leased-for-next-term is NOT stale). Unknown -> null (no action).
  */
 import { nangoProxyFetch } from "./nango.js";
+import { isMockConnection, mockVerify, mockSnapshot } from "./mock.js";
 import { toBedrooms, toBathrooms, toMoney, toIsoDate, joinAddress } from "./types.js";
 
 const PROVIDER_CONFIG_KEY = process.env.NANGO_BUILDIUM_KEY || "buildium";
@@ -42,6 +43,7 @@ async function pagedGet(connectionId, path, extraQuery = {}) {
 }
 
 export async function verifyConnection(connectionId) {
+  if (isMockConnection(connectionId)) return mockVerify();
   try {
     const res = await nangoProxyFetch({
       connectionId,
@@ -58,6 +60,7 @@ export async function verifyConnection(connectionId) {
 }
 
 export async function fetchSnapshot(connectionId) {
+  if (isMockConnection(connectionId)) return mockSnapshot();
   const errors = [];
   let properties = [];
   let units = [];

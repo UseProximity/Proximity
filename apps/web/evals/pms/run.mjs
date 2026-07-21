@@ -155,6 +155,28 @@ check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") ==
   check("httpRetry: 5xx retried", res5xx.status === 200 && attempts === 2);
 }
 
+// ---------- demo mode gating ----------
+{
+  const { isMockConnection, mockSnapshot } = await import("file://" + WEB + "/src/lib/pms/mock.js");
+  delete process.env.APP_ENV;
+  check("mock: enabled outside production", isMockConnection("mock-demo") === true);
+  process.env.APP_ENV = "production";
+  check("mock: hard-off in production", isMockConnection("mock-demo") === false);
+  delete process.env.APP_ENV;
+  const snap = mockSnapshot();
+  check("mock: snapshot has demo properties, no errors", snap.properties.length === 3 && snap.errors.length === 0);
+
+  routes = [];
+  callLog = [];
+  const v = await buildium.verifyConnection("mock-demo");
+  check("mock: buildium short-circuits without any network call", v.ok === true && callLog.length === 0);
+
+  process.env.PMS_MOCK_LEASED = "2B";
+  const leased = mockSnapshot().properties[0].units.find((u) => u.label === "2B");
+  check("mock: PMS_MOCK_LEASED forces a unit occupied", leased.available === false && leased.availableFrom != null);
+  delete process.env.PMS_MOCK_LEASED;
+}
+
 // ---------- credential hygiene ----------
 {
   routes = [["/proxy/v1/rentals", () => json([])]];

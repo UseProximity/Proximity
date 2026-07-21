@@ -37,6 +37,27 @@ Add to **both Vercel environments** (Production + Preview) and `.env.local`:
 `CRON_SECRET` already exists (landlord-nudge uses it); the new
 `/api/cron/pms-sync` cron (daily 9:00 UTC, in `apps/web/vercel.json`) reuses it.
 
+## 3.5 Demo mode — test the whole flow with NO PMS account
+
+On staging and local (never production), the dashboard's **PMS Sync** section
+shows a **Demo mode** card. Clicking it runs the real discover → confirm → sync
+pipeline against sample WashU-area properties (Clemens Ave, Pershing Ave, plus
+a downtown one to demo the radius filter) — no Nango, no Buildium.
+
+Full walkthrough:
+1. Sign in as a landlord → Dashboard → **PMS Sync** → **Try the demo**.
+2. Discover screen: 3 properties, one flagged "Outside the WashU area".
+   Choose "Add as a new listing" for the near ones → **Confirm and start syncing**.
+3. Two listings appear (dev DB) with Street View covers, the red **LIVE** pill,
+   and the "straight from the landlord's own system" banner.
+4. Run the sync: `curl -H "Authorization: Bearer $CRON_SECRET" <base>/api/cron/pms-sync`
+   → `pms_sync_events` logs per-listing results; `last_verified_at` refreshes.
+5. Simulate a lease-up: set env `PMS_MOCK_LEASED="1A,2B"` (Vercel env or local
+   shell), re-run the cron → those units flip unavailable (when all units of a
+   listing are taken, the whole listing shows "unavailable" — never deleted).
+   Clear the env var and re-run → they relist.
+6. Disconnect from the dashboard → badge disappears, listings stay.
+
 ## 4. Sandbox verification before real landlords
 
 1. **Buildium**: Premium includes one free sandbox account — create API keys in
