@@ -190,6 +190,23 @@ function buildListing(row, owner = null, reviews = []) {
       const units = row.listing_units ?? [];
       return units.length > 0 && units.every((u) => u.available === false);
     })(),
+    // Earliest future move-in across available units; null = available now.
+    // Non-null means every open unit is pre-leased until that date, so the UI
+    // shows "Available Aug 1" instead of hiding the listing.
+    availableFrom: (() => {
+      const today = new Date().toISOString().slice(0, 10);
+      const units = (row.listing_units ?? []).filter((u) => u.available !== false);
+      if (!units.length) return null;
+      const nexts = units.map(
+        (u) =>
+          (u.unit_leases ?? [])
+            .filter((l) => l.available_from)
+            .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
+            ?.available_from ?? null
+      );
+      if (nexts.some((d) => !d || String(d).slice(0, 10) <= today)) return null;
+      return String(nexts.sort()[0]).slice(0, 10);
+    })(),
     // Live-verified: availability/pricing sync daily from the landlord's
     // property management system (pms_connection_id marks the connection).
     verifiedLive: !!row.pms_connection_id,

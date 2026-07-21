@@ -30,6 +30,7 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+import { formatAvailableFrom } from "@/utils/listingFormatters";
 import ReviewReplySection from "./ReviewReplySection";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
@@ -1612,6 +1613,12 @@ export default function ListingModalInfo({
                 </h1>
                 {cityStateZip && (
                   <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
+                )}
+                {/* Pre-leased until a known date: show the move-in instead of hiding */}
+                {!listing.unavailable && formatAvailableFrom(listing.availableFrom) && (
+                  <span className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2.5 py-1">
+                    {formatAvailableFrom(listing.availableFrom)}
+                  </span>
                 )}
               </div>
               <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">

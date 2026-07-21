@@ -4,7 +4,14 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getConnector, isApiProvider } from "@/lib/pms/index.js";
 import { ingestPmsProperty } from "@/lib/pms/ingest.js";
-import { rollUpAvailability, rollUpRent, rollUpAvailableFrom, matchUnitsToListingUnits } from "@/lib/pms/mapping.js";
+import {
+  applyLeasingHorizon,
+  leasingHorizonEnd,
+  rollUpAvailability,
+  rollUpRent,
+  rollUpAvailableFrom,
+  matchUnitsToListingUnits,
+} from "@/lib/pms/mapping.js";
 
 /*
  * Daily PMS sync — the PMS is the source of truth (ILS-feed semantics):
@@ -12,11 +19,17 @@ import { rollUpAvailability, rollUpRent, rollUpAvailableFrom, matchUnitsToListin
  *   unit missing from the snapshot -> treated as leased/removed (delists)
  *   new unit/property -> linked or auto-ingested
  *   available:null (unknown) -> NO action, never stale
+ * Availability is evaluated against the pre-leasing horizon (mapping.js):
+ * vacant now OR lease ending within ~12 months counts as available, surfaced
+ * as "Available <date>" — a fully pre-leased building is not stale.
  * Safety rails:
  *   - a broken pull (empty snapshot + errors) refuses to reconcile
  *   - the ±20% swing guard holds any sync that would change too much of a
  *     connection's portfolio at once (review row; nothing applied)
  *   - price updates are gated by sync_price + a 2% change threshold
+ *   - auto_apply=false runs the whole sync as a DRY RUN: every intended
+ *     change is logged to pms_sync_events with applied=false, nothing written
+ *     to listings — read the events for 1–2 weeks, then flip it live
  * All writes go through the audit-safe RPCs as the reserved system actor.
  */
 
@@ -39,9 +52,12 @@ export async function GET(req) {
 
   const summary = [];
   for (const connection of connections ?? []) {
-    if (!isApiProvider(connection.provider) || !connection.auto_apply) continue;
+    // Scrape/aggregator providers have no API connector — their signal-only
+    // path lives elsewhere (review queue). API connections always sync; with
+    // auto_apply=false the sync observes and logs instead of writing.
+    if (!isApiProvider(connection.provider)) continue;
     try {
-      summary.push(await syncConnection(connection));
+      summary.push(await syncConnection(connection, { dryRun: !connection.auto_apply }));
     } catch (err) {
       console.error("[pms-sync]", connection.id, err?.message);
       await supabase
@@ -59,10 +75,12 @@ async function logEvents(rows) {
   if (rows.length) await supabase.from("pms_sync_events").insert(rows);
 }
 
-async function syncConnection(connection) {
+async function syncConnection(connection, { dryRun = false } = {}) {
   const source = `pms:${connection.provider}`;
   const connector = getConnector(connection.provider);
   const snapshot = await connector.fetchSnapshot(connection.nango_connection_id);
+  const horizonEnd = leasingHorizonEnd();
+  const today = new Date().toISOString().slice(0, 10);
 
   // Broken pull: refuse to reconcile — a fetch failure must never delist anyone.
   if (!snapshot.properties.length) {
@@ -147,6 +165,21 @@ async function syncConnection(connection) {
     const listingId = trackedListingByProperty.get(property.externalPropertyId);
     if (!listingId) continue; // whole-property ingest handled below
 
+    if (dryRun) {
+      events.push({
+        connection_id: connection.id,
+        listing_id: listingId,
+        external_unit_id: unit.externalUnitId,
+        observed_available: unit.available,
+        observed_rent: unit.rent,
+        applied: false,
+        result: "created",
+        detail: { dryRun: true, kind: "unit", label: unit.label },
+      });
+      applied.created += 1;
+      continue;
+    }
+
     const { data: listingUnits } = await supabase
       .from("listing_units")
       .select("id, bedrooms, bathrooms")
@@ -209,6 +242,22 @@ async function syncConnection(connection) {
   for (const property of snapshot.properties) {
     if (knownProperties.has(property.externalPropertyId)) continue;
     if (excludedProperties.has(property.externalPropertyId)) continue;
+    if (dryRun) {
+      events.push({
+        connection_id: connection.id,
+        applied: false,
+        result: "created",
+        detail: {
+          dryRun: true,
+          kind: "property",
+          externalPropertyId: property.externalPropertyId,
+          name: property.name,
+          units: property.units.length,
+        },
+      });
+      applied.created += 1;
+      continue;
+    }
     try {
       const { data: ownerRow } = await supabase
         .from("users")
@@ -270,15 +319,14 @@ async function syncConnection(connection) {
     if (!listing || listing.deleted_at) continue;
 
     // Observed state per link: missing from the snapshot == leased/removed.
+    // Availability is horizon-aware: vacant now OR freeing up within the
+    // leasing horizon counts as available (vacant-now reports availableFrom =
+    // today so "earliest move-in" rolls up correctly).
     const observed = listingLinks.map((l) => {
       const snap = snapUnits.get(linkKey(l));
-      return {
-        link: l,
-        unit: snap?.unit ?? null,
-        available: snap ? snap.unit.available : false,
-        rent: snap?.unit.rent ?? null,
-        availableFrom: snap?.unit.availableFrom ?? null,
-      };
+      if (!snap) return { link: l, unit: null, available: false, rent: null, availableFrom: null };
+      const [u] = applyLeasingHorizon([snap.unit], horizonEnd, today);
+      return { link: l, unit: u, available: u.available, rent: u.rent, availableFrom: u.availableFrom };
     });
 
     // Roll physical units up to their floor-plan type rows.
@@ -314,7 +362,10 @@ async function syncConnection(connection) {
         connection.sync_price &&
         nextRent != null &&
         (currentRent == null || Math.abs(nextRent - currentRent) / currentRent >= PRICE_CHANGE_MIN_RATIO);
-      const fromChanged = nextFrom != null && nextFrom !== (activeLease?.available_from ?? null);
+      const currentFrom = activeLease?.available_from ?? null;
+      // Any past-or-today date means "available now" — don't churn it daily.
+      const bothNow = nextFrom != null && currentFrom != null && nextFrom <= today && currentFrom <= today;
+      const fromChanged = nextFrom != null && nextFrom !== currentFrom && !bothNow;
       if (rentChanged || fromChanged) {
         leaseUpdates.push({
           unit_id: typeId,
@@ -336,47 +387,66 @@ async function syncConnection(connection) {
 
     const hasChanges = unitUpdates.length || leaseUpdates.length || Object.keys(listingUpdates).length;
     if (hasChanges) {
-      const { error } = await supabase.rpc("rpc_pms_apply", {
-        p_user_id: SYSTEM_USER_ID,
-        p_listing_id: listingId,
-        p_listing_updates: Object.keys(listingUpdates).length ? listingUpdates : null,
-        p_unit_updates: unitUpdates.length ? unitUpdates : null,
-        p_lease_updates: leaseUpdates.length ? leaseUpdates : null,
-      });
-      if (error) {
-        events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "error", detail: { error: error.message } });
-        continue;
-      }
       const result = listingUpdates.unavailable === true
         ? "delisted"
         : listingUpdates.unavailable === false
           ? "relisted"
           : "updated";
-      applied[result === "delisted" ? "delisted" : result === "relisted" ? "relisted" : "updated"] += 1;
-      events.push({
-        connection_id: connection.id,
-        listing_id: listingId,
-        applied: true,
-        result,
-        detail: { unitUpdates: unitUpdates.length, leaseUpdates: leaseUpdates.length, ...listingUpdates },
-      });
+      if (dryRun) {
+        // Observe-and-log: record the full intended change, write nothing.
+        applied[result === "delisted" ? "delisted" : result === "relisted" ? "relisted" : "updated"] += 1;
+        events.push({
+          connection_id: connection.id,
+          listing_id: listingId,
+          applied: false,
+          result,
+          detail: { dryRun: true, listingUpdates, unitUpdates, leaseUpdates },
+        });
+      } else {
+        const { error } = await supabase.rpc("rpc_pms_apply", {
+          p_user_id: SYSTEM_USER_ID,
+          p_listing_id: listingId,
+          p_listing_updates: Object.keys(listingUpdates).length ? listingUpdates : null,
+          p_unit_updates: unitUpdates.length ? unitUpdates : null,
+          p_lease_updates: leaseUpdates.length ? leaseUpdates : null,
+        });
+        if (error) {
+          events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "error", detail: { error: error.message } });
+          continue;
+        }
+        applied[result === "delisted" ? "delisted" : result === "relisted" ? "relisted" : "updated"] += 1;
+        events.push({
+          connection_id: connection.id,
+          listing_id: listingId,
+          applied: true,
+          result,
+          detail: { unitUpdates: unitUpdates.length, leaseUpdates: leaseUpdates.length, ...listingUpdates },
+        });
+      }
     } else {
-      events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "skipped", detail: {} });
+      events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "skipped", detail: dryRun ? { dryRun: true } : {} });
     }
 
-    // Freshness stamp: the availability shown was checked against the PMS today.
-    await supabase.rpc("rpc_pms_mark_verified", {
-      p_user_id: SYSTEM_USER_ID,
-      p_listing_id: listingId,
-      p_source: source,
-    });
+    // Freshness stamp: the availability shown was checked against the PMS
+    // today. A dry run verifies nothing — it must not stamp listings.
+    if (!dryRun) {
+      await supabase.rpc("rpc_pms_mark_verified", {
+        p_user_id: SYSTEM_USER_ID,
+        p_listing_id: listingId,
+        p_source: source,
+      });
+    }
   }
 
   await logEvents(events);
   await supabase
     .from("pms_connections")
-    .update({ last_sync_at: new Date().toISOString(), last_sync_status: "ok", last_sync_error: null })
+    .update({
+      last_sync_at: new Date().toISOString(),
+      last_sync_status: dryRun ? "dry_run" : "ok",
+      last_sync_error: null,
+    })
     .eq("id", connection.id);
 
-  return { connectionId: connection.id, status: "ok", ...applied };
+  return { connectionId: connection.id, status: dryRun ? "dry_run" : "ok", ...applied };
 }

@@ -14,6 +14,23 @@ function formatRentRange(min, max) {
     : `$${min.toLocaleString()}-$${max.toLocaleString()}`;
 }
 
+// ─── Availability dates ──────────────────────────────────────────────────────
+
+// "Available Aug 1" label for a future move-in date (listing.availableFrom /
+// unitType.availableFrom). Returns null for past/today/absent dates — those
+// mean "available now" and get no label. Adds the year when it isn't this year.
+export function formatAvailableFrom(dateStr) {
+  if (!dateStr) return null;
+  const iso = String(dateStr).slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  if (iso <= today) return null;
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return `Available ${d.toLocaleDateString(undefined, opts)}`;
+}
+
 // ─── Lease terms ──────────────────────────────────────────────────────────────
 
 // A unit's lease durations are stored as month counts (unit_leases.lease_term_months).

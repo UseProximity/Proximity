@@ -12,6 +12,47 @@
 
 const typeKey = (bedrooms, bathrooms) => `${bedrooms ?? "?"}|${bathrooms ?? "?"}`;
 
+// ---------------------------------------------------------------------------
+// Pre-leasing horizon
+//
+// Students shop months ahead: a unit leased through July is exactly what a
+// January shopper wants for August. `available = !occupied` alone would sink
+// every fully pre-leased building, so availability is evaluated against a
+// leasing horizon: a unit counts as available when it's vacant NOW or its
+// current lease ends within the horizon (surfaced as "Available Aug 1").
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_LEASING_HORIZON_MONTHS = 12;
+
+// "YYYY-MM-DD" horizon cutoff, PMS_LEASING_HORIZON_MONTHS months from `now`.
+export function leasingHorizonEnd(now = new Date()) {
+  const months =
+    Number(process.env.PMS_LEASING_HORIZON_MONTHS) || DEFAULT_LEASING_HORIZON_MONTHS;
+  const d = new Date(now);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+// Horizon-aware availability for one unit. Unknown occupancy stays unknown.
+export function unitAvailableWithinHorizon(unit, horizonEnd) {
+  if (unit.available === true) return true;
+  if (unit.available === false) {
+    return Boolean(unit.availableFrom && horizonEnd && unit.availableFrom <= horizonEnd);
+  }
+  return null;
+}
+
+// Re-express units through the horizon so the existing roll-ups apply
+// unchanged: available becomes horizon-aware, and a vacant-now unit reports
+// availableFrom = today (so "earliest availableFrom" resolves to "now").
+export function applyLeasingHorizon(units, horizonEnd, today = new Date().toISOString().slice(0, 10)) {
+  return units.map((u) => ({
+    ...u,
+    available: unitAvailableWithinHorizon(u, horizonEnd),
+    availableFrom: u.available === true ? today : u.availableFrom,
+  }));
+}
+
 // Roll a set of physical PMS units up to one type-level summary.
 // available: true if any unit is available, false if all known-false,
 // null if occupancy is unknown across the board (sync takes no action).

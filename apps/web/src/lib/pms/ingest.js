@@ -10,7 +10,7 @@ import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { joinAddress } from "./types.js";
-import { groupUnitsToTypes, matchUnitsToListingUnits } from "./mapping.js";
+import { applyLeasingHorizon, groupUnitsToTypes, leasingHorizonEnd, matchUnitsToListingUnits } from "./mapping.js";
 
 // Local copy of the private geocodeAddress helper (deliberately duplicated).
 async function geocodeAddress(address) {
@@ -64,7 +64,9 @@ export async function ingestPmsProperty({
   const geo = await geocodeAddress(fullAddress);
   if (!geo) throw new Error("Address could not be geocoded");
 
-  const groups = groupUnitsToTypes(property.units);
+  // Pre-leasing horizon: a unit whose lease ends within the horizon ingests as
+  // available with its move-in date, instead of being hidden as "occupied".
+  const groups = groupUnitsToTypes(applyLeasingHorizon(property.units, leasingHorizonEnd()));
   const unitData = groups.map(({ type }) => ({
     bedrooms: type.bedrooms,
     bathrooms: type.bathrooms ?? 1,
