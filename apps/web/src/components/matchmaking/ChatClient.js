@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
@@ -55,6 +56,9 @@ export default function ChatClient() {
   const [loading, setLoading] = useState(false);
   const [recsUpdating, setRecsUpdating] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  // The chat API requires a signed-in user in production (401). Without this the
+  // screen rendered an empty, unanswerable chat — show a sign-in card instead.
+  const [needsAuth, setNeedsAuth] = useState(false);
   const hadCache = useRef(false);
 
   // Refs mirror the latest prefs/weights so rapid chip taps build on current
@@ -526,6 +530,14 @@ export default function ChatClient() {
       // 2. Sync with server (authoritative source)
       try {
         const res = await fetch("/api/matchmaking/chat");
+        if (res.status === 401) {
+          // Anonymous in production — a cached transcript can't be continued either.
+          localStorage.removeItem(LS_KEY);
+          setMessages([]);
+          setNeedsAuth(true);
+          setLoading(false);
+          return;
+        }
         const { session } = await res.json();
 
         if (session) {
@@ -591,6 +603,10 @@ export default function ChatClient() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: "" }),
         });
+        if (res.status === 401) {
+          setNeedsAuth(true);
+          return;
+        }
         const data = await res.json();
         if (res.ok) {
           applyServerState(data);
@@ -721,6 +737,36 @@ export default function ChatClient() {
     return (Math.max(0, idx) / QUESTION_PLAN.length) * NARROWING_START;
   })();
   const progressPct = Math.round(progress * 100);
+
+  // Signed-out: the chat can't run at all, so replace it with a sign-in card
+  // rather than an empty window that never answers.
+  if (needsAuth) {
+    return (
+      <div className="h-[calc(100dvh-109px)] md:h-[calc(100dvh-130px)] bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-8 text-center">
+          <div className="w-12 h-12 mx-auto rounded-full bg-red-100 text-red-600 text-lg font-bold flex items-center justify-center">
+            P
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-gray-900">Sign in to chat with Proxy</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            Answer a few quick questions and get free personalized off-campus housing matches near WashU.
+          </p>
+          <Link
+            href="/login?callbackUrl=/matchmaking"
+            className="mt-6 block w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/login?tab=signup&callbackUrl=/matchmaking"
+            className="mt-3 inline-block text-sm font-medium text-gray-500 hover:text-red-600 transition"
+          >
+            Create an account
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     // Fill the viewport beneath the chrome above us so the chat is tall but the composer
