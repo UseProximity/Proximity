@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/landlord-nudge",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron/pms-sync",
+      "schedule": "0 9 * * *"
     }
   ]
 }

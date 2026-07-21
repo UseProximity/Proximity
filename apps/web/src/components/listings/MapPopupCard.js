@@ -103,6 +103,16 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             Unavailable
           </div>
         )}
+        {/* PMS-synced listing: availability is live from the property's system */}
+        {!listing.unavailable && listing.verifiedLive && (
+          <div className="absolute top-3 left-3 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+            <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+            </span>
+            <span className="uppercase tracking-wide">Live</span>
+          </div>
+        )}
         {imageCount > 1 && !listing.unavailable && (
           // In the compact (matchmaking row) variant, hide on desktop where the card is small.
           <div className={`absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full ${compact ? "md:hidden" : ""}`}>

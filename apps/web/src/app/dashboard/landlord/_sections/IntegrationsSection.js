@@ -150,7 +150,7 @@ export default function IntegrationsSection() {
       <div className="space-y-6 max-w-3xl">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            We found {discovery.properties.length} propert{discovery.properties.length === 1 ? "y" : "ies"}
+            Found {discovery.properties.length} propert{discovery.properties.length === 1 ? "y" : "ies"}
           </h1>
           <p className="text-sm text-gray-600 mt-1">
             Confirm once — after this, availability and pricing stay in sync automatically.
@@ -250,9 +250,10 @@ export default function IntegrationsSection() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Property management sync</h1>
         <p className="text-sm text-gray-600 mt-1">
-          Connect your property management system once. Leased units come off Proximity on their
-          own, freed-up units go live on their own, and students see availability verified straight
-          from your system — no more “is this still available?” emails.
+          Connect your property management system once. Leased units come off Proximity
+          automatically, freed-up units go live the moment they open up, and students see
+          availability verified straight from your system — no more “is this still available?”
+          emails.
         </p>
       </div>
 

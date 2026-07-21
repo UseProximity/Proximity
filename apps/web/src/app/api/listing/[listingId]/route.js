@@ -190,6 +190,10 @@ function buildListing(row, owner = null, reviews = []) {
       const units = row.listing_units ?? [];
       return units.length > 0 && units.every((u) => u.available === false);
     })(),
+    // Live-verified: availability/pricing sync daily from the landlord's
+    // property management system (pms_connection_id marks the connection).
+    verifiedLive: !!row.pms_connection_id,
+    verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
     amenities: amenitiesRowToArray(row.listing_amenities),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
@@ -241,6 +245,7 @@ export async function GET(req, { params }) {
         lease_structure, furnished, move_in_date, lease_availability,
         sublease_friendly, twenty_one_plus, unavailable,
         city, state, zipcode, created_at,
+        pms_connection_id, last_verified_at,
         min_rent, max_rent, min_bedrooms, max_bedrooms,
         min_bathrooms, max_bathrooms, min_area, max_area,
         home_types(label),
