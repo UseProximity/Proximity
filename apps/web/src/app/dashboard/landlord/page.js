@@ -1,8 +1,9 @@
 "use client";
 
-import { BarChart3, MapPin, Star, User, Menu, X } from "lucide-react";
+import { BarChart3, MapPin, Plug, Star, User, Menu, X } from "lucide-react";
 import ListingFormPanel from "@/components/listings/ListingFormPanel";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
+import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
 import ProfileSection from "./_sections/ProfileSection";
 import PropertiesSection from "./_sections/PropertiesSection";
@@ -72,6 +73,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         );
       case "reviews":
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
+      case "integrations":
+        return <IntegrationsSection />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
       case "profile":
@@ -261,6 +264,17 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   >
                     <Star className="h-4 w-4" />
                     Reviews
+                  </button>
+                  <button
+                    onClick={() => handleNavigation("integrations")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "integrations"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Plug className="h-4 w-4" />
+                    PMS Sync
                   </button>
                 </div>
               </div>
