@@ -2,7 +2,9 @@
 
 /*
  * Site-wide bug-report / suggestion widget. Renders a small floating button in the
- * bottom-left corner (kept clear of the bottom-right ChatWidget) and a modal form.
+ * bottom-left corner on desktop only (kept clear of the bottom-right ChatWidget)
+ * and a modal form. On mobile the launcher is hidden to keep the small viewport
+ * clear — the footer "Report a bug" link is the entry point there.
  * Also opens when any element dispatches the `proximity:open-feedback` window event —
  * the footer "Report a bug" link uses that so both entry points share one modal.
  * Submissions POST to /api/feedback, which emails the team.
@@ -80,15 +82,15 @@ export default function FeedbackWidget() {
 
   return (
     <>
-      {/* Floating launcher */}
+      {/* Floating launcher — desktop only */}
       <button
         type="button"
         onClick={openModal}
         aria-label="Report a bug or suggest a fix"
-        className="fixed bottom-6 left-6 z-40 flex items-center gap-2 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition px-4 py-3"
+        className="hidden sm:flex fixed bottom-6 left-6 z-40 items-center gap-2 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition px-4 py-3"
       >
         <MessageSquarePlus className="h-5 w-5" />
-        <span className="hidden sm:inline text-sm font-semibold">Feedback</span>
+        <span className="text-sm font-semibold">Feedback</span>
       </button>
 
       {/* Modal */}
