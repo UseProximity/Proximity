@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-21T15:00:43.944Z",
-  "count": 37,
+  "_generated": "2026-07-21T20:34:41.135Z",
+  "count": 42,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -9,6 +9,14 @@
     },
     {
       "name": "APP_ENV",
+      "public": false
+    },
+    {
+      "name": "AUTH_SECRET",
+      "public": false
+    },
+    {
+      "name": "AVAILABILITY_LINK_SECRET",
       "public": false
     },
     {
@@ -80,6 +88,10 @@
       "public": false
     },
     {
+      "name": "NANGO_RENTEC_KEY",
+      "public": false
+    },
+    {
       "name": "NANGO_SECRET_KEY",
       "public": false
     },
@@ -101,6 +113,14 @@
     },
     {
       "name": "NODE_ENV",
+      "public": false
+    },
+    {
+      "name": "PMS_LEASING_HORIZON_MONTHS",
+      "public": false
+    },
+    {
+      "name": "PMS_MOCK_LEASED",
       "public": false
     },
     {

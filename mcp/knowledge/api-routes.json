@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-21T15:00:43.884Z",
-  "count": 69,
+  "_generated": "2026-07-21T20:34:41.084Z",
+  "count": 71,
   "routes": [
     {
       "path": "/api/addListing",
@@ -302,6 +302,21 @@
       "file": "src/app/api/auth/verify-email/route.js"
     },
     {
+      "path": "/api/availability/confirm",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings",
+        "pms_review_queue"
+      ],
+      "file": "src/app/api/availability/confirm/route.js"
+    },
+    {
       "path": "/api/contacted",
       "methods": [
         "POST"
@@ -327,6 +342,21 @@
         "users"
       ],
       "file": "src/app/api/contactLandlord/route.js"
+    },
+    {
+      "path": "/api/cron/availability-check",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings",
+        "users"
+      ],
+      "file": "src/app/api/cron/availability-check/route.js"
     },
     {
       "path": "/api/cron/landlord-nudge",

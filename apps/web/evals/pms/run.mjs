@@ -20,7 +20,9 @@ const { fetchWithRetry } = await import("file://" + WEB + "/src/lib/pms/httpRetr
 const buildium = await import("file://" + WEB + "/src/lib/pms/buildium.js");
 const doorloop = await import("file://" + WEB + "/src/lib/pms/doorloop.js");
 const appfolio = await import("file://" + WEB + "/src/lib/pms/appfolio.js");
+const rentec = await import("file://" + WEB + "/src/lib/pms/rentec.js");
 const { toBedrooms, toBathrooms, toMoney } = await import("file://" + WEB + "/src/lib/pms/types.js");
+const mapping = await import("file://" + WEB + "/src/lib/pms/mapping.js");
 
 const results = [];
 function check(label, pass, detail = "") {
@@ -175,6 +177,122 @@ check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") ==
   const leased = mockSnapshot().properties[0].units.find((u) => u.label === "2B");
   check("mock: PMS_MOCK_LEASED forces a unit occupied", leased.available === false && leased.availableFrom != null);
   delete process.env.PMS_MOCK_LEASED;
+}
+
+// ---------- Rentec Direct ----------
+{
+  const envelope = (data) => json({ summary: { records: Array.isArray(data) ? data.length : 1, timestamp: "2026-07-21T00:00:00Z" }, data });
+  routes = [
+    ["/proxy/ping", () => envelope({ status: "success", user: { user_id: 7, company: "Delmar Loop Rentals" } })],
+    ["/proxy/properties", () => envelope([
+      {
+        id: "property:100", property_id: 100, sub_of: null, nickname: "DeMun Flats",
+        address: "700 DeMun Ave", city: "Clayton", state: "MO", zip: 63105,
+        multiplex: true, multiunits: 3, monthly_rent: null, renters: [],
+        subunits: [
+          { id: "property:101", property_id: 101, sub_of: 100, nickname: "1W", monthly_rent: "1,450",
+            renters: [], marketing: { bedrooms: 2, bathrooms: 1, sqft: 900 } },
+          { id: "property:102", property_id: 102, sub_of: 100, nickname: "2W", monthly_rent: 1600,
+            renters: [{ renter_id: 9, renter_name: "T", move_in: "2025-08-01", move_out: null }],
+            marketing: { bedrooms: 2, bathrooms: 1.5, sqft: 950 } },
+          { id: "property:103", property_id: 103, sub_of: 100, nickname: "3W", monthly_rent: 1600 },
+        ],
+      },
+      // standalone house = its own single unit
+      { id: "property:200", property_id: 200, sub_of: null, nickname: "Kingsbury House",
+        address: "6300 Kingsbury Ave", city: "St. Louis", state: "MO", zip: "63130",
+        multiplex: false, renters: [{ renter_id: 3, move_in: "2025-06-01", move_out: "2027-05-31" }],
+        marketing: { bedrooms: 4, bathrooms: 2, sqft: 1800 } },
+      // child row leaked to the top level -> must be skipped, never double-counted
+      { id: "property:101", property_id: 101, sub_of: 100, nickname: "1W dup", renters: [] },
+    ])],
+    ["/proxy/leases", () => envelope([
+      { lease_id: 1, property_id: 102, lease_begin: "2025-08-01", lease_end: "2027-07-31", move_out: null },
+      { lease_id: 2, property_id: 200, lease_begin: "2025-06-01", lease_end: "2027-05-31", move_out: "2027-05-31" },
+    ])],
+  ];
+
+  const v = await rentec.verifyConnection("conn-r");
+  check("rentec: ping -> account label from company", v.ok === true && v.accountLabel === "Delmar Loop Rentals");
+
+  const snap = await rentec.fetchSnapshot("conn-r");
+  check("rentec: subunits become units; leaked child rows skipped",
+    snap.properties.length === 2 && snap.properties[0].units.length === 3);
+  const [u1, u2, u3] = snap.properties[0].units;
+  check("rentec: empty renters -> available true + rent/beds parsed",
+    u1.available === true && u1.rent === 1450 && u1.bedrooms === 2 && u1.area === 900);
+  check("rentec: current renter -> available false + availableFrom from lease end",
+    u2.available === false && u2.availableFrom === "2027-07-31");
+  check("rentec: renters absent -> available null (no action)", u3.available === null);
+  const house = snap.properties[1];
+  check("rentec: standalone property is its own unit, moved-out renter honored",
+    house.units.length === 1 && house.units[0].available === false && house.units[0].availableFrom === "2027-05-31");
+  check("rentec: no errors on clean pull", snap.errors.length === 0);
+
+  routes = [["/proxy/properties", () => json({ error: "bad key" }, 401)]];
+  const broken = await rentec.fetchSnapshot("conn-r");
+  check("rentec: auth failure -> empty snapshot + error, never partial",
+    broken.properties.length === 0 && broken.errors.length === 1);
+}
+
+// ---------- pre-leasing horizon ----------
+{
+  const { leasingHorizonEnd, unitAvailableWithinHorizon, applyLeasingHorizon,
+          rollUpAvailability, rollUpAvailableFrom, groupUnitsToTypes } = mapping;
+  const plusMonths = (m) => { const d = new Date(); d.setMonth(d.getMonth() + m); return d.toISOString().slice(0, 10); };
+  const today = new Date().toISOString().slice(0, 10);
+  const horizon = leasingHorizonEnd();
+
+  check("horizon: lease ending in 2 months -> available",
+    unitAvailableWithinHorizon({ available: false, availableFrom: plusMonths(2) }, horizon) === true);
+  check("horizon: lease ending in 3 years -> not available",
+    unitAvailableWithinHorizon({ available: false, availableFrom: plusMonths(36) }, horizon) === false);
+  check("horizon: occupied with no known end -> not available",
+    unitAvailableWithinHorizon({ available: false, availableFrom: null }, horizon) === false);
+  check("horizon: unknown occupancy stays unknown",
+    unitAvailableWithinHorizon({ available: null }, horizon) === null);
+
+  process.env.PMS_LEASING_HORIZON_MONTHS = "3";
+  check("horizon: PMS_LEASING_HORIZON_MONTHS shortens the window",
+    unitAvailableWithinHorizon({ available: false, availableFrom: plusMonths(6) }, leasingHorizonEnd()) === false);
+  delete process.env.PMS_LEASING_HORIZON_MONTHS;
+
+  // A fully pre-leased building (every lease ends within the horizon) rolls up
+  // available with the earliest move-in — it must never read as stale.
+  const preLeased = applyLeasingHorizon([
+    { externalUnitId: "a", bedrooms: 2, available: false, availableFrom: plusMonths(1), rent: 1200 },
+    { externalUnitId: "b", bedrooms: 2, available: false, availableFrom: plusMonths(2), rent: 1250 },
+  ], horizon, today);
+  check("horizon: fully pre-leased building stays available with earliest move-in",
+    rollUpAvailability(preLeased) === true && rollUpAvailableFrom(preLeased) === plusMonths(1));
+
+  // A vacant-now unit reports availableFrom = today, so mixed groups say "now".
+  const mixed = applyLeasingHorizon([
+    { externalUnitId: "a", bedrooms: 2, available: true, availableFrom: null, rent: 1200 },
+    { externalUnitId: "b", bedrooms: 2, available: false, availableFrom: plusMonths(2), rent: 1250 },
+  ], horizon, today);
+  check("horizon: vacant-now beats a later date in the roll-up",
+    rollUpAvailableFrom(mixed) === today);
+
+  const types = groupUnitsToTypes(preLeased);
+  check("horizon: ingest groups pre-leased units as an available type",
+    types.length === 1 && types[0].type.available === true && types[0].type.leaseAvailability === plusMonths(1));
+}
+
+// ---------- one-click availability token ----------
+{
+  process.env.AUTH_SECRET = "eval-secret";
+  const { signAvailabilityToken, verifyAvailabilityToken } =
+    await import("file://" + WEB + "/src/lib/availabilityCheck.js");
+  const token = signAvailabilityToken("listing-123");
+  check("availability token: sign/verify roundtrip",
+    verifyAvailabilityToken(token)?.listingId === "listing-123");
+  check("availability token: tampered token rejected",
+    verifyAvailabilityToken(token.slice(0, -2) + "xx") === null &&
+    verifyAvailabilityToken("garbage") === null);
+  const expired = signAvailabilityToken("listing-123", Date.now() - 40 * 86400_000);
+  check("availability token: expired token rejected", verifyAvailabilityToken(expired) === null);
+  delete process.env.AUTH_SECRET;
 }
 
 // ---------- credential hygiene ----------

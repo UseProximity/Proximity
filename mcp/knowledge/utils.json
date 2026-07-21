@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-21T15:00:43.908Z",
-  "count": 38,
+  "_generated": "2026-07-21T20:34:41.102Z",
+  "count": 41,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -10,6 +10,10 @@
     {
       "file": "src/lib/authMobile.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/availabilityCheck.js",
+      "description": "One-click \"still available?\" landlord email."
     },
     {
       "file": "src/lib/contactTracking.js",
@@ -104,8 +108,16 @@
       "description": "Mapping between PMS physical units and Proximity's listing model."
     },
     {
+      "file": "src/lib/pms/mock.js",
+      "description": "Demo mode — a synthetic PMS account for testing the entire flow (connect →"
+    },
+    {
       "file": "src/lib/pms/nango.js",
       "description": "Nango hosted-auth helper."
+    },
+    {
+      "file": "src/lib/pms/rentec.js",
+      "description": "Rentec Direct connector (via Nango Proxy — provider config key \"rentec\")."
     },
     {
       "file": "src/lib/pms/types.js",

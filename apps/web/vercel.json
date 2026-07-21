@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/pms-sync",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/availability-check",
+      "schedule": "0 16 * * *"
     }
   ]
 }
