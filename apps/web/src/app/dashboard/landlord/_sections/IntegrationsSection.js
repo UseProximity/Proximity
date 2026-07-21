@@ -19,6 +19,7 @@ const PROVIDERS = [
   { key: "buildium", label: "Buildium", note: "Open API access (Premium plan) required" },
   { key: "appfolio", label: "AppFolio", note: "Plus or Max plan — read-only reporting access" },
   { key: "doorloop", label: "DoorLoop", note: "API keys are available on the Premium plan" },
+  { key: "rentec", label: "Rentec Direct", note: "Free API on Pro & PM — Settings → Tools → Utilities → API Keys" },
 ];
 
 export default function IntegrationsSection() {
@@ -353,7 +354,7 @@ export default function IntegrationsSection() {
           </span>
         </label>
 
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid sm:grid-cols-2 gap-3">
           {PROVIDERS.map((p) => (
             <Card key={p.key} className="flex flex-col">
               <CardContent className="p-4 flex flex-col flex-1 gap-2">

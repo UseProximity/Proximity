@@ -10,11 +10,12 @@
 import * as buildium from "./buildium.js";
 import * as appfolio from "./appfolio.js";
 import * as doorloop from "./doorloop.js";
+import * as rentec from "./rentec.js";
 
-const CONNECTORS = { buildium, appfolio, doorloop };
+const CONNECTORS = { buildium, appfolio, doorloop, rentec };
 
 // Providers whose data is authoritative (sync auto-applies without review).
-export const API_PROVIDERS = ["buildium", "appfolio", "doorloop"];
+export const API_PROVIDERS = ["buildium", "appfolio", "doorloop", "rentec"];
 
 export function getConnector(provider) {
   const connector = CONNECTORS[provider];

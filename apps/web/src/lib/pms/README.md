@@ -11,7 +11,7 @@ One-time setup for the PMS freshness integration (`apps/web/src/lib/pms/`,
 2. In **Environment settings**, copy the **secret key** for each environment you
    set up (Nango has separate dev/prod environments — use dev for staging).
 
-## 2. Configure the three integrations in the Nango dashboard
+## 2. Configure the four integrations in the Nango dashboard
 
 Integration IDs must match the code's provider config keys (or override via env):
 
@@ -20,9 +20,10 @@ Integration IDs must match the code's provider config keys (or override via env)
 | Buildium | `buildium` | Pre-built provider — just enable it. API-key auth (`x-buildium-client-id` / `x-buildium-client-secret`) is already configured. |
 | AppFolio | `appfolio` | **Custom API config.** Base URL `https://${connectionConfig.subdomain}.appfolio.com`, auth = Basic. Add a required connection-config field `subdomain` so the Connect UI collects it (the landlord's `{subdomain}.appfolio.com`). |
 | DoorLoop | `doorloop` | **Custom API config.** Base URL `https://app.doorloop.com/api`, auth = API key sent as `Authorization: bearer ${apiKey}`. |
+| Rentec Direct | `rentec` | **Custom API config.** Base URL `https://secure.rentecdirect.com/api/v3`, auth = API key sent as header `X-API-Key: ${apiKey}`. The landlord generates a **read-scoped** key at Settings → Tools → Utilities → API Keys (free on Pro/PM; it's a Rentec Labs feature — they may need to enable Labs). |
 
 If you name them differently, set `NANGO_BUILDIUM_KEY` / `NANGO_APPFOLIO_KEY` /
-`NANGO_DOORLOOP_KEY` to the IDs you chose.
+`NANGO_DOORLOOP_KEY` / `NANGO_RENTEC_KEY` to the IDs you chose.
 
 ## 3. Environment variables
 
@@ -84,6 +85,8 @@ API access is plan-gated on the landlord's side — ask before promising sync:
 - **Buildium**: Premium plan ($400/mo) — Essential/Growth have no API.
 - **AppFolio**: Plus or Max (Reporting API; read-only is enough). Core has none.
 - **DoorLoop**: Premium plan.
+- **Rentec Direct**: Pro or PM plan (~$45/mo) — the API itself is **free**, no
+  per-request charges. Cheapest full-API path we support.
 - Anyone else (Innago/Avail/TurboTenant/…): no usable API — stays on the
   landlord-nudge email flow.
 
@@ -95,5 +98,13 @@ API access is plan-gated on the landlord's side — ask before promising sync:
 - **Admin review-queue UI** — swing holds are visible in the `pms_review_queue`
   table (dev/prod toggle in the admin dashboard's SQL access or Supabase
   dashboard) until a dedicated screen exists.
-- **Landlord stale-confirm email** (replaces the bi-weekly blast for non-API
-  landlords) — the current landlord-nudge cron still covers them.
+
+## Built alongside (not PMS-specific)
+
+- **One-click "still available?" email** (`lib/availabilityCheck.js`,
+  `/api/availability/confirm`, `/api/cron/availability-check` daily 16:00 UTC):
+  the backstop for every landlord WITHOUT a PMS — stale live listings
+  (unverified >30d) get signed Yes/No links resolving without login; "No"
+  hides the listing, "Yes" restamps `last_verified_at`. Per-listing 14-day
+  cool-down via `listings.availability_email_sent_at`. Links are HMAC-signed
+  with `AVAILABILITY_LINK_SECRET` (falls back to `AUTH_SECRET`).
