@@ -45,7 +45,62 @@ async function upsertLink(row) {
  * The snapshot is re-fetched server-side — client-supplied facts are never
  * trusted, only the decisions. From here on the daily cron keeps everything
  * fresh with no human in the loop.
+ *
+ * Re-runs are first-class (demo re-plays, reconnects, changed minds):
+ *   - "ingest" on a property already linked to a live listing REUSES it,
+ *     never duplicates.
+ *   - "exclude" (and re-"link"ing elsewhere) releases any listing an earlier
+ *     confirm attached: a review-less listing this connection ingested is
+ *     soft-deleted; anything with reviews, or that the landlord created
+ *     manually, is only detached and stays live. Reviews are never destroyed.
  */
+
+// Release a listing a superseded decision left behind. Only touches listings
+// owned by THIS connection; preserves anything carrying reviews.
+async function releaseListing({ listingId, connection, actorId }) {
+  if (!listingId) return;
+  const { data: listing } = await supabase
+    .from("listings")
+    .select("id, pms_connection_id, deleted_at")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (!listing || listing.deleted_at || listing.pms_connection_id !== connection.id) return;
+
+  const { count: reviewCount } = await supabase
+    .from("listing_reviews")
+    .select("id", { count: "exact", head: true })
+    .eq("listing_id", listingId)
+    .is("deleted_at", null);
+  const { data: ingestLink } = await supabase
+    .from("pms_links")
+    .select("id")
+    .eq("connection_id", connection.id)
+    .eq("listing_id", listingId)
+    .eq("origin", "ingested")
+    .limit(1)
+    .maybeSingle();
+
+  const updates =
+    (reviewCount ?? 0) === 0 && ingestLink
+      ? { deleted_at: new Date().toISOString(), pms_connection_id: null }
+      : { pms_connection_id: null };
+  await supabase.rpc("rpc_pms_apply", {
+    p_user_id: actorId,
+    p_listing_id: listingId,
+    p_listing_updates: updates,
+  });
+}
+
+// Listing ids this property's existing links point at (from earlier confirms).
+async function linkedListingIds(connectionId, externalPropertyId) {
+  const { data } = await supabase
+    .from("pms_links")
+    .select("listing_id")
+    .eq("connection_id", connectionId)
+    .eq("external_property_id", externalPropertyId)
+    .not("listing_id", "is", null);
+  return [...new Set((data ?? []).map((l) => l.listing_id))];
+}
 export async function POST(req) {
   const session = await requireLandlordOrSuper();
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -90,6 +145,14 @@ export async function POST(req) {
 
     try {
       if (action === "exclude") {
+        // Capture what earlier confirms attached before rejecting the links,
+        // so a stale listing from a previous run can be released too.
+        const previous = await linkedListingIds(connection.id, prop.externalPropertyId);
+        await supabase
+          .from("pms_links")
+          .update({ include: false, link_status: "rejected" })
+          .eq("connection_id", connection.id)
+          .eq("external_property_id", prop.externalPropertyId);
         await upsertLink({
           connection_id: connection.id,
           external_property_id: prop.externalPropertyId,
@@ -102,6 +165,9 @@ export async function POST(req) {
           origin: "linked",
           link_status: "rejected",
         });
+        for (const lid of previous) {
+          await releaseListing({ listingId: lid, connection, actorId: session.user.id });
+        }
         results.push({ externalPropertyId, action, ok: true });
         continue;
       }
@@ -143,11 +209,43 @@ export async function POST(req) {
           p_listing_id: listingId,
           p_source: source,
         });
+        // If an earlier confirm attached this property to a DIFFERENT listing
+        // (e.g. it was ingested on a previous run), release that one.
+        const previous = await linkedListingIds(connection.id, prop.externalPropertyId);
+        for (const lid of previous) {
+          if (lid !== listingId) {
+            await releaseListing({ listingId: lid, connection, actorId: session.user.id });
+          }
+        }
         results.push({ externalPropertyId, action, listingId, ok: true });
         continue;
       }
 
       if (action === "ingest") {
+        // Re-run safety: if this property already has a confirmed link to a
+        // live listing, reuse it instead of creating a duplicate.
+        const { data: priorLink } = await supabase
+          .from("pms_links")
+          .select("listing_id")
+          .eq("connection_id", connection.id)
+          .eq("external_property_id", prop.externalPropertyId)
+          .eq("link_status", "confirmed")
+          .eq("include", true)
+          .not("listing_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (priorLink?.listing_id) {
+          const { data: prior } = await supabase
+            .from("listings")
+            .select("id, deleted_at")
+            .eq("id", priorLink.listing_id)
+            .maybeSingle();
+          if (prior && !prior.deleted_at) {
+            results.push({ externalPropertyId, action, listingId: prior.id, ok: true, reused: true });
+            continue;
+          }
+        }
+
         const { listingId: newListingId, unitMap } = await ingestPmsProperty({
           property: prop,
           connection,
