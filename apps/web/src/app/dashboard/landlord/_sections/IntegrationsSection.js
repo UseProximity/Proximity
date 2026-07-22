@@ -13,7 +13,7 @@ import { CheckCircle2, Link2, Loader2, Plug, RefreshCw, ShieldCheck, Unplug } fr
 import Nango from "@nangohq/frontend";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent } from "@/components/ui/Card";
 
 const PROVIDERS = [
   { key: "buildium", label: "Buildium", note: "Open API access (Premium plan) required" },
@@ -183,13 +183,15 @@ export default function IntegrationsSection() {
         {discovery.properties.map((p) => {
           const d = decisions[p.externalPropertyId] || { action: "exclude" };
           return (
-            <Card key={p.externalPropertyId}>
-              <CardContent className="p-4 space-y-3">
+            <Card key={p.externalPropertyId} className="rounded-xl">
+              <CardContent className="space-y-4 p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-gray-900">{p.name || p.address || "Unnamed property"}</div>
-                    <div className="text-sm text-gray-600">{p.address}</div>
-                    <div className="text-xs text-gray-500 mt-1">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 leading-tight">
+                      {p.name || p.address || "Unnamed property"}
+                    </div>
+                    {p.address && <div className="mt-0.5 text-sm text-gray-600">{p.address}</div>}
+                    <div className="mt-1.5 text-xs text-gray-500">
                       {p.unitCount} unit{p.unitCount === 1 ? "" : "s"}
                       {p.availableUnits > 0 && ` · ${p.availableUnits} available now`}
                       {p.distanceKm != null && ` · ${p.distanceKm} km from campus`}
@@ -200,47 +202,61 @@ export default function IntegrationsSection() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                {/* Radio-group semantics: exactly one decision per property. */}
+                <div
+                  role="radiogroup"
+                  aria-label={`What should we do with ${p.name || p.address || "this property"}?`}
+                  className="flex flex-wrap gap-2"
+                >
                   {p.match && (
                     <button
+                      type="button"
+                      role="radio"
+                      aria-checked={d.action === "link"}
                       onClick={() =>
                         setDecisions((prev) => ({
                           ...prev,
                           [p.externalPropertyId]: { action: "link", listingId: p.match.listingId },
                         }))
                       }
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                      className={`max-w-full truncate rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                         d.action === "link"
-                          ? "bg-red-600 text-white border-red-600"
-                          : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                          ? "border-red-600 bg-red-600 text-white focus-visible:ring-red-500"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
                       }`}
                     >
                       Same as “{p.match.title || p.match.address}”
                     </button>
                   )}
                   <button
+                    type="button"
+                    role="radio"
+                    aria-checked={d.action === "ingest"}
                     onClick={() =>
                       setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "ingest" } }))
                     }
-                    className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                    className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                       d.action === "ingest"
-                        ? "bg-red-600 text-white border-red-600"
-                        : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                        ? "border-red-600 bg-red-600 text-white focus-visible:ring-red-500"
+                        : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
                     }`}
                   >
                     Add as a new listing
                   </button>
                   <button
+                    type="button"
+                    role="radio"
+                    aria-checked={d.action === "exclude"}
                     onClick={() =>
                       setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "exclude" } }))
                     }
-                    className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                    className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                       d.action === "exclude"
-                        ? "bg-gray-800 text-white border-gray-800"
-                        : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                        ? "border-gray-900 bg-gray-900 text-white focus-visible:ring-gray-500"
+                        : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
                     }`}
                   >
-                    Don’t sync
+                    Don&apos;t sync
                   </button>
                 </div>
               </CardContent>
@@ -248,9 +264,17 @@ export default function IntegrationsSection() {
           );
         })}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <div className="flex gap-2">
-          <Button onClick={submitDecisions} disabled={confirming} className="bg-red-600 hover:bg-red-700">
+        {error && (
+          <p className="text-sm text-red-600" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            onClick={submitDecisions}
+            disabled={confirming}
+            className="h-11 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+          >
             {confirming ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" /> Setting up…
@@ -259,7 +283,12 @@ export default function IntegrationsSection() {
               "Confirm and start syncing"
             )}
           </Button>
-          <Button variant="outline" onClick={() => setDiscovery(null)} disabled={confirming}>
+          <Button
+            variant="outline"
+            onClick={() => setDiscovery(null)}
+            disabled={confirming}
+            className="h-11 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+          >
             Cancel
           </Button>
         </div>
@@ -285,24 +314,25 @@ export default function IntegrationsSection() {
         const failed = confirmResults.filter((r) => !r.ok).length;
         const name = PROVIDERS.find((p) => p.key === syncedProvider)?.label || "your PMS";
         return (
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-green-700 font-medium">
-                <CheckCircle2 className="h-5 w-5" /> Sync is set up
-              </div>
-              <div className="text-sm text-gray-700 mt-2 space-y-0.5">
-                {created > 0 && (
-                  <p>{created} new listing{created === 1 ? "" : "s"} created from {name}</p>
-                )}
-                {linked > 0 && (
-                  <p>{linked} {linked === 1 ? "listing" : "listings"} linked to your existing {linked === 1 ? "listing" : "listings"}</p>
-                )}
-                {reused > 0 && (
-                  <p>{reused} {reused === 1 ? "listing was" : "listings were"} already synced</p>
-                )}
-                {failed > 0 && (
-                  <p className="text-red-600">{failed} {failed === 1 ? "property" : "properties"} could not be set up</p>
-                )}
+          <Card className="rounded-xl border-green-200 bg-green-50/50">
+            <CardContent className="flex items-start gap-3 p-5">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
+              <div className="space-y-1">
+                <div className="font-semibold text-gray-900">Sync is set up</div>
+                <div className="space-y-0.5 text-sm text-gray-700">
+                  {created > 0 && (
+                    <p>{created} new listing{created === 1 ? "" : "s"} created from {name}</p>
+                  )}
+                  {linked > 0 && (
+                    <p>{linked} {linked === 1 ? "listing" : "listings"} linked to your existing {linked === 1 ? "listing" : "listings"}</p>
+                  )}
+                  {reused > 0 && (
+                    <p>{reused} {reused === 1 ? "listing was" : "listings were"} already synced</p>
+                  )}
+                  {failed > 0 && (
+                    <p className="text-red-600">{failed} {failed === 1 ? "property" : "properties"} could not be set up</p>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -312,172 +342,244 @@ export default function IntegrationsSection() {
       {connections.length > 0 && (
         <div className="space-y-4">
           {connections.map((c) => (
-            <Card key={c.id}>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between text-base">
-                  <span className="flex items-center gap-2">
-                    <Plug className="h-4 w-4 text-red-600" />
-                    {PROVIDERS.find((p) => p.key === c.provider)?.label || c.provider}
-                    {c.credential_meta?.accountLabel && (
-                      <span className="text-gray-500 font-normal">· {c.credential_meta.accountLabel}</span>
-                    )}
+            <Card key={c.id} className="rounded-xl">
+              <CardContent className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white"
+                    >
+                      <Plug className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-900 leading-tight">
+                        {PROVIDERS.find((p) => p.key === c.provider)?.label || c.provider}
+                      </div>
+                      {c.credential_meta?.accountLabel && (
+                        <div className="truncate text-xs text-gray-500">
+                          {c.credential_meta.accountLabel}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Badge variant={c.status === "active" ? "default" : "outline"} className="shrink-0 capitalize">
+                    {c.status}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                  <span>
+                    {c.last_sync_at
+                      ? `Last synced ${new Date(c.last_sync_at).toLocaleString()} · ${c.last_sync_status || "ok"}`
+                      : "First sync runs tonight"}
+                    {c.last_sync_error && ` · ${c.last_sync_error}`}
                   </span>
-                  <Badge variant={c.status === "active" ? "default" : "outline"}>{c.status}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-gray-500">
-                  {c.last_sync_at
-                    ? `Last synced ${new Date(c.last_sync_at).toLocaleString()} · ${c.last_sync_status || "ok"}`
-                    : "First sync runs tonight"}
-                  {c.last_sync_error && ` · ${c.last_sync_error}`}
-                </p>
+                </div>
+
                 {c.links.filter((l) => l.include && l.listing).length > 0 && (
-                  <ul className="text-sm text-gray-700 space-y-1">
+                  <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
                     {[...new Map(c.links.filter((l) => l.include && l.listing).map((l) => [l.listing_id, l])).values()].map((l) => (
-                      <li key={l.listing_id} className="flex items-center gap-2">
-                        <Link2 className="h-3.5 w-3.5 text-gray-400" />
-                        {l.listing.title || l.listing.address}
+                      <li key={l.listing_id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                        <span className="flex min-w-0 items-center gap-2 text-gray-700">
+                          <Link2 className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                          <span className="truncate">{l.listing.title || l.listing.address}</span>
+                        </span>
                         {l.listing.unavailable ? (
-                          <Badge variant="outline">unavailable</Badge>
+                          <Badge variant="outline" className="shrink-0">unavailable</Badge>
                         ) : (
-                          <Badge variant="secondary">live</Badge>
+                          <Badge variant="secondary" className="shrink-0">live</Badge>
                         )}
                       </li>
                     ))}
                   </ul>
                 )}
-                <p className="text-xs text-gray-500 flex items-center gap-1">
-                  <RefreshCw className="h-3 w-3" />
-                  These listings update from your property manager. Availability and pricing are
-                  applied automatically every day.
-                </p>
-                <Button variant="outline" size="sm" onClick={() => disconnect(c.id)}>
-                  <Unplug className="h-3.5 w-3.5 mr-1.5" /> Disconnect
-                </Button>
+
+                <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
+                  <p className="text-xs leading-relaxed text-gray-500">
+                    Availability and pricing are applied automatically every day.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => disconnect(c.id)}
+                    className="h-9 shrink-0 text-gray-600 hover:text-gray-900 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+                  >
+                    <Unplug className="h-3.5 w-3.5 mr-1.5" /> Disconnect
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">
-          {connections.length ? "Connect another system" : "Connect your system"}
-        </h2>
+      <div className="space-y-5">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold tracking-tight text-gray-900">
+            {connections.length ? "Connect another system" : "Connect your system"}
+          </h2>
+          <p className="text-sm text-gray-500">
+            Pick your property management software to start syncing availability.
+          </p>
+        </div>
 
-        <label className="flex items-start gap-2 text-sm text-gray-700">
+        {/* Consent gate. The Connect buttons stay disabled until this is
+            checked, so the reason is stated right here rather than leaving a
+            dead-looking button. */}
+        <label
+          className={`flex items-start gap-3 rounded-xl border p-4 text-sm transition-colors cursor-pointer ${
+            consented ? "border-gray-200 bg-white" : "border-gray-200 bg-gray-50 hover:bg-gray-100/70"
+          }`}
+        >
           <input
             type="checkbox"
             checked={consented}
             onChange={(e) => setConsented(e.target.checked)}
-            className="mt-0.5"
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
           />
-          <span>
-            I authorize Proximity to <strong>read</strong> property, unit, pricing, and availability
-            data from my property management system via Nango. Proximity never sees my login or API
-            keys, can’t change anything in my system, and I can disconnect anytime.
+          <span className="text-gray-700 leading-relaxed">
+            I authorize Proximity to <strong className="font-semibold text-gray-900">read</strong>{" "}
+            property, unit, pricing, and availability data from my property management system via
+            Nango. Proximity never sees my login or API keys, can&apos;t change anything in my
+            system, and I can disconnect anytime.
           </span>
         </label>
 
-        <div className="grid sm:grid-cols-2 gap-3">
-          {PROVIDERS.map((p) => (
-            <Card key={p.key} className="flex flex-col">
-              <CardContent className="p-4 flex flex-col flex-1 justify-center gap-2">
-                <div className="font-semibold text-gray-900">{p.label}</div>
-                <p className="text-xs text-gray-500">{p.note}</p>
-                <Button
-                  size="sm"
-                  disabled={!consented || connecting === p.key}
-                  onClick={() => startConnect(p.key)}
-                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                >
-                  {connecting === p.key ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Connecting…
-                    </>
-                  ) : (
-                    "Connect"
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="grid sm:grid-cols-2 gap-4">
+          {PROVIDERS.map((p) => {
+            const busy = connecting === p.key;
+            return (
+              <Card
+                key={p.key}
+                className="flex flex-col rounded-xl transition-all duration-200 hover:border-gray-300 hover:shadow-md"
+              >
+                <CardContent className="flex flex-1 flex-col gap-4 p-5">
+                  <div className="flex items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-sm font-bold text-white"
+                    >
+                      {p.label.charAt(0)}
+                    </span>
+                    <span className="font-semibold text-gray-900 leading-tight">{p.label}</span>
+                  </div>
+                  <p className="flex-1 text-xs leading-relaxed text-gray-500">{p.note}</p>
+                  <Button
+                    disabled={!consented || busy}
+                    onClick={() => startConnect(p.key)}
+                    aria-label={`Connect ${p.label}`}
+                    className="h-11 w-full focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                  >
+                    {busy ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Connecting…
+                      </>
+                    ) : (
+                      "Connect"
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
-        <p className="text-xs text-gray-500 flex items-center gap-1.5">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Read-only. Your credentials are stored by Nango, our secure connection provider, never by
-          Proximity. Your listing descriptions and photos are never overwritten.
+        <p className="flex items-start gap-2 rounded-lg bg-gray-50 px-4 py-3 text-xs leading-relaxed text-gray-600">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-gray-400 mt-px" />
+          <span>
+            Read-only. Your credentials are stored by Nango, our secure connection provider, never
+            by Proximity. Your listing descriptions and photos are never overwritten.
+          </span>
         </p>
 
         {/* Landlords on unsupported systems tell us which one, so we can
             prioritize (and negotiate) the next connector. */}
-        <Card className="border-dashed">
-          <CardContent className="p-4">
-            <div className="font-semibold text-gray-900 text-sm">
-              Don&apos;t see your property management system?
-            </div>
+        <Card className="rounded-xl border-dashed bg-gray-50/60">
+          <CardContent className="p-5">
             {requestState === "sent" ? (
-              <p className="text-sm text-green-700 mt-2 flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4" />
-                Got it. We&apos;ll reach out when {requestName.trim()} is supported.
-              </p>
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Request received</div>
+                  <p className="mt-0.5 text-sm text-gray-600">
+                    We&apos;ll reach out when {requestName.trim()} is supported.
+                  </p>
+                </div>
+              </div>
             ) : (
-              <form onSubmit={submitIntegrationRequest} className="mt-2 flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  value={requestName}
-                  onChange={(e) => setRequestName(e.target.value)}
-                  placeholder="e.g. Entrata, Rent Manager, TenantCloud"
-                  maxLength={80}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={requestState === "sending" || requestName.trim().length < 2}
-                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                >
-                  {requestState === "sending" ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Sending
-                    </>
-                  ) : (
-                    "Request integration"
-                  )}
-                </Button>
+              <form onSubmit={submitIntegrationRequest} className="space-y-3">
+                <div className="space-y-1">
+                  <label htmlFor="pms-request" className="block text-sm font-semibold text-gray-900">
+                    Don&apos;t see your property management system?
+                  </label>
+                  <p className="text-xs text-gray-500">
+                    Tell us which one you use and we&apos;ll prioritize building it.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="pms-request"
+                    type="text"
+                    value={requestName}
+                    onChange={(e) => setRequestName(e.target.value)}
+                    placeholder="e.g. Entrata, Rent Manager, TenantCloud"
+                    maxLength={80}
+                    className="h-11 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={requestState === "sending" || requestName.trim().length < 2}
+                    className="h-11 shrink-0 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                  >
+                    {requestState === "sending" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Sending…
+                      </>
+                    ) : (
+                      "Request integration"
+                    )}
+                  </Button>
+                </div>
               </form>
             )}
             {requestState === "error" && (
-              <p className="text-sm text-red-600 mt-2">Something went wrong. Please try again.</p>
+              <p className="mt-3 text-sm text-red-600" role="alert">
+                Something went wrong. Please try again.
+              </p>
             )}
           </CardContent>
         </Card>
 
         {/* Staging/local only: click through the whole flow with sample data, no PMS needed */}
         {allowDemo && (
-          <Card className="border-dashed">
-            <CardContent className="p-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold text-gray-900 text-sm">Demo mode</div>
-                <p className="text-xs text-gray-500">
+          <Card className="rounded-xl border-dashed">
+            <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900">Demo mode</span>
+                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                    Not on the live site
+                  </Badge>
+                </div>
+                <p className="max-w-md text-xs leading-relaxed text-gray-500">
                   Try the full flow with sample WashU-area properties. No PMS account or Nango
-                  setup needed. (Not shown on the live site.)
+                  setup needed.
                 </p>
               </div>
               <Button
-                size="sm"
                 variant="outline"
                 disabled={connecting === "demo"}
                 onClick={() => {
                   setConnecting("demo");
                   runDiscover("buildium", "mock-demo");
                 }}
+                className="h-11 shrink-0 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
               >
                 {connecting === "demo" ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Loading…
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading…
                   </>
                 ) : (
                   "Try the demo"
@@ -486,7 +588,11 @@ export default function IntegrationsSection() {
             </CardContent>
           </Card>
         )}
-        {error && !discovery && <p className="text-sm text-red-600">{error}</p>}
+        {error && !discovery && (
+          <p className="text-sm text-red-600" role="alert">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );
