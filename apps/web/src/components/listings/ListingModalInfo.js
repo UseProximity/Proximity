@@ -1595,7 +1595,7 @@ export default function ListingModalInfo({
                   Availability comes straight from the landlord&apos;s own system
                   {listing.verifiedAt && (
                     <>
-                      {" "}— last synced{" "}
+                      {", last synced "}
                       {new Date(listing.verifiedAt).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",

@@ -82,7 +82,7 @@ export async function ingestPmsProperty({
 
   const description =
     `Pricing and availability at ${property.name || "this property"} sync live ` +
-    `from the landlord's system — what you see is current. No description from ` +
+    `from the landlord's system, so what you see is current. No description from ` +
     `the landlord yet. Message them and ask.`;
 
   const { data: listingId, error } = await supabase.rpc("rpc_pms_ingest_listing", {
