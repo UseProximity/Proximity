@@ -304,12 +304,21 @@ async function syncConnection(connection, { dryRun = false } = {}) {
   }
 
   // ---- reconcile every tracked listing
+  // Two passes: decide first (write nothing), then apply — so a mass delist can
+  // be caught and held BEFORE anything is hidden. A degraded pull (some
+  // sub-fetch failed) is trusted to relist/update but NEVER to delist: a hiccup
+  // in the leases endpoint must not hide a pre-leased building whose occupancy
+  // only looked "unavailable" because its move-in date went missing.
+  const degraded = snapshot.errors.length > 0;
+
   const byListing = new Map();
   for (const l of unitLinks) {
     if (!byListing.has(l.listing_id)) byListing.set(l.listing_id, []);
     byListing.get(l.listing_id).push(l);
   }
 
+  // Pass 1 — compute each listing's intended change without writing.
+  const decisions = [];
   for (const [listingId, listingLinks] of byListing) {
     const { data: listing } = await supabase
       .from("listings")
@@ -384,6 +393,62 @@ async function syncConnection(connection, { dryRun = false } = {}) {
       if (!anyAvailable && !listing.unavailable) listingUpdates.unavailable = true;
       if (anyAvailable && listing.unavailable) listingUpdates.unavailable = false;
     }
+    decisions.push({
+      listingId,
+      unitUpdates,
+      leaseUpdates,
+      listingUpdates,
+      // Only stamp "verified" when we actually observed a known state.
+      learnedSomething: knownStates.length > 0,
+    });
+  }
+
+  // Mass-delist guard. The ±20% swing guard above only counts units that
+  // entered/left the snapshot; a PMS glitch (or a degraded pull) can flip a
+  // whole portfolio to occupied with every unit still present, which it would
+  // miss. Count intended delists; if they clear the swing threshold, or the
+  // pull was degraded, suppress ALL delists this run and hold for review —
+  // relists/updates/creates still apply. Never suppress in dry-run (there we
+  // WANT the intended delist logged; nothing is written anyway).
+  const intendedDelists = decisions.filter((d) => d.listingUpdates.unavailable === true).length;
+  const massDelist =
+    intendedDelists >= SWING_MIN_CHANGES &&
+    intendedDelists / Math.max(decisions.length, 1) > SWING_RATIO;
+  const suppressDelists = !dryRun && (degraded || massDelist);
+
+  if (suppressDelists && intendedDelists > 0) {
+    const { data: openHold } = await supabase
+      .from("pms_review_queue")
+      .select("id")
+      .eq("connection_id", connection.id)
+      .eq("reason", "swing_guard_hold")
+      .eq("status", "open")
+      .maybeSingle();
+    if (!openHold) {
+      await supabase.from("pms_review_queue").insert({
+        connection_id: connection.id,
+        reason: "swing_guard_hold",
+        detail: { intendedDelists, totalListings: decisions.length, degraded, massDelist },
+      });
+    }
+    events.push({
+      connection_id: connection.id,
+      result: "held",
+      applied: false,
+      detail: { kind: "delists_suppressed", intendedDelists, totalListings: decisions.length, degraded, massDelist },
+    });
+  }
+
+  // Pass 2 — apply.
+  for (const d of decisions) {
+    const { listingId, unitUpdates, leaseUpdates, learnedSomething } = d;
+    let listingUpdates = d.listingUpdates;
+    // Suppressed delist: drop only the unavailable=true write, keep the rest.
+    if (suppressDelists && listingUpdates.unavailable === true) {
+      // eslint-disable-next-line no-unused-vars
+      const { unavailable, ...rest } = listingUpdates;
+      listingUpdates = rest;
+    }
 
     const hasChanges = unitUpdates.length || leaseUpdates.length || Object.keys(listingUpdates).length;
     if (hasChanges) {
@@ -394,7 +459,7 @@ async function syncConnection(connection, { dryRun = false } = {}) {
           : "updated";
       if (dryRun) {
         // Observe-and-log: record the full intended change, write nothing.
-        applied[result === "delisted" ? "delisted" : result === "relisted" ? "relisted" : "updated"] += 1;
+        applied[result] += 1;
         events.push({
           connection_id: connection.id,
           listing_id: listingId,
@@ -414,7 +479,7 @@ async function syncConnection(connection, { dryRun = false } = {}) {
           events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "error", detail: { error: error.message } });
           continue;
         }
-        applied[result === "delisted" ? "delisted" : result === "relisted" ? "relisted" : "updated"] += 1;
+        applied[result] += 1;
         events.push({
           connection_id: connection.id,
           listing_id: listingId,
@@ -428,8 +493,9 @@ async function syncConnection(connection, { dryRun = false } = {}) {
     }
 
     // Freshness stamp: the availability shown was checked against the PMS
-    // today. A dry run verifies nothing — it must not stamp listings.
-    if (!dryRun) {
+    // today. Skip in dry-run, and skip when nothing was actually known (an
+    // all-unknown listing verified nothing).
+    if (!dryRun && learnedSomething) {
       await supabase.rpc("rpc_pms_mark_verified", {
         p_user_id: SYSTEM_USER_ID,
         p_listing_id: listingId,

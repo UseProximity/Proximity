@@ -39,6 +39,9 @@ export async function GET(req) {
     .or("unavailable.is.null,unavailable.eq.false")
     .or(`last_verified_at.is.null,last_verified_at.lt.${staleCutoff}`)
     .or(`availability_email_sent_at.is.null,availability_email_sent_at.lt.${cooldownCutoff}`)
+    // Oldest-waiting first so the daily 300/50 caps drain the backlog fairly
+    // instead of re-fetching the same physical rows every run.
+    .order("availability_email_sent_at", { ascending: true, nullsFirst: true })
     .limit(300);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!listings?.length) return NextResponse.json({ checked: 0, emailed: 0 });

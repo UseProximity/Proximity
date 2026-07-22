@@ -292,6 +292,13 @@ check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") ==
     verifyAvailabilityToken("garbage") === null);
   const expired = signAvailabilityToken("listing-123", Date.now() - 40 * 86400_000);
   check("availability token: expired token rejected", verifyAvailabilityToken(expired) === null);
+  // TTL boundary (16 days): valid at +15d, rejected at +17d.
+  const t0 = 1_700_000_000_000;
+  const tok = signAvailabilityToken("listing-123", t0);
+  check("availability token: valid within TTL (15d)",
+    verifyAvailabilityToken(tok, t0 + 15 * 86400_000)?.listingId === "listing-123");
+  check("availability token: rejected past TTL (17d)",
+    verifyAvailabilityToken(tok, t0 + 17 * 86400_000) === null);
   delete process.env.AUTH_SECRET;
 }
 

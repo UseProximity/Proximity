@@ -15,7 +15,10 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "./outreach.js";
 
-const TOKEN_TTL_DAYS = 30;
+// Short-lived: a fresh token is emailed every cooldown cycle (14 days), so the
+// validity window is kept just above that to bound how long a leaked/forwarded
+// link can be replayed. The mutation is also POST-gated behind a human click.
+const TOKEN_TTL_DAYS = 16;
 
 function secret() {
   const s = process.env.AVAILABILITY_LINK_SECRET || process.env.AUTH_SECRET;

@@ -66,7 +66,7 @@ async function releaseListing({ listingId, connection, actorId }) {
     .maybeSingle();
   if (!listing || listing.deleted_at || listing.pms_connection_id !== connection.id) return;
 
-  const { count: reviewCount } = await supabase
+  const { count: reviewCount, error: reviewErr } = await supabase
     .from("listing_reviews")
     .select("id", { count: "exact", head: true })
     .eq("listing_id", listingId)
@@ -80,8 +80,12 @@ async function releaseListing({ listingId, connection, actorId }) {
     .limit(1)
     .maybeSingle();
 
+  // Fail CLOSED on the review check: if the count errored or is unknown, treat
+  // the listing as if it has reviews and only detach it. Never let a failed
+  // query be the reason a review-bearing listing gets deleted.
+  const hasReviews = Boolean(reviewErr) || reviewCount == null || reviewCount > 0;
   const updates =
-    (reviewCount ?? 0) === 0 && ingestLink
+    !hasReviews && ingestLink
       ? { deleted_at: new Date().toISOString(), pms_connection_id: null }
       : { pms_connection_id: null };
   await supabase.rpc("rpc_pms_apply", {
@@ -177,6 +181,22 @@ export async function POST(req) {
           results.push({ externalPropertyId, action, error: "listingId missing or not yours" });
           continue;
         }
+        // Don't attach to a soft-deleted listing of theirs.
+        const { data: target } = await supabase
+          .from("listings")
+          .select("id, deleted_at")
+          .eq("id", listingId)
+          .maybeSingle();
+        if (!target || target.deleted_at) {
+          results.push({ externalPropertyId, action, error: "That listing no longer exists" });
+          continue;
+        }
+        // Capture what this property was attached to BEFORE the upsert loop
+        // rewrites those same link rows' listing_id — otherwise a property
+        // previously ingested and now re-linked elsewhere would orphan its
+        // old listing (a frozen duplicate shown to students forever).
+        const previous = await linkedListingIds(connection.id, prop.externalPropertyId);
+
         const { data: listingUnits } = await supabase
           .from("listing_units")
           .select("id, bedrooms, bathrooms")
@@ -209,9 +229,8 @@ export async function POST(req) {
           p_listing_id: listingId,
           p_source: source,
         });
-        // If an earlier confirm attached this property to a DIFFERENT listing
-        // (e.g. it was ingested on a previous run), release that one.
-        const previous = await linkedListingIds(connection.id, prop.externalPropertyId);
+        // Release any DIFFERENT listing this property was attached to before
+        // (e.g. auto-ingested on a previous run) so it can't linger as a dupe.
         for (const lid of previous) {
           if (lid !== listingId) {
             await releaseListing({ listingId: lid, connection, actorId: session.user.id });

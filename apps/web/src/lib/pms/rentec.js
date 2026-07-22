@@ -132,6 +132,12 @@ export async function fetchSnapshot(connectionId) {
     if (!prev || end > prev) leaseEndByProperty.set(propertyId, end);
   }
 
+  // Normalization must not throw — the contract says fetchSnapshot returns
+  // {properties, errors}, never raises. A malformed shape becomes an errored,
+  // empty snapshot so the cron refuses to reconcile it.
+  if (!Array.isArray(properties)) {
+    return { properties: [], errors: [...errors, "properties response was not an array"] };
+  }
   const normalizedProperties = [];
   for (const p of properties) {
     // Children appear nested under their parent's subunits[] — skip any that
