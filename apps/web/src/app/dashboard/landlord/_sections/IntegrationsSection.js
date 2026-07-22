@@ -17,15 +17,18 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
 
 const PROVIDERS = [
   { key: "buildium", label: "Buildium", note: "Open API access (Premium plan) required" },
-  { key: "appfolio", label: "AppFolio", note: "Plus or Max plan — read-only reporting access" },
+  { key: "appfolio", label: "AppFolio", note: "Plus or Max plan, read-only reporting access" },
   { key: "doorloop", label: "DoorLoop", note: "API keys are available on the Premium plan" },
-  { key: "rentec", label: "Rentec Direct", note: "Free API on Pro & PM — Settings → Tools → Utilities → API Keys" },
+  { key: "rentec", label: "Rentec Direct", note: "Free API on Pro & PM. Key at Settings → Tools → Utilities → API Keys" },
 ];
 
 export default function IntegrationsSection() {
   const [connections, setConnections] = useState(null);
   const [allowDemo, setAllowDemo] = useState(false);
   const [connecting, setConnecting] = useState(null); // provider key while widget open
+  const [syncedProvider, setSyncedProvider] = useState(null); // provider just set up (for the summary)
+  const [requestName, setRequestName] = useState("");
+  const [requestState, setRequestState] = useState(null); // null | "sending" | "sent" | "error"
   const [consented, setConsented] = useState(false);
   const [discovery, setDiscovery] = useState(null); // discover response
   const [decisions, setDecisions] = useState({});
@@ -50,6 +53,7 @@ export default function IntegrationsSection() {
 
   async function runDiscover(provider, nangoConnectionId) {
     setError(null);
+    setSyncedProvider(provider);
     try {
       const res = await fetch("/api/landlord/pms/discover", {
         method: "POST",
@@ -133,6 +137,22 @@ export default function IntegrationsSection() {
     }
   }
 
+  async function submitIntegrationRequest(e) {
+    e.preventDefault();
+    if (!requestName.trim() || requestState === "sending") return;
+    setRequestState("sending");
+    try {
+      const res = await fetch("/api/landlord/pms/request-integration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerName: requestName.trim() }),
+      });
+      setRequestState(res.ok ? "sent" : "error");
+    } catch {
+      setRequestState("error");
+    }
+  }
+
   async function disconnect(connectionId) {
     if (!window.confirm("Disconnect? Your listings stay up, but they stop updating automatically and lose the live-verified badge.")) return;
     await fetch(`/api/landlord/pms/connect?connectionId=${connectionId}`, { method: "DELETE" });
@@ -156,7 +176,7 @@ export default function IntegrationsSection() {
             Found {discovery.properties.length} propert{discovery.properties.length === 1 ? "y" : "ies"}
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Confirm once — after this, availability and pricing stay in sync automatically.
+            Confirm once. After this, availability and pricing stay in sync automatically.
           </p>
         </div>
 
@@ -251,37 +271,43 @@ export default function IntegrationsSection() {
   return (
     <div className="space-y-8 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Property management sync</h1>
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-sm text-gray-600">
           Connect your property management system once. Leased units come off Proximity
           automatically, freed-up units go live the moment they open up, and students see
-          availability verified straight from your system — no more “is this still available?”
-          emails.
+          availability verified straight from your system.
         </p>
       </div>
 
-      {confirmResults && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-green-700 font-medium">
-              <CheckCircle2 className="h-5 w-5" /> Sync is set up
-            </div>
-            <ul className="text-sm text-gray-700 mt-2 space-y-1">
-              {confirmResults.map((r, i) => (
-                <li key={i}>
-                  {r.ok
-                    ? r.action === "ingest"
-                      ? "New listing created from your PMS"
-                      : r.action === "link"
-                        ? "Linked to your existing listing"
-                        : "Excluded from sync"
-                    : `One property failed: ${r.error}`}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+      {confirmResults && (() => {
+        const created = confirmResults.filter((r) => r.ok && r.action === "ingest" && !r.reused).length;
+        const reused = confirmResults.filter((r) => r.ok && r.reused).length;
+        const linked = confirmResults.filter((r) => r.ok && r.action === "link").length;
+        const failed = confirmResults.filter((r) => !r.ok).length;
+        const name = PROVIDERS.find((p) => p.key === syncedProvider)?.label || "your PMS";
+        return (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-green-700 font-medium">
+                <CheckCircle2 className="h-5 w-5" /> Sync is set up
+              </div>
+              <div className="text-sm text-gray-700 mt-2 space-y-0.5">
+                {created > 0 && (
+                  <p>{created} new listing{created === 1 ? "" : "s"} created from {name}</p>
+                )}
+                {linked > 0 && (
+                  <p>{linked} {linked === 1 ? "listing" : "listings"} linked to your existing {linked === 1 ? "listing" : "listings"}</p>
+                )}
+                {reused > 0 && (
+                  <p>{reused} {reused === 1 ? "listing was" : "listings were"} already synced</p>
+                )}
+                {failed > 0 && (
+                  <p className="text-red-600">{failed} {failed === 1 ? "property" : "properties"} could not be set up</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {connections.length > 0 && (
         <div className="space-y-4">
@@ -302,7 +328,7 @@ export default function IntegrationsSection() {
               <CardContent className="space-y-3">
                 <p className="text-xs text-gray-500">
                   {c.last_sync_at
-                    ? `Last synced ${new Date(c.last_sync_at).toLocaleString()} — ${c.last_sync_status || "ok"}`
+                    ? `Last synced ${new Date(c.last_sync_at).toLocaleString()} · ${c.last_sync_status || "ok"}`
                     : "First sync runs tonight"}
                   {c.last_sync_error && ` · ${c.last_sync_error}`}
                 </p>
@@ -323,7 +349,7 @@ export default function IntegrationsSection() {
                 )}
                 <p className="text-xs text-gray-500 flex items-center gap-1">
                   <RefreshCw className="h-3 w-3" />
-                  These listings update from your property manager — availability and pricing are
+                  These listings update from your property manager. Availability and pricing are
                   applied automatically every day.
                 </p>
                 <Button variant="outline" size="sm" onClick={() => disconnect(c.id)}>
@@ -357,9 +383,9 @@ export default function IntegrationsSection() {
         <div className="grid sm:grid-cols-2 gap-3">
           {PROVIDERS.map((p) => (
             <Card key={p.key} className="flex flex-col">
-              <CardContent className="p-4 flex flex-col flex-1 gap-2">
+              <CardContent className="p-4 flex flex-col flex-1 justify-center gap-2">
                 <div className="font-semibold text-gray-900">{p.label}</div>
-                <p className="text-xs text-gray-500 flex-1">{p.note}</p>
+                <p className="text-xs text-gray-500">{p.note}</p>
                 <Button
                   size="sm"
                   disabled={!consented || connecting === p.key}
@@ -381,9 +407,53 @@ export default function IntegrationsSection() {
 
         <p className="text-xs text-gray-500 flex items-center gap-1.5">
           <ShieldCheck className="h-3.5 w-3.5" />
-          Read-only. Your credentials are stored by Nango, our secure connection provider — never by
+          Read-only. Your credentials are stored by Nango, our secure connection provider, never by
           Proximity. Your listing descriptions and photos are never overwritten.
         </p>
+
+        {/* Landlords on unsupported systems tell us which one, so we can
+            prioritize (and negotiate) the next connector. */}
+        <Card className="border-dashed">
+          <CardContent className="p-4">
+            <div className="font-semibold text-gray-900 text-sm">
+              Don&apos;t see your property management system?
+            </div>
+            {requestState === "sent" ? (
+              <p className="text-sm text-green-700 mt-2 flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                Got it. We&apos;ll reach out when {requestName.trim()} is supported.
+              </p>
+            ) : (
+              <form onSubmit={submitIntegrationRequest} className="mt-2 flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={requestName}
+                  onChange={(e) => setRequestName(e.target.value)}
+                  placeholder="e.g. Entrata, Rent Manager, TenantCloud"
+                  maxLength={80}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={requestState === "sending" || requestName.trim().length < 2}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  {requestState === "sending" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Sending
+                    </>
+                  ) : (
+                    "Request integration"
+                  )}
+                </Button>
+              </form>
+            )}
+            {requestState === "error" && (
+              <p className="text-sm text-red-600 mt-2">Something went wrong. Please try again.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Staging/local only: click through the whole flow with sample data, no PMS needed */}
         {allowDemo && (
@@ -392,7 +462,7 @@ export default function IntegrationsSection() {
               <div>
                 <div className="font-semibold text-gray-900 text-sm">Demo mode</div>
                 <p className="text-xs text-gray-500">
-                  Try the full flow with sample WashU-area properties — no PMS account or Nango
+                  Try the full flow with sample WashU-area properties. No PMS account or Nango
                   setup needed. (Not shown on the live site.)
                 </p>
               </div>
