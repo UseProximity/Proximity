@@ -2,22 +2,24 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
-
-// Roles a user is allowed to self-assign at signup. Privileged roles (super,
-// admin, …) can never be granted here — only via an admin-side role change.
-const SIGNUP_ROLES = new Set(["student", "landlord"]);
+import { validateName, validateEmail, validatePassword, SIGNUP_ROLES } from "@proximity/auth-core";
 
 export async function POST(req) {
   try {
-    const { name, email, password, role } = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+    const { name, email, password, role } = body;
 
-    if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 });
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "Valid email is required." }, { status: 400 });
-    }
-    if (!password || password.length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
-    }
+    const nameErr = validateName(name);
+    if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 });
+    const emailErr = validateEmail(email);
+    if (emailErr) return NextResponse.json({ error: emailErr }, { status: 400 });
+    const passwordErr = validatePassword(password);
+    if (passwordErr) return NextResponse.json({ error: passwordErr }, { status: 400 });
 
     // Honor the role chosen on the signup form; default to student. This lets an
     // email/password landlord be created with the right role from the start so

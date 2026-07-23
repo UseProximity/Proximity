@@ -1,5 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async headers() {
+    // Allow cross-origin requests to mobile auth endpoints so the Expo web
+    // build (on a different port) can reach them during development.
+    // Native builds are unaffected by CORS — this only matters for web testing.
+    const corsHeaders = [
+      { key: "Access-Control-Allow-Origin", value: "*" },
+      { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
+      { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization" },
+    ];
+    return [
+      { source: "/api/auth/mobile/:path*", headers: corsHeaders },
+      { source: "/api/auth/signup", headers: corsHeaders },
+      { source: "/api/auth/forgot-password", headers: corsHeaders },
+    ];
+  },
   images: {
     remotePatterns: [
       {

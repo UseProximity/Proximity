@@ -7,5 +7,12 @@
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "build:web":  "npm run build --workspace=apps/web",
     "lint":       "npm run lint  --workspaces --if-present"
+  },
+  "devDependencies": {
+    "expo": "^57.0.0"
+  },
+  "overrides": {
+    "expo": "^57.0.0",
+    "expo-router": "~57.0.4"
   }
 }

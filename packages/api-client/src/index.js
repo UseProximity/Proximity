@@ -1,3 +1,1 @@
-// Re-exports createApiClient.
-
-export {};
+export { createApiClient } from "./createClient.js";
