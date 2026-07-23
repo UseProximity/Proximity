@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { createPortal } from "react-dom";
 import { useFavorites } from "@/context/FavoritesContext";
-import { trackEvent } from "@/utils/analytics";
+import { trackEvent, getListingSource } from "@/utils/analytics";
 
 function AuthModal({ onClose }) {
   return createPortal(
@@ -80,7 +80,8 @@ export default function HeartIcon({ listingId }) {
         toggle(listingId, isFavorite); // revert
       } else {
         if (data.favorited !== next) toggle(listingId, data.favorited); // sync server truth
-        trackEvent("Favorite Toggled", { action: data.favorited ? "add" : "remove", listingId });
+        const source = getListingSource(listingId);
+        trackEvent("Favorite Toggled", { action: data.favorited ? "add" : "remove", listingId, ...(source ? { source } : {}) });
       }
     } catch {
       toggle(listingId, isFavorite); // revert

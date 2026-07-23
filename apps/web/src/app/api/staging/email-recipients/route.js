@@ -5,10 +5,12 @@
  */
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
-import { isStaging } from "@/lib/appEnv";
+import { isProdData } from "@/lib/appEnv";
 
 export async function GET() {
-  if (!isStaging()) return Response.json({ error: "Not found" }, { status: 404 });
+  // Available in any non-production env (staging + local) so the picker dropdown
+  // can be populated there; never exists on production.
+  if (isProdData()) return Response.json({ error: "Not found" }, { status: 404 });
 
   const session = await auth();
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -17,6 +17,7 @@ import { Search, X, Menu, ChevronDown } from "lucide-react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
+import { recordPageVisit } from "@/utils/analytics";
 
 export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -37,6 +38,12 @@ export function Header({ session }) {
     setMobileMenuOpen(false);
     setMoreOpen(false);
     setMobileMoreOpen(false);
+  }, [pathname]);
+
+  // The header renders on every page, so it doubles as the route tracker that
+  // lets analytics answer "which page did the user come from?".
+  useEffect(() => {
+    recordPageVisit(pathname);
   }, [pathname]);
 
   // Close the desktop "More" dropdown when clicking outside of it.
@@ -108,6 +115,7 @@ export function Header({ session }) {
     { href: "/about", label: "Meet the Founder" },
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/guides", label: "Guides" },
+    { href: "/lease-check", label: "Lease Check" },
   ];
   const moreActive = moreLinks.some(({ href }) => isActive(href));
 
