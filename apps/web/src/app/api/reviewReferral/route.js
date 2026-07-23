@@ -8,7 +8,7 @@
  * our catalog. On an EXACT street-address match the review is attached to that listing
  * (tie-break across same-address listings: prefer non-sublease, then a landlord-owned one).
  * With no match we auto-create a minimal listing "stub" owned by the shared Proximity
- * account, with real walk-times computed (same as the landlord add-listing flow).
+ * account, with real walk/drive times computed (same as the landlord add-listing flow).
  *
  * Emails (best-effort, never block the review):
  *   - Recipient is entered-email-first: if the reviewer typed a landlord email, that
@@ -25,6 +25,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
+import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
@@ -162,6 +163,30 @@ async function buildWalkTimeRows(lat, lng) {
     }
   } catch (e) {
     console.error("[reviewReferral] resolve walk-time locations failed:", e?.message);
+  }
+  return rows;
+}
+
+// Same shape as buildWalkTimeRows — resolved location_id rows, upserted after stub create.
+async function buildDriveTimeRows(lat, lng) {
+  let placeDriveMinutes = {};
+  try {
+    ({ placeDriveMinutes } = await fetchAllDriveTimes(lat, lng));
+  } catch (err) {
+    console.error("[reviewReferral] drive times failed:", err?.message);
+    return [];
+  }
+  const rows = [];
+  try {
+    const { data: locations } = await supabase.from("locations").select("id, name");
+    if (locations?.length) {
+      for (const [key, minutes] of Object.entries(placeDriveMinutes ?? {})) {
+        const loc = locations.find((l) => l.name.toLowerCase() === key.toLowerCase());
+        if (loc && minutes != null) rows.push({ location_id: loc.id, minutes });
+      }
+    }
+  } catch (e) {
+    console.error("[reviewReferral] resolve drive-time locations failed:", e?.message);
   }
   return rows;
 }
@@ -427,10 +452,11 @@ export async function POST(req) {
     let isNewProperty = false;
 
     if (!resolvedListingId) {
-      const [homeTypeId, proximityId, walkTimeRows] = await Promise.all([
+      const [homeTypeId, proximityId, walkTimeRows, driveTimeRows] = await Promise.all([
         resolveOtherHomeTypeId(),
         resolveProximityLandlordId(),
         buildWalkTimeRows(latitude, longitude),
+        buildDriveTimeRows(latitude, longitude),
       ]);
       const { data: stubId, error: stubErr } = await supabase.rpc("rpc_create_listing", {
         p_user_id: proximityId,
@@ -459,6 +485,23 @@ export async function POST(req) {
       }
       resolvedListingId = stubId;
       isNewProperty = true;
+
+      // Drive times: best-effort upsert after stub create (mirrors addListing; not in RPC).
+      if (driveTimeRows.length) {
+        try {
+          const { error: driveErr } = await supabase
+            .from("listing_drive_times")
+            .upsert(
+              driveTimeRows.map((r) => ({ ...r, listing_id: stubId })),
+              { onConflict: "listing_id,location_id" }
+            );
+          if (driveErr) {
+            console.error("[reviewReferral] drive times insert failed:", driveErr.message);
+          }
+        } catch (dtErr) {
+          console.error("[reviewReferral] drive times insert failed:", dtErr?.message);
+        }
+      }
 
       // Give the new stub a default Street View photo (best-effort; never blocks the review).
       try {

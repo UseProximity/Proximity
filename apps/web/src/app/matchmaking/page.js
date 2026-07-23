@@ -1,16 +1,16 @@
 import Footer from "@/components/layout/Footer";
-import ConciergeFormClient from "./concierge-form-client";
+import ChatClient from "@/components/matchmaking/ChatClient";
 
 export const metadata = {
-  title: "Free WashU Housing Matching — Tell Us What You Need | Proximity",
+  title: "Find Your Place — Housing Matchmaking | Proximity",
   description:
-    "Tell us what you're looking for and get free personalized off-campus housing recommendations.",
+    "Chat with Proxy to get free personalized off-campus housing recommendations near WashU.",
 };
 
 export default function MatchmakingPage() {
   return (
     <>
-      <ConciergeFormClient />
+      <ChatClient />
       <Footer />
     </>
   );

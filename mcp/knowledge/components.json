@@ -1,8 +1,48 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-07-02T16:11:02.148Z",
-  "count": 47,
+  "_generated": "2026-07-18T23:45:00.681Z",
+  "count": 66,
   "components": [
+    {
+      "name": "DormsView",
+      "file": "src/components/admin/DormsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GearModal",
+      "file": "src/components/admin/GearModal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ImageManagerPanel",
+      "file": "src/components/admin/ImageManagerPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingsView",
+      "file": "src/components/admin/ListingsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReferenceView",
+      "file": "src/components/admin/ReferenceView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "TestimonialsView",
+      "file": "src/components/admin/TestimonialsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "UsersView",
+      "file": "src/components/admin/UsersView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "adminShared",
+      "file": "src/components/admin/adminShared.js",
+      "description": "No description — run generate after adding a description above."
+    },
     {
       "name": "AuthCard",
       "file": "src/components/auth/AuthCard.js",
@@ -96,6 +136,31 @@
     {
       "name": "StagingEmailPicker",
       "file": "src/components/layout/StagingEmailPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "FlagCard",
+      "file": "src/components/lease-check/FlagCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseCheckClient",
+      "file": "src/components/lease-check/LeaseCheckClient.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseDisclaimer",
+      "file": "src/components/lease-check/LeaseDisclaimer.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PastChecks",
+      "file": "src/components/lease-check/PastChecks.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PropertyContext",
+      "file": "src/components/lease-check/PropertyContext.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -196,6 +261,36 @@
     {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AnswerControls",
+      "file": "src/components/matchmaking/AnswerControls.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ChatClient",
+      "file": "src/components/matchmaking/ChatClient.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ChatWindow",
+      "file": "src/components/matchmaking/ChatWindow.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "MessageBubble",
+      "file": "src/components/matchmaking/MessageBubble.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PreferencePanel",
+      "file": "src/components/matchmaking/PreferencePanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "RecommendationCards",
+      "file": "src/components/matchmaking/RecommendationCards.js",
       "description": "No description — run generate after adding a description above."
     },
     {

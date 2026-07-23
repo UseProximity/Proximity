@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-07-02T04:06:19.219Z",
-  "count": 26,
+  "_generated": "2026-07-16T07:10:56.296Z",
+  "count": 28,
   "pages": [
     {
       "path": "/",
@@ -84,6 +84,10 @@
       "file": "src/app/guides/washu-parent-guide/page.js"
     },
     {
+      "path": "/lease-check",
+      "file": "src/app/lease-check/page.js"
+    },
+    {
       "path": "/listings/[id]",
       "file": "src/app/listings/[id]/page.js"
     },
@@ -106,6 +110,10 @@
     {
       "path": "/reset-password",
       "file": "src/app/reset-password/page.js"
+    },
+    {
+      "path": "/review-invite/[landlordId]",
+      "file": "src/app/review-invite/[landlordId]/page.js"
     }
   ]
 }
