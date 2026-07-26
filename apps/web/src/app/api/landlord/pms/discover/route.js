@@ -136,10 +136,52 @@ export async function POST(req) {
   if (ownedIds.length) {
     const { data } = await supabase
       .from("listings")
-      .select("id, title, address, latitude, longitude, pms_connection_id")
+      .select("id, title, address, latitude, longitude, pms_connection_id, unavailable, lease_type, min_bedrooms, max_bedrooms, min_rent, max_rent, contact_name, created_at")
       .in("id", ownedIds)
       .is("deleted_at", null);
     ownListings = data ?? [];
+  }
+
+  // Cover photos + landlord names for the dedupe cards, fetched once. A
+  // landlord can have several listings at one address (e.g. the building and
+  // a sublease), so the confirm screen shows enough context to tell them
+  // apart instead of a bare title.
+  const coverByListing = new Map();
+  const landlordsByListing = new Map();
+  if (ownListings.length) {
+    const ids = ownListings.map((l) => l.id);
+    const { data: images } = await supabase
+      .from("listing_images")
+      .select("listing_id, url, sort_order")
+      .in("listing_id", ids)
+      .order("sort_order", { ascending: true });
+    for (const img of images ?? []) {
+      if (!coverByListing.has(img.listing_id)) coverByListing.set(img.listing_id, img.url);
+    }
+    // Two flat queries instead of a nested users(...) embed: the dev snapshot
+    // is known to drop FKs, which silently breaks PostgREST relationship
+    // resolution. Flat lookups have no such dependency.
+    const { data: owners } = await supabase
+      .from("listing_landlords")
+      .select("listing_id, user_id, is_primary")
+      .in("listing_id", ids);
+    const ownerIds = [...new Set((owners ?? []).map((o) => o.user_id).filter(Boolean))];
+    const nameByUser = new Map();
+    if (ownerIds.length) {
+      const { data: ownerUsers } = await supabase
+        .from("users")
+        .select("id, name, email")
+        .in("id", ownerIds);
+      for (const u of ownerUsers ?? []) nameByUser.set(u.id, u.name || u.email || null);
+    }
+    for (const row of owners ?? []) {
+      const label = nameByUser.get(row.user_id);
+      if (!label) continue;
+      if (!landlordsByListing.has(row.listing_id)) landlordsByListing.set(row.listing_id, []);
+      const list = landlordsByListing.get(row.listing_id);
+      if (row.is_primary) list.unshift(label);
+      else list.push(label);
+    }
   }
 
   const properties = [];
@@ -157,9 +199,11 @@ export async function POST(req) {
       ? haversineKm(geo.latitude, geo.longitude, CAMPUS.lat, CAMPUS.lng)
       : null;
 
-    // Dedupe suggestion: nearest of the landlord's own listings within 200m;
-    // exact street-number match upgrades it to high confidence.
-    let match = null;
+    // Dedupe suggestions: the landlord's own listings within 200m, exact
+    // street-number matches first. ALL candidates are returned (not just the
+    // nearest) so the landlord can tell same-address listings apart — e.g. a
+    // building and its sublease — and pick the right one on the confirm screen.
+    let matches = [];
     if (geo) {
       const near = ownListings
         .filter((l) => l.latitude != null && l.longitude != null)
@@ -167,18 +211,32 @@ export async function POST(req) {
         .filter((l) => l.dKm <= 0.2)
         .sort((a, b) => a.dKm - b.dKm);
       const number = streetNumberOf(prop.address);
-      const numberHit = number ? near.find((l) => streetNumberOf(l.address) === number) : null;
-      const hit = numberHit || near[0];
-      if (hit) {
-        match = {
-          listingId: hit.id,
-          title: hit.title,
-          address: hit.address,
+      matches = near
+        .map((l) => ({ l, numberHit: !!number && streetNumberOf(l.address) === number }))
+        .sort((a, b) => Number(b.numberHit) - Number(a.numberHit) || a.l.dKm - b.l.dKm)
+        .slice(0, 4)
+        .map(({ l, numberHit }) => ({
+          listingId: l.id,
+          title: l.title,
+          address: l.address,
+          coverUrl: coverByListing.get(l.id) ?? null,
+          // Owner names first; a distinct contact person (common on subleases)
+          // is appended because it's often what tells twin listings apart.
+          landlords: (() => {
+            const names = [...(landlordsByListing.get(l.id) ?? [])];
+            if (l.contact_name && !names.includes(l.contact_name)) names.push(l.contact_name);
+            return names;
+          })(),
+          sublease: l.lease_type === "sublease",
+          unavailable: !!l.unavailable,
+          bedrooms: [l.min_bedrooms, l.max_bedrooms],
+          rent: [l.min_rent, l.max_rent],
           confidence: numberHit ? "high" : "low",
-          alreadySynced: !!hit.pms_connection_id,
-        };
-      }
+          distanceM: Math.round(l.dKm * 1000),
+          alreadySynced: !!l.pms_connection_id,
+        }));
     }
+    const match = matches[0] ?? null;
 
     properties.push({
       externalPropertyId: prop.externalPropertyId,
@@ -192,6 +250,7 @@ export async function POST(req) {
       availableUnits: prop.units.filter((u) => u.available === true).length,
       units: prop.units,
       match,
+      matches,
     });
   }
 

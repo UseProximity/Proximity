@@ -1,8 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Camera, Plus, X } from "lucide-react";
+import { Camera, Plus, RefreshCw, X } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+
+// The four PMSs the sync integration supports today. Shown as a shortcut on
+// the ADD flow only: landlords on one of these should connect it instead of
+// typing listings in by hand.
+const PMS_SYNC_OPTIONS = [
+  { label: "Buildium", logo: "/pms-logos/buildium.png" },
+  { label: "AppFolio", logo: "/pms-logos/appfolio.png" },
+  { label: "DoorLoop", logo: "/pms-logos/doorloop.png" },
+  { label: "Rentec Direct", logo: "/pms-logos/rentecdirect.png" },
+];
 
 // Add / Edit Listing Modal -------------------------------------------------------
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
@@ -708,6 +720,45 @@ export default function ListingFormPanel({
             </svg>
           </button>
         </div>
+
+        {/* PMS shortcut: landlords on a supported system should sync, not type.
+            Add flow only; editing an existing listing stays manual. */}
+        {!isEdit && (
+          <div className="mx-6 mt-5 rounded-xl border border-red-100 bg-gradient-to-r from-red-50/80 to-white p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex shrink-0 -space-x-2 pt-0.5">
+                  {PMS_SYNC_OPTIONS.map((p) => (
+                    <Image
+                      key={p.label}
+                      src={p.logo}
+                      alt={p.label}
+                      title={p.label}
+                      width={56}
+                      height={56}
+                      className="h-8 w-8 rounded-full border border-gray-200 bg-white object-contain p-1 shadow-sm"
+                    />
+                  ))}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Use Buildium, AppFolio, DoorLoop, or Rentec Direct?
+                  </p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
+                    Skip the typing. Connect your system once and your listings create
+                    themselves, stay priced right, and come off the moment they lease.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/dashboard/landlord?tab=integrations"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+              >
+                <RefreshCw className="h-4 w-4" /> Set up auto sync
+              </Link>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
           {/* Listing Details */}

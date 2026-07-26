@@ -9,17 +9,18 @@
  * listings self-maintain via the daily sync.
  */
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Link2, Loader2, Plug, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import { CheckCircle2, ExternalLink, Home, Link2, Loader2, Plug, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import Image from "next/image";
 import Nango from "@nangohq/frontend";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 
 const PROVIDERS = [
-  { key: "buildium", label: "Buildium", note: "Open API access (Premium plan) required" },
-  { key: "appfolio", label: "AppFolio", note: "Plus or Max plan, read-only reporting access" },
-  { key: "doorloop", label: "DoorLoop", note: "API keys are available on the Premium plan" },
-  { key: "rentec", label: "Rentec Direct", note: "Free API on Pro & PM. Key at Settings → Tools → Utilities → API Keys" },
+  { key: "buildium", label: "Buildium", logo: "/pms-logos/buildium.png", note: "Premium plan required" },
+  { key: "appfolio", label: "AppFolio", logo: "/pms-logos/appfolio.png", note: "Plus or Max plan required" },
+  { key: "doorloop", label: "DoorLoop", logo: "/pms-logos/doorloop.png", note: "Premium plan required" },
+  { key: "rentec", label: "Rentec Direct", logo: "/pms-logos/rentecdirect.png", note: "Pro or PM plan required" },
 ];
 
 // Accepts "acme", "acme.appfolio.com", or a full pasted AppFolio URL; returns
@@ -35,6 +36,16 @@ function parseAppfolioDb(input) {
   const cleaned = host.replace(/\.appfolio\.com$/, "");
   return /^[a-z0-9-]{1,63}$/.test(cleaned) ? cleaned : null;
 }
+
+// "2 BR" / "1 to 4 BR" / "$950" / "$950 to $1,400" summaries for match cards.
+function formatRange([lo, hi], format) {
+  if (lo == null && hi == null) return null;
+  const a = lo ?? hi;
+  const b = hi ?? lo;
+  return Number(a) === Number(b) ? format(a) : `${format(a)} to ${format(b)}`;
+}
+const formatBeds = (range) => formatRange(range, (n) => `${n} BR`);
+const formatRent = (range) => formatRange(range, (n) => `$${Math.round(n).toLocaleString()}`);
 
 export default function IntegrationsSection() {
   const [connections, setConnections] = useState(null);
@@ -79,12 +90,20 @@ export default function IntegrationsSection() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Discovery failed");
       setDiscovery(data);
-      // Sensible defaults: high-confidence match -> link; near campus -> add; far -> skip.
+      // Sensible defaults: a single match -> link it; near campus -> add;
+      // far -> skip. When SEVERAL of the landlord's listings match one
+      // property (same address twice, e.g. a building and its sublease),
+      // nothing is preselected: auto-guessing could silently link the wrong
+      // one, so the landlord must pick before Confirm unlocks.
       const initial = {};
       for (const p of data.properties) {
-        initial[p.externalPropertyId] = p.match
-          ? { action: "link", listingId: p.match.listingId }
-          : { action: p.withinRadius ? "ingest" : "exclude" };
+        const matches = p.matches ?? (p.match ? [p.match] : []);
+        initial[p.externalPropertyId] =
+          matches.length > 1
+            ? { action: null }
+            : matches.length === 1
+              ? { action: "link", listingId: matches[0].listingId }
+              : { action: p.withinRadius ? "ingest" : "exclude" };
       }
       setDecisions(initial);
     } catch (err) {
@@ -135,10 +154,12 @@ export default function IntegrationsSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           connectionId: discovery.connectionId,
-          decisions: Object.entries(decisions).map(([externalPropertyId, d]) => ({
-            externalPropertyId,
-            ...d,
-          })),
+          decisions: Object.entries(decisions)
+            .filter(([, d]) => d?.action)
+            .map(([externalPropertyId, d]) => ({
+              externalPropertyId,
+              ...d,
+            })),
         }),
       });
       const data = await res.json();
@@ -198,6 +219,7 @@ export default function IntegrationsSection() {
 
         {discovery.properties.map((p) => {
           const d = decisions[p.externalPropertyId] || { action: "exclude" };
+          const matches = p.matches ?? (p.match ? [p.match] : []);
           return (
             <Card key={p.externalPropertyId} className="rounded-xl">
               <CardContent className="space-y-4 p-5">
@@ -218,32 +240,107 @@ export default function IntegrationsSection() {
                   )}
                 </div>
 
-                {/* Radio-group semantics: exactly one decision per property. */}
+                {/* Radio-group semantics: exactly one decision per property —
+                    each match card plus the two chips below. */}
                 <div
                   role="radiogroup"
                   aria-label={`What should we do with ${p.name || p.address || "this property"}?`}
-                  className="flex flex-wrap gap-2"
+                  className="space-y-3"
                 >
-                  {p.match && (
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={d.action === "link"}
-                      onClick={() =>
-                        setDecisions((prev) => ({
-                          ...prev,
-                          [p.externalPropertyId]: { action: "link", listingId: p.match.listingId },
-                        }))
-                      }
-                      className={`max-w-full truncate rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                        d.action === "link"
-                          ? "border-red-600 bg-red-600 text-white focus-visible:ring-red-500"
-                          : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
-                      }`}
-                    >
-                      Same as “{p.match.title || p.match.address}”
-                    </button>
+                  {matches.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                        {matches.length === 1
+                          ? "Looks like one of your listings"
+                          : `${matches.length} of your listings are at this address. Pick the one to keep in sync.`}
+                      </p>
+                      {matches.map((m) => {
+                        const selected = d.action === "link" && d.listingId === m.listingId;
+                        const meta = [
+                          m.landlords?.length ? m.landlords.join(", ") : null,
+                          formatBeds(m.bedrooms || []),
+                          formatRent(m.rent || []),
+                        ].filter(Boolean);
+                        return (
+                          <div
+                            key={m.listingId}
+                            className={`flex items-center gap-3 rounded-xl border p-2.5 transition-colors ${
+                              selected
+                                ? "border-red-600 bg-red-50/50 ring-1 ring-red-600"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() =>
+                                setDecisions((prev) => ({
+                                  ...prev,
+                                  [p.externalPropertyId]: { action: "link", listingId: m.listingId },
+                                }))
+                              }
+                              className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 rounded-lg"
+                            >
+                              {m.coverUrl ? (
+                                <Image
+                                  src={m.coverUrl}
+                                  alt=""
+                                  width={96}
+                                  height={96}
+                                  className="h-12 w-12 shrink-0 rounded-lg border border-gray-200 object-cover"
+                                />
+                              ) : (
+                                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-400">
+                                  <Home className="h-5 w-5" />
+                                </span>
+                              )}
+                              <span className="min-w-0">
+                                <span className="flex flex-wrap items-center gap-1.5">
+                                  <span className="truncate text-sm font-medium text-gray-900">
+                                    {m.title || m.address}
+                                  </span>
+                                  {m.sublease && (
+                                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                      Sublease
+                                    </span>
+                                  )}
+                                  {m.unavailable && (
+                                    <Badge variant="outline" className="shrink-0">Marked unavailable</Badge>
+                                  )}
+                                  {m.alreadySynced && (
+                                    <Badge variant="outline" className="shrink-0">Already syncing</Badge>
+                                  )}
+                                </span>
+                                {m.address && (
+                                  <span className="mt-0.5 block truncate text-xs text-gray-500">{m.address}</span>
+                                )}
+                                {meta.length > 0 && (
+                                  <span className="mt-0.5 block truncate text-xs text-gray-500">
+                                    {meta.join(" · ")}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                            <a
+                              href={`/listings/${m.listingId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Open ${m.title || m.address} in a new tab`}
+                              className="flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+                            >
+                              View <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {matches.length > 0 && (
+                      <span className="text-xs font-medium uppercase tracking-wide text-gray-400">or</span>
+                    )}
                   <button
                     type="button"
                     role="radio"
@@ -274,6 +371,7 @@ export default function IntegrationsSection() {
                   >
                     Don&apos;t sync
                   </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -285,10 +383,23 @@ export default function IntegrationsSection() {
             {error}
           </p>
         )}
+        {(() => {
+          const unresolved = discovery.properties.filter(
+            (p) => !decisions[p.externalPropertyId]?.action
+          ).length;
+          return (
+            <>
+              {unresolved > 0 && (
+                <p className="text-sm text-gray-600">
+                  {unresolved === 1
+                    ? "1 property has more than one possible listing. Pick the right one above to continue."
+                    : `${unresolved} properties have more than one possible listing. Pick the right ones above to continue.`}
+                </p>
+              )}
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             onClick={submitDecisions}
-            disabled={confirming}
+            disabled={confirming || unresolved > 0}
             className="h-11 focus-visible:ring-red-500 focus-visible:ring-offset-2"
           >
             {confirming ? (
@@ -308,6 +419,9 @@ export default function IntegrationsSection() {
             Cancel
           </Button>
         </div>
+            </>
+          );
+        })()}
       </div>
     );
   }
@@ -536,12 +650,14 @@ export default function IntegrationsSection() {
               >
                 <CardContent className="flex flex-1 flex-col gap-4 p-5">
                   <div className="flex items-center gap-3">
-                    <span
+                    <Image
+                      src={p.logo}
+                      alt=""
+                      width={36}
+                      height={36}
                       aria-hidden="true"
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-sm font-bold text-white"
-                    >
-                      {p.label.charAt(0)}
-                    </span>
+                      className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white object-contain p-1"
+                    />
                     <span className="font-semibold text-gray-900 leading-tight">{p.label}</span>
                   </div>
                   <p className="flex-1 text-xs leading-relaxed text-gray-500">{p.note}</p>
