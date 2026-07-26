@@ -22,6 +22,20 @@ const PROVIDERS = [
   { key: "rentec", label: "Rentec Direct", note: "Free API on Pro & PM. Key at Settings → Tools → Utilities → API Keys" },
 ];
 
+// Accepts "acme", "acme.appfolio.com", or a full pasted AppFolio URL; returns
+// the bare database name or null. Any other host (dots that aren't the
+// .appfolio.com suffix) is rejected, matching the server-side SSRF check in
+// lib/pms/appfolio.js.
+function parseAppfolioDb(input) {
+  const host = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0];
+  const cleaned = host.replace(/\.appfolio\.com$/, "");
+  return /^[a-z0-9-]{1,63}$/.test(cleaned) ? cleaned : null;
+}
+
 export default function IntegrationsSection() {
   const [connections, setConnections] = useState(null);
   const [allowDemo, setAllowDemo] = useState(false);
@@ -30,6 +44,8 @@ export default function IntegrationsSection() {
   const [requestName, setRequestName] = useState("");
   const [requestState, setRequestState] = useState(null); // null | "sending" | "sent" | "error"
   const [consented, setConsented] = useState(false);
+  const [appfolioSetup, setAppfolioSetup] = useState(false); // AppFolio pre-connect step open
+  const [appfolioDb, setAppfolioDb] = useState("");
   const [discovery, setDiscovery] = useState(null); // discover response
   const [decisions, setDecisions] = useState({});
   const [confirming, setConfirming] = useState(false);
@@ -51,14 +67,14 @@ export default function IntegrationsSection() {
     loadConnections();
   }, [loadConnections]);
 
-  async function runDiscover(provider, nangoConnectionId) {
+  async function runDiscover(provider, nangoConnectionId, subdomain = null) {
     setError(null);
     setSyncedProvider(provider);
     try {
       const res = await fetch("/api/landlord/pms/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, nangoConnectionId }),
+        body: JSON.stringify({ provider, nangoConnectionId, ...(subdomain ? { subdomain } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Discovery failed");
@@ -78,14 +94,14 @@ export default function IntegrationsSection() {
     }
   }
 
-  function startConnect(provider) {
+  function startConnect(provider, subdomain = null) {
     setError(null);
     setConnecting(provider);
     const nango = new Nango();
     const connect = nango.openConnectUI({
       onEvent: (event) => {
         if (event.type === "connect") {
-          runDiscover(provider, event.payload.connectionId);
+          runDiscover(provider, event.payload.connectionId, subdomain);
         } else if (event.type === "close") {
           setConnecting((current) => (current === provider ? null : current));
         }
@@ -447,6 +463,69 @@ export default function IntegrationsSection() {
           </span>
         </label>
 
+        {/* AppFolio needs one extra fact before the Nango window opens: the
+            database (subdomain). Nango's hosted form has no field for it, and
+            its generic labels say Username/Password, so both are explained here. */}
+        {appfolioSetup && (
+          <Card className="rounded-xl border-gray-300">
+            <CardContent className="space-y-4 p-5">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-gray-900">Connect AppFolio</div>
+                <p className="text-xs leading-relaxed text-gray-500">
+                  In AppFolio, open General Settings, then Manage API Settings, then the Reports
+                  API Credentials tab. If credentials are already listed, copy those. Only
+                  generate new ones if the section is empty, since generating a new pair
+                  disconnects any other tool using the old one.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="appfolio-db" className="block text-sm font-medium text-gray-900">
+                  Your AppFolio database name
+                </label>
+                <input
+                  id="appfolio-db"
+                  type="text"
+                  value={appfolioDb}
+                  onChange={(e) => setAppfolioDb(e.target.value)}
+                  placeholder="e.g. acmeproperties"
+                  maxLength={120}
+                  autoFocus
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+                <p className="text-xs text-gray-500">
+                  The part before .appfolio.com in your AppFolio URL. Pasting the full URL works
+                  too.
+                </p>
+              </div>
+              <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs leading-relaxed text-gray-600">
+                Next, a secure window asks for a Username and Password. Enter your AppFolio
+                Client ID as the username and your Client Secret as the password.
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  disabled={!parseAppfolioDb(appfolioDb) || connecting === "appfolio"}
+                  onClick={() => {
+                    const db = parseAppfolioDb(appfolioDb);
+                    if (!db) return;
+                    setAppfolioSetup(false);
+                    startConnect("appfolio", db);
+                  }}
+                  className="h-11 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                >
+                  Continue to connect
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setAppfolioSetup(false)}
+                  className="h-11 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid sm:grid-cols-2 gap-4">
           {PROVIDERS.map((p) => {
             const busy = connecting === p.key;
@@ -468,7 +547,14 @@ export default function IntegrationsSection() {
                   <p className="flex-1 text-xs leading-relaxed text-gray-500">{p.note}</p>
                   <Button
                     disabled={!consented || busy}
-                    onClick={() => startConnect(p.key)}
+                    onClick={() => {
+                      if (p.key === "appfolio") {
+                        setError(null);
+                        setAppfolioSetup(true);
+                      } else {
+                        startConnect(p.key);
+                      }
+                    }}
                     aria-label={`Connect ${p.label}`}
                     className="h-11 w-full focus-visible:ring-red-500 focus-visible:ring-offset-2"
                   >

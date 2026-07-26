@@ -115,23 +115,124 @@ check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") ==
 
 // ---------- AppFolio ----------
 {
-  const page2 = "https://sub.appfolio.com/api/v2/reports/unit_directory.json?page=2";
-  routes = [
-    ["unit_directory.json?page=2", () => json({ results: [
-      { property_id: "P9", property_name: "Waterman Lofts", property_address: "5500 Waterman Blvd", unit_id: "W2", unit_name: "2E", unit_status: "Occupied", market_rent: "$1,850", bedrooms: 2, bathrooms: 1 },
-    ], next_page_url: null })],
-    ["unit_directory.json", () => json({ results: [
-      { property_id: "P9", property_name: "Waterman Lofts", property_address: "5500 Waterman Blvd", unit_id: "W1", unit_name: "1E", unit_status: "Vacant-Unrented", market_rent: "$1,795", bedrooms: 2, bathrooms: 1 },
-    ], next_page_url: page2 })],
-    ["rent_roll.json", () => json({ results: [{ unit_id: "W2", lease_to: "2026-12-31" }] })],
+  const META = { subdomain: "acme" };
+  const page2 = "https://acme.appfolio.com/api/v2/reports/unit_directory.json?page=2";
+
+  // unit_directory: identity + numeric beds/baths/sqft/rent. W2 lives on page 2.
+  // W3 is occupied and NOT advertised (must be excluded by the conservative
+  // default). W4 is advertised but has no beds/rent/sqft (nulls must survive)
+  // and no vacancy row (occupancy inferred from its current lease).
+  // P0 has no address (property must be skipped with a warning, not an error).
+  const dirPage1 = [
+    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W1", unit_name: "1E", advertised_rent: "$1,795", market_rent: "$1,900", bedrooms: 2, bathrooms: "1", sqft: 750, posted_to_internet: "Yes", visibility: "Visible" },
+    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W3", unit_name: "3E", market_rent: "$1,700", bedrooms: 1, bathrooms: "1", sqft: 600, posted_to_internet: "No" },
+    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W4", unit_name: "4E", posted_to_internet: "Yes" },
+    { property_id: "P0", property_name: "No Address Flats", unit_id: "X1", unit_name: "1", bedrooms: 2, posted_to_internet: "Yes" },
   ];
-  const snap = await appfolio.fetchSnapshot("conn-3");
+  const dirPage2 = [
+    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W2", unit_name: "2E", market_rent: "$1,850", bedrooms: 2, bathrooms: "1.5", sqft: 900, posted_to_internet: "Yes" },
+  ];
+  // unit_vacancy: availability truth. bed_and_bath is a decoy display string —
+  // numbers must come from unit_directory, never from parsing it.
+  const vacancy = [
+    { unit_id: "W1", unit_status: "Vacant-Unrented", bed_and_bath: "9 bd / 9 ba", rent_ready: "Yes" },
+    { unit_id: "W2", unit_status: "Occupied", bed_and_bath: "9 bd / 9 ba" },
+    { unit_id: "W3", unit_status: "Occupied" },
+    { unit_id: "X1", unit_status: "Vacant-Unrented" },
+  ];
+
+  const overrides = [];   // Base-Url-Override header of every proxy call
+  let rentRollBody = null;
+  let page2Body = null;
+  const record = (options) => {
+    overrides.push(options?.headers?.["Base-Url-Override"] ?? null);
+  };
+  routes = [
+    ["unit_directory.json?page=2", (u, options) => {
+      record(options);
+      page2Body = JSON.parse(options.body || "{}");
+      return json({ results: dirPage2, next_page_url: null });
+    }],
+    ["unit_directory.json", (u, options) => {
+      record(options);
+      return json({ results: dirPage1, next_page_url: page2 });
+    }],
+    ["unit_vacancy.json", (u, options) => {
+      record(options);
+      return json({ results: vacancy });
+    }],
+    ["rent_roll.json", (u, options) => {
+      record(options);
+      rentRollBody = JSON.parse(options.body || "{}");
+      return json({ results: [
+        { unit_id: "W2", lease_to: "2026-12-31" },
+        { unit_id: "W4", lease_to: "2027-05-31" },
+      ] });
+    }],
+  ];
+
+  const snap = await appfolio.fetchSnapshot("conn-3", META);
+  check("appfolio: every call carries the Base-Url-Override",
+    overrides.length === 4 && overrides.every((h) => h === "https://acme.appfolio.com"));
+  check("appfolio: rent_roll sent the required as_of_to filter",
+    /^\d{4}-\d{2}-\d{2}$/.test(rentRollBody?.as_of_to || ""));
+  check("appfolio: next_page_url followed with NO filters (empty body)",
+    page2Body != null && Object.keys(page2Body).length === 0);
+
+  check("appfolio: no-address property skipped as a warning, not an error",
+    snap.properties.length === 1 && snap.errors.length === 0 &&
+    (snap.warnings ?? []).length === 1);
   const units = snap.properties[0].units;
-  check("appfolio: next_page_url followed (both pages present)", units.length === 2);
   const w1 = units.find((u) => u.externalUnitId === "W1");
   const w2 = units.find((u) => u.externalUnitId === "W2");
-  check("appfolio: Vacant-Unrented -> available true + rent parsed", w1.available === true && w1.rent === 1795);
-  check("appfolio: Occupied -> available false + lease end from rent roll", w2.available === false && w2.availableFrom === "2026-12-31");
+  const w3 = units.find((u) => u.externalUnitId === "W3");
+  const w4 = units.find((u) => u.externalUnitId === "W4");
+  check("appfolio: pagination joined across pages (page-2 unit present)", !!w2);
+  check("appfolio: vacancy join -> Vacant-Unrented is available, advertised rent wins",
+    w1?.available === true && w1?.rent === 1795);
+  check("appfolio: numeric beds/baths from unit_directory, bed_and_bath decoy ignored",
+    w1?.bedrooms === 2 && w1?.bathrooms === 1 && w2?.bathrooms === 1.5);
+  check("appfolio: Occupied -> available false + availableFrom from rent roll",
+    w2?.available === false && w2?.availableFrom === "2026-12-31");
+  check("appfolio: occupied unadvertised unit excluded by conservative default", w3 == null);
+  check("appfolio: no vacancy row + current lease -> occupied with availableFrom (horizon feed)",
+    w4?.available === false && w4?.availableFrom === "2027-05-31");
+  check("appfolio: missing beds/rent/sqft pass through as null, never 0",
+    w4?.bedrooms === null && w4?.bathrooms === null && w4?.rent === null && w4?.area === null);
+
+  // includeAllUnits lifts the conservative filter per connection.
+  const snapAll = await appfolio.fetchSnapshot("conn-3", { ...META, includeAllUnits: true });
+  check("appfolio: includeAllUnits surfaces the occupied unadvertised unit",
+    snapAll.properties[0].units.some((u) => u.externalUnitId === "W3"));
+
+  // rent_roll failure must DEGRADE (errors recorded, units intact) so the
+  // cron's snapshot.errors guard suppresses delists — never a delist here.
+  routes = routes.map(([p, h]) => (p === "rent_roll.json" ? [p, () => json({ error: "boom" }, 400)] : [p, h]));
+  const degraded = await appfolio.fetchSnapshot("conn-3", META);
+  check("appfolio: rent_roll failure degrades (units kept + error recorded, delists suppressed downstream)",
+    degraded.errors.length === 1 && degraded.properties[0]?.units?.length === 3 &&
+    degraded.properties[0].units.find((u) => u.externalUnitId === "W2")?.available === false);
+
+  // unit_directory failure = broken pull -> empty snapshot, refuse to reconcile.
+  routes = [["unit_directory.json", () => json({ error: "bad credentials" }, 401)]];
+  const broken = await appfolio.fetchSnapshot("conn-3", META);
+  check("appfolio: unit_directory failure -> empty snapshot + error, never partial",
+    broken.properties.length === 0 && broken.errors.length === 1);
+
+  // SSRF guard: bad subdomains are rejected before ANY network call.
+  routes = [];
+  for (const bad of ["evil.com/", "../", ""]) {
+    callLog = [];
+    const s = await appfolio.fetchSnapshot("conn-3", { subdomain: bad });
+    const v = await appfolio.verifyConnection("conn-3", { subdomain: bad });
+    check(`appfolio: subdomain ${JSON.stringify(bad)} rejected with zero network calls`,
+      s.properties.length === 0 && s.errors.length === 1 && v.ok === false && callLog.length === 0);
+  }
+  const noMeta = await appfolio.fetchSnapshot("conn-3");
+  check("appfolio: missing meta/subdomain -> broken snapshot, refuse to reconcile",
+    noMeta.properties.length === 0 && noMeta.errors.length === 1);
+  check("appfolio: normalizeSubdomain trims + lowercases, rejects dots",
+    appfolio.normalizeSubdomain("  Acme-1 ") === "acme-1" && appfolio.normalizeSubdomain("a.b") === null);
 }
 
 // ---------- httpRetry ----------

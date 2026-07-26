@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-21T20:34:41.102Z",
+  "_generated": "2026-07-26T18:12:44.740Z",
   "count": 41,
   "utils": [
     {
@@ -81,7 +81,7 @@
     },
     {
       "file": "src/lib/pms/appfolio.js",
-      "description": "AppFolio connector (via Nango Proxy — custom API config, key \"appfolio\")."
+      "description": "AppFolio connector (via Nango Proxy — \"private-api-basic\" template, key"
     },
     {
       "file": "src/lib/pms/buildium.js",

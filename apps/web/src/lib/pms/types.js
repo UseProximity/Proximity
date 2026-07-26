@@ -3,8 +3,14 @@
  *
  * Every connector (buildium.js, appfolio.js, doorloop.js, …) implements:
  *
- *   verifyConnection(connectionId) -> { ok, error?, accountLabel? }
- *   fetchSnapshot(connectionId)    -> { properties: PmsProperty[], errors: string[] }
+ *   verifyConnection(connectionId, meta?) -> { ok, error?, accountLabel? }
+ *   fetchSnapshot(connectionId, meta?)    -> { properties: PmsProperty[], errors: string[],
+ *                                             warnings?: string[] }
+ *
+ * `meta` is the connection's credential_meta jsonb (non-secret provider
+ * settings — e.g. AppFolio's {subdomain}). Connectors that don't need it
+ * ignore it. `warnings` records rows skipped for data-quality reasons (e.g. a
+ * property with no address) WITHOUT tripping the degraded-pull delist guard.
  *
  * fetchSnapshot must NOT throw — it returns the full current picture of the
  * account (the PMS is the source of truth; the sync reconciles against it) and

@@ -116,7 +116,7 @@ export async function POST(req) {
 
   const { data: connection } = await supabase
     .from("pms_connections")
-    .select("id, user_id, provider, nango_connection_id, status")
+    .select("id, user_id, provider, nango_connection_id, credential_meta, status")
     .eq("id", connectionId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -128,7 +128,7 @@ export async function POST(req) {
   }
 
   const connector = getConnector(connection.provider);
-  const snapshot = await connector.fetchSnapshot(connection.nango_connection_id);
+  const snapshot = await connector.fetchSnapshot(connection.nango_connection_id, connection.credential_meta ?? null);
   const byExternalId = new Map(snapshot.properties.map((p) => [p.externalPropertyId, p]));
   const source = `pms:${connection.provider}`;
 

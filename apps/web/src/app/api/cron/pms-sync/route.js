@@ -46,7 +46,7 @@ export async function GET(req) {
 
   const { data: connections } = await supabase
     .from("pms_connections")
-    .select("id, user_id, provider, nango_connection_id, radius_auto_include_km, sync_price, auto_apply, status")
+    .select("id, user_id, provider, nango_connection_id, credential_meta, radius_auto_include_km, sync_price, auto_apply, status")
     .eq("status", "active")
     .is("deleted_at", null);
 
@@ -78,7 +78,7 @@ async function logEvents(rows) {
 async function syncConnection(connection, { dryRun = false } = {}) {
   const source = `pms:${connection.provider}`;
   const connector = getConnector(connection.provider);
-  const snapshot = await connector.fetchSnapshot(connection.nango_connection_id);
+  const snapshot = await connector.fetchSnapshot(connection.nango_connection_id, connection.credential_meta ?? null);
   const horizonEnd = leasingHorizonEnd();
   const today = new Date().toISOString().slice(0, 10);
 

@@ -6,6 +6,7 @@ import supabase from "@/lib/supabase";
 import { haversineKm } from "@/utils/walkTimes";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { isApiProvider, getConnector } from "@/lib/pms/index.js";
+import { normalizeSubdomain } from "@/lib/pms/appfolio.js";
 import { joinAddress } from "@/lib/pms/types.js";
 
 // Campus anchor for the auto-include radius (Olin Library — center of campus).
@@ -49,13 +50,28 @@ export async function POST(req) {
   const session = await requireLandlordOrSuper();
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { provider, nangoConnectionId } = await req.json().catch(() => ({}));
+  const { provider, nangoConnectionId, subdomain } = await req.json().catch(() => ({}));
   if (!isApiProvider(provider) || !nangoConnectionId || typeof nangoConnectionId !== "string") {
     return NextResponse.json({ error: "provider and nangoConnectionId are required" }, { status: 400 });
   }
 
+  // AppFolio is reached at {subdomain}.appfolio.com — the subdomain is
+  // landlord-supplied text that ends up in a URL, so it is validated here
+  // (server-side, SSRF guard) and again inside the connector on every call.
+  let credentialMeta = null;
+  if (provider === "appfolio") {
+    const sub = normalizeSubdomain(subdomain);
+    if (!sub) {
+      return NextResponse.json(
+        { error: "Enter your AppFolio database name (the part before .appfolio.com in your AppFolio URL)" },
+        { status: 400 }
+      );
+    }
+    credentialMeta = { subdomain: sub };
+  }
+
   const connector = getConnector(provider);
-  const verified = await connector.verifyConnection(nangoConnectionId);
+  const verified = await connector.verifyConnection(nangoConnectionId, credentialMeta);
   if (!verified.ok) {
     return NextResponse.json(
       { error: `We couldn't read from your ${provider} account: ${verified.error}` },
@@ -75,7 +91,7 @@ export async function POST(req) {
   const connectionValues = {
     nango_connection_id: nangoConnectionId,
     status: "active",
-    credential_meta: { accountLabel: verified.accountLabel || null },
+    credential_meta: { accountLabel: verified.accountLabel || null, ...(credentialMeta || {}) },
     last_sync_error: null,
   };
 
@@ -102,7 +118,7 @@ export async function POST(req) {
     .single();
   const radiusKm = Number(connection?.radius_auto_include_km) || 8;
 
-  const snapshot = await connector.fetchSnapshot(nangoConnectionId);
+  const snapshot = await connector.fetchSnapshot(nangoConnectionId, credentialMeta);
   if (!snapshot.properties.length) {
     return NextResponse.json(
       { error: "We connected, but couldn't read any properties from the account", detail: snapshot.errors },
