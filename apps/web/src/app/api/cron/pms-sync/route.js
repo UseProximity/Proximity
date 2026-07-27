@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
+import { getBaseUrl, sendPmsSyncDigestEmail } from "@/lib/email";
 import { getConnector, isApiProvider } from "@/lib/pms/index.js";
 import { ingestPmsProperty } from "@/lib/pms/ingest.js";
 import {
@@ -57,18 +58,72 @@ export async function GET(req) {
     // auto_apply=false the sync observes and logs instead of writing.
     if (!isApiProvider(connection.provider)) continue;
     try {
-      summary.push(await syncConnection(connection, { dryRun: !connection.auto_apply }));
+      const result = await syncConnection(connection, { dryRun: !connection.auto_apply });
+      summary.push({ provider: connection.provider, userId: connection.user_id, ...result });
     } catch (err) {
       console.error("[pms-sync]", connection.id, err?.message);
       await supabase
         .from("pms_connections")
         .update({ last_sync_at: new Date().toISOString(), last_sync_status: "error", last_sync_error: (err?.message || "sync failed").slice(0, 500) })
         .eq("id", connection.id);
-      summary.push({ connectionId: connection.id, status: "error", error: err?.message });
+      summary.push({ provider: connection.provider, userId: connection.user_id, connectionId: connection.id, status: "error", error: err?.message });
     }
   }
 
+  await sendDigest(summary, req);
+
   return NextResponse.json({ synced: summary.length, summary });
+}
+
+// Human-in-the-loop notification: one email per run, only when something needs
+// a decision. The guards hold changes; this makes sure someone actually looks.
+async function sendDigest(summary, req) {
+  const noteworthy = [];
+  for (const s of summary) {
+    const changes = (s.created ?? 0) + (s.updated ?? 0) + (s.delisted ?? 0) + (s.relisted ?? 0);
+    if (s.status === "error") {
+      noteworthy.push({ ...s, note: `Sync failed: ${s.error || "unknown error"}. The connection may need reconnecting.` });
+    } else if (s.status === "held") {
+      noteworthy.push({ ...s, note: "Held by the swing guard: too much of the portfolio changed at once. Nothing was applied; see pms_review_queue." });
+    } else if (s.heldDelists) {
+      noteworthy.push({ ...s, note: `${s.heldDelists} delist${s.heldDelists === 1 ? "" : "s"} suppressed and held for review (mass delist or degraded pull). Other updates applied normally.` });
+    } else if (s.status === "dry_run" && changes > 0) {
+      noteworthy.push({ ...s, note: `Dry run: ${changes} intended change${changes === 1 ? "" : "s"} recorded, nothing applied. Review pms_sync_events before going live.` });
+    }
+  }
+  if (!noteworthy.length) return;
+
+  try {
+    const userIds = [...new Set(noteworthy.map((n) => n.userId).filter(Boolean))];
+    const { data: landlords } = userIds.length
+      ? await supabase.from("users").select("id, name, email").in("id", userIds)
+      : { data: [] };
+    const nameById = new Map((landlords ?? []).map((u) => [u.id, u.name || u.email]));
+
+    let recipients = process.env.PMS_ALERT_EMAIL ? [process.env.PMS_ALERT_EMAIL] : [];
+    if (!recipients.length) {
+      const { data: supers } = await supabase
+        .from("users")
+        .select("email, roles!inner(name)")
+        .eq("roles.name", "super")
+        .not("email", "is", null);
+      recipients = (supers ?? []).map((u) => u.email);
+    }
+    if (!recipients.length) return;
+
+    await sendPmsSyncDigestEmail({
+      to: recipients.join(", "),
+      items: noteworthy.map((n) => ({
+        provider: n.provider,
+        landlord: nameById.get(n.userId) || "",
+        note: n.note,
+      })),
+      baseUrl: getBaseUrl(req),
+    });
+  } catch (err) {
+    // The digest is best-effort; a mail failure must never fail the sync run.
+    console.error("[pms-sync] digest email failed:", err?.message);
+  }
 }
 
 async function logEvents(rows) {
@@ -514,5 +569,10 @@ async function syncConnection(connection, { dryRun = false } = {}) {
     })
     .eq("id", connection.id);
 
-  return { connectionId: connection.id, status: dryRun ? "dry_run" : "ok", ...applied };
+  return {
+    connectionId: connection.id,
+    status: dryRun ? "dry_run" : "ok",
+    ...applied,
+    heldDelists: suppressDelists && intendedDelists > 0 ? intendedDelists : 0,
+  };
 }

@@ -176,6 +176,22 @@ export async function POST(req) {
         continue;
       }
 
+      // "link" and "ingest" both re-include the property: clear any
+      // property-level exclusion marker (external_unit_id NULL, include=false)
+      // a previous "exclude" left behind. Without this the cron would ignore
+      // the property forever and count its units as missing, wedging the
+      // connection in a permanent swing-guard hold.
+      if (action === "link" || action === "ingest") {
+        await supabase
+          .from("pms_links")
+          .delete()
+          .eq("connection_id", connection.id)
+          .eq("external_property_id", prop.externalPropertyId)
+          .is("external_unit_id", null)
+          .is("external_bed_id", null)
+          .eq("include", false);
+      }
+
       if (action === "link") {
         if (!listingId || !ownedIds.has(listingId)) {
           results.push({ externalPropertyId, action, error: "listingId missing or not yours" });
