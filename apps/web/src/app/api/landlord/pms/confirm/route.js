@@ -6,6 +6,7 @@ import supabase from "@/lib/supabase";
 import { isApiProvider, getConnector } from "@/lib/pms/index.js";
 import { ingestPmsProperty } from "@/lib/pms/ingest.js";
 import { matchUnitsToListingUnits } from "@/lib/pms/mapping.js";
+import { syncConnection } from "@/lib/pms/sync.js";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
@@ -116,7 +117,7 @@ export async function POST(req) {
 
   const { data: connection } = await supabase
     .from("pms_connections")
-    .select("id, user_id, provider, nango_connection_id, credential_meta, status")
+    .select("id, user_id, provider, nango_connection_id, credential_meta, radius_auto_include_km, sync_price, auto_apply, status")
     .eq("id", connectionId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -315,5 +316,16 @@ export async function POST(req) {
     }
   }
 
-  return NextResponse.json({ results });
+  // First sync runs NOW, not tonight: the landlord's listings pick up live
+  // availability seconds after they confirm. Best effort — a sync hiccup must
+  // not fail the confirm (the nightly cron covers it).
+  let firstSync = null;
+  try {
+    firstSync = await syncConnection(connection, { dryRun: !connection.auto_apply });
+  } catch (err) {
+    console.error("[pms/confirm] immediate first sync failed:", err?.message);
+    firstSync = { status: "error" };
+  }
+
+  return NextResponse.json({ results, firstSync });
 }

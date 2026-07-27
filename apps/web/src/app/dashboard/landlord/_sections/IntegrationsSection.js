@@ -557,7 +557,7 @@ export default function IntegrationsSection() {
                   <span>
                     {c.last_sync_at
                       ? `Last synced ${new Date(c.last_sync_at).toLocaleString()} · ${c.last_sync_status || "ok"}`
-                      : "First sync runs tonight"}
+                      : "First sync is running now"}
                     {c.last_sync_error && ` · ${c.last_sync_error}`}
                   </span>
                 </div>

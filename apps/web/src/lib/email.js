@@ -125,12 +125,16 @@ export async function sendVerificationEmail({ email, name, token, baseUrl }) {
 // guard-held connections, suppressed delists, and dry-run connections with
 // intended changes waiting for review. Sent to PMS_ALERT_EMAIL or all supers.
 export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // i.note is our own trusted HTML (may carry the hold-release link);
+  // provider and landlord are data and get escaped.
   const rows = items
     .map(
       (i) => `
         <tr>
-          <td style="padding:8px 10px;border-bottom:1px solid #eee;font-weight:600;text-transform:capitalize">${i.provider}</td>
-          <td style="padding:8px 10px;border-bottom:1px solid #eee">${i.landlord || ""}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;font-weight:600;text-transform:capitalize">${esc(i.provider)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(i.landlord)}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #eee">${i.note}</td>
         </tr>`
     )

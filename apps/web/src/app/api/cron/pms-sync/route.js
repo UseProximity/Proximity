@@ -3,41 +3,21 @@ export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendPmsSyncDigestEmail } from "@/lib/email";
-import { getConnector, isApiProvider } from "@/lib/pms/index.js";
-import { ingestPmsProperty } from "@/lib/pms/ingest.js";
-import {
-  applyLeasingHorizon,
-  leasingHorizonEnd,
-  rollUpAvailability,
-  rollUpRent,
-  rollUpAvailableFrom,
-  matchUnitsToListingUnits,
-} from "@/lib/pms/mapping.js";
+import { isApiProvider } from "@/lib/pms/index.js";
+import { syncConnection } from "@/lib/pms/sync.js";
+import { holdReleaseUrl } from "@/lib/pms/holdToken.js";
 
 /*
- * Daily PMS sync — the PMS is the source of truth (ILS-feed semantics):
- *   unit present in the snapshot -> availability/rent applied
- *   unit missing from the snapshot -> treated as leased/removed (delists)
- *   new unit/property -> linked or auto-ingested
- *   available:null (unknown) -> NO action, never stale
- * Availability is evaluated against the pre-leasing horizon (mapping.js):
- * vacant now OR lease ending within ~12 months counts as available, surfaced
- * as "Available <date>" — a fully pre-leased building is not stale.
- * Safety rails:
- *   - a broken pull (empty snapshot + errors) refuses to reconcile
- *   - the ±20% swing guard holds any sync that would change too much of a
- *     connection's portfolio at once (review row; nothing applied)
- *   - price updates are gated by sync_price + a 2% change threshold
- *   - auto_apply=false runs the whole sync as a DRY RUN: every intended
- *     change is logged to pms_sync_events with applied=false, nothing written
- *     to listings — read the events for 1–2 weeks, then flip it live
- * All writes go through the audit-safe RPCs as the reserved system actor.
+ * Daily PMS sync driver. The actual reconcile logic lives in lib/pms/sync.js
+ * (shared with the post-confirm immediate first sync and the hold release
+ * page). This route authenticates the cron, loops the active connections,
+ * and sends the admin digest.
  */
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
-const PRICE_CHANGE_MIN_RATIO = 0.02; // ignore sub-2% price noise
-const SWING_RATIO = 0.2;             // hold when >20% of tracked units change…
-const SWING_MIN_CHANGES = 3;         // …and at least this many units are affected
+// New connections get every applied change reported by email for this many
+// days, so a human watches the integration find its feet without any manual
+// dry-run ceremony. After the window: only problems are emailed.
+const WATCH_DAYS = Number(process.env.PMS_WATCH_DAYS) || 21;
 
 export async function GET(req) {
   const authHeader = req.headers.get("authorization");
@@ -47,7 +27,7 @@ export async function GET(req) {
 
   const { data: connections } = await supabase
     .from("pms_connections")
-    .select("id, user_id, provider, nango_connection_id, credential_meta, radius_auto_include_km, sync_price, auto_apply, status")
+    .select("id, user_id, provider, nango_connection_id, credential_meta, radius_auto_include_km, sync_price, auto_apply, status, created_at")
     .eq("status", "active")
     .is("deleted_at", null);
 
@@ -59,14 +39,14 @@ export async function GET(req) {
     if (!isApiProvider(connection.provider)) continue;
     try {
       const result = await syncConnection(connection, { dryRun: !connection.auto_apply });
-      summary.push({ provider: connection.provider, userId: connection.user_id, ...result });
+      summary.push({ provider: connection.provider, userId: connection.user_id, createdAt: connection.created_at, ...result });
     } catch (err) {
       console.error("[pms-sync]", connection.id, err?.message);
       await supabase
         .from("pms_connections")
         .update({ last_sync_at: new Date().toISOString(), last_sync_status: "error", last_sync_error: (err?.message || "sync failed").slice(0, 500) })
         .eq("id", connection.id);
-      summary.push({ provider: connection.provider, userId: connection.user_id, connectionId: connection.id, status: "error", error: err?.message });
+      summary.push({ provider: connection.provider, userId: connection.user_id, createdAt: connection.created_at, connectionId: connection.id, status: "error", error: err?.message });
     }
   }
 
@@ -75,25 +55,52 @@ export async function GET(req) {
   return NextResponse.json({ synced: summary.length, summary });
 }
 
-// Human-in-the-loop notification: one email per run, only when something needs
-// a decision. The guards hold changes; this makes sure someone actually looks.
+// Human-in-the-loop notification: one email per run when there is anything a
+// human should see. Always: errors, guard holds (with a one-click release
+// link), suppressed delists, dry-run observations. During a connection's
+// first WATCH_DAYS: every applied change, so new integrations are watched.
 async function sendDigest(summary, req) {
   const noteworthy = [];
   for (const s of summary) {
     const changes = (s.created ?? 0) + (s.updated ?? 0) + (s.delisted ?? 0) + (s.relisted ?? 0);
+    const ageDays = s.createdAt ? (Date.now() - new Date(s.createdAt).getTime()) / 86400_000 : Infinity;
     if (s.status === "error") {
-      noteworthy.push({ ...s, note: `Sync failed: ${s.error || "unknown error"}. The connection may need reconnecting.` });
+      noteworthy.push({ ...s, hold: true, note: `Sync failed: ${escapeHtml(s.error || "unknown error")}. The connection may need reconnecting.` });
     } else if (s.status === "held") {
-      noteworthy.push({ ...s, note: "Held by the swing guard: too much of the portfolio changed at once. Nothing was applied; see pms_review_queue." });
+      noteworthy.push({ ...s, hold: true, note: "Held by the swing guard: too much of the portfolio changed at once. Nothing was applied." });
     } else if (s.heldDelists) {
-      noteworthy.push({ ...s, note: `${s.heldDelists} delist${s.heldDelists === 1 ? "" : "s"} suppressed and held for review (mass delist or degraded pull). Other updates applied normally.` });
+      noteworthy.push({ ...s, hold: true, note: `${s.heldDelists} delist${s.heldDelists === 1 ? "" : "s"} suppressed and held for review (mass delist or degraded pull). Other updates applied normally.` });
     } else if (s.status === "dry_run" && changes > 0) {
-      noteworthy.push({ ...s, note: `Dry run: ${changes} intended change${changes === 1 ? "" : "s"} recorded, nothing applied. Review pms_sync_events before going live.` });
+      noteworthy.push({ ...s, note: `Dry run: ${changes} intended change${changes === 1 ? "" : "s"} recorded, nothing applied.` });
+    } else if (changes > 0 && ageDays <= WATCH_DAYS) {
+      const parts = [];
+      if (s.created) parts.push(`${s.created} created`);
+      if (s.updated) parts.push(`${s.updated} updated`);
+      if (s.delisted) parts.push(`${s.delisted} delisted`);
+      if (s.relisted) parts.push(`${s.relisted} relisted`);
+      noteworthy.push({ ...s, note: `New-connection watch (day ${Math.ceil(ageDays)} of ${WATCH_DAYS}): applied ${parts.join(", ")}.` });
     }
   }
   if (!noteworthy.length) return;
 
   try {
+    const baseUrl = getBaseUrl(req);
+
+    // Attach a one-click release link to every held item's open review row.
+    for (const n of noteworthy) {
+      if (!n.hold || n.status === "error") continue;
+      const { data: openHold } = await supabase
+        .from("pms_review_queue")
+        .select("id")
+        .eq("connection_id", n.connectionId)
+        .eq("reason", "swing_guard_hold")
+        .eq("status", "open")
+        .maybeSingle();
+      if (openHold) {
+        n.note += ` <a href="${holdReleaseUrl(openHold.id, baseUrl)}" style="color:#E82027;font-weight:600">Review and release this hold</a>`;
+      }
+    }
+
     const userIds = [...new Set(noteworthy.map((n) => n.userId).filter(Boolean))];
     const { data: landlords } = userIds.length
       ? await supabase.from("users").select("id, name, email").in("id", userIds)
@@ -118,7 +125,7 @@ async function sendDigest(summary, req) {
         landlord: nameById.get(n.userId) || "",
         note: n.note,
       })),
-      baseUrl: getBaseUrl(req),
+      baseUrl,
     });
   } catch (err) {
     // The digest is best-effort; a mail failure must never fail the sync run.
@@ -126,453 +133,6 @@ async function sendDigest(summary, req) {
   }
 }
 
-async function logEvents(rows) {
-  if (rows.length) await supabase.from("pms_sync_events").insert(rows);
-}
-
-async function syncConnection(connection, { dryRun = false } = {}) {
-  const source = `pms:${connection.provider}`;
-  const connector = getConnector(connection.provider);
-  const snapshot = await connector.fetchSnapshot(connection.nango_connection_id, connection.credential_meta ?? null);
-  const horizonEnd = leasingHorizonEnd();
-  const today = new Date().toISOString().slice(0, 10);
-
-  // Broken pull: refuse to reconcile — a fetch failure must never delist anyone.
-  if (!snapshot.properties.length) {
-    await supabase
-      .from("pms_connections")
-      .update({
-        last_sync_at: new Date().toISOString(),
-        last_sync_status: "error",
-        last_sync_error: (snapshot.errors.join("; ") || "empty snapshot").slice(0, 500),
-      })
-      .eq("id", connection.id);
-    return { connectionId: connection.id, status: "error", error: "empty snapshot" };
-  }
-
-  const { data: allLinks } = await supabase
-    .from("pms_links")
-    .select("id, external_property_id, external_unit_id, external_bed_id, listing_id, listing_unit_id, include, link_status")
-    .eq("connection_id", connection.id);
-  const links = (allLinks ?? []).filter((l) => l.link_status !== "rejected");
-  const excludedProperties = new Set(
-    (allLinks ?? []).filter((l) => !l.include).map((l) => l.external_property_id)
-  );
-
-  const unitLinks = links.filter((l) => l.include && l.external_unit_id != null && l.listing_id);
-
-  // Snapshot units on non-excluded properties, keyed like pms_links.
-  const snapUnits = new Map(); // "propId|unitId" -> { property, unit }
-  for (const property of snapshot.properties) {
-    if (excludedProperties.has(property.externalPropertyId)) continue;
-    for (const unit of property.units) {
-      snapUnits.set(`${property.externalPropertyId}|${unit.externalUnitId}`, { property, unit });
-    }
-  }
-
-  const linkKey = (l) => `${l.external_property_id}|${l.external_unit_id}`;
-  const trackedKeys = new Set(unitLinks.map(linkKey));
-  const missing = unitLinks.filter((l) => !snapUnits.has(linkKey(l)));
-  const fresh = [...snapUnits.keys()].filter((k) => !trackedKeys.has(k));
-
-  // ±20% swing guard: too much portfolio change at once -> hold everything.
-  const changes = missing.length + fresh.length;
-  if (unitLinks.length > 0 && changes >= SWING_MIN_CHANGES && changes / unitLinks.length > SWING_RATIO) {
-    const { data: openHold } = await supabase
-      .from("pms_review_queue")
-      .select("id")
-      .eq("connection_id", connection.id)
-      .eq("reason", "swing_guard_hold")
-      .eq("status", "open")
-      .maybeSingle();
-    if (!openHold) {
-      await supabase.from("pms_review_queue").insert({
-        connection_id: connection.id,
-        reason: "swing_guard_hold",
-        detail: { tracked: unitLinks.length, missing: missing.length, new: fresh.length },
-      });
-    }
-    await logEvents([{
-      connection_id: connection.id,
-      result: "held",
-      applied: false,
-      detail: { tracked: unitLinks.length, missing: missing.length, new: fresh.length },
-    }]);
-    await supabase
-      .from("pms_connections")
-      .update({ last_sync_at: new Date().toISOString(), last_sync_status: "held", last_sync_error: null })
-      .eq("id", connection.id);
-    return { connectionId: connection.id, status: "held", missing: missing.length, new: fresh.length };
-  }
-
-  const events = [];
-  const applied = { updated: 0, delisted: 0, relisted: 0, created: 0 };
-
-  // ---- new units on already-tracked properties: link them in (create type rows as needed)
-  const trackedListingByProperty = new Map();
-  for (const l of unitLinks) {
-    if (!trackedListingByProperty.has(l.external_property_id)) {
-      trackedListingByProperty.set(l.external_property_id, l.listing_id);
-    }
-  }
-  for (const key of fresh) {
-    const { property, unit } = snapUnits.get(key);
-    const listingId = trackedListingByProperty.get(property.externalPropertyId);
-    if (!listingId) continue; // whole-property ingest handled below
-
-    if (dryRun) {
-      events.push({
-        connection_id: connection.id,
-        listing_id: listingId,
-        external_unit_id: unit.externalUnitId,
-        observed_available: unit.available,
-        observed_rent: unit.rent,
-        applied: false,
-        result: "created",
-        detail: { dryRun: true, kind: "unit", label: unit.label },
-      });
-      applied.created += 1;
-      continue;
-    }
-
-    const { data: listingUnits } = await supabase
-      .from("listing_units")
-      .select("id, bedrooms, bathrooms")
-      .eq("listing_id", listingId)
-      .is("deleted_at", null);
-    let unitTypeId = matchUnitsToListingUnits([unit], listingUnits ?? []).get(unit.externalUnitId);
-    if (!unitTypeId && unit.bedrooms != null) {
-      // No matching floor-plan type — create one as the system actor.
-      const { data: created } = await supabase.rpc("rpc_insert_as_user", {
-        p_user_id: SYSTEM_USER_ID,
-        p_table: "listing_units",
-        p_data: {
-          listing_id: listingId,
-          bedrooms: unit.bedrooms,
-          bathrooms: unit.bathrooms ?? 1,
-          area: unit.area,
-          available: unit.available !== false,
-        },
-      });
-      unitTypeId = created?.id ?? null;
-    }
-    const { error } = await supabase.from("pms_links").insert({
-      connection_id: connection.id,
-      external_property_id: property.externalPropertyId,
-      external_unit_id: unit.externalUnitId,
-      external_bed_id: null,
-      external_label: [property.name || property.address, unit.label].filter(Boolean).join(" — "),
-      listing_id: listingId,
-      listing_unit_id: unitTypeId,
-      include: true,
-      origin: "ingested",
-      link_status: "confirmed",
-    });
-    if (!error) {
-      unitLinks.push({
-        external_property_id: property.externalPropertyId,
-        external_unit_id: unit.externalUnitId,
-        listing_id: listingId,
-        listing_unit_id: unitTypeId,
-        include: true,
-      });
-      applied.created += 1;
-      events.push({
-        connection_id: connection.id,
-        listing_id: listingId,
-        external_unit_id: unit.externalUnitId,
-        observed_available: unit.available,
-        observed_rent: unit.rent,
-        applied: true,
-        result: "created",
-        detail: { kind: "unit" },
-      });
-    }
-  }
-
-  // ---- whole new properties: auto-ingest as listings owned by the landlord
-  const knownProperties = new Set([
-    ...(allLinks ?? []).map((l) => l.external_property_id),
-  ]);
-  for (const property of snapshot.properties) {
-    if (knownProperties.has(property.externalPropertyId)) continue;
-    if (excludedProperties.has(property.externalPropertyId)) continue;
-    if (dryRun) {
-      events.push({
-        connection_id: connection.id,
-        applied: false,
-        result: "created",
-        detail: {
-          dryRun: true,
-          kind: "property",
-          externalPropertyId: property.externalPropertyId,
-          name: property.name,
-          units: property.units.length,
-        },
-      });
-      applied.created += 1;
-      continue;
-    }
-    try {
-      const { data: ownerRow } = await supabase
-        .from("users")
-        .select("email, name")
-        .eq("id", connection.user_id)
-        .single();
-      const { listingId, unitMap } = await ingestPmsProperty({
-        property,
-        connection,
-        ownerId: connection.user_id,
-        contactEmail: ownerRow?.email ?? null,
-        contactName: ownerRow?.name ?? null,
-      });
-      for (const unit of property.units) {
-        await supabase.from("pms_links").insert({
-          connection_id: connection.id,
-          external_property_id: property.externalPropertyId,
-          external_unit_id: unit.externalUnitId,
-          external_bed_id: null,
-          external_label: [property.name || property.address, unit.label].filter(Boolean).join(" — "),
-          listing_id: listingId,
-          listing_unit_id: unitMap.get(unit.externalUnitId) ?? null,
-          include: true,
-          origin: "ingested",
-          link_status: "confirmed",
-        });
-      }
-      applied.created += 1;
-      events.push({
-        connection_id: connection.id,
-        listing_id: listingId,
-        applied: true,
-        result: "created",
-        detail: { kind: "property", externalPropertyId: property.externalPropertyId },
-      });
-    } catch (err) {
-      events.push({
-        connection_id: connection.id,
-        applied: false,
-        result: "error",
-        detail: { kind: "property-ingest", externalPropertyId: property.externalPropertyId, error: err?.message },
-      });
-    }
-  }
-
-  // ---- reconcile every tracked listing
-  // Two passes: decide first (write nothing), then apply — so a mass delist can
-  // be caught and held BEFORE anything is hidden. A degraded pull (some
-  // sub-fetch failed) is trusted to relist/update but NEVER to delist: a hiccup
-  // in the leases endpoint must not hide a pre-leased building whose occupancy
-  // only looked "unavailable" because its move-in date went missing.
-  const degraded = snapshot.errors.length > 0;
-
-  const byListing = new Map();
-  for (const l of unitLinks) {
-    if (!byListing.has(l.listing_id)) byListing.set(l.listing_id, []);
-    byListing.get(l.listing_id).push(l);
-  }
-
-  // Pass 1 — compute each listing's intended change without writing.
-  const decisions = [];
-  for (const [listingId, listingLinks] of byListing) {
-    const { data: listing } = await supabase
-      .from("listings")
-      .select("id, unavailable, deleted_at")
-      .eq("id", listingId)
-      .maybeSingle();
-    if (!listing || listing.deleted_at) continue;
-
-    // Observed state per link: missing from the snapshot == leased/removed.
-    // Availability is horizon-aware: vacant now OR freeing up within the
-    // leasing horizon counts as available (vacant-now reports availableFrom =
-    // today so "earliest move-in" rolls up correctly).
-    const observed = listingLinks.map((l) => {
-      const snap = snapUnits.get(linkKey(l));
-      if (!snap) return { link: l, unit: null, available: false, rent: null, availableFrom: null };
-      const [u] = applyLeasingHorizon([snap.unit], horizonEnd, today);
-      return { link: l, unit: u, available: u.available, rent: u.rent, availableFrom: u.availableFrom };
-    });
-
-    // Roll physical units up to their floor-plan type rows.
-    const byType = new Map();
-    for (const o of observed) {
-      if (!o.link.listing_unit_id) continue;
-      if (!byType.has(o.link.listing_unit_id)) byType.set(o.link.listing_unit_id, []);
-      byType.get(o.link.listing_unit_id).push(o);
-    }
-
-    const { data: typeRows } = await supabase
-      .from("listing_units")
-      .select("id, available, unit_leases(id, rent, available_from, is_active)")
-      .eq("listing_id", listingId)
-      .is("deleted_at", null);
-    const typeById = new Map((typeRows ?? []).map((t) => [t.id, t]));
-
-    const unitUpdates = [];
-    const leaseUpdates = [];
-    for (const [typeId, group] of byType) {
-      const current = typeById.get(typeId);
-      if (!current) continue;
-      const nextAvailable = rollUpAvailability(group);
-      if (nextAvailable != null && nextAvailable !== current.available) {
-        unitUpdates.push({ id: typeId, available: nextAvailable });
-      }
-
-      const activeLease = (current.unit_leases ?? []).find((le) => le.is_active);
-      const nextRent = rollUpRent(group.filter((o) => o.unit));
-      const nextFrom = rollUpAvailableFrom(group.filter((o) => o.unit));
-      const currentRent = activeLease?.rent != null ? Number(activeLease.rent) : null;
-      const rentChanged =
-        connection.sync_price &&
-        nextRent != null &&
-        (currentRent == null || Math.abs(nextRent - currentRent) / currentRent >= PRICE_CHANGE_MIN_RATIO);
-      const currentFrom = activeLease?.available_from ?? null;
-      // Any past-or-today date means "available now" — don't churn it daily.
-      const bothNow = nextFrom != null && currentFrom != null && nextFrom <= today && currentFrom <= today;
-      const fromChanged = nextFrom != null && nextFrom !== currentFrom && !bothNow;
-      if (rentChanged || fromChanged) {
-        leaseUpdates.push({
-          unit_id: typeId,
-          rent: rentChanged ? nextRent : null,
-          available_from: fromChanged ? nextFrom : null,
-        });
-      }
-    }
-
-    // Listing-level availability: all types known-unavailable -> delist;
-    // any known-available -> (re)list. Unknown -> leave alone.
-    const knownStates = observed.map((o) => o.available).filter((a) => a != null);
-    const anyAvailable = knownStates.some(Boolean);
-    const listingUpdates = {};
-    if (knownStates.length) {
-      if (!anyAvailable && !listing.unavailable) listingUpdates.unavailable = true;
-      if (anyAvailable && listing.unavailable) listingUpdates.unavailable = false;
-    }
-    decisions.push({
-      listingId,
-      unitUpdates,
-      leaseUpdates,
-      listingUpdates,
-      // Only stamp "verified" when we actually observed a known state.
-      learnedSomething: knownStates.length > 0,
-    });
-  }
-
-  // Mass-delist guard. The ±20% swing guard above only counts units that
-  // entered/left the snapshot; a PMS glitch (or a degraded pull) can flip a
-  // whole portfolio to occupied with every unit still present, which it would
-  // miss. Count intended delists; if they clear the swing threshold, or the
-  // pull was degraded, suppress ALL delists this run and hold for review —
-  // relists/updates/creates still apply. Never suppress in dry-run (there we
-  // WANT the intended delist logged; nothing is written anyway).
-  const intendedDelists = decisions.filter((d) => d.listingUpdates.unavailable === true).length;
-  const massDelist =
-    intendedDelists >= SWING_MIN_CHANGES &&
-    intendedDelists / Math.max(decisions.length, 1) > SWING_RATIO;
-  const suppressDelists = !dryRun && (degraded || massDelist);
-
-  if (suppressDelists && intendedDelists > 0) {
-    const { data: openHold } = await supabase
-      .from("pms_review_queue")
-      .select("id")
-      .eq("connection_id", connection.id)
-      .eq("reason", "swing_guard_hold")
-      .eq("status", "open")
-      .maybeSingle();
-    if (!openHold) {
-      await supabase.from("pms_review_queue").insert({
-        connection_id: connection.id,
-        reason: "swing_guard_hold",
-        detail: { intendedDelists, totalListings: decisions.length, degraded, massDelist },
-      });
-    }
-    events.push({
-      connection_id: connection.id,
-      result: "held",
-      applied: false,
-      detail: { kind: "delists_suppressed", intendedDelists, totalListings: decisions.length, degraded, massDelist },
-    });
-  }
-
-  // Pass 2 — apply.
-  for (const d of decisions) {
-    const { listingId, unitUpdates, leaseUpdates, learnedSomething } = d;
-    let listingUpdates = d.listingUpdates;
-    // Suppressed delist: drop only the unavailable=true write, keep the rest.
-    if (suppressDelists && listingUpdates.unavailable === true) {
-      // eslint-disable-next-line no-unused-vars
-      const { unavailable, ...rest } = listingUpdates;
-      listingUpdates = rest;
-    }
-
-    const hasChanges = unitUpdates.length || leaseUpdates.length || Object.keys(listingUpdates).length;
-    if (hasChanges) {
-      const result = listingUpdates.unavailable === true
-        ? "delisted"
-        : listingUpdates.unavailable === false
-          ? "relisted"
-          : "updated";
-      if (dryRun) {
-        // Observe-and-log: record the full intended change, write nothing.
-        applied[result] += 1;
-        events.push({
-          connection_id: connection.id,
-          listing_id: listingId,
-          applied: false,
-          result,
-          detail: { dryRun: true, listingUpdates, unitUpdates, leaseUpdates },
-        });
-      } else {
-        const { error } = await supabase.rpc("rpc_pms_apply", {
-          p_user_id: SYSTEM_USER_ID,
-          p_listing_id: listingId,
-          p_listing_updates: Object.keys(listingUpdates).length ? listingUpdates : null,
-          p_unit_updates: unitUpdates.length ? unitUpdates : null,
-          p_lease_updates: leaseUpdates.length ? leaseUpdates : null,
-        });
-        if (error) {
-          events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "error", detail: { error: error.message } });
-          continue;
-        }
-        applied[result] += 1;
-        events.push({
-          connection_id: connection.id,
-          listing_id: listingId,
-          applied: true,
-          result,
-          detail: { unitUpdates: unitUpdates.length, leaseUpdates: leaseUpdates.length, ...listingUpdates },
-        });
-      }
-    } else {
-      events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "skipped", detail: dryRun ? { dryRun: true } : {} });
-    }
-
-    // Freshness stamp: the availability shown was checked against the PMS
-    // today. Skip in dry-run, and skip when nothing was actually known (an
-    // all-unknown listing verified nothing).
-    if (!dryRun && learnedSomething) {
-      await supabase.rpc("rpc_pms_mark_verified", {
-        p_user_id: SYSTEM_USER_ID,
-        p_listing_id: listingId,
-        p_source: source,
-      });
-    }
-  }
-
-  await logEvents(events);
-  await supabase
-    .from("pms_connections")
-    .update({
-      last_sync_at: new Date().toISOString(),
-      last_sync_status: dryRun ? "dry_run" : "ok",
-      last_sync_error: null,
-    })
-    .eq("id", connection.id);
-
-  return {
-    connectionId: connection.id,
-    status: dryRun ? "dry_run" : "ok",
-    ...applied,
-    heldDelists: suppressDelists && intendedDelists > 0 ? intendedDelists : 0,
-  };
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }

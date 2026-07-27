@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-26T18:12:44.740Z",
-  "count": 41,
+  "_generated": "2026-07-27T20:43:48.623Z",
+  "count": 43,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -92,6 +92,10 @@
       "description": "DoorLoop connector (via Nango Proxy — custom API config, key \"doorloop\")."
     },
     {
+      "file": "src/lib/pms/holdToken.js",
+      "description": "Signed release links for PMS swing-guard holds. Same trust model as the"
+    },
+    {
       "file": "src/lib/pms/httpRetry.js",
       "description": "fetch with timeout + backoff for PMS/Nango calls."
     },
@@ -118,6 +122,10 @@
     {
       "file": "src/lib/pms/rentec.js",
       "description": "Rentec Direct connector (via Nango Proxy — provider config key \"rentec\")."
+    },
+    {
+      "file": "src/lib/pms/sync.js",
+      "description": "The PMS sync engine — one connection per call, PMS as source of truth"
     },
     {
       "file": "src/lib/pms/types.js",

@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-27T10:15:08.385Z",
-  "count": 43,
+  "_generated": "2026-07-27T20:43:48.639Z",
+  "count": 44,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -125,6 +125,10 @@
     },
     {
       "name": "PMS_MOCK_LEASED",
+      "public": false
+    },
+    {
+      "name": "PMS_WATCH_DAYS",
       "public": false
     },
     {

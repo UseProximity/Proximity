@@ -186,6 +186,14 @@ export async function fetchSnapshot(connectionId, meta) {
     const prev = leaseEndByUnit.get(key);
     if (!prev || end > prev) leaseEndByUnit.set(key, end);
   }
+  // rent_roll's real column names are unverified vendor territory (brief §7).
+  // If rows came back but none parsed, log the actual keys so the fix is a
+  // one-line rename instead of a debugging session.
+  if (rentRoll.length && leaseEndByUnit.size === 0) {
+    const keys = Object.keys(rentRoll[0] ?? {}).join(", ");
+    console.warn(`[pms/appfolio] rent_roll returned ${rentRoll.length} rows but no recognizable unit/lease-end columns. Actual keys: ${keys}`);
+    warnings.push("rent_roll columns unrecognized; lease end dates unavailable this sync");
+  }
 
   const propMap = new Map();
   for (const row of unitRows) {
