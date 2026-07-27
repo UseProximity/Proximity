@@ -11,9 +11,23 @@ import {
   answerToLabel,
 } from "./questionEngine";
 
-// The question flow is fully deterministic (see questionEngine). The ONLY LLM
-// here is a fast Haiku call used to parse a free-text reply when the user types
-// instead of tapping a chip — "light AI polish", never on the common path.
+// ── THE FLOW (this file is the state machine; handleTurn at the bottom is the
+// single entry point) ───────────────────────────────────────────────────────
+//
+//   1. SCRIPTED QUESTIONS — 12 fixed questions, ZERO LLM calls. The client
+//      renders each as tappable controls and answers post back structured, so
+//      nothing here has to interpret prose. See questionScript / questionEngine.
+//   2. NARROWING — once the script is done, if >3 listings still fit, ask up to
+//      MAX_TRADEOFFS listing-aware "Would you X for Y?" questions, then a
+//      one-time commute check. LLM: narrowing.js (phrases + splits the pool).
+//   3. RANKING — the deterministic top 3, explained. LLM: listingFilter.js
+//      (picks/orders/writes the reasons, with code-enforced honesty guardrails).
+//   4. CONVERSATION — after the matches exist, free-text turns go to the
+//      tool-using agent below (AGENT_SYSTEM + AGENT_TOOLS), which can re-rank,
+//      swap in specific listings, or open an email draft to an owner.
+//
+// Every LLM call is best-effort: a failure falls back to deterministic behavior
+// rather than leaving the student stuck. All of them use Haiku.
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
 // Weight dimension → recommendation intention label (must match the labels
@@ -91,43 +105,6 @@ function pickIntentions(weights) {
     if (!intentions.includes(fallback)) intentions.push(fallback);
   }
   return intentions.slice(0, 3);
-}
-
-const PARSE_SYSTEM = `You convert a user's free-text reply into a structured value for ONE housing-preference question on a WashU off-campus housing app. Respond with JSON only: {"value": <value>}.
-Rules by question kind:
-- choice / yesno_pref: value is exactly one of the given options (verbatim).
-- multi: value is an array of options the user picked (verbatim, subset of options).
-- rank: value is the full array of options ordered most-important first (verbatim).
-- budget_max: value is a single number — the max monthly rent per person in dollars.
-- confirm_or_replace: value is the name string the user wants to be called.
-If the reply does not actually answer the question, respond {"value": null}.`;
-
-// Single fast Haiku call to map free text onto the current question's value.
-async function parseFreeText(message, question) {
-  if (!question) return null;
-  try {
-    const response = await getClient().messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 256,
-      system: [{ type: "text", text: PARSE_SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify({
-            question: { kind: question.kind, prompt: question.prompt, options: question.options },
-            reply: message,
-          }),
-        },
-      ],
-    });
-    const raw = response.content.find((b) => b.type === "text")?.text ?? "{}";
-    const jsonText = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```\s*$/m, "").trim();
-    const parsed = JSON.parse(jsonText);
-    return { value: parsed?.value ?? null, usage: response.usage };
-  } catch (err) {
-    console.error("[chatOrchestrator] parseFreeText failed:", err);
-    return { value: null, usage: null };
-  }
 }
 
 // ── Post-recommendation conversational agent ────────────────────────────────
@@ -573,7 +550,6 @@ async function persistSession(session) {
         transcript: session.transcript,
         preferences: session.preferences,
         weights: session.weights,
-        candidates: session.candidates,
         recommendations: session.recommendations,
       },
       { onConflict: "id" }
@@ -581,9 +557,8 @@ async function persistSession(session) {
   if (error) throw new Error(`[chatOrchestrator] Failed to persist session: ${error.message}`);
 }
 
-// Deterministic turn. `answer` = structured chip answer; `message` = legacy
-// free-text (parsed via Haiku). With neither, this is an init turn that just
-// emits the first question.
+// STAGE 3: rank the top 3 for the current prefs/weights and stash the honest
+// budget / group-fit / relax-coach notes for this turn's message.
 async function rankTop3(session) {
   const intentions = pickIntentions(session.weights);
   try {
@@ -770,6 +745,13 @@ export async function computeRecommendations(preferences, weights) {
   return ranked.slice(0, 3).map((r) => ({ ...r, reason: stripEmDashes(r.reason) }));
 }
 
+// Single entry point for every turn. Which branch runs is decided purely by
+// which field the client sent, in this order:
+//   tradeoff  -> STAGE 2 (narrowing answer)
+//   message   -> STAGE 4 (conversation, only once matches exist)
+//   answer    -> STAGE 1 (scripted question answer)
+//   none      -> init turn: just emit the first question
+// Falling off the end of STAGE 1 (script complete) advances into STAGE 2/3.
 export async function handleTurn({ session, answer = null, message = "", preferences = null, weights = null, tradeoff = null }) {
   // Adopt the client's authoritative snapshot when provided, preserving the
   // server-only cumulative usage tally (the client never sends it back).
@@ -787,7 +769,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
   }
   if (weights) session.weights = weights;
 
-  // Narrowing path: the user answered a "Would you X for Y?" tradeoff. Prune the
+  // STAGE 2 — narrowing: the user answered a "Would you X for Y?" tradeoff. Prune the
   // losing side, then ask the next tradeoff (or finalize if ≤3 / cap reached).
   if (tradeoff) {
     const chosen = tradeoff.chosen ?? "";
@@ -796,7 +778,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     return runNarrowing(session);
   }
 
-  // Conversational agent: recommendations already exist and the user typed a
+  // STAGE 4 — conversation: recommendations already exist and the user typed a
   // message. A tool-using agent (full transcript + live matches) handles it — it
   // may re-rank, open an email draft to an owner, or just answer a question.
   if (message && session.status === "recommendations_ready") {
@@ -828,36 +810,22 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     return result;
   }
 
-  // The question currently awaiting a reply (computed before we apply anything).
-  const current = nextQuestion(session.preferences);
-
-  let effectiveAnswer = answer;
-
-  // Free-text fallback path.
-  if (!effectiveAnswer && message && current) {
-    const { value, usage } = await parseFreeText(message, current);
-    addUsage(session, usage);
-    effectiveAnswer = {
-      questionId: current.id,
-      field: current.field,
-      kind: current.kind,
-      // If Haiku couldn't parse, stash the raw text so the flow still advances.
-      value: value ?? message,
-    };
-  }
-
-  if (effectiveAnswer) {
+  // Scripted-question path. Answers only ever arrive as STRUCTURED chip answers:
+  // the client renders every question as tappable controls and the free-text
+  // composer stays hidden until the matches exist (see ChatWindow), so there is
+  // no free-text-during-questions path and no LLM anywhere in this phase.
+  if (answer) {
     session.transcript.push({
       role: "user",
-      content: answerToLabel(effectiveAnswer),
+      content: answerToLabel(answer),
       ts: new Date().toISOString(),
       // Lets a reloaded transcript keep the per-answer "Edit" affordance.
-      questionId: effectiveAnswer.questionId,
+      questionId: answer.questionId,
     });
-    // Chip path: snapshot already adopted above. Free-text path: apply the
-    // parsed answer onto the current (snapshot) preferences.
-    if (!(answer && preferences)) {
-      const applied = applyAnswer(session.preferences, session.weights, effectiveAnswer);
+    // With a client snapshot the prefs were already adopted above; without one
+    // (a bare answer post) apply it here.
+    if (!preferences) {
+      const applied = applyAnswer(session.preferences, session.weights, answer);
       session.preferences = applied.preferences;
       session.weights = applied.weights;
     }

@@ -32,8 +32,9 @@ function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
 }
 
-// Identity for the "don't repeat the latest question" guard. Pairwise pairs all
-// share id "priorities", so fold in the per-pair stepKey to keep them distinct.
+// Identity for the "don't repeat the latest question" guard. Consecutive
+// narrowing tradeoffs all share the id "tradeoff", so fold in the per-question
+// stepKey to keep them distinct.
 const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
 
 // Progress-bar shape: the scripted questions fill 0→90%; the narrowing phase
@@ -50,7 +51,6 @@ export default function ChatClient() {
   const [messages, setMessages] = useState([]);
   const [preferences, setPreferences] = useState({});
   const [weights, setWeights] = useState({});
-  const [, setCandidates] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [status, setStatus] = useState("in_progress");
   const [loading, setLoading] = useState(false);
@@ -138,7 +138,6 @@ export default function ChatClient() {
     if (data.sessionId) setSessionId(data.sessionId);
     if (data.preferences) setPreferences(data.preferences);
     if (data.weights) setWeights(data.weights);
-    if (data.candidates) setCandidates(data.candidates);
     if (data.recommendations) setRecommendations(data.recommendations);
     if (data.status) setStatus(data.status);
   }, []);
@@ -146,7 +145,6 @@ export default function ChatClient() {
   // Apply ONLY ranking/status from a server response — never prefs/weights/
   // messages, which the client owns optimistically during the question flow.
   const applyRanking = useCallback((data) => {
-    if (data.candidates) setCandidates(data.candidates);
     if (data.recommendations) setRecommendations(data.recommendations);
     if (data.status) setStatus(data.status);
   }, []);
@@ -564,7 +562,6 @@ export default function ChatClient() {
           setSessionId(session.id);
           setPreferences(session.preferences ?? {});
           setWeights(session.weights ?? {});
-          setCandidates(session.candidates ?? []);
           setRecommendations(session.recommendations ?? []);
           setStatus(session.status);
           if (serverMessages.length > 0) {
@@ -697,7 +694,6 @@ export default function ChatClient() {
     setMessages([]);
     setPreferences({});
     setWeights({});
-    setCandidates([]);
     setRecommendations([]);
     setStatus("in_progress");
     setLoading(true);

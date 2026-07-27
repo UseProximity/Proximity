@@ -722,9 +722,12 @@ function MatchmakingPopup() {
     const check = async () => {
       if (session?.user) {
         try {
-          const res = await fetch("/api/matchmaking");
-          const data = await res.json();
-          if (data.hasResponse) return;
+          // Don't nag someone who has already started the Proxy chat. The chat
+          // GET returns their latest non-abandoned session (null if none), so a
+          // session here means they're already in the flow.
+          const res = await fetch("/api/matchmaking/chat");
+          const { session: chatSession } = await res.json();
+          if (chatSession) return;
         } catch {
           // show popup on error to be safe
         }

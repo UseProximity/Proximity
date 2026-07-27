@@ -20,12 +20,6 @@ export function describeQuestion(question, preferences) {
   if (question.kind === "budget_max") meta.maxLabel = question.maxLabel;
   if (question.kind === "month_select") meta.others = question.others ?? [];
   if (question.kind === "open_text") meta.placeholder = question.placeholder ?? "";
-  if (question.kind === "slider") {
-    meta.min = question.min ?? 1;
-    meta.max = question.max ?? 6;
-    meta.plusOnMax = !!question.plusOnMax;
-    meta.unit = question.unit ?? "";
-  }
   if (question.allowUnsure) meta.allowUnsure = true;
   // top_priority offers the student's OWN priority picks as its options.
   const options = question.optionsFromPriorities

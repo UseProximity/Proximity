@@ -3,7 +3,6 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
 import { handleTurn, computeRecommendations } from "@/lib/matchmaking/chatOrchestrator";
-import { rankListings } from "@/lib/matchmaking/listingFilter";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
 
@@ -118,7 +117,6 @@ export async function POST(request) {
           preferences: { name: (actor.name ?? "").trim().split(/\s+/)[0] ?? "" },
           weights: {},
           transcript: [],
-          candidates: [],
           recommendations: [],
           status: "in_progress",
         })
@@ -223,7 +221,6 @@ export async function POST(request) {
       nextQuestion: turn.nextQuestion,
       preferences: updatedSession.preferences,
       weights: updatedSession.weights,
-      candidates: updatedSession.candidates,
       recommendations: updatedSession.recommendations,
       status: updatedSession.status,
       // Conversational-agent extras (post-recommendations free-text turns).
@@ -263,19 +260,6 @@ export async function PATCH(request) {
     const updatedPreferences = { ...chatSession.preferences, ...patch, _viewerGender: actor.gender ?? null };
     // The panel may send freshly recomputed weights (e.g. reordered priorities).
     const updatedWeights = weights ?? chatSession.weights;
-
-    let candidates = chatSession.candidates;
-    try {
-      const { ranked } = await rankListings({
-        preferences: updatedPreferences,
-        weights: updatedWeights,
-        requestedIntentions: ["Best overall match", "Best value", "Closest to campus"],
-        limit: 10,
-      });
-      candidates = ranked;
-    } catch (err) {
-      console.error("[matchmaking/chat PATCH] rankListings failed:", err);
-    }
 
     // If the user already has their 3 picks, reordering priorities should refresh
     // them right away rather than waiting for a chat refine.
@@ -318,7 +302,7 @@ export async function PATCH(request) {
 
     const { error: updateError } = await supabase
       .from("matchmaking_chat_sessions")
-      .update({ preferences: updatedPreferences, weights: updatedWeights, candidates, recommendations, transcript })
+      .update({ preferences: updatedPreferences, weights: updatedWeights, recommendations, transcript })
       .eq("id", sessionId);
     if (updateError) {
       return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
@@ -328,7 +312,6 @@ export async function PATCH(request) {
       sessionId,
       preferences: updatedPreferences,
       weights: updatedWeights,
-      candidates,
       recommendations,
       status: chatSession.status,
     });

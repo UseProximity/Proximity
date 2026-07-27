@@ -5,8 +5,9 @@ import MessageBubble from "./MessageBubble";
 import RecommendationCards from "./RecommendationCards";
 import QuestionControls from "./AnswerControls";
 
-// Identity for an active question (pairwise pairs share id "priorities", so fold
-// in the per-pair stepKey). Mirrors qKey in ChatClient.
+// Identity for an active question. Consecutive narrowing tradeoffs all share the
+// id "tradeoff", so fold in the per-question stepKey to keep them distinct.
+// Mirrors qKey in ChatClient.
 const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : null);
 
 function TypingDots() {

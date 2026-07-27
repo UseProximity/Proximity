@@ -53,48 +53,8 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
   const [selected, setSelected] = useState(Array.isArray(value) ? value : []);
   const [otherMode, setOtherMode] = useState(false);
   const [otherText, setOtherText] = useState("");
-  // Slider editor seeds from the current value ("6+" → 6), else the question min.
-  const [sliderVal, setSliderVal] = useState(() => {
-    const n = parseInt(String(value ?? "").replace(/\+/g, ""), 10);
-    return Number.isFinite(n) ? n : null;
-  });
 
   if (!q) return null;
-
-  if (kind === "slider") {
-    const min = q.min ?? 1;
-    const max = q.max ?? 6;
-    const unit = q.unit || "";
-    const current = sliderVal ?? min;
-    const display = (n) => (q.plusOnMax && n >= max ? `${max}+` : String(n));
-    const noun = (n) => (n === 1 ? unit : unit && `${unit}s`);
-    return (
-      <div className="mt-2">
-        <div className="flex items-baseline gap-1.5 mb-1">
-          <span className="text-lg font-semibold text-red-600">{display(current)}</span>
-          {unit && <span className="text-xs text-gray-500">{noun(current)}</span>}
-        </div>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={1}
-          value={current}
-          disabled={disabled}
-          onChange={(e) => setSliderVal(Number(e.target.value))}
-          className="w-full accent-red-600 disabled:opacity-50"
-        />
-        <div className="flex justify-between text-[10px] text-gray-400 px-px">
-          {Array.from({ length: max - min + 1 }, (_, i) => (
-            <span key={i}>{display(min + i)}</span>
-          ))}
-        </div>
-        <button className={`mt-2 ${SAVE_BTN}`} disabled={disabled} onClick={() => onCommit(display(current))}>
-          Save
-        </button>
-      </div>
-    );
-  }
 
   if (kind === "budget_max") {
     const ok = text !== "" && !Number.isNaN(Number(text));

@@ -61,6 +61,11 @@ const INTENTION_COLORS = {
   "Most amenities": "bg-purple-100 text-purple-700",
   "Most flexible lease": "bg-orange-100 text-orange-700",
   "Best social fit": "bg-pink-100 text-pink-700",
+  // Not from the requested-intention set: "Another strong fit" is the
+  // deterministic fallback's label (see selectTopThree) and "Your pick" is what
+  // the chat agent's show_listings tool tags a listing the student asked to see.
+  "Another strong fit": "bg-slate-100 text-slate-700",
+  "Your pick": "bg-teal-100 text-teal-700",
 };
 
 // Open the browse page in a new tab with this listing's detail panel open.
