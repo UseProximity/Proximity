@@ -318,13 +318,20 @@ export async function POST(req) {
 
   // First sync runs NOW, not tonight: the landlord's listings pick up live
   // availability seconds after they confirm. Best effort — a sync hiccup must
-  // not fail the confirm (the nightly cron covers it).
+  // not fail the confirm (the nightly cron covers it). Skipped when any
+  // decision failed: a property whose "link" errored has no links yet, and an
+  // immediate sync would auto-ingest it as a duplicate against the landlord's
+  // expressed choice. Deferring to the nightly run leaves room to retry.
   let firstSync = null;
-  try {
-    firstSync = await syncConnection(connection, { dryRun: !connection.auto_apply });
-  } catch (err) {
-    console.error("[pms/confirm] immediate first sync failed:", err?.message);
-    firstSync = { status: "error" };
+  if (results.every((r) => r.ok)) {
+    try {
+      firstSync = await syncConnection(connection, { dryRun: !connection.auto_apply });
+    } catch (err) {
+      console.error("[pms/confirm] immediate first sync failed:", err?.message);
+      firstSync = { status: "error" };
+    }
+  } else {
+    firstSync = { status: "skipped", reason: "some decisions failed" };
   }
 
   return NextResponse.json({ results, firstSync });

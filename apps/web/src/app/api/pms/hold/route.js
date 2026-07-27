@@ -129,21 +129,40 @@ export async function POST(req) {
   const { hold, connection } = r;
 
   if (action === "keep") {
-    await supabase.from("pms_review_queue").update({ status: "dismissed", resolved_at: new Date().toISOString() }).eq("id", hold.id);
+    await supabase
+      .from("pms_review_queue")
+      .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+      .eq("id", hold.id)
+      .eq("status", "open");
     return message({ title: "Hold kept", body: "Nothing was applied. If the situation persists, tomorrow's sync will reopen the hold and the digest will include a fresh link." });
   }
 
-  await supabase.from("pms_review_queue").update({ status: "approved", resolved_at: new Date().toISOString() }).eq("id", hold.id);
+  // Conditional update guards against a double-submit: only one POST can flip
+  // open -> approved; the loser sees "already handled" instead of a second sync.
+  const { data: flipped } = await supabase
+    .from("pms_review_queue")
+    .update({ status: "approved", resolved_at: new Date().toISOString() })
+    .eq("id", hold.id)
+    .eq("status", "open")
+    .select("id");
+  if (!flipped?.length) {
+    return message({ title: "Already handled", body: "This hold was already released or closed by another click." });
+  }
+
+  const dryRun = !connection.auto_apply;
   try {
-    const result = await syncConnection(connection, { dryRun: !connection.auto_apply });
+    const result = await syncConnection(connection, { dryRun });
     const parts = [];
     if (result.delisted) parts.push(`${result.delisted} delisted`);
     if (result.relisted) parts.push(`${result.relisted} relisted`);
     if (result.updated) parts.push(`${result.updated} updated`);
     if (result.created) parts.push(`${result.created} created`);
+    const summary = parts.length ? parts.join(", ") : "no changes were needed";
     return message({
       title: "Hold released",
-      body: `The sync re-ran immediately: ${parts.length ? parts.join(", ") : "no changes were needed"}. The approval was single-use; the guards are back on for future runs.`,
+      body: dryRun
+        ? `This connection is in observe-only mode, so nothing was applied. The sync recorded what it would do (${summary}) in pms_sync_events; the approval stays usable for 7 days in case the connection goes live.`
+        : `The sync re-ran immediately: ${summary}. The approval was single-use; the guards are back on for future runs.`,
     });
   } catch (err) {
     console.error("[pms/hold] release re-sync failed:", err?.message);

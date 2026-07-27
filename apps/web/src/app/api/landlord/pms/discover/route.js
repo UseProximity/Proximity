@@ -82,7 +82,7 @@ export async function POST(req) {
   // One connection per landlord × provider — refresh it if it already exists.
   const { data: existing } = await supabase
     .from("pms_connections")
-    .select("id")
+    .select("id, credential_meta")
     .eq("user_id", session.user.id)
     .eq("provider", provider)
     .is("deleted_at", null)
@@ -91,7 +91,13 @@ export async function POST(req) {
   const connectionValues = {
     nango_connection_id: nangoConnectionId,
     status: "active",
-    credential_meta: { accountLabel: verified.accountLabel || null, ...(credentialMeta || {}) },
+    // Merge over the existing meta: admin-set flags (e.g. includeAllUnits)
+    // must survive a landlord reconnecting.
+    credential_meta: {
+      ...(existing?.credential_meta || {}),
+      accountLabel: verified.accountLabel || null,
+      ...(credentialMeta || {}),
+    },
     last_sync_error: null,
   };
 

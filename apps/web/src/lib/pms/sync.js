@@ -71,8 +71,14 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
     .select("id, external_property_id, external_unit_id, external_bed_id, listing_id, listing_unit_id, include, link_status")
     .eq("connection_id", connection.id);
   const links = (allLinks ?? []).filter((l) => l.link_status !== "rejected");
+  // Property-level exclusion is ONLY the marker row (external_unit_id NULL,
+  // include=false). Stale rejected unit rows must not count: a landlord who
+  // excluded then re-included a property would otherwise have it silently
+  // skipped forever by any unit row the re-confirm didn't rewrite.
   const excludedProperties = new Set(
-    (allLinks ?? []).filter((l) => !l.include).map((l) => l.external_property_id)
+    (allLinks ?? [])
+      .filter((l) => !l.include && l.external_unit_id == null)
+      .map((l) => l.external_property_id)
   );
 
   const unitLinks = links.filter((l) => l.include && l.external_unit_id != null && l.listing_id);
@@ -92,8 +98,10 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
   const fresh = [...snapUnits.keys()].filter((k) => !trackedKeys.has(k));
 
   // A recently approved hold (via the digest email's release link) lets ONE
-  // run through the swing/mass-delist guards; it is consumed after use.
-  const approvedHold = dryRun ? null : await recentApprovedHold(connection.id);
+  // run through the swing/mass-delist guards; it is consumed after use. Also
+  // honored in dry-run so a held observe-only connection can record what it
+  // would have done (dry-run still writes nothing).
+  const approvedHold = await recentApprovedHold(connection.id);
 
   // ±20% swing guard: too much portfolio change at once -> hold everything.
   const changes = missing.length + fresh.length;
@@ -461,9 +469,11 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
     }
   }
 
-  // An approval is single-use: once a run has gone through on its strength,
-  // mark it consumed so a later glitch can't ride the same approval.
-  if (approvedHold) {
+  // An approval is single-use: once a run has actually gone through on its
+  // strength, mark it consumed so a later glitch can't ride the same approval.
+  // A degraded pull still suppresses delists regardless of approval — in that
+  // case the approval was NOT used, so it survives for the next healthy run.
+  if (approvedHold && !dryRun && !suppressDelists) {
     await supabase
       .from("pms_review_queue")
       .update({ status: "resolved_kept" })
