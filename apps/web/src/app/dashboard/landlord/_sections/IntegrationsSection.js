@@ -47,6 +47,20 @@ function formatRange([lo, hi], format) {
 const formatBeds = (range) => formatRange(range, (n) => `${n} BR`);
 const formatRent = (range) => formatRange(range, (n) => `$${Math.round(n).toLocaleString()}`);
 
+// Visible radio circle so every confirm choice reads as one option set.
+function RadioDot({ on }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+        on ? "border-red-600" : "border-gray-300"
+      }`}
+    >
+      {on && <span className="h-2 w-2 rounded-full bg-red-600" />}
+    </span>
+  );
+}
+
 export default function IntegrationsSection() {
   const [connections, setConnections] = useState(null);
   const [allowDemo, setAllowDemo] = useState(false);
@@ -240,8 +254,10 @@ export default function IntegrationsSection() {
                   )}
                 </div>
 
-                {/* Radio-group semantics: exactly one decision per property —
-                    each match card plus the two chips below. */}
+                {/* Radio-group semantics: exactly one decision per property.
+                    With matches, ALL THREE choices render as one radio list
+                    (cards + two text rows) so "same as existing" is obviously
+                    an option; without matches, the two chips suffice. */}
                 <div
                   role="radiogroup"
                   aria-label={`What should we do with ${p.name || p.address || "this property"}?`}
@@ -251,8 +267,8 @@ export default function IntegrationsSection() {
                     <div className="space-y-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
                         {matches.length === 1
-                          ? "Looks like one of your listings"
-                          : `${matches.length} of your listings are at this address. Pick the one to keep in sync.`}
+                          ? "Is this one of your listings?"
+                          : `${matches.length} of your listings are at this address. Which one is it?`}
                       </p>
                       {matches.map((m) => {
                         const selected = d.action === "link" && d.listingId === m.listingId;
@@ -282,6 +298,7 @@ export default function IntegrationsSection() {
                               }
                               className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 rounded-lg"
                             >
+                              <RadioDot on={selected} />
                               {m.coverUrl ? (
                                 <Image
                                   src={m.coverUrl}
@@ -334,44 +351,81 @@ export default function IntegrationsSection() {
                           </div>
                         );
                       })}
+
+                      {/* Same option set, continued: not-mine and don't-sync
+                          as radio rows so all three choices read as one list. */}
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={d.action === "ingest"}
+                        onClick={() =>
+                          setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "ingest" } }))
+                        }
+                        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 ${
+                          d.action === "ingest"
+                            ? "border-red-600 bg-red-50/50 ring-1 ring-red-600 text-gray-900"
+                            : "border-gray-200 text-gray-700 hover:border-gray-300"
+                        }`}
+                      >
+                        <RadioDot on={d.action === "ingest"} />
+                        <span>
+                          <span className="font-medium">It&apos;s not on Proximity yet.</span>{" "}
+                          Create a separate new listing.
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={d.action === "exclude"}
+                        onClick={() =>
+                          setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "exclude" } }))
+                        }
+                        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 ${
+                          d.action === "exclude"
+                            ? "border-gray-900 bg-gray-50 ring-1 ring-gray-900 text-gray-900"
+                            : "border-gray-200 text-gray-700 hover:border-gray-300"
+                        }`}
+                      >
+                        <RadioDot on={d.action === "exclude"} />
+                        <span>Don&apos;t sync this property.</span>
+                      </button>
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    {matches.length > 0 && (
-                      <span className="text-xs font-medium uppercase tracking-wide text-gray-400">or</span>
-                    )}
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={d.action === "ingest"}
-                    onClick={() =>
-                      setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "ingest" } }))
-                    }
-                    className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                      d.action === "ingest"
-                        ? "border-red-600 bg-red-600 text-white focus-visible:ring-red-500"
-                        : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
-                    }`}
-                  >
-                    Add as a new listing
-                  </button>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={d.action === "exclude"}
-                    onClick={() =>
-                      setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "exclude" } }))
-                    }
-                    className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                      d.action === "exclude"
-                        ? "border-gray-900 bg-gray-900 text-white focus-visible:ring-gray-500"
-                        : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
-                    }`}
-                  >
-                    Don&apos;t sync
-                  </button>
-                  </div>
+                  {matches.length === 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={d.action === "ingest"}
+                        onClick={() =>
+                          setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "ingest" } }))
+                        }
+                        className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                          d.action === "ingest"
+                            ? "border-red-600 bg-red-600 text-white focus-visible:ring-red-500"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
+                        }`}
+                      >
+                        Add as a new listing
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={d.action === "exclude"}
+                        onClick={() =>
+                          setDecisions((prev) => ({ ...prev, [p.externalPropertyId]: { action: "exclude" } }))
+                        }
+                        className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                          d.action === "exclude"
+                            ? "border-gray-900 bg-gray-900 text-white focus-visible:ring-gray-500"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400"
+                        }`}
+                      >
+                        Don&apos;t sync
+                      </button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

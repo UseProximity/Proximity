@@ -196,7 +196,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
               sidebarOpen ? "translate-x-0" : "-translate-x-full"
             } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
           >
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            {/* h-16 matches the content header exactly so the two bottom
+                borders form one continuous line across the page. */}
+            <div className="h-16 px-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
                   P
@@ -283,7 +285,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
           {/* Main Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-20">
+            <div className="flex h-16 items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 sticky top-0 z-20">
               <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate min-w-0">
                 {getPageTitle()}
               </h1>
