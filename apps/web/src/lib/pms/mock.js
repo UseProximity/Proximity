@@ -78,6 +78,7 @@ export function mockSnapshot() {
         // Deliberately far from campus — demos the radius filter
         externalPropertyId: "demo-p3",
         name: "Downtown Lofts (Demo)",
+        description: "Loft living in the heart of downtown. Exposed brick, 14 foot ceilings, and a rooftop deck with skyline views. Sample marketing copy pulled from the demo PMS.",
         address: "1000 Market St",
         city: "St. Louis",
         state: "MO",

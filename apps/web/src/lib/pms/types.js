@@ -23,6 +23,9 @@
  *
  *   PmsProperty { externalPropertyId: string, name: string|null,
  *                 address: string|null, city, state, zip: string|null,
+ *                 description: string|null,  // landlord's own PMS marketing copy;
+ *                                            // used ONLY when first creating a
+ *                                            // listing, never to overwrite
  *                 units: PmsUnit[] }
  *   PmsUnit     { externalUnitId: string, label: string|null,
  *                 available: boolean|null,   // null = unknown -> sync takes NO action
@@ -86,4 +89,13 @@ export function toIsoDate(value) {
 export function joinAddress(...parts) {
   const s = parts.filter((p) => p && String(p).trim()).join(", ");
   return s || null;
+}
+
+// Coerce PMS marketing copy to a clean string or null. Never invents text;
+// caps runaway blobs so a PMS export can't overflow the listing form.
+export function toDescription(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  return s.length > 5000 ? `${s.slice(0, 5000)}…` : s;
 }

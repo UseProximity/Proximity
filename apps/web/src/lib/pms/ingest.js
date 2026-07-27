@@ -80,7 +80,12 @@ export async function ingestPmsProperty({
     sublease: false,
   }));
 
+  // The landlord's own PMS marketing copy is used when they have one — it is
+  // their voice, just fetched instead of retyped. Only ever at creation: the
+  // sync never overwrites a description after this point, so anything the
+  // landlord edits on Proximity sticks.
   const description =
+    property.description ||
     `Pricing and availability at ${property.name || "this property"} sync live ` +
     `from the landlord's system, so what you see is current. No description from ` +
     `the landlord yet. Message them and ask.`;

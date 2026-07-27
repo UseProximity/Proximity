@@ -30,7 +30,7 @@
  * exempt and must carry NO filters. Pages cache for 30 minutes upstream.
  */
 import { nangoProxyFetch } from "./nango.js";
-import { toBedrooms, toBathrooms, toMoney, toIsoDate } from "./types.js";
+import { toBedrooms, toBathrooms, toMoney, toIsoDate, toDescription } from "./types.js";
 
 const PROVIDER_CONFIG_KEY = process.env.NANGO_APPFOLIO_KEY || "appfolio";
 const MAX_PAGES = 60; // 5k rows/page; backstop against a misbehaving paginator
@@ -230,8 +230,16 @@ export async function fetchSnapshot(connectionId, meta) {
         city: pick(row, "property_city", "unit_city", "city"),
         state: pick(row, "property_state", "unit_state", "state"),
         zip: pick(row, "property_zip", "unit_zip", "zip", "postal_code"),
+        description: null,
         units: [],
       });
+    }
+    // marketing_description is unit-level in AppFolio; keep the longest one as
+    // the property's blurb (used only when first creating a listing).
+    const marketing = toDescription(pick(row, "marketing_description"));
+    const prop = propMap.get(propKey);
+    if (marketing && (!prop.description || marketing.length > prop.description.length)) {
+      prop.description = marketing;
     }
     propMap.get(propKey).units.push({
       externalUnitId: String(unitKey),

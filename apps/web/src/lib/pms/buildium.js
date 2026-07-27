@@ -17,7 +17,7 @@
  */
 import { nangoProxyFetch } from "./nango.js";
 import { isMockConnection, mockVerify, mockSnapshot } from "./mock.js";
-import { toBedrooms, toBathrooms, toMoney, toIsoDate, joinAddress } from "./types.js";
+import { toBedrooms, toBathrooms, toMoney, toIsoDate, toDescription, joinAddress } from "./types.js";
 
 const PROVIDER_CONFIG_KEY = process.env.NANGO_BUILDIUM_KEY || "buildium";
 const PAGE_LIMIT = 500;
@@ -129,6 +129,7 @@ export async function fetchSnapshot(connectionId) {
       city: addr?.City || null,
       state: addr?.State || null,
       zip: addr?.PostalCode || null,
+      description: toDescription(p?.Description),
       units: unitsByProperty.get(String(p.Id)) || [],
     };
   });

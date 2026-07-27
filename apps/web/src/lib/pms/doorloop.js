@@ -14,7 +14,7 @@
  * availableFrom = active lease end date when occupied.
  */
 import { nangoProxyFetch } from "./nango.js";
-import { toBedrooms, toBathrooms, toMoney, toIsoDate, joinAddress } from "./types.js";
+import { toBedrooms, toBathrooms, toMoney, toIsoDate, toDescription, joinAddress } from "./types.js";
 
 const PROVIDER_CONFIG_KEY = process.env.NANGO_DOORLOOP_KEY || "doorloop";
 const PAGE_SIZE = 200;
@@ -124,6 +124,7 @@ export async function fetchSnapshot(connectionId) {
       city: addr?.city || null,
       state: addr?.state || null,
       zip: addr?.zip || null,
+      description: toDescription(p?.description),
       units: unitsByProperty.get(String(p.id)) || [],
     };
   });

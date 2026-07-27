@@ -25,7 +25,7 @@
  */
 import { nangoProxyFetch } from "./nango.js";
 import { isMockConnection, mockVerify, mockSnapshot } from "./mock.js";
-import { toBedrooms, toBathrooms, toMoney, toIsoDate, joinAddress } from "./types.js";
+import { toBedrooms, toBathrooms, toMoney, toIsoDate, toDescription, joinAddress } from "./types.js";
 
 const PROVIDER_CONFIG_KEY = process.env.NANGO_RENTEC_KEY || "rentec";
 
@@ -148,6 +148,14 @@ export async function fetchSnapshot(connectionId) {
     const units = (subunits.length ? subunits : [p]).map((row) =>
       normalizeUnit(row, leaseEndByProperty, today)
     );
+    // Marketing copy lives on the rows that carry marketing objects (the
+    // standalone row itself, or a subunit); keep the longest one.
+    const marketingRows = subunits.length ? subunits : [p];
+    let description = null;
+    for (const row of marketingRows) {
+      const d = toDescription(row?.marketing?.description ?? row?.comments);
+      if (d && (!description || d.length > description.length)) description = d;
+    }
     normalizedProperties.push({
       externalPropertyId: String(p.property_id ?? p.id),
       name: p?.nickname || null,
@@ -155,6 +163,7 @@ export async function fetchSnapshot(connectionId) {
       city: p?.city || null,
       state: p?.state || null,
       zip: p?.zip != null ? String(p.zip) : null,
+      description,
       units,
     });
   }

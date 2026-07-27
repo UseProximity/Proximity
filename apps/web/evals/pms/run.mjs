@@ -21,7 +21,7 @@ const buildium = await import("file://" + WEB + "/src/lib/pms/buildium.js");
 const doorloop = await import("file://" + WEB + "/src/lib/pms/doorloop.js");
 const appfolio = await import("file://" + WEB + "/src/lib/pms/appfolio.js");
 const rentec = await import("file://" + WEB + "/src/lib/pms/rentec.js");
-const { toBedrooms, toBathrooms, toMoney } = await import("file://" + WEB + "/src/lib/pms/types.js");
+const { toBedrooms, toBathrooms, toMoney, toDescription } = await import("file://" + WEB + "/src/lib/pms/types.js");
 const mapping = await import("file://" + WEB + "/src/lib/pms/mapping.js");
 
 const results = [];
@@ -50,6 +50,9 @@ check("toBedrooms word form", toBedrooms("TwoBed") === 2 && toBedrooms("Studio")
 check("toBedrooms numeric + junk", toBedrooms("3") === 3 && toBedrooms("loft") === null);
 check("toBathrooms word form", toBathrooms("OnePointFiveBath") === 1.5);
 check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") === null && toMoney(0) === null);
+check("toDescription trims, nulls blanks, caps blobs",
+  toDescription("  hi  ") === "hi" && toDescription("   ") === null && toDescription(null) === null &&
+  toDescription("x".repeat(6000)).length === 5001);
 
 // ---------- Buildium ----------
 {
@@ -124,13 +127,13 @@ check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") ==
   // and no vacancy row (occupancy inferred from its current lease).
   // P0 has no address (property must be skipped with a warning, not an error).
   const dirPage1 = [
-    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W1", unit_name: "1E", advertised_rent: "$1,795", market_rent: "$1,900", bedrooms: 2, bathrooms: "1", sqft: 750, posted_to_internet: "Yes", visibility: "Visible" },
+    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W1", unit_name: "1E", advertised_rent: "$1,795", market_rent: "$1,900", bedrooms: 2, bathrooms: "1", sqft: 750, posted_to_internet: "Yes", visibility: "Visible", marketing_description: "Short blurb." },
     { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W3", unit_name: "3E", market_rent: "$1,700", bedrooms: 1, bathrooms: "1", sqft: 600, posted_to_internet: "No" },
     { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W4", unit_name: "4E", posted_to_internet: "Yes" },
     { property_id: "P0", property_name: "No Address Flats", unit_id: "X1", unit_name: "1", bedrooms: 2, posted_to_internet: "Yes" },
   ];
   const dirPage2 = [
-    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W2", unit_name: "2E", market_rent: "$1,850", bedrooms: 2, bathrooms: "1.5", sqft: 900, posted_to_internet: "Yes" },
+    { property_id: "P9", property_name: "Waterman Lofts", unit_address: "5500 Waterman Blvd", unit_city: "St. Louis", unit_state: "MO", unit_zip: "63112", unit_id: "W2", unit_name: "2E", market_rent: "$1,850", bedrooms: 2, bathrooms: "1.5", sqft: 900, posted_to_internet: "Yes", marketing_description: "The longer marketing blurb about Waterman Lofts that should win." },
   ];
   // unit_vacancy: availability truth. bed_and_bath is a decoy display string —
   // numbers must come from unit_directory, never from parsing it.
@@ -199,6 +202,8 @@ check("toMoney strips currency", toMoney("$1,250") === 1250 && toMoney("n/a") ==
     w4?.available === false && w4?.availableFrom === "2027-05-31");
   check("appfolio: missing beds/rent/sqft pass through as null, never 0",
     w4?.bedrooms === null && w4?.bathrooms === null && w4?.rent === null && w4?.area === null);
+  check("appfolio: longest marketing_description becomes the property blurb",
+    snap.properties[0].description === "The longer marketing blurb about Waterman Lofts that should win.");
 
   // includeAllUnits lifts the conservative filter per connection.
   const snapAll = await appfolio.fetchSnapshot("conn-3", { ...META, includeAllUnits: true });
