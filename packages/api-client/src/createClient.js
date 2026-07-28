@@ -1,8 +1,21 @@
+import { createListingsResource } from "./resources/listings.js";
+import { createDormReviewsResource } from "./resources/dormReviews.js";
+import { createTestimonialsResource } from "./resources/testimonials.js";
+import { createContactLandlordResource } from "./resources/contactLandlord.js";
+import { createMatchmakingResource } from "./resources/matchmaking.js";
 import { AuthResource } from "./resources/auth.js";
-import { ListingsResource } from "./resources/listings.js";
 import { UserResource } from "./resources/user.js";
 import { FavoritesResource } from "./resources/favorites.js";
 
+// No web equivalent to port — web calls its own API routes directly via
+// same-origin fetch under a cookie session (NextAuth). Mobile needs an
+// explicit base URL + bearer-token attachment instead, since it's a separate
+// app hitting the Next.js API cross-origin.
+//
+// getToken/getRefreshToken/onTokenExpired/onTokenRefreshed stay pluggable:
+// when there's no logged-in user, getToken()/getRefreshToken() return null
+// and requests just go out unauthenticated (used by every public resource —
+// listings, dormReviews, testimonials, contactLandlord, matchmaking).
 export function createApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed }) {
   return new ApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed });
 }
@@ -10,13 +23,17 @@ export function createApiClient({ baseUrl, getToken, getRefreshToken, onTokenExp
 class ApiClient {
   constructor({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
-    this.getToken = getToken;
+    this.getToken = getToken ?? (() => null);
     this.getRefreshToken = getRefreshToken ?? (() => null);
-    this.onTokenExpired = onTokenExpired;
+    this.onTokenExpired = onTokenExpired ?? (() => {});
     this.onTokenRefreshed = onTokenRefreshed ?? null;
 
+    this.listings = createListingsResource(this);
+    this.dormReviews = createDormReviewsResource(this);
+    this.testimonials = createTestimonialsResource(this);
+    this.contactLandlord = createContactLandlordResource(this);
+    this.matchmaking = createMatchmakingResource(this);
     this.auth = new AuthResource(this);
-    this.listings = new ListingsResource(this);
     this.user = new UserResource(this);
     this.favorites = new FavoritesResource(this);
   }
@@ -34,28 +51,33 @@ class ApiClient {
     const url = this.baseUrl + path;
     let res = await fetch(url, { ...fetchOptions, headers });
 
-    // On 401: attempt a token refresh once, then retry the original request.
-    // Skip if there is no refresh token — this means the 401 is a real auth
-    // failure (wrong credentials, unverified email, etc.), not an expired token.
-    const refreshToken = this.getRefreshToken();
-    if (res.status === 401 && !skipAuth && refreshToken) {
-      try {
-        const { accessToken } = await this.auth.refresh(refreshToken);
-        if (this.onTokenRefreshed) await this.onTokenRefreshed(accessToken);
-        const retryHeaders = { ...headers, Authorization: `Bearer ${accessToken}` };
-        res = await fetch(url, { ...fetchOptions, headers: retryHeaders });
-      } catch {
-        await this.onTokenExpired();
-        const err = new Error("Session expired");
-        err.status = 401;
-        throw err;
-      }
+    // Only attempt a refresh-and-retry when a token was actually attached to
+    // this request. A 401 on an unauthenticated request (e.g. a failed login
+    // attempt, or any public resource call) is a normal request error, not a
+    // "your session expired" event, and must not trigger a refresh/logout.
+    if (res.status === 401 && token) {
+      const refreshToken = this.getRefreshToken();
+      if (refreshToken) {
+        try {
+          const { accessToken } = await this.auth.refresh(refreshToken);
+          if (this.onTokenRefreshed) await this.onTokenRefreshed(accessToken);
+          const retryHeaders = { ...headers, Authorization: `Bearer ${accessToken}` };
+          res = await fetch(url, { ...fetchOptions, headers: retryHeaders });
+        } catch {
+          await this.onTokenExpired();
+          const err = new Error("Session expired");
+          err.status = 401;
+          throw err;
+        }
 
-      if (res.status === 401) {
+        if (res.status === 401) {
+          await this.onTokenExpired();
+          const err = new Error("Session expired");
+          err.status = 401;
+          throw err;
+        }
+      } else {
         await this.onTokenExpired();
-        const err = new Error("Session expired");
-        err.status = 401;
-        throw err;
       }
     }
 

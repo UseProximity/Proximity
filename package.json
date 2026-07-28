@@ -2,17 +2,16 @@
   "name": "proximity-monorepo",
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
+  "overrides": {
+    "react-native-css-interop": "0.2.6"
+  },
+  "devDependencies": {
+    "react-native": "0.85.3"
+  },
   "scripts": {
     "dev:web":    "npm run dev   --workspace=apps/web",
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "build:web":  "npm run build --workspace=apps/web",
     "lint":       "npm run lint  --workspaces --if-present"
-  },
-  "devDependencies": {
-    "expo": "^57.0.0"
-  },
-  "overrides": {
-    "expo": "^57.0.0",
-    "expo-router": "~57.0.4"
   }
 }

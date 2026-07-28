@@ -1,32 +1,19 @@
+// Root layout. Tabs are public — no login required to browse listings, view
+// details, or use the map (per the plan's auth-deferred decision). Auth
+// screens ((auth)/login, signup) are reachable from the Profile tab rather
+// than gating the whole app. authStore hydrates in the background so a
+// previously logged-in user's session is restored without blocking the
+// public screens on launch.
+import "../global.css";
+
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
 import { Stack } from "expo-router";
 import { useAuthStore } from "../src/store/authStore";
 
 export default function RootLayout() {
-  const isHydrated = useAuthStore((state) => state.isHydrated);
-  const user = useAuthStore((state) => state.user);
-
   useEffect(() => {
     useAuthStore.getState().hydrate();
   }, []);
 
-  if (!isHydrated) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!!user}>
-        <Stack.Screen name="(tabs)" />
-      </Stack.Protected>
-      <Stack.Protected guard={!user}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-    </Stack>
-  );
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

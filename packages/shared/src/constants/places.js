@@ -1,0 +1,76 @@
+// Ported from apps/web/src/utils/washuPlaces.js — display-relevant subset only.
+// CAMPUS isn't needed here: it's only used by web's write-time walk-time
+// computation (fetchAllWalkTimes), not by anything that just reads and
+// displays an already-computed listing.
+
+export const WASHU_PLACES = [
+  { name: "Olin Library",               lat: 38.64851503785516,  lng: -90.30770757138812 },
+  { name: "Seigle Hall",                lat: 38.64901252229954,  lng: -90.31234570424581 },
+  { name: "Schnucks (Grocery)",         lat: 38.633335917020425, lng: -90.31473611720082 },
+  { name: "Danforth University Center", lat: 38.64754193120054,  lng: -90.31037361422699 },
+  { name: "Sumers Rec Center",          lat: 38.64933192571885,  lng: -90.31472066027095 },
+  { name: "Village House",              lat: 38.65056939432417,  lng: -90.31405161268682 },
+  { name: "Med Campus",                 lat: 38.638520791600385, lng: -90.26355199334968 },
+];
+
+// Places excluded from the "closest campus walk" metric — the browse distance
+// filter and the map-card campus walk badge. The grocery store isn't campus,
+// and the Med Campus sits ~2mi east of Danforth, so a listing near it should
+// not read as a close walk to campus.
+export const NON_CAMPUS_WALK_PLACES = ["Schnucks (Grocery)", "Med Campus"];
+
+// WashU shuttle stops, shown as an optional overlay on the Browse map.
+export const SHUTTLE_STOPS = [
+  { name: "560 Music Center", lat: 38.6556069358605, lng: -90.31093240986557 },
+  { name: "801 Skinker", lat: 38.63609203965847, lng: -90.30373097637168 },
+  { name: "Asbury & Forsyth", lat: 38.647990882947255, lng: -90.32128543160192 },
+  { name: "Belt Avenue", lat: 38.64898519571845, lng: -90.27812193653823 },
+  { name: "Big Bend & Shepley", lat: 38.64585981618827, lng: -90.31597480568408 },
+  { name: "Brentwood Promenade", lat: 38.62672129846918, lng: -90.34291754861192 },
+  { name: "Clara", lat: 38.648655689417964, lng: -90.28301194121381 },
+  { name: "Clemons & Eastgate", lat: 38.657440236289226, lng: -90.30083621930424 },
+  { name: "Clemons & Interdrive", lat: 38.65852332739114, lng: -90.30297185838617 },
+  { name: "Clemons & Leland", lat: 38.65904597802479, lng: -90.30571961909538 },
+  { name: "Clemons & Syracuse", lat: 38.65918905437129, lng: -90.3072295317114 },
+  { name: "Concordia", lat: 38.634624822135144, lng: -90.31610450582019 },
+  { name: "Delmar & Skinker", lat: 38.65535320219973, lng: -90.29945324837212 },
+  { name: "Delmar DivINe", lat: 38.653893761927506, lng: -90.27923617110599 },
+  { name: "DeMun & Clayton", lat: 38.63399562221518, lng: -90.30958055728638 },
+  { name: "Des Peres and Forest Park Parkway", lat: 38.649110852624176, lng: -90.29458943360187 },
+  { name: "East End Garage", lat: 38.64658300567168, lng: -90.30413496240332 },
+  { name: "Eastgate", lat: 38.65589044828908, lng: -90.30089666425268 },
+  { name: "Eastgate & Cates", lat: 38.65851486440175, lng: -90.30046690152128 },
+  { name: "Forsyth & Jackson", lat: 38.64973571655977, lng: -90.33016875246923 },
+  { name: "Galleria", lat: 38.6336406981314, lng: -90.34618803034873 },
+  { name: "Goldfarb", lat: 38.64670123439971, lng: -90.30592054442057 },
+  { name: "Kingsbury & Des Peres", lat: 38.652115969052346, lng: -90.29411607677855 },
+  { name: "Knight Center", lat: 38.650058183564425, lng: -90.31129034646312 },
+  { name: "Lewis Collaborative", lat: 38.65839675570366, lng: -90.3083062476923 },
+  { name: "Link in the Loop", lat: 38.65521830481758, lng: -90.29982432384418 },
+  { name: "Lofts Apartments", lat: 38.65662604646279, lng: -90.30176693803845 },
+  { name: "Mallinckrodt Bus Plaza", lat: 38.647074556148965, lng: -90.30956871142888 },
+  { name: "Med School", lat: 38.63688187048369, lng: -90.26247364405233 },
+  { name: "Millbrook Garage", lat: 38.65011610139658, lng: -90.31173531215816 },
+  { name: "Pershing", lat: 38.64820642184871, lng: -90.28048016322188 },
+  { name: "Pershing @ DeBaliviere", lat: 38.64855321256053, lng: -90.28474583887582 },
+  { name: "Rosebury & Skinker", lat: 38.63719356590424, lng: -90.30367462970379 },
+  { name: "Rosedale & Washington", lat: 38.65412412774727, lng: -90.29610077336106 },
+  { name: "S-40, Clocktower", lat: 38.64530882666065, lng: -90.31294933668565 },
+  { name: "S-40, Habif Health", lat: 38.64555636786089, lng: -90.31559182908555 },
+  { name: "Skinker & FPP", lat: 38.64890387123082, lng: -90.30090608386105 },
+  { name: "Skinker & Pershing", lat: 38.6500559833868, lng: -90.30050385237055 },
+  { name: "Snow Way", lat: 38.65038035091168, lng: -90.31381181873512 },
+  { name: "South Campus", lat: 38.634420658227405, lng: -90.31391877812399 },
+  { name: "Sumers Welcome Center Pavillion", lat: 38.64721982627674, lng: -90.30402830914537 },
+  { name: "U-City Grill", lat: 38.656603373981234, lng: -90.30860183286359 },
+  { name: "Walmart", lat: 38.62167763312081, lng: -90.33115637210665 },
+  { name: "Wash Ave & Kingsland", lat: 38.655157430040816, lng: -90.3091430387704 },
+  { name: "Washington & Des Peres", lat: 38.65407757424838, lng: -90.29470395538303 },
+  { name: "Washington Avenue", lat: 38.65483655252736, lng: -90.3058752166526 },
+  { name: "Waterman Blvd.", lat: 38.64942863654157, lng: -90.28034407988639 },
+  { name: "WC Lower Lot", lat: 38.64913858541001, lng: -90.32852434288556 },
+  { name: "Westgate", lat: 38.656869117329315, lng: -90.30442687573388 },
+  { name: "Westminster", lat: 38.65327475505061, lng: -90.29652303165683 },
+  { name: "Westminster & Skinker", lat: 38.65360451270528, lng: -90.29987550661119 },
+  { name: "Whitaker Hall", lat: 38.649149203855345, lng: -90.30366098442603 },
+];
