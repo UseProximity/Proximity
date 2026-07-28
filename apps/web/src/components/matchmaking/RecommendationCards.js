@@ -132,12 +132,6 @@ export default function RecommendationCards({ recommendations }) {
             ) : (
               <CardGeneratingSkeleton />
             )}
-            {rec.reason && (
-              // One line, cut off with an ellipsis; hover shows the full reason as a tooltip.
-              <p title={rec.reason} className="text-[11px] text-gray-500 italic leading-snug truncate">
-                {rec.reason}
-              </p>
-            )}
           </div>
         );
       })}

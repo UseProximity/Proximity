@@ -329,10 +329,57 @@ function furnishedOk(listing, furnishedPref) {
 
 // Cheapest per-person option for a listing (null if no priced lease).
 // NOTE: rent on a lease is stored PER PERSON already — do not divide by beds.
+// ── Rent basis: is a stored rent per person, or for the whole unit? ─────────
+// unit_leases.rent carries NO flag saying which, and the data holds both
+// conventions — sometimes inside the same building (LOCAL on Delmar posts its
+// 3-beds by the bed at ~$1,069 and its 2-beds as a whole unit at ~$2,808). Every
+// budget the student gives us is per person, so we have to infer the basis or we
+// end up comparing a whole apartment's rent to one person's cap.
+//
+// The test: divide by the bedroom count. If one bedroom would come out below what
+// any room near WashU actually rents for, the stored figure was ALREADY per
+// person. The threshold isn't on a knife edge — across the live data every
+// multi-bed lease divides to under $400/bed or over $480/bed, with a single
+// exception — but it IS a heuristic, so it's kept in one place and disclosed
+// downstream (see rentBreakdown / slimCandidate) rather than silently assumed.
+const MIN_PLAUSIBLE_PER_PERSON = 450;
+
+// Per-person and whole-unit rent for one lease, plus how we decided.
+// A one-bedroom (or unsized) unit is one person's rent under either convention.
+// A room-share is a single room by definition, so its price is already per person
+// whatever the unit's bedroom count says.
+function leaseRentBasis(lease, isRoomShare) {
+  const rent = Number(lease?.rent);
+  if (!Number.isFinite(rent) || rent <= 0) return null;
+  const beds = Number(lease?.bedrooms) || 0;
+  const asPerson = { perPerson: rent, unitRent: rent * Math.max(beds, 1), beds, basis: "person" };
+  if (isRoomShare || beds <= 1) return { ...asPerson, unitRent: rent };
+  const split = rent / beds;
+  return split >= MIN_PLAUSIBLE_PER_PERSON
+    ? { perPerson: split, unitRent: rent, beds, basis: "unit" }
+    : asPerson;
+}
+
+// The cheapest per-person option in a listing, with the whole-unit price and the
+// basis we inferred. null when nothing is priced.
+function rentBreakdown(listing) {
+  const isRoomShare = isRoomShareListing(listing);
+  const rows = activeLeasesOf(listing)
+    .map((l) => leaseRentBasis(l, isRoomShare))
+    .filter(Boolean);
+  if (rows.length === 0) return null;
+  return rows.reduce((best, r) => (r.perPerson < best.perPerson ? r : best));
+}
+
 function minPerPerson(listing) {
-  const leases = activeLeasesOf(listing);
-  if (leases.length === 0) return null;
-  return Math.min(...leases.map((l) => l.rent));
+  return rentBreakdown(listing)?.perPerson ?? null;
+}
+
+// Per-person rent for a listing, for callers outside this module (the chat
+// agent's "cheaper than <listing>" resolution).
+export function perPersonRentOf(listing) {
+  const pp = minPerPerson(listing);
+  return pp == null ? null : Math.round(pp);
 }
 
 function toGroupInt(v, fallback) {
@@ -590,7 +637,9 @@ export function extractCardData(listing) {
     title: displayTitle(listing),
     address: listing.address,
     hero_image_url: hero?.url ?? null,
-    min_rent: minPerPerson(listing),
+    // Per-person, and rounded: dividing a whole-unit rent by its bedrooms lands
+    // on fractions of a cent, which must never reach a card or a quoted price.
+    min_rent: perPersonRentOf(listing),
     top_amenities: topAmenitiesOf(listing).slice(0, 3),
   };
 }
@@ -599,7 +648,8 @@ export function extractCardData(listing) {
 // to reason on the right (per-person) number and to see home_type explicitly.
 export function slimCandidate(listing) {
   const leases = activeLeasesOf(listing);
-  const pp = minPerPerson(listing);
+  const breakdown = rentBreakdown(listing);
+  const pp = breakdown?.perPerson ?? null;
   const pricedBeds = Math.max(0, ...leases.map((l) => Number(l.bedrooms) || 0));
   return {
     listing_id: listing.id,
@@ -608,6 +658,11 @@ export function slimCandidate(listing) {
     home_type: listing.home_types?.label ?? null,
     // null = no listed price; never invent one. Otherwise per-person monthly rent.
     per_person_rent: pp == null ? null : Math.round(pp),
+    // What the whole unit costs, and whether the listing was posted per person or
+    // per unit (see rentBreakdown). Lets the ranker say "$1,098 each, $3,294 for
+    // the 3 bedroom" instead of quoting one number that could mean either.
+    unit_rent: breakdown ? Math.round(breakdown.unitRent) : null,
+    rent_basis: breakdown ? breakdown.basis : null,
     bedrooms_max: pricedBeds > 0 ? pricedBeds : unitMaxBeds(listing),
     // Each lease carries its own array of allowed term lengths; flatten across
     // the listing's active leases into a unique, ascending list of months.
@@ -803,6 +858,20 @@ function relaxFailures(x, { budgetMax, leaseTests, furnishedPref, areas, wantsHo
   return fails;
 }
 
+// Partition candidates into the STRICT pool (every relaxable constraint passes)
+// and the tagged SHADOW pool (exactly ONE fails). Two or more failures is a
+// genuinely bad fit and drops out.
+function splitRelaxable(candidates, relaxInputs) {
+  const strict = [];
+  const shadow = [];
+  for (const x of candidates) {
+    const fails = relaxFailures(x, relaxInputs);
+    if (fails.length === 0) strict.push(x);
+    else if (fails.length === 1) shadow.push({ ...x, relax: fails[0] });
+  }
+  return { strict, shadow };
+}
+
 // Shared preference-derived inputs for relaxFailures.
 function relaxInputsOf(preferences) {
   const areas = Array.isArray(preferences?.area) ? preferences.area : [];
@@ -823,7 +892,11 @@ function relaxInputsOf(preferences) {
 function hardEligible(allListings, preferences) {
   const groupRange = parseGroupRange(preferences?.group_size);
   const { leaseTests } = relaxInputsOf(preferences);
-  const excluded = new Set([...(preferences?._excluded ?? []), ...(preferences?._setAside ?? [])]);
+  const excluded = new Set([
+    ...(preferences?._excluded ?? []), // places the student turned down
+    ...(preferences?._setAside ?? []), // places already shown (never repeat)
+    ...(preferences?._narrowed ?? []), // pruned by our own tradeoff questions
+  ]);
 
   let candidates = applySubleaseTermGate(applySubleasePref(allListings, preferences), leaseTests)
     .filter((listing) => !excluded.has(listing.id) && !isListingExcludedForViewer(listing, preferences))
@@ -880,13 +953,21 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // constraint passes) and the tagged SHADOW pool (exactly ONE fails — the
   // "if you'd relax this one thing" candidates). Listings failing two or more
   // relaxable constraints are genuinely bad fits and drop out.
-  const strict = [];
-  const shadow = [];
-  for (const x of candidates) {
-    const fails = relaxFailures(x, relaxInputs);
-    if (fails.length === 0) strict.push(x);
-    else if (fails.length === 1) shadow.push({ ...x, relax: fails[0] });
-  }
+  const { strict, shadow } = splitRelaxable(candidates, relaxInputs);
+
+  // The coaching notes below ("this is a tight combination", "raising your budget
+  // would open up N more") answer ONE question: can the market satisfy what the
+  // student asked for? So they judge a pool that ignores the prunes we did to
+  // them — the tradeoff answers (_narrowed) and the never-repeat set-aside. A
+  // field thinned by Proxy's own narrowing questions is not a hard combination,
+  // and telling the student to raise their budget over it is simply wrong.
+  const pruned = (preferences._narrowed?.length ?? 0) + (preferences._setAside?.length ?? 0) > 0;
+  const coachCandidates = pruned
+    ? hardEligible(allListings, { ...preferences, _narrowed: [], _setAside: [] })
+    : candidates;
+  const { strict: coachStrict, shadow: coachShadow } = pruned
+    ? splitRelaxable(coachCandidates, relaxInputs)
+    : { strict, shadow };
 
   // Near-hard preferences (pets/parking, read from the free-text note): prefer
   // listings that list the amenity, but never empty the strict pool over it.
@@ -923,8 +1004,8 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // taking multiple units in the same building (also flagged per-pick).
   let groupNote = null;
   if (groupSize >= 2) {
-    const fitInBudget = candidates.filter(inBudget);
-    if (candidates.length === 0) {
+    const fitInBudget = coachCandidates.filter(inBudget);
+    if (coachCandidates.length === 0) {
       groupNote = `Heads up: I don't have any listings with enough total beds for all ${groupSize} of you right now, and I won't suggest places your group can't actually fit. Try a smaller group or check back soon — new places get listed often.`;
     } else if (fitInBudget.length === 0) {
       groupNote = `Heads up: nothing with enough beds for all ${groupSize} of you came in under $${Math.round(budgetMax)}/mo per person, so the closest fits below run over budget — but every one of them can house your whole group.`;
@@ -939,8 +1020,8 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
     x.perPerson == null ? "unknown" : budgetMax === Infinity || x.perPerson <= budgetMax ? "in" : "over";
   let budgetNote = null;
   if (budgetMax !== Infinity) {
-    const inCount = candidates.filter((x) => priceState(x) === "in").length;
-    const unknownCount = candidates.filter((x) => priceState(x) === "unknown").length;
+    const inCount = coachCandidates.filter((x) => priceState(x) === "in").length;
+    const unknownCount = coachCandidates.filter((x) => priceState(x) === "unknown").length;
     const b = Math.round(budgetMax);
     if (inCount === 0) {
       budgetNote =
@@ -958,11 +1039,11 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // why. With a budget set, a price-unknown listing is NOT a confirmed fit (it
   // may work out, but we won't promise it), so the coach still speaks up when
   // the only "fits" left are unpriced.
-  const confirmed = budgetMax !== Infinity ? strict.filter((x) => x.perPerson != null) : strict;
+  const confirmed = budgetMax !== Infinity ? coachStrict.filter((x) => x.perPerson != null) : coachStrict;
   let relaxNote = null;
-  if (confirmed.length < 3 && shadow.length > 0) {
+  if (confirmed.length < 3 && coachShadow.length > 0) {
     const byConstraint = {};
-    for (const s of shadow) (byConstraint[s.relax.constraint] ??= []).push(s);
+    for (const s of coachShadow) (byConstraint[s.relax.constraint] ??= []).push(s);
     const [bestKey, bestList] = Object.entries(byConstraint).sort((a, b) => b[1].length - a[1].length)[0];
     let n = bestList.length;
     let suggestion;
@@ -983,7 +1064,7 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
       confirmed.length === 0
         ? `Honestly, this is a hard combination to fill right now: nothing on the market is confirmed to fit every one of your requirements at once. The good news is ${suggestion}.`
         : `You're down to ${confirmed.length === 1 ? "just one confirmed place" : `only ${confirmed.length} confirmed places`} that fit everything, so this is a tight combination. If you're open to it, ${suggestion}.`;
-  } else if (strict.length === 0 && shadow.length === 0 && candidates.length > 0) {
+  } else if (coachStrict.length === 0 && coachShadow.length === 0 && coachCandidates.length > 0) {
     relaxNote = `Honestly, this is a hard combination to fill right now: every available place would need you to relax more than one requirement (budget, lease length, furnished, or neighborhood). Loosening the one you care least about is the fastest way to real options.`;
   }
 

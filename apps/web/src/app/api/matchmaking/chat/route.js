@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
-import { handleTurn, computeRecommendations } from "@/lib/matchmaking/chatOrchestrator";
+import { handleTurn, computeRecommendations, continueRelaxedSearch } from "@/lib/matchmaking/chatOrchestrator";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
 
@@ -59,13 +59,27 @@ async function resolveActor(session) {
   return { error: { msg: "Unauthorized", status: 401 } };
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     const { actor, isGuest, error } = await resolveActor(await auth());
     if (error) return NextResponse.json({ error: error.msg }, { status: error.status });
 
-    // Guests share one identity, so don't resume "the latest session" — that
-    // could surface another tester's chat. Each guest resumes via localStorage.
+    // The client remembers which session it was in (localStorage). When it asks
+    // for that one by id, hand it back — this is how a GUEST resumes: guests all
+    // share one identity, so "the latest session for this user" could be another
+    // tester's chat, but a session they hold the id for is provably theirs.
+    const wanted = new URL(request.url).searchParams.get("sessionId");
+    if (wanted) {
+      const { data: byId } = await supabase
+        .from("matchmaking_chat_sessions")
+        .select("*")
+        .eq("id", wanted)
+        .eq("user_id", actor.id)
+        .not("status", "eq", "abandoned")
+        .maybeSingle();
+      if (byId) return NextResponse.json({ session: byId });
+      // Fall through: an unknown/foreign id just means "no session to resume".
+    }
     if (isGuest) return NextResponse.json({ session: null });
 
     const { data: chatSession } = await supabase
@@ -145,6 +159,44 @@ export async function POST(request) {
         return NextResponse.json({ error: "Failed to rewind session" }, { status: 500 });
       }
       return NextResponse.json({ sessionId: chatSession.id, status: "in_progress", nextQuestion: null });
+    }
+
+    // The widening turn (see continueRelaxedSearch): the previous turn told the
+    // student we're loosening their filters; this one actually does it and comes
+    // back with the new matches.
+    if (action === "relax_retry") {
+      chatSession.preferences = { ...(chatSession.preferences ?? {}), _viewerGender: actor.gender ?? null };
+      const turn = await continueRelaxedSearch(chatSession);
+      return NextResponse.json({
+        sessionId: turn.session.id,
+        assistantMessage: turn.assistantMessage,
+        nextQuestion: null,
+        preferences: turn.session.preferences,
+        weights: turn.session.weights,
+        recommendations: turn.recommendations,
+        status: turn.session.status,
+        mode: "agent",
+        reranked: turn.reranked,
+        draft: null,
+      });
+    }
+
+    // Save the client's transcript verbatim. The chat has turns the server never
+    // authors (the "want me to email these owners?" offer, a declined offer, an
+    // email draft), and a reload rebuilds the window from the stored transcript —
+    // so the client posts the whole thing back to keep the history complete.
+    if (action === "save_transcript") {
+      if (!Array.isArray(transcript)) {
+        return NextResponse.json({ error: "transcript is required" }, { status: 400 });
+      }
+      const { error: saveErr } = await supabase
+        .from("matchmaking_chat_sessions")
+        .update({ transcript })
+        .eq("id", chatSession.id);
+      if (saveErr) {
+        return NextResponse.json({ error: "Failed to save transcript" }, { status: 500 });
+      }
+      return NextResponse.json({ sessionId: chatSession.id });
     }
 
     // Contact owners: the student picked listings (from their 3 matches) and asked
@@ -227,6 +279,9 @@ export async function POST(request) {
       mode: turn.mode ?? null,
       reranked: turn.reranked ?? false,
       draft: turn.draft ?? null,
+      // This turn only announced that we're widening the search; the client
+      // follows up with action "relax_retry" to get the actual matches.
+      pendingRelax: turn.pendingRelax ?? false,
     });
   } catch (err) {
     console.error("[matchmaking/chat POST]", err);

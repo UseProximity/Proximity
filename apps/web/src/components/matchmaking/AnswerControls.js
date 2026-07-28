@@ -3,11 +3,23 @@
 import { useState } from "react";
 import { UNSURE } from "@/lib/matchmaking/questionScript";
 
+// ONE control scale across the whole chat: the answer chips, the answers-panel
+// editors, and the free-text composer all use this padding and text size, so
+// nothing in the window reads as a different size class from anything else.
 const CHIP =
-  "px-2.5 py-1 rounded-full bg-white border border-red-300 text-red-700 text-xs font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-default";
-const CHIP_ON = "px-2.5 py-1 rounded-full bg-red-600 border border-red-600 text-white text-xs font-medium transition";
+  "px-3 py-1.5 rounded-full bg-white border border-red-300 text-red-700 text-[13px] font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-default";
+const CHIP_ON = "px-3 py-1.5 rounded-full bg-red-600 border border-red-600 text-white text-[13px] font-medium transition";
 const UNSURE_CHIP =
-  "px-2.5 py-1 rounded-full bg-gray-100 border border-gray-300 text-gray-500 text-xs font-medium hover:bg-gray-200 transition disabled:opacity-50";
+  "px-3 py-1.5 rounded-full bg-gray-100 border border-gray-300 text-gray-500 text-[13px] font-medium hover:bg-gray-200 transition disabled:opacity-50";
+
+// Text fields match the chat composer (ChatWindow) so typing an answer looks the
+// same wherever it happens: a soft gray pill that owns the border/focus ring, and
+// a transparent input inside it. Padding and text size mirror the chips exactly,
+// so a field and a chip on the same row are the same height.
+const FIELD =
+  "flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-3 py-1.5 transition focus-within:border-red-300 focus-within:ring-1 focus-within:ring-red-200";
+const FIELD_INPUT =
+  "flex-1 min-w-0 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50";
 
 // Round paper-airplane send button — the single "submit this answer" affordance,
 // matching the chat composer's send button. Replaces the old text "Done"/"Send".
@@ -78,16 +90,18 @@ export default function QuestionControls({ question, onAnswer }) {
     if (otherMode) {
       return (
         <div className="flex items-center gap-2">
-          <input
-            type="text"
-            autoFocus
-            placeholder="Type your answer…"
-            value={text}
-            disabled={!interactive}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
-            className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-          />
+          <div className={`flex-1 min-w-0 ${FIELD}`}>
+            <input
+              type="text"
+              autoFocus
+              placeholder="Type your answer…"
+              value={text}
+              disabled={!interactive}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
+              className={FIELD_INPUT}
+            />
+          </div>
           <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => setOtherMode(false)}>
             Back
           </button>
@@ -134,7 +148,9 @@ export default function QuestionControls({ question, onAnswer }) {
     };
     return (
       <div onKeyDown={onEnter(sendMulti)}>
-        <div className="flex items-end gap-2">
+        {/* items-start, not items-end: once the chips wrap onto several rows the
+            send button should stay up on the first row, not drop to the last. */}
+        <div className="flex items-start gap-2">
           <div className="flex flex-wrap gap-1.5 flex-1">
             {options.map((opt) => {
               const on = selected.includes(opt);
@@ -166,16 +182,18 @@ export default function QuestionControls({ question, onAnswer }) {
         </div>
         {otherMode && (
           <div className="flex flex-wrap items-center gap-2 mt-2">
-            <input
-              type="text"
-              autoFocus
-              placeholder="Add your own…"
-              value={text}
-              disabled={!interactive}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMulti()}
-              className="flex-1 min-w-[10rem] text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-            />
+            <div className={`flex-1 min-w-[10rem] ${FIELD}`}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Add your own…"
+                value={text}
+                disabled={!interactive}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMulti()}
+                className={FIELD_INPUT}
+              />
+            </div>
             <button className={CHIP} disabled={!interactive || !text.trim()} onClick={addCustom}>
               Add
             </button>
@@ -191,7 +209,7 @@ export default function QuestionControls({ question, onAnswer }) {
     const toggle = (opt) =>
       setSelected((cur) => (cur.includes(opt) ? cur.filter((o) => o !== opt) : [...cur, opt]));
     return (
-      <div onKeyDown={onEnter(() => selected.length && submit(selected))} className="flex items-end gap-2">
+      <div onKeyDown={onEnter(() => selected.length && submit(selected))} className="flex items-start gap-2">
         <div className="flex flex-wrap gap-1.5 flex-1">
           {options.map((opt) => (
             <button
@@ -237,17 +255,19 @@ export default function QuestionControls({ question, onAnswer }) {
   if (kind === "budget_max") {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">$</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          placeholder={meta?.maxLabel ?? "Max /mo"}
-          value={max}
-          disabled={!interactive}
-          onChange={(e) => setMax(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && max && submit(max)}
-          className="w-28 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`w-36 ${FIELD}`}>
+          <span className="text-[13px] text-gray-400">$</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder={meta?.maxLabel ?? "Max /mo"}
+            value={max}
+            disabled={!interactive}
+            onChange={(e) => setMax(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && max && submit(max)}
+            className={FIELD_INPUT}
+          />
+        </div>
         <UnsureChip />
         <SendButton className="ml-auto" onClick={() => max && submit(max)} disabled={!interactive || !max} />
       </div>
@@ -257,15 +277,17 @@ export default function QuestionControls({ question, onAnswer }) {
   if (kind === "open_text") {
     return (
       <div className="flex items-center gap-2">
-        <input
-          type="text"
-          placeholder={meta?.placeholder || "Type anything…"}
-          value={text}
-          disabled={!interactive}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
-          className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`flex-1 min-w-0 ${FIELD}`}>
+          <input
+            type="text"
+            placeholder={meta?.placeholder || "Type anything…"}
+            value={text}
+            disabled={!interactive}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
+            className={FIELD_INPUT}
+          />
+        </div>
         <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
           I&apos;m all set
         </button>
@@ -291,15 +313,19 @@ export default function QuestionControls({ question, onAnswer }) {
             Yes, that&apos;s me
           </button>
         )}
-        <input
-          type="text"
-          placeholder="Or type a name…"
-          value={name}
-          disabled={!interactive}
-          onChange={(e) => setName(e.target.value)}
-          className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
-        <SendButton onClick={send} disabled={!interactive || !name.trim()} />
+        {/* Sized to a name rather than stretched across the row: a full-width
+            field reads as "write a lot here" and crowds the send button. */}
+        <div className={`w-48 max-w-[55%] ${FIELD}`}>
+          <input
+            type="text"
+            placeholder="Or type a name…"
+            value={name}
+            disabled={!interactive}
+            onChange={(e) => setName(e.target.value)}
+            className={FIELD_INPUT}
+          />
+        </div>
+        <SendButton className="ml-auto" onClick={send} disabled={!interactive || !name.trim()} />
       </div>
     );
   }

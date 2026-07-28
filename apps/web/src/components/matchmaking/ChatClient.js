@@ -134,6 +134,34 @@ export default function ChatClient() {
     }
   }, [messages, sessionId, preferences, weights, recommendations, status]);
 
+  // Mirror the visible chat back to the server. Several turns are authored only
+  // on the client (the "want me to email these owners?" offer, a declined offer,
+  // an email draft), and a reload rebuilds the window from the STORED transcript,
+  // so without this those turns disappear. Debounced, and pushed through
+  // postChain so it can never overtake an in-flight turn.
+  useEffect(() => {
+    if (!sessionId || messages.length === 0 || loading) return;
+    const id = setTimeout(() => {
+      const transcript = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ts: m.ts,
+        ...(m.question ? { question: m.question } : {}),
+        ...(m.questionId ? { questionId: m.questionId } : {}),
+        ...(m.recommendations ? { recommendations: m.recommendations } : {}),
+        ...(m.draft ? { draft: m.draft } : {}),
+      }));
+      postChain.current = postChain.current.then(() =>
+        fetch("/api/matchmaking/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, action: "save_transcript", transcript }),
+        }).catch((err) => console.error("[ChatClient] transcript save failed:", err))
+      );
+    }, 800);
+    return () => clearTimeout(id);
+  }, [messages, sessionId, loading]);
+
   const applyServerState = useCallback((data) => {
     if (data.sessionId) setSessionId(data.sessionId);
     if (data.preferences) setPreferences(data.preferences);
@@ -476,6 +504,38 @@ export default function ChatClient() {
               weightsRef.current = data.weights;
             }
             if (data.mode === "agent") {
+              // The re-rank found nothing the student hasn't already seen. Proxy
+              // says so (fixed text), then we immediately run the widening turn —
+              // the dots stay up while it loosens the filters and re-ranks.
+              if (data.pendingRelax) {
+                trackEvent("Proxy Search Widened", {});
+                setMessages((prev) => [
+                  ...prev,
+                  { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString(), animate: true },
+                ]);
+                const retry = await fetch("/api/matchmaking/chat", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sessionId, action: "relax_retry" }),
+                });
+                const widened = await retry.json();
+                if (retry.ok) {
+                  applyRanking(widened);
+                  if (widened.preferences) {
+                    setPreferences(widened.preferences);
+                    prefsRef.current = widened.preferences;
+                  }
+                  if (widened.reranked && widened.recommendations?.length) {
+                    appendRecsWithContact(widened);
+                  } else if (widened.assistantMessage) {
+                    setMessages((prev) => [
+                      ...prev,
+                      { role: "assistant", content: widened.assistantMessage, ts: new Date().toISOString(), animate: true },
+                    ]);
+                  }
+                }
+                return;
+              }
               // Post-recommendations conversational turn. Re-rank → show new
               // matches; draft → editable email compose; otherwise a plain reply.
               if (data.reranked && data.recommendations?.length) {
@@ -525,9 +585,15 @@ export default function ChatClient() {
         setLoading(true);
       }
 
-      // 2. Sync with server (authoritative source)
+      // 2. Sync with server (authoritative source). Ask for the session we were
+      // last in by id — that's what lets an anonymous/guest tester resume, since
+      // guests share one identity and can't be handed "their latest session".
       try {
-        const res = await fetch("/api/matchmaking/chat");
+        const res = await fetch(
+          cached?.sessionId
+            ? `/api/matchmaking/chat?sessionId=${encodeURIComponent(cached.sessionId)}`
+            : "/api/matchmaking/chat"
+        );
         if (res.status === 401) {
           // Anonymous in production — a cached transcript can't be continued either.
           localStorage.removeItem(LS_KEY);
@@ -547,6 +613,7 @@ export default function ChatClient() {
             ...(m.question ? { question: m.question } : {}),
             ...(m.questionId ? { questionId: m.questionId } : {}),
             ...(m.recommendations ? { recommendations: m.recommendations } : {}),
+            ...(m.draft ? { draft: m.draft } : {}),
           }));
           // A pre-rework session has messages but none carry a `question`
           // descriptor (no chips) — it can't be answered. Restart it cleanly.
@@ -582,8 +649,10 @@ export default function ChatClient() {
         } else if (!hadCache.current) {
           await startFresh();
         } else {
-          localStorage.removeItem(LS_KEY);
-          await startFresh();
+          // The server has no session to hand back, but we restored a real
+          // transcript from this browser — keep it. (Wiping it here is what used
+          // to nuke a guest tester's whole chat on reload.)
+          setLoading(false);
         }
       } catch (err) {
         console.error("[ChatClient] serverSync failed:", err);
@@ -738,7 +807,7 @@ export default function ChatClient() {
   // rather than an empty window that never answers.
   if (needsAuth) {
     return (
-      <div className="h-[calc(100dvh-109px)] md:h-[calc(100dvh-130px)] bg-gray-50 flex items-center justify-center px-4">
+      <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex items-center justify-center px-4">
         <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-8 text-center">
           <div className="w-12 h-12 mx-auto rounded-full bg-red-100 text-red-600 text-lg font-bold flex items-center justify-center">
             P
@@ -769,7 +838,9 @@ export default function ChatClient() {
     // stays on screen. Subtracts the sticky header (83px mobile / 104px desktop) plus the
     // ~26px localhost/staging banner; on production (no banner) this just leaves a small
     // gap above the footer. The footer sits below the fold.
-    <div className="h-[calc(100dvh-109px)] md:h-[calc(100dvh-130px)] bg-gray-50 flex flex-col overflow-hidden">
+    // svh, not dvh: sized to the SMALLEST viewport (mobile browser toolbars showing),
+    // so the answer chips and composer at the bottom are never hidden behind them.
+    <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex flex-col overflow-hidden">
 
       {/* Mobile: thin bar to open the answers drawer, with a progress line beneath */}
       <div className="md:hidden flex-shrink-0 bg-white border-b border-gray-100">
