@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { getListing } from "@/lib/listings/getListing";
+import { serializeJsonLd } from "@/lib/jsonLd";
 import ListingDetailClient from "./ListingDetailClient";
 
 // Same display-name rule as ListingCard: explicit title, else street address.
@@ -124,7 +125,8 @@ export default async function ListingDetailPage({ params }) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(listingJsonLd(listing, id)),
+          // serializeJsonLd escapes "<" — listing fields are landlord-controlled
+          __html: serializeJsonLd(listingJsonLd(listing, id)),
         }}
       />
       <Suspense

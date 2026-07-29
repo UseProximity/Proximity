@@ -21,6 +21,7 @@ import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import Providers from "@/components/layout/Providers";
+import { serializeJsonLd } from "@/lib/jsonLd";
 import { Analytics } from "@vercel/analytics/next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
@@ -58,7 +59,7 @@ export default async function RootLayout({ children }) {
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               "@context": "https://schema.org",
               "@graph": [
                 {

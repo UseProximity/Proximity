@@ -1,4 +1,5 @@
 import { guides } from "@/lib/guides";
+import { serializeJsonLd } from "@/lib/jsonLd";
 
 const SITE_URL = "https://useproximity.org";
 
@@ -47,7 +48,7 @@ export default function GuideJsonLd({ slug }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
     />
   );
 }
