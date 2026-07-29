@@ -11,27 +11,12 @@ export const QUESTION_PLAN = [
       "Hi there, I'm Proxy, your personal housing matchmaker. Let's find your place. First, I have your name as {{name}}. Is that right, or do you go by something else?",
   },
   {
-    id: "program",
-    field: "program",
-    kind: "choice",
-    prompt: "Which program are you in?",
-    options: ["Undergrad", "Grad", "Med", "Law", "Business", "Other"],
-  },
-  {
-    // Asked instead of "what year" so it stays unambiguous when we test/launch
-    // over the summer (when "rising junior" vs "junior" is unclear) and tells us
-    // how long this student stays a warm lead. Not used by the ranker.
-    id: "grad_year",
-    field: "grad_year",
-    kind: "choice",
-    prompt: "When do you graduate?",
-    options: ["2026", "2027", "2028", "2029", "2030+"],
-  },
-  {
     id: "group_size",
     field: "group_size",
     kind: "choice",
-    prompt: "How many people are you planning to live with (including you)?",
+    // Uses the name we just confirmed, so the flow reads as a handoff from the
+    // greeting straight into the first real question.
+    prompt: "Alright {{name}}, how many people are you planning to live with (including yourself)?",
     // Tappable count cards; "6+" submits "6+" (parseGroupRange reads it as "at
     // least 6"). answerToLabel renders the pick as "3 people" / "1 person".
     options: ["1", "2", "3", "4", "5", "6+"],
@@ -55,8 +40,11 @@ export const QUESTION_PLAN = [
   {
     id: "lease_term",
     field: "lease_term",
-    kind: "multi",
-    prompt: "What lease length works for you? Pick all that fit.",
+    // Single-select: a student signs one lease, so this is a decision rather than
+    // a shortlist. (leaseTestsFor accepts a scalar or an array, so sessions
+    // answered before this change still rank correctly.)
+    kind: "choice",
+    prompt: "What lease length works for you?",
     options: ["Semester only", "Academic year (~10 months)", "Full year only"],
     allowUnsure: true,
   },
@@ -86,7 +74,7 @@ export const QUESTION_PLAN = [
     // via the listing-aware "Would you X for Y?" tradeoffs (see narrowing.js).
     field: "priorities",
     kind: "multi",
-    prompt: "What matters most in your place? Tap everything that fits.",
+    prompt: "What are you looking for in a home? Tap all that matter to you.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
     allowUnsure: true,
   },
@@ -98,7 +86,7 @@ export const QUESTION_PLAN = [
     // anchor. Options are the student's own picks (see describeQuestion).
     field: "top_priority",
     kind: "choice",
-    prompt: "Of those, which single one matters most?",
+    prompt: "Of those priorities, which one matters most?",
     options: null, // filled from preferences.priorities at render time
     optionsFromPriorities: true,
     allowUnsure: true,

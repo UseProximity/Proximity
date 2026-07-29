@@ -5,8 +5,9 @@ import MessageBubble from "./MessageBubble";
 import RecommendationCards from "./RecommendationCards";
 import QuestionControls from "./AnswerControls";
 
-// Identity for an active question (pairwise pairs share id "priorities", so fold
-// in the per-pair stepKey). Mirrors qKey in ChatClient.
+// Identity for an active question. Consecutive narrowing tradeoffs all share the
+// id "tradeoff", so fold in the per-question stepKey to keep them distinct.
+// Mirrors qKey in ChatClient.
 const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : null);
 
 function TypingDots() {
@@ -38,12 +39,17 @@ function AnswerSheet({ children }) {
     return () => cancelAnimationFrame(id);
   }, []);
   return (
+    // pb keeps clear of the iOS home indicator when the page opts into the safe
+    // area (env() resolves to 0 otherwise, so this is just normal padding today).
     <div
-      className={`flex-shrink-0 border-t border-gray-200 bg-white px-4 pb-4 pt-3 transform-gpu transition-all duration-300 ease-out ${
+      className={`flex-shrink-0 border-t border-gray-200 bg-white px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] transform-gpu transition-all duration-300 ease-out ${
         shown ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
       }`}
     >
-      <div className="max-h-48 overflow-y-auto pr-0.5">{children}</div>
+      {/* Capped at a share of the viewport (not a fixed height) so a long chip
+          set scrolls instead of the sheet growing past the screen, with a little
+          padding so the last row never sits flush against the clipped edge. */}
+      <div className="max-h-[38vh] overflow-y-auto px-0.5 pb-1">{children}</div>
     </div>
   );
 }
@@ -204,16 +210,19 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
   // Scroll the chat container ONLY (never the page) so the top of the newest
   // message is visible. Using scrollIntoView here would bubble up and scroll the
   // whole page; instead we adjust this container's own scrollTop.
+  //
+  // The ref is on the last RENDERED message, not the last message in the array:
+  // messages queued behind one that is still typing aren't in the DOM, so anchoring
+  // on the array's tail left the ref null every time Proxy started typing — and
+  // the old fallback then slammed the transcript back to the very top. There is
+  // no "reset to top" case anymore; with nothing to anchor on, we hold position.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
     const el = lastMsgRef.current;
-    if (el) {
-      const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
-      container.scrollTo({ top: container.scrollTop + delta, behavior: "smooth" });
-    } else {
-      container.scrollTop = 0;
-    }
+    if (!el) return;
+    const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    container.scrollTo({ top: container.scrollTop + delta, behavior: "smooth" });
   }, [messages.length, loading]);
 
   // Once a bubble finishes typing (and its chips render), scroll so the WHOLE
@@ -262,7 +271,8 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
         {messages.map((msg, i) => {
           // Hold back messages queued behind one that is still typing.
           if (i > firstPendingIdx) return null;
-          const isLast = i === messages.length - 1;
+          // Anchor the scroll on the last message actually on screen.
+          const isLast = i === Math.min(firstPendingIdx, messages.length - 1);
           const updatingThis = recsUpdating && i === lastRecsIdx;
           // Fires when this bubble finishes typing: unblocks the next queued
           // message (and, via typedMap, this question's answer controls) and
@@ -306,15 +316,16 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
           <QuestionControls question={activeQuestion} onAnswer={onAnswer} />
         </AnswerSheet>
       ) : hasRecommendations ? (
-        <div className="flex-shrink-0 border-t border-gray-100 px-4 pb-4 pt-3">
-          <div className="flex items-center gap-2 bg-gray-50 rounded-xl border border-gray-200 px-3 py-2">
+        <div className="flex-shrink-0 border-t border-gray-100 px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          {/* Same control scale as the answer chips (see AnswerControls). */}
+          <div className="flex items-center gap-2 bg-gray-50 rounded-xl border border-gray-200 px-3 py-1.5">
             <input
               ref={inputRef}
               type="text"
               onKeyDown={handleKeyDown}
               placeholder={loading ? "Proxy is typing…" : "Tell Proxy what to adjust…"}
               disabled={loading}
-              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50"
             />
             <button
               onClick={handleSendClick}

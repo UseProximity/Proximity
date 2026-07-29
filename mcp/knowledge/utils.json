@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-28T09:05:16.025Z",
-  "count": 30,
+  "_generated": "2026-07-29T19:00:19.612Z",
+  "count": 31,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -22,6 +22,10 @@
     {
       "file": "src/lib/guides.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/jsonLd.js",
+      "description": "Serialize an object for embedding in a <script type=\"application/ld+json\">"
     },
     {
       "file": "src/lib/leaseCheck/analyzeLease.js",

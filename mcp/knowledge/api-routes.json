@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
   "_generated": "2026-07-28T09:05:16.002Z",
-  "count": 63,
+  "count": 62,
   "routes": [
     {
       "path": "/api/addListing",
@@ -687,26 +687,6 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/listings/popular/route.js"
-    },
-    {
-      "path": "/api/matchmaking",
-      "methods": [
-        "GET",
-        "POST",
-        "PATCH"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "optional",
-        "POST": "public",
-        "PATCH": "any"
-      },
-      "tables": [
-        "users",
-        "matchmaking_preferences",
-        "roles"
-      ],
-      "file": "src/app/api/matchmaking/route.js"
     },
     {
       "path": "/api/matchmaking/chat",
