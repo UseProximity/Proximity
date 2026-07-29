@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
-import { handleTurn, computeRecommendations, continueRelaxedSearch } from "@/lib/matchmaking/chatOrchestrator";
+import { handleTurn, computeRecommendations, continueRelaxedSearch, rewindToTradeoff } from "@/lib/matchmaking/chatOrchestrator";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
 
@@ -161,6 +161,27 @@ export async function POST(request) {
       return NextResponse.json({ sessionId: chatSession.id, status: "in_progress", nextQuestion: null });
     }
 
+    // Rewind to a past TRADEOFF answer. Unlike scripted questions (which the
+    // client can rewind on its own), the narrowing state lives server-side, so the
+    // server does the work and hands back the question to re-ask.
+    if (action === "rewind_tradeoff") {
+      const idx = Number(body.tradeoffIndex);
+      if (!Number.isInteger(idx) || idx < 0) {
+        return NextResponse.json({ error: "Invalid tradeoff index" }, { status: 400 });
+      }
+      chatSession.preferences = { ...(chatSession.preferences ?? {}), _viewerGender: actor.gender ?? null };
+      const turn = await rewindToTradeoff(chatSession, idx);
+      return NextResponse.json({
+        sessionId: turn.session.id,
+        assistantMessage: turn.assistantMessage,
+        nextQuestion: turn.nextQuestion,
+        preferences: turn.session.preferences,
+        weights: turn.session.weights,
+        recommendations: turn.session.recommendations ?? [],
+        status: turn.session.status,
+      });
+    }
+
     // The widening turn (see continueRelaxedSearch): the previous turn told the
     // student we're loosening their filters; this one actually does it and comes
     // back with the new matches.
@@ -271,6 +292,9 @@ export async function POST(request) {
       sessionId: updatedSession.id,
       assistantMessage: turn.assistantMessage,
       nextQuestion: turn.nextQuestion,
+      // A standalone remark shown just before the next question (see
+      // bigGroupHeadsUp) — rendered as its own bubble, never merged in.
+      note: turn.note ?? null,
       preferences: updatedSession.preferences,
       weights: updatedSession.weights,
       recommendations: updatedSession.recommendations,

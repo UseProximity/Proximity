@@ -20,6 +20,11 @@ export function describeQuestion(question, preferences) {
   if (question.kind === "budget_max") meta.maxLabel = question.maxLabel;
   if (question.kind === "month_select") meta.others = question.others ?? [];
   if (question.kind === "open_text") meta.placeholder = question.placeholder ?? "";
+  // An option ending in "+" opens a number field instead of submitting the chip
+  // text, so we capture an exact count rather than an open-ended bucket.
+  if (question.expandCount) meta.expandCount = true;
+  // Suppress the automatic "Something else…" escape on closed-set questions.
+  if (question.noOther) meta.noOther = true;
   if (question.allowUnsure) meta.allowUnsure = true;
   // top_priority offers the student's OWN priority picks as its options.
   const options = question.optionsFromPriorities

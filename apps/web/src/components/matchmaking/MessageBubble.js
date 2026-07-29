@@ -50,10 +50,14 @@ function InlineDots() {
   );
 }
 
-export default function MessageBubble({ message, userInitial, onEdit, onReady }) {
+export default function MessageBubble({ message, userInitial, onEdit, onReady, onGrow }) {
   const isUser = message.role === "user";
   const animate = !isUser && !!message.animate;
   const firedReady = useRef(false);
+  // Measured height of the bubble on the previous typewriter tick, so we can tell
+  // the parent exactly how much taller it just got (see the growth effect below).
+  const rootRef = useRef(null);
+  const lastHeight = useRef(0);
 
   // "Typing" effect: 0.5s of dots, then typewrite the text.
   const [phase, setPhase] = useState(animate ? "dots" : "done");
@@ -84,6 +88,21 @@ export default function MessageBubble({ message, userInitial, onEdit, onReady })
   const showDots = animate && phase === "dots";
   const ready = !animate || phase === "done";
 
+  // Keep the BOTTOM of a message that's still typing in frame. As the text wraps
+  // onto a new line the bubble gets taller, and without this the sentence being
+  // written walks off the bottom of the window. We report the height delta rather
+  // than just "I grew", so the parent can scroll by exactly one line and hold the
+  // new last line where the old one was. Runs on every tick but only fires on an
+  // actual height change, so it's one scroll per wrapped line, not per character.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    const prev = lastHeight.current;
+    lastHeight.current = h;
+    if (prev && h > prev) onGrow?.(h - prev);
+  }, [shown, showDots, onGrow]);
+
   // Notify the parent once the bubble is fully typed so it can scroll the bubble
   // into view and reveal the answer controls in the composer.
   useEffect(() => {
@@ -94,7 +113,7 @@ export default function MessageBubble({ message, userInitial, onEdit, onReady })
   }, [ready, onReady]);
 
   return (
-    <div className="group">
+    <div className="group" ref={rootRef}>
       <div className={`flex items-end gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
         {!isUser ? (
           <div className="w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center flex-shrink-0">

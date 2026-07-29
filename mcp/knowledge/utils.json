@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-18T23:45:00.690Z",
-  "count": 29,
+  "_generated": "2026-07-29T16:06:45.848Z",
+  "count": 30,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -69,6 +69,10 @@
     },
     {
       "file": "src/lib/matchmaking/questionScript.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/tradeoffTriage.js",
       "description": "No description — add a top-of-file comment."
     },
     {
