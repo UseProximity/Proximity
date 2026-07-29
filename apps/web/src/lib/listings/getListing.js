@@ -232,6 +232,13 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       `
     )
     .eq("id", listingId)
+    // Soft-deleted listings are not public. Every GET caller is a public surface
+    // (listing page, global modal, browse panel, matchmaking cards), so these must
+    // 404 rather than render — otherwise the page emits canonical + Apartment
+    // JSON-LD advertising removed inventory. Admin reads go via /api/admin/[table],
+    // and the landlord dashboard's availability toggle is a PATCH, so neither is
+    // affected by this filter.
+    .is("deleted_at", null)
     .single();
 
   if (error || !row) {
