@@ -62,6 +62,10 @@ export default function QuestionControls({ question, onAnswer }) {
   // When a "choice" question offers an "Other" option, tapping it swaps the chip
   // row for a small text field so the user can type their own answer.
   const [otherMode, setOtherMode] = useState(false);
+  // Set to the floor of an open-ended "N+" chip (e.g. 5) when the student taps it
+  // on an expandCount question — swaps the chips for an exact-number field.
+  const [countFloor, setCountFloor] = useState(null);
+  const [count, setCount] = useState("");
 
   // Pressing Enter while a chip is focused should SEND the current selection, not
   // re-trigger (and so toggle off) the focused chip. preventDefault stops the
@@ -110,17 +114,58 @@ export default function QuestionControls({ question, onAnswer }) {
       );
     }
 
+    // An open-ended "N+" chip on an expandCount question: the chip row is replaced
+    // by a number field so we capture the EXACT count (5+ could be 5, 6 or 8, and
+    // the group-fit matching needs the real number, not the bucket).
+    if (countFloor != null) {
+      const n = parseInt(count, 10);
+      const valid = Number.isFinite(n) && n >= countFloor;
+      const sendCount = () => valid && submit(String(n));
+      return (
+        <div className="flex items-center gap-2">
+          <div className={`w-40 ${FIELD}`}>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={countFloor}
+              autoFocus
+              placeholder={`How many? (${countFloor}+)`}
+              value={count}
+              disabled={!interactive}
+              onChange={(e) => setCount(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendCount()}
+              className={FIELD_INPUT}
+            />
+          </div>
+          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => setCountFloor(null)}>
+            Back
+          </button>
+          <SendButton className="ml-auto" onClick={sendCount} disabled={!interactive || !valid} />
+        </div>
+      );
+    }
+
     // Single-pick: tapping an option submits it immediately (no separate send).
     return (
       <div className="flex flex-wrap gap-1.5">
-        {baseOpts.map((opt) => (
-          <button key={opt} className={CHIP} disabled={!interactive} onClick={() => submit(opt)}>
-            {opt}
+        {baseOpts.map((opt) => {
+          const floor = meta?.expandCount && /^\d+\+$/.test(opt) ? parseInt(opt, 10) : null;
+          return (
+            <button
+              key={opt}
+              className={CHIP}
+              disabled={!interactive}
+              onClick={() => (floor != null ? setCountFloor(floor) : submit(opt))}
+            >
+              {opt}
+            </button>
+          );
+        })}
+        {!meta?.noOther && (
+          <button className={CHIP} disabled={!interactive} onClick={() => setOtherMode(true)}>
+            Something else…
           </button>
-        ))}
-        <button className={CHIP} disabled={!interactive} onClick={() => setOtherMode(true)}>
-          Something else…
-        </button>
+        )}
         {meta?.allowUnsure && (
           <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
             No Preference

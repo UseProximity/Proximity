@@ -398,10 +398,13 @@ function toGroupInt(v, fallback) {
 //
 // A trailing "+", or a single value with no explicit upper end, means "or more":
 // no upper bound (Infinity), i.e. "fits at least N". An explicit range keeps only
-// listings whose capacity sits inside it.
+// listings whose bedroom count sits inside it.
 export function parseGroupRange(raw) {
   let min;
   let max;
+  // "Studio" is one person who specifically wants a 0-bedroom unit — a closed
+  // range of exactly 0 beds, so studios are matched and 1-beds are not.
+  if (/^\s*studio\s*$/i.test(String(raw ?? ""))) return { min: 0, max: 0 };
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     min = toGroupInt(raw.min, 1);
     max = raw.max == null || /\+/.test(String(raw.max)) ? Infinity : toGroupInt(raw.max, min);
@@ -435,24 +438,11 @@ function bedsInGroupRange(beds, { min, max }) {
   return beds >= (min <= 1 ? 0 : min) && beds <= max;
 }
 
-// Whether a listing can house a group within the range — either a single unit
-// whose bedroom count sits in range, or (for splitting across the building) a
-// total capacity in range. The upper bound keeps oversized places out so matches
-// stay "in that range".
-function listingFitsRange({ maxBeds, capacity }, range) {
-  return bedsInGroupRange(maxBeds, range) || bedsInGroupRange(capacity, range);
-}
-
-// Total bedrooms a listing can house when a group splits across its units in the
-// SAME building (each unit with at least one active priced lease counts once).
-// Lets a 6-person group match a building of three 2-bed units even when no single
-// unit fits everyone — i.e. "living together" without one giant place.
-function buildingCapacity(listing) {
-  return (listing.listing_units ?? []).reduce((sum, u) => {
-    const hasActive = (u.unit_leases ?? []).some((l) => l.is_active && l.rent > 0);
-    return hasActive ? sum + (Number(u.bedrooms) || 0) : sum;
-  }, 0);
-}
+// Groups of this size or larger can't be housed by ANY single unit on the market
+// (nothing listed has 5+ bedrooms), so they — and only they — may take multiple
+// units in the same building. Smaller groups must fit under one roof: we never
+// tell three people to rent two separate apartments.
+const SPLIT_MIN_GROUP = 5;
 
 // Bedroom size taken from the listing's UNITS, independent of whether a price is
 // set — so a listing with no priced lease can still be sized for group fit and
@@ -460,56 +450,67 @@ function buildingCapacity(listing) {
 function unitMaxBeds(listing) {
   return Math.max(0, ...(listing.listing_units ?? []).map((u) => Number(u.bedrooms) || 0));
 }
-function unitTotalBeds(listing) {
-  return (listing.listing_units ?? []).reduce((s, u) => s + (Number(u.bedrooms) || 0), 0);
+
+// The bedroom count of each rentable unit in the building (priced units when any
+// exist, so we don't build a split out of units nobody can actually lease).
+function unitBedSizes(listing) {
+  const units = (listing.listing_units ?? []).filter((u) => (Number(u.bedrooms) || 0) > 0);
+  const priced = units.filter((u) => (u.unit_leases ?? []).some((l) => l.is_active && l.rent > 0));
+  return (priced.length ? priced : units).map((u) => Number(u.bedrooms) || 0);
 }
 
-// Bed metrics for a listing: cheapest per-person price, the biggest SINGLE
+// FLUSH split: the fewest units in this building whose bedrooms sum to EXACTLY
+// `people` — e.g. a 2-bed plus a 3-bed for a group of five. Returns null when no
+// combination lands exactly, so we never propose a split that strands the group
+// paying for an empty bedroom (or leaves someone without one). A 0/1 subset-sum
+// over a handful of small units, minimizing the number of leases they'd sign.
+function flushSplit(listing, people) {
+  if (!Number.isFinite(people) || people < 2) return null;
+  const sizes = unitBedSizes(listing);
+  if (sizes.length === 0) return null;
+  const fewest = new Array(people + 1).fill(Infinity);
+  fewest[0] = 0;
+  for (const beds of sizes) {
+    for (let sum = people; sum >= beds; sum--) {
+      if (fewest[sum - beds] + 1 < fewest[sum]) fewest[sum] = fewest[sum - beds] + 1;
+    }
+  }
+  return Number.isFinite(fewest[people]) ? { count: fewest[people], beds: people } : null;
+}
+
+// Bed metrics for a listing: cheapest per-person price and the biggest SINGLE
 // unit (priced leases first, falling back to the units' own bedroom counts when
-// nothing is priced), and the building's COLLECTIVE beds across all units. The
-// single source of truth for group-fit sizing everywhere in the pipeline.
+// nothing is priced). The single source of truth for group-fit sizing everywhere
+// in the pipeline.
 function bedMetrics(listing) {
   const perPerson = minPerPerson(listing);
   const pricedBeds = Math.max(0, ...activeLeasesOf(listing).map((l) => Number(l.bedrooms) || 0));
   const maxBeds = pricedBeds > 0 ? pricedBeds : unitMaxBeds(listing);
-  const capacity = Math.max(maxBeds, perPerson == null ? unitTotalBeds(listing) : buildingCapacity(listing));
-  return { perPerson, maxBeds, capacity };
+  return { perPerson, maxBeds };
 }
 
-// Whether a listing can house a group within the requested range — either a
-// single unit whose bedroom count is in range, or enough total bedrooms across
-// the building's units (splitting across units in the same place).
+// How (and whether) a listing houses the requested group:
+//   { fits: true,  split: null }            one unit sleeps everyone
+//   { fits: true,  split: { count, beds } } a FLUSH multi-unit combo (5+ only)
+//   { fits: false, split: null }            can't house them — drop it
+// The upper bound on `range` keeps oversized places out so matches stay in range.
+function groupFit(listing, range) {
+  const { maxBeds } = bedMetrics(listing);
+  if (bedsInGroupRange(maxBeds, range)) return { fits: true, split: null };
+  if (range.min < SPLIT_MIN_GROUP) return { fits: false, split: null };
+  const split = flushSplit(listing, range.min);
+  return split && split.count > 1 ? { fits: true, split } : { fits: false, split: null };
+}
+
+// Whether this listing can house a group within the requested range at all.
 function listingFitsGroup(listing, range) {
-  const { maxBeds, capacity } = bedMetrics(listing);
-  return listingFitsRange({ maxBeds, capacity }, range);
+  return groupFit(listing, range).fits;
 }
 
-// Whether ONE unit of the listing sleeps the whole group. A listing that houses
-// the group only via its collective beds (multiple units in the same building)
-// fails this — it's still a valid match, but the student must be TOLD they'd
-// split across units. Exported for the narrowing phase.
-export function fitsInOneUnit(listing, range) {
-  return bedsInGroupRange(bedMetrics(listing).maxBeds, range);
-}
-
-// How the group would occupy a listing when no single unit fits them all: the
-// MINIMUM number of units (biggest-first, priced ones when any exist) a group
-// of `people` would take, and the beds those units add up to. Used to phrase
-// the split honestly ("you'd split across 3 units...") without implying the
-// group rents the whole building.
-function splitUnitSummary(listing, people) {
-  const units = (listing.listing_units ?? []).filter((u) => (Number(u.bedrooms) || 0) > 0);
-  const priced = units.filter((u) => (u.unit_leases ?? []).some((l) => l.is_active && l.rent > 0));
-  const sizes = (priced.length ? priced : units)
-    .map((u) => Number(u.bedrooms) || 0)
-    .sort((a, b) => b - a);
-  let count = 0, beds = 0;
-  for (const b of sizes) {
-    if (beds >= people) break;
-    beds += b;
-    count += 1;
-  }
-  return { count, beds };
+// The flush multi-unit split a group would take here, or null when one unit
+// sleeps them all. Exported for the narrowing phase.
+export function splitFor(listing, range) {
+  return groupFit(listing, range).split;
 }
 
 function avgReview(listing) {
@@ -896,24 +897,35 @@ function hardEligible(allListings, preferences) {
     ...(preferences?._excluded ?? []), // places the student turned down
     ...(preferences?._setAside ?? []), // places already shown (never repeat)
     ...(preferences?._narrowed ?? []), // pruned by our own tradeoff questions
+    ...(preferences?._autoPruned ?? []), // pruned silently, never shown to them
   ]);
 
   let candidates = applySubleaseTermGate(applySubleasePref(allListings, preferences), leaseTests)
     .filter((listing) => !excluded.has(listing.id) && !isListingExcludedForViewer(listing, preferences))
     .map((listing) => {
-      const { perPerson, maxBeds, capacity } = bedMetrics(listing);
+      const { perPerson, maxBeds } = bedMetrics(listing);
       if (perPerson == null && maxBeds === 0) return null;
-      return { listing, perPerson, maxBeds, capacity };
+      return { listing, perPerson, maxBeds };
     })
     .filter(Boolean);
 
-  // STRICT bed floor (hard, never relaxed): a listing whose COLLECTIVE beds
-  // across all units can't house the group is useless to them. ROOM-SHARES
-  // (one room offered in an already-occupied unit) are hard-excluded here too:
-  // whatever the unit's bedroom count claims, only one bed is actually on
-  // offer, so a group can never take one.
+  // STRICT bed floor (hard, never relaxed): a group under SPLIT_MIN_GROUP must
+  // fit in a SINGLE unit — we won't tell three people to rent two separate
+  // apartments just because the building's units add up. At 5+ (where no single
+  // unit exists) a FLUSH multi-unit combo qualifies instead. ROOM-SHARES (one
+  // room offered in an already-occupied unit) are hard-excluded either way:
+  // whatever the unit's bedroom count claims, only one bed is actually on offer,
+  // so a group can never take one.
+  // Applies whenever the range actually restricts: a group (min 2+) or a studio
+  // request (an exact 0-bed range). A plain solo search ("1") is open-topped and
+  // filters nothing, so a single student still sees every size.
+  if (groupRange.min >= 2 || Number.isFinite(groupRange.max)) {
+    candidates = candidates.filter((x) => listingFitsGroup(x.listing, groupRange));
+  }
+  // Room-shares are a single bed in an occupied unit, so no GROUP can ever take
+  // one. A solo student (including a studio search) may still see them.
   if (groupRange.min >= 2) {
-    candidates = candidates.filter((x) => x.capacity >= groupRange.min && !isRoomShareListing(x.listing));
+    candidates = candidates.filter((x) => !isRoomShareListing(x.listing));
   }
 
   // Pets: HARD-exclude any place whose description explicitly bans them.
@@ -926,13 +938,21 @@ function hardEligible(allListings, preferences) {
 
 // The candidates a student is strictly eligible for: every hard gate AND every
 // relaxable constraint passes. Used by the narrowing phase to count/inspect the
-// live candidate set. Returns [{ listing, perPerson, maxBeds, capacity }].
+// live candidate set. Returns [{ listing, perPerson, maxBeds }].
 export function filterEligible(allListings, preferences) {
-  const groupRange = parseGroupRange(preferences?.group_size);
+  return splitEligible(allListings, preferences).strict;
+}
+
+// The same candidates, split into the STRICT pool (fits everything they asked
+// for) and the tagged SHADOW pool (misses exactly ONE relaxable constraint).
+// The narrowing phase asks tradeoff questions across BOTH — a shadow listing is
+// only ever shown if the student picks its side of a question (see
+// `_shadowOptIn`) — while its stop condition still counts STRICT fits only.
+export function splitEligible(allListings, preferences) {
   const relaxInputs = relaxInputsOf(preferences);
-  return hardEligible(allListings, preferences).filter(
-    (x) => listingFitsRange(x, groupRange) && relaxFailures(x, relaxInputs).length === 0
-  );
+  // hardEligible already applied the group bed floor (single unit, or a flush
+  // multi-unit combo at 5+), so only the relaxable constraints are left to check.
+  return splitRelaxable(hardEligible(allListings, preferences), relaxInputs);
 }
 
 // Deterministic pre-LLM pipeline: turn the raw listing rows into the scored,
@@ -953,7 +973,46 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // constraint passes) and the tagged SHADOW pool (exactly ONE fails — the
   // "if you'd relax this one thing" candidates). Listings failing two or more
   // relaxable constraints are genuinely bad fits and drop out.
-  const { strict, shadow } = splitRelaxable(candidates, relaxInputs);
+  const split = splitRelaxable(candidates, relaxInputs);
+  const allShadow = split.shadow;
+  let strict = split.strict;
+
+  // BACKFILL — the floor that keeps narrowing from ever stranding the student on
+  // one or two cards. Narrowing can cut the field to almost nothing: a tradeoff
+  // answer whose winning side held two listings leaves two, and our own silent
+  // auto-pruning can do the same. Neither is a reason to show a one-card result
+  // when the market has more places that fit.
+  //
+  // So when fewer than three FIT listings remain, put narrowed-out ones back, in
+  // order of how defensible it is to revive them:
+  //   1. `_autoPruned`  — we dropped these for them, silently, unasked.
+  //   2. `_narrowed`    — they answered these away, so only as a last resort.
+  // Never revived: `_excluded` (they saw it and said no) and `_setAside` (already
+  // shown). Everything here still satisfies every stated constraint — the floor
+  // never reaches into the shadow pool to pad a thin result.
+  const backfilledById = {};
+  const revive = (key) => {
+    if (strict.length >= 3 || (preferences[key]?.length ?? 0) === 0) return;
+    const have = new Set(strict.map((x) => x.listing.id));
+    const revived = splitRelaxable(
+      hardEligible(allListings, { ...preferences, [key]: [] }),
+      relaxInputs
+    ).strict.filter((x) => !have.has(x.listing.id));
+    for (const x of revived) backfilledById[x.listing.id] = true;
+    strict = [...strict, ...revived];
+  };
+  revive("_autoPruned");
+  revive("_narrowed");
+
+  // SHADOW IS OPT-IN. A listing that misses one of their stated constraints is
+  // only ever SHOWN when the student took its side in a narrowing tradeoff
+  // ("would you go $98 over to be 7 minutes closer?" -> yes). Everything else in
+  // the shadow pool stays out of the results entirely, no matter how well it
+  // scores — we don't quietly hand someone a place that breaks what they told us.
+  // The coaching notes below still count the FULL shadow pool, so Proxy can say
+  // "raising your budget would open up 6 more" without showing any of them.
+  const optIn = new Set(preferences._shadowOptIn ?? []);
+  const shadow = allShadow.filter((s) => optIn.has(s.listing.id));
 
   // The coaching notes below ("this is a tight combination", "raising your budget
   // would open up N more") answer ONE question: can the market satisfy what the
@@ -961,13 +1020,20 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // them — the tradeoff answers (_narrowed) and the never-repeat set-aside. A
   // field thinned by Proxy's own narrowing questions is not a hard combination,
   // and telling the student to raise their budget over it is simply wrong.
-  const pruned = (preferences._narrowed?.length ?? 0) + (preferences._setAside?.length ?? 0) > 0;
+  const pruned =
+    (preferences._narrowed?.length ?? 0) +
+      (preferences._setAside?.length ?? 0) +
+      (preferences._autoPruned?.length ?? 0) >
+    0;
   const coachCandidates = pruned
-    ? hardEligible(allListings, { ...preferences, _narrowed: [], _setAside: [] })
+    ? hardEligible(allListings, { ...preferences, _narrowed: [], _setAside: [], _autoPruned: [] })
     : candidates;
+  // Note this uses the FULL shadow pool (allShadow), not the opted-in slice: the
+  // coach's job is to say what relaxing a constraint WOULD unlock, which is true
+  // whether or not the student ever opted into any of it.
   const { strict: coachStrict, shadow: coachShadow } = pruned
     ? splitRelaxable(coachCandidates, relaxInputs)
-    : { strict, shadow };
+    : { strict, shadow: allShadow };
 
   // Near-hard preferences (pets/parking, read from the free-text note): prefer
   // listings that list the amenity, but never empty the strict pool over it.
@@ -997,20 +1063,26 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
 
   const inBudget = ({ perPerson }) => perPerson == null || budgetMax === Infinity || perPerson <= budgetMax;
 
-  // Be honest about group fit. The strict bed floor upstream guarantees
-  // everything still in play has enough collective beds for the whole group —
-  // so the note's job is to say when NOTHING can house them (empty result),
-  // when the only big-enough places bust the budget, or when fitting means
-  // taking multiple units in the same building (also flagged per-pick).
+  // Be honest about group fit. The strict bed floor upstream guarantees every
+  // remaining listing has a SINGLE unit that sleeps the whole group — so the
+  // note's job is to say when nothing on the market does (empty result), or when
+  // the only big-enough places bust the budget.
   let groupNote = null;
   if (groupSize >= 2) {
     const fitInBudget = coachCandidates.filter(inBudget);
+    // How we'd house them at all depends on size: under SPLIT_MIN_GROUP it's one
+    // unit or nothing; at 5+ it's a flush combination of units in one building.
+    const bySplit = groupSize >= SPLIT_MIN_GROUP;
+    // "fitInBudget" is what we could actually SHOW them: over-budget places are
+    // opt-in now, so an all-over-budget field means we show nothing, not that we
+    // quietly fall back to the over-budget ones.
     if (coachCandidates.length === 0) {
-      groupNote = `Heads up: I don't have any listings with enough total beds for all ${groupSize} of you right now, and I won't suggest places your group can't actually fit. Try a smaller group or check back soon — new places get listed often.`;
+      groupNote = bySplit
+        ? `Heads up: I can't find a building whose units add up to exactly ${groupSize} bedrooms right now, and I won't put you somewhere you'd pay for rooms you don't need. Try a smaller group or check back soon — new places get listed often.`
+        : `Heads up: I don't have a single place with ${groupSize} bedrooms available right now, and I won't split a group your size across separate apartments. Try a smaller group or check back soon — new places get listed often.`;
     } else if (fitInBudget.length === 0) {
-      groupNote = `Heads up: nothing with enough beds for all ${groupSize} of you came in under $${Math.round(budgetMax)}/mo per person, so the closest fits below run over budget — but every one of them can house your whole group.`;
-    } else if (fitInBudget.every((x) => x.maxBeds < groupRange.min)) {
-      groupNote = `To fit all ${groupSize} of you, you'd take multiple units in the same building rather than one big place — I've flagged that on each match.`;
+      const roof = bySplit ? "in the same building" : "under one roof";
+      groupNote = `Heads up: nothing with room for all ${groupSize} of you came in under $${Math.round(budgetMax)}/mo per person. Places that house your whole group ${roof} do exist just above that line — tell me if you want me to include them.`;
     }
   }
 
@@ -1024,12 +1096,14 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
     const unknownCount = coachCandidates.filter((x) => priceState(x) === "unknown").length;
     const b = Math.round(budgetMax);
     if (inCount === 0) {
+      // Over-budget places are opt-in, so we are NOT showing them here — say what
+      // we have and let the student decide, rather than implying they're below.
       budgetNote =
         unknownCount > 0
-          ? `Heads up: I couldn't find anything confirmed under $${b}/mo per person. A few options below don't list a price (worth asking the landlord), and the rest run over budget, so $${b} may be a little low for what's on the market right now.`
-          : `Heads up: nothing came in under $${b}/mo per person right now, so these are the closest I have, but they run over budget. Your budget may be a little low for what's currently listed.`;
+          ? `Heads up: I couldn't find anything confirmed under $${b}/mo per person. A few options below don't list a price (worth asking the landlord), and everything else on the market right now runs over $${b} — say the word and I'll show you those too.`
+          : `Heads up: nothing came in under $${b}/mo per person right now. There are places just above that line, so tell me if you'd like to see them and I'll widen the search.`;
     } else if (inCount < Math.min(3, limit)) {
-      budgetNote = `Heads up: only ${inCount === 1 ? "one place fits" : `${inCount} places fit`} under $${b}/mo per person, so I've led with ${inCount === 1 ? "it" : "those"} and added the closest other options (some over budget or without a listed price) so you can weigh the tradeoff.`;
+      budgetNote = `Heads up: only ${inCount === 1 ? "one place fits" : `${inCount} places fit`} under $${b}/mo per person right now, so the field is thin. If you're open to going a little above $${b}, just say so and I'll widen it.`;
     }
   }
 
@@ -1092,7 +1166,7 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   const picked = [...strictPicked, ...shadowPicked];
   const pool = picked.map((x) => x.listing);
   if (pool.length === 0) {
-    return { pool: [], dims: {}, fitById: {}, perPersonById: {}, relaxById: {}, oversizedById: {}, roomShareById: {}, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
+    return { pool: [], dims: {}, fitById: {}, perPersonById: {}, relaxById: {}, oversizedById: {}, roomShareById: {}, backfilledById: {}, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
   }
 
   // ROOM-SHARE tag (solo searches only — groups never see these, see
@@ -1116,10 +1190,14 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
       fitById[id] = (fitById[id] ?? 0) * 0.85;
     }
     if (relaxById[id]) fitById[id] = (fitById[id] ?? 0) * 0.9;
+    // A backfilled listing lost its tradeoff on the dimensions this student
+    // cares about, so it fills the empty third slot rather than displacing the
+    // matches that survived narrowing on merit.
+    if (backfilledById[id]) fitById[id] = (fitById[id] ?? 0) * 0.8;
   }
   pool.sort((a, b) => (fitById[b.id] ?? 0) - (fitById[a.id] ?? 0));
   const perPersonById = Object.fromEntries(pool.map((l) => [l.id, minPerPerson(l)]));
-  return { pool, dims, fitById, perPersonById, relaxById, oversizedById, roomShareById, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
+  return { pool, dims, fitById, perPersonById, relaxById, oversizedById, roomShareById, backfilledById, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
 }
 
 // Pick the deterministic TOP 3. Product rule (deliberately NOT "what's
@@ -1175,23 +1253,18 @@ export function selectTopThree({ pool, dims, fitById, perPersonById, budgetMax, 
   const hoodBase = wantsHood ? choiceBase.filter(inHood) : choiceBase;
   const effBase = hoodBase.length ? hoodBase : choiceBase;
 
-  // Group fit gates BEFORE priority: when the search is for 2+ people and ANY
-  // in-scope listing sits inside the requested range, the headline (and
-  // spinoffs) are chosen from those first.
+  // The strict bed floor upstream already guarantees every pool listing houses
+  // the group — in ONE unit, or (at 5+ only) via a FLUSH combination of units in
+  // the same building. That's a legitimate match, as long as the pick SAYS so
+  // plainly instead of implying one unit sleeps everyone.
   const groupRange = parseGroupRange(preferences.group_size);
   const groupSize = parseGroupSize(preferences.group_size); // representative size for prose
   const needsGroup = groupRange.min >= 2;
-  const fitsGroup = (l) => listingFitsGroup(l, groupRange);
-  const fittingEff = needsGroup ? effBase.filter(fitsGroup) : effBase;
-  const groupBase = needsGroup && fittingEff.length ? fittingEff : effBase;
-  // Every pool listing already has enough COLLECTIVE beds for the group (the
-  // strict bed floor upstream guarantees it), but some only fit by taking
-  // multiple units in the same building. That's a legitimate match — as long as
-  // the pick SAYS so plainly instead of implying one unit sleeps everyone.
-  const splitUnits = (l) => needsGroup && !fitsInOneUnit(l, groupRange);
+  const groupBase = effBase;
+  const splitOf = (l) => (needsGroup ? splitFor(l, groupRange) : null);
   const splitNote = (l) => {
-    const { count, beds } = splitUnitSummary(l, groupSize);
-    return ` Heads up: no single unit here sleeps all ${groupSize} of you, so you'd split across ${count} units in the same building (${beds} beds between them).`;
+    const { count } = splitOf(l);
+    return ` Heads up: no single unit here sleeps all ${groupSize} of you, so you'd take ${count} units in the same building — they add up to exactly ${groupSize} bedrooms, so nobody's paying for a room you don't need.`;
   };
 
   // "Good value" treats the budget as a TARGET, not a race to the bottom: a
@@ -1257,11 +1330,11 @@ export function selectTopThree({ pool, dims, fitById, perPersonById, budgetMax, 
     if (best) { spinoffs.push({ listing: best, key }); usedSpin.add(best.id); usedKeys.add(buildingKey(best)); }
   }
   // Backfill if data was too thin to find two distinct standout plusses. Prefer
-  // listings where one unit fits the whole group (splitUnits false sorts ahead),
-  // so split-across-units options only appear once nothing simpler is left.
+  // listings where one unit fits the whole group (a split sorts behind), so
+  // multi-unit options only appear once nothing simpler is left.
   if (spinoffs.length < 2) {
     for (const l of [...spinPool, ...effBase, ...choiceBase].sort(
-      (a, b) => (splitUnits(a) - splitUnits(b)) || sat(a.id) - sat(b.id) || (fitById[b.id] ?? 0) - (fitById[a.id] ?? 0)
+      (a, b) => (!!splitOf(a) - !!splitOf(b)) || sat(a.id) - sat(b.id) || (fitById[b.id] ?? 0) - (fitById[a.id] ?? 0)
     )) {
       if (spinoffs.length >= 2) break;
       if (l.id === headline?.id || usedSpin.has(l.id) || usedKeys.has(buildingKey(l))) continue;
@@ -1282,9 +1355,8 @@ export function selectTopThree({ pool, dims, fitById, perPersonById, budgetMax, 
       listing_id: headline.id,
       score: Math.round((fitById[headline.id] ?? 0) * 100) / 100,
       intention: "Best overall match",
-      group_fit: !needsGroup || fitsGroup(headline),
-      unit_split: splitUnits(headline),
-      reason: headBase + (splitUnits(headline) ? splitNote(headline) : "") + relaxNoteOf(headline) + roomNoteOf(headline),
+      unit_split: !!splitOf(headline),
+      reason: headBase + (splitOf(headline) ? splitNote(headline) : "") + relaxNoteOf(headline) + roomNoteOf(headline),
       card_data: extractCardData(headline),
     });
   }
@@ -1301,9 +1373,8 @@ export function selectTopThree({ pool, dims, fitById, perPersonById, budgetMax, 
         : key === "reviews" ? "Best reviews"
         : key === "proximity" ? "Closest to campus"
         : "Another strong fit",
-      group_fit: !needsGroup || fitsGroup(listing),
-      unit_split: splitUnits(listing),
-      reason: spinBase + (splitUnits(listing) ? splitNote(listing) : "") + relaxNoteOf(listing) + roomNoteOf(listing),
+      unit_split: !!splitOf(listing),
+      reason: spinBase + (splitOf(listing) ? splitNote(listing) : "") + relaxNoteOf(listing) + roomNoteOf(listing),
       card_data: extractCardData(listing),
     });
   }
@@ -1385,7 +1456,7 @@ const RANKING_INSTRUCTION = [
   "reason.",
   // ── ROOM-SHARE HONESTY ──────────────────────────────────────────────────────
   "ROOM-SHARE HONESTY (critical): a candidate with room_share true is ONE private room inside an " +
-  "already-occupied unit; the student would live with the current tenants, and beds_total describes " +
+  "already-occupied unit; the student would live with the current tenants, and bedrooms_max describes " +
   "the unit, not what is on offer. Never treat its low price as beating whole-place options by " +
   "default (a room and an apartment are different products), pick it only when it genuinely suits " +
   "this student, and its reason MUST say plainly that it is a room with existing roommates, never " +
@@ -1403,11 +1474,12 @@ const RANKING_INSTRUCTION = [
   "to the owner because the fit is worth confirming. If nothing is within budget, lead by " +
   "acknowledging their budget is tight rather than pretending.",
   // ── GROUP FIT HONESTY ───────────────────────────────────────────────────────
-  "GROUP FIT HONESTY (critical): every candidate has enough total beds (beds_total) for the whole " +
-  "group, but one with requires_unit_split true cannot sleep everyone in a single unit; the group " +
-  "would rent multiple units in the same building. If you pick such a listing, its reason MUST say " +
-  "that plainly, using its units_for_group count verbatim (e.g. units_for_group 3 -> 'you'd take " +
-  "three units in the same building'), and must never imply one unit fits everyone.",
+  "GROUP FIT HONESTY (critical): every candidate can house the whole group. One with " +
+  "requires_unit_split true does so across SEVERAL units in the same building rather than one unit " +
+  "(only ever the case for groups of 5+, where nothing listed has that many bedrooms); those units " +
+  "add up to exactly the headcount, so nobody pays for a spare room. If you pick such a listing, its " +
+  "reason MUST say that plainly, using its units_for_group count verbatim (e.g. units_for_group 2 -> " +
+  "'you'd take two units in the same building'), and must never imply one unit fits everyone.",
   // ── DESCRIPTION EVIDENCE ────────────────────────────────────────────────────
   "DESCRIPTION EVIDENCE (data, not marketing): each candidate carries its full `description` (the " +
   "landlord's own writeup) and `restrictions` parsed from it. Use the description ONLY to fill gaps " +
@@ -1488,18 +1560,16 @@ export async function rankListings({
     candidates: pool.map((l) => {
       const pp = perPersonById[l.id];
       const mgmt = mgmtStatsById[l.id] ?? { count: 0, avg: null };
-      const split = needsGroup && !fitsInOneUnit(l, groupRange);
+      const split = needsGroup ? splitFor(l, groupRange) : null;
       return {
         ...slimCandidate(l),
-        // Collective beds across every unit in the building. Every candidate
-        // already has enough for the whole group (hard-filtered upstream).
-        beds_total: bedMetrics(l).capacity,
-        // true = no single unit sleeps the whole group; they'd take multiple
-        // units in the same building. The reason MUST say so plainly.
-        requires_unit_split: split,
-        // Minimum units the group would take when splitting — cite this
+        // true = no single unit sleeps the whole group; they'd take several units
+        // in the same building that add up to EXACTLY the headcount (only ever
+        // true at 5+). The reason MUST say so plainly.
+        requires_unit_split: !!split,
+        // Number of units the group would take when splitting — cite this
         // number in the reason; never guess one.
-        units_for_group: split ? splitUnitSummary(l, parseGroupSize(preferences.group_size)).count : null,
+        units_for_group: split ? split.count : null,
         fit_score: Math.round((fitById[l.id] ?? 0) * 100) / 100,
         // The landlord's whole-portfolio review record (not just this unit), so the
         // ranker can favor proven, well-reviewed landlords. count=reviews across

@@ -148,6 +148,7 @@ export default function ChatClient() {
         ts: m.ts,
         ...(m.question ? { question: m.question } : {}),
         ...(m.questionId ? { questionId: m.questionId } : {}),
+        ...(m.tradeoffIndex != null ? { tradeoffIndex: m.tradeoffIndex } : {}),
         ...(m.recommendations ? { recommendations: m.recommendations } : {}),
         ...(m.draft ? { draft: m.draft } : {}),
       }));
@@ -338,7 +339,13 @@ export default function ChatClient() {
   const handleTradeoffAnswer = useCallback(
     (answer) => {
       trackEvent("Proxy Question Answered", { questionId: "tradeoff", kind: "tradeoff", answer: answerToLabel(answer) });
-      setMessages((prev) => [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }]);
+      // Stamp the tradeoff's position so this bubble gets an "Edit" affordance that
+      // rewinds the narrowing phase to exactly this question (see handleEditFrom).
+      const tradeoffIndex = prefsRef.current?._tradeoffHistory?.length ?? 0;
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: answerToLabel(answer), ts: new Date().toISOString(), questionId: "tradeoff", tradeoffIndex },
+      ]);
       setLoading(true);
       postChain.current = postChain.current.then(async () => {
         try {
@@ -549,10 +556,16 @@ export default function ChatClient() {
                 ]);
               }
             } else if (data.nextQuestion) {
+              // `note` is a standalone remark Proxy makes before asking the next
+              // question (e.g. "a group your size takes a couple of units") — its
+              // own bubble, so it doesn't get mixed into the question text.
+              const note = data.note
+                ? [{ role: "assistant", content: data.note, ts: new Date().toISOString(), animate: true }]
+                : [];
               setMessages((prev) =>
                 qKey(prev[prev.length - 1]?.question) === qKey(data.nextQuestion)
                   ? prev
-                  : [...prev, questionToMessage(data.nextQuestion, true)]
+                  : [...prev, ...note, questionToMessage(data.nextQuestion, true)]
               );
             } else if (data.recommendations?.length) {
               appendRecsWithContact(data);
@@ -612,6 +625,7 @@ export default function ChatClient() {
             ts: m.ts,
             ...(m.question ? { question: m.question } : {}),
             ...(m.questionId ? { questionId: m.questionId } : {}),
+            ...(m.tradeoffIndex != null ? { tradeoffIndex: m.tradeoffIndex } : {}),
             ...(m.recommendations ? { recommendations: m.recommendations } : {}),
             ...(m.draft ? { draft: m.draft } : {}),
           }));
@@ -715,7 +729,55 @@ export default function ChatClient() {
   // Edit a past prompt: rewind prefs/weights to before that question, truncate
   // the chat back to it, and re-ask it (the user continues forward from there).
   const handleEditFrom = useCallback(
-    (questionId) => {
+    (questionId, tradeoffIndex) => {
+      // Tradeoff answers live in server-side narrowing state, so the server does
+      // the rewind and hands back the question to re-ask.
+      if (questionId === "tradeoff") {
+        trackEvent("Proxy Answer Edited", { questionId: "tradeoff" });
+        setStatus("in_progress");
+        setRecommendations([]);
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.role === "user" && m.questionId === "tradeoff" && m.tradeoffIndex === tradeoffIndex);
+          if (idx < 0) return prev;
+          // Drop the answer and the question bubble that prompted it — the server
+          // re-sends that question, so keeping it here would double it up.
+          let cut = idx;
+          while (cut > 0 && prev[cut - 1].role === "assistant") cut -= 1;
+          return prev.slice(0, cut);
+        });
+        setLoading(true);
+        postChain.current = postChain.current.then(async () => {
+          try {
+            const res = await fetch("/api/matchmaking/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, action: "rewind_tradeoff", tradeoffIndex }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              if (data.preferences) {
+                setPreferences(data.preferences);
+                prefsRef.current = data.preferences;
+              }
+              if (data.weights) {
+                setWeights(data.weights);
+                weightsRef.current = data.weights;
+              }
+              if (data.nextQuestion) {
+                setMessages((prev) => [...prev, questionToMessage(data.nextQuestion, true)]);
+              } else if (data.recommendations?.length) {
+                appendRecsWithContact(data);
+              }
+            }
+          } catch (err) {
+            console.error("[ChatClient] rewind_tradeoff failed:", err);
+          } finally {
+            setLoading(false);
+          }
+        });
+        return;
+      }
+
       trackEvent("Proxy Answer Edited", { questionId });
       const rewound = rewindTo(prefsRef.current, questionId);
       prefsRef.current = rewound.preferences;
@@ -749,7 +811,7 @@ export default function ChatClient() {
         return truncated;
       });
     },
-    [sessionId]
+    [sessionId, appendRecsWithContact]
   );
 
   // Abandon the current chat and begin a brand-new session from question one.
