@@ -17,9 +17,17 @@ export const QUESTION_PLAN = [
     // Uses the name we just confirmed, so the flow reads as a handoff from the
     // greeting straight into the first real question.
     prompt: "Alright {{name}}, how many people are you planning to live with (including yourself)?",
-    // Tappable count cards; "6+" submits "6+" (parseGroupRange reads it as "at
-    // least 6"). answerToLabel renders the pick as "3 people" / "1 person".
-    options: ["1", "2", "3", "4", "5", "6+"],
+    // Tappable count cards, ascending from 0 bedrooms. "Studio" means one person
+    // in a 0-bedroom unit and matches ONLY studios. No single unit on the market
+    // has 5+ bedrooms, so "5+" needs an EXACT headcount to match a flush
+    // combination of units (see expandCount): tapping it swaps the chip row for a
+    // number field, and the student submits a real number ("6"). answerToLabel
+    // renders the pick as "Studio" / "1 person" / "3 people".
+    options: ["Studio", "1", "2", "3", "4", "5+"],
+    expandCount: true,
+    // A headcount is a closed set — there is no sensible free-text answer, so no
+    // "Something else…" escape hatch on this one.
+    noOther: true,
     allowUnsure: true,
   },
   {
@@ -114,6 +122,8 @@ export const MAX_TRADEOFFS = 4;
 export function peopleLabel(value) {
   const s = String(value ?? "").trim();
   if (!s || s === "No preference") return s;
+  // "Studio" is a place, not a headcount — it reads for itself.
+  if (/^studio$/i.test(s)) return "Studio";
   const n = parseInt(s.replace(/\+/g, ""), 10);
   return `${s} ${n === 1 ? "person" : "people"}`;
 }

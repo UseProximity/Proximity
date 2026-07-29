@@ -111,7 +111,7 @@ function DraftCompose({ draft, loading, onSend }) {
 // A "matches" turn: Proxy's message types out first (markdown-aware), THEN the
 // listing cards render beneath it — which in turn hold their own skeletons until
 // each card's image has loaded (see RecommendationCards).
-function RecsTurn({ msg, updating, userInitial, onTyped }) {
+function RecsTurn({ msg, updating, userInitial, onTyped, onGrow }) {
   const [textDone, setTextDone] = useState(!msg.animate);
   const bubbleMsg = updating ? { ...msg, content: "Updating your matches…", animate: false } : msg;
   return (
@@ -119,6 +119,7 @@ function RecsTurn({ msg, updating, userInitial, onTyped }) {
       <MessageBubble
         message={bubbleMsg}
         userInitial={userInitial}
+        onGrow={onGrow}
         onReady={() => {
           setTextDone(true);
           onTyped?.();
@@ -139,13 +140,14 @@ function RecsTurn({ msg, updating, userInitial, onTyped }) {
 }
 
 // An email-draft turn: Proxy's intro types out, then the editable draft appears.
-function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped }) {
+function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped, onGrow }) {
   const [textDone, setTextDone] = useState(!msg.animate);
   return (
     <div className="space-y-2">
       <MessageBubble
         message={msg}
         userInitial={userInitial}
+        onGrow={onGrow}
         onReady={() => {
           setTextDone(true);
           onTyped?.();
@@ -159,6 +161,10 @@ function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped }) {
     </div>
   );
 }
+
+// How far from the bottom the reader can be before we stop auto-following a
+// message that's still typing (they've scrolled up to re-read something).
+const NEAR_BOTTOM_PX = 80;
 
 export default function ChatWindow({ messages, loading, recsUpdating, userInitial, onSend, onAnswer, onSendDraft, onEdit }) {
   const scrollRef = useRef(null);
@@ -232,6 +238,23 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
     if (container) container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, []);
 
+  // A bubble grew by `delta` px mid-typewriter (its text wrapped onto a new line).
+  // Scroll by exactly that much so the line being written stays where the last
+  // line was, instead of marching off the bottom of the window. Instant, not
+  // smooth: a smooth scroll per line would still be animating when the next line
+  // lands, and the text would drift away faster than the view could catch up.
+  //
+  // Skipped when the user has scrolled up to re-read something — yanking them
+  // back down mid-read would be worse than letting the new text go off-screen.
+  const handleGrow = useCallback((delta) => {
+    const container = scrollRef.current;
+    if (!container || !delta) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom - delta > NEAR_BOTTOM_PX) return; // reading history
+    container.scrollTop += delta;
+  }, []);
+
   // When the answer popup slides up it claims space at the bottom of the window;
   // re-scroll so Proxy's last message rides up above it instead of being hidden.
   useEffect(() => {
@@ -284,17 +307,18 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
           return (
             <div key={i} ref={isLast ? lastMsgRef : null}>
               {msg.recommendations ? (
-                <RecsTurn msg={msg} updating={updatingThis} userInitial={userInitial} onTyped={onTyped} />
+                <RecsTurn msg={msg} updating={updatingThis} userInitial={userInitial} onTyped={onTyped} onGrow={handleGrow} />
               ) : msg.draft ? (
-                <DraftTurn msg={msg} loading={loading} userInitial={userInitial} onSendDraft={onSendDraft} onTyped={onTyped} />
+                <DraftTurn msg={msg} loading={loading} userInitial={userInitial} onSendDraft={onSendDraft} onTyped={onTyped} onGrow={handleGrow} />
               ) : (
                 <MessageBubble
                   message={msg}
                   userInitial={userInitial}
                   // Edit lives under the user's OWN answer bubble: tapping it
                   // rewinds the flow to that question, as if answering it fresh.
-                  onEdit={msg.role === "user" && msg.questionId && onEdit ? () => onEdit(msg.questionId) : undefined}
+                  onEdit={msg.role === "user" && msg.questionId && onEdit ? () => onEdit(msg.questionId, msg.tradeoffIndex) : undefined}
                   onReady={onTyped}
+                  onGrow={handleGrow}
                 />
               )}
             </div>

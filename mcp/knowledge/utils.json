@@ -80,6 +80,10 @@
       "description": "No description — add a top-of-file comment."
     },
     {
+      "file": "src/lib/matchmaking/tradeoffTriage.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/outreach.js",
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
     },

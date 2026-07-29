@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
 import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext, perPersonRentOf } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
-import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
+import { buildNarrowingTurn, applyTradeoffChoice, rewindTradeoffs } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
 import {
   nextQuestion,
@@ -345,7 +345,12 @@ async function resolveCheaperThan(session, refs) {
   }
   // Match against everything they could be referring to: set-asides and
   // narrowing prunes cleared, since a listing they just saw is a fair reference.
-  const eligible = filterEligible(all, { ...(session.preferences ?? {}), _setAside: [], _narrowed: [] });
+  const eligible = filterEligible(all, {
+    ...(session.preferences ?? {}),
+    _setAside: [],
+    _narrowed: [],
+    _autoPruned: [],
+  });
   for (const ref of refs) {
     let listing = resolveEligibleListing(eligible, ref)?.listing ?? null;
     if (!listing) {
@@ -814,6 +819,16 @@ async function finalizeRecommendations(session) {
   };
 }
 
+// Nothing on the market has 5 or more bedrooms in one unit, so a group that big
+// is always going to take several units in the same building. Say it up front,
+// right after they give their headcount, rather than letting a "3 bed" card be a
+// surprise. Returns null for any smaller group (they're held to a single unit).
+function bigGroupHeadsUp(value) {
+  const n = parseInt(String(value ?? "").replace(/[^0-9]/g, ""), 10);
+  if (!Number.isFinite(n) || n < 5) return null;
+  return `Quick heads up: no single place around campus has ${n} bedrooms, so a group your size takes a couple of units in the same building. I'll only show you buildings where those units add up to exactly ${n} bedrooms, so nobody's paying for a room you don't need.`;
+}
+
 // Beyond this walk (minutes) a place realistically needs a car or the shuttle to
 // reach campus. We replaced the upfront "how do you get to campus?" question with
 // this just-in-time check so we only raise it when it actually matters.
@@ -858,7 +873,7 @@ async function maybeCommuteConfirm(session) {
   prefs._commuteAsked = true;
   // Tradeoff pruning: picking DROP excludes the listings filed under KEEP (the
   // far ones); picking KEEP excludes nothing. See applyTradeoffChoice.
-  prefs._pendingTradeoff = { prompt, options: { [KEEP]: far.map((c) => c.listing_id), [DROP]: [] } };
+  prefs._pendingTradeoff = { prompt, options: { [KEEP]: far.map((c) => c.listing_id), [DROP]: [] }, kind: "commute" };
   session.preferences = prefs;
 
   const question = {
@@ -888,6 +903,11 @@ async function runNarrowing(session) {
     console.error("[chatOrchestrator] runNarrowing failed:", err);
     return finalizeRecommendations(session);
   }
+
+  // Adopt any pruning the turn did on its own: questions whose answer was already
+  // determined by what the student told us are resolved silently in code, and the
+  // listings they ruled out come back here in `preferences`.
+  if (turn.preferences) session.preferences = turn.preferences;
 
   if (turn.kind === "tradeoff" && turn.question) {
     // Strip any em dash from the model's prompt (option labels are left intact so
@@ -924,6 +944,37 @@ async function runNarrowing(session) {
 // each step, and report what we loosened. If even the widest search finds nothing
 // new, every change is rolled back so their stated preferences aren't quietly
 // degraded for nothing, and their current matches stay on screen.
+// The student clicked "Edit" on a past TRADEOFF answer. Drop that answer and
+// everything after it (un-pruning the listings they rejected), truncate the
+// transcript back to the question, and re-ask it verbatim — the stored partition
+// means no new LLM call, and answering the other way now genuinely changes the
+// outcome. Falls through to normal narrowing when the entry is too old to re-ask.
+export async function rewindToTradeoff(session, index) {
+  const { preferences, question } = rewindTradeoffs(session.preferences, index);
+  session.preferences = preferences;
+  session.recommendations = [];
+  session.status = "in_progress";
+
+  // Cut the transcript at the answer bubble for this tradeoff.
+  const at = session.transcript.findIndex(
+    (m) => m.role === "user" && m.questionId === "tradeoff" && m.tradeoffIndex === index
+  );
+  if (at >= 0) session.transcript = session.transcript.slice(0, at);
+  // Drop the question bubble that prompted it, so re-asking doesn't duplicate it.
+  while (session.transcript.length && session.transcript[session.transcript.length - 1].role === "assistant") {
+    session.transcript.pop();
+  }
+
+  if (!question) {
+    await persistSession(session);
+    return runNarrowing(session);
+  }
+
+  session.transcript.push({ role: "assistant", content: question.prompt, ts: new Date().toISOString(), question });
+  await persistSession(session);
+  return { session, nextQuestion: question, assistantMessage: question.prompt, recommendations: [] };
+}
+
 export async function continueRelaxedSearch(session) {
   const before = { ...(session.preferences ?? {}) };
   // Guard against a stray/replayed call: without a pending hand-off there is
@@ -1010,7 +1061,7 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     // copy is authoritative for these, so they always override the client echo.
     const prev = session.preferences ?? {};
     const carried = {};
-    for (const k of ["_usage", "_excluded", "_narrowed", "_setAside", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked", "_relaxPending", "_relaxPrevSetAside", "_budgetPinned"]) {
+    for (const k of ["_usage", "_excluded", "_narrowed", "_autoPruned", "_shadowOptIn", "_setAside", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked", "_relaxPending", "_relaxPrevSetAside", "_budgetPinned"]) {
       if (prev[k] !== undefined) carried[k] = prev[k];
     }
     session.preferences = { ...preferences, ...carried };
@@ -1021,7 +1072,16 @@ export async function handleTurn({ session, answer = null, message = "", prefere
   // losing side, then ask the next tradeoff (or finalize if ≤3 / cap reached).
   if (tradeoff) {
     const chosen = tradeoff.chosen ?? "";
-    session.transcript.push({ role: "user", content: String(chosen), ts: new Date().toISOString() });
+    // Stamp which tradeoff this answer was, so its bubble can carry an "Edit"
+    // affordance that rewinds the narrowing phase back to exactly this question.
+    const tradeoffIndex = (session.preferences?._tradeoffHistory ?? []).length;
+    session.transcript.push({
+      role: "user",
+      content: String(chosen),
+      ts: new Date().toISOString(),
+      questionId: "tradeoff",
+      tradeoffIndex,
+    });
     session.preferences = applyTradeoffChoice(session.preferences, chosen);
     return runNarrowing(session);
   }
@@ -1085,12 +1145,20 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     }
   }
 
+  // A group of 5+ can't be housed by any single unit on the market, so set the
+  // expectation the moment they say so — before they see a match and wonder why
+  // it's a 3-bed. Said once, right after the group-size answer.
+  const bigGroupNote = answer?.questionId === "group_size" ? bigGroupHeadsUp(answer.value) : null;
+  if (bigGroupNote) {
+    session.transcript.push({ role: "assistant", content: bigGroupNote, ts: new Date().toISOString() });
+  }
+
   const upcoming = nextQuestion(session.preferences);
 
   if (upcoming) {
     session.transcript.push(buildQuestionMessage(QUESTION_BY_ID[upcoming.id], session.preferences));
     await persistSession(session);
-    return { session, nextQuestion: upcoming, assistantMessage: upcoming.prompt };
+    return { session, nextQuestion: upcoming, assistantMessage: upcoming.prompt, note: bigGroupNote };
   }
 
   // Scripted questions complete — enter the narrowing phase (tradeoff questions

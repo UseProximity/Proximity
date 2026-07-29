@@ -38,9 +38,9 @@ intention.
 - `candidates`: array of listings. Each has `listing_id`, `title`, `address`,
   `home_type` ("Apartment" | "House" | "Other"), `per_person_rent` (**the
   per-person monthly cost — already per person; use it directly**),
-  `bedrooms_max` (biggest single unit), `beds_total` (collective beds across every
-  unit in the building), `requires_unit_split` (true = no single unit sleeps the
-  whole group; they'd rent multiple units in the same building),
+  `bedrooms_max` (biggest single unit), `requires_unit_split` (true = no single
+  unit sleeps the whole group; they'd rent several units in the same building
+  that add up to exactly the headcount — only ever true for groups of 5+),
   `units_for_group` (when splitting: the number of units the group would take —
   cite it verbatim, never guess a count), `lease_term_months` (array),
   `furnished`, `is_sublease` (true = the place itself is offered as a sublease —
@@ -100,17 +100,18 @@ Apply in this order:
    meaningfully more space than the group needs. Pick it only when something
    real (price, quality, location) justifies the extra space, and say why.
 4. **Group fit is pre-enforced — be transparent about splits.** Every candidate
-   already has enough collective beds (`beds_total`) for the whole group; never
-   doubt that, and never pick around it. But a candidate with
-   `requires_unit_split: true` cannot sleep everyone in ONE unit — the group
-   would take multiple units in the same building. If you pick one, its `reason`
-   MUST say so plainly, citing its `units_for_group` count verbatim (e.g.
-   `units_for_group: 3` → "you'd take three units in the same building"); never
-   imply a single unit fits everyone, and never guess a unit count. All else
-   equal, prefer a place where one unit holds the whole group.
+   can house the whole group; never doubt that, and never pick around it. But a
+   candidate with `requires_unit_split: true` cannot sleep everyone in ONE unit —
+   the group would take several units in the same building, adding up to exactly
+   the headcount so nobody pays for a spare room. (This only happens for groups
+   of 5+; nothing on the market has that many bedrooms in one unit.) If you pick
+   one, its `reason` MUST say so plainly, citing its `units_for_group` count
+   verbatim (e.g. `units_for_group: 2` → "you'd take two units in the same
+   building"); never imply a single unit fits everyone, and never guess a unit
+   count. All else equal, prefer a place where one unit holds the whole group.
 5. **Room-shares are a different product.** `room_share: true` means ONE private
    room inside an already-occupied unit — the student would live with the
-   current tenants, and `beds_total` describes the unit, not what's on offer
+   current tenants, and `bedrooms_max` describes the unit, not what's on offer
    (group searches never see these; they only appear for solo students). Its
    low price never beats whole-place options by default: pick one only when it
    genuinely suits this student, and its `reason` MUST say plainly that it's a
