@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
-import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext } from "./listingFilter";
+import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext, perPersonRentOf } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
@@ -11,9 +11,23 @@ import {
   answerToLabel,
 } from "./questionEngine";
 
-// The question flow is fully deterministic (see questionEngine). The ONLY LLM
-// here is a fast Haiku call used to parse a free-text reply when the user types
-// instead of tapping a chip — "light AI polish", never on the common path.
+// ── THE FLOW (this file is the state machine; handleTurn at the bottom is the
+// single entry point) ───────────────────────────────────────────────────────
+//
+//   1. SCRIPTED QUESTIONS — 12 fixed questions, ZERO LLM calls. The client
+//      renders each as tappable controls and answers post back structured, so
+//      nothing here has to interpret prose. See questionScript / questionEngine.
+//   2. NARROWING — once the script is done, if >3 listings still fit, ask up to
+//      MAX_TRADEOFFS listing-aware "Would you X for Y?" questions, then a
+//      one-time commute check. LLM: narrowing.js (phrases + splits the pool).
+//   3. RANKING — the deterministic top 3, explained. LLM: listingFilter.js
+//      (picks/orders/writes the reasons, with code-enforced honesty guardrails).
+//   4. CONVERSATION — after the matches exist, free-text turns go to the
+//      tool-using agent below (AGENT_SYSTEM + AGENT_TOOLS), which can re-rank,
+//      swap in specific listings, or open an email draft to an owner.
+//
+// Every LLM call is best-effort: a failure falls back to deterministic behavior
+// rather than leaving the student stuck. All of them use Haiku.
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
 // Weight dimension → recommendation intention label (must match the labels
@@ -93,43 +107,6 @@ function pickIntentions(weights) {
   return intentions.slice(0, 3);
 }
 
-const PARSE_SYSTEM = `You convert a user's free-text reply into a structured value for ONE housing-preference question on a WashU off-campus housing app. Respond with JSON only: {"value": <value>}.
-Rules by question kind:
-- choice / yesno_pref: value is exactly one of the given options (verbatim).
-- multi: value is an array of options the user picked (verbatim, subset of options).
-- rank: value is the full array of options ordered most-important first (verbatim).
-- budget_max: value is a single number — the max monthly rent per person in dollars.
-- confirm_or_replace: value is the name string the user wants to be called.
-If the reply does not actually answer the question, respond {"value": null}.`;
-
-// Single fast Haiku call to map free text onto the current question's value.
-async function parseFreeText(message, question) {
-  if (!question) return null;
-  try {
-    const response = await getClient().messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 256,
-      system: [{ type: "text", text: PARSE_SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify({
-            question: { kind: question.kind, prompt: question.prompt, options: question.options },
-            reply: message,
-          }),
-        },
-      ],
-    });
-    const raw = response.content.find((b) => b.type === "text")?.text ?? "{}";
-    const jsonText = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```\s*$/m, "").trim();
-    const parsed = JSON.parse(jsonText);
-    return { value: parsed?.value ?? null, usage: response.usage };
-  } catch (err) {
-    console.error("[chatOrchestrator] parseFreeText failed:", err);
-    return { value: null, usage: null };
-  }
-}
-
 // ── Post-recommendation conversational agent ────────────────────────────────
 // Once the 3 matches exist, free-text turns are handled by a tool-using agent
 // (not a one-shot parse). It has the full transcript + the live matches as
@@ -142,11 +119,15 @@ What you can do:
 - Answer questions about the matches using the data you are given (per-person rent, beds/baths, furnished, lease type, amenities, and the highlight note which often includes walk times). Be short and specific. If a detail truly isn't in your data, say so honestly and suggest opening the listing's page; never invent facts.
 - See the whole market, not just the 3 matches: "market" in your data lists EVERY listing that currently fits the student's filters (budget, group size, lease, anything they've ruled out), and it refreshes whenever their preferences change. Use it to answer questions like "is there anything with a gym?", "what else is in the Loop?", or "anything cheaper than these?" by naming real listings with real facts from that data. If a listing is not in "market", it does not fit their current search: say so rather than inventing one, and offer to loosen a filter.
 - Find them different or additional listings: re-rank at any time by calling update_search with ONLY the keys to change. Use preference keys for "cheaper", "closer to campus", "bigger group / more roommates", "no subleases", "change my budget to X", "I actually have 5 people". Put any NEW must-have or dealbreaker that fits no other key (a gym, parking, pet friendly, a specific street) in preferences.notes. Set fresh_options true when they ask for more, new, other, or different options. Use exclude for a specific listing they dislike. Every re-rank returns ONLY listings the student has not been shown before; their previous matches never reappear on the cards (they stay referenceable, and show_listings can bring a specific one back if they ask).
+- ALWAYS call update_search when the student wants different or additional options, even when it looks like they have already seen everything in "market". Never decide on your own that the market is exhausted and never reply that you are out of options or showing repeats: only the tool knows, and when nothing new fits, the app automatically widens their filters and writes the reply itself.
 - Put specific listings on their cards: when the student asks to see particular places from the market (e.g. "show me that Kingsbury one" or "let me see those two with gyms"), call show_listings with those listings' exact titles from "market". This swaps their match cards to exactly those listings.
 - Email an owner for them: when they ask you to email, contact, or reach out to a listing's owner, call open_contact_draft with that listing's title. You CAN do this — never say you can't contact landlords. The student reviews and edits the draft before it sends, and they are CC'd.
 
 Rules:
 - Only re-rank when the student actually wants different options. For a plain question, just answer — do not call update_search.
+- "Cheaper" comes in two forms and they are handled differently. Cheaper than a NUMBER ("under $1,200", "drop my budget to $900") is a budget change: pass preferences.budget_max. Cheaper than LISTINGS ("cheaper than those two Kingsbury places", "less than the second one") is relative: pass cheaper_than naming those listings and do NOT invent a budget number. The app derives the cap from their real prices and reports back what it used, which listings it compared against, and any that have no listed price. Tell the student that number and name any unpriced listing you couldn't measure against.
+- Prices: per-person rent is what the student's budget is measured in. Some listings are posted per person and some for the whole unit, so when you quote a multi-bedroom place, use per_person_rent and, if it helps, mention unit_rent as the whole-unit figure. Never present a whole-unit price as one person's share.
+- Never say you have run out of options, that you are cycling through repeats, or that they have already seen everything that fits. If there is any chance they want different listings, call update_search instead and let the tool result answer. When nothing new fits, the app widens their filters and replies for you.
 - After update_search, the new matches are always listings the student has NOT seen before. The tool result's previous_top names their earlier #1 match and whether it still scores as their best overall fit; when still_best_overall is true, tell them their earlier match is still their strongest overall fit and these three are fresh alternatives. Never present an old match as if it were a new find.
 - Subleases: a listing IS a sublease only when its data says isSublease (matches) or is_sublease (market) is true, meaning the place is someone's existing lease being taken over. subleaseFriendly is a DIFFERENT thing: it means a tenant there would be allowed to sublet later. Never use subleaseFriendly to decide whether a place is a sublease. Subleases are already excluded from matches by default; only if the student explicitly asks to see subleases should you call update_search with exclude_subleases false. Even then, when the student has a lease term, only subleases whose posted description explicitly states a matching timeframe (like "summer sublet" or "June through August") are offered; if a sublease they expect is missing, explain its post does not state a timeframe matching their term.
 - The 3 matches are numbered by "position" in the data (1 = first/top, 2 = second, 3 = third), in the exact order the student sees them. When they say "the first/second/third one", "the second", or "number 2", that means that POSITION. When they name a listing ("Five-Nine", "the Kingsbury place"), match it by title. In either case, when you call a tool, pass the listing's exact title OR its position number (1, 2, or 3) — for an ordinal reference, prefer passing the position number so there is no ambiguity.
@@ -158,7 +139,7 @@ const AGENT_TOOLS = [
   {
     name: "update_search",
     description:
-      "Adjust the student's search and re-rank their top 3 matches. Use for cheaper/closer/bigger-group/no-subleases requests, budget or group-size edits, new must-haves, excluding a disliked listing, or surfacing fresh options beyond the current matches.",
+      "Adjust the student's search and re-rank their top 3 matches. Use for cheaper/closer/bigger-group/no-subleases requests, budget or group-size edits, new must-haves, excluding a disliked listing, or surfacing fresh options beyond the current matches. Call this every time the student wants different options, including when you suspect they have already seen everything: if nothing new fits, the app widens their filters and answers for you.",
     input_schema: {
       type: "object",
       properties: {
@@ -181,6 +162,12 @@ const AGENT_TOOLS = [
           type: "array",
           items: { type: "string" },
           description: "Shown listings to never show again — each the listing's exact title or its position number ('1', '2', '3').",
+        },
+        cheaper_than: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Use when the student asks for something cheaper THAN specific listings ('cheaper than the two Kingsbury places', 'less than the first one'), rather than cheaper than a number. Each item is a listing's exact title or its position number. Do NOT also set preferences.budget_max in that case: the app reads those listings' real per-person prices and sets the cap itself, and tells you what it used.",
         },
       },
     },
@@ -335,6 +322,134 @@ function resolveEligibleListing(eligible, ref) {
   );
 }
 
+// ── "Cheaper than <these listings>" ─────────────────────────────────────────
+// A RELATIVE price ask. The model's job is only to say WHICH listings the
+// student is comparing against; the number comes from the data, never from the
+// model — asked to invent one it will happily shave a couple hundred off
+// whatever cap is already set, which is not what the student asked for.
+//
+// Resolve each named listing, take the cheapest per-person price among the ones
+// that actually have a price, and cap just below it. Listings with no listed
+// price can't bound anything, so they're reported back to be disclosed rather
+// than quietly ignored.
+async function resolveCheaperThan(session, refs) {
+  const priced = [];
+  const unpriced = [];
+  const unknown = [];
+  let all;
+  try {
+    all = await fetchActiveListings();
+  } catch (err) {
+    console.error("[chatOrchestrator] resolveCheaperThan fetch failed:", err);
+    return { priced, unpriced, unknown: refs };
+  }
+  // Match against everything they could be referring to: set-asides and
+  // narrowing prunes cleared, since a listing they just saw is a fair reference.
+  const eligible = filterEligible(all, { ...(session.preferences ?? {}), _setAside: [], _narrowed: [] });
+  for (const ref of refs) {
+    let listing = resolveEligibleListing(eligible, ref)?.listing ?? null;
+    if (!listing) {
+      const id = resolveShownId(session, ref);
+      listing = id ? all.find((l) => l.id === id) ?? null : null;
+    }
+    if (!listing) {
+      unknown.push(String(ref));
+      continue;
+    }
+    const title = extractCardData(listing).title;
+    const pp = perPersonRentOf(listing);
+    if (pp == null) unpriced.push(title);
+    else priced.push({ title, perPerson: pp });
+  }
+  return { priced, unpriced, unknown };
+}
+
+// ── Auto-widening ───────────────────────────────────────────────────────────
+// When a refine turn can't surface anything the student hasn't already been
+// shown, handing back the same three cards is the worst answer. Instead we
+// loosen ONE relaxable constraint at a time (this ladder, least painful first)
+// and re-rank after each step, stopping the moment new listings appear. Only the
+// constraints listingFilter treats as relaxable are on the ladder: group size,
+// the sublease rules and gender restrictions are never touched.
+//
+// This runs as its OWN turn (see continueRelaxedSearch) so the student first
+// sees a deterministic "widening the search" message and the typing dots, rather
+// than a long silence followed by results whose filters quietly changed.
+const round25 = (n) => Math.round(n / 25) * 25;
+
+// lease_term is a single string now, but older sessions stored an array.
+const statedLeaseTerms = (p) =>
+  Array.isArray(p.lease_term) ? p.lease_term : p.lease_term ? [p.lease_term] : [];
+
+const RELAX_LADDER = [
+  {
+    key: "area",
+    applies: (p) => Array.isArray(p.area) && p.area.some((a) => a && a !== "No preference"),
+    apply: (p) => ({ ...p, area: ["No preference"] }),
+    label: () => "opened up the neighborhoods",
+  },
+  {
+    key: "furnished",
+    applies: (p) => p.furnished === "Yes" || p.furnished === "No",
+    apply: (p) => ({ ...p, furnished: "No preference" }),
+    label: () => "stopped filtering on furnished",
+  },
+  {
+    key: "budget_15",
+    // Never walk back a budget the student just set this turn (see _budgetPinned):
+    // raising it would directly contradict the ask that triggered the widening.
+    applies: (p) => Number(p.budget_max) > 0 && !p._budgetPinned,
+    apply: (p) => ({ ...p, budget_max: round25(Number(p.budget_max) * 1.15) }),
+    label: (_, after) => `stretched your budget to $${after.budget_max}/mo`,
+  },
+  {
+    key: "lease_term",
+    // Scalar since the question became single-select; arrays remain for sessions
+    // answered before that change.
+    applies: (p) => statedLeaseTerms(p).some((t) => t && t !== "No preference"),
+    apply: (p) => ({ ...p, lease_term: "No preference" }),
+    label: () => "allowed any lease length",
+  },
+  {
+    key: "budget_35",
+    applies: (p) => Number(p.budget_max) > 0 && !p._budgetPinned,
+    apply: (p) => ({ ...p, budget_max: round25(Number(p.budget_max) * 1.2) }),
+    label: (_, after) => `stretched your budget again, to $${after.budget_max}/mo`,
+  },
+];
+
+// Whether there is anything left to loosen at all (no ladder → no point promising
+// the student a wider search).
+function canWiden(preferences) {
+  return RELAX_LADDER.some((step) => step.applies(preferences ?? {}));
+}
+
+// Walk the ladder until a re-rank yields listings the student hasn't seen.
+// Mutates session.preferences / session.recommendations. Returns the plain-English
+// list of what was loosened (so the reply can be honest about it).
+async function widenUntilNewMatches(session) {
+  const loosened = [];
+  for (const step of RELAX_LADDER) {
+    if (!step.applies(session.preferences)) continue;
+    const before = session.preferences;
+    const after = step.apply(before);
+    session.preferences = after;
+    loosened.push(step.label(before, after));
+    await rankTop3(session);
+    if ((session.recommendations ?? []).length) break;
+  }
+  return loosened;
+}
+
+function joinList(items) {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+// Deterministic (never LLM-written) hand-off message for the widening turn.
+const WIDENING_NOTICE =
+  "Nothing new fits those exact filters, so I'm loosening them a little and running the search again. One sec.";
+
 // Run one tool call and mutate the session. Returns a compact result for the model.
 async function runAgentTool(session, name, input) {
   if (name === "update_search") {
@@ -344,6 +459,35 @@ async function runAgentTool(session, name, input) {
     const prevSetAside = session.preferences._setAside ?? [];
     const prefPatch = input?.preferences && typeof input.preferences === "object" ? { ...input.preferences } : {};
     const weightPatch = input?.weights && typeof input.weights === "object" ? input.weights : {};
+
+    // "Cheaper than X": derive the cap from X's real price. Whatever budget the
+    // model may also have guessed is discarded — this is the authoritative number.
+    let cheaperResult = null;
+    if (Array.isArray(input?.cheaper_than) && input.cheaper_than.length) {
+      const { priced, unpriced, unknown } = await resolveCheaperThan(session, input.cheaper_than);
+      if (priced.length) {
+        const cheapest = Math.min(...priced.map((p) => p.perPerson));
+        const currentCap = Number(session.preferences?.budget_max);
+        // Strictly cheaper than the reference. Never RAISE their cap: a pricier
+        // reference means their own budget is still the binding limit.
+        const derived = Math.ceil(cheapest) - 1;
+        prefPatch.budget_max = Number.isFinite(currentCap) && currentCap > 0 ? Math.min(currentCap, derived) : derived;
+        cheaperResult = { applied_budget_max: prefPatch.budget_max, compared_to: priced, no_price: unpriced, not_found: unknown };
+      } else {
+        // Nothing to measure against, so their budget is left exactly as it was.
+        delete prefPatch.budget_max;
+        cheaperResult = {
+          applied_budget_max: session.preferences?.budget_max ?? null,
+          compared_to: [],
+          no_price: unpriced,
+          not_found: unknown,
+          note: "None of those listings has a listed price, so there was nothing to measure 'cheaper' against. Their budget was left unchanged. Say so plainly and offer to work from a number instead.",
+        };
+      }
+    }
+    // A budget the student just set (directly or via "cheaper than") must not be
+    // undone by the auto-widening ladder later in this turn.
+    if (prefPatch.budget_max != null) session.preferences._budgetPinned = true;
     // Notes are cumulative must-haves: APPEND the new request so earlier ones
     // (from the question flow or prior turns) keep steering the ranking.
     if (typeof prefPatch.notes === "string") {
@@ -370,23 +514,24 @@ async function runAgentTool(session, name, input) {
     }
     await rankTop3(session);
     if (!(session.recommendations ?? []).length && prevRecs.length) {
-      // Nothing NEW surfaced. Be honest about which case this is before keeping
-      // their current cards: does ANYTHING fit these prefs, ignoring the
-      // never-repeat set-aside?
-      let anyFit = false;
-      try {
-        anyFit = filterEligible(await fetchActiveListings(), { ...session.preferences, _setAside: [] }).length > 0;
-      } catch (err) {
-        console.error("[chatOrchestrator] no-new-options check failed:", err);
-      }
+      // Nothing NEW surfaced. Rather than handing the student back the same three
+      // cards, hand off to the auto-widening turn: keep the current cards up for
+      // now, remember what to roll back to, and let continueRelaxedSearch loosen
+      // constraints and re-rank as its own turn (so the student sees the
+      // deterministic notice and the typing dots first).
       session.recommendations = prevRecs;
+      if (canWiden(session.preferences)) {
+        session.preferences._relaxPending = true;
+        session.preferences._relaxPrevSetAside = prevSetAside;
+        return { ok: true, widening: true };
+      }
+      // Nothing left to loosen — everything is already at its widest.
       session.preferences._setAside = prevSetAside;
       return {
         ok: true,
         no_new_options: true,
-        note: anyFit
-          ? "They have already seen every listing that fits this search, so their current matches stay on screen. Tell them these remain the best fits on the market right now and suggest loosening a preference (budget, area, lease) to unlock more."
-          : "No listing on the market fits the new constraints at all. Their current matches are kept on screen so they aren't left empty-handed; tell them plainly that nothing fits that ask and suggest what to loosen.",
+        ...(cheaperResult ? { cheaper_than: cheaperResult } : {}),
+        note: "They have already seen every listing that fits, and there is no filter left to loosen (their search is as wide as it goes). Tell them plainly that these remain the best fits on the market right now.",
       };
     }
     session._reranked = true;
@@ -420,6 +565,7 @@ async function runAgentTool(session, name, input) {
       ok: true,
       all_new: true,
       previous_top: previousTop,
+      ...(cheaperResult ? { cheaper_than: cheaperResult } : {}),
       matches: (session.recommendations ?? []).map((r) => ({
         title: r.card_data?.title ?? null,
         perPerson: r.card_data?.min_rent ?? null,
@@ -542,6 +688,10 @@ async function runAgentTurn(session) {
             results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
           }
         }
+        // The re-rank found nothing new and handed off to the widening turn. Skip
+        // the model's closing sentence entirely: the hand-off line is fixed text,
+        // and the real reply comes from continueRelaxedSearch once it has results.
+        if (session.preferences?._relaxPending) return WIDENING_NOTICE;
         messages.push({ role: "user", content: results });
         continue;
       }
@@ -573,7 +723,6 @@ async function persistSession(session) {
         transcript: session.transcript,
         preferences: session.preferences,
         weights: session.weights,
-        candidates: session.candidates,
         recommendations: session.recommendations,
       },
       { onConflict: "id" }
@@ -581,9 +730,8 @@ async function persistSession(session) {
   if (error) throw new Error(`[chatOrchestrator] Failed to persist session: ${error.message}`);
 }
 
-// Deterministic turn. `answer` = structured chip answer; `message` = legacy
-// free-text (parsed via Haiku). With neither, this is an init turn that just
-// emits the first question.
+// STAGE 3: rank the top 3 for the current prefs/weights and stash the honest
+// budget / group-fit / relax-coach notes for this turn's message.
 async function rankTop3(session) {
   const intentions = pickIntentions(session.weights);
   try {
@@ -611,8 +759,17 @@ async function rankTop3(session) {
 
 // Append the honest budget/group-fit/hard-combination notes (if any) to an
 // assistant message.
-function withNotes(text, session) {
-  const notes = [session._budgetNote, session._groupNote, session._relaxNote].filter(Boolean);
+//
+// `coaching` gates the hard-combination note ("you're down to 2 confirmed places,
+// raising your budget would open up 22 more"). It is withheld from the FIRST set
+// of matches: opening the reveal by explaining what's wrong with their search
+// sours it, and they haven't asked for anything else yet. It comes back the
+// moment they DO ask and we go looking again (a re-rank, or the widening turn),
+// and when we came up empty and they need to know what to loosen. The budget and
+// group-fit notes always ride along: without them Proxy would present
+// over-budget or too-small places as clean matches.
+function withNotes(text, session, { coaching = true } = {}) {
+  const notes = [session._budgetNote, session._groupNote, coaching ? session._relaxNote : null].filter(Boolean);
   return notes.length ? `${text}\n\n${notes.join("\n\n")}` : text;
 }
 
@@ -632,11 +789,15 @@ async function finalizeRecommendations(session) {
   // With the strict group-size bed floor, ranking can now honestly come back
   // empty (e.g. a big group nothing on the market can house) — say so instead
   // of announcing matches that don't exist. The notes explain why.
+  const hasPicks = !!session.recommendations?.length;
   const closing = withNotes(
-    session.recommendations?.length
+    hasPicks
       ? "All set. Here are your top three matches. Want to tweak anything? Just tell me (e.g. “cheaper” or “closer to campus”)."
       : "I came up empty: I don't have matches I can honestly recommend right now. Tell me what to adjust (like a smaller group or a different budget) and I'll look again.",
-    session
+    session,
+    // Nothing to show means the coach IS the answer; with picks in hand, let them
+    // enjoy the matches first.
+    { coaching: !hasPicks }
   );
   session.transcript.push({
     role: "assistant",
@@ -757,6 +918,68 @@ async function runNarrowing(session) {
   return finalizeRecommendations(session);
 }
 
+// The widening turn: the previous turn's re-rank came up with nothing the
+// student hasn't already seen, told them we're loosening the filters, and left
+// `_relaxPending` set. Here we actually walk the relax ladder, re-ranking after
+// each step, and report what we loosened. If even the widest search finds nothing
+// new, every change is rolled back so their stated preferences aren't quietly
+// degraded for nothing, and their current matches stay on screen.
+export async function continueRelaxedSearch(session) {
+  const before = { ...(session.preferences ?? {}) };
+  // Guard against a stray/replayed call: without a pending hand-off there is
+  // nothing to widen, and loosening their filters unasked would be wrong.
+  if (!before._relaxPending) {
+    return {
+      session,
+      nextQuestion: null,
+      assistantMessage: "Your matches are up to date. Tell me what to change and I'll take another pass.",
+      recommendations: session.recommendations ?? [],
+      mode: "agent",
+      reranked: false,
+    };
+  }
+  const prevRecs = session.recommendations ?? [];
+  const prevSetAside = before._relaxPrevSetAside ?? [];
+  delete before._relaxPending;
+  delete before._relaxPrevSetAside;
+  session.preferences = before;
+
+  const loosened = await widenUntilNewMatches(session);
+  const found = (session.recommendations ?? []).length > 0;
+
+  let text;
+  if (found) {
+    text = withNotes(
+      `Here's what opened up once I ${joinList(loosened)}. Say the word if you'd rather I put any of that back.`,
+      session
+    );
+  } else {
+    // Nothing gained: undo the loosening AND the never-repeat set-aside, so the
+    // session is exactly where it was before the refine.
+    session.preferences = { ...before, _setAside: prevSetAside };
+    session.recommendations = prevRecs;
+    text =
+      "Even with the filters loosened I couldn't find anything you haven't already seen, so I've put your search back the way it was and kept your current matches. Tell me what matters most and I'll dig from a different angle.";
+  }
+
+  session.transcript.push({
+    role: "assistant",
+    content: text,
+    ts: new Date().toISOString(),
+    ...(found ? { recommendations: session.recommendations } : {}),
+  });
+  await persistSession(session);
+  logConversationCost(session);
+  return {
+    session,
+    nextQuestion: null,
+    assistantMessage: text,
+    recommendations: session.recommendations,
+    mode: "agent",
+    reranked: found,
+  };
+}
+
 // Re-rank the top 3 from a given prefs/weights snapshot (used by the panel's
 // live priority-reorder, which re-ranks immediately when picks already exist).
 export async function computeRecommendations(preferences, weights) {
@@ -770,6 +993,13 @@ export async function computeRecommendations(preferences, weights) {
   return ranked.slice(0, 3).map((r) => ({ ...r, reason: stripEmDashes(r.reason) }));
 }
 
+// Single entry point for every turn. Which branch runs is decided purely by
+// which field the client sent, in this order:
+//   tradeoff  -> STAGE 2 (narrowing answer)
+//   message   -> STAGE 4 (conversation, only once matches exist)
+//   answer    -> STAGE 1 (scripted question answer)
+//   none      -> init turn: just emit the first question
+// Falling off the end of STAGE 1 (script complete) advances into STAGE 2/3.
 export async function handleTurn({ session, answer = null, message = "", preferences = null, weights = null, tradeoff = null }) {
   // Adopt the client's authoritative snapshot when provided, preserving the
   // server-only cumulative usage tally (the client never sends it back).
@@ -780,14 +1010,14 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     // copy is authoritative for these, so they always override the client echo.
     const prev = session.preferences ?? {};
     const carried = {};
-    for (const k of ["_usage", "_excluded", "_setAside", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked"]) {
+    for (const k of ["_usage", "_excluded", "_narrowed", "_setAside", "_pendingTradeoff", "_tradeoffCount", "_tradeoffHistory", "_viewerGender", "_commuteAsked", "_relaxPending", "_relaxPrevSetAside", "_budgetPinned"]) {
       if (prev[k] !== undefined) carried[k] = prev[k];
     }
     session.preferences = { ...preferences, ...carried };
   }
   if (weights) session.weights = weights;
 
-  // Narrowing path: the user answered a "Would you X for Y?" tradeoff. Prune the
+  // STAGE 2 — narrowing: the user answered a "Would you X for Y?" tradeoff. Prune the
   // losing side, then ask the next tradeoff (or finalize if ≤3 / cap reached).
   if (tradeoff) {
     const chosen = tradeoff.chosen ?? "";
@@ -796,12 +1026,14 @@ export async function handleTurn({ session, answer = null, message = "", prefere
     return runNarrowing(session);
   }
 
-  // Conversational agent: recommendations already exist and the user typed a
+  // STAGE 4 — conversation: recommendations already exist and the user typed a
   // message. A tool-using agent (full transcript + live matches) handles it — it
   // may re-rank, open an email draft to an owner, or just answer a question.
   if (message && session.status === "recommendations_ready") {
     session._reranked = false;
     session._draft = null;
+    // The pin only guards the turn that set the budget.
+    delete session.preferences._budgetPinned;
     session.transcript.push({ role: "user", content: message, ts: new Date().toISOString() });
     const reply = await runAgentTurn(session);
     logConversationCost(session);
@@ -822,42 +1054,32 @@ export async function handleTurn({ session, answer = null, message = "", prefere
       mode: "agent",
       reranked: !!session._reranked,
       draft: session._draft ?? null,
+      // The re-rank found nothing new: this turn only announced that we're
+      // widening the search. The client immediately posts a follow-up turn
+      // (action "relax_retry") which does the loosening and returns the matches.
+      pendingRelax: !!session.preferences?._relaxPending,
     };
     session._reranked = false;
     session._draft = null;
     return result;
   }
 
-  // The question currently awaiting a reply (computed before we apply anything).
-  const current = nextQuestion(session.preferences);
-
-  let effectiveAnswer = answer;
-
-  // Free-text fallback path.
-  if (!effectiveAnswer && message && current) {
-    const { value, usage } = await parseFreeText(message, current);
-    addUsage(session, usage);
-    effectiveAnswer = {
-      questionId: current.id,
-      field: current.field,
-      kind: current.kind,
-      // If Haiku couldn't parse, stash the raw text so the flow still advances.
-      value: value ?? message,
-    };
-  }
-
-  if (effectiveAnswer) {
+  // Scripted-question path. Answers only ever arrive as STRUCTURED chip answers:
+  // the client renders every question as tappable controls and the free-text
+  // composer stays hidden until the matches exist (see ChatWindow), so there is
+  // no free-text-during-questions path and no LLM anywhere in this phase.
+  if (answer) {
     session.transcript.push({
       role: "user",
-      content: answerToLabel(effectiveAnswer),
+      content: answerToLabel(answer),
       ts: new Date().toISOString(),
       // Lets a reloaded transcript keep the per-answer "Edit" affordance.
-      questionId: effectiveAnswer.questionId,
+      questionId: answer.questionId,
     });
-    // Chip path: snapshot already adopted above. Free-text path: apply the
-    // parsed answer onto the current (snapshot) preferences.
-    if (!(answer && preferences)) {
-      const applied = applyAnswer(session.preferences, session.weights, effectiveAnswer);
+    // With a client snapshot the prefs were already adopted above; without one
+    // (a bare answer post) apply it here.
+    if (!preferences) {
+      const applied = applyAnswer(session.preferences, session.weights, answer);
       session.preferences = applied.preferences;
       session.weights = applied.weights;
     }

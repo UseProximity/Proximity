@@ -178,6 +178,12 @@ export async function buildNarrowingTurn(session) {
 // Apply a student's tradeoff answer to the session preferences (in place):
 // reject the losing side's listings, bump the count + history, clear the pending
 // tradeoff. `chosen` is the label the student tapped.
+//
+// Rejections land in `_narrowed`, NOT `_excluded`. Both are filtered out of the
+// results identically, but they mean different things: `_excluded` is "the
+// student dislikes this place", while `_narrowed` is "our own tradeoff question
+// pruned it". The coaching notes ignore `_narrowed` so Proxy never calls a search
+// a hard combination when it was Proxy's own questions that thinned the field.
 export function applyTradeoffChoice(preferences, chosen) {
   const prefs = { ...(preferences ?? {}) };
   const pend = prefs._pendingTradeoff;
@@ -187,7 +193,7 @@ export function applyTradeoffChoice(preferences, chosen) {
       const rejectIds = labels
         .filter((l) => l !== chosen)
         .flatMap((l) => pend.options[l] ?? []);
-      prefs._excluded = [...new Set([...(prefs._excluded ?? []), ...rejectIds])];
+      prefs._narrowed = [...new Set([...(prefs._narrowed ?? []), ...rejectIds])];
     }
   }
   prefs._tradeoffCount = (prefs._tradeoffCount ?? 0) + 1;
