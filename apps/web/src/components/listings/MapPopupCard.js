@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
@@ -68,6 +69,12 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       : Math.min(...bathValues) === Math.max(...bathValues)
       ? String(Math.min(...bathValues))
       : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
+
+  // Only legit, non-deleted reviews count toward rating (see buildListing), and
+  // rating comes back as 0 when there are none — so numReviews is the gate.
+  const numReviews = Number(listing.numReviews) || 0;
+  const rating = Number(listing.rating);
+  const hasRating = numReviews > 0 && Number.isFinite(rating) && rating > 0;
 
   return (
     <div
@@ -145,14 +152,26 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             )}
           </span>
         </div>
-        <div className="flex items-center justify-between mt-auto pt-2 min-w-0">
+        <div className="flex items-center justify-between mt-auto pt-2 min-w-0 gap-2">
           <span className="text-gray-500 text-xs truncate flex-1">
             {bedLabel} bed{" | "}
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
+          {hasRating && (
+            <span
+              className="flex items-center gap-0.5 text-xs flex-shrink-0"
+              title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
+            >
+              <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
+              <span className="font-semibold text-gray-700 tabular-nums">
+                {rating.toFixed(1)}
+              </span>
+              <span className="text-gray-400 tabular-nums">({numReviews})</span>
+            </span>
+          )}
           {listing.owner?.name && !compact && (
-            <span className="text-gray-400 text-xs truncate ml-2 max-w-[40%]">
+            <span className="text-gray-400 text-xs truncate max-w-[40%]">
               {listing.owner.name}
             </span>
           )}
