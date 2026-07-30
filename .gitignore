@@ -102,3 +102,8 @@ ci-out/
 # next-sitemap generated files (regenerated on every build)
 apps/web/public/sitemap*.xml
 apps/web/public/robots.txt
+
+# parked AI walkthrough pipeline (see LISTING_VIDEO_BRIEF.md) — un-ignore just this tool
+!apps/web/scripts/
+apps/web/scripts/*
+!apps/web/scripts/listing-video/
