@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-27T04:50:11.815Z",
-  "count": 62,
+  "_generated": "2026-07-30T15:29:35.851Z",
+  "count": 65,
   "routes": [
     {
       "path": "/api/addListing",
@@ -300,6 +300,46 @@
         "users"
       ],
       "file": "src/app/api/auth/verify-email/route.js"
+    },
+    {
+      "path": "/api/chat/threads",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/threads/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/messages",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/threads/[threadId]/messages/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/read",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/threads/[threadId]/read/route.js"
     },
     {
       "path": "/api/contacted",

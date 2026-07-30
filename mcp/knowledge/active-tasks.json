@@ -41,8 +41,25 @@
       "status": "active",
       "context": "Files: apps/web/src/lib/matchmaking/{chatOrchestrator.js,listingFilter.js,listing-filter.skill.md}, apps/web/src/app/api/matchmaking/chat/route.js. Verified against dev DB: back-to-back re-rank returned 3/3 new listings, zero overlap; previous_top fit comparison behaves honestly.",
       "created": "2026-07-07T03:52:04.933Z"
+    },
+    {
+      "id": "decision-1785425552939",
+      "title": "Listing chat: one thread per (listing, interested user), landlord derived, RPC-only writes",
+      "description": "Backend for student↔landlord listing chat on feat/messaging. SCHEMA: chat_threads gains interested_user_id (the prospective renter) — the landlord side is deliberately NOT stored, it's derived from listing_landlords so it can't go stale when a listing changes hands. A unique PARTIAL index on (listing_id, interested_user_id) WHERE deleted_at IS NULL enforces one live thread per pair while still letting a soft-deleted thread be replaced. chat_messages gains message_type ('text' | 'discount_offer') + metadata jsonb now, so planned discount offers don't need a second ALTER; body is capped at 5000 chars by a CHECK as a backstop to the RPC limit. A trigger bumps chat_threads.updated_at on insert, without which inbox sorting by recent activity is impossible (inserting a message doesn't touch the thread row). ACCESS: all reads and writes go through SECURITY DEFINER RPCs (rpc_start_or_get_listing_chat, rpc_send_chat_message, rpc_mark_thread_read, rpc_list_chat_threads, rpc_get_chat_messages). They trust p_user_id, so EXECUTE is revoked from PUBLIC/anon/authenticated and granted only to service_role — the API routes are the sole callers. rpc_start_or_get_listing_chat takes a pg_advisory_xact_lock so concurrent 'start chat' calls can't race past the unique index. UNREAD: chat_participants.last_read_at drives the flag; a thread reads unread only when the OTHER participant posted after it, and sending marks your own side read. API: /api/chat/threads (GET inbox, POST start-or-reuse), /api/chat/threads/[threadId]/messages (GET paginated, POST reply), /api/chat/threads/[threadId]/read (POST). A non-participant gets a bare 403 rather than a 404, so thread existence isn't discoverable. The pre-existing email-based contactLandlord flow is untouched and still the live path; there is no chat UI yet.",
+      "status": "active",
+      "context": "Branch feat/messaging (PR into staging). Migrations 202607300001-3, applied to DEV ONLY and recorded in supabase_migrations.schema_migrations — STILL PENDING ON PROD. Files: apps/web/src/app/api/chat/threads/**. Verified by hand against dev: thread reuse returns the same threadId, pagination via before/limit, 400 on bad UUID/limit/body, 403 for non-participants, unread flips true on a landlord message and false after mark-read. Known gap: api-routes.json reports tables:[] for these routes because generate-knowledge.mjs detects tables via .from() only and these use supabase.rpc(), so analyze-impact won't link chat_* migrations back to these endpoints.",
+      "created": "2026-07-30T15:32:32.939Z"
     }
   ],
-  "bugs": [],
+  "bugs": [
+    {
+      "id": "bug-1785425552940",
+      "title": "analyze-impact is monorepo-blind: reports 0 src changes for every apps/web change",
+      "description": "mcp/src/impact.mjs still assumes the pre-monorepo layout: ROOT is the repo root and SRC = <repo>/src, which no longer exists (code moved to apps/web/src). analyzeImpact() filters changed files with f.startsWith(\"src/\"), but git reports apps/web/src/..., so every source change is bucketed as 'other' and the affected-endpoints/pages sections come back empty. Observed on feat/messaging: 3 new API route files reported as '0 src, 3 migration, 3 other' with 'Affected API endpoints: None'. generate-knowledge.mjs was made monorepo-aware in June (REPO_ROOT + ROOT=apps/web) but impact.mjs was not updated to match. Consequence: release-pr-check.yml's impact analysis and run-impact-tests have likely been silently skipping all code-driven surfaces since the monorepo move — only the migration→table fan-out still produces results, which is why unrelated endpoints get tested instead. Fix is to point SRC at apps/web/src and rebase the changed-file filter (and rel()) on that prefix.",
+      "status": "open",
+      "context": "Found during Stage 4 verification of feat/messaging. Not fixed there (out of scope for the chat PR). Reproduce: node -e with analyzeImpact({base:'staging'}) at repo root.",
+      "created": "2026-07-30T15:32:32.940Z"
+    }
+  ],
   "migrations": []
 }
