@@ -19,6 +19,12 @@ import { holdReleaseUrl } from "@/lib/pms/holdToken.js";
 // dry-run ceremony. After the window: only problems are emailed.
 const WATCH_DAYS = Number(process.env.PMS_WATCH_DAYS) || 21;
 
+// Pilot mode: also email on a completely uneventful run. Normally silence means
+// "nothing worth your attention", but while health-checking a new integration
+// silence is ambiguous — it reads the same as a cron that never fired. With this
+// set, every run reports, including "synced, no changes".
+const DIGEST_ALWAYS = process.env.PMS_DIGEST_ALWAYS === "1";
+
 export async function GET(req) {
   const authHeader = req.headers.get("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -80,8 +86,28 @@ async function sendDigest(summary, req) {
       if (s.relisted) parts.push(`${s.relisted} relisted`);
       noteworthy.push({ ...s, note: `New-connection watch (day ${Math.ceil(ageDays)} of ${WATCH_DAYS}): applied ${parts.join(", ")}.` });
     }
+
+    // A run can succeed and still have done less than it should — e.g. AppFolio's
+    // rent_roll columns not matching any spelling we know, so no lease end dates
+    // were read. Always report these, independent of the watch window, since they
+    // are exactly the mismatches a new integration exists to surface.
+    for (const w of s.warnings ?? []) {
+      noteworthy.push({ ...s, note: `Warning: ${escapeHtml(w)}` });
+    }
   }
-  if (!noteworthy.length) return;
+  if (!noteworthy.length) {
+    if (!DIGEST_ALWAYS) return;
+    // All-clear report. Sent from the same path as a real digest so the pilot is
+    // exercising the actual delivery route, not a special case that could pass
+    // while the real one is broken.
+    if (!summary.length) {
+      noteworthy.push({ note: "Sync ran. No active API-backed connections to sync." });
+    } else {
+      for (const s of summary) {
+        noteworthy.push({ ...s, note: "Synced, no changes." });
+      }
+    }
+  }
 
   try {
     const baseUrl = getBaseUrl(req);
@@ -107,7 +133,13 @@ async function sendDigest(summary, req) {
       : { data: [] };
     const nameById = new Map((landlords ?? []).map((u) => [u.id, u.name || u.email]));
 
-    let recipients = process.env.PMS_ALERT_EMAIL ? [process.env.PMS_ALERT_EMAIL] : [];
+    // Comma-separated so a pilot can report to several people without relying on
+    // the all-supers fallback below (which would also pull in anyone who happens
+    // to be super in the snapshot).
+    let recipients = (process.env.PMS_ALERT_EMAIL || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (!recipients.length) {
       const { data: supers } = await supabase
         .from("users")

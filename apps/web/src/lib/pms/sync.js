@@ -495,6 +495,12 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
     status: dryRun ? "dry_run" : "ok",
     ...applied,
     heldDelists: suppressDelists && intendedDelists > 0 ? intendedDelists : 0,
+    // Connector-level warnings (unrecognized rent_roll columns, properties skipped
+    // for a missing address) describe a sync that "succeeded" while quietly doing
+    // less than it should. They were previously console-only, which meant the one
+    // failure mode most likely to appear against a real account was invisible in
+    // the digest. Surfaced here so the caller can report them.
+    warnings: snapshot.warnings ?? [],
   };
 }
 
