@@ -18,12 +18,38 @@ Integration IDs must match the code's provider config keys (or override via env)
 | Provider | Nango integration ID | How |
 | --- | --- | --- |
 | Buildium | `buildium` | Pre-built provider — just enable it. API-key auth (`x-buildium-client-id` / `x-buildium-client-secret`) is already configured. |
-| AppFolio | `appfolio` | **Custom API config.** Base URL `https://${connectionConfig.subdomain}.appfolio.com`, auth = Basic. Add a required connection-config field `subdomain` so the Connect UI collects it (the landlord's `{subdomain}.appfolio.com`). |
+| AppFolio | `appfolio` | Use Nango's **`private-api-basic`** template. See the AppFolio note below — the earlier "custom API config" instructions here described a Nango feature that does not exist. |
 | DoorLoop | `doorloop` | **Custom API config.** Base URL `https://app.doorloop.com/api`, auth = API key sent as `Authorization: bearer ${apiKey}`. |
 | Rentec Direct | `rentec` | **Custom API config.** Base URL `https://secure.rentecdirect.com/api/v3`, auth = API key sent as header `X-API-Key: ${apiKey}`. The landlord generates a **read-scoped** key at Settings → Tools → Utilities → API Keys (free on Pro/PM; it's a Rentec Labs feature — they may need to enable Labs). |
 
 If you name them differently, set `NANGO_BUILDIUM_KEY` / `NANGO_APPFOLIO_KEY` /
 `NANGO_DOORLOOP_KEY` / `NANGO_RENTEC_KEY` to the IDs you chose.
+
+### AppFolio specifically (read before setting it up)
+
+AppFolio is **not** in Nango's provider catalog, and Nango Cloud has **no self-serve
+"custom API" wizard** — so there is no per-integration base URL to configure. Full
+reasoning in `PMS_APPFOLIO_BRIEF.md` §3.6, which is authoritative for this connector.
+
+1. Create the `appfolio` integration from the **`private-api-basic`** template
+   (auth mode BASIC). Leave its placeholder base URL alone — it is overridden on
+   every request by the `Base-Url-Override` header that `nango.js` sends.
+2. There is **no** `subdomain` field in Nango's Connect UI and none is needed. The
+   landlord enters their database name in *our* pre-connect step; it is stored in
+   `pms_connections.credential_meta` (not a secret — it is the same subdomain that
+   serves their public listings page) and reused by the nightly cron.
+3. The credential mapping is **Client ID → Username, Client Secret → Password**.
+   Nango's window shows the generic labels "Username"/"Password", so the
+   instructional copy next to the Connect button is load-bearing, not decoration.
+4. `private-api-basic` has no verification block, so Nango will happily create a
+   "successful" connection from a typo'd secret. `/api/landlord/pms/discover` guards
+   this: it calls `verifyConnection()` and refuses to save the connection unless a
+   real `unit_directory` call succeeds. Keep that ordering — it is the only thing
+   turning a bad credential into an error the landlord sees at connect time rather
+   than a 401 in the cron at 09:00 UTC.
+
+The landlord needs three strings — database/subdomain, Client ID, Client Secret —
+and an AppFolio **Plus or Max** plan. Core has no API at all.
 
 ## 3. Environment variables
 
