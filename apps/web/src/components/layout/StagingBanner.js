@@ -6,10 +6,22 @@
  * stamps on each run). Renders nothing on production, so it's safe to mount unconditionally in
  * the root layout.
  */
-import { appEnv } from "@/lib/appEnv";
+import { appEnv, isPilot } from "@/lib/appEnv";
 import supabase from "@/lib/supabase";
 
 export default async function StagingBanner() {
+  // A pilot runs as a Vercel production deployment, so appEnv() would report
+  // "production" and this bar would vanish — leaving a landlord who just connected
+  // their real portfolio with no idea whether it had gone live to students. Say so
+  // plainly, in their language rather than ours: no "STAGING", no snapshot dates.
+  if (isPilot()) {
+    return (
+      <div className="w-full bg-slate-800 text-slate-100 text-center text-xs font-medium py-1.5 px-3">
+        Preview environment — your listings are visible only to you and the Proximity team, not to students.
+      </div>
+    );
+  }
+
   const env = appEnv();
   if (env === "production") return null;
 

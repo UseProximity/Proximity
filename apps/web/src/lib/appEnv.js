@@ -42,14 +42,36 @@ export function isStaging() {
   return appEnv() === "staging";
 }
 
-// True ONLY on the real production site. Staging and local resolve to false, so they use
-// the dev database and dev storage bucket. This is the single switch that repoints data.
+/*
+ * PILOT MODE — a landlord-facing sandbox on its own domain.
+ *
+ * A pilot has to be a Vercel PRODUCTION deployment (of its own project), because
+ * Vercel Cron Jobs only fire on production deployments — a preview would never run
+ * the nightly sync that the pilot exists to demonstrate. But being a production
+ * deployment sets VERCEL_ENV=production, which would otherwise resolve this whole
+ * module to "production" and point a landlord demo at the REAL database, sending
+ * REAL email to real users.
+ *
+ * PILOT_MODE closes that gap at the only two places it can hurt: data target and
+ * outreach. It is checked *independently* of appEnv() rather than folded into the
+ * resolver, so it cannot be undone by APP_ENV being set (or mis-set) alongside it —
+ * a pilot is never prod data, no matter what else the environment says.
+ */
+export function isPilot() {
+  return process.env.PILOT_MODE === "1";
+}
+
+// True ONLY on the real production site. Staging, local, and pilot resolve to false,
+// so they use the dev database and dev storage bucket. This is the single switch that
+// repoints data.
 export function isProdData() {
-  return appEnv() === "production";
+  return !isPilot() && appEnv() === "production";
 }
 
 // External outreach (transactional email, Airtable sync, Formspree) is allowed only on
-// the real production site — never on staging or local.
+// the real production site — never on staging, local, or a pilot. A pilot still needs
+// to mail its own operators; that goes through OUTREACH_ALLOWLIST in outreach.js, which
+// requires every recipient to be named explicitly.
 export function outreachEnabled() {
-  return appEnv() === "production";
+  return !isPilot() && appEnv() === "production";
 }

@@ -203,15 +203,31 @@ export async function fetchSnapshot(connectionId, meta) {
     const vacancy = vacancyByUnit.get(String(unitKey));
     const leaseEnd = leaseEndByUnit.get(String(unitKey)) ?? null;
 
-    // Availability comes from unit_vacancy's unit_status ("Vacant-Unrented",
-    // "Vacant-Rented", "Occupied", "Notice-..."). When the unit has no vacancy
-    // row, a current lease from the rent roll still proves it is occupied —
-    // that keeps the pre-leasing horizon working. Otherwise: unknown.
+    // Availability comes from unit_vacancy's unit_status. AppFolio's vocabulary is
+    // TWO-part — physical occupancy, then whether it has been leased:
+    // "Vacant-Unrented", "Vacant-Rented", "Occupied-Unrented", "Notice-Rented", …
+    //
+    // The suffix is the availability signal, and it can contradict the prefix: a
+    // "Vacant-Rented" unit is empty but already committed to an incoming tenant, so
+    // advertising it as available would send students after a unit that is gone —
+    // under a badge that claims the data is verified. Reading only the prefix (the
+    // previous behaviour) got exactly that case backwards.
+    //
+    // A unit with no lease yet ("-Unrented") is available only if it is also empty
+    // now; if it is still occupied, it stays unavailable here and `availableFrom`
+    // below carries the lease end, which is what lets the pre-leasing horizon in
+    // mapping.js surface it as available-later rather than available-now.
     const status = pick(vacancy, "unit_status", "status");
-    const statusText = status == null ? null : String(status).toLowerCase();
+    const statusText = status == null ? null : String(status).toLowerCase().trim();
     let available = null;
-    if (statusText != null) available = statusText.startsWith("vacant");
-    else if (leaseEnd && leaseEnd >= today) available = false;
+    if (statusText != null) {
+      // "unrented" contains "rented", so the negative form must be tested first.
+      const leaseState = /(un)?rented\s*$/.exec(statusText);
+      available =
+        leaseState && !leaseState[1]
+          ? false // explicitly "-Rented": already leased, whatever its occupancy
+          : statusText.startsWith("vacant");
+    } else if (leaseEnd && leaseEnd >= today) available = false;
 
     const advertised =
       isYes(pick(row, "posted_to_internet")) ||

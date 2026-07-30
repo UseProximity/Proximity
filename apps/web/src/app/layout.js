@@ -16,7 +16,7 @@ import { Header } from "@/components/layout/Header";
 import StagingBanner from "@/components/layout/StagingBanner";
 import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
-import { appEnv } from "@/lib/appEnv";
+import { appEnv, isPilot } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
@@ -27,6 +27,14 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
+  // A pilot is a real production deployment on its own public domain with no
+  // deployment protection, serving the same pages as the live site. Left
+  // indexable it would become a duplicate copy of useproximity.org in search
+  // results, competing with the canonical site and exposing a landlord's
+  // in-progress listings. Keep crawlers off it entirely.
+  ...(isPilot()
+    ? { robots: { index: false, follow: false, nocache: true } }
+    : {}),
   title:
     "WashU Student Housing Matchmaking | Honest Peer Reviews | Pre-Vetted Listings | Proximity",
   description:

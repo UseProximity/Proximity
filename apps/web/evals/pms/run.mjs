@@ -240,6 +240,57 @@ check("toDescription trims, nulls blanks, caps blobs",
     appfolio.normalizeSubdomain("  Acme-1 ") === "acme-1" && appfolio.normalizeSubdomain("a.b") === null);
 }
 
+// ---------- AppFolio unit_status vocabulary ----------
+// AppFolio's status is two-part: occupancy, then whether it has been leased. The
+// suffix can contradict the prefix, and reading only the prefix advertised
+// already-leased units as available. Every combination is pinned here because
+// getting one backwards means students chase units that are gone.
+{
+  const META = { subdomain: "acme" };
+  const base = {
+    property_id: "S1", property_name: "Status Test", unit_address: "1 Test Ave",
+    unit_city: "St. Louis", unit_state: "MO", unit_zip: "63130",
+    bedrooms: 2, bathrooms: "1", sqft: 800, advertised_rent: "$1,000",
+    posted_to_internet: "Yes",
+  };
+  const STATUSES = [
+    ["VU", "Vacant-Unrented", true],   // empty, not yet leased -> rentable now
+    ["VR", "Vacant-Rented", false],    // empty but already leased -> NOT rentable
+    ["OU", "Occupied-Unrented", false],// occupied; horizon may surface it later
+    ["OR", "Occupied-Rented", false],  // occupied and already re-leased
+    ["NU", "Notice-Unrented", false],  // leaving, not yet re-leased
+    ["NR", "Notice-Rented", false],    // leaving and already re-leased
+    ["VB", "Vacant", true],            // bare prefix, no lease suffix
+    ["OB", "Occupied", false],
+  ];
+
+  routes = [
+    ["unit_directory.json", () => json({
+      results: STATUSES.map(([id]) => ({ ...base, unit_id: id, unit_name: id })),
+      next_page_url: null,
+    })],
+    ["unit_vacancy.json", () => json({
+      results: STATUSES.map(([id, status]) => ({ unit_id: id, unit_status: status })),
+      next_page_url: null,
+    })],
+    ["rent_roll.json", () => json({ results: [], next_page_url: null })],
+  ];
+
+  const snap = await appfolio.fetchSnapshot("conn-status", META);
+  const byId = new Map((snap.properties[0]?.units ?? []).map((u) => [u.externalUnitId, u]));
+
+  for (const [id, status, expected] of STATUSES) {
+    const unit = byId.get(id);
+    // Unavailable+unadvertised units are dropped by the conservative default, but
+    // every unit here is advertised, so each one must survive and carry a verdict.
+    check(
+      `appfolio status: "${status}" -> available ${expected}`,
+      unit != null && unit.available === expected,
+      unit ? `got ${unit.available}` : "unit missing from snapshot"
+    );
+  }
+}
+
 // ---------- httpRetry ----------
 {
   let attempts = 0;
