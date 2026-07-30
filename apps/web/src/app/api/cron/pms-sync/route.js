@@ -95,8 +95,13 @@ async function sendDigest(summary, req) {
       noteworthy.push({ ...s, note: `Warning: ${escapeHtml(w)}` });
     }
   }
+  // Tracked before the all-clear filler is added below, so the calm subject is
+  // used only when there was genuinely nothing to report.
+  let allClear = false;
+
   if (!noteworthy.length) {
     if (!DIGEST_ALWAYS) return;
+    allClear = true;
     // All-clear report. Sent from the same path as a real digest so the pilot is
     // exercising the actual delivery route, not a special case that could pass
     // while the real one is broken.
@@ -158,6 +163,7 @@ async function sendDigest(summary, req) {
         note: n.note,
       })),
       baseUrl,
+      allClear,
     });
   } catch (err) {
     // The digest is best-effort; a mail failure must never fail the sync run.
