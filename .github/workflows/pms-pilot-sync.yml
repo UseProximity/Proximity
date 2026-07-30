@@ -1,0 +1,91 @@
+name: PMS pilot sync (Clocktower)
+
+# Drives the nightly PMS sync against the PILOT deployment.
+#
+# Why this exists: Vercel Cron Jobs only run against PRODUCTION deployments. The
+# pilot is a branch deployment of the main project, which makes it a PREVIEW — so
+# the entry in apps/web/vercel.json ("/api/cron/pms-sync", 09:00 UTC) never fires
+# there, and without this the pilot would only sync when someone triggered it by
+# hand. That is precisely the thing the pilot is supposed to prove works
+# unattended, so it cannot be the one part done manually.
+#
+# (Running the pilot as its own Vercel project would get the native cron instead,
+# at the cost of a second project to keep configured. This file is the trade for
+# keeping everything in one project.)
+#
+# NOTE: GitHub only runs `schedule` triggers from the DEFAULT branch. This file
+# has to be on `main` to fire on its own; on a feature branch only the manual
+# "Run workflow" button works.
+#
+# Required repo config (Settings → Secrets and variables → Actions):
+#   secret   PMS_PILOT_CRON_SECRET — must equal CRON_SECRET on the pilot deployment
+#   variable PMS_PILOT_URL         — pilot base URL, no trailing slash
+#                                    (e.g. https://proximity-git-pilot-pms-clocktower-<team>.vercel.app)
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # 09:00 UTC, matching the production Vercel cron
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Override the pilot base URL for a one-off run"
+        required: false
+        type: string
+
+concurrency:
+  group: pms-pilot-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger the pilot sync
+        env:
+          BASE_URL: ${{ inputs.base_url || vars.PMS_PILOT_URL }}
+          CRON_SECRET: ${{ secrets.PMS_PILOT_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          # PMS_PILOT_URL is the on-switch. This file has to live on the default
+          # branch for `schedule` to fire at all, so it will still be there before
+          # the pilot starts and after it ends — in those states, skip quietly
+          # rather than turning main red every morning. Once the variable IS set,
+          # every failure below is loud.
+          if [ -z "${BASE_URL:-}" ]; then
+            echo "::notice::PMS_PILOT_URL is not set — no pilot is running. Skipping."
+            exit 0
+          fi
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::PMS_PILOT_URL is set but PMS_PILOT_CRON_SECRET is not — the pilot cannot sync."
+            exit 1
+          fi
+
+          echo "Syncing ${BASE_URL}/api/cron/pms-sync"
+
+          # --max-time guards against the route hanging; the handler itself is
+          # capped at maxDuration=300.
+          code=$(curl -sS -o response.json -w "%{http_code}" --max-time 330 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/cron/pms-sync")
+
+          echo "HTTP ${code}"
+          # The body carries the per-connection summary — surface it in the log so
+          # a failed sync is diagnosable without opening Vercel.
+          jq . response.json 2>/dev/null || cat response.json
+          echo
+
+          if [ "$code" != "200" ]; then
+            echo "::error::Pilot sync failed with HTTP ${code}"
+            exit 1
+          fi
+
+          # HTTP 200 with a per-connection status of "error" still means the sync
+          # did not do its job — surface that as a failed run rather than a green tick.
+          if jq -e '.summary[]? | select(.status == "error")' response.json >/dev/null 2>&1; then
+            echo "::error::At least one connection reported status=error — see the summary above."
+            exit 1
+          fi
+
+          echo "Pilot sync completed cleanly."
