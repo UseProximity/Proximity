@@ -2,26 +2,53 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
+import { authMobile } from "@/lib/authMobile";
+
+// Helper to get user from either NextAuth session (web) or Bearer token (mobile)
+async function getAuthenticatedUser(req) {
+  // Try NextAuth session first (web)
+  const session = await auth();
+  if (session?.user?.email) {
+    return { email: session.user.email };
+  }
+
+  // Try Bearer token (mobile)
+  const mobileAuth = await authMobile(req);
+  if (mobileAuth?.user?.id) {
+    // For mobile, we have ID but need email - fetch it
+    const { data: user } = await supabase
+      .from("users")
+      .select("email")
+      .eq("id", mobileAuth.user.id)
+      .single();
+    
+    if (user?.email) {
+      return { email: user.email };
+    }
+  }
+
+  return null;
+}
 
 export async function PATCH(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.email) {
-      console.error("PATCH /api/editProfile: no session email", { session });
-      return NextResponse.json({ error: "Unauthorized — no session email" }, { status: 401 });
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser?.email) {
+      console.error("PATCH /api/editProfile: no authenticated user");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("PATCH /api/editProfile: looking up email", session.user.email);
+    console.log("PATCH /api/editProfile: looking up email", authUser.email);
 
     const { data: sbUser, error: lookupError } = await supabase
       .from("users")
       .select("id, roles!role_id(name)")
-      .eq("email", session.user.email)
+      .eq("email", authUser.email)
       .single();
 
     if (lookupError) {
       console.error("PATCH /api/editProfile: Supabase lookup error", {
-        email: session.user.email,
+        email: authUser.email,
         error: lookupError,
       });
       return NextResponse.json(
@@ -31,9 +58,9 @@ export async function PATCH(req) {
     }
 
     if (!sbUser) {
-      console.error("PATCH /api/editProfile: no row for email", session.user.email);
+      console.error("PATCH /api/editProfile: no row for email", authUser.email);
       return NextResponse.json(
-        { error: `No Supabase user row for email: ${session.user.email}` },
+        { error: `No Supabase user row for email: ${authUser.email}` },
         { status: 404 }
       );
     }
@@ -55,11 +82,17 @@ export async function PATCH(req) {
     if (body.profileComplete !== undefined) allowedFields.profile_complete = body.profileComplete;
     if (body.referralSource !== undefined) allowedFields.referral_source = body.referralSource;
     if (body.image !== undefined) allowedFields.image = body.image;
+    if (body.email !== undefined) allowedFields.email = body.email;
 
+    // Accept both camelCase (mobile) and snake_case (web)
     if (body.graduation_year !== undefined)
       allowedFields.graduation_year = body.graduation_year ?? null;
+    if (body.graduationYear !== undefined)
+      allowedFields.graduation_year = body.graduationYear ?? null;
     if (body.graduation_month !== undefined)
       allowedFields.graduation_month = body.graduation_month ?? null;
+    if (body.graduationMonth !== undefined)
+      allowedFields.graduation_month = body.graduationMonth ?? null;
 
     // Only allow role changes if provided; only super can promote to super or admin
     if (body.role !== undefined && body.role !== null) {

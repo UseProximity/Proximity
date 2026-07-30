@@ -1,7 +1,9 @@
-import { Image, Pressable, Text, View } from "react-native";
+import { Alert, Image, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { getRentRangeLabel, getCampusWalkMinutes } from "@proximity/shared";
 import { HeartIcon } from "../ui/HeartIcon";
+import { useFavoritesStore } from "../../store/favoritesStore";
+import { useAuthStore } from "../../store/authStore";
 
 // Ported from apps/web/src/components/listings/MapPopupCard.js's ListingCard.
 // Omitted vs. web (cosmetic/non-essential, not a functional gap): analytics
@@ -34,6 +36,9 @@ function WalkBadge({ minutes, label }) {
 
 export function ListingCard({ listing }) {
   const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const isSaved = useFavoritesStore((state) => state.isSaved(listing._id));
+  const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
 
   const addressBeforeComma = listing.address.split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
@@ -50,12 +55,34 @@ export function ListingCard({ listing }) {
   const campusMin = getCampusWalkMinutes(listing.placeWalkMinutes);
   const shuttleMin = typeof listing.shuttleWalkMinutes === "number" ? listing.shuttleWalkMinutes : null;
 
+  const handleHeartPress = async (e) => {
+    e.stopPropagation();
+    
+    if (!user) {
+      Alert.alert(
+        "Sign in required",
+        "Sign in to save listings and access them anytime.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sign In", onPress: () => router.push("/(auth)/login") },
+        ]
+      );
+      return;
+    }
+
+    try {
+      await toggleFavorite(listing._id, listing);
+    } catch (error) {
+      Alert.alert("Error", "Failed to update favorites. Please try again.");
+    }
+  };
+
   return (
     <Pressable
       onPress={() => router.push(`/listings/${listing._id}`)}
       className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-4"
     >
-      <View className="aspect-video bg-gray-100">
+      <View className="relative aspect-video bg-gray-100">
         {imageUrl ? (
           <Image
             source={{ uri: imageUrl }}
@@ -72,6 +99,10 @@ export function ListingCard({ listing }) {
             <Text className="text-white text-xs font-semibold">Unavailable</Text>
           </View>
         )}
+        {/* Heart icon in top-right corner */}
+        <View className="absolute top-3 right-3 bg-white/90 rounded-full w-8 h-8 items-center justify-center">
+          <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="lg" />
+        </View>
       </View>
 
       <View className="p-3">
@@ -86,13 +117,10 @@ export function ListingCard({ listing }) {
               </Text>
             )}
           </View>
-          <View className="flex-row items-center gap-1.5">
-            <Text className={`font-bold text-sm ${listing.unavailable ? "text-gray-400" : "text-gray-800"}`}>
-              {rentLabel}
-              {rentLabel !== "Contact for Pricing" && <Text className="text-xs font-normal">/mo</Text>}
-            </Text>
-            <HeartIcon />
-          </View>
+          <Text className={`font-bold text-sm ${listing.unavailable ? "text-gray-400" : "text-gray-800"}`}>
+            {rentLabel}
+            {rentLabel !== "Contact for Pricing" && <Text className="text-xs font-normal">/mo</Text>}
+          </Text>
         </View>
 
         <View className="flex-row items-center justify-between mt-2">

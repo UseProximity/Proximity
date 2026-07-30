@@ -10,28 +10,63 @@ import {
   StyleSheet,
   SafeAreaView,
 } from "react-native";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useAuth } from "../../src/hooks/useAuth";
+import apiClient from "../../src/lib/apiClient";
+
+const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { login, signInWithGoogle, isLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   async function handleLogin() {
     setError(null);
+    setNeedsVerification(false);
+    setResendSuccess(false);
     try {
       await login(email, password);
+      // Login successful - navigate to main app
+      router.replace("/(tabs)");
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Sign in failed. Please try again.");
+      const errorCode = err?.body?.error;
+      if (errorCode === EMAIL_NOT_VERIFIED) {
+        setNeedsVerification(true);
+        setError(null);
+      } else {
+        setError(err?.body?.error ?? err?.message ?? "Sign in failed. Please try again.");
+      }
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!email) return;
+    setResending(true);
+    setError(null);
+    setResendSuccess(false);
+    try {
+      await apiClient.auth.resendVerification(email);
+      setResendSuccess(true);
+    } catch (err) {
+      setError("Failed to send verification email. Please try again.");
+    } finally {
+      setResending(false);
     }
   }
 
   async function handleGoogleSignIn() {
     setError(null);
+    setNeedsVerification(false);
     try {
       await signInWithGoogle();
+      // Login successful - navigate to main app
+      router.replace("/(tabs)");
     } catch (err) {
       setError(err?.body?.error ?? err?.message ?? "Google sign in failed. Please try again.");
     }
@@ -68,6 +103,32 @@ export default function LoginScreen() {
               secureTextEntry
               editable={!isLoading}
             />
+
+            {needsVerification && (
+              <View style={styles.verificationBox}>
+                <Text style={styles.verificationTitle}>Email not verified</Text>
+                <Text style={styles.verificationText}>
+                  Check your inbox for a verification link. Can't find it?
+                </Text>
+                {resendSuccess ? (
+                  <Text style={styles.successText}>
+                    ✓ Verification email sent! Check your inbox.
+                  </Text>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.resendButton, resending && styles.buttonDisabled]}
+                    onPress={handleResendVerification}
+                    disabled={resending}
+                  >
+                    {resending ? (
+                      <ActivityIndicator size="small" color="#ef4444" />
+                    ) : (
+                      <Text style={styles.resendButtonText}>Resend verification email</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -197,6 +258,45 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontSize: 13,
     textAlign: "center",
+  },
+  verificationBox: {
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
+  },
+  verificationTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#92400e",
+  },
+  verificationText: {
+    fontSize: 13,
+    color: "#78350f",
+    lineHeight: 18,
+  },
+  resendButton: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+  },
+  resendButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#92400e",
+  },
+  successText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#15803d",
+    marginTop: 4,
   },
   footerLink: {
     marginTop: 28,

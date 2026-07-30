@@ -9,7 +9,7 @@ export class UserResource {
 
   updateProfile(data) {
     return this.client.request("/api/editProfile", {
-      method: "POST",
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   }

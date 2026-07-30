@@ -39,4 +39,19 @@ export class AuthResource {
       body: JSON.stringify({ email }),
     });
   }
+
+  resendVerification(email) {
+    return this.client.request("/api/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  }
+
+  changePassword(currentPassword, newPassword) {
+    return this.client.request("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
 }

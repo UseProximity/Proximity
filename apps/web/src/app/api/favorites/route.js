@@ -2,10 +2,34 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { insertAsUser, deleteAsUser } from "@/lib/supabaseWithUser";
+import { authMobile } from "@/lib/authMobile";
 
-export async function GET() {
+// Helper to get user from either NextAuth session (web) or Bearer token (mobile)
+async function getAuthenticatedUser(req) {
+  // Try NextAuth session first (web)
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ ids: [] });
+  if (session?.user?.id) {
+    return { id: session.user.id };
+  }
+
+  // Try Bearer token (mobile)
+  const mobileAuth = await authMobile(req);
+  if (mobileAuth?.user?.id) {
+    return { id: mobileAuth.user.id };
+  }
+
+  return null;
+}
+
+export async function GET(req) {
+  const user = await getAuthenticatedUser(req);
+  
+  // Check if this is a mobile request (has Authorization header)
+  const isMobile = req.headers.get("authorization")?.startsWith("Bearer ");
+
+  if (!user?.id) {
+    return NextResponse.json(isMobile ? [] : { ids: [] });
+  }
 
   const { data: typeRow } = await supabase
     .from("interaction_types")
@@ -13,21 +37,54 @@ export async function GET() {
     .eq("name", "saved")
     .single();
 
-  if (!typeRow) return NextResponse.json({ ids: [] });
+  if (!typeRow) {
+    return NextResponse.json(isMobile ? [] : { ids: [] });
+  }
 
-  const { data: rows } = await supabase
+  // Get all saved listing IDs
+  const { data: interactions } = await supabase
     .from("user_listing_interactions")
     .select("listing_id")
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .eq("interaction_type_id", typeRow.id);
 
-  return NextResponse.json({ ids: (rows ?? []).map((r) => r.listing_id) });
+  const listingIds = (interactions ?? []).map((r) => r.listing_id);
+
+  // Web only needs IDs
+  if (!isMobile) {
+    return NextResponse.json({ ids: listingIds });
+  }
+
+  // Mobile needs full listing objects
+  if (listingIds.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const { data: listings } = await supabase
+    .from("listings")
+    .select(`
+      *,
+      owner:users!owner_id(id, name, email),
+      unit_types(*)
+    `)
+    .in("_id", listingIds)
+    .eq("unavailable", false);
+
+  // Transform to match mobile expectations
+  const formatted = (listings ?? []).map((listing) => ({
+    ...listing,
+    unitTypes: listing.unit_types || [],
+    images: listing.images || [],
+    owner: listing.owner || null,
+  }));
+
+  return NextResponse.json(formatted);
 }
 
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getAuthenticatedUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -36,7 +93,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
 
     // Look up the favorite interaction type ID
     const { data: typeRow } = await supabase

@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +31,9 @@ import { Badge } from "../../src/components/ui/Badge";
 import { StarRating } from "../../src/components/ui/StarRating";
 import { ReviewCard } from "../../src/components/listings/ReviewCard";
 import { ListingDetailMap } from "../../src/components/listings/ListingDetailMap";
+import { HeartIcon } from "../../src/components/ui/HeartIcon";
+import { useFavoritesStore } from "../../src/store/favoritesStore";
+import { useAuthStore } from "../../src/store/authStore";
 
 function walkTimesList(listing) {
   const pwm = listing.placeWalkMinutes;
@@ -46,6 +50,10 @@ export default function ListingDetailScreen() {
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const user = useAuthStore((state) => state.user);
+  const isSaved = useFavoritesStore((state) => state.isSaved(id));
+  const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
 
   const [contactForm, setContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", message: "" });
   const [sending, setSending] = useState(false);
@@ -80,6 +88,26 @@ export default function ListingDetailScreen() {
     }
   }
 
+  const handleHeartPress = async () => {
+    if (!user) {
+      Alert.alert(
+        "Sign in required",
+        "Sign in to save listings and access them anytime.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sign In", onPress: () => router.push("/(auth)/login") },
+        ]
+      );
+      return;
+    }
+
+    try {
+      await toggleFavorite(id, listing);
+    } catch (error) {
+      Alert.alert("Error", "Failed to update favorites. Please try again.");
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white">
@@ -112,10 +140,11 @@ export default function ListingDetailScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View className="flex-row items-center px-4 py-3 border-b border-gray-100">
+        <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Text className="text-red-600 text-base">← Back</Text>
           </Pressable>
+          <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="2xl" />
         </View>
 
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>

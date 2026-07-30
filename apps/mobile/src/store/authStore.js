@@ -23,6 +23,10 @@ export const useAuthStore = create((set, get) => ({
       secureStorage.remove("refresh_token"),
       secureStorage.remove("user"),
     ]);
+    
+    // Clear favorites on logout
+    const { useFavoritesStore } = await import("./favoritesStore");
+    useFavoritesStore.getState().clear();
   },
 
   hydrate: async () => {

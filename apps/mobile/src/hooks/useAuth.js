@@ -27,7 +27,10 @@ export function useAuth() {
       apiClient.auth
         .googleSignIn(idToken)
         .then((result) => setTokens(result))
-        .then(() => {
+        .then(async () => {
+          // Load favorites after successful Google sign-in
+          const { useFavoritesStore } = await import("../store/favoritesStore");
+          useFavoritesStore.getState().hydrate();
           googleResolveRef.current?.();
           setIsLoading(false);
         })
@@ -51,6 +54,9 @@ export function useAuth() {
     try {
       const result = await apiClient.auth.login(email, password);
       await setTokens(result);
+      // Load favorites after successful login
+      const { useFavoritesStore } = await import("../store/favoritesStore");
+      useFavoritesStore.getState().hydrate();
     } finally {
       setIsLoading(false);
     }
