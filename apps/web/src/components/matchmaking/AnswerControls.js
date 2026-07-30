@@ -63,9 +63,10 @@ export default function QuestionControls({ question, onAnswer }) {
   // row for a small text field so the user can type their own answer.
   const [otherMode, setOtherMode] = useState(false);
   // Set to the floor of an open-ended "N+" chip (e.g. 5) when the student taps it
-  // on an expandCount question — swaps the chips for an exact-number field.
+  // on an expandCount question — swaps the chips for a min/max headcount pair.
   const [countFloor, setCountFloor] = useState(null);
   const [count, setCount] = useState("");
+  const [countMax, setCountMax] = useState("");
 
   // Pressing Enter while a chip is focused should SEND the current selection, not
   // re-trigger (and so toggle off) the focused chip. preventDefault stops the
@@ -115,26 +116,46 @@ export default function QuestionControls({ question, onAnswer }) {
     }
 
     // An open-ended "N+" chip on an expandCount question: the chip row is replaced
-    // by a number field so we capture the EXACT count (5+ could be 5, 6 or 8, and
-    // the group-fit matching needs the real number, not the bucket).
+    // by a MIN and MAX pair, because a big group is usually still forming ("five
+    // or six of us, depends on Jamie"). Matching needs real numbers, not a bucket
+    // — it looks for units adding up to exactly a headcount in that span, so an
+    // honest range finds buildings a single guessed number would miss. Equal
+    // ends submit as a bare count ("6") so it reads as "6 people" in the chat.
     if (countFloor != null) {
-      const n = parseInt(count, 10);
-      const valid = Number.isFinite(n) && n >= countFloor;
-      const sendCount = () => valid && submit(String(n));
+      const lo = parseInt(count, 10);
+      const hi = parseInt(countMax, 10);
+      const valid = Number.isFinite(lo) && Number.isFinite(hi) && lo >= countFloor && hi >= lo;
+      const sendCount = () => valid && submit(lo === hi ? String(lo) : `${lo}-${hi}`);
       return (
         <div className="flex items-center gap-2">
-          <div className={`w-40 ${FIELD}`}>
+          <div className={`w-28 ${FIELD}`}>
             <input
               type="number"
               inputMode="numeric"
               min={countFloor}
               autoFocus
-              placeholder={`How many? (${countFloor}+)`}
+              placeholder={`At least ${countFloor}`}
               value={count}
               disabled={!interactive}
               onChange={(e) => setCount(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendCount()}
               className={FIELD_INPUT}
+              aria-label="Fewest people"
+            />
+          </div>
+          <span className="text-sm text-gray-500 shrink-0">to</span>
+          <div className={`w-28 ${FIELD}`}>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={Number.isFinite(lo) ? Math.max(lo, countFloor) : countFloor}
+              placeholder="At most"
+              value={countMax}
+              disabled={!interactive}
+              onChange={(e) => setCountMax(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendCount()}
+              className={FIELD_INPUT}
+              aria-label="Most people"
             />
           </div>
           <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => setCountFloor(null)}>

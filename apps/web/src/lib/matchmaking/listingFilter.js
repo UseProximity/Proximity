@@ -392,13 +392,15 @@ function toGroupInt(v, fallback) {
 //
 // Deliberately permissive: group_size reaches here from three different places,
 // so all three shapes stay supported.
-//   - "3" / "6+"  — the group_size question's chips (the live UI path)
+//   - "3"         — the group_size question's chips (the live UI path)
 //   - 4           — the chat agent's update_search tool ("I actually have 4 people")
-//   - "2-4" / { min, max } — range forms, used by the dev persona harnesses
+//   - "5-7" / { min, max } — the "5+" min/max fields, and the dev persona harnesses
 //
-// A trailing "+", or a single value with no explicit upper end, means "or more":
-// no upper bound (Infinity), i.e. "fits at least N". An explicit range keeps only
-// listings whose bedroom count sits inside it.
+// A bare headcount is EXACT: "3" means three bedrooms, not "three or more". A
+// student who taps 3 and gets shown 4-beds has been ignored, and the extra
+// bedroom is money out of their pocket. An explicit range keeps only listings
+// whose bedroom count sits inside it. A trailing "+" is the one open-topped form
+// (nothing in the UI submits it any more; kept so old saved sessions still parse).
 export function parseGroupRange(raw) {
   let min;
   let max;
@@ -407,16 +409,14 @@ export function parseGroupRange(raw) {
   if (/^\s*studio\s*$/i.test(String(raw ?? ""))) return { min: 0, max: 0 };
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     min = toGroupInt(raw.min, 1);
-    max = raw.max == null || /\+/.test(String(raw.max)) ? Infinity : toGroupInt(raw.max, min);
+    max = /\+/.test(String(raw.max)) ? Infinity : raw.max == null ? min : toGroupInt(raw.max, min);
   } else {
     const parts = String(raw ?? "").trim().split("-");
     min = toGroupInt(parts[0], 1);
-    if (parts.length > 1) {
-      const hi = parts[parts.length - 1];
-      max = /\+/.test(hi) ? Infinity : toGroupInt(hi, min);
-    } else {
-      max = Infinity; // legacy single value / "N+" -> open-topped ("at least N")
-    }
+    const hi = parts.length > 1 ? parts[parts.length - 1] : String(raw ?? "");
+    // "N+" -> open-topped ("at least N"); anything else closes at the stated
+    // upper end, and a bare "N" closes at N itself.
+    max = /\+/.test(hi) ? Infinity : parts.length > 1 ? toGroupInt(hi, min) : min;
   }
   min = Math.max(1, min);
   if (max < min) max = min;
@@ -429,6 +429,18 @@ export function parseGroupRange(raw) {
 function parseGroupSize(raw) {
   const { min, max } = parseGroupRange(raw);
   return Number.isFinite(max) ? max : min;
+}
+
+// How to name the group in prose. An exact headcount reads as "all 4 of you";
+// a range ("5 to 7 of us") has no single true number, so it stays "your whole
+// group" rather than asserting a headcount the student never gave.
+function groupPhrase(range) {
+  return range.min === range.max ? `all ${range.max} of you` : "your whole group";
+}
+
+// The bedroom count(s) that would satisfy the group, for prose.
+function bedsPhrase(range) {
+  return range.min === range.max ? `${range.max} bedrooms` : `${range.min} to ${range.max} bedrooms`;
 }
 
 // Whether a bedroom count falls inside the requested people range. A floor of 1
@@ -459,23 +471,36 @@ function unitBedSizes(listing) {
   return (priced.length ? priced : units).map((u) => Number(u.bedrooms) || 0);
 }
 
-// FLUSH split: the fewest units in this building whose bedrooms sum to EXACTLY
-// `people` — e.g. a 2-bed plus a 3-bed for a group of five. Returns null when no
-// combination lands exactly, so we never propose a split that strands the group
-// paying for an empty bedroom (or leaves someone without one). A 0/1 subset-sum
-// over a handful of small units, minimizing the number of leases they'd sign.
-function flushSplit(listing, people) {
-  if (!Number.isFinite(people) || people < 2) return null;
+// FLUSH split: the fewest units in this building whose bedrooms sum to EXACTLY a
+// headcount the group asked for — e.g. a 2-bed plus a 3-bed for a group of five.
+// Returns null when no combination lands exactly, so we never propose a split
+// that strands the group paying for an empty bedroom (or leaves someone without
+// one). A 0/1 subset-sum over a handful of small units, minimizing the number of
+// leases they'd sign.
+//
+// When the student gave a RANGE ("5 to 7 of us"), every headcount in it is an
+// acceptable landing spot, so we take the one needing the fewest leases and, on a
+// tie, the smallest group — the cheapest honest way to house them.
+function flushSplit(listing, range) {
+  const lo = Math.max(2, range.min);
+  const hi = Number.isFinite(range.max) ? range.max : lo;
+  if (!Number.isFinite(lo) || hi < lo) return null;
   const sizes = unitBedSizes(listing);
   if (sizes.length === 0) return null;
-  const fewest = new Array(people + 1).fill(Infinity);
+  const fewest = new Array(hi + 1).fill(Infinity);
   fewest[0] = 0;
   for (const beds of sizes) {
-    for (let sum = people; sum >= beds; sum--) {
+    for (let sum = hi; sum >= beds; sum--) {
       if (fewest[sum - beds] + 1 < fewest[sum]) fewest[sum] = fewest[sum - beds] + 1;
     }
   }
-  return Number.isFinite(fewest[people]) ? { count: fewest[people], beds: people } : null;
+  let best = null;
+  for (let target = lo; target <= hi; target++) {
+    if (Number.isFinite(fewest[target]) && (best === null || fewest[target] < best.count)) {
+      best = { count: fewest[target], beds: target };
+    }
+  }
+  return best;
 }
 
 // Bed metrics for a listing: cheapest per-person price and the biggest SINGLE
@@ -498,7 +523,7 @@ function groupFit(listing, range) {
   const { maxBeds } = bedMetrics(listing);
   if (bedsInGroupRange(maxBeds, range)) return { fits: true, split: null };
   if (range.min < SPLIT_MIN_GROUP) return { fits: false, split: null };
-  const split = flushSplit(listing, range.min);
+  const split = flushSplit(listing, range);
   return split && split.count > 1 ? { fits: true, split } : { fits: false, split: null };
 }
 
@@ -1052,9 +1077,11 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
     preferred = nearHard(preferred, (x) => amenityRowOf(x.listing)?.parking === true);
   }
 
-  // SOFT size fit (a near-hard FILTER in v1): a unit much larger than the group
-  // needs is DEMOTED in fit score below rather than dropped, so a great-value
-  // oversized place can still surface when the ranker justifies it plainly.
+  // SOFT size fit: a unit much larger than the group needs is DEMOTED in fit
+  // score below rather than dropped. Now that every headcount parses to a CLOSED
+  // range, the hard group gate upstream already drops oversized units, so this
+  // only still fires for a legacy open-topped ("N+") session saved before that
+  // change — a backstop, not the main defence.
   const sizeCap = groupRange.max + 1;
   const isOversized = (x) => {
     const beds = activeLeasesOf(x.listing).map((l) => Number(l.bedrooms) || 0).filter((b) => b > 0);
@@ -1078,11 +1105,11 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
     // quietly fall back to the over-budget ones.
     if (coachCandidates.length === 0) {
       groupNote = bySplit
-        ? `Heads up: I can't find a building whose units add up to exactly ${groupSize} bedrooms right now, and I won't put you somewhere you'd pay for rooms you don't need. Try a smaller group or check back soon — new places get listed often.`
-        : `Heads up: I don't have a single place with ${groupSize} bedrooms available right now, and I won't split a group your size across separate apartments. Try a smaller group or check back soon — new places get listed often.`;
+        ? `Heads up: I can't find a building whose units add up to ${bedsPhrase(groupRange)} right now, and I won't put you somewhere you'd pay for rooms you don't need. Try a smaller group or check back soon — new places get listed often.`
+        : `Heads up: I don't have a single place with ${bedsPhrase(groupRange)} available right now, and I won't split a group your size across separate apartments. Try a smaller group or check back soon — new places get listed often.`;
     } else if (fitInBudget.length === 0) {
       const roof = bySplit ? "in the same building" : "under one roof";
-      groupNote = `Heads up: nothing with room for all ${groupSize} of you came in under $${Math.round(budgetMax)}/mo per person. Places that house your whole group ${roof} do exist just above that line — tell me if you want me to include them.`;
+      groupNote = `Heads up: nothing with room for ${groupPhrase(groupRange)} came in under $${Math.round(budgetMax)}/mo per person. Places that house your whole group ${roof} do exist just above that line — tell me if you want me to include them.`;
     }
   }
 
@@ -1258,13 +1285,12 @@ export function selectTopThree({ pool, dims, fitById, perPersonById, budgetMax, 
   // the same building. That's a legitimate match, as long as the pick SAYS so
   // plainly instead of implying one unit sleeps everyone.
   const groupRange = parseGroupRange(preferences.group_size);
-  const groupSize = parseGroupSize(preferences.group_size); // representative size for prose
   const needsGroup = groupRange.min >= 2;
   const groupBase = effBase;
   const splitOf = (l) => (needsGroup ? splitFor(l, groupRange) : null);
   const splitNote = (l) => {
-    const { count } = splitOf(l);
-    return ` Heads up: no single unit here sleeps all ${groupSize} of you, so you'd take ${count} units in the same building — they add up to exactly ${groupSize} bedrooms, so nobody's paying for a room you don't need.`;
+    const { count, beds } = splitOf(l);
+    return ` Heads up: no single unit here sleeps ${groupPhrase(groupRange)}, so you'd take ${count} units in the same building — they add up to exactly ${beds} bedrooms, so nobody's paying for a room you don't need.`;
   };
 
   // "Good value" treats the budget as a TARGET, not a race to the bottom: a
