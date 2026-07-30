@@ -92,7 +92,7 @@ The dev snapshot is refreshed by `scripts/snapshot-prod-to-dev.sh` (clones prod 
 
 ```bash
 npm run dev      # local dev server
-npm run build    # production build (also runs next-sitemap)
+npm run build    # production build (/sitemap.xml is a dynamic route: src/app/sitemap.js)
 npm run lint     # ESLint
 ```
 

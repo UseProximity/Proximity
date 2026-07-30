@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-29T16:06:45.848Z",
-  "count": 30,
+  "_generated": "2026-07-29T19:00:19.612Z",
+  "count": 31,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -24,6 +24,10 @@
       "description": "No description — add a top-of-file comment."
     },
     {
+      "file": "src/lib/jsonLd.js",
+      "description": "Serialize an object for embedding in a <script type=\"application/ld+json\">"
+    },
+    {
       "file": "src/lib/leaseCheck/analyzeLease.js",
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
     },
@@ -38,6 +42,10 @@
     {
       "file": "src/lib/leaseCheck/rateLimit.js",
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
+    },
+    {
+      "file": "src/lib/listings/getListing.js",
+      "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
       "file": "src/lib/listings/listingSelect.js",

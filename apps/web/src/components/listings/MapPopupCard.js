@@ -7,6 +7,13 @@ import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
 
+// Modifier/middle clicks fall through to the browser (open in new tab);
+// plain clicks are cancelled so the existing JS handlers keep control.
+function suppressPlainClick(e) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  e.preventDefault();
+}
+
 function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
   const filled = isCampus
@@ -73,6 +80,15 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         }, 0);
       }}
     >
+      {/* Crawlable link to the listing page. Plain clicks are cancelled and
+          bubble to the card's onClick above, so panel/analytics behavior is
+          unchanged; cmd/ctrl/middle-click opens the listing in a new tab. */}
+      <a
+        href={`/listings/${listing._id}`}
+        aria-label={title}
+        className="absolute inset-0 z-[1]"
+        onClick={suppressPlainClick}
+      />
       <div
         ref={imgWrapperRef}
         className="relative aspect-video bg-gray-100"
@@ -168,7 +184,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
+        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
           <HeartIcon listingId={listing._id} />
         </div>
       )}
@@ -199,12 +215,16 @@ export function MobileMapPopup({ listing, onClose, onViewListing }) {
             <span className="text-xs font-normal text-gray-500">/mo</span>
           )}
         </span>
-        <button
-          onClick={onViewListing}
-          className="px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
+        <a
+          href={`/listings/${listing._id}`}
+          onClick={(e) => {
+            suppressPlainClick(e);
+            if (e.defaultPrevented) onViewListing();
+          }}
+          className="inline-block px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
         >
           View listing →
-        </button>
+        </a>
       </div>
     </div>
   );
