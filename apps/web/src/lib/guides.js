@@ -105,4 +105,25 @@ export const guides = [
       "washu",
     ],
   },
+  {
+    title: "Rent Payments Can Build Your Credit. What Students Should Know",
+    description:
+      "Rent is the biggest bill most students pay, and it's invisible on your credit report unless you report it. Here's how rent reporting works, whether it actually moves your score, and how to do it for free.",
+    author: "Ben Flicker, Founder of Proximity",
+    category: "Credit",
+    readTime: "6 min read",
+    slug: "rent-reporting-credit",
+    image: "/blog/rent-reporting-credit.avif",
+    summary:
+      "A student's guide to rent reporting: what it is, what the research says about whether it actually moves your credit score, who it's worth it for, and how to sign up for free.",
+    body: "Most students pay rent every month with nothing to show for it on their credit report. This guide explains how rent reporting services work, what randomized-controlled-trial research from the Urban Institute and others found about how much it actually helps, why some credit scores don't count rent at all, who should bother doing it, and how to sign up for free with Self.",
+    tags: [
+      "credit",
+      "rent reporting",
+      "credit score",
+      "credit building",
+      "personal finance",
+      "vantagescore",
+    ],
+  },
 ];

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-07-16T07:10:56.296Z",
-  "count": 28,
+  "_generated": "2026-08-01T10:36:50.908Z",
+  "count": 29,
   "pages": [
     {
       "path": "/",
@@ -66,6 +66,10 @@
     {
       "path": "/guides/four-types-washu-housing",
       "file": "src/app/guides/four-types-washu-housing/page.js"
+    },
+    {
+      "path": "/guides/rent-reporting-credit",
+      "file": "src/app/guides/rent-reporting-credit/page.js"
     },
     {
       "path": "/guides/washu-apartment-checklist",
