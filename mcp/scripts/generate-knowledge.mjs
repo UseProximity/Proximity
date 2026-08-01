@@ -102,6 +102,27 @@ function noSessionIsSoft(body) {
   return !rejects;
 }
 
+// Explicit auth declarations, read from comments anywhere in the route file:
+//
+//   @auth optional          → applies to every handler in the file
+//   @auth POST public       → applies to POST only (wins over the file-wide form)
+//
+// The inference below reads the shape of the code, which can't see a guard that
+// lives behind a helper (e.g. a resolveActor() that 401s only in production).
+// An annotation is the route saying what it actually promises; always prefer it.
+function declaredAuth(content) {
+  const declared = { file: null, methods: {} };
+  for (const [, a, b] of content.matchAll(/@auth\s+([A-Za-z+]+)(?:\s+([A-Za-z+]+))?/g)) {
+    const asMethod = a.toUpperCase();
+    if (HTTP_METHODS.includes(asMethod)) {
+      if (b && b in AUTH_RANK) declared.methods[asMethod] = b;
+    } else if (a in AUTH_RANK) {
+      declared.file = a;
+    }
+  }
+  return declared;
+}
+
 function classifyHandlerAuth(body) {
   if (/requireSuper\(\)/.test(body) || /role\s*!==\s*["']super["']/.test(body)) return "super";
   if (!/\bauth\(\)/.test(body)) return "public"; // never consults the session
@@ -115,8 +136,11 @@ function inferRouteDetails(routePath, content) {
   // Extract HTTP methods defined in the file + judge each one's auth level.
   const bodies = extractHandlerBodies(content);
   const methods = HTTP_METHODS.filter((m) => bodies[m]);
+  const declared = declaredAuth(content);
   const methodAuth = {};
-  for (const m of methods) methodAuth[m] = classifyHandlerAuth(bodies[m]);
+  for (const m of methods) {
+    methodAuth[m] = declared.methods[m] ?? declared.file ?? classifyHandlerAuth(bodies[m]);
+  }
 
   // Route-level auth = the strongest guard across its methods (for summaries).
   let auth = "public";
