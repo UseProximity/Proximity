@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
+import { isReviewEligibleEmail } from "@/lib/schools";
 
 export async function POST(req) {
   try {
@@ -14,9 +15,9 @@ export async function POST(req) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (!session.user.email?.endsWith("@wustl.edu")) {
+    if (!isReviewEligibleEmail(session.user.email)) {
       return NextResponse.json(
-        { error: "Only WashU students with a @wustl.edu email can leave reviews." },
+        { error: "Only students at a school we serve can leave reviews." },
         { status: 403 }
       );
     }

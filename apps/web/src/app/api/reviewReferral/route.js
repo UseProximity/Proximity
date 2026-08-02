@@ -1,8 +1,15 @@
 /*
- * Submission endpoint for the ambassador referral review flow (/refer/<userId>).
+ * Submission endpoint for the review flow. Serves both entry points:
+ *   - /refer/<userId> — ambassador referral link (referrerId present, recorded on the review)
+ *   - /review         — public "Add a Review" page (no referrer; referrer_id stays null)
  *
- * Auth: the reviewer must be signed in with a WashU (@wustl.edu) account; the review is
- * attributed to that account. Reviews auto-publish (legitimacy=true). Max 2 per account.
+ * Auth: the reviewer must be signed in with a student account at a school we serve (see
+ * lib/schools.js); the review is attributed to that account. Reviews auto-publish
+ * (legitimacy=true). Max 2 per account.
+ *
+ * School: the submitted school must match the account email's domain, so it's verified
+ * rather than self-declared. It's stored on the USER (users.school_id) — a review's school
+ * is derived by joining through its author, not duplicated onto the review row.
  *
  * Listing resolution (no user choice): the reviewer-selected address is compared against
  * our catalog. On an EXACT street-address match the review is attached to that listing
@@ -29,6 +36,7 @@ import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import { isKnownSchool, schoolMatchesEmail, schoolForEmail } from "@/lib/schools";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +70,17 @@ async function countUserReviews(userId) {
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments.
 function isHalfStar(v) {
   return typeof v === "number" && v >= 0.5 && v <= 5 && Number.isInteger(v * 2);
+}
+
+// schools.short_name is the join key between lib/schools.js and the schools table.
+async function resolveSchoolId(shortName) {
+  if (!shortName) return null;
+  const { data } = await supabase
+    .from("schools")
+    .select("id")
+    .eq("short_name", shortName)
+    .maybeSingle();
+  return data?.id ?? null;
 }
 
 async function resolveOtherHomeTypeId() {
@@ -341,6 +360,7 @@ export async function POST(req) {
     const body = await req.json();
     const {
       referrerId,
+      school,
       rating,
       communicationRating,
       locationRating,
@@ -358,17 +378,26 @@ export async function POST(req) {
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
-    if (!referrerId) {
-      return NextResponse.json({ error: "Missing referral" }, { status: 400 });
+    // Optional: absent for reviews left from the public /review page. When present it must
+    // resolve to a live account, so a bad referral link still fails loudly.
+    if (referrerId) {
+      const { data: referrer } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", referrerId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!referrer) {
+        return NextResponse.json({ error: "Invalid referral link" }, { status: 400 });
+      }
     }
-    const { data: referrer } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", referrerId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!referrer) {
-      return NextResponse.json({ error: "Invalid referral link" }, { status: 400 });
+
+    // ── Validate school ─────────────────────────────────────────────────────
+    if (!isKnownSchool(school)) {
+      return NextResponse.json(
+        { error: "Select the school you go / went to." },
+        { status: 400 }
+      );
     }
 
     // ── Validate ratings (all four required, half-star) ─────────────────────
@@ -418,13 +447,35 @@ export async function POST(req) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Please sign in to leave a review." }, { status: 401 });
     }
-    if (!session.user.email?.toLowerCase().endsWith("@wustl.edu")) {
+    const emailSchool = schoolForEmail(session.user.email);
+    if (!emailSchool) {
       return NextResponse.json(
-        { error: "Only WashU students with a @wustl.edu email can leave reviews." },
+        { error: "Only students at a school we serve can leave reviews." },
+        { status: 403 }
+      );
+    }
+    // The school must be backed by the account's email domain — never taken on trust.
+    if (!schoolMatchesEmail(school, session.user.email)) {
+      return NextResponse.json(
+        { error: `Your account email belongs to ${emailSchool.shortName}. Select that school.` },
         { status: 403 }
       );
     }
     const reviewerUserId = session.user.id;
+
+    // Record the reviewer's school on their account. This is the only place the school is
+    // persisted — a review's school comes from joining listing_reviews → users → schools.
+    const schoolId = await resolveSchoolId(emailSchool.shortName);
+    if (schoolId) {
+      const { error: schoolErr } = await supabase
+        .from("users")
+        .update({ school_id: schoolId })
+        .eq("id", reviewerUserId);
+      if (schoolErr) {
+        // Non-fatal: the review itself still stands.
+        console.error("[reviewReferral] school_id update failed:", schoolErr.message);
+      }
+    }
 
     // ── Enforce per-account review cap ──────────────────────────────────────
     if ((await countUserReviews(reviewerUserId)) >= REVIEW_LIMIT) {
@@ -485,6 +536,19 @@ export async function POST(req) {
       }
       resolvedListingId = stubId;
       isNewProperty = true;
+
+      // Tag the stub with the reviewer's school. Written here rather than passed into
+      // rpc_create_listing because that RPC inserts an explicit column list that omits
+      // school_id (same reason drive times are upserted below).
+      if (schoolId) {
+        const { error: tagErr } = await supabase
+          .from("listings")
+          .update({ school_id: schoolId })
+          .eq("id", stubId);
+        if (tagErr) {
+          console.error("[reviewReferral] listing school tag failed:", tagErr.message);
+        }
+      }
 
       // Drive times: best-effort upsert after stub create (mirrors addListing; not in RPC).
       if (driveTimeRows.length) {
