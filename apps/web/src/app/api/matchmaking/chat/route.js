@@ -45,6 +45,14 @@ async function resolveUserId(email) {
 // Resolve who is acting on this request. A signed-in user is always honored.
 // With no session, production requires login (401); non-production falls back
 // to the shared guest tester so the chatbot is usable without an account.
+//
+// @auth optional
+//
+// Declared rather than inferred: the guard lives here, not as an `if (!session)`
+// in each handler, so the knowledge scanner would otherwise read these routes as
+// unconditionally guarded and flag the deliberate non-prod guest response as a
+// missing auth check. "optional" is the honest label — anonymous callers get a
+// safe response off production, and a 401 on it.
 async function resolveActor(session) {
   if (session?.user?.email) {
     const user = await resolveUserId(session.user.email);

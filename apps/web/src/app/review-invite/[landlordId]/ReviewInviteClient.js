@@ -5,7 +5,7 @@
  *
  * Flow:
  *   1. Tenant lands on the page (already sees the landlord's listings).
- *   2. Auth gate: must be signed in with a @wustl.edu account.
+ *   2. Auth gate: must be signed in with a student account at a school we serve.
  *   3. Pick a listing from a dropdown, set integer 1–5 stars, write a review
  *      (≥5 chars), optionally rate Communication / Location / Value.
  *   4. Submit to /api/submitReview (unchanged shared endpoint). Reviews
@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import AuthCard from "@/components/auth/AuthCard";
+import { isReviewEligibleEmail } from "@/lib/schools";
 
 // Matches inputs across the rest of the site (see SubleaseFormPanel / ListingFormPanel).
 const INPUT_CLASS =
@@ -85,9 +86,7 @@ function SubRatingRow({ label, value, onChange }) {
 export default function ReviewInviteClient({ landlord, listings }) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
-  const isWustl = !!session?.user?.email
-    ?.toLowerCase()
-    .endsWith("@wustl.edu");
+  const eligible = isReviewEligibleEmail(session?.user?.email);
 
   const [listingId, setListingId] = useState(listings[0]?.id ?? "");
   const [rating, setRating] = useState(0);
@@ -192,7 +191,7 @@ export default function ReviewInviteClient({ landlord, listings }) {
   }
 
   // Auth gate — signed-in WashU account required to submit a review.
-  if (status !== "loading" && (!loggedIn || !isWustl)) {
+  if (status !== "loading" && (!loggedIn || !eligible)) {
     return (
       <div className={PAGE_WRAPPER_CLASS}>
         <div className="max-w-md mx-auto">
@@ -201,9 +200,9 @@ export default function ReviewInviteClient({ landlord, listings }) {
               Review {landlord.name}’s property
             </h1>
             <p className="text-sm text-gray-600">
-              {loggedIn && !isWustl
-                ? "Reviews can only be left from a WashU (@wustl.edu) account — sign in with your WashU email below."
-                : "Sign in or create an account with your WashU (@wustl.edu) email to share your experience."}
+              {loggedIn && !eligible
+                ? "Reviews can only be left from a student account at a school we serve — sign in with your school email below."
+                : "Sign in or create an account with your school email to share your experience."}
             </p>
           </div>
           <div className="flex justify-center">

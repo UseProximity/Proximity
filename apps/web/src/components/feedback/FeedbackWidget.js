@@ -5,12 +5,15 @@
  * bottom-left corner on desktop only (kept clear of the bottom-right ChatWidget)
  * and a modal form. On mobile the launcher is hidden to keep the small viewport
  * clear — the footer "Report a bug" link is the entry point there.
+ * On /browse the launcher shrinks to a translucent icon so it stops covering the
+ * listing description it sits on top of; hovering restores it to full opacity.
  * Also opens when any element dispatches the `proximity:open-feedback` window event —
  * the footer "Report a bug" link uses that so both entry points share one modal.
  * Submissions POST to /api/feedback, which emails the team.
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import { MessageSquarePlus, X } from "lucide-react";
@@ -25,6 +28,10 @@ export const OPEN_FEEDBACK_EVENT = "proximity:open-feedback";
 
 export default function FeedbackWidget() {
   const { data: session } = useSession();
+  const pathname = usePathname();
+  // Browse is the one page with content underneath the launcher (the listing detail
+  // panel), so there it shrinks to a translucent icon instead of a labelled pill.
+  const subtle = pathname === "/browse";
   const [open, setOpen] = useState(false);
   const [type, setType] = useState("bug");
   const [message, setMessage] = useState("");
@@ -87,10 +94,15 @@ export default function FeedbackWidget() {
         type="button"
         onClick={openModal}
         aria-label="Report a bug or suggest a fix"
-        className="hidden sm:flex fixed bottom-6 left-6 z-40 items-center gap-2 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition px-4 py-3"
+        title="Report a bug or suggest a fix"
+        className={`hidden sm:flex fixed bottom-6 left-6 z-40 items-center rounded-full shadow-lg transition ${
+          subtle
+            ? "p-3 bg-gray-900/40 text-white/70 backdrop-blur-sm hover:bg-gray-900 hover:text-white focus-visible:bg-gray-900 focus-visible:text-white"
+            : "gap-2 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800"
+        }`}
       >
         <MessageSquarePlus className="h-5 w-5" />
-        <span className="text-sm font-semibold">Feedback</span>
+        {!subtle && <span className="text-sm font-semibold">Feedback</span>}
       </button>
 
       {/* Modal */}

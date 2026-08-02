@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-30T15:29:35.851Z",
+  "_generated": "2026-08-02T22:36:23.414Z",
   "count": 65,
   "routes": [
     {
@@ -694,9 +694,6 @@
       },
       "tables": [
         "listings",
-        "users",
-        "listing_reviews",
-        "review_votes",
         "listing_landlords"
       ],
       "file": "src/app/api/listing/[listingId]/route.js"
@@ -738,11 +735,11 @@
         "POST",
         "PATCH"
       ],
-      "auth": "any",
+      "auth": "optional",
       "methodAuth": {
-        "GET": "any",
-        "POST": "any",
-        "PATCH": "any"
+        "GET": "optional",
+        "POST": "optional",
+        "PATCH": "optional"
       },
       "tables": [
         "listings",
@@ -814,6 +811,7 @@
       },
       "tables": [
         "listing_reviews",
+        "schools",
         "home_types",
         "users",
         "roles",

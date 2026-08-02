@@ -524,7 +524,7 @@ function RentalCard({ listing, index, isInView }) {
                   {listing.title ? listing.address : cityStateZip}
                 </p>
               </div>
-              <span className="text-red-500 font-bold text-sm whitespace-nowrap flex-shrink-0">
+              <span className="text-[#3C4142] font-bold text-sm whitespace-nowrap flex-shrink-0">
                 {getRentRangeLabel(listing.unitTypes)}
                 {getRentRangeLabel(listing.unitTypes) !==
                   "Contact for Pricing" && (

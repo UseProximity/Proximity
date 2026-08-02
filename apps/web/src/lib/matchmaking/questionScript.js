@@ -17,12 +17,13 @@ export const QUESTION_PLAN = [
     // Uses the name we just confirmed, so the flow reads as a handoff from the
     // greeting straight into the first real question.
     prompt: "Alright {{name}}, how many people are you planning to live with (including yourself)?",
-    // Tappable count cards, ascending from 0 bedrooms. "Studio" means one person
-    // in a 0-bedroom unit and matches ONLY studios. No single unit on the market
-    // has 5+ bedrooms, so "5+" needs an EXACT headcount to match a flush
-    // combination of units (see expandCount): tapping it swaps the chip row for a
-    // number field, and the student submits a real number ("6"). answerToLabel
-    // renders the pick as "Studio" / "1 person" / "3 people".
+    // Tappable count cards, ascending from 0 bedrooms. Every count is EXACT: tap
+    // 2 and you get 2-bedroom places, never a 3-bed you'd be paying an extra room
+    // for. "Studio" means one person in a 0-bedroom unit and matches ONLY studios.
+    // No single unit on the market has 5+ bedrooms, so "5+" needs real numbers to
+    // match a flush combination of units (see expandCount): tapping it swaps the
+    // chip row for MIN and MAX fields, and the student submits "6" or "5-7".
+    // answerToLabel renders the pick as "Studio" / "1 person" / "5-7 people".
     options: ["Studio", "1", "2", "3", "4", "5+"],
     expandCount: true,
     // A headcount is a closed set — there is no sensible free-text answer, so no

@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
-import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext, perPersonRentOf } from "./listingFilter";
+import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext, perPersonRentOf, parseGroupRange } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice, rewindTradeoffs } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
@@ -824,9 +824,12 @@ async function finalizeRecommendations(session) {
 // right after they give their headcount, rather than letting a "3 bed" card be a
 // surprise. Returns null for any smaller group (they're held to a single unit).
 function bigGroupHeadsUp(value) {
-  const n = parseInt(String(value ?? "").replace(/[^0-9]/g, ""), 10);
-  if (!Number.isFinite(n) || n < 5) return null;
-  return `Quick heads up: no single place around campus has ${n} bedrooms, so a group your size takes a couple of units in the same building. I'll only show you buildings where those units add up to exactly ${n} bedrooms, so nobody's paying for a room you don't need.`;
+  // Parse via the shared range rule — a stripped-digits parse turned the "5-7"
+  // the min/max fields now submit into 57.
+  const { min, max } = parseGroupRange(value);
+  if (!Number.isFinite(min) || min < 5) return null;
+  const beds = min === max ? `exactly ${max} bedrooms` : `${min} to ${max} bedrooms`;
+  return `Quick heads up: no single place around campus has ${min} bedrooms, so a group your size takes a couple of units in the same building. I'll only show you buildings where those units add up to ${beds}, so nobody's paying for a room you don't need.`;
 }
 
 // Beyond this walk (minutes) a place realistically needs a car or the shuttle to

@@ -134,6 +134,21 @@ export default function AvailableListings({
       .catch(() => {});
   }, [panelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The expanded panel above is desktop-only (hidden md:block), so on a phone a
+  // ?panel= deep link — from the Proxy chat cards, the landlord analytics table,
+  // or "View on map" — used to land on /browse with nothing open. Hand the
+  // listing to the global ?listing= modal instead, which is already styled for
+  // small screens and renders the same ListingModalInfo. Reads the live URL
+  // rather than the closed-over searchParams so it can't reinstate the ?src=
+  // the attribution effect above just stripped.
+  useEffect(() => {
+    if (isDesktop || !panelId) return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("panel");
+    params.set("listing", panelId);
+    router.replace(`/browse?${params.toString()}`);
+  }, [panelId, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openPanel = (listing) => {
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
