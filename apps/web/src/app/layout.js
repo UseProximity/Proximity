@@ -16,7 +16,7 @@ import { Header } from "@/components/layout/Header";
 import StagingBanner from "@/components/layout/StagingBanner";
 import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
-import { appEnv } from "@/lib/appEnv";
+import { appEnv, indexingEnabled } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
@@ -35,6 +35,11 @@ export const metadata = {
   // "./" resolves against each route, giving every page a self-canonical
   // (query strings dropped). Pages that set their own canonical override it.
   alternates: { canonical: "./" },
+  // Staging serves a copy of production content on a public URL, so it has to say
+  // noindex on every page. robots.txt alone isn't enough — it stops crawlers fetching
+  // a page, but a URL linked from elsewhere can still be indexed as a bare result.
+  // Inherited by every route unless a page sets its own `robots`.
+  ...(indexingEnabled() ? {} : { robots: { index: false, follow: false } }),
   openGraph: {
     siteName: "Proximity",
     title: "WashU Off-Campus Housing & Honest Peer Reviews | Proximity",
