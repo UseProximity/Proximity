@@ -145,12 +145,26 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
               </p>
             )}
           </div>
-          <span className={`font-bold whitespace-nowrap flex-shrink-0 ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
-            {getRentRangeLabel(listing.unitTypes)}
-            {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
-              <span className="text-xs font-normal">/mo</span>
+          <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
+            <span className={`font-bold whitespace-nowrap ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
+              {getRentRangeLabel(listing.unitTypes)}
+              {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
+                <span className="text-xs font-normal">/mo</span>
+              )}
+            </span>
+            {hasRating && (
+              <span
+                className="flex items-center gap-0.5 text-xs whitespace-nowrap"
+                title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
+              >
+                <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
+                <span className="font-semibold text-gray-700 tabular-nums">
+                  {rating.toFixed(1)}
+                </span>
+                <span className="text-gray-400 tabular-nums">({numReviews})</span>
+              </span>
             )}
-          </span>
+          </div>
         </div>
         <div className="flex items-center justify-between mt-auto pt-2 min-w-0 gap-2">
           <span className="text-gray-500 text-xs truncate flex-1">
@@ -158,18 +172,6 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
-          {hasRating && (
-            <span
-              className="flex items-center gap-0.5 text-xs flex-shrink-0"
-              title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
-            >
-              <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
-              <span className="font-semibold text-gray-700 tabular-nums">
-                {rating.toFixed(1)}
-              </span>
-              <span className="text-gray-400 tabular-nums">({numReviews})</span>
-            </span>
-          )}
           {listing.owner?.name && !compact && (
             <span className="text-gray-400 text-xs truncate max-w-[40%]">
               {listing.owner.name}
