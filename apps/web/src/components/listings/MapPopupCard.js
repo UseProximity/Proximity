@@ -145,7 +145,9 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
               </p>
             )}
           </div>
-          <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
+          {/* gap-1 matches the pt-1 on the row below, so the rating sits
+              evenly spaced between the rent and the landlord name. */}
+          <div className="flex flex-col items-end flex-shrink-0 gap-1">
             <span className={`font-bold whitespace-nowrap ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
               {getRentRangeLabel(listing.unitTypes)}
               {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
@@ -166,7 +168,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between mt-auto pt-2 min-w-0 gap-2">
+        <div className="flex items-center justify-between mt-auto pt-1 min-w-0 gap-2">
           <span className="text-gray-500 text-xs truncate flex-1">
             {bedLabel} bed{" | "}
             {bathLabel} bath
