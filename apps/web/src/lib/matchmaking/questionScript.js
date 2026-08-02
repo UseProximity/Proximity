@@ -11,30 +11,24 @@ export const QUESTION_PLAN = [
       "Hi there, I'm Proxy, your personal housing matchmaker. Let's find your place. First, I have your name as {{name}}. Is that right, or do you go by something else?",
   },
   {
-    id: "program",
-    field: "program",
-    kind: "choice",
-    prompt: "Which program are you in?",
-    options: ["Undergrad", "Grad", "Med", "Law", "Business", "Other"],
-  },
-  {
-    // Asked instead of "what year" so it stays unambiguous when we test/launch
-    // over the summer (when "rising junior" vs "junior" is unclear) and tells us
-    // how long this student stays a warm lead. Not used by the ranker.
-    id: "grad_year",
-    field: "grad_year",
-    kind: "choice",
-    prompt: "When do you graduate?",
-    options: ["2026", "2027", "2028", "2029", "2030+"],
-  },
-  {
     id: "group_size",
     field: "group_size",
     kind: "choice",
-    prompt: "How many people are you planning to live with (including you)?",
-    // Tappable count cards; "6+" submits "6+" (parseGroupRange reads it as "at
-    // least 6"). answerToLabel renders the pick as "3 people" / "1 person".
-    options: ["1", "2", "3", "4", "5", "6+"],
+    // Uses the name we just confirmed, so the flow reads as a handoff from the
+    // greeting straight into the first real question.
+    prompt: "Alright {{name}}, how many people are you planning to live with (including yourself)?",
+    // Tappable count cards, ascending from 0 bedrooms. Every count is EXACT: tap
+    // 2 and you get 2-bedroom places, never a 3-bed you'd be paying an extra room
+    // for. "Studio" means one person in a 0-bedroom unit and matches ONLY studios.
+    // No single unit on the market has 5+ bedrooms, so "5+" needs real numbers to
+    // match a flush combination of units (see expandCount): tapping it swaps the
+    // chip row for MIN and MAX fields, and the student submits "6" or "5-7".
+    // answerToLabel renders the pick as "Studio" / "1 person" / "5-7 people".
+    options: ["Studio", "1", "2", "3", "4", "5+"],
+    expandCount: true,
+    // A headcount is a closed set — there is no sensible free-text answer, so no
+    // "Something else…" escape hatch on this one.
+    noOther: true,
     allowUnsure: true,
   },
   {
@@ -55,8 +49,11 @@ export const QUESTION_PLAN = [
   {
     id: "lease_term",
     field: "lease_term",
-    kind: "multi",
-    prompt: "What lease length works for you? Pick all that fit.",
+    // Single-select: a student signs one lease, so this is a decision rather than
+    // a shortlist. (leaseTestsFor accepts a scalar or an array, so sessions
+    // answered before this change still rank correctly.)
+    kind: "choice",
+    prompt: "What lease length works for you?",
     options: ["Semester only", "Academic year (~10 months)", "Full year only"],
     allowUnsure: true,
   },
@@ -86,7 +83,7 @@ export const QUESTION_PLAN = [
     // via the listing-aware "Would you X for Y?" tradeoffs (see narrowing.js).
     field: "priorities",
     kind: "multi",
-    prompt: "What matters most in your place? Tap everything that fits.",
+    prompt: "What are you looking for in a home? Tap all that matter to you.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
     allowUnsure: true,
   },
@@ -98,7 +95,7 @@ export const QUESTION_PLAN = [
     // anchor. Options are the student's own picks (see describeQuestion).
     field: "top_priority",
     kind: "choice",
-    prompt: "Of those, which single one matters most?",
+    prompt: "Of those priorities, which one matters most?",
     options: null, // filled from preferences.priorities at render time
     optionsFromPriorities: true,
     allowUnsure: true,
@@ -126,6 +123,8 @@ export const MAX_TRADEOFFS = 4;
 export function peopleLabel(value) {
   const s = String(value ?? "").trim();
   if (!s || s === "No preference") return s;
+  // "Studio" is a place, not a headcount — it reads for itself.
+  if (/^studio$/i.test(s)) return "Studio";
   const n = parseInt(s.replace(/\+/g, ""), 10);
   return `${s} ${n === 1 ? "person" : "people"}`;
 }

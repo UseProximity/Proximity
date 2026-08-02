@@ -65,7 +65,7 @@ const _cache = new WeakMap();
 
 // Parse a listing's description into the restrictions we can act on:
 //   { gender: "female" | "male" | null, dealbreakers: string[] }
-export function extractListingConstraints(listing) {
+function extractListingConstraints(listing) {
   if (!listing || typeof listing !== "object") return { gender: null, dealbreakers: [] };
   if (_cache.has(listing)) return _cache.get(listing);
   const desc = (listing.description ?? "").toString();
@@ -88,7 +88,7 @@ export function constraintSummary(listing) {
 // Normalize a stored account gender ("Female"/"male"/"unspecified"/"Other"/…)
 // to "female" | "male" | null. Anything we can't confidently bucket (unspecified,
 // other, non-binary, blank) is null — unknown for matching purposes.
-export function normalizeGender(raw) {
+function normalizeGender(raw) {
   const s = (raw ?? "").toString().trim().toLowerCase();
   if (!s) return null;
   if (/^(?:f|wom[ae]n|girl|lady|ladies)/.test(s)) return "female";
@@ -101,7 +101,7 @@ export function normalizeGender(raw) {
 // notes ("I'm a girl", "as a guy…"). Deliberately strict: a phrase like "looking
 // for female roommates" must NOT be read as the student being female, so we only
 // trust "I am/I'm/as a …" lead-ins. null when nothing clear is said.
-export function inferGenderFromNotes(notes) {
+function inferGenderFromNotes(notes) {
   const t = (notes ?? "").toString().toLowerCase();
   if (!t) return null;
   const lead = /\b(?:i'?m|i am|as a)\b[^.!?\n]{0,24}?/;
@@ -115,7 +115,7 @@ export function inferGenderFromNotes(notes) {
 // The viewer's gender for matching: their account gender first (stamped onto the
 // session preferences as `_viewerGender` by the chat route), else a clear
 // first-person mention in their notes. null = unknown.
-export function viewerGenderOf(preferences) {
+function viewerGenderOf(preferences) {
   return normalizeGender(preferences?._viewerGender) ?? inferGenderFromNotes(preferences?.notes);
 }
 

@@ -31,6 +31,7 @@ import {
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
 import ReviewReplySection from "./ReviewReplySection";
+import { isReviewEligibleEmail } from "@/lib/schools";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -853,7 +854,7 @@ function ReviewsTab({
 
       {/* Leave a Review form */}
       <div className="border-t border-gray-100 pt-6 mt-4">
-        {session?.user?.email?.endsWith("@wustl.edu") ? (
+        {isReviewEligibleEmail(session?.user?.email) ? (
           <>
             <h3 className="text-base font-semibold text-gray-900 mb-4">
               Leave a Review
@@ -901,9 +902,8 @@ function ReviewsTab({
           </>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Reviews are only open to verified WashU students. Please sign in
-            with your <span className="font-semibold">@wustl.edu</span> Google
-            account.
+            Reviews are only open to verified students at a school we serve.
+            Please sign in with your school email.
           </div>
         )}
       </div>

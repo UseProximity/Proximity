@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
@@ -31,8 +32,9 @@ function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
 }
 
-// Identity for the "don't repeat the latest question" guard. Pairwise pairs all
-// share id "priorities", so fold in the per-pair stepKey to keep them distinct.
+// Identity for the "don't repeat the latest question" guard. Consecutive
+// narrowing tradeoffs all share the id "tradeoff", so fold in the per-question
+// stepKey to keep them distinct.
 const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
 
 // Progress-bar shape: the scripted questions fill 0→90%; the narrowing phase
@@ -49,12 +51,14 @@ export default function ChatClient() {
   const [messages, setMessages] = useState([]);
   const [preferences, setPreferences] = useState({});
   const [weights, setWeights] = useState({});
-  const [, setCandidates] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [status, setStatus] = useState("in_progress");
   const [loading, setLoading] = useState(false);
   const [recsUpdating, setRecsUpdating] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  // The chat API requires a signed-in user in production (401). Without this the
+  // screen rendered an empty, unanswerable chat — show a sign-in card instead.
+  const [needsAuth, setNeedsAuth] = useState(false);
   const hadCache = useRef(false);
 
   // Refs mirror the latest prefs/weights so rapid chip taps build on current
@@ -130,11 +134,39 @@ export default function ChatClient() {
     }
   }, [messages, sessionId, preferences, weights, recommendations, status]);
 
+  // Mirror the visible chat back to the server. Several turns are authored only
+  // on the client (the "want me to email these owners?" offer, a declined offer,
+  // an email draft), and a reload rebuilds the window from the STORED transcript,
+  // so without this those turns disappear. Debounced, and pushed through
+  // postChain so it can never overtake an in-flight turn.
+  useEffect(() => {
+    if (!sessionId || messages.length === 0 || loading) return;
+    const id = setTimeout(() => {
+      const transcript = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ts: m.ts,
+        ...(m.question ? { question: m.question } : {}),
+        ...(m.questionId ? { questionId: m.questionId } : {}),
+        ...(m.tradeoffIndex != null ? { tradeoffIndex: m.tradeoffIndex } : {}),
+        ...(m.recommendations ? { recommendations: m.recommendations } : {}),
+        ...(m.draft ? { draft: m.draft } : {}),
+      }));
+      postChain.current = postChain.current.then(() =>
+        fetch("/api/matchmaking/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, action: "save_transcript", transcript }),
+        }).catch((err) => console.error("[ChatClient] transcript save failed:", err))
+      );
+    }, 800);
+    return () => clearTimeout(id);
+  }, [messages, sessionId, loading]);
+
   const applyServerState = useCallback((data) => {
     if (data.sessionId) setSessionId(data.sessionId);
     if (data.preferences) setPreferences(data.preferences);
     if (data.weights) setWeights(data.weights);
-    if (data.candidates) setCandidates(data.candidates);
     if (data.recommendations) setRecommendations(data.recommendations);
     if (data.status) setStatus(data.status);
   }, []);
@@ -142,7 +174,6 @@ export default function ChatClient() {
   // Apply ONLY ranking/status from a server response — never prefs/weights/
   // messages, which the client owns optimistically during the question flow.
   const applyRanking = useCallback((data) => {
-    if (data.candidates) setCandidates(data.candidates);
     if (data.recommendations) setRecommendations(data.recommendations);
     if (data.status) setStatus(data.status);
   }, []);
@@ -308,7 +339,13 @@ export default function ChatClient() {
   const handleTradeoffAnswer = useCallback(
     (answer) => {
       trackEvent("Proxy Question Answered", { questionId: "tradeoff", kind: "tradeoff", answer: answerToLabel(answer) });
-      setMessages((prev) => [...prev, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }]);
+      // Stamp the tradeoff's position so this bubble gets an "Edit" affordance that
+      // rewinds the narrowing phase to exactly this question (see handleEditFrom).
+      const tradeoffIndex = prefsRef.current?._tradeoffHistory?.length ?? 0;
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: answerToLabel(answer), ts: new Date().toISOString(), questionId: "tradeoff", tradeoffIndex },
+      ]);
       setLoading(true);
       postChain.current = postChain.current.then(async () => {
         try {
@@ -474,6 +511,38 @@ export default function ChatClient() {
               weightsRef.current = data.weights;
             }
             if (data.mode === "agent") {
+              // The re-rank found nothing the student hasn't already seen. Proxy
+              // says so (fixed text), then we immediately run the widening turn —
+              // the dots stay up while it loosens the filters and re-ranks.
+              if (data.pendingRelax) {
+                trackEvent("Proxy Search Widened", {});
+                setMessages((prev) => [
+                  ...prev,
+                  { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString(), animate: true },
+                ]);
+                const retry = await fetch("/api/matchmaking/chat", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sessionId, action: "relax_retry" }),
+                });
+                const widened = await retry.json();
+                if (retry.ok) {
+                  applyRanking(widened);
+                  if (widened.preferences) {
+                    setPreferences(widened.preferences);
+                    prefsRef.current = widened.preferences;
+                  }
+                  if (widened.reranked && widened.recommendations?.length) {
+                    appendRecsWithContact(widened);
+                  } else if (widened.assistantMessage) {
+                    setMessages((prev) => [
+                      ...prev,
+                      { role: "assistant", content: widened.assistantMessage, ts: new Date().toISOString(), animate: true },
+                    ]);
+                  }
+                }
+                return;
+              }
               // Post-recommendations conversational turn. Re-rank → show new
               // matches; draft → editable email compose; otherwise a plain reply.
               if (data.reranked && data.recommendations?.length) {
@@ -487,10 +556,16 @@ export default function ChatClient() {
                 ]);
               }
             } else if (data.nextQuestion) {
+              // `note` is a standalone remark Proxy makes before asking the next
+              // question (e.g. "a group your size takes a couple of units") — its
+              // own bubble, so it doesn't get mixed into the question text.
+              const note = data.note
+                ? [{ role: "assistant", content: data.note, ts: new Date().toISOString(), animate: true }]
+                : [];
               setMessages((prev) =>
                 qKey(prev[prev.length - 1]?.question) === qKey(data.nextQuestion)
                   ? prev
-                  : [...prev, questionToMessage(data.nextQuestion, true)]
+                  : [...prev, ...note, questionToMessage(data.nextQuestion, true)]
               );
             } else if (data.recommendations?.length) {
               appendRecsWithContact(data);
@@ -523,9 +598,23 @@ export default function ChatClient() {
         setLoading(true);
       }
 
-      // 2. Sync with server (authoritative source)
+      // 2. Sync with server (authoritative source). Ask for the session we were
+      // last in by id — that's what lets an anonymous/guest tester resume, since
+      // guests share one identity and can't be handed "their latest session".
       try {
-        const res = await fetch("/api/matchmaking/chat");
+        const res = await fetch(
+          cached?.sessionId
+            ? `/api/matchmaking/chat?sessionId=${encodeURIComponent(cached.sessionId)}`
+            : "/api/matchmaking/chat"
+        );
+        if (res.status === 401) {
+          // Anonymous in production — a cached transcript can't be continued either.
+          localStorage.removeItem(LS_KEY);
+          setMessages([]);
+          setNeedsAuth(true);
+          setLoading(false);
+          return;
+        }
         const { session } = await res.json();
 
         if (session) {
@@ -536,7 +625,9 @@ export default function ChatClient() {
             ts: m.ts,
             ...(m.question ? { question: m.question } : {}),
             ...(m.questionId ? { questionId: m.questionId } : {}),
+            ...(m.tradeoffIndex != null ? { tradeoffIndex: m.tradeoffIndex } : {}),
             ...(m.recommendations ? { recommendations: m.recommendations } : {}),
+            ...(m.draft ? { draft: m.draft } : {}),
           }));
           // A pre-rework session has messages but none carry a `question`
           // descriptor (no chips) — it can't be answered. Restart it cleanly.
@@ -552,7 +643,6 @@ export default function ChatClient() {
           setSessionId(session.id);
           setPreferences(session.preferences ?? {});
           setWeights(session.weights ?? {});
-          setCandidates(session.candidates ?? []);
           setRecommendations(session.recommendations ?? []);
           setStatus(session.status);
           if (serverMessages.length > 0) {
@@ -573,8 +663,10 @@ export default function ChatClient() {
         } else if (!hadCache.current) {
           await startFresh();
         } else {
-          localStorage.removeItem(LS_KEY);
-          await startFresh();
+          // The server has no session to hand back, but we restored a real
+          // transcript from this browser — keep it. (Wiping it here is what used
+          // to nuke a guest tester's whole chat on reload.)
+          setLoading(false);
         }
       } catch (err) {
         console.error("[ChatClient] serverSync failed:", err);
@@ -591,6 +683,10 @@ export default function ChatClient() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: "" }),
         });
+        if (res.status === 401) {
+          setNeedsAuth(true);
+          return;
+        }
         const data = await res.json();
         if (res.ok) {
           applyServerState(data);
@@ -633,7 +729,55 @@ export default function ChatClient() {
   // Edit a past prompt: rewind prefs/weights to before that question, truncate
   // the chat back to it, and re-ask it (the user continues forward from there).
   const handleEditFrom = useCallback(
-    (questionId) => {
+    (questionId, tradeoffIndex) => {
+      // Tradeoff answers live in server-side narrowing state, so the server does
+      // the rewind and hands back the question to re-ask.
+      if (questionId === "tradeoff") {
+        trackEvent("Proxy Answer Edited", { questionId: "tradeoff" });
+        setStatus("in_progress");
+        setRecommendations([]);
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.role === "user" && m.questionId === "tradeoff" && m.tradeoffIndex === tradeoffIndex);
+          if (idx < 0) return prev;
+          // Drop the answer and the question bubble that prompted it — the server
+          // re-sends that question, so keeping it here would double it up.
+          let cut = idx;
+          while (cut > 0 && prev[cut - 1].role === "assistant") cut -= 1;
+          return prev.slice(0, cut);
+        });
+        setLoading(true);
+        postChain.current = postChain.current.then(async () => {
+          try {
+            const res = await fetch("/api/matchmaking/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, action: "rewind_tradeoff", tradeoffIndex }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              if (data.preferences) {
+                setPreferences(data.preferences);
+                prefsRef.current = data.preferences;
+              }
+              if (data.weights) {
+                setWeights(data.weights);
+                weightsRef.current = data.weights;
+              }
+              if (data.nextQuestion) {
+                setMessages((prev) => [...prev, questionToMessage(data.nextQuestion, true)]);
+              } else if (data.recommendations?.length) {
+                appendRecsWithContact(data);
+              }
+            }
+          } catch (err) {
+            console.error("[ChatClient] rewind_tradeoff failed:", err);
+          } finally {
+            setLoading(false);
+          }
+        });
+        return;
+      }
+
       trackEvent("Proxy Answer Edited", { questionId });
       const rewound = rewindTo(prefsRef.current, questionId);
       prefsRef.current = rewound.preferences;
@@ -667,7 +811,7 @@ export default function ChatClient() {
         return truncated;
       });
     },
-    [sessionId]
+    [sessionId, appendRecsWithContact]
   );
 
   // Abandon the current chat and begin a brand-new session from question one.
@@ -681,7 +825,6 @@ export default function ChatClient() {
     setMessages([]);
     setPreferences({});
     setWeights({});
-    setCandidates([]);
     setRecommendations([]);
     setStatus("in_progress");
     setLoading(true);
@@ -722,12 +865,44 @@ export default function ChatClient() {
   })();
   const progressPct = Math.round(progress * 100);
 
+  // Signed-out: the chat can't run at all, so replace it with a sign-in card
+  // rather than an empty window that never answers.
+  if (needsAuth) {
+    return (
+      <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-8 text-center">
+          <div className="w-12 h-12 mx-auto rounded-full bg-red-100 text-red-600 text-lg font-bold flex items-center justify-center">
+            P
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-gray-900">Sign in to chat with Proxy</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            Answer a few quick questions and get free personalized off-campus housing matches near WashU.
+          </p>
+          <Link
+            href="/login?callbackUrl=/matchmaking"
+            className="mt-6 block w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/login?tab=signup&callbackUrl=/matchmaking"
+            className="mt-3 inline-block text-sm font-medium text-gray-500 hover:text-red-600 transition"
+          >
+            Create an account
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     // Fill the viewport beneath the chrome above us so the chat is tall but the composer
     // stays on screen. Subtracts the sticky header (83px mobile / 104px desktop) plus the
     // ~26px localhost/staging banner; on production (no banner) this just leaves a small
     // gap above the footer. The footer sits below the fold.
-    <div className="h-[calc(100dvh-109px)] md:h-[calc(100dvh-130px)] bg-gray-50 flex flex-col overflow-hidden">
+    // svh, not dvh: sized to the SMALLEST viewport (mobile browser toolbars showing),
+    // so the answer chips and composer at the bottom are never hidden behind them.
+    <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex flex-col overflow-hidden">
 
       {/* Mobile: thin bar to open the answers drawer, with a progress line beneath */}
       <div className="md:hidden flex-shrink-0 bg-white border-b border-gray-100">

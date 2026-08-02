@@ -5,8 +5,9 @@ import MessageBubble from "./MessageBubble";
 import RecommendationCards from "./RecommendationCards";
 import QuestionControls from "./AnswerControls";
 
-// Identity for an active question (pairwise pairs share id "priorities", so fold
-// in the per-pair stepKey). Mirrors qKey in ChatClient.
+// Identity for an active question. Consecutive narrowing tradeoffs all share the
+// id "tradeoff", so fold in the per-question stepKey to keep them distinct.
+// Mirrors qKey in ChatClient.
 const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : null);
 
 function TypingDots() {
@@ -38,12 +39,17 @@ function AnswerSheet({ children }) {
     return () => cancelAnimationFrame(id);
   }, []);
   return (
+    // pb keeps clear of the iOS home indicator when the page opts into the safe
+    // area (env() resolves to 0 otherwise, so this is just normal padding today).
     <div
-      className={`flex-shrink-0 border-t border-gray-200 bg-white px-4 pb-4 pt-3 transform-gpu transition-all duration-300 ease-out ${
+      className={`flex-shrink-0 border-t border-gray-200 bg-white px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] transform-gpu transition-all duration-300 ease-out ${
         shown ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
       }`}
     >
-      <div className="max-h-48 overflow-y-auto pr-0.5">{children}</div>
+      {/* Capped at a share of the viewport (not a fixed height) so a long chip
+          set scrolls instead of the sheet growing past the screen, with a little
+          padding so the last row never sits flush against the clipped edge. */}
+      <div className="max-h-[38vh] overflow-y-auto px-0.5 pb-1">{children}</div>
     </div>
   );
 }
@@ -105,7 +111,7 @@ function DraftCompose({ draft, loading, onSend }) {
 // A "matches" turn: Proxy's message types out first (markdown-aware), THEN the
 // listing cards render beneath it — which in turn hold their own skeletons until
 // each card's image has loaded (see RecommendationCards).
-function RecsTurn({ msg, updating, userInitial, onTyped }) {
+function RecsTurn({ msg, updating, userInitial, onTyped, onGrow }) {
   const [textDone, setTextDone] = useState(!msg.animate);
   const bubbleMsg = updating ? { ...msg, content: "Updating your matches…", animate: false } : msg;
   return (
@@ -113,6 +119,7 @@ function RecsTurn({ msg, updating, userInitial, onTyped }) {
       <MessageBubble
         message={bubbleMsg}
         userInitial={userInitial}
+        onGrow={onGrow}
         onReady={() => {
           setTextDone(true);
           onTyped?.();
@@ -133,13 +140,14 @@ function RecsTurn({ msg, updating, userInitial, onTyped }) {
 }
 
 // An email-draft turn: Proxy's intro types out, then the editable draft appears.
-function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped }) {
+function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped, onGrow }) {
   const [textDone, setTextDone] = useState(!msg.animate);
   return (
     <div className="space-y-2">
       <MessageBubble
         message={msg}
         userInitial={userInitial}
+        onGrow={onGrow}
         onReady={() => {
           setTextDone(true);
           onTyped?.();
@@ -153,6 +161,10 @@ function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped }) {
     </div>
   );
 }
+
+// How far from the bottom the reader can be before we stop auto-following a
+// message that's still typing (they've scrolled up to re-read something).
+const NEAR_BOTTOM_PX = 80;
 
 export default function ChatWindow({ messages, loading, recsUpdating, userInitial, onSend, onAnswer, onSendDraft, onEdit }) {
   const scrollRef = useRef(null);
@@ -204,16 +216,19 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
   // Scroll the chat container ONLY (never the page) so the top of the newest
   // message is visible. Using scrollIntoView here would bubble up and scroll the
   // whole page; instead we adjust this container's own scrollTop.
+  //
+  // The ref is on the last RENDERED message, not the last message in the array:
+  // messages queued behind one that is still typing aren't in the DOM, so anchoring
+  // on the array's tail left the ref null every time Proxy started typing — and
+  // the old fallback then slammed the transcript back to the very top. There is
+  // no "reset to top" case anymore; with nothing to anchor on, we hold position.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
     const el = lastMsgRef.current;
-    if (el) {
-      const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
-      container.scrollTo({ top: container.scrollTop + delta, behavior: "smooth" });
-    } else {
-      container.scrollTop = 0;
-    }
+    if (!el) return;
+    const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    container.scrollTo({ top: container.scrollTop + delta, behavior: "smooth" });
   }, [messages.length, loading]);
 
   // Once a bubble finishes typing (and its chips render), scroll so the WHOLE
@@ -221,6 +236,23 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
   const scrollToBottom = useCallback(() => {
     const container = scrollRef.current;
     if (container) container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  }, []);
+
+  // A bubble grew by `delta` px mid-typewriter (its text wrapped onto a new line).
+  // Scroll by exactly that much so the line being written stays where the last
+  // line was, instead of marching off the bottom of the window. Instant, not
+  // smooth: a smooth scroll per line would still be animating when the next line
+  // lands, and the text would drift away faster than the view could catch up.
+  //
+  // Skipped when the user has scrolled up to re-read something — yanking them
+  // back down mid-read would be worse than letting the new text go off-screen.
+  const handleGrow = useCallback((delta) => {
+    const container = scrollRef.current;
+    if (!container || !delta) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom - delta > NEAR_BOTTOM_PX) return; // reading history
+    container.scrollTop += delta;
   }, []);
 
   // When the answer popup slides up it claims space at the bottom of the window;
@@ -262,7 +294,8 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
         {messages.map((msg, i) => {
           // Hold back messages queued behind one that is still typing.
           if (i > firstPendingIdx) return null;
-          const isLast = i === messages.length - 1;
+          // Anchor the scroll on the last message actually on screen.
+          const isLast = i === Math.min(firstPendingIdx, messages.length - 1);
           const updatingThis = recsUpdating && i === lastRecsIdx;
           // Fires when this bubble finishes typing: unblocks the next queued
           // message (and, via typedMap, this question's answer controls) and
@@ -274,17 +307,18 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
           return (
             <div key={i} ref={isLast ? lastMsgRef : null}>
               {msg.recommendations ? (
-                <RecsTurn msg={msg} updating={updatingThis} userInitial={userInitial} onTyped={onTyped} />
+                <RecsTurn msg={msg} updating={updatingThis} userInitial={userInitial} onTyped={onTyped} onGrow={handleGrow} />
               ) : msg.draft ? (
-                <DraftTurn msg={msg} loading={loading} userInitial={userInitial} onSendDraft={onSendDraft} onTyped={onTyped} />
+                <DraftTurn msg={msg} loading={loading} userInitial={userInitial} onSendDraft={onSendDraft} onTyped={onTyped} onGrow={handleGrow} />
               ) : (
                 <MessageBubble
                   message={msg}
                   userInitial={userInitial}
                   // Edit lives under the user's OWN answer bubble: tapping it
                   // rewinds the flow to that question, as if answering it fresh.
-                  onEdit={msg.role === "user" && msg.questionId && onEdit ? () => onEdit(msg.questionId) : undefined}
+                  onEdit={msg.role === "user" && msg.questionId && onEdit ? () => onEdit(msg.questionId, msg.tradeoffIndex) : undefined}
                   onReady={onTyped}
+                  onGrow={handleGrow}
                 />
               )}
             </div>
@@ -306,15 +340,16 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
           <QuestionControls question={activeQuestion} onAnswer={onAnswer} />
         </AnswerSheet>
       ) : hasRecommendations ? (
-        <div className="flex-shrink-0 border-t border-gray-100 px-4 pb-4 pt-3">
-          <div className="flex items-center gap-2 bg-gray-50 rounded-xl border border-gray-200 px-3 py-2">
+        <div className="flex-shrink-0 border-t border-gray-100 px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          {/* Same control scale as the answer chips (see AnswerControls). */}
+          <div className="flex items-center gap-2 bg-gray-50 rounded-xl border border-gray-200 px-3 py-1.5">
             <input
               ref={inputRef}
               type="text"
               onKeyDown={handleKeyDown}
               placeholder={loading ? "Proxy is typing…" : "Tell Proxy what to adjust…"}
               disabled={loading}
-              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50"
             />
             <button
               onClick={handleSendClick}

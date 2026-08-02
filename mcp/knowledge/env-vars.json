@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-18T23:45:00.716Z",
-  "count": 32,
+  "_generated": "2026-07-27T04:50:11.839Z",
+  "count": 30,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -62,14 +62,6 @@
     {
       "name": "LEASE_SCANNER_KEY",
       "public": false
-    },
-    {
-      "name": "NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL",
-      "public": true
-    },
-    {
-      "name": "NEXT_PUBLIC_FORMSPREE_EXIT_POLL_URL",
-      "public": true
     },
     {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
