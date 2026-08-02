@@ -18,7 +18,13 @@ export async function POST(req) {
       return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
     }
     const tokenInfo = await tokenInfoRes.json();
-    if (tokenInfo.aud !== process.env.GOOGLE_ID) {
+    // expo-auth-session requests a native platform's own client ID (not the
+    // web client) on iOS/Android, so the id_token's `aud` will be that
+    // platform's client ID, not GOOGLE_ID.
+    const validAudiences = [process.env.GOOGLE_ID, process.env.GOOGLE_ANDROID_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID].filter(
+      Boolean
+    );
+    if (!validAudiences.includes(tokenInfo.aud)) {
       return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
     }
 
@@ -73,7 +79,11 @@ export async function POST(req) {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      signAccessToken({ id: userRow.id, role: userRow.roles?.name ?? "student" }),
+      signAccessToken({
+        id: userRow.id,
+        role: userRow.roles?.name ?? "student",
+        profileComplete: userRow.profile_complete ?? false,
+      }),
       signRefreshToken({ id: userRow.id }),
     ]);
 

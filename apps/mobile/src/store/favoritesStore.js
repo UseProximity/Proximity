@@ -67,11 +67,15 @@ export const useFavoritesStore = create((set, get) => ({
       savedListings: newListings,
     });
 
-    // Call API
+    // Call API. POST /api/favorites is a toggle, not an idempotent add — if
+    // the server disagrees with our optimistic guess (e.g. it was already
+    // favorited and this call just removed it), resync to server truth
+    // instead of trusting the optimistic update blindly.
     try {
-      await apiClient.favorites.addFavorite(listingId);
-      // Don't refresh - trust the optimistic update
-      // The backend confirmed it worked, no need to re-fetch
+      const data = await apiClient.favorites.addFavorite(listingId);
+      if (data?.favorited === false) {
+        set({ savedIds, savedListings });
+      }
     } catch (error) {
       // Rollback on error
       set({

@@ -8,10 +8,10 @@ function getSecretKey() {
 
 /**
  * Signs a short-lived access token (15 minutes).
- * Payload: { sub: userId, role, type: "access" }
+ * Payload: { sub: userId, role, profileComplete, type: "access" }
  */
-export async function signAccessToken({ id, role }) {
-  return new SignJWT({ role, type: "access" })
+export async function signAccessToken({ id, role, profileComplete = false }) {
+  return new SignJWT({ role, profileComplete, type: "access" })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(String(id))
     .setIssuedAt()

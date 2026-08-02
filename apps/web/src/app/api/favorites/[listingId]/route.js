@@ -1,22 +1,6 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
-import { authMobile } from "@/lib/authMobile";
-
-// Helper to get user from either NextAuth session (web) or Bearer token (mobile)
-async function getAuthenticatedUser(req) {
-  const session = await auth();
-  if (session?.user?.id) {
-    return { id: session.user.id };
-  }
-
-  const mobileAuth = await authMobile(req);
-  if (mobileAuth?.user?.id) {
-    return { id: mobileAuth.user.id };
-  }
-
-  return null;
-}
+import { getRequestUser } from "@/lib/getRequestUser";
 
 export async function DELETE(req, { params }) {
   try {
@@ -26,7 +10,7 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
 
-    const user = await getAuthenticatedUser(req);
+    const user = await getRequestUser(req);
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

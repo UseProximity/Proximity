@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useAuth } from "../../src/hooks/useAuth";
+import apiClient from "../../src/lib/apiClient";
 
 const ROLES = [
   { value: "student", label: "Student" },
@@ -27,26 +28,58 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("student");
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+  // The email the server confirmed it sent to, not the (possibly stale) form
+  // field — mirrors web's AuthCard, which displays `data.email` from the
+  // response rather than its own local input state.
+  const [verifiedEmail, setVerifiedEmail] = useState(null);
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState("");
 
   async function handleSignup() {
     setError(null);
     try {
-      await signup(name, email, password, role);
-      setSuccess(true);
+      const data = await signup(name, email, password, role);
+      setVerifiedEmail(data.email);
     } catch (err) {
       setError(err?.body?.error ?? err?.message ?? "Sign up failed. Please try again.");
     }
   }
 
-  if (success) {
+  async function handleResend() {
+    setResendMsg("");
+    setResending(true);
+    try {
+      await apiClient.auth.resendVerification(verifiedEmail);
+      setResendMsg("Resent! Check your inbox.");
+    } catch {
+      setResendMsg("Failed to resend. Please try again.");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  if (verifiedEmail) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centeredContainer}>
           <Text style={styles.successTitle}>Check your email</Text>
           <Text style={styles.successBody}>
-            We sent a verification link to {email}. Click it to activate your account, then sign in.
+            We sent a verification link to {verifiedEmail}. Click it to activate your account, then sign in.
           </Text>
+          <Text style={[styles.successBody, styles.successHint]}>
+            Don&apos;t see it? Check your spam folder.
+          </Text>
+
+          <Text style={styles.resendPrompt}>Didn&apos;t get it?</Text>
+          <TouchableOpacity onPress={handleResend} disabled={resending} hitSlop={8}>
+            {resending ? (
+              <ActivityIndicator size="small" color="#ef4444" />
+            ) : (
+              <Text style={styles.resendLinkText}>Resend verification email</Text>
+            )}
+          </TouchableOpacity>
+          {resendMsg ? <Text style={styles.resendMsg}>{resendMsg}</Text> : null}
+
           <TouchableOpacity
             style={[styles.button, styles.buttonPrimary, { marginTop: 28 }]}
             onPress={() => router.replace("/(auth)/login")}
@@ -267,5 +300,24 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     textAlign: "center",
     lineHeight: 22,
+  },
+  successHint: {
+    marginTop: 6,
+  },
+  resendPrompt: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  resendLinkText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ef4444",
+  },
+  resendMsg: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#6b7280",
   },
 });

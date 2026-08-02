@@ -27,7 +27,7 @@ export async function POST(req) {
       .update({ email_verification_token: token, email_verification_expires_at: expires })
       .eq("id", user.id);
 
-    await sendVerificationEmail({ email, name: user.name, token, baseUrl: getBaseUrl(req) });
+    await sendVerificationEmail({ email, name: user.name, token, baseUrl: getBaseUrl(req), req });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

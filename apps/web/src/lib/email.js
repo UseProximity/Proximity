@@ -23,13 +23,15 @@ export function getBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
-export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
+export async function sendPasswordResetEmail({ email, name, token, baseUrl, req }) {
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Reset your Proximity password",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Reset your Proximity password",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Reset your password${name ? `, ${name}` : ""}</h2>
         <p>Click the button below to set a new password. This link expires in 1 hour.</p>
@@ -41,7 +43,9 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
         <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
       </div>
     `,
-  });
+    },
+    req
+  );
 }
 
 export async function sendLandlordNudgeEmail({ email, name }) {
@@ -101,13 +105,15 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   });
 }
 
-export async function sendVerificationEmail({ email, name, token, baseUrl }) {
+export async function sendVerificationEmail({ email, name, token, baseUrl, req }) {
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Verify your Proximity account",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify your Proximity account",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Welcome to Proximity${name ? `, ${name}` : ""}!</h2>
         <p>Click the button below to verify your email address. This link expires in 24 hours.</p>
@@ -118,5 +124,7 @@ export async function sendVerificationEmail({ email, name, token, baseUrl }) {
         <p style="color:#666;font-size:14px">Or copy this link:<br>${verifyUrl}</p>
       </div>
     `,
-  });
+    },
+    req
+  );
 }

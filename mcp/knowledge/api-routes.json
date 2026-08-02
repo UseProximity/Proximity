@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-07-18T23:45:00.678Z",
-  "count": 63,
+  "_generated": "2026-08-01T16:47:56.165Z",
+  "count": 64,
   "routes": [
     {
       "path": "/api/addListing",
@@ -207,6 +207,20 @@
       "file": "src/app/api/auth/[...nextauth]/route.js"
     },
     {
+      "path": "/api/auth/change-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/change-password/route.js"
+    },
+    {
       "path": "/api/auth/forgot-password",
       "methods": [
         "POST"
@@ -222,26 +236,45 @@
     },
     {
       "path": "/api/auth/mobile/google",
-      "methods": [],
+      "methods": [
+        "POST"
+      ],
       "auth": "public",
-      "methodAuth": {},
-      "tables": [],
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
       "file": "src/app/api/auth/mobile/google/route.js"
     },
     {
       "path": "/api/auth/mobile/login",
-      "methods": [],
+      "methods": [
+        "POST"
+      ],
       "auth": "public",
-      "methodAuth": {},
-      "tables": [],
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
       "file": "src/app/api/auth/mobile/login/route.js"
     },
     {
       "path": "/api/auth/mobile/refresh",
-      "methods": [],
+      "methods": [
+        "POST"
+      ],
       "auth": "public",
-      "methodAuth": {},
-      "tables": [],
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
       "file": "src/app/api/auth/mobile/refresh/route.js"
     },
     {
@@ -452,12 +485,13 @@
       ],
       "auth": "any",
       "methodAuth": {
-        "GET": "optional",
+        "GET": "any",
         "POST": "any"
       },
       "tables": [
         "interaction_types",
-        "user_listing_interactions"
+        "user_listing_interactions",
+        "listings"
       ],
       "file": "src/app/api/favorites/route.js"
     },

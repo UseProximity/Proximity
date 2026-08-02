@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not static
 
-import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { getRequestUser } from "@/lib/getRequestUser";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -121,10 +121,10 @@ const LISTING_SELECT = `
   listing_reviews!listing_id(rating, legitimacy, deleted_at)
 `.trim();
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.email) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.email) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -132,7 +132,7 @@ export async function GET() {
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("*")
-      .eq("email", session.user.email)
+      .eq("email", requestUser.email)
       .single();
 
     if (userError || !user) {
