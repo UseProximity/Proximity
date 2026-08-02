@@ -1,15 +1,21 @@
 "use client";
 
 /*
- * Client form for the ambassador referral review flow.
+ * Shared client form for leaving a property review. Two entry points render it:
+ *   - /refer/<ambassadorId> — an ambassador's shareable link (passes referrerId/referrerName)
+ *   - /review               — the public "Add a Review" page (no referrer)
+ * The flow is identical either way; only the attribution copy differs.
  *
  * Flow:
- *   1. Search an address (Mapbox autocomplete via AddressSearchInput) and pick a verified
+ *   1. Confirm which school you go / went to. Pre-filled from the signed-in account's email
+ *      domain and re-checked server-side, so the school on a review is verified rather than
+ *      self-declared.
+ *   2. Search an address (Mapbox autocomplete via AddressSearchInput) and pick a verified
  *      suggestion. There is NO "pick our listing vs. make a new one" step — the server
  *      auto-matches the address to our catalog (or creates a stub) on submit.
- *   2. Fill out the review: unit (optional), overall + communication/value/location stars
+ *   3. Fill out the review: unit (optional), overall + communication/value/location stars
  *      (half-star), a written review (≥10 chars), and the landlord/company name + contact.
- *   3. Submit to /api/reviewReferral. Reviews auto-publish.
+ *   4. Submit to /api/reviewReferral. Reviews auto-publish.
  */
 
 import { useState, useEffect } from "react";
@@ -17,6 +23,7 @@ import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import AuthCard from "@/components/auth/AuthCard";
+import { SCHOOLS, schoolForEmail, isReviewEligibleEmail } from "@/lib/schools";
 
 const INPUT_CLASS =
   "w-full px-3 py-2.5 text-[15px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400";
@@ -74,10 +81,25 @@ function SubRating({ label, value, onChange }) {
   );
 }
 
-export default function ReferReviewClient({ referrerId, referrerName }) {
+export default function ReviewSubmitForm({
+  referrerId = null,
+  referrerName = null,
+  callbackUrl = "/review",
+}) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
-  const isWustl = !!session?.user?.email?.toLowerCase().endsWith("@wustl.edu");
+  const email = session?.user?.email || "";
+  const eligible = isReviewEligibleEmail(email);
+  const emailSchool = schoolForEmail(email);
+
+  // School — pre-filled from the account's email domain, which is also what the server
+  // validates against, so the field is confirmation rather than a free-form claim.
+  const [school, setSchool] = useState("");
+  useEffect(() => {
+    if (emailSchool) setSchool(emailSchool.shortName);
+  }, [emailSchool]);
+  const schoolMismatch = !!school && !!emailSchool && school !== emailSchool.shortName;
+  const schoolReady = !!school && !schoolMismatch;
 
   // Address selection
   const [addressQuery, setAddressQuery] = useState("");
@@ -105,7 +127,7 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
   const [atLimit, setAtLimit] = useState(false);
   const [reviewLimit, setReviewLimit] = useState(2);
   useEffect(() => {
-    if (!loggedIn || !isWustl) return;
+    if (!loggedIn || !eligible) return;
     let active = true;
     (async () => {
       try {
@@ -122,7 +144,7 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
     return () => {
       active = false;
     };
-  }, [loggedIn, isWustl]);
+  }, [loggedIn, eligible]);
 
   function handleSelectSuggestion(feature) {
     const [lng, lat] = feature.center || [];
@@ -135,6 +157,11 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
     e.preventDefault();
     if (submitting) return;
 
+    if (!school) return toast.error("Select the school you go / went to.");
+    if (schoolMismatch)
+      return toast.error(
+        `Your account email is ${emailSchool.shortName}. Pick that school, or sign in with your ${school} email.`
+      );
     if (!picked) return toast.error("Search and select your property address.");
     if (![rating, comm, val, loc].every((v) => v >= 0.5))
       return toast.error("Please set all four star ratings.");
@@ -149,6 +176,7 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
 
     const payload = {
       referrerId,
+      school,
       address: picked.place_name,
       latitude: picked.lat,
       longitude: picked.lng,
@@ -191,28 +219,36 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
         <div className="text-5xl mb-4">🎉</div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Thank you!</h1>
         <p className="text-gray-600">
-          Your review has been posted. Thanks for helping fellow students through{" "}
-          {referrerName}.
+          {referrerName
+            ? `Your review has been posted. Thanks for helping fellow students through ${referrerName}.`
+            : "Your review has been posted. Thanks for helping fellow students find a better place to live."}
         </p>
       </div>
     );
   }
 
-  // Gate: a signed-in WashU account is required to review.
-  if (status !== "loading" && (!loggedIn || !isWustl)) {
+  // Gate: a signed-in student account from a school we serve is required to review.
+  if (status !== "loading" && (!loggedIn || !eligible)) {
     return (
       <div className="max-w-md mx-auto px-4 py-12">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Leave a review</h1>
           <p className="text-gray-600">
-            Referred by <span className="font-semibold">{referrerName}</span>.
-            {loggedIn && !isWustl
-              ? " Reviews can only be left from a WashU (@wustl.edu) account — sign in with your WashU email below."
-              : " Sign in or create an account with your WashU (@wustl.edu) email to share your experience."}
+            {referrerName && (
+              <>
+                Referred by <span className="font-semibold">{referrerName}</span>.{" "}
+              </>
+            )}
+            {loggedIn && !eligible
+              ? "Reviews can only be left from a student account at a school we serve — sign in with your school email below."
+              : "Sign in or create an account with your school email to share your experience."}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Currently serving {SCHOOLS.map((s) => s.shortName).join(", ")}.
           </p>
         </div>
         <div className="flex justify-center">
-          <AuthCard callbackUrl={`/refer/${referrerId}`} initialTab="signin" />
+          <AuthCard callbackUrl={callbackUrl} initialTab="signin" />
         </div>
       </div>
     );
@@ -236,44 +272,83 @@ export default function ReferReviewClient({ referrerId, referrerName }) {
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Leave a review</h1>
         <p className="text-gray-600 mt-1">
-          Referred by <span className="font-semibold">{referrerName}</span>. Search the
-          address of a place you’ve lived and share your experience.
+          {referrerName && (
+            <>
+              Referred by <span className="font-semibold">{referrerName}</span>.{" "}
+            </>
+          )}
+          Search the address of a place you’ve lived and share your experience.
         </p>
       </header>
 
-      {/* Step 1 — address search */}
-      <label className="block text-sm font-semibold text-gray-800 mb-1.5">
-        Property address <span className="text-red-500">*</span>
-      </label>
-      {picked ? (
-        <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-red-200 bg-red-50">
-          <span className="text-[15px] text-gray-800 truncate">{picked.place_name}</span>
-          <button
-            type="button"
-            onClick={() => {
-              setPicked(null);
-              setAddressQuery("");
-            }}
-            className="text-sm text-red-600 hover:underline flex-shrink-0"
-          >
-            Change
-          </button>
-        </div>
-      ) : (
-        <AddressSearchInput
-          value={addressQuery}
-          onChange={(e) => {
-            setAddressQuery(e.target.value);
-            setPicked(null);
-          }}
-          onSelectSuggestion={handleSelectSuggestion}
-          placeholder="Start typing an address…"
+      {/* Step 1 — school */}
+      <div className="mb-6">
+        <label
+          htmlFor="review-school"
+          className="block text-sm font-semibold text-gray-800 mb-1.5"
+        >
+          What school do/did you go to? <span className="text-red-500">*</span>
+        </label>
+        <select
+          id="review-school"
+          value={school}
+          onChange={(e) => setSchool(e.target.value)}
           className={INPUT_CLASS}
-        />
+        >
+          <option value="">Select your school…</option>
+          {SCHOOLS.map((s) => (
+            <option key={s.shortName} value={s.shortName}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        {schoolMismatch && (
+          <p className="mt-1.5 text-sm text-red-600">
+            Your account email belongs to {emailSchool.label}. Pick that school, or sign in
+            with your {school} email to review as a {school} student.
+          </p>
+        )}
+      </div>
+
+      {/* Step 2 — address search */}
+      {schoolReady && (
+        <>
+          <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+            Property address <span className="text-red-500">*</span>
+          </label>
+          {picked ? (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-red-200 bg-red-50">
+              <span className="text-[15px] text-gray-800 truncate">
+                {picked.place_name}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPicked(null);
+                  setAddressQuery("");
+                }}
+                className="text-sm text-red-600 hover:underline flex-shrink-0"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <AddressSearchInput
+              value={addressQuery}
+              onChange={(e) => {
+                setAddressQuery(e.target.value);
+                setPicked(null);
+              }}
+              onSelectSuggestion={handleSelectSuggestion}
+              placeholder="Start typing an address…"
+              className={INPUT_CLASS}
+            />
+          )}
+        </>
       )}
 
-      {/* Step 2 — review form */}
-      {picked && (
+      {/* Step 3 — review form */}
+      {schoolReady && picked && (
         <form onSubmit={handleSubmit} className="mt-6 border-t pt-6 space-y-5">
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1.5">
