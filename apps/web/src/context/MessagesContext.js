@@ -1,9 +1,10 @@
 /*
  * Global listing-chat data/actions (Favorites-style). Owns inbox threads, per-thread
- * message history, and the active thread's Realtime subscription. Writes and history
- * go through /api/chat/*; Supabase Realtime only pushes new chat_messages INSERTs for
- * the open thread. No UI chrome (widget open, composer text). Consumed later by the
- * /messages page, header badge, floating widget, and listing compose modal.
+ * message history, and Realtime subscriptions. Writes and history go through
+ * /api/chat/*; Supabase Realtime pushes chat_messages INSERTs — inbox-wide for
+ * badge/preview refresh, and thread-scoped for the open chat. No UI chrome
+ * (widget open, composer text). Consumed later by the /messages page, header
+ * badge, floating widget, and listing compose modal.
  */
 "use client";
 
@@ -17,7 +18,10 @@ import {
   useState,
 } from "react";
 import { useSession } from "next-auth/react";
-import { subscribeThreadMessages } from "@/lib/chat/realtime";
+import {
+  subscribeInboxMessages,
+  subscribeThreadMessages,
+} from "@/lib/chat/realtime";
 
 const MessagesContext = createContext(null);
 
@@ -45,7 +49,8 @@ export function MessagesProvider({ children }) {
   const [messagesByThread, setMessagesByThread] = useState({});
   const [activeThreadId, setActiveThreadId] = useState(null);
 
-  const unsubscribeRef = useRef(null);
+  const threadUnsubscribeRef = useRef(null);
+  const inboxUnsubscribeRef = useRef(null);
   const activeThreadIdRef = useRef(null);
   const userIdRef = useRef(userId);
 
@@ -53,9 +58,13 @@ export function MessagesProvider({ children }) {
   userIdRef.current = userId;
 
   const clearChatState = useCallback(() => {
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
+    if (threadUnsubscribeRef.current) {
+      threadUnsubscribeRef.current();
+      threadUnsubscribeRef.current = null;
+    }
+    if (inboxUnsubscribeRef.current) {
+      inboxUnsubscribeRef.current();
+      inboxUnsubscribeRef.current = null;
     }
     setThreads([]);
     setMessagesByThread({});
@@ -205,12 +214,54 @@ export function MessagesProvider({ children }) {
     refreshThreads().catch(() => {});
   }, [userId, clearChatState, refreshThreads]);
 
-  // Open-thread: history → subscribe; refetch on Realtime (re)subscribe.
+  // Inbox Realtime: any participant-visible INSERT → refresh badge / previews.
+  useEffect(() => {
+    if (!userId) {
+      if (inboxUnsubscribeRef.current) {
+        inboxUnsubscribeRef.current();
+        inboxUnsubscribeRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    if (inboxUnsubscribeRef.current) {
+      inboxUnsubscribeRef.current();
+      inboxUnsubscribeRef.current = null;
+    }
+
+    inboxUnsubscribeRef.current = subscribeInboxMessages(
+      () => {
+        if (cancelled) return;
+        refreshThreads().catch(() => {});
+      },
+      {
+        currentUserId: userId,
+        onStatus: (status) => {
+          if (cancelled || status !== "SUBSCRIBED") return;
+          // Catch reconnect gaps for badge / preview.
+          refreshThreads().catch(() => {});
+        },
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      if (inboxUnsubscribeRef.current) {
+        inboxUnsubscribeRef.current();
+        inboxUnsubscribeRef.current = null;
+      }
+    };
+  }, [userId, refreshThreads]);
+
+  // Open-thread: history → subscribe; refetch messages on Realtime (re)subscribe.
+  // Inbox badge/preview is owned by the inbox subscription above.
   useEffect(() => {
     if (!userId || !activeThreadId) {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
+      if (threadUnsubscribeRef.current) {
+        threadUnsubscribeRef.current();
+        threadUnsubscribeRef.current = null;
       }
       return;
     }
@@ -219,12 +270,12 @@ export function MessagesProvider({ children }) {
 
     loadMessages(activeThreadId).catch(() => {});
 
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
+    if (threadUnsubscribeRef.current) {
+      threadUnsubscribeRef.current();
+      threadUnsubscribeRef.current = null;
     }
 
-    unsubscribeRef.current = subscribeThreadMessages(
+    threadUnsubscribeRef.current = subscribeThreadMessages(
       activeThreadId,
       (message) => {
         if (cancelled) return;
@@ -232,8 +283,6 @@ export function MessagesProvider({ children }) {
           ...prev,
           [activeThreadId]: upsertMessage(prev[activeThreadId], message),
         }));
-        // Keep inbox last-message / unread roughly fresh without a full poller.
-        refreshThreads().catch(() => {});
       },
       {
         currentUserId: userId,
@@ -241,19 +290,18 @@ export function MessagesProvider({ children }) {
           if (cancelled || status !== "SUBSCRIBED") return;
           // Closes history→subscribe race and catches reconnect gaps.
           loadMessages(activeThreadId).catch(() => {});
-          refreshThreads().catch(() => {});
         },
       }
     );
 
     return () => {
       cancelled = true;
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
+      if (threadUnsubscribeRef.current) {
+        threadUnsubscribeRef.current();
+        threadUnsubscribeRef.current = null;
       }
     };
-  }, [userId, activeThreadId, loadMessages, refreshThreads]);
+  }, [userId, activeThreadId, loadMessages]);
 
   // Tab visible while a thread is open: refetch messages + inbox.
   useEffect(() => {

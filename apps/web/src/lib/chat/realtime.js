@@ -1,8 +1,9 @@
 /*
  * Supabase Realtime helper for listing chat.
  *
- * Writes/history stay on /api/chat/*. This module only pushes new chat_messages
- * INSERTs into an open thread. Token lifecycle: fetch → setAuth → subscribe; on
+ * Writes/history stay on /api/chat/*. This module pushes new chat_messages
+ * INSERTs: thread-scoped (open chat bubbles) and inbox-wide (badge / preview
+ * via refreshThreads). Token lifecycle: fetch → setAuth → subscribe; on
  * channel/auth failure, remove channel, mint a fresh token, and resubscribe.
  * No proactive refresh-before-expiry loop.
  */
@@ -61,15 +62,16 @@ export async function ensureRealtimeAuth() {
 }
 
 /**
- * Subscribe to INSERT events on chat_messages for one thread.
- * Returns an unsubscribe function.
- *
- * @param {string} threadId
- * @param {(message: object) => void} onInsert — camelCase message matching the API
- * @param {{ currentUserId?: string, onStatus?: (status: string, err?: Error) => void }} [options]
+ * Shared INSERT subscription on chat_messages.
+ * @param {{ channelName: string, filter?: string, currentUserId?: string, onInsert: (message: object) => void, onStatus?: (status: string, err?: Error) => void }} opts
  */
-export function subscribeThreadMessages(threadId, onInsert, options = {}) {
-  const { currentUserId, onStatus } = options;
+function subscribeChatMessageInserts({
+  channelName,
+  filter,
+  currentUserId,
+  onInsert,
+  onStatus,
+}) {
   let disposed = false;
   let client = null;
   let channel = null;
@@ -112,21 +114,19 @@ export function subscribeThreadMessages(threadId, onInsert, options = {}) {
       client = await ensureRealtimeAuth();
       if (disposed) return;
 
+      const changeFilter = {
+        event: "INSERT",
+        schema: "public",
+        table: "chat_messages",
+      };
+      if (filter) changeFilter.filter = filter;
+
       channel = client
-        .channel(`chat-thread:${threadId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "chat_messages",
-            filter: `thread_id=eq.${threadId}`,
-          },
-          (payload) => {
-            const mapped = mapRealtimeMessage(payload?.new, currentUserId);
-            if (mapped) onInsert(mapped);
-          }
-        )
+        .channel(channelName)
+        .on("postgres_changes", changeFilter, (payload) => {
+          const mapped = mapRealtimeMessage(payload?.new, currentUserId);
+          if (mapped) onInsert(mapped);
+        })
         .subscribe((status, err) => {
           onStatus?.(status, err);
           if (disposed) return;
@@ -151,4 +151,41 @@ export function subscribeThreadMessages(threadId, onInsert, options = {}) {
     clearReconnect();
     teardownChannel();
   };
+}
+
+/**
+ * Subscribe to INSERT events on chat_messages for one thread.
+ * Returns an unsubscribe function.
+ *
+ * @param {string} threadId
+ * @param {(message: object) => void} onInsert — camelCase message matching the API
+ * @param {{ currentUserId?: string, onStatus?: (status: string, err?: Error) => void }} [options]
+ */
+export function subscribeThreadMessages(threadId, onInsert, options = {}) {
+  const { currentUserId, onStatus } = options;
+  return subscribeChatMessageInserts({
+    channelName: `chat-thread:${threadId}`,
+    filter: `thread_id=eq.${threadId}`,
+    currentUserId,
+    onInsert,
+    onStatus,
+  });
+}
+
+/**
+ * Subscribe to INSERT events on chat_messages across all threads the JWT
+ * user can SELECT (RLS). Used to refresh inbox badge / previews.
+ * Returns an unsubscribe function.
+ *
+ * @param {(message: object) => void} onInsert
+ * @param {{ currentUserId?: string, onStatus?: (status: string, err?: Error) => void }} [options]
+ */
+export function subscribeInboxMessages(onInsert, options = {}) {
+  const { currentUserId, onStatus } = options;
+  return subscribeChatMessageInserts({
+    channelName: "chat-inbox",
+    currentUserId,
+    onInsert,
+    onStatus,
+  });
 }
