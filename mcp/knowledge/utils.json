@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-02T00:10:58.436Z",
-  "count": 33,
+  "_generated": "2026-08-03T13:32:07.162Z",
+  "count": 34,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -10,6 +10,10 @@
     {
       "file": "src/lib/authMobile.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/chat/realtime.js",
+      "description": "Supabase Realtime helper for listing chat."
     },
     {
       "file": "src/lib/contactTracking.js",

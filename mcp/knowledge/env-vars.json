@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-27T04:50:11.839Z",
-  "count": 30,
+  "_generated": "2026-08-03T13:32:07.199Z",
+  "count": 32,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -17,6 +17,10 @@
     },
     {
       "name": "CRON_SECRET",
+      "public": false
+    },
+    {
+      "name": "DEV_SUPABASE_JWT_SECRET",
       "public": false
     },
     {
@@ -73,6 +77,10 @@
     },
     {
       "name": "NODE_ENV",
+      "public": false
+    },
+    {
+      "name": "PROD_SUPABASE_JWT_SECRET",
       "public": false
     },
     {

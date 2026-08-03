@@ -1,11 +1,6 @@
 /*
- * Floating chat drawer rendered in the bottom-right corner of the screen. Displays all
- * open conversations managed by ChatContext, with a tab strip to switch between threads
- * and an inline message composer. Shows animated typing dots while a simulated reply is
- * pending. Avatars fall back to initials when no profile photo is available. The widget
- * is toggled open/closed via widgetOpen state in ChatContext, which is set by
- * openConversation() whenever a student clicks "Message" on a listing or roommate card.
- * Self-contained UI — all chat logic lives in ChatContext; this file is purely presentational.
+ * Floating chat drawer rendered in the bottom-right corner of the screen.
+ * Currently a "coming soon" stub; will be rewritten against MessagesContext.
  */
 "use client";
 import { useState } from "react";

@@ -49,6 +49,14 @@
       "status": "active",
       "context": "Branch feat/messaging (PR into staging). Migrations 202607300001-3, applied to DEV ONLY and recorded in supabase_migrations.schema_migrations — STILL PENDING ON PROD. Files: apps/web/src/app/api/chat/threads/**. Verified by hand against dev: thread reuse returns the same threadId, pagination via before/limit, 400 on bad UUID/limit/body, 403 for non-participants, unread flips true on a landlord message and false after mark-read. Known gap: api-routes.json reports tables:[] for these routes because generate-knowledge.mjs detects tables via .from() only and these use supabase.rpc(), so analyze-impact won't link chat_* migrations back to these endpoints.",
       "created": "2026-07-30T15:32:32.939Z"
+    },
+    {
+      "id": "decision-1785763920000",
+      "title": "Listing chat Realtime: hybrid JWT push only; MessagesContext owns open-thread subscribe",
+      "description": "Hybrid Realtime on geat/messaging-supabase-realtime (off feat/messaging). WRITES/HISTORY stay on NextAuth + /api/chat/* + service_role SECURITY DEFINER RPCs. PUSH ONLY: browser mints a short-lived HS256 Supabase JWT via GET /api/chat/realtime-token (sub=session.user.id, role/aud=authenticated, ~1h, Legacy JWT secret DEV_/PROD_SUPABASE_JWT_SECRET), then realtime.setAuth + postgres_changes INSERT on chat_messages filtered by thread_id. Channel name chat-thread:${threadId}. No proactive token refresh — reconnect tears down channel, remints, resubscribes. No inbox Realtime (HTTP refreshThreads only). ENV: browser client no longer uses NODE_ENV; next.config.mjs fail-safe-mirrors isProdData() into NEXT_PUBLIC_SUPABASE_URL/DEFAULT_KEY at build time; server.ts + middleware.ts call isProdData() directly. RLS: fn_current_user_id() falls back to auth.uid(); fn_is_chat_participant is SECURITY DEFINER to avoid Realtime policy recursion (migrations 202608030001-2, DEV applied). MessagesContext (Favorites pattern) bootstraps inbox, subscribes only when activeThreadId is set, history-then-subscribe with visibility/SUBSCRIBED refetch safety net, optimistic send with id-dedupe. Mock ChatContext deleted. Verified on DEV: signed-out token 401; landlord receives student INSERT without refresh; non-participant SUBSCRIBED but 0 events; sender Realtime echo once per message id.",
+      "status": "active",
+      "context": "Branch geat/messaging-supabase-realtime. Files: apps/web/src/app/api/chat/realtime-token/route.js, apps/web/src/lib/chat/realtime.js, apps/web/src/context/MessagesContext.js, apps/web/src/components/layout/Providers.js, apps/web/next.config.mjs, apps/web/src/lib/supabase/{client,server,middleware}.ts, supabase/migrations/202608030001_chat_realtime_auth.sql, 202608030002_chat_realtime_rls_fix.sql. Chat schema/RPC migrations 202607300001-3 + realtime migrations still DEV ONLY — pending prod. No chat UI yet (MessagesContext data/actions only).",
+      "created": "2026-08-03T13:32:00.000Z"
     }
   ],
   "bugs": [
