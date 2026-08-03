@@ -6,13 +6,19 @@
  * session refresh there). Use this in Server Components and Route Handlers that need to
  * query Supabase as the currently authenticated user within RLS constraints. For
  * privileged writes that bypass RLS, use the service-role client in src/lib/supabase.js.
+ *
+ * Targets prod vs dev via isProdData() — never NODE_ENV alone (staging is also
+ * NODE_ENV=production but must use the dev Supabase project).
  */
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { isProdData } from "@/lib/appEnv";
 
-const isProd = process.env.NODE_ENV === "production";
-const supabaseUrl = (isProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL)!;
-const supabaseKey = (isProd ? process.env.PROD_SUPABASE_DEFAULT_KEY : process.env.DEV_SUPABASE_DEFAULT_KEY)!;
+const useProd = isProdData();
+const supabaseUrl = (useProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL)!;
+const supabaseKey = (useProd
+  ? process.env.PROD_SUPABASE_DEFAULT_KEY
+  : process.env.DEV_SUPABASE_DEFAULT_KEY)!;
 
 export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) => {
   return createServerClient(supabaseUrl, supabaseKey, {

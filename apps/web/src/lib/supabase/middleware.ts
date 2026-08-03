@@ -5,13 +5,19 @@
  * Server Components can access the current URL path and query string via next/headers
  * without any client-side workaround. Returns both the supabase client instance and the
  * modified NextResponse so the cookie refresh is propagated back to the browser.
+ *
+ * Targets prod vs dev via isProdData() — never NODE_ENV alone (staging is also
+ * NODE_ENV=production but must use the dev Supabase project).
  */
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { isProdData } from "@/lib/appEnv";
 
-const isProd = process.env.NODE_ENV === "production";
-const supabaseUrl = (isProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL)!;
-const supabaseKey = (isProd ? process.env.PROD_SUPABASE_DEFAULT_KEY : process.env.DEV_SUPABASE_DEFAULT_KEY)!;
+const useProd = isProdData();
+const supabaseUrl = (useProd ? process.env.PROD_SUPABASE_URL : process.env.DEV_SUPABASE_URL)!;
+const supabaseKey = (useProd
+  ? process.env.PROD_SUPABASE_DEFAULT_KEY
+  : process.env.DEV_SUPABASE_DEFAULT_KEY)!;
 
 export const createClient = (request: NextRequest) => {
   const requestHeaders = new Headers(request.headers);

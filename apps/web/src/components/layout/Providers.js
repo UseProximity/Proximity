@@ -4,18 +4,22 @@
  * via useSession without an extra network round-trip; refetchOnWindowFocus is disabled to
  * prevent unnecessary auth pings when the user alt-tabs back. FavoritesProvider sits
  * inside SessionProvider so it can immediately read session.user.id on mount and fetch
- * the user's saved listing IDs. Any additional global client providers should be added
- * here rather than in layout.js.
+ * the user's saved listing IDs. MessagesProvider sits inside SessionProvider for the same
+ * reason (inbox bootstrap + Realtime). Any additional global client providers should be
+ * added here rather than in layout.js.
  */
 "use client";
 import { SessionProvider } from "next-auth/react";
 import { FavoritesProvider } from "@/context/FavoritesContext";
+import { MessagesProvider } from "@/context/MessagesContext";
 
 export default function Providers({ children, session }) {
   return (
     <SessionProvider session={session} refetchOnWindowFocus={false}>
       <FavoritesProvider>
-        {children}
+        <MessagesProvider>
+          {children}
+        </MessagesProvider>
       </FavoritesProvider>
     </SessionProvider>
   );
