@@ -19,6 +19,10 @@
  */
 
 import supabase from "@/lib/supabase";
+import {
+  LANDLORD_CHAT_SELECT,
+  formatListingOwner,
+} from "@/lib/chat/landlordCanChat";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,14 +182,7 @@ export function buildListing(row, owner = null) {
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
-    owner: owner
-      ? {
-          _id: owner.id,
-          name: owner.name,
-          email: owner.email ?? null,
-          image: owner.image ?? null,
-        }
-      : null,
+    owner: formatListingOwner(owner),
     createdAt: row.created_at ?? null,
   };
 }
@@ -248,7 +245,7 @@ export async function fetchListings() {
   if (primaryLandlordIds.length > 0) {
     const { data: landlordUsers, error: landlordErr } = await supabase
       .from("users")
-      .select("id, name, email, image")
+      .select(LANDLORD_CHAT_SELECT)
       .in("id", primaryLandlordIds);
 
     if (landlordErr) {

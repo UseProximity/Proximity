@@ -7,6 +7,7 @@ import Image from "next/image";
 import {
   Phone,
   Mail,
+  MessageCircle,
   ThumbsUp,
   ThumbsDown,
   Car,
@@ -32,6 +33,9 @@ import {
 import { trackEvent, getListingSource } from "@/utils/analytics";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
+import { useMessages } from "@/context/MessagesContext";
+
+const CHAT_MAX_BODY = 5000;
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -921,9 +925,21 @@ function ContactTab({
   handleContactSubmit,
   contactLoading,
   contactSent,
+  focusChat = false,
 }) {
+  const { startListingChat } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
     listing.twentyOnePlus ? "loading" : "ok"
+  );
+  const [chatBody, setChatBody] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const chatInputRef = useRef(null);
+
+  const userId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  const canMessage = Boolean(
+    session?.user?.id && listing?.owner?.canChat && !isOwnListing
   );
 
   useEffect(() => {
@@ -939,6 +955,12 @@ function ContactTab({
       })
       .catch(() => setAgeStatus("ok"));
   }, [listing.twentyOnePlus]);
+
+  useEffect(() => {
+    if (!focusChat || !canMessage) return;
+    const t = setTimeout(() => chatInputRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [focusChat, canMessage]);
 
   if (listing.twentyOnePlus && ageStatus === "loading") {
     return (
@@ -974,6 +996,22 @@ function ContactTab({
   const handleChange = (field) => (e) =>
     setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
 
+  async function handleStartChat(e) {
+    e.preventDefault();
+    const text = chatBody.trim();
+    if (!text || chatSending || !listing?._id) return;
+    setChatSending(true);
+    try {
+      await startListingChat(listing._id, text);
+      setChatBody("");
+      toast.success("Message sent");
+    } catch (err) {
+      toast.error(err?.message || "Failed to start chat. Please try again.");
+    } finally {
+      setChatSending(false);
+    }
+  }
+
   return (
     <div className="max-w-xl">
       {/* Landlord info */}
@@ -999,6 +1037,55 @@ function ContactTab({
         </div>
       )}
 
+      {canMessage && (
+        <div
+          id="listing-in-app-message"
+          className="mb-8 rounded-xl border border-red-100 bg-red-50/40 p-4"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <MessageCircle className="w-4 h-4 text-red-600" />
+            <h3 className="text-sm font-semibold text-gray-900">
+              Message on Proximity
+            </h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Chat with {owner?.name || "the landlord"} in the app. They&apos;ll
+            see it in Messages.
+          </p>
+          <form onSubmit={handleStartChat} className="space-y-3">
+            <textarea
+              ref={chatInputRef}
+              value={chatBody}
+              onChange={(e) =>
+                setChatBody(e.target.value.slice(0, CHAT_MAX_BODY))
+              }
+              rows={3}
+              disabled={chatSending}
+              placeholder="Hi! I'm interested in this listing..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={!chatBody.trim() || chatSending}
+              className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {chatSending ? "Sending..." : "Send message"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {canMessage && (
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center" aria-hidden>
+            <div className="w-full border-t border-gray-100" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-gray-400">or email</span>
+          </div>
+        </div>
+      )}
+
       {contactSent ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
           Your message was sent!
@@ -1006,6 +1093,11 @@ function ContactTab({
         </div>
       ) : (
         <form onSubmit={handleContactSubmit} className="space-y-3">
+          {!canMessage && (
+            <p className="text-xs text-gray-500 mb-1">
+              Send an email to the property manager.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">
@@ -1077,7 +1169,7 @@ function ContactTab({
             disabled={contactLoading}
             className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {contactLoading ? "Sending..." : "Send Message"}
+            {contactLoading ? "Sending..." : "Send email"}
           </button>
         </form>
       )}
@@ -1198,6 +1290,7 @@ export default function ListingModalInfo({
   });
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSent, setContactSent] = useState(false);
+  const [focusChatCompose, setFocusChatCompose] = useState(false);
 
   // Hero image loading state
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
@@ -1313,6 +1406,13 @@ export default function ListingModalInfo({
     listing.title && listing.title !== street
       ? listing.address
       : parsedCityStateZip;
+
+  const viewerId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === viewerId || listing?.owner?.id === viewerId;
+  const canShowMessage = Boolean(
+    viewerId && listing?.owner?.canChat && !isOwnListing
+  );
 
   // Reviews
   const legitimateReviews = (listing.reviews || [])
@@ -1581,6 +1681,7 @@ export default function ListingModalInfo({
               <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
                 <button
                   onClick={() => {
+                    setFocusChatCompose(false);
                     setActiveTab("contact");
                     setTimeout(
                       () =>
@@ -1598,6 +1699,27 @@ export default function ListingModalInfo({
                 >
                   Contact
                 </button>
+                {canShowMessage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusChatCompose(true);
+                      setActiveTab("contact");
+                      setTimeout(() => {
+                        scrollIntoContainer(
+                          document.getElementById("listing-tabs")
+                        );
+                        document
+                          .getElementById("listing-in-app-message")
+                          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                      }, 50);
+                    }}
+                    className="shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg bg-white text-red-700 border border-red-200 shadow-sm hover:bg-red-50 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    Message
+                  </button>
+                )}
                 {!listing.furnished && (
                   <a
                     href="https://cort.sjv.io/zzb9y0"
@@ -1829,6 +1951,7 @@ export default function ListingModalInfo({
                   handleContactSubmit={handleContactSubmit}
                   contactLoading={contactLoading}
                   contactSent={contactSent}
+                  focusChat={focusChatCompose}
                 />
               )}
             </div>

@@ -1,6 +1,6 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-04T03:57:47.942Z",
+  "_generated": "2026-08-04T04:12:50.756Z",
   "count": 72,
   "components": [
     {
@@ -246,7 +246,7 @@
     {
       "name": "ListingModalInfo",
       "file": "src/components/listings/ListingModalInfo.js",
-      "description": "No description — run generate after adding a description above."
+      "description": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat"
     },
     {
       "name": "MapPopupCard",
