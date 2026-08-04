@@ -122,7 +122,9 @@ export function MessagesProvider({ children }) {
     const data = await res.json();
     setThreads((prev) =>
       prev.map((t) =>
-        t.threadId === threadId ? { ...t, hasUnread: false } : t
+        t.threadId === threadId
+          ? { ...t, hasUnread: false, unreadCount: 0 }
+          : t
       )
     );
     return data;
@@ -319,7 +321,11 @@ export function MessagesProvider({ children }) {
   }, [userId, loadMessages, refreshThreads]);
 
   const unreadCount = useMemo(
-    () => threads.filter((t) => t.hasUnread).length,
+    () =>
+      threads.reduce((sum, t) => {
+        if (typeof t.unreadCount === "number") return sum + t.unreadCount;
+        return sum + (t.hasUnread ? 1 : 0);
+      }, 0),
     [threads]
   );
 

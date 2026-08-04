@@ -1,11 +1,10 @@
 /*
  * Site-wide navigation header rendered on every page by the root layout. Receives the
  * server-side session and adapts its UI to auth state: unauthenticated users see Sign In,
- * authenticated users see their dashboard link and a sign-out option. Contains an
- * expandable address search bar (using AddressSearchInput) that routes to /browse?search=
- * on submit, and a slide-in mobile menu that auto-closes on route change. All interactive
- * state (search open, mobile menu, query text) is local — no context dependency — keeping
- * the component self-contained and easy to test in isolation.
+ * authenticated users see messages (unread badge), their dashboard link, and a sign-out
+ * option. Contains an expandable address search bar (using AddressSearchInput) that routes
+ * to /browse?search= on submit, and a slide-in mobile menu that auto-closes on route
+ * change. Search/menu state is local; unread count comes from MessagesContext.
  */
 "use client";
 
@@ -13,11 +12,13 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 const Logo = "/logo.svg";
-import { Search, X, Menu, ChevronDown } from "lucide-react";
+import { Search, X, Menu, ChevronDown, MessageCircle } from "lucide-react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { recordPageVisit } from "@/utils/analytics";
+import { useMessages } from "@/context/MessagesContext";
+import { openMessages } from "@/components/chat/chatEvents";
 
 export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -29,6 +30,12 @@ export function Header({ session }) {
   const moreRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
+  const { unreadCount } = useMessages();
+
+  function openInbox() {
+    setMobileMenuOpen(false);
+    openMessages({ expanded: true });
+  }
 
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus();
@@ -275,6 +282,23 @@ export function Header({ session }) {
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
             {session?.user ? (
               <>
+                <button
+                  type="button"
+                  onClick={openInbox}
+                  className="relative p-2.5 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-xl transition-all duration-150"
+                  aria-label={
+                    unreadCount > 0
+                      ? `Messages, ${unreadCount} unread`
+                      : "Messages"
+                  }
+                >
+                  <MessageCircle className="h-6 w-6" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </button>
                 <Link
                   href={
                     session.user.role === "landlord"
@@ -324,6 +348,27 @@ export function Header({ session }) {
               </>
             )}
           </div>
+
+          {/* Messages — mobile (badge visible without opening the menu) */}
+          {session?.user && !searchOpen && (
+            <button
+              type="button"
+              onClick={openInbox}
+              className="md:hidden relative flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
+              aria-label={
+                unreadCount > 0
+                  ? `Messages, ${unreadCount} unread`
+                  : "Messages"
+              }
+            >
+              <MessageCircle className="h-6 w-6" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* Mobile hamburger */}
           {!searchOpen && (
@@ -396,6 +441,21 @@ export function Header({ session }) {
           <div className="h-px bg-gray-100 my-2" />
           {session?.user ? (
             <>
+              <button
+                type="button"
+                onClick={openInbox}
+                className="flex items-center justify-between px-4 py-3 rounded-xl text-[17px] font-medium text-gray-700 hover:bg-gray-50 transition-all text-left w-full"
+              >
+                <span className="flex items-center gap-2">
+                  <MessageCircle className="h-5 w-5" />
+                  Messages
+                </span>
+                {unreadCount > 0 && (
+                  <span className="min-w-[1.25rem] h-5 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
               <Link
                 href={
                   session.user.role === "landlord"

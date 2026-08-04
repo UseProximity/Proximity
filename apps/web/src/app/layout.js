@@ -4,8 +4,10 @@
  * without a client-side waterfall. Renders the global shell: Inter font, Leaflet CSS,
  * toast notifications, the site Header, the profile completion gate modal, and the
  * URL-driven GlobalListingModal that can open any listing from any page via ?listing=.
+ * Also mounts FeedbackWidget (bottom-left) and ChatWidget (bottom-right messenger).
  * Also mounts the Vercel Analytics beacon and Google Analytics (GA4) tag. All client
- * state providers (SessionProvider, FavoritesProvider) are composed inside Providers.
+ * state providers (SessionProvider, FavoritesProvider, MessagesProvider) are composed
+ * inside Providers.
  * Defines the site-wide <title> and <description> used for SEO.
  */
 import { Inter } from "next/font/google";
@@ -18,6 +20,7 @@ import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
 import { appEnv, indexingEnabled } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
+import ChatWidget from "@/components/chat/ChatWidget";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import Providers from "@/components/layout/Providers";
@@ -102,6 +105,7 @@ export default async function RootLayout({ children }) {
           <ProfileCompletionModal session={session} />
           <GlobalListingModal />
           <FeedbackWidget />
+          <ChatWidget />
           {children}
           <Analytics />
           {/* GA only on the real site — staging/preview/local sessions would land in
