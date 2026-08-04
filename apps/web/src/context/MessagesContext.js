@@ -5,7 +5,8 @@
  * badge/preview refresh, and thread-scoped for the open chat. Opening a thread
  * (and receiving live messages while it's open) marks it read via
  * POST /api/chat/threads/[id]/read. Also tracks the other participant's
- * last_read_at for "Read · time" receipts in ChatTranscript. No UI chrome
+ * last_read_at for "Read · time" receipts in ChatTranscript. Prefetches recent
+ * thread histories so opening a conversation feels instant. No UI chrome
  * (composer text lives in ChatTranscript). Consumed by /messages, header
  * unread badge, and listing Message CTA via startListingChat.
  */
@@ -28,6 +29,9 @@ import {
 } from "@/lib/chat/realtime";
 
 const MessagesContext = createContext(null);
+
+/** How many inbox threads to warm after the inbox loads. */
+const PREFETCH_THREAD_COUNT = 5;
 
 function upsertMessage(list, message) {
   if (!message?.id) return list ?? [];
@@ -52,6 +56,8 @@ export function MessagesProvider({ children }) {
   const [threads, setThreads] = useState([]);
   const [threadsStatus, setThreadsStatus] = useState("idle"); // idle | loading | ready | error
   const [messagesByThread, setMessagesByThread] = useState({});
+  // per thread: loading | ready | error — undefined means never requested
+  const [messagesStatusByThread, setMessagesStatusByThread] = useState({});
   const [activeThreadId, setActiveThreadId] = useState(null);
 
   const threadUnsubscribeRef = useRef(null);
@@ -59,12 +65,16 @@ export function MessagesProvider({ children }) {
   const activeThreadIdRef = useRef(null);
   const userIdRef = useRef(userId);
   const refreshSeqRef = useRef(0);
+  const messagesStatusRef = useRef({});
+  const loadInFlightRef = useRef(new Map());
 
   activeThreadIdRef.current = activeThreadId;
   userIdRef.current = userId;
+  messagesStatusRef.current = messagesStatusByThread;
 
   const clearChatState = useCallback(() => {
     refreshSeqRef.current += 1;
+    loadInFlightRef.current.clear();
     if (threadUnsubscribeRef.current) {
       threadUnsubscribeRef.current();
       threadUnsubscribeRef.current = null;
@@ -76,6 +86,7 @@ export function MessagesProvider({ children }) {
     setThreads([]);
     setThreadsStatus("idle");
     setMessagesByThread({});
+    setMessagesStatusByThread({});
     setActiveThreadId(null);
   }, []);
 
@@ -105,29 +116,66 @@ export function MessagesProvider({ children }) {
 
   const loadMessages = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return [];
-    const res = await fetch(`/api/chat/threads/${threadId}/messages`);
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(body?.error || `Failed to load messages (${res.status})`);
-    }
-    const data = await res.json();
-    const next = Array.isArray(data) ? data : [];
-    setMessagesByThread((prev) => {
-      // Keep optimistic temps that the history response has not confirmed yet.
-      const existing = prev[threadId] ?? [];
-      const byId = new Map(next.map((m) => [m.id, m]));
-      for (const m of existing) {
-        if (String(m.id).startsWith("temp-") && !byId.has(m.id)) {
-          byId.set(m.id, m);
-        }
-      }
-      const merged = Array.from(byId.values()).sort(
-        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-      );
-      return { ...prev, [threadId]: merged };
+
+    const inFlight = loadInFlightRef.current.get(threadId);
+    if (inFlight) return inFlight;
+
+    // Keep "ready" during background refresh so the transcript doesn't flash a spinner.
+    setMessagesStatusByThread((prev) => {
+      if (prev[threadId] === "ready") return prev;
+      return { ...prev, [threadId]: "loading" };
     });
-    return next;
+
+    const request = (async () => {
+      try {
+        const res = await fetch(`/api/chat/threads/${threadId}/messages`);
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error || `Failed to load messages (${res.status})`);
+        }
+        const data = await res.json();
+        const next = Array.isArray(data) ? data : [];
+        setMessagesByThread((prev) => {
+          // Keep optimistic temps that the history response has not confirmed yet.
+          const existing = prev[threadId] ?? [];
+          const byId = new Map(next.map((m) => [m.id, m]));
+          for (const m of existing) {
+            if (String(m.id).startsWith("temp-") && !byId.has(m.id)) {
+              byId.set(m.id, m);
+            }
+          }
+          const merged = Array.from(byId.values()).sort(
+            (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+          );
+          return { ...prev, [threadId]: merged };
+        });
+        setMessagesStatusByThread((prev) => ({ ...prev, [threadId]: "ready" }));
+        return next;
+      } catch (err) {
+        setMessagesStatusByThread((prev) => {
+          if (prev[threadId] === "ready") return prev;
+          return { ...prev, [threadId]: "error" };
+        });
+        throw err;
+      } finally {
+        loadInFlightRef.current.delete(threadId);
+      }
+    })();
+
+    loadInFlightRef.current.set(threadId, request);
+    return request;
   }, []);
+
+  /** Warm a thread's history if not already ready / in flight. */
+  const prefetchMessages = useCallback(
+    (threadId) => {
+      if (!userIdRef.current || !threadId) return;
+      if (messagesStatusRef.current[threadId] === "ready") return;
+      if (loadInFlightRef.current.has(threadId)) return;
+      loadMessages(threadId).catch(() => {});
+    },
+    [loadMessages]
+  );
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
@@ -260,6 +308,18 @@ export function MessagesProvider({ children }) {
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [userId, sessionStatus, clearChatState, refreshThreads]);
+
+  // Warm the most recent threads so opening them feels instant.
+  useEffect(() => {
+    if (!userId || threadsStatus !== "ready" || threads.length === 0) return;
+    const ids = threads
+      .slice(0, PREFETCH_THREAD_COUNT)
+      .map((t) => t.threadId)
+      .filter(Boolean);
+    for (const id of ids) {
+      prefetchMessages(id);
+    }
+  }, [userId, threads, threadsStatus, prefetchMessages]);
 
   // Inbox Realtime: any participant-visible INSERT → refresh badge / previews.
   // If a thread is open, mark it read first so a live reply in-view doesn't bump the badge.
@@ -417,9 +477,11 @@ export function MessagesProvider({ children }) {
       threadsLoading: threadsStatus === "loading" || threadsStatus === "idle",
       unreadCount,
       messagesByThread,
+      messagesStatusByThread,
       activeThreadId,
       refreshThreads,
       loadMessages,
+      prefetchMessages,
       sendMessage,
       startListingChat,
       markThreadRead,
@@ -430,9 +492,11 @@ export function MessagesProvider({ children }) {
       threadsStatus,
       unreadCount,
       messagesByThread,
+      messagesStatusByThread,
       activeThreadId,
       refreshThreads,
       loadMessages,
+      prefetchMessages,
       sendMessage,
       startListingChat,
       markThreadRead,

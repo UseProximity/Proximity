@@ -25,6 +25,7 @@ export default function ChatThreadList({
   threads,
   activeThreadId,
   onSelect,
+  onPrefetch,
   onBrowse,
   loading = false,
   error = false,
@@ -105,6 +106,8 @@ export default function ChatThreadList({
             key={thread.threadId}
             type="button"
             onClick={() => onSelect(thread.threadId)}
+            onMouseEnter={() => onPrefetch?.(thread.threadId)}
+            onFocus={() => onPrefetch?.(thread.threadId)}
             className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-gray-50 transition-colors ${
               selected ? "bg-red-50/60" : "hover:bg-gray-50"
             }`}
