@@ -79,6 +79,7 @@ function findReadReceiptMessageId(list, otherUserLastReadAt) {
 export default function ChatTranscript({
   thread,
   messages,
+  messagesLoading = false,
   onSend,
   onBack,
   headerActions = null,
@@ -102,6 +103,7 @@ export default function ChatTranscript({
     thread?.otherUserLastReadAt
   );
   const readReceiptTime = formatMessageTime(thread?.otherUserLastReadAt);
+  const showLoading = messagesLoading && list.length === 0;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -233,7 +235,15 @@ export default function ChatTranscript({
         ref={listRef}
         className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 space-y-2 min-h-0 touch-pan-y"
       >
-        {list.length === 0 ? (
+        {showLoading ? (
+          <div className="flex flex-1 items-center justify-center py-12 min-h-[8rem]">
+            <div
+              className="w-6 h-6 border-2 border-gray-200 border-t-red-500 rounded-full animate-spin"
+              role="status"
+              aria-label="Loading messages"
+            />
+          </div>
+        ) : list.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">
             No messages yet. Say hello!
           </p>

@@ -22,10 +22,12 @@ export default function MessagesPanel({
     threadsStatus,
     threadsLoading,
     messagesByThread,
+    messagesStatusByThread,
     activeThreadId,
     setActiveThreadId,
     sendMessage,
     refreshThreads,
+    prefetchMessages,
   } = useMessages();
 
   const activeThread = useMemo(
@@ -33,12 +35,24 @@ export default function MessagesPanel({
     [threads, activeThreadId]
   );
 
+  const activeMessages = activeThreadId
+    ? messagesByThread[activeThreadId]
+    : undefined;
+  const activeMessagesStatus = activeThreadId
+    ? messagesStatusByThread[activeThreadId]
+    : undefined;
+  const messagesLoading =
+    !!activeThreadId &&
+    (activeMessagesStatus === "loading" ||
+      (activeMessagesStatus == null && activeMessages == null));
+
   const openThread = useCallback(
     (threadId) => {
       if (!threadId) return;
+      prefetchMessages(threadId);
       setActiveThreadId(threadId);
     },
-    [setActiveThreadId]
+    [prefetchMessages, setActiveThreadId]
   );
 
   const backToList = useCallback(() => {
@@ -53,6 +67,7 @@ export default function MessagesPanel({
     threads,
     activeThreadId,
     onSelect: openThread,
+    onPrefetch: prefetchMessages,
     onBrowse,
     loading: threadsLoading,
     error: threadsStatus === "error",
@@ -81,7 +96,8 @@ export default function MessagesPanel({
           {activeThreadId ? (
             <ChatTranscript
               thread={activeThread}
-              messages={messagesByThread[activeThreadId]}
+              messages={activeMessages}
+              messagesLoading={messagesLoading}
               onSend={sendMessage}
               onBack={backToList}
             />
@@ -93,7 +109,8 @@ export default function MessagesPanel({
           {activeThreadId ? (
             <ChatTranscript
               thread={activeThread}
-              messages={messagesByThread[activeThreadId]}
+              messages={activeMessages}
+              messagesLoading={messagesLoading}
               onSend={sendMessage}
               onBack={null}
             />
