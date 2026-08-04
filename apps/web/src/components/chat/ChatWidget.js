@@ -2,6 +2,10 @@
  * Messenger panel opened from the header (and later listing Message CTA) via
  * openMessages() / proximity:open-messages. Uses MessagesContext for data;
  * local chrome for open + compact/expanded. No floating FAB — nav is the entry.
+ *
+ * z-index: under sticky Header (z-50) and under listing/feedback modals (z-60);
+ * above page chrome / dashboard sidebar (z-40). Expanded shell uses
+ * pointer-events-none so the header band stays clickable.
  */
 "use client";
 
@@ -81,6 +85,37 @@ export default function ChatWidget() {
     return () => window.removeEventListener(OPEN_MESSAGES_EVENT, onOpen);
   }, [userId, openThread]);
 
+  // Escape closes the messenger.
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e) {
+      if (e.key === "Escape") closePanel();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, closePanel]);
+
+  // Lock page scroll while expanded (same pattern as ModalListing).
+  useEffect(() => {
+    if (!open || !expanded) return;
+    const scrollY = window.scrollY;
+    const prevOverflow = document.body.style.overflow;
+    const prevPosition = document.body.style.position;
+    const prevTop = document.body.style.top;
+    const prevWidth = document.body.style.width;
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.position = prevPosition;
+      document.body.style.top = prevTop;
+      document.body.style.width = prevWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, [open, expanded]);
+
   if (!userId || !open) return null;
 
   const chromeActions = (
@@ -101,6 +136,13 @@ export default function ChatWidget() {
     </>
   );
 
+  const listProps = {
+    threads,
+    activeThreadId,
+    onSelect: openThread,
+    onBrowse: closePanel,
+  };
+
   const compactBody = activeThreadId ? (
     <ChatTranscript
       thread={activeThread}
@@ -115,16 +157,13 @@ export default function ChatWidget() {
         <h2 className="text-base font-bold text-gray-900">Messages</h2>
         <div className="flex items-center gap-0.5">{chromeActions}</div>
       </div>
-      <ChatThreadList
-        threads={threads}
-        activeThreadId={activeThreadId}
-        onSelect={openThread}
-      />
+      <ChatThreadList {...listProps} />
     </div>
   );
 
   return (
     <>
+      {/* Compact: above page (z-40), below header (50) and listing modal (60). */}
       {!expanded && (
         <div
           className="fixed z-[45] bottom-6 right-4 sm:right-8 w-[min(100vw-2rem,380px)] h-[min(70vh,560px)] flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
@@ -135,25 +174,21 @@ export default function ChatWidget() {
         </div>
       )}
 
-      {/* Full page under sticky header (z-50). Above dashboard sidebar (z-40). */}
+      {/* Full page under sticky header (z-50). Listing/feedback modals stay above at z-60. */}
       {expanded && (
         <div
-          className="fixed inset-0 z-[45] pt-[83px] md:pt-[104px]"
+          className="fixed inset-0 z-[45] pt-[83px] md:pt-[104px] pointer-events-none"
           role="dialog"
           aria-label="Messages"
         >
-          <div className="h-full w-full bg-white border-t border-gray-100 flex flex-col overflow-hidden shadow-none">
+          <div className="pointer-events-auto h-full w-full bg-white border-t border-gray-100 flex flex-col overflow-hidden shadow-none">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-base font-bold text-gray-900">Messages</h2>
               <div className="flex items-center gap-0.5">{chromeActions}</div>
             </div>
             <div className="flex-1 min-h-0 flex">
               <div className="hidden md:flex w-[340px] flex-shrink-0 border-r border-gray-100 flex-col min-h-0">
-                <ChatThreadList
-                  threads={threads}
-                  activeThreadId={activeThreadId}
-                  onSelect={openThread}
-                />
+                <ChatThreadList {...listProps} />
               </div>
               <div className="flex-1 min-h-0 flex flex-col md:hidden">
                 {activeThreadId ? (
@@ -164,11 +199,7 @@ export default function ChatWidget() {
                     onBack={backToList}
                   />
                 ) : (
-                  <ChatThreadList
-                    threads={threads}
-                    activeThreadId={activeThreadId}
-                    onSelect={openThread}
-                  />
+                  <ChatThreadList {...listProps} />
                 )}
               </div>
               <div className="hidden md:flex flex-1 min-h-0 flex-col">
@@ -179,6 +210,8 @@ export default function ChatWidget() {
                     onSend={sendMessage}
                     onBack={null}
                   />
+                ) : threads.length === 0 ? (
+                  <ChatThreadList {...listProps} />
                 ) : (
                   <div className="flex flex-1 items-center justify-center text-sm text-gray-400 px-6 text-center">
                     Select a conversation to start messaging.

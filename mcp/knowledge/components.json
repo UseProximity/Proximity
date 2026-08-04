@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-02T00:10:58.425Z",
-  "count": 68,
+  "_generated": "2026-08-04T03:57:47.942Z",
+  "count": 72,
   "components": [
     {
       "name": "DormsView",
@@ -59,9 +59,29 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "ChatAvatar",
+      "file": "src/components/chat/ChatAvatar.js",
+      "description": "Avatar with photo or initials fallback for chat list/transcript"
+    },
+    {
+      "name": "ChatThreadList",
+      "file": "src/components/chat/ChatThreadList.js",
+      "description": "Inbox thread rows + empty state with Browse listings CTA"
+    },
+    {
+      "name": "ChatTranscript",
+      "file": "src/components/chat/ChatTranscript.js",
+      "description": "Per-thread message bubbles and composer (5000-char limit, send toasts)"
+    },
+    {
       "name": "ChatWidget",
       "file": "src/components/chat/ChatWidget.js",
-      "description": "Floating chat widget UI using @chatscope/chat-ui-kit-react"
+      "description": "Messenger panel (compact + expanded under nav); opened via openMessages / header badge"
+    },
+    {
+      "name": "chatEvents",
+      "file": "src/components/chat/chatEvents.js",
+      "description": "openMessages() CustomEvent bridge to open ChatWidget from anywhere"
     },
     {
       "name": "leasing-funnel",

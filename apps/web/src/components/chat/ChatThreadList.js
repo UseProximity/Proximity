@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 
 function formatPreviewTime(iso) {
@@ -20,7 +21,12 @@ function formatPreviewTime(iso) {
 /**
  * Inbox rows from useMessages().threads
  */
-export default function ChatThreadList({ threads, activeThreadId, onSelect }) {
+export default function ChatThreadList({
+  threads,
+  activeThreadId,
+  onSelect,
+  onBrowse,
+}) {
   if (!threads?.length) {
     return (
       <div className="flex flex-col flex-1 items-center justify-center gap-3 py-12 px-6 text-center min-h-0">
@@ -39,9 +45,16 @@ export default function ChatThreadList({ threads, activeThreadId, onSelect }) {
             />
           </svg>
         </div>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-gray-500 max-w-[240px]">
           No conversations yet. Message a landlord from a listing to get started.
         </p>
+        <Link
+          href="/browse"
+          onClick={() => onBrowse?.()}
+          className="mt-1 inline-flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+        >
+          Browse listings
+        </Link>
       </div>
     );
   }

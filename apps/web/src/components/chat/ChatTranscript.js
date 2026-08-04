@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 
 const MAX_BODY = 5000;
+const WARN_AT = 4500;
 
 /**
  * Message bubbles + composer for one thread (useMessages messages + sendMessage).
@@ -20,6 +22,7 @@ export default function ChatTranscript({
   const bottomRef = useRef(null);
   const list = messages ?? [];
   const lastMessageId = list.length ? list[list.length - 1].id : null;
+  const nearLimit = input.length >= WARN_AT;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -32,8 +35,9 @@ export default function ChatTranscript({
     setInput("");
     try {
       await onSend(thread.threadId, text);
-    } catch {
+    } catch (err) {
       setInput(text);
+      toast.error(err?.message || "Failed to send message. Please try again.");
     } finally {
       setSending(false);
     }
@@ -125,14 +129,20 @@ export default function ChatTranscript({
       </div>
 
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
-        <div className="flex items-end gap-2 bg-gray-50 rounded-xl border border-gray-200 px-3 py-2">
+        <div
+          className={`flex items-end gap-2 bg-gray-50 rounded-xl border px-3 py-2 ${
+            sending ? "border-gray-200 opacity-80" : "border-gray-200"
+          }`}
+        >
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value.slice(0, MAX_BODY))}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Type a message..."
-            className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none max-h-24 py-1.5"
+            disabled={sending}
+            placeholder={sending ? "Sending…" : "Type a message..."}
+            aria-busy={sending}
+            className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none max-h-24 py-1.5 disabled:cursor-not-allowed"
           />
           <button
             type="button"
@@ -141,15 +151,47 @@ export default function ChatTranscript({
             className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
             aria-label="Send message"
           >
-            <svg
-              className="w-4 h-4 translate-x-px"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-            </svg>
+            {sending ? (
+              <svg
+                className="w-4 h-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4 translate-x-px"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              </svg>
+            )}
           </button>
         </div>
+        {nearLimit && (
+          <p
+            className={`mt-1.5 text-[11px] text-right ${
+              input.length >= MAX_BODY ? "text-red-600 font-medium" : "text-gray-400"
+            }`}
+          >
+            {input.length}/{MAX_BODY}
+          </p>
+        )}
       </div>
     </div>
   );
