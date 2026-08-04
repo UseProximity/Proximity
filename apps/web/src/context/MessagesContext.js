@@ -2,9 +2,12 @@
  * Global listing-chat data/actions (Favorites-style). Owns inbox threads, per-thread
  * message history, and Realtime subscriptions. Writes and history go through
  * /api/chat/*; Supabase Realtime pushes chat_messages INSERTs — inbox-wide for
- * badge/preview refresh, and thread-scoped for the open chat. No UI chrome
- * (composer text lives in ChatTranscript). Consumed by /messages, header unread
- * badge, and listing Message CTA via startListingChat.
+ * badge/preview refresh, and thread-scoped for the open chat. Opening a thread
+ * (and receiving live messages while it's open) marks it read via
+ * POST /api/chat/threads/[id]/read. Also tracks the other participant's
+ * last_read_at for "Read · time" receipts in ChatTranscript. No UI chrome
+ * (composer text lives in ChatTranscript). Consumed by /messages, header
+ * unread badge, and listing Message CTA via startListingChat.
  */
 "use client";
 
@@ -21,6 +24,7 @@ import { useSession } from "next-auth/react";
 import {
   subscribeInboxMessages,
   subscribeThreadMessages,
+  subscribeThreadReadReceipts,
 } from "@/lib/chat/realtime";
 
 const MessagesContext = createContext(null);
@@ -42,10 +46,11 @@ function replaceTempMessage(list, tempId, realMessage) {
 }
 
 export function MessagesProvider({ children }) {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const userId = session?.user?.id ?? null;
 
   const [threads, setThreads] = useState([]);
+  const [threadsStatus, setThreadsStatus] = useState("idle"); // idle | loading | ready | error
   const [messagesByThread, setMessagesByThread] = useState({});
   const [activeThreadId, setActiveThreadId] = useState(null);
 
@@ -53,11 +58,13 @@ export function MessagesProvider({ children }) {
   const inboxUnsubscribeRef = useRef(null);
   const activeThreadIdRef = useRef(null);
   const userIdRef = useRef(userId);
+  const refreshSeqRef = useRef(0);
 
   activeThreadIdRef.current = activeThreadId;
   userIdRef.current = userId;
 
   const clearChatState = useCallback(() => {
+    refreshSeqRef.current += 1;
     if (threadUnsubscribeRef.current) {
       threadUnsubscribeRef.current();
       threadUnsubscribeRef.current = null;
@@ -67,21 +74,33 @@ export function MessagesProvider({ children }) {
       inboxUnsubscribeRef.current = null;
     }
     setThreads([]);
+    setThreadsStatus("idle");
     setMessagesByThread({});
     setActiveThreadId(null);
   }, []);
 
   const refreshThreads = useCallback(async () => {
     if (!userIdRef.current) return [];
-    const res = await fetch("/api/chat/threads");
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(body?.error || `Failed to load threads (${res.status})`);
+    const seq = ++refreshSeqRef.current;
+    setThreadsStatus((prev) => (prev === "ready" ? "ready" : "loading"));
+    try {
+      const res = await fetch("/api/chat/threads");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || `Failed to load threads (${res.status})`);
+      }
+      const data = await res.json();
+      const next = Array.isArray(data) ? data : [];
+      if (seq !== refreshSeqRef.current) return next;
+      setThreads(next);
+      setThreadsStatus("ready");
+      return next;
+    } catch (err) {
+      if (seq === refreshSeqRef.current) {
+        setThreadsStatus((prev) => (prev === "ready" ? "ready" : "error"));
+      }
+      throw err;
     }
-    const data = await res.json();
-    const next = Array.isArray(data) ? data : [];
-    setThreads(next);
-    return next;
   }, []);
 
   const loadMessages = useCallback(async (threadId) => {
@@ -112,14 +131,8 @@ export function MessagesProvider({ children }) {
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
-    const res = await fetch(`/api/chat/threads/${threadId}/read`, {
-      method: "POST",
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(body?.error || `Failed to mark read (${res.status})`);
-    }
-    const data = await res.json();
+
+    // Clear badge immediately; restore via inbox refresh if the request fails.
     setThreads((prev) =>
       prev.map((t) =>
         t.threadId === threadId
@@ -127,8 +140,21 @@ export function MessagesProvider({ children }) {
           : t
       )
     );
-    return data;
-  }, []);
+
+    try {
+      const res = await fetch(`/api/chat/threads/${threadId}/read`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || `Failed to mark read (${res.status})`);
+      }
+      return await res.json();
+    } catch (err) {
+      refreshThreads().catch(() => {});
+      throw err;
+    }
+  }, [refreshThreads]);
 
   const sendMessage = useCallback(async (threadId, body) => {
     if (!userIdRef.current || !threadId) {
@@ -207,16 +233,36 @@ export function MessagesProvider({ children }) {
     [refreshThreads]
   );
 
-  // Bootstrap inbox on login; clear on logout.
+  // Bootstrap inbox on login; clear on logout. Ignore session "loading" so we
+  // don't wipe threads (or flash the empty state) before NextAuth hydrates.
   useEffect(() => {
+    if (sessionStatus === "loading") return;
     if (!userId) {
       clearChatState();
       return;
     }
-    refreshThreads().catch(() => {});
-  }, [userId, clearChatState, refreshThreads]);
+
+    let cancelled = false;
+    let retryTimer = null;
+
+    function loadInbox(attempt = 0) {
+      refreshThreads().catch(() => {
+        if (cancelled) return;
+        if (attempt >= 2) return;
+        retryTimer = setTimeout(() => loadInbox(attempt + 1), 400 * (attempt + 1));
+      });
+    }
+
+    loadInbox();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [userId, sessionStatus, clearChatState, refreshThreads]);
 
   // Inbox Realtime: any participant-visible INSERT → refresh badge / previews.
+  // If a thread is open, mark it read first so a live reply in-view doesn't bump the badge.
   useEffect(() => {
     if (!userId) {
       if (inboxUnsubscribeRef.current) {
@@ -233,20 +279,27 @@ export function MessagesProvider({ children }) {
       inboxUnsubscribeRef.current = null;
     }
 
-    inboxUnsubscribeRef.current = subscribeInboxMessages(
-      () => {
-        if (cancelled) return;
-        refreshThreads().catch(() => {});
-      },
-      {
-        currentUserId: userId,
-        onStatus: (status) => {
-          if (cancelled || status !== "SUBSCRIBED") return;
-          // Catch reconnect gaps for badge / preview.
-          refreshThreads().catch(() => {});
-        },
+    function refreshInbox() {
+      if (cancelled) return;
+      const openId = activeThreadIdRef.current;
+      if (openId) {
+        markThreadRead(openId)
+          .catch(() => {})
+          .finally(() => {
+            if (!cancelled) refreshThreads().catch(() => {});
+          });
+        return;
       }
-    );
+      refreshThreads().catch(() => {});
+    }
+
+    inboxUnsubscribeRef.current = subscribeInboxMessages(refreshInbox, {
+      currentUserId: userId,
+      onStatus: (status) => {
+        if (cancelled || status !== "SUBSCRIBED") return;
+        refreshInbox();
+      },
+    });
 
     return () => {
       cancelled = true;
@@ -255,10 +308,10 @@ export function MessagesProvider({ children }) {
         inboxUnsubscribeRef.current = null;
       }
     };
-  }, [userId, refreshThreads]);
+  }, [userId, refreshThreads, markThreadRead]);
 
-  // Open-thread: history → subscribe; refetch messages on Realtime (re)subscribe.
-  // Inbox badge/preview is owned by the inbox subscription above.
+  // Open-thread: mark read → history → subscribe to messages + other user's
+  // last_read_at (read receipts). Incoming messages also mark read.
   useEffect(() => {
     if (!userId || !activeThreadId) {
       if (threadUnsubscribeRef.current) {
@@ -269,7 +322,10 @@ export function MessagesProvider({ children }) {
     }
 
     let cancelled = false;
+    let unsubMessages = null;
+    let unsubReadReceipts = null;
 
+    markThreadRead(activeThreadId).catch(() => {});
     loadMessages(activeThreadId).catch(() => {});
 
     if (threadUnsubscribeRef.current) {
@@ -277,7 +333,7 @@ export function MessagesProvider({ children }) {
       threadUnsubscribeRef.current = null;
     }
 
-    threadUnsubscribeRef.current = subscribeThreadMessages(
+    unsubMessages = subscribeThreadMessages(
       activeThreadId,
       (message) => {
         if (cancelled) return;
@@ -285,16 +341,38 @@ export function MessagesProvider({ children }) {
           ...prev,
           [activeThreadId]: upsertMessage(prev[activeThreadId], message),
         }));
+        if (message && message.isMine === false) {
+          markThreadRead(activeThreadId).catch(() => {});
+        }
       },
       {
         currentUserId: userId,
         onStatus: (status) => {
           if (cancelled || status !== "SUBSCRIBED") return;
-          // Closes history→subscribe race and catches reconnect gaps.
           loadMessages(activeThreadId).catch(() => {});
+          markThreadRead(activeThreadId).catch(() => {});
         },
       }
     );
+
+    unsubReadReceipts = subscribeThreadReadReceipts(
+      activeThreadId,
+      ({ userId: readerId, lastReadAt }) => {
+        if (cancelled || !lastReadAt || readerId === userId) return;
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.threadId === activeThreadId
+              ? { ...t, otherUserLastReadAt: lastReadAt }
+              : t
+          )
+        );
+      }
+    );
+
+    threadUnsubscribeRef.current = () => {
+      unsubMessages?.();
+      unsubReadReceipts?.();
+    };
 
     return () => {
       cancelled = true;
@@ -303,22 +381,25 @@ export function MessagesProvider({ children }) {
         threadUnsubscribeRef.current = null;
       }
     };
-  }, [userId, activeThreadId, loadMessages]);
+  }, [userId, activeThreadId, loadMessages, markThreadRead]);
 
-  // Tab visible while a thread is open: refetch messages + inbox.
+  // Tab visible while a thread is open: mark read + refetch messages + inbox.
   useEffect(() => {
     if (!userId) return;
 
     function onVisibility() {
       if (document.visibilityState !== "visible") return;
-      refreshThreads().catch(() => {});
       const threadId = activeThreadIdRef.current;
-      if (threadId) loadMessages(threadId).catch(() => {});
+      if (threadId) {
+        markThreadRead(threadId).catch(() => {});
+        loadMessages(threadId).catch(() => {});
+      }
+      refreshThreads().catch(() => {});
     }
 
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [userId, loadMessages, refreshThreads]);
+  }, [userId, loadMessages, refreshThreads, markThreadRead]);
 
   const unreadCount = useMemo(
     () =>
@@ -332,6 +413,8 @@ export function MessagesProvider({ children }) {
   const value = useMemo(
     () => ({
       threads,
+      threadsStatus,
+      threadsLoading: threadsStatus === "loading" || threadsStatus === "idle",
       unreadCount,
       messagesByThread,
       activeThreadId,
@@ -344,6 +427,7 @@ export function MessagesProvider({ children }) {
     }),
     [
       threads,
+      threadsStatus,
       unreadCount,
       messagesByThread,
       activeThreadId,

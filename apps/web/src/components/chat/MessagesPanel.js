@@ -19,11 +19,13 @@ export default function MessagesPanel({
 }) {
   const {
     threads,
+    threadsStatus,
+    threadsLoading,
     messagesByThread,
     activeThreadId,
     setActiveThreadId,
     sendMessage,
-    markThreadRead,
+    refreshThreads,
   } = useMessages();
 
   const activeThread = useMemo(
@@ -35,21 +37,31 @@ export default function MessagesPanel({
     (threadId) => {
       if (!threadId) return;
       setActiveThreadId(threadId);
-      markThreadRead(threadId).catch(() => {});
     },
-    [setActiveThreadId, markThreadRead]
+    [setActiveThreadId]
   );
 
   const backToList = useCallback(() => {
     setActiveThreadId(null);
   }, [setActiveThreadId]);
 
+  const retryInbox = useCallback(() => {
+    refreshThreads().catch(() => {});
+  }, [refreshThreads]);
+
   const listProps = {
     threads,
     activeThreadId,
     onSelect: openThread,
     onBrowse,
+    loading: threadsLoading,
+    error: threadsStatus === "error",
+    onRetry: retryInbox,
   };
+
+  const showEmptyTranscript =
+    !threadsLoading && threadsStatus !== "error" && threads.length === 0;
+
 
   return (
     <div
@@ -85,7 +97,7 @@ export default function MessagesPanel({
               onSend={sendMessage}
               onBack={null}
             />
-          ) : threads.length === 0 ? (
+          ) : showEmptyTranscript || threadsLoading || threadsStatus === "error" ? (
             <ChatThreadList {...listProps} />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400 px-6 text-center">

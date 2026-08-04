@@ -189,3 +189,103 @@ export function subscribeInboxMessages(onInsert, options = {}) {
     onStatus,
   });
 }
+
+/**
+ * Subscribe to chat_participants UPDATEs for one thread (other user's last_read_at).
+ * Powers live "Read · time" receipts while a conversation is open.
+ *
+ * @param {string} threadId
+ * @param {(payload: { userId: string, lastReadAt: string | null }) => void} onUpdate
+ * @param {{ onStatus?: (status: string, err?: Error) => void }} [options]
+ */
+export function subscribeThreadReadReceipts(threadId, onUpdate, options = {}) {
+  const { onStatus } = options;
+  let disposed = false;
+  let client = null;
+  let channel = null;
+  let reconnectAttempt = 0;
+  let reconnectTimer = null;
+
+  function clearReconnect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
+
+  async function teardownChannel() {
+    if (client && channel) {
+      try {
+        await client.removeChannel(channel);
+      } catch {
+        // ignore teardown races
+      }
+    }
+    channel = null;
+  }
+
+  function scheduleReconnect() {
+    if (disposed || reconnectTimer) return;
+    const delayMs = Math.min(1000 * 2 ** reconnectAttempt, 15000);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delayMs);
+  }
+
+  async function connect() {
+    if (disposed) return;
+
+    try {
+      await teardownChannel();
+      client = await ensureRealtimeAuth();
+      if (disposed) return;
+
+      channel = client
+        .channel(`chat-thread-read:${threadId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "chat_participants",
+            filter: `thread_id=eq.${threadId}`,
+          },
+          (payload) => {
+            const row = payload?.new;
+            if (!row?.user_id) return;
+            onUpdate({
+              userId: row.user_id,
+              lastReadAt: row.last_read_at ?? null,
+            });
+          }
+        )
+        .subscribe((status, err) => {
+          onStatus?.(status, err);
+          if (disposed) return;
+          if (status === "SUBSCRIBED") {
+            reconnectAttempt = 0;
+            return;
+          }
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            scheduleReconnect();
+          }
+        });
+    } catch (err) {
+      onStatus?.(
+        "AUTH_ERROR",
+        err instanceof Error ? err : new Error(String(err))
+      );
+      if (!disposed) scheduleReconnect();
+    }
+  }
+
+  connect();
+
+  return () => {
+    disposed = true;
+    clearReconnect();
+    teardownChannel();
+  };
+}

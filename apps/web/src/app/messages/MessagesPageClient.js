@@ -16,7 +16,7 @@ export default function MessagesPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const threadParam = searchParams.get("thread");
-  const { setActiveThreadId, markThreadRead } = useMessages();
+  const { setActiveThreadId } = useMessages();
   const appliedThreadRef = useRef(null);
 
   useEffect(() => {
@@ -24,8 +24,7 @@ export default function MessagesPageClient() {
     if (appliedThreadRef.current === threadParam) return;
     appliedThreadRef.current = threadParam;
     setActiveThreadId(threadParam);
-    markThreadRead(threadParam).catch(() => {});
-  }, [threadParam, setActiveThreadId, markThreadRead]);
+  }, [threadParam, setActiveThreadId]);
 
   return (
     <div className="h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)] border-t border-gray-100">
