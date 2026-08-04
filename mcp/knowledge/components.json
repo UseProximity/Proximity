@@ -1,6 +1,6 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-04T04:12:50.756Z",
+  "_generated": "2026-08-04T04:29:43.177Z",
   "count": 72,
   "components": [
     {
@@ -74,14 +74,14 @@
       "description": "Per-thread message bubbles and composer (5000-char limit, send toasts)"
     },
     {
-      "name": "ChatWidget",
-      "file": "src/components/chat/ChatWidget.js",
-      "description": "Messenger panel (compact + expanded under nav); opened via openMessages / header badge"
+      "name": "MessagesPanel",
+      "file": "src/components/chat/MessagesPanel.js",
+      "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
     },
     {
       "name": "chatEvents",
       "file": "src/components/chat/chatEvents.js",
-      "description": "openMessages() CustomEvent bridge to open ChatWidget from anywhere"
+      "description": "openMessages() / messagesHref — navigate to /messages (optional ?thread=)"
     },
     {
       "name": "leasing-funnel",

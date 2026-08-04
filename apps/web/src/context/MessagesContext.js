@@ -3,8 +3,8 @@
  * message history, and Realtime subscriptions. Writes and history go through
  * /api/chat/*; Supabase Realtime pushes chat_messages INSERTs — inbox-wide for
  * badge/preview refresh, and thread-scoped for the open chat. No UI chrome
- * (widget open, composer text). Consumed by ChatWidget, header unread badge,
- * and (Stage 3) listing Message CTA via startListingChat.
+ * (composer text lives in ChatTranscript). Consumed by /messages, header unread
+ * badge, and listing Message CTA via startListingChat.
  */
 "use client";
 

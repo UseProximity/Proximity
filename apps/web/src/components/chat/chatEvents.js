@@ -1,15 +1,41 @@
 /*
- * Open the floating ChatWidget from anywhere (header badge, listing Message CTA).
- * Same pattern as FeedbackWidget's proximity:open-feedback event.
+ * Navigate to /messages from anywhere (header badge, deep links). Soft-nav via
+ * a router registered by Providers; falls back to location.assign.
  */
-export const OPEN_MESSAGES_EVENT = "proximity:open-messages";
+
+/** @type {((href: string) => void) | null} */
+let navigateToMessages = null;
 
 /**
- * @param {{ threadId?: string, expanded?: boolean }} [detail]
+ * Called once from Providers so openMessages can soft-navigate with the App Router.
+ * @param {(href: string) => void} fn
+ */
+export function registerMessagesNavigate(fn) {
+  navigateToMessages = typeof fn === "function" ? fn : null;
+}
+
+/**
+ * @param {{ threadId?: string }} [detail]
+ * @returns {string}
+ */
+export function messagesHref(detail = {}) {
+  const threadId =
+    typeof detail?.threadId === "string" ? detail.threadId.trim() : "";
+  if (threadId) {
+    return `/messages?thread=${encodeURIComponent(threadId)}`;
+  }
+  return "/messages";
+}
+
+/**
+ * @param {{ threadId?: string }} [detail]
  */
 export function openMessages(detail = {}) {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent(OPEN_MESSAGES_EVENT, { detail: detail ?? {} })
-  );
+  const href = messagesHref(detail);
+  if (navigateToMessages) {
+    navigateToMessages(href);
+    return;
+  }
+  window.location.assign(href);
 }

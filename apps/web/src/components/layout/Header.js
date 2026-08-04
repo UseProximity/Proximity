@@ -18,7 +18,6 @@ import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { recordPageVisit } from "@/utils/analytics";
 import { useMessages } from "@/context/MessagesContext";
-import { openMessages } from "@/components/chat/chatEvents";
 
 export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -34,7 +33,7 @@ export function Header({ session }) {
 
   function openInbox() {
     setMobileMenuOpen(false);
-    openMessages({ expanded: true });
+    router.push("/messages");
   }
 
   useEffect(() => {
