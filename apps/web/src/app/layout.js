@@ -4,8 +4,10 @@
  * without a client-side waterfall. Renders the global shell: Inter font, Leaflet CSS,
  * toast notifications, the site Header, the profile completion gate modal, and the
  * URL-driven GlobalListingModal that can open any listing from any page via ?listing=.
+ * Also mounts FeedbackWidget (bottom-left). Messages live at /messages (header entry).
  * Also mounts the Vercel Analytics beacon and Google Analytics (GA4) tag. All client
- * state providers (SessionProvider, FavoritesProvider) are composed inside Providers.
+ * state providers (SessionProvider, FavoritesProvider, MessagesProvider) are composed
+ * inside Providers.
  * Defines the site-wide <title> and <description> used for SEO.
  */
 import { Inter } from "next/font/google";

@@ -42,7 +42,7 @@ src/
 │   ├── listings/               # Listing cards, map, modals, filters, reviews
 │   ├── dashboard/              # Landlord analytics widgets
 │   ├── auth/                   # ButtonAuth, ProfileCompletionModal
-│   └── chat/                   # ChatWidget (floating messenger)
+│   └── chat/                   # MessagesPanel, transcript, inbox list (/messages)
 ├── context/
 │   ├── FavoritesContext.js     # Global saved-listing IDs
 │   └── ChatContext.js          # In-memory chat conversation state

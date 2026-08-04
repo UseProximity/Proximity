@@ -13,6 +13,10 @@
 
 import { cache } from "react";
 import supabase from "@/lib/supabase";
+import {
+  LANDLORD_CHAT_SELECT,
+  formatListingOwner,
+} from "@/lib/chat/landlordCanChat";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -181,14 +185,7 @@ function buildListing(row, owner = null, reviews = []) {
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
-    owner: owner
-      ? {
-          _id: owner.id,
-          name: owner.name,
-          email: owner.email ?? null,
-          image: owner.image ?? null,
-        }
-      : null,
+    owner: formatListingOwner(owner),
     createdAt: row.created_at ?? null,
   };
 }
@@ -255,7 +252,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
   if (primaryLandlord?.user_id) {
     const { data: landlord, error: landlordErr } = await supabase
       .from("users")
-      .select("id, name, email, image")
+      .select(LANDLORD_CHAT_SELECT)
       .eq("id", primaryLandlord.user_id)
       .maybeSingle();
     if (landlordErr) {

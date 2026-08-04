@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-02T00:10:58.425Z",
-  "count": 68,
+  "_generated": "2026-08-04T04:29:43.177Z",
+  "count": 72,
   "components": [
     {
       "name": "DormsView",
@@ -59,9 +59,29 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "ChatWidget",
-      "file": "src/components/chat/ChatWidget.js",
-      "description": "Floating chat widget UI using @chatscope/chat-ui-kit-react"
+      "name": "ChatAvatar",
+      "file": "src/components/chat/ChatAvatar.js",
+      "description": "Avatar with photo or initials fallback for chat list/transcript"
+    },
+    {
+      "name": "ChatThreadList",
+      "file": "src/components/chat/ChatThreadList.js",
+      "description": "Inbox thread rows + empty state with Browse listings CTA"
+    },
+    {
+      "name": "ChatTranscript",
+      "file": "src/components/chat/ChatTranscript.js",
+      "description": "Per-thread message bubbles and composer (5000-char limit, send toasts)"
+    },
+    {
+      "name": "MessagesPanel",
+      "file": "src/components/chat/MessagesPanel.js",
+      "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
+    },
+    {
+      "name": "chatEvents",
+      "file": "src/components/chat/chatEvents.js",
+      "description": "openMessages() / messagesHref — navigate to /messages (optional ?thread=)"
     },
     {
       "name": "leasing-funnel",
@@ -226,7 +246,7 @@
     {
       "name": "ListingModalInfo",
       "file": "src/components/listings/ListingModalInfo.js",
-      "description": "No description — run generate after adding a description above."
+      "description": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat"
     },
     {
       "name": "MapPopupCard",
