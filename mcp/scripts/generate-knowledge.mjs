@@ -211,6 +211,7 @@ const COMPONENT_DESCRIPTIONS = {
   "ProfileCompletionModal.js": "Onboarding modal for new users to complete their profile",
   "Providers.js": "Root Next.js providers: SessionProvider, Toaster, etc.",
   "ReviewsSection.js": "Renders a list of reviews with ratings for a listing",
+  "ui/StarRatingInput.js": "Shared half-star rating input with hover preview — used by every review-submission surface (/review, /refer, /review-invite, listing modal)",
   "UniversityLogosCarousel.js": "Auto-scrolling carousel of university logos on the landing page",
   "chat/ChatContext.js": "React context providing chat state and actions",
   "chat/ChatWidget.js": "Floating chat widget UI using @chatscope/chat-ui-kit-react",
