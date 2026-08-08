@@ -15,6 +15,7 @@ import {
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import {
   getAreaRangeLabel,
@@ -167,31 +168,14 @@ function StarRow({ label, value, onChange, readOnly = false }) {
       {label && (
         <span className="text-sm text-gray-600 w-32 shrink-0">{label}</span>
       )}
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            disabled={readOnly}
-            onClick={() => !readOnly && onChange?.(star)}
-            className={`text-xl transition ${
-              star <= value
-                ? "text-red-500"
-                : "text-gray-300 hover:text-red-300"
-            } ${readOnly ? "cursor-default" : "cursor-pointer"}`}
-            aria-label={
-              readOnly ? undefined : `Rate ${star} star${star > 1 ? "s" : ""}`
-            }
-          >
-            ★
-          </button>
-        ))}
-      </div>
-      {!readOnly && (
-        <span className="text-xs text-gray-400">
-          {value ? `${value}/5` : "Select"}
-        </span>
-      )}
+      <StarRatingInput
+        value={value}
+        onChange={onChange}
+        px={20}
+        color="red"
+        readOnly={readOnly}
+        ariaLabelPrefix={label ? `Rate ${label}` : "Rate"}
+      />
     </div>
   );
 }
@@ -1354,7 +1338,7 @@ export default function ListingModalInfo({
       toast.error("Only students can leave reviews.");
       return;
     }
-    if (reviewText.trim().length < 5 || rating < 1 || rating > 5) {
+    if (reviewText.trim().length < 5 || rating < 0.5 || rating > 5) {
       toast.error("Please write a valid review and select an overall rating.");
       return;
     }

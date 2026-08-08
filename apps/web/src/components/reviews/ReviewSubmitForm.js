@@ -6,69 +6,34 @@
  *   - /review               — the public "Add a Review" page (no referrer)
  * The flow is identical either way; only the attribution copy differs.
  *
- * Flow:
+ * The form is progressively disclosed: it opens as a single question and reveals the next
+ * step only once the current one is answered. Earlier steps stay visible and editable.
+ *
+ * Steps:
  *   1. Confirm which school you go / went to. Pre-filled from the signed-in account's email
  *      domain and re-checked server-side, so the school on a review is verified rather than
  *      self-declared.
  *   2. Search an address (Mapbox autocomplete via AddressSearchInput) and pick a verified
- *      suggestion. There is NO "pick our listing vs. make a new one" step — the server
- *      auto-matches the address to our catalog (or creates a stub) on submit.
- *   3. Fill out the review: unit (optional), overall + communication/value/location stars
- *      (half-star), a written review (≥10 chars), and the landlord/company name + contact.
- *   4. Submit to /api/reviewReferral. Reviews auto-publish.
+ *      suggestion, then an optional unit. There is NO "pick our listing vs. make a new one"
+ *      step — the server auto-matches the address to our catalog (or creates a stub).
+ *   3. Overall rating (half-star).
+ *   4. Communication / value / location ratings (half-star, all required).
+ *   5. Written review (≥10 chars).
+ *   6. Landlord / company name + contact (or "I don't have it").
+ *   7. Anonymous toggle + submit to /api/reviewReferral. Reviews auto-publish.
  */
 
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import AuthCard from "@/components/auth/AuthCard";
+import StarRatingInput from "@/components/ui/StarRatingInput";
 import { SCHOOLS, schoolForEmail, isReviewEligibleEmail } from "@/lib/schools";
 
 const INPUT_CLASS =
   "w-full px-3 py-2.5 text-[15px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400";
-
-// Half-star rating input — clicking the left/right half of a star sets x.5 / x.0.
-function HalfStars({ value, onChange, px = 30 }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((i) => {
-          const fill = Math.max(0, Math.min(1, value - (i - 1)));
-          return (
-            <div key={i} className="relative" style={{ width: px, height: px }}>
-              <span
-                className="absolute inset-0 text-gray-300 leading-none select-none"
-                style={{ fontSize: px, lineHeight: 1 }}
-              >
-                ★
-              </span>
-              <span
-                className="absolute inset-0 overflow-hidden text-yellow-400 leading-none select-none"
-                style={{ width: `${fill * 100}%`, fontSize: px, lineHeight: 1 }}
-              >
-                ★
-              </span>
-              <button
-                type="button"
-                aria-label={`${i - 0.5} stars`}
-                onClick={() => onChange(i - 0.5)}
-                className="absolute inset-y-0 left-0 w-1/2 cursor-pointer"
-              />
-              <button
-                type="button"
-                aria-label={`${i} stars`}
-                onClick={() => onChange(i)}
-                className="absolute inset-y-0 right-0 w-1/2 cursor-pointer"
-              />
-            </div>
-          );
-        })}
-      </div>
-      <span className="text-sm text-gray-400 w-8">{value ? value.toFixed(1) : ""}</span>
-    </div>
-  );
-}
 
 function SubRating({ label, value, onChange }) {
   return (
@@ -76,8 +41,38 @@ function SubRating({ label, value, onChange }) {
       <span className="text-sm text-gray-700">
         {label} <span className="text-red-500">*</span>
       </span>
-      <HalfStars value={value} onChange={onChange} px={22} />
+      <StarRatingInput
+        value={value}
+        onChange={onChange}
+        px={22}
+        ariaLabelPrefix={`Rate ${label}`}
+      />
     </div>
+  );
+}
+
+/*
+ * One revealed step. Steps render only once the previous one is answered, so the page
+ * starts as a single question and grows as it's filled in. Earlier steps stay on screen
+ * and editable — this is progressive disclosure, not a wizard you can't go back in.
+ */
+function Step({ show, number, title, children }) {
+  if (!show) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className="border-t border-gray-100 pt-5 first:border-t-0 first:pt-0"
+    >
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-semibold text-red-600">
+          {number}
+        </span>
+        <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
+      </div>
+      {children}
+    </motion.div>
   );
 }
 
@@ -123,6 +118,17 @@ export default function ReviewSubmitForm({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Progressive reveal — each step only renders once the step before it is answered.
+  const landlordEmailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(landlordEmail.trim());
+  const landlordPhoneOk = landlordPhone.trim().length >= 7;
+  const addressReady = !!picked;
+  const overallReady = rating >= 0.5;
+  const categoriesReady = comm >= 0.5 && val >= 0.5 && loc >= 0.5;
+  const commentReady = comment.trim().length >= 10;
+  const landlordReady =
+    landlordName.trim().length >= 2 &&
+    (noContact || landlordEmailOk || landlordPhoneOk);
+
   // Review cap: check how many reviews this account has already used.
   const [atLimit, setAtLimit] = useState(false);
   const [reviewLimit, setReviewLimit] = useState(2);
@@ -145,6 +151,12 @@ export default function ReviewSubmitForm({
       active = false;
     };
   }, [loggedIn, eligible]);
+
+  // Every step now lives in one <form>, so Enter in any single-line field (address
+  // search, unit, landlord contact) would otherwise submit a half-finished review.
+  function handleFormKeyDown(e) {
+    if (e.key === "Enter" && e.target.tagName === "INPUT") e.preventDefault();
+  }
 
   function handleSelectSuggestion(feature) {
     const [lng, lat] = feature.center || [];
@@ -169,9 +181,7 @@ export default function ReviewSubmitForm({
       return toast.error("Please write at least 10 characters.");
     if (landlordName.trim().length < 2)
       return toast.error("Please enter the landlord or company name.");
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(landlordEmail.trim());
-    const phoneOk = landlordPhone.trim().length >= 7;
-    if (!noContact && !emailOk && !phoneOk)
+    if (!noContact && !landlordEmailOk && !landlordPhoneOk)
       return toast.error("Add a landlord email or phone, or check the box below.");
 
     const payload = {
@@ -240,7 +250,7 @@ export default function ReviewSubmitForm({
               </>
             )}
             {loggedIn && !eligible
-              ? "Reviews can only be left from a student account at a school we serve — sign in with your school email below."
+              ? "Reviews can only be left from a student account at a school we serve. Sign in with your school email below."
               : "Sign in or create an account with your school email to share your experience."}
           </p>
           <p className="text-sm text-gray-500 mt-2">
@@ -281,41 +291,30 @@ export default function ReviewSubmitForm({
         </p>
       </header>
 
-      {/* Step 1 — school */}
-      <div className="mb-6">
-        <label
-          htmlFor="review-school"
-          className="block text-sm font-semibold text-gray-800 mb-1.5"
-        >
-          What school do/did you go to? <span className="text-red-500">*</span>
-        </label>
-        <select
-          id="review-school"
-          value={school}
-          onChange={(e) => setSchool(e.target.value)}
-          className={INPUT_CLASS}
-        >
-          <option value="">Select your school…</option>
-          {SCHOOLS.map((s) => (
-            <option key={s.shortName} value={s.shortName}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        {schoolMismatch && (
-          <p className="mt-1.5 text-sm text-red-600">
-            Your account email belongs to {emailSchool.label}. Pick that school, or sign in
-            with your {school} email to review as a {school} student.
-          </p>
-        )}
-      </div>
+      <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5">
+        <Step show number={1} title="What school do/did you go to?">
+          <select
+            id="review-school"
+            value={school}
+            onChange={(e) => setSchool(e.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">Select your school…</option>
+            {SCHOOLS.map((s) => (
+              <option key={s.shortName} value={s.shortName}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          {schoolMismatch && (
+            <p className="mt-1.5 text-sm text-red-600">
+              Your account email belongs to {emailSchool.label}. Pick that school, or sign
+              in with your {school} email to review as a {school} student.
+            </p>
+          )}
+        </Step>
 
-      {/* Step 2 — address search */}
-      {schoolReady && (
-        <>
-          <label className="block text-sm font-semibold text-gray-800 mb-1.5">
-            Property address <span className="text-red-500">*</span>
-          </label>
+        <Step show={schoolReady} number={2} title="Which property are you reviewing?">
           {picked ? (
             <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-red-200 bg-red-50">
               <span className="text-[15px] text-gray-800 truncate">
@@ -344,58 +343,59 @@ export default function ReviewSubmitForm({
               className={INPUT_CLASS}
             />
           )}
-        </>
-      )}
+          {picked && (
+            <div className="mt-3">
+              <label
+                htmlFor="review-unit"
+                className="block text-sm text-gray-600 mb-1.5"
+              >
+                Unit number <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                id="review-unit"
+                type="text"
+                value={unitNumber}
+                onChange={(e) => setUnitNumber(e.target.value)}
+                placeholder="e.g. 2B"
+                className={INPUT_CLASS}
+              />
+            </div>
+          )}
+        </Step>
 
-      {/* Step 3 — review form */}
-      {schoolReady && picked && (
-        <form onSubmit={handleSubmit} className="mt-6 border-t pt-6 space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1.5">
-              Unit number <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={unitNumber}
-              onChange={(e) => setUnitNumber(e.target.value)}
-              placeholder="e.g. 2B"
-              className={INPUT_CLASS}
-            />
-          </div>
+        <Step show={addressReady} number={3} title="How was it overall?">
+          <StarRatingInput value={rating} onChange={setRating} />
+        </Step>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1.5">
-              Overall rating <span className="text-red-500">*</span>
-            </label>
-            <HalfStars value={rating} onChange={setRating} />
-          </div>
-
+        <Step show={overallReady} number={4} title="Rate the details">
           <div className="space-y-3 bg-gray-50 rounded-xl p-4">
             <SubRating label="Communication" value={comm} onChange={setComm} />
             <SubRating label="Value" value={val} onChange={setVal} />
             <SubRating label="Location" value={loc} onChange={setLoc} />
           </div>
+        </Step>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1.5">
-              Your review <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={4}
-              placeholder="What was it like living here? Landlord, location, value… (min. 10 characters)"
-              className={INPUT_CLASS}
-            />
-          </div>
+        <Step show={categoriesReady} number={5} title="Tell other students about it">
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={4}
+            placeholder="What was it like living here? Landlord, location, value… (min. 10 characters)"
+            className={INPUT_CLASS}
+          />
+        </Step>
 
-          {/* Landlord / company */}
-          <div className="space-y-3 border-t pt-5">
+        <Step show={commentReady} number={6} title="Who was the landlord?">
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+              <label
+                htmlFor="review-landlord-name"
+                className="block text-sm text-gray-600 mb-1.5"
+              >
                 Landlord / company name <span className="text-red-500">*</span>
               </label>
               <input
+                id="review-landlord-name"
                 type="text"
                 value={landlordName}
                 onChange={(e) => setLandlordName(e.target.value)}
@@ -404,10 +404,14 @@ export default function ReviewSubmitForm({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                <label
+                  htmlFor="review-landlord-email"
+                  className="block text-sm text-gray-600 mb-1.5"
+                >
                   Landlord email
                 </label>
                 <input
+                  id="review-landlord-email"
                   type="email"
                   value={landlordEmail}
                   onChange={(e) => setLandlordEmail(e.target.value)}
@@ -416,10 +420,14 @@ export default function ReviewSubmitForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                <label
+                  htmlFor="review-landlord-phone"
+                  className="block text-sm text-gray-600 mb-1.5"
+                >
                   Landlord phone
                 </label>
                 <input
+                  id="review-landlord-phone"
                   type="tel"
                   value={landlordPhone}
                   onChange={(e) => setLandlordPhone(e.target.value)}
@@ -438,9 +446,10 @@ export default function ReviewSubmitForm({
               I do not have their contact information
             </label>
           </div>
+        </Step>
 
-          {/* Anonymous posting */}
-          <label className="flex items-start gap-2.5 border-t pt-5 cursor-pointer">
+        <Step show={landlordReady} number={7} title="Post your review">
+          <label className="flex items-start gap-2.5 cursor-pointer">
             <input
               type="checkbox"
               checked={anonymous}
@@ -459,12 +468,12 @@ export default function ReviewSubmitForm({
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-4 w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Submitting…" : "Submit review"}
           </button>
-        </form>
-      )}
+        </Step>
+      </form>
     </div>
   );
 }
