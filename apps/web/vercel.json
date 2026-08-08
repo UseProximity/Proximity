@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/auto-unavailable",
-      "schedule": "0 22 * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -1,5 +1,8 @@
 /*
- * Daily cron: hide landlord-reported-leased listings, then email the review digest.
+ * Hourly cron: hide landlord-reported-leased listings, then email the review digest.
+ * A landlord's "leased" click is therefore acted on within the hour, and the
+ * digest goes out in the same run — but ONLY when something changed, so quiet
+ * hours send nothing.
  *
  * Reads the check-in system's response columns (read-only — see lib/autoUnavailable.js
  * for the hard guarantees) and, for each listing the landlord reported leased that
