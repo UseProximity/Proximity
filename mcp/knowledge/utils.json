@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-08T18:50:38.589Z",
+  "_generated": "2026-08-08T21:42:27.874Z",
   "count": 34,
   "utils": [
     {
@@ -9,7 +9,7 @@
     },
     {
       "file": "src/lib/authMobile.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "Mobile bearer-token auth — the planned counterpart to `auth()` for a native client."
     },
     {
       "file": "src/lib/autoUnavailable.js",
