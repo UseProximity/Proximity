@@ -32,7 +32,12 @@
  *                 rent: number|null, bedrooms: number|null, bathrooms: number|null,
  *                 area: number|null, availableFrom: string|null (YYYY-MM-DD),
  *                 beds: PmsBed[]|null,       // by-the-bed student housing only
- *                 rawStatus: string|null }
+ *                 rawStatus: string|null,
+ *                 // Optional pre-coercion values. The coercions below turn
+ *                 // anything unreadable into null, which erases the evidence;
+ *                 // validate.js reports "expected X, received Y" from these,
+ *                 // so a connector that can supply them should.
+ *                 rawRent, rawBedrooms, rawBathrooms: string|null }
  *   PmsBed      { externalBedId: string, label: string|null,
  *                 available: boolean|null, rent: number|null, availableFrom: string|null }
  */

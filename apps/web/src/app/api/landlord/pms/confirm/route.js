@@ -7,6 +7,10 @@ import { isApiProvider, getConnector } from "@/lib/pms/index.js";
 import { ingestPmsProperty } from "@/lib/pms/ingest.js";
 import { matchUnitsToListingUnits } from "@/lib/pms/mapping.js";
 import { syncConnection } from "@/lib/pms/sync.js";
+import { createLedger, PHASES } from "@/lib/pms/ledger.js";
+import { reportOnboarding, pmsPreviewOnly } from "@/lib/pms/alerts.js";
+import { validateSnapshot } from "@/lib/pms/validate.js";
+import { getBaseUrl } from "@/lib/email";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
@@ -115,6 +119,20 @@ export async function POST(req) {
     return NextResponse.json({ error: "connectionId and decisions are required" }, { status: 400 });
   }
 
+  /*
+   * Preview-only pilots stop here. The UI hides the confirm control in this
+   * mode, but the refusal is enforced server-side too: "the button isn't
+   * rendered" is not a guarantee that nothing gets written, and the whole
+   * premise of showing a real property manager their real portfolio is that
+   * we cannot create listings out from under them.
+   */
+  if (pmsPreviewOnly()) {
+    return NextResponse.json(
+      { error: "This is a preview. Listings are not created from a PMS connection here." },
+      { status: 403 }
+    );
+  }
+
   const { data: connection } = await supabase
     .from("pms_connections")
     .select("id, user_id, provider, nango_connection_id, credential_meta, radius_auto_include_km, sync_price, auto_apply, status")
@@ -128,10 +146,26 @@ export async function POST(req) {
     return NextResponse.json({ error: "Connection is not an API provider" }, { status: 400 });
   }
 
+  const ledger = createLedger({
+    connectionId: connection.id,
+    provider: connection.provider,
+    userId: session.user.id,
+    phase: PHASES.CONFIRM,
+  });
+
   const connector = getConnector(connection.provider);
   const snapshot = await connector.fetchSnapshot(connection.nango_connection_id, connection.credential_meta ?? null);
   const byExternalId = new Map(snapshot.properties.map((p) => [p.externalPropertyId, p]));
   const source = `pms:${connection.provider}`;
+
+  // Re-validated here, not carried over from discover: the snapshot is
+  // re-fetched server-side (client facts are never trusted), so the account
+  // may have changed between the landlord seeing the preview and confirming it.
+  const validation = validateSnapshot(snapshot);
+  await ledger.step("snapshot", {
+    message: `Re-read ${snapshot.properties.length} properties to apply ${decisions.length} decision(s).`,
+    detail: { counts: validation.counts, errors: snapshot.errors ?? [] },
+  });
 
   const { data: owned } = await supabase
     .from("listing_landlords")
@@ -333,6 +367,29 @@ export async function POST(req) {
   } else {
     firstSync = { status: "skipped", reason: "some decisions failed" };
   }
+
+  const failed = results.filter((r) => r.error);
+  await ledger.step("apply-decisions", {
+    ok: failed.length === 0,
+    message: failed.length
+      ? `${failed.length} of ${results.length} decisions could not be applied.`
+      : `Applied all ${results.length} decisions.`,
+    detail: { results },
+  });
+  await ledger.step("first-sync", {
+    message: `Immediate first sync: ${firstSync?.status ?? "unknown"}${connection.auto_apply ? "" : " (dry run — auto_apply is off)"}.`,
+    detail: { firstSync, dryRun: !connection.auto_apply },
+  });
+
+  await reportOnboarding({
+    ledger,
+    phase: PHASES.CONFIRM,
+    provider: connection.provider,
+    landlord: session.user.name || session.user.email || null,
+    accountLabel: connection.credential_meta?.accountLabel ?? null,
+    validation,
+    baseUrl: getBaseUrl(req),
+  });
 
   return NextResponse.json({ results, firstSync });
 }

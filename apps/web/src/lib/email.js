@@ -121,6 +121,140 @@ export async function sendVerificationEmail({ email, name, token, baseUrl }) {
   });
 }
 
+/*
+ * One email per phase of a landlord's PMS onboarding (connect/discover, then
+ * confirm), plus an immediate one when a phase fails. This is the pilot's only
+ * window into an attempt that happens while nobody is watching, so it reports
+ * the whole run: every step in order, and every place the PMS data did not fit
+ * our tables.
+ *
+ * `steps` are ours and rendered as-is. Everything drawn from PMS data —
+ * property names, raw field values, error text from the provider — is escaped.
+ */
+export async function sendPmsOnboardingReportEmail({
+  to,
+  provider,
+  landlord,
+  accountLabel,
+  phase,
+  failed,
+  steps = [],
+  findings = [],
+  counts = null,
+  landlordVisible = [],
+  baseUrl,
+  previewOnly = false,
+}) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const stepRows = steps
+    .map((s) => {
+      const mark = s.ok === false ? "✕" : "✓";
+      const color = s.ok === false ? "#E82027" : "#15803d";
+      return `
+        <tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:${color};font-weight:700;width:24px">${mark}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap">${esc(s.step)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(s.message) || ""}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666;white-space:nowrap">${s.durationMs}ms</td>
+        </tr>`;
+    })
+    .join("");
+
+  const severityColor = { blocker: "#E82027", gap: "#b45309", note: "#666" };
+  const findingRows = findings
+    .map(
+      (f) => `
+        <tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:${severityColor[f.severity] ?? "#666"};font-weight:600;text-transform:uppercase;font-size:11px">${esc(f.severity)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap">${esc(f.field) || esc(f.code)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee">
+            ${esc(f.message)}
+            ${
+              f.expected || f.received
+                ? `<div style="color:#666;font-size:12px;margin-top:3px">expected <code>${esc(f.expected) || "—"}</code>, received <code>${esc(f.received) || "(empty)"}</code></div>`
+                : ""
+            }
+            <div style="color:#888;font-size:12px;margin-top:3px">${f.count}× &middot; e.g. ${esc(f.examples?.join("; "))}</div>
+          </td>
+        </tr>`
+    )
+    .join("");
+
+  const headline = failed
+    ? "This attempt did not complete."
+    : counts?.blockers
+    ? `Connected and read the account, but ${counts.blockers} thing${counts.blockers === 1 ? "" : "s"} would not fit our schema.`
+    : "Connected and read the account cleanly. Nothing needs attention.";
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: failed
+      ? `PMS ${phase} FAILED — ${provider}${landlord ? ` (${landlord})` : ""}`
+      : `PMS ${phase} — ${provider}${landlord ? ` (${landlord})` : ""}${counts?.blockers ? `: ${counts.blockers} schema blocker${counts.blockers === 1 ? "" : "s"}` : ": clean"}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:680px;margin:0 auto;color:#111">
+        <h2 style="color:#111;margin-bottom:4px">PMS onboarding: ${esc(phase)}</h2>
+        <p style="color:#444;margin-top:0">${esc(headline)}</p>
+        <table style="border-collapse:collapse;font-size:14px;margin-bottom:20px">
+          <tr><td style="padding:2px 12px 2px 0;color:#666">System</td><td style="text-transform:capitalize">${esc(provider)}</td></tr>
+          <tr><td style="padding:2px 12px 2px 0;color:#666">Landlord</td><td>${esc(landlord) || "—"}</td></tr>
+          <tr><td style="padding:2px 12px 2px 0;color:#666">Account</td><td>${esc(accountLabel) || "—"}</td></tr>
+          ${previewOnly ? `<tr><td style="padding:2px 12px 2px 0;color:#666">Mode</td><td>Preview only — nothing was written to listings</td></tr>` : ""}
+        </table>
+
+        <h3 style="font-size:15px;margin-bottom:6px">What happened, in order</h3>
+        <table style="border-collapse:collapse;width:100%;font-size:14px;margin-bottom:20px">
+          ${stepRows || `<tr><td style="padding:6px 10px;color:#666">No steps recorded.</td></tr>`}
+        </table>
+
+        ${
+          counts
+            ? `<h3 style="font-size:15px;margin-bottom:6px">What came back</h3>
+               <p style="font-size:14px;color:#444;margin-top:0">
+                 ${counts.properties} propert${counts.properties === 1 ? "y" : "ies"},
+                 ${counts.units} unit${counts.units === 1 ? "" : "s"}.
+                 <strong>${counts.ingestable}</strong> of ${counts.properties} would import cleanly.
+               </p>`
+            : ""
+        }
+
+        <h3 style="font-size:15px;margin-bottom:6px">Schema alignment</h3>
+        ${
+          findingRows
+            ? `<table style="border-collapse:collapse;width:100%;font-size:14px">
+                 <tr>
+                   <th align="left" style="padding:6px 10px;border-bottom:2px solid #111">Severity</th>
+                   <th align="left" style="padding:6px 10px;border-bottom:2px solid #111">Field</th>
+                   <th align="left" style="padding:6px 10px;border-bottom:2px solid #111">Problem</th>
+                 </tr>
+                 ${findingRows}
+               </table>
+               <p style="color:#666;font-size:12px;margin-top:8px">
+                 blocker = would fail or write something false &middot;
+                 gap = imports, but missing something students search on &middot;
+                 note = informational
+               </p>`
+            : `<p style="font-size:14px;color:#15803d;margin-top:0">Everything mapped. No misalignment found.</p>`
+        }
+
+        ${
+          landlordVisible.length
+            ? `<h3 style="font-size:15px;margin-bottom:6px">What the landlord was shown</h3>
+               <ul style="font-size:14px;color:#444;margin-top:0">${landlordVisible.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`
+            : ""
+        }
+
+        <p style="color:#666;font-size:13px;margin-top:20px">
+          Every step above is also in pms_sync_events${baseUrl ? ` (${esc(baseUrl)})` : ""}.
+        </p>
+      </div>
+    `,
+  });
+}
+
 // One email per PMS sync run, only when a human should look: errored or
 // guard-held connections, suppressed delists, and dry-run connections with
 // intended changes waiting for review. Sent to PMS_ALERT_EMAIL or all supers.

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { appEnv } from "@/lib/appEnv";
+import { pmsPreviewOnly } from "@/lib/pms/alerts.js";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
@@ -47,6 +48,9 @@ export async function GET() {
   return NextResponse.json({
     // Demo mode (sample-data connect flow) is available everywhere except prod.
     allowDemo: appEnv() !== "production",
+    // Preview-only pilot: the connect + preview flow runs, but confirm is
+    // refused server-side, so the UI must not offer it.
+    previewOnly: pmsPreviewOnly(),
     connections: (connections ?? []).map((c) => ({
       ...c,
       links: links

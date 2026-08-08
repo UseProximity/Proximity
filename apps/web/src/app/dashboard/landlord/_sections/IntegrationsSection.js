@@ -220,6 +220,10 @@ export default function IntegrationsSection() {
 
   // ---------- discover / confirm screen ----------
   if (discovery) {
+    // Preview-only pilots show the portfolio and stop. The confirm call is
+    // refused server-side regardless; this keeps the screen honest about it
+    // rather than offering a button that would fail.
+    const preview = !!discovery.previewOnly;
     return (
       <div className="space-y-6 max-w-3xl">
         <div>
@@ -227,9 +231,25 @@ export default function IntegrationsSection() {
             Found {discovery.properties.length} propert{discovery.properties.length === 1 ? "y" : "ies"}
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Confirm once. After this, availability and pricing stay in sync automatically.
+            {preview
+              ? "This is what Proximity reads from your account. Nothing has been published, and no listings have been created."
+              : "Confirm once. After this, availability and pricing stay in sync automatically."}
           </p>
         </div>
+
+        {preview && discovery.dataNotes?.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-medium text-amber-900">A few things didn&apos;t come through</p>
+            <ul className="mt-1.5 space-y-1 text-sm text-amber-800">
+              {discovery.dataNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-amber-700">
+              We&apos;ve logged the detail on our side. Nothing for you to fix right now.
+            </p>
+          </div>
+        )}
 
         {discovery.properties.map((p) => {
           const d = decisions[p.externalPropertyId] || { action: "exclude" };
@@ -257,7 +277,9 @@ export default function IntegrationsSection() {
                 {/* Radio-group semantics: exactly one decision per property.
                     With matches, ALL THREE choices render as one radio list
                     (cards + two text rows) so "same as existing" is obviously
-                    an option; without matches, the two chips suffice. */}
+                    an option; without matches, the two chips suffice. Hidden in
+                    preview mode, where there is no decision to make. */}
+                {!preview && (
                 <div
                   role="radiogroup"
                   aria-label={`What should we do with ${p.name || p.address || "this property"}?`}
@@ -427,6 +449,7 @@ export default function IntegrationsSection() {
                     </div>
                   )}
                 </div>
+                )}
               </CardContent>
             </Card>
           );
@@ -437,7 +460,23 @@ export default function IntegrationsSection() {
             {error}
           </p>
         )}
-        {(() => {
+        {preview && (
+          <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-700">
+              That&apos;s the whole preview. Nothing above is live to students, and we haven&apos;t
+              created or changed any listings.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setDiscovery(null)}
+              className="h-11 shrink-0 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+            >
+              Done
+            </Button>
+          </div>
+        )}
+
+        {!preview && (() => {
           const unresolved = discovery.properties.filter(
             (p) => !decisions[p.externalPropertyId]?.action
           ).length;

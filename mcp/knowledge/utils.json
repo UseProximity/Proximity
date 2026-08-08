@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-27T20:43:48.623Z",
-  "count": 43,
+  "_generated": "2026-08-08T21:52:38.907Z",
+  "count": 46,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -80,6 +80,10 @@
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
     },
     {
+      "file": "src/lib/pms/alerts.js",
+      "description": "Who hears about PMS activity, and how an onboarding attempt gets reported."
+    },
+    {
       "file": "src/lib/pms/appfolio.js",
       "description": "AppFolio connector (via Nango Proxy — \"private-api-basic\" template, key"
     },
@@ -108,6 +112,10 @@
       "description": "Create a Proximity listing from a normalized PMS property (shared by the"
     },
     {
+      "file": "src/lib/pms/ledger.js",
+      "description": "Onboarding ledger — a durable record of what happened while a landlord was"
+    },
+    {
       "file": "src/lib/pms/mapping.js",
       "description": "Mapping between PMS physical units and Proximity's listing model."
     },
@@ -130,6 +138,10 @@
     {
       "file": "src/lib/pms/types.js",
       "description": "PMS connector contract + normalized shapes."
+    },
+    {
+      "file": "src/lib/pms/validate.js",
+      "description": "Schema alignment — does what the PMS gave us actually fit our tables?"
     },
     {
       "file": "src/lib/r2.js",

@@ -8,6 +8,10 @@ import { WASHU_PLACES } from "@/utils/washuPlaces";
 import { isApiProvider, getConnector } from "@/lib/pms/index.js";
 import { normalizeSubdomain } from "@/lib/pms/appfolio.js";
 import { joinAddress } from "@/lib/pms/types.js";
+import { createLedger, PHASES } from "@/lib/pms/ledger.js";
+import { reportOnboarding, pmsPreviewOnly } from "@/lib/pms/alerts.js";
+import { validateSnapshot, landlordNotes } from "@/lib/pms/validate.js";
+import { getBaseUrl } from "@/lib/email";
 
 // Campus anchor for the auto-include radius (Olin Library — center of campus).
 const CAMPUS = WASHU_PLACES[0];
@@ -55,6 +59,24 @@ export async function POST(req) {
     return NextResponse.json({ error: "provider and nangoConnectionId are required" }, { status: 400 });
   }
 
+  // Everything from here on is recorded. The landlord is on the other side of
+  // this request watching a spinner, so no step may throw and none may block:
+  // the ledger swallows its own failures and the report email is sent last.
+  const ledger = createLedger({ provider, userId: session.user.id, phase: PHASES.DISCOVER });
+  const baseUrl = getBaseUrl(req);
+  const landlordLabel = session.user.name || session.user.email || null;
+  const report = (validation, landlordVisible, accountLabel) =>
+    reportOnboarding({
+      ledger,
+      phase: PHASES.DISCOVER,
+      provider,
+      landlord: landlordLabel,
+      accountLabel,
+      validation,
+      landlordVisible,
+      baseUrl,
+    });
+
   // AppFolio is reached at {subdomain}.appfolio.com — the subdomain is
   // landlord-supplied text that ends up in a URL, so it is validated here
   // (server-side, SSRF guard) and again inside the connector on every call.
@@ -62,21 +84,19 @@ export async function POST(req) {
   if (provider === "appfolio") {
     const sub = normalizeSubdomain(subdomain);
     if (!sub) {
+      await ledger.step("subdomain", {
+        ok: false,
+        message: "No usable AppFolio database name was supplied.",
+        detail: { received: subdomain ?? null },
+      });
+      await report(null, [], null);
       return NextResponse.json(
         { error: "Enter your AppFolio database name (the part before .appfolio.com in your AppFolio URL)" },
         { status: 400 }
       );
     }
     credentialMeta = { subdomain: sub };
-  }
-
-  const connector = getConnector(provider);
-  const verified = await connector.verifyConnection(nangoConnectionId, credentialMeta);
-  if (!verified.ok) {
-    return NextResponse.json(
-      { error: `We couldn't read from your ${provider} account: ${verified.error}` },
-      { status: 422 }
-    );
+    await ledger.step("subdomain", { message: `Reading from ${sub}.appfolio.com.`, detail: { subdomain: sub } });
   }
 
   // One connection per landlord × provider — refresh it if it already exists.
@@ -88,34 +108,85 @@ export async function POST(req) {
     .is("deleted_at", null)
     .maybeSingle();
 
-  const connectionValues = {
-    nango_connection_id: nangoConnectionId,
-    status: "active",
-    // Merge over the existing meta: admin-set flags (e.g. includeAllUnits)
-    // must survive a landlord reconnecting.
-    credential_meta: {
-      ...(existing?.credential_meta || {}),
-      accountLabel: verified.accountLabel || null,
-      ...(credentialMeta || {}),
-    },
-    last_sync_error: null,
-  };
-
+  /*
+   * Create the connection row BEFORE verifying, so a credential that fails
+   * verification still has somewhere to record why. This is the single most
+   * likely failure in the whole flow (wrong secret, Core-tier account, typo'd
+   * database name) and it was previously the one that left no trace at all.
+   *
+   * `pending` never syncs — the cron only picks up `active` — so an abandoned
+   * attempt is inert. An EXISTING connection keeps its current status until
+   * verification resolves: a landlord reconnecting must not have their working
+   * nightly sync switched off by an attempt they walked away from.
+   */
   let connectionId = existing?.id;
-  if (connectionId) {
-    await supabase.from("pms_connections").update(connectionValues).eq("id", connectionId);
-  } else {
-    const { data: inserted, error } = await supabase
+  if (!connectionId) {
+    const { data: created, error: createErr } = await supabase
       .from("pms_connections")
-      .insert({ user_id: session.user.id, provider, ...connectionValues })
-      .select("id, radius_auto_include_km")
+      .insert({
+        user_id: session.user.id,
+        provider,
+        nango_connection_id: nangoConnectionId,
+        status: "pending",
+        credential_meta: credentialMeta || {},
+      })
+      .select("id")
       .single();
-    if (error) {
-      console.error("[pms/discover] connection insert:", error.message);
+    if (createErr) {
+      console.error("[pms/discover] connection insert:", createErr.message);
+      await ledger.step("connection", { ok: false, message: "Could not save the connection row." });
+      await report(null, [], null);
       return NextResponse.json({ error: "Could not save the connection" }, { status: 500 });
     }
-    connectionId = inserted.id;
+    connectionId = created.id;
   }
+  await ledger.bind(connectionId);
+  await ledger.step("connection", {
+    message: existing ? "Reusing the existing connection record." : "Created a connection record.",
+    detail: { connectionId, reused: !!existing },
+  });
+
+  const connector = getConnector(provider);
+  const verified = await connector.verifyConnection(nangoConnectionId, credentialMeta);
+  if (!verified.ok) {
+    await supabase
+      .from("pms_connections")
+      .update({ status: "error", last_sync_error: String(verified.error).slice(0, 500) })
+      .eq("id", connectionId);
+    await ledger.step("verify", {
+      ok: false,
+      // Deliberately not "rejected the credential": verifyConnection also
+      // fails on a network error or an unreachable host, and an alert that
+      // names the wrong cause sends whoever reads it after the wrong fix.
+      message: `Could not read from the ${provider} account: ${verified.error}`,
+      detail: { providerError: verified.error ?? null },
+    });
+    await report(null, [], null);
+    return NextResponse.json(
+      { error: `We couldn't read from your ${provider} account: ${verified.error}` },
+      { status: 422 }
+    );
+  }
+  await ledger.step("verify", {
+    message: "Credential accepted and a test report came back.",
+    detail: { accountLabel: verified.accountLabel ?? null },
+  });
+
+  await supabase
+    .from("pms_connections")
+    .update({
+      nango_connection_id: nangoConnectionId,
+      status: "active",
+      // Merge over the existing meta: admin-set flags (e.g. includeAllUnits)
+      // must survive a landlord reconnecting.
+      credential_meta: {
+        ...(existing?.credential_meta || {}),
+        accountLabel: verified.accountLabel || null,
+        ...(credentialMeta || {}),
+      },
+      last_sync_error: null,
+    })
+    .eq("id", connectionId);
 
   const { data: connection } = await supabase
     .from("pms_connections")
@@ -126,11 +197,47 @@ export async function POST(req) {
 
   const snapshot = await connector.fetchSnapshot(nangoConnectionId, credentialMeta);
   if (!snapshot.properties.length) {
+    await ledger.step("snapshot", {
+      ok: false,
+      message: "The credential works, but the account returned no properties.",
+      detail: { errors: snapshot.errors ?? [], warnings: snapshot.warnings ?? [] },
+    });
+    await report(null, [], verified.accountLabel || null);
     return NextResponse.json(
       { error: "We connected, but couldn't read any properties from the account", detail: snapshot.errors },
       { status: 422 }
     );
   }
+
+  const unitCount = snapshot.properties.reduce((n, p) => n + (p.units?.length ?? 0), 0);
+  await ledger.step("snapshot", {
+    // A snapshot with errors is a DEGRADED pull, not a failed one: the sync
+    // suppresses delists in that state rather than acting on partial data, so
+    // the step stays green and the detail carries the reason.
+    message: `Read ${snapshot.properties.length} properties and ${unitCount} units${
+      snapshot.errors?.length ? ` (${snapshot.errors.length} report(s) failed — a degraded pull never delists)` : ""
+    }.`,
+    detail: {
+      properties: snapshot.properties.length,
+      units: unitCount,
+      errors: snapshot.errors ?? [],
+      warnings: snapshot.warnings ?? [],
+    },
+  });
+
+  /*
+   * Schema alignment. This is the question the pilot exists to answer: does
+   * what AppFolio hands us actually fit `listings` / `listing_units`? Run
+   * before any of the presentation work below, so the answer is recorded even
+   * if geocoding or dedupe later falls over.
+   */
+  const validation = validateSnapshot(snapshot);
+  await ledger.step("schema-check", {
+    message: validation.ok
+      ? `All ${validation.counts.properties} properties map cleanly onto our schema.`
+      : `${validation.counts.blockers} blocker(s) across ${validation.counts.properties - validation.counts.ingestable} propert(ies); ${validation.counts.ingestable} would import cleanly.`,
+    detail: { counts: validation.counts, properties: validation.properties },
+  });
 
   // The landlord's pre-existing listings — the only dedupe universe that matters.
   const { data: owned } = await supabase
@@ -190,6 +297,9 @@ export async function POST(req) {
     }
   }
 
+  const verdictByProperty = new Map(validation.properties.map((p) => [p.externalPropertyId, p]));
+  const geocodeFailures = [];
+
   const properties = [];
   for (const prop of snapshot.properties) {
     const fullAddress = joinAddress(prop.address, prop.city, prop.state, prop.zip);
@@ -201,6 +311,7 @@ export async function POST(req) {
         geo = null;
       }
     }
+    if (!geo) geocodeFailures.push({ property: prop.name || prop.externalPropertyId, address: fullAddress });
     const distanceKm = geo
       ? haversineKm(geo.latitude, geo.longitude, CAMPUS.lat, CAMPUS.lng)
       : null;
@@ -257,8 +368,35 @@ export async function POST(req) {
       units: prop.units,
       match,
       matches,
+      // Whether this property could actually be imported. The card shows a
+      // plain-language flag; the reason stays in the alert email.
+      importable: verdictByProperty.get(prop.externalPropertyId)?.ingestable !== false,
     });
   }
+
+  await ledger.step("geocode", {
+    message: geocodeFailures.length
+      ? `${geocodeFailures.length} of ${snapshot.properties.length} addresses could not be placed on the map.`
+      : `All ${snapshot.properties.length} addresses geocoded.`,
+    detail: { failures: geocodeFailures },
+  });
+
+  const withMatches = properties.filter((p) => p.matches.length).length;
+  await ledger.step("dedupe", {
+    message: `${withMatches} propert${withMatches === 1 ? "y" : "ies"} may already exist on Proximity.`,
+    detail: { withMatches, inRadius: properties.filter((p) => p.withinRadius).length },
+  });
+
+  const previewOnly = pmsPreviewOnly();
+  const notes = landlordNotes(validation.findings);
+  await ledger.step("preview", {
+    message: previewOnly
+      ? "Preview shown to the landlord. Nothing was written to listings."
+      : "Preview shown to the landlord, awaiting their confirm decisions.",
+    detail: { previewOnly, propertiesShown: properties.length },
+  });
+
+  await report(validation, notes, verified.accountLabel || null);
 
   return NextResponse.json({
     connectionId,
@@ -267,5 +405,9 @@ export async function POST(req) {
     radiusKm,
     snapshotErrors: snapshot.errors,
     properties,
+    previewOnly,
+    // Plain-language only. The field-level alignment detail is internal — it
+    // goes to PMS_ALERT_EMAIL, not to the property manager's screen.
+    dataNotes: notes,
   });
 }

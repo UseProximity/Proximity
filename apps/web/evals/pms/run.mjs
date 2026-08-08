@@ -468,6 +468,88 @@ check("toDescription trims, nulls blanks, caps blobs",
   check("no secret in URLs (Authorization header only)", !leaked);
 }
 
+// ---------- schema alignment ----------
+//
+// These pin the severity tiers, because severity is the contract: `blocker` is
+// what "this does not fit our schema" means in the alert email, and it is the
+// only tier allowed to mark a property un-importable. A change that quietly
+// demotes a NOT NULL violation to a warning would let a property through that
+// cannot actually be written.
+{
+  const { validateSnapshot, summarizeFindings, landlordNotes } =
+    await import("file://" + WEB + "/src/lib/pms/validate.js");
+
+  const unit = (over = {}) => ({
+    externalUnitId: "u1", label: "1A", available: true,
+    rent: 1200, bedrooms: 2, bathrooms: 1, area: 800,
+    availableFrom: null, beds: null, rawStatus: "Vacant-Unrented", ...over,
+  });
+  const property = (over = {}) => ({
+    externalPropertyId: "p1", name: "Clocktower", address: "6300 Delmar Blvd",
+    city: "University City", state: "MO", zip: "63130", description: null,
+    units: [unit()], ...over,
+  });
+  const snap = (properties) => ({ properties, errors: [] });
+
+  const clean = validateSnapshot(snap([property()]));
+  check("validate: a complete property has no blockers", clean.ok && clean.counts.blockers === 0);
+  check("validate: a complete property is ingestable", clean.properties[0].ingestable === true);
+
+  // listing_units.bedrooms is integer NOT NULL — nothing to write, so the
+  // insert would fail. Blocker, and the property cannot be imported.
+  const noBeds = validateSnapshot(snap([property({ units: [unit({ bedrooms: null, rawBedrooms: "Loft" })] })]));
+  check("validate: unreadable bedrooms is a blocker",
+    !noBeds.ok && noBeds.findings.some((f) => f.code === "unit_no_bedrooms" && f.severity === "blocker"));
+  check("validate: a blocker makes the property un-ingestable", noBeds.properties[0].ingestable === false);
+  check("validate: the raw value is carried into the finding",
+    noBeds.findings.find((f) => f.code === "unit_no_bedrooms")?.received === "Loft");
+
+  // bathrooms is also NOT NULL, but ingest.js defaults it to 1 — so this
+  // imports. It still invents a fact, so it must not be silent.
+  const noBaths = validateSnapshot(snap([property({ units: [unit({ bathrooms: null })] })]));
+  check("validate: unreadable bathrooms is a gap, not a blocker",
+    noBaths.ok && noBaths.findings.some((f) => f.code === "unit_no_bathrooms" && f.severity === "gap"));
+
+  const noRent = validateSnapshot(snap([property({ units: [unit({ rent: null, rawRent: "Call for pricing" })] })]));
+  check("validate: missing rent is a gap", noRent.ok && noRent.counts.gaps > 0);
+
+  const noAddress = validateSnapshot(snap([property({ address: null, city: null, state: null, zip: null })]));
+  check("validate: no address is a blocker (nothing to geocode)",
+    !noAddress.ok && noAddress.findings.some((f) => f.code === "property_no_address"));
+
+  const noUnits = validateSnapshot(snap([property({ units: [] })]));
+  check("validate: a property with no units is a blocker",
+    !noUnits.ok && noUnits.findings.some((f) => f.code === "property_no_units"));
+
+  const unknown = validateSnapshot(snap([property({ units: [unit({ available: null, rawStatus: "Wat" })] })]));
+  check("validate: unknown availability is a gap and keeps the raw status",
+    unknown.findings.find((f) => f.code === "unit_unknown_availability")?.received === "Wat");
+
+  // A portfolio-wide mapping bug is ONE problem, not N. The email groups it.
+  const many = validateSnapshot(
+    snap([property({ units: [unit({ rent: null }), unit({ externalUnitId: "u2", rent: null }), unit({ externalUnitId: "u3", rent: null })] })])
+  );
+  const grouped = summarizeFindings(many.findings).find((f) => f.code === "unit_no_rent");
+  check("validate: repeated findings collapse to one row with a count", grouped?.count === 3);
+  check("validate: grouped findings carry examples", grouped?.examples.length > 0);
+  check("validate: blockers sort above gaps and notes",
+    summarizeFindings(noBeds.findings)[0].severity === "blocker");
+
+  // The landlord sees plain language and no field names — they chose not to be
+  // shown our internals.
+  const notes = landlordNotes(noBeds.findings);
+  check("validate: landlord notes are plain language",
+    notes.length > 0 && !notes.join(" ").includes("listing_units"));
+  check("validate: a clean snapshot gives the landlord nothing to read",
+    landlordNotes(clean.findings).length === 0);
+
+  check("validate: counts add up across a mixed portfolio",
+    (() => {
+      const mixed = validateSnapshot(snap([property(), property({ externalPropertyId: "p2", units: [] })]));
+      return mixed.counts.properties === 2 && mixed.counts.ingestable === 1;
+    })());
+}
+
 const failed = results.filter((r) => !r.pass).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed`);
 process.exit(failed ? 1 : 0);

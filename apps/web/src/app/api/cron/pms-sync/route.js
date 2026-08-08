@@ -6,6 +6,7 @@ import { getBaseUrl, sendPmsSyncDigestEmail } from "@/lib/email";
 import { isApiProvider } from "@/lib/pms/index.js";
 import { syncConnection } from "@/lib/pms/sync.js";
 import { holdReleaseUrl } from "@/lib/pms/holdToken.js";
+import { pmsAlertRecipients } from "@/lib/pms/alerts.js";
 
 /*
  * Daily PMS sync driver. The actual reconcile logic lives in lib/pms/sync.js
@@ -138,21 +139,8 @@ async function sendDigest(summary, req) {
       : { data: [] };
     const nameById = new Map((landlords ?? []).map((u) => [u.id, u.name || u.email]));
 
-    // Comma-separated so a pilot can report to several people without relying on
-    // the all-supers fallback below (which would also pull in anyone who happens
-    // to be super in the snapshot).
-    let recipients = (process.env.PMS_ALERT_EMAIL || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!recipients.length) {
-      const { data: supers } = await supabase
-        .from("users")
-        .select("email, roles!inner(name)")
-        .eq("roles.name", "super")
-        .not("email", "is", null);
-      recipients = (supers ?? []).map((u) => u.email);
-    }
+    // Shared with the onboarding reports so the two audiences can't drift.
+    const recipients = await pmsAlertRecipients();
     if (!recipients.length) return;
 
     await sendPmsSyncDigestEmail({

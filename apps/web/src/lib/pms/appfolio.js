@@ -257,20 +257,32 @@ export async function fetchSnapshot(connectionId, meta) {
     if (marketing && (!prop.description || marketing.length > prop.description.length)) {
       prop.description = marketing;
     }
+    // The pre-coercion values, kept alongside the normalized ones. types.js
+    // turns anything it can't read into null, which is right for the sync but
+    // erases the evidence — and "rent: expected a number, received 'Call for
+    // pricing'" is the difference between an alert someone can act on and one
+    // that just says a field is empty. See validate.js.
+    const rawRent = pick(row, "advertised_rent", "market_rent", "computed_market_rent") ??
+      pick(vacancy, "advertised_rent", "computed_market_rent");
+    const rawBedrooms = pick(row, "bedrooms", "beds", "br");
+    const rawBathrooms = pick(row, "bathrooms", "baths", "ba");
+
     propMap.get(propKey).units.push({
       externalUnitId: String(unitKey),
       label: pick(row, "unit_name", "unit"),
       available,
       // Advertised rent is what the landlord shows the world; market rent is
       // the fallback. bed_and_bath (a display string) is deliberately ignored.
-      rent: toMoney(pick(row, "advertised_rent", "market_rent", "computed_market_rent") ??
-        pick(vacancy, "advertised_rent", "computed_market_rent")),
-      bedrooms: toBedrooms(pick(row, "bedrooms", "beds", "br")),
-      bathrooms: toBathrooms(pick(row, "bathrooms", "baths", "ba")),
+      rent: toMoney(rawRent),
+      bedrooms: toBedrooms(rawBedrooms),
+      bathrooms: toBathrooms(rawBathrooms),
       area: toMoney(pick(row, "sqft", "square_feet", "unit_size") ?? pick(vacancy, "sqft")),
       availableFrom: toIsoDate(pick(vacancy, "available_on")) || (available === false ? leaseEnd : null),
       beds: null,
       rawStatus: status == null ? null : String(status),
+      rawRent: rawRent == null ? null : String(rawRent),
+      rawBedrooms: rawBedrooms == null ? null : String(rawBedrooms),
+      rawBathrooms: rawBathrooms == null ? null : String(rawBathrooms),
     });
   }
 

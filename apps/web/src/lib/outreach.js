@@ -10,10 +10,12 @@
  *     every email is REDIRECTED to that inbox (cc/bcc dropped, original recipient noted in
  *     the subject) so flows can be tested end-to-end safely. With no recipient chosen, the
  *     email is suppressed (logged only).
- *   - OUTREACH_ALLOWLIST escape hatch: addresses listed there may receive mail off
- *     production. Needed because the cookie picker only exists inside a request context —
- *     background work (the nightly PMS sync digest, webhooks) has no cookies and would
- *     otherwise be silently suppressed, leaving a pilot with no way to observe itself.
+ *   - Allowlist escape hatch: PMS_ALERT_EMAIL (always) and anything in OUTREACH_ALLOWLIST
+ *     may receive mail off production. Needed because the cookie picker only works inside a
+ *     request context whose cookies are OURS — background work (the nightly PMS sync digest,
+ *     webhooks) has no cookies at all, and a landlord-triggered PMS report carries the
+ *     landlord's cookies, not a tester's. Both would otherwise be silently suppressed,
+ *     leaving a pilot with no way to observe itself.
  *     Deliberately all-or-nothing per message: a message is only sent when EVERY one of
  *     its recipients is allowlisted, so a digest that happens to include a real landlord
  *     from the prod snapshot falls back to redirect/suppress rather than partially sending.
@@ -28,7 +30,14 @@ const RECIPIENT_COOKIE = "staging_email_to";
 
 function allowlist() {
   return new Set(
-    (process.env.OUTREACH_ALLOWLIST || "")
+    // PMS_ALERT_EMAIL is allowlisted implicitly. It is an operator inbox by
+    // definition — the only thing addressed to it is our own monitoring — and
+    // requiring a second variable to be set in lockstep just to make the first
+    // one work is a trap: the emails would go silently missing, which is
+    // exactly the failure the PMS reports exist to prevent.
+    [process.env.OUTREACH_ALLOWLIST, process.env.PMS_ALERT_EMAIL]
+      .filter(Boolean)
+      .join(",")
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean)
