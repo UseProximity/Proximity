@@ -52,6 +52,7 @@ export default function StepReview({ w }) {
         {u.title ? `${u.title}: ` : ""}
         {bits.join(" · ")}
         {terms ? ` · ${terms}` : ""}
+        {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
         {u.available === false ? " · not available" : ""}
       </p>
     );

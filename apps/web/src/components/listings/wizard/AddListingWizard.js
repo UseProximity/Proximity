@@ -306,8 +306,42 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     const ok = files.filter(Boolean);
     if (ok.length) await handleImageFiles(ok);
     setImportInfo((prev) =>
-      prev ? { ...prev, photosLoading: false, photoCount: ok.length } : prev
+      prev
+        ? { ...prev, photosLoading: false, photoCount: (prev.photoCount ?? 0) + ok.length }
+        : prev
     );
+  };
+
+  /*
+   * Floor plans matched to a unit go through the existing floor-plan upload
+   * (R2) into that unit's slot; if the upload path is unavailable they fall
+   * back to the photo stage so they're never silently lost.
+   */
+  const importFloorPlans = async (items) => {
+    for (const { index, url } of items) {
+      try {
+        const res = await fetch(
+          `/api/landlord/listing-draft/image?url=${encodeURIComponent(url)}`
+        );
+        if (!res.ok) throw new Error("proxy failed");
+        const blob = await res.blob();
+        if (!blob.type.startsWith("image/")) throw new Error("not an image");
+        const ext = (blob.type.split("/")[1] || "png").split("+")[0];
+        const fd = new FormData();
+        fd.append(
+          "file",
+          new File([blob], `floor-plan-${index + 1}.${ext}`, { type: blob.type })
+        );
+        const up = await fetch("/api/upload/floor-plan", { method: "POST", body: fd });
+        const data = await up.json().catch(() => ({}));
+        if (!up.ok || !data.url) throw new Error("upload failed");
+        setUnits((us) =>
+          us.map((un, i) => (i === index ? { ...un, floorPlanImageUrl: data.url } : un))
+        );
+      } catch {
+        importPhotos([url]);
+      }
+    }
   };
 
   const requestQueuedDraft = (target) =>
@@ -398,11 +432,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       });
     }
     let nextUnits = [emptyUnit()];
+    const floorPlanImports = [];
     if (Array.isArray(listing.units) && listing.units.length) {
       nextUnits = listing.units.slice(0, 12).map((u, i) => {
         for (const fld of ["bedrooms", "bathrooms", "rent", "area", "title"]) {
           if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
         }
+        if (u.floorPlanImageUrl) floorPlanImports.push({ index: i, url: u.floorPlanImageUrl });
         return {
           bedrooms: u.bedrooms ?? "",
           bathrooms: u.bathrooms ?? "",
@@ -414,10 +450,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           leaseTermMonths: [],
         };
       });
-      setUnits(nextUnits);
-    } else {
-      setUnits(nextUnits);
     }
+    setUnits(nextUnits);
+    if (floorPlanImports.length) importFloorPlans(floorPlanImports);
     setImportedFields(marked);
 
     importPastedUrl.current = pastedUrl ?? importPastedUrl.current;

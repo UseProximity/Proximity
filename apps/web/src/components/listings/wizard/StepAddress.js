@@ -127,7 +127,7 @@ export default function StepAddress({ w }) {
         )}
       </div>
       {confirmed && !open && (
-        <p className="mt-2 text-xs text-green-700">✓ On the map — walk times will be calculated automatically.</p>
+        <p className="mt-2 text-xs text-green-700">✓ On the map. Walk times will be calculated automatically.</p>
       )}
     </StepFrame>
   );

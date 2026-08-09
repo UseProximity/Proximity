@@ -52,7 +52,7 @@ export default function StepStart({ w, onBegin }) {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-900">
-                I have a website — fill it out for me
+                I have a website. Fill it out for me
               </p>
               <p className="text-xs text-gray-500">
                 Paste your property site. We pre-fill the details and photos.

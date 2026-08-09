@@ -1395,7 +1395,7 @@ export default function ListingFormPanel({
                     </div>
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Lease Terms — select all this unit is offered for
+                        Lease Terms: select all this unit is offered for
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
                         {LEASE_TERM_PRESETS.map((p) => {
@@ -1636,7 +1636,7 @@ export default function ListingFormPanel({
                 Drop photos here or tap to browse
               </span>
               <span className="text-xs text-gray-400 mt-0.5">
-                JPG, PNG, WebP — auto-compressed if large
+                JPG, PNG, WebP (auto-compressed if large)
               </span>
             </label>
           </div>
