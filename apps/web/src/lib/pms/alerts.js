@@ -15,6 +15,8 @@
  */
 import supabase from "@/lib/supabase";
 import { sendPmsOnboardingReportEmail } from "@/lib/email";
+import { PILOT_INBOX } from "@/lib/outreach";
+import { isPilot } from "@/lib/appEnv";
 import { summarizeFindings } from "./validate.js";
 
 // Preview mode: the landlord connects and sees their portfolio, but the
@@ -31,6 +33,12 @@ export function pmsPreviewOnly() {
  * pull in anyone who happens to be super in the prod snapshot.
  */
 export async function pmsAlertRecipients() {
+  // On a pilot every email is routed to the one operator inbox anyway
+  // (outreach.js). Addressing it there directly keeps the subject line clean
+  // instead of tagging it as rerouted, and makes PMS_ALERT_EMAIL one less
+  // thing that has to be right for a pilot to report.
+  if (isPilot()) return [PILOT_INBOX];
+
   const explicit = (process.env.PMS_ALERT_EMAIL || "")
     .split(",")
     .map((s) => s.trim())

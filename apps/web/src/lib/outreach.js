@@ -5,6 +5,10 @@
  *
  * sendMailSafe() wraps a Nodemailer transporter:
  *   - production: sends normally to the real recipient.
+ *   - PILOT deployments: EVERY message goes to PILOT_INBOX and nowhere else, checked
+ *     ahead of every other rule. A pilot has a real landlord on the other side and no
+ *     tester at a browser, so the cookie picker is hidden from them and suppression
+ *     would mean their emails vanish. cc/bcc are dropped on the way through.
  *   - any non-production env (staging OR local): NEVER emails the real recipient. If a
  *     tester has chosen a destination via the email picker (the `staging_email_to` cookie),
  *     every email is REDIRECTED to that inbox (cc/bcc dropped, original recipient noted in
@@ -23,10 +27,22 @@
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  */
-import { outreachEnabled } from "./appEnv.js";
+import { outreachEnabled, isPilot } from "./appEnv.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
+
+/*
+ * On a pilot, every outbound email goes here and nowhere else.
+ *
+ * A pilot has a real property manager on the other side and no tester at a
+ * browser, so neither of the usual off-production mechanisms fits: the cookie
+ * picker is hidden from them (see layout.js) and would carry THEIR cookies
+ * anyway, and plain suppression would mean a landlord-triggered email silently
+ * going nowhere. Hard-coded rather than an env var: the whole point is that a
+ * pilot cannot be misconfigured into mailing a real user.
+ */
+export const PILOT_INBOX = "info@useproximity.org";
 
 function allowlist() {
   return new Set(
@@ -81,6 +97,26 @@ async function stagingTestRecipient() {
 export async function sendMailSafe(transporter, message) {
   if (outreachEnabled()) {
     return transporter.sendMail(message);
+  }
+
+  // Pilot: one destination, no exceptions, checked before every other rule so
+  // nothing can route around it.
+  if (isPilot()) {
+    const original = recipientAddresses(message?.to);
+    const alreadyThere = original.length === 1 && original[0] === PILOT_INBOX;
+    console.log(`[outreach pilot] → ${PILOT_INBOX}${alreadyThere ? "" : ` (was ${original.join(", ") || "none"})`} subject=${message?.subject}`);
+    return transporter.sendMail({
+      ...message,
+      to: PILOT_INBOX,
+      // Dropped so a real address on a snapshot record can never be copied in.
+      cc: undefined,
+      bcc: undefined,
+      // Only tag the subject when it was actually rerouted. The PMS reports are
+      // addressed here on purpose and read better without a prefix.
+      subject: alreadyThere
+        ? message?.subject
+        : `[PILOT → was: ${original.join(", ") || "none"}] ${message?.subject ?? ""}`,
+    });
   }
 
   // Every recipient is explicitly allowlisted for off-production mail (pilot

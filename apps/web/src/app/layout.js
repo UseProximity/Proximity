@@ -75,7 +75,12 @@ export default async function RootLayout({ children }) {
       </head>
       <body className={inter.className}>
         <StagingBanner />
-        <StagingEmailPicker env={appEnv()} />
+        {/* The email-destination picker is internal tooling: a floating pill that
+            auto-opens and asks which inbox should receive test mail. A pilot is a
+            real property manager looking at their own portfolio, so it has no
+            business on their screen. Off the pilot it behaves as before. Where
+            pilot mail actually goes is fixed in outreach.js. */}
+        {!isPilot() && <StagingEmailPicker env={appEnv()} />}
         <div>
           <Toaster />
         </div>
