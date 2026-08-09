@@ -5,6 +5,7 @@ import { Camera, Plus, RefreshCw, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import ListingDraftImport from "@/components/listings/ListingDraftImport";
 
 // The four PMSs the sync integration supports today. Shown as a shortcut on
 // the ADD flow only: landlords on one of these should connect it instead of
@@ -176,6 +177,21 @@ export default function ListingFormPanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Website-import draft state (add flow only). importedFields holds the names
+  // of fields prefilled from the landlord's site ("address", "u0:rent", ...);
+  // each clears when the landlord touches that field, dropping its amber tint.
+  const [importInfo, setImportInfo] = useState(null);
+  const [importedFields, setImportedFields] = useState(() => new Set());
+  const clearImported = (key) =>
+    setImportedFields((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  const importedCls = (key) =>
+    importedFields.has(key) ? " ring-1 ring-amber-400 bg-amber-50" : "";
+
   // Image upload
   const [stagedFiles, setStagedFiles] = useState([]);
   const [stagedPreviews, setStagedPreviews] = useState([]);
@@ -292,6 +308,7 @@ export default function ListingFormPanel({
 
   const handleAddressInput = (e) => {
     const value = e.target.value;
+    clearImported("address");
     setForm((f) => ({ ...f, address: value }));
     fetchAddressSuggestions(value);
   };
@@ -324,7 +341,8 @@ export default function ListingFormPanel({
         resolve(file);
         return;
       }
-      const img = new Image();
+      // window.Image, not the next/image import this file shadows the global with.
+      const img = new window.Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(url);
@@ -384,6 +402,7 @@ export default function ListingFormPanel({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    clearImported(name);
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -397,10 +416,12 @@ export default function ListingFormPanel({
 
   const addUnit = () => setUnits((u) => [...u, emptyUnit()]);
   const removeUnit = (i) => setUnits((u) => u.filter((_, idx) => idx !== i));
-  const updateUnit = (i, field, val) =>
+  const updateUnit = (i, field, val) => {
+    clearImported(`u${i}:${field}`);
     setUnits((u) =>
       u.map((unit, idx) => (idx === i ? { ...unit, [field]: val } : unit))
     );
+  };
 
   const uploadFloorPlan = async (i, file) => {
     if (!file) return;
@@ -457,6 +478,141 @@ export default function ListingFormPanel({
       })
     );
     setCustomTermInput((prev) => ({ ...prev, [i]: "" }));
+  };
+
+  // Pull each photo Claude picked through the SSRF-guarded proxy and stage it
+  // like a normal upload, so imported photos ride the existing browser-to-R2
+  // pipeline and each one can be removed before submitting.
+  const importPhotos = async (urls) => {
+    const files = new Array(urls.length);
+    await Promise.allSettled(
+      urls.map(async (u, idx) => {
+        const res = await fetch(
+          `/api/landlord/listing-draft/image?url=${encodeURIComponent(u)}`
+        );
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (!blob.type.startsWith("image/")) return;
+        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+        files[idx] = new File([blob], `imported-${idx + 1}.${ext}`, {
+          type: blob.type,
+        });
+      })
+    );
+    const ok = files.filter(Boolean);
+    if (ok.length) await handleImageFiles(ok);
+    setImportInfo((prev) =>
+      prev ? { ...prev, photosLoading: false, photoCount: ok.length } : prev
+    );
+  };
+
+  // Apply an extracted website draft to the form. Only non-empty values land;
+  // everything applied gets marked "imported" until the landlord touches it.
+  const applyDraft = (listing, sourceUrl) => {
+    const marked = new Set();
+    setForm((f) => {
+      const next = { ...f };
+      const setIf = (key, val) => {
+        if (val != null && val !== "") {
+          next[key] = val;
+          marked.add(key);
+        }
+      };
+      setIf("address", listing.address);
+      setIf("title", listing.title);
+      setIf("description", listing.description);
+      setIf("home_type", listing.home_type);
+      setIf("contact_name", listing.contact_name);
+      setIf("contact_email", listing.contact_email);
+      setIf("contact_phone", listing.contact_phone);
+      if (listing.furnished != null) next.furnished = listing.furnished;
+      const known = (vals, options) =>
+        (vals ?? []).filter((v) => options.includes(v));
+      const knownAmenities = known(listing.amenities, AMENITY_OPTIONS);
+      if (knownAmenities.length) {
+        next.amenities = Array.from(new Set([...f.amenities, ...knownAmenities]));
+      }
+      const knownUtilities = known(listing.utilities_included, UTILITY_OPTIONS);
+      if (knownUtilities.length) {
+        next.utilities_included = Array.from(
+          new Set([...f.utilities_included, ...knownUtilities])
+        );
+      }
+      return next;
+    });
+    if (Array.isArray(listing.customAmenities) && listing.customAmenities.length) {
+      setCustomAmenities((prev) => {
+        const have = new Set(prev.map((a) => a.toLowerCase()));
+        const extra = listing.customAmenities
+          .map((a) => String(a).trim())
+          .filter((a) => a && !have.has(a.toLowerCase()));
+        return [...prev, ...extra];
+      });
+    }
+    if (Array.isArray(listing.units) && listing.units.length) {
+      setUnits(
+        listing.units.slice(0, 12).map((u, i) => {
+          for (const fld of ["bedrooms", "bathrooms", "rent", "area", "title"]) {
+            if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
+          }
+          return {
+            bedrooms: u.bedrooms ?? "",
+            bathrooms: u.bathrooms ?? "",
+            rent: u.rent ?? "",
+            area: u.area ?? "",
+            available: true,
+            title: u.title ?? "",
+            floorPlanImageUrl: "",
+            leaseTermMonths: [],
+          };
+        })
+      );
+    }
+    setImportedFields(marked);
+    let host = "your website";
+    try {
+      host = new URL(sourceUrl).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep fallback label */
+    }
+    const photoUrls = Array.isArray(listing.imageUrls) ? listing.imageUrls : [];
+    setImportInfo({
+      host,
+      notes: Array.isArray(listing.sourceNotes) ? listing.sourceNotes.slice(0, 6) : [],
+      photoCount: 0,
+      photosTotal: photoUrls.length,
+      photosLoading: photoUrls.length > 0,
+    });
+    if (photoUrls.length) importPhotos(photoUrls);
+  };
+
+  // "Start over": back to the blank form the landlord would have seen without
+  // the import (contact fields re-seeded from their profile, like first render).
+  const resetImport = () => {
+    setForm({
+      address: "",
+      title: "",
+      description: "",
+      home_type: "apartment",
+      lease_type: "standard",
+      furnished: false,
+      sublease_friendly: false,
+      twenty_one_plus: false,
+      move_in_date: "",
+      contact_email: user?.email ?? "",
+      contact_phone: user?.phone ?? "",
+      contact_name: user?.name ?? "",
+      amenities: [],
+      utilities_included: [],
+      lease_availability: [],
+    });
+    setUnits([emptyUnit()]);
+    setCustomAmenities([]);
+    stagedPreviews.forEach((url) => URL.revokeObjectURL(url));
+    setStagedFiles([]);
+    setStagedPreviews([]);
+    setImportedFields(new Set());
+    setImportInfo(null);
   };
 
   const handleSubmit = async (e) => {
@@ -760,6 +916,51 @@ export default function ListingFormPanel({
           </div>
         )}
 
+        {/* Website import: paste a property site, get the form prefilled as a
+            draft. Add flow only; nothing here touches the edit path. */}
+        {!isEdit &&
+          (importInfo ? (
+            <div className="mx-6 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">
+                Imported from {importInfo.host}. Please double-check everything.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                Highlighted fields came from your site; they turn white once you
+                edit them. Rent and lease terms usually still need your input,
+                and every available unit needs at least one lease term.
+              </p>
+              {importInfo.photosLoading ? (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-800">
+                  <span className="h-3 w-3 animate-spin rounded-full border border-amber-300 border-t-amber-700" />
+                  Bringing over {importInfo.photosTotal} photo
+                  {importInfo.photosTotal === 1 ? "" : "s"} from your site…
+                </p>
+              ) : importInfo.photoCount > 0 ? (
+                <p className="mt-2 text-xs text-amber-800">
+                  {importInfo.photoCount} photo
+                  {importInfo.photoCount === 1 ? "" : "s"} staged in the Photos
+                  section below. Remove any you don&apos;t want, or add more.
+                </p>
+              ) : null}
+              {importInfo.notes.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-amber-800">
+                  {importInfo.notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={resetImport}
+                className="mt-2 text-xs font-medium text-amber-900 underline hover:text-amber-700"
+              >
+                Start over with a blank form
+              </button>
+            </div>
+          ) : (
+            <ListingDraftImport onApply={applyDraft} />
+          ))}
+
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
           {/* Listing Details */}
           <div>
@@ -782,7 +983,7 @@ export default function ListingFormPanel({
                     }
                     required
                     autoComplete="off"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 pr-8"
+                    className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 pr-8${importedCls("address")}`}
                     placeholder="123 Main St, St. Louis, MO 63130"
                   />
                   {addressLoading && (
@@ -853,7 +1054,7 @@ export default function ListingFormPanel({
                   name="title"
                   value={form.title}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("title")}`}
                   placeholder="e.g. Cozy Studio Near Campus"
                 />
               </div>
@@ -867,7 +1068,7 @@ export default function ListingFormPanel({
                   onChange={handleChange}
                   required
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("description")}`}
                   placeholder="Describe the property..."
                 />
               </div>
@@ -879,7 +1080,7 @@ export default function ListingFormPanel({
                   name="home_type"
                   value={form.home_type}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("home_type")}`}
                 >
                   {HOME_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -1057,7 +1258,7 @@ export default function ListingFormPanel({
                     type={type}
                     value={form[name]}
                     onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(name)}`}
                   />
                 </div>
               ))}
@@ -1112,7 +1313,7 @@ export default function ListingFormPanel({
                           step={step}
                           value={unit[field]}
                           onChange={(e) => updateUnit(i, field, e.target.value)}
-                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                          className={`w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(`u${i}:${field}`)}`}
                         />
                         {hint && (
                           <p className="mt-1 text-[11px] leading-tight text-gray-400">
@@ -1130,7 +1331,7 @@ export default function ListingFormPanel({
                         value={unit.title ?? ""}
                         onChange={(e) => updateUnit(i, "title", e.target.value)}
                         placeholder='e.g. "The Loft" or "Penthouse A" (shown instead of "2 Bed / 1 Bath")'
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        className={`w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(`u${i}:title`)}`}
                       />
                     </div>
                     <div className="sm:col-span-4">
