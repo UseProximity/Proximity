@@ -19,7 +19,7 @@ const LOADING_STEPS = [
  * rest queue up, applied one-by-one as each listing is created. Hands drafts to
  * the parent via onApply(listing, { sourceUrl, pastedUrl, queue }).
  */
-export default function ListingDraftImport({ onApply, disabled }) {
+export default function ListingDraftImport({ onApply, disabled, embedded = false }) {
   const [url, setUrl] = useState("");
   const [phase, setPhase] = useState("idle"); // idle | loading | picker | appfolio | done
   const [error, setError] = useState(null);
@@ -125,7 +125,13 @@ export default function ListingDraftImport({ onApply, disabled }) {
   if (phase === "done") return null; // parent shows the import summary banner
 
   return (
-    <div className="mx-6 mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+    <div
+      className={
+        embedded
+          ? "rounded-xl border border-gray-200 bg-gray-50 p-4"
+          : "mx-6 mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4"
+      }
+    >
       <div className="flex items-start gap-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100 pt-0">
           <Globe className="h-4 w-4 text-red-600" />

@@ -19,85 +19,17 @@ const PMS_SYNC_OPTIONS = [
 ];
 
 // Add / Edit Listing Modal -------------------------------------------------------
-// Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
-// The API writes `row[name] = true` for each, so anything not in these lists is dropped.
-const AMENITY_OPTIONS = [
-  "air_conditioning",
-  "dishwasher",
-  "gym",
-  "laundry",
-  "mailroom",
-  "microwave",
-  "oven",
-  "parking",
-  "pets_allowed",
-  "pool",
-  "refrigerator",
-  "rooftop",
-  "storage",
-  "stove",
-  "study_room",
-];
-const AMENITY_LABELS = {
-  air_conditioning: "Air Conditioning",
-  dishwasher: "Dishwasher",
-  gym: "Gym",
-  laundry: "Laundry",
-  mailroom: "Mailroom",
-  microwave: "Microwave",
-  oven: "Oven",
-  parking: "Parking",
-  pets_allowed: "Pets Allowed",
-  pool: "Pool",
-  refrigerator: "Refrigerator",
-  rooftop: "Rooftop",
-  storage: "Storage",
-  stove: "Stove",
-  study_room: "Study Room",
-};
-const UTILITY_OPTIONS = [
-  "electric",
-  "gas",
-  "heat",
-  "water",
-  "internet",
-  "trash",
-  "cable",
-  "sewer",
-  "cooling",
-];
-const UTILITY_LABELS = {
-  electric: "Electric",
-  gas: "Gas",
-  heat: "Heat",
-  water: "Water",
-  internet: "Internet",
-  trash: "Trash",
-  cable: "Cable",
-  sewer: "Sewer",
-  cooling: "Cooling",
-};
-const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "other"];
-const LEASE_TYPES = ["standard", "sublease", "short-term"];
-
-const emptyUnit = () => ({
-  bedrooms: "",
-  bathrooms: "",
-  rent: "",
-  area: "",
-  available: true,
-  title: "",
-  floorPlanImageUrl: "",
-  leaseTermMonths: [], // months a unit can be leased for (multi-select)
-});
-
-// Named lease-term presets map to month counts; landlords can also type any number.
-const LEASE_TERM_PRESETS = [
-  { label: "Summer", months: 4 },
-  { label: "Semester", months: 5 },
-  { label: "10-Month", months: 10 },
-  { label: "12-Month", months: 12 },
-];
+// Option lists shared with the add-listing wizard (see listingFormOptions.js).
+import {
+  AMENITY_OPTIONS,
+  AMENITY_LABELS,
+  UTILITY_OPTIONS,
+  UTILITY_LABELS,
+  HOME_TYPES,
+  LEASE_TYPES,
+  LEASE_TERM_PRESETS,
+  emptyUnit,
+} from "@/components/listings/listingFormOptions";
 
 // Shared add/edit listing form for landlords. Renders as a modal by default
 // (used for editing inside the dashboard) or as a full-page form when `asPage`

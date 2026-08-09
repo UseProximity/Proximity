@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import ListingFormPanel from "@/components/listings/ListingFormPanel";
+import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
 
-// Full-page "Add Listing" flow for landlords (and super). The shared
-// ListingFormPanel renders inline (asPage) instead of as a modal; on success we
-// drop the landlord back on their dashboard. Role gating lives in layout.js.
+// Full-page "Add Listing" flow for landlords (and super): the step-by-step
+// wizard (website import, PMS shortcut, or from scratch); on success we drop
+// the landlord back on their dashboard. Role gating lives in layout.js.
 export default function AddListingPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -26,12 +26,11 @@ export default function AddListingPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-4">
       {ready ? (
-        <ListingFormPanel
-          asPage
+        <AddListingWizard
           user={user}
           onClose={() => router.push("/dashboard/landlord")}
           onSuccess={() => {
-            toast.success("Listing created!");
+            toast.success("Listing published!");
             router.push("/dashboard/landlord");
           }}
         />
