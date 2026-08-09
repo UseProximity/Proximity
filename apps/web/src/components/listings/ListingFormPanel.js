@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Plus, RefreshCw, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import toast from "react-hot-toast";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import ListingDraftImport from "@/components/listings/ListingDraftImport";
 
@@ -182,6 +183,33 @@ export default function ListingFormPanel({
   // each clears when the landlord touches that field, dropping its amber tint.
   const [importInfo, setImportInfo] = useState(null);
   const [importedFields, setImportedFields] = useState(() => new Set());
+  // Multi-property conveyor belt: remaining picked properties (importQueue),
+  // the originally pasted URL the API needs for each, and a one-ahead prefetch
+  // so the next property is usually ready the moment this listing is created.
+  const [importQueue, setImportQueue] = useState([]);
+  const importPastedUrl = useRef(null);
+  const prefetchRef = useRef(null); // { name, promise }
+
+  const requestQueuedDraft = (target) =>
+    fetch("/api/landlord/listing-draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: importPastedUrl.current, targetProperty: target }),
+    }).then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.listing) throw new Error(data.error || "extract failed");
+      return data;
+    });
+
+  const prefetchNext = (queue) => {
+    const target = queue[0];
+    if (!target) {
+      prefetchRef.current = null;
+      return;
+    }
+    const promise = requestQueuedDraft(target).catch(() => null);
+    prefetchRef.current = { name: target.name, promise };
+  };
   const clearImported = (key) =>
     setImportedFields((prev) => {
       if (!prev.has(key)) return prev;
@@ -288,8 +316,10 @@ export default function ListingFormPanel({
       setAddressLoading(true);
       try {
         const encoded = encodeURIComponent(query.trim());
+        // proximity biases ranking toward the WashU area so street-only
+        // queries ("718 Limit") surface the St. Louis match first.
         const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=5&country=US&types=address,place`
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=5&country=US&types=address,place&proximity=-90.3123,38.6488`
         );
         const data = await res.json();
         const suggestions = (data.features ?? []).map((f) => ({
@@ -493,6 +523,7 @@ export default function ListingFormPanel({
         if (!res.ok) return;
         const blob = await res.blob();
         if (!blob.type.startsWith("image/")) return;
+        if (blob.size < 15000) return; // tiny files are icons/thumbnails, not photos
         const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
         files[idx] = new File([blob], `imported-${idx + 1}.${ext}`, {
           type: blob.type,
@@ -506,9 +537,14 @@ export default function ListingFormPanel({
     );
   };
 
+  // Tracks progress through a multi-property batch for the summary banner.
+  const importBatch = useRef({ done: 0, total: 0 });
+
   // Apply an extracted website draft to the form. Only non-empty values land;
   // everything applied gets marked "imported" until the landlord touches it.
-  const applyDraft = (listing, sourceUrl) => {
+  // meta: { sourceUrl, pastedUrl, queue, isQueueAdvance }.
+  const applyDraft = (listing, meta) => {
+    const { sourceUrl, pastedUrl, queue = [], isQueueAdvance = false } = meta ?? {};
     const marked = new Set();
     setForm((f) => {
       const next = { ...f };
@@ -569,6 +605,20 @@ export default function ListingFormPanel({
       );
     }
     setImportedFields(marked);
+
+    // Open the Mapbox dropdown on the imported address so one tap upgrades a
+    // street-only address ("718 Limit") to the verified full address that
+    // powers geocoding, maps, and walk times.
+    if (marked.has("address") && listing.address) {
+      fetchAddressSuggestions(listing.address);
+    }
+
+    importPastedUrl.current = pastedUrl ?? importPastedUrl.current;
+    setImportQueue(queue);
+    prefetchNext(queue);
+    if (isQueueAdvance) importBatch.current.done += 1;
+    else importBatch.current = { done: 1, total: queue.length + 1 };
+
     let host = "your website";
     try {
       host = new URL(sourceUrl).hostname.replace(/^www\./, "");
@@ -582,13 +632,16 @@ export default function ListingFormPanel({
       photoCount: 0,
       photosTotal: photoUrls.length,
       photosLoading: photoUrls.length > 0,
+      addressNeedsConfirm: marked.has("address"),
+      batchDone: importBatch.current.done,
+      batchTotal: importBatch.current.total,
+      nextName: queue[0]?.name ?? null,
     });
     if (photoUrls.length) importPhotos(photoUrls);
   };
 
-  // "Start over": back to the blank form the landlord would have seen without
-  // the import (contact fields re-seeded from their profile, like first render).
-  const resetImport = () => {
+  // Blank the form fields (used by "start over" and between queued properties).
+  const clearFormFields = () => {
     setForm({
       address: "",
       title: "",
@@ -612,7 +665,50 @@ export default function ListingFormPanel({
     setStagedFiles([]);
     setStagedPreviews([]);
     setImportedFields(new Set());
+  };
+
+  // "Start over": back to the blank form the landlord would have seen without
+  // the import, dropping any queued properties too.
+  const resetImport = () => {
+    clearFormFields();
     setImportInfo(null);
+    setImportQueue([]);
+    prefetchRef.current = null;
+    importBatch.current = { done: 0, total: 0 };
+  };
+
+  // After a queued-import listing is created: blank the form and load the next
+  // property (usually instant thanks to the prefetch). onSuccess — which
+  // normally navigates away — only fires once the whole batch is done.
+  const advanceImportQueue = async (unitPayload, diff) => {
+    let queue = importQueue;
+    toast.success("Listing created!");
+    clearFormFields();
+    while (queue.length) {
+      const target = queue[0];
+      queue = queue.slice(1);
+      setImportQueue(queue);
+      setImportInfo({ loadingNext: target.name });
+      try {
+        const pre = prefetchRef.current;
+        prefetchRef.current = null;
+        const data =
+          pre && pre.name === target.name ? await pre.promise : null;
+        const resolved = data ?? (await requestQueuedDraft(target));
+        applyDraft(resolved.listing, {
+          sourceUrl: resolved.sourceUrl,
+          pastedUrl: importPastedUrl.current,
+          queue,
+          isQueueAdvance: true,
+        });
+        return;
+      } catch {
+        toast.error(`Couldn't import ${target.name}, skipping it.`);
+      }
+    }
+    setImportInfo(null);
+    importBatch.current = { done: 0, total: 0 };
+    await onSuccess(unitPayload, diff);
   };
 
   const handleSubmit = async (e) => {
@@ -829,6 +925,16 @@ export default function ListingFormPanel({
         diff.phone = trim(form.contact_phone);
       }
 
+      // Multi-property import: instead of navigating away, load the next
+      // queued property into a fresh form. onSuccess fires after the last one.
+      if (!isEdit && importQueue.length > 0) {
+        await advanceImportQueue(
+          unitPayload,
+          Object.keys(diff).length > 0 ? diff : null
+        );
+        return;
+      }
+
       await onSuccess(unitPayload, Object.keys(diff).length > 0 ? diff : null);
     } catch {
       setError("Network error. Please try again.");
@@ -919,11 +1025,27 @@ export default function ListingFormPanel({
         {/* Website import: paste a property site, get the form prefilled as a
             draft. Add flow only; nothing here touches the edit path. */}
         {!isEdit &&
-          (importInfo ? (
+          (importInfo?.loadingNext ? (
+            <div className="mx-6 mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-amber-700" />
+              Loading the next property: {importInfo.loadingNext}…
+            </div>
+          ) : importInfo ? (
             <div className="mx-6 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-900">
-                Imported from {importInfo.host}. Please double-check everything.
+                Imported from {importInfo.host}
+                {importInfo.batchTotal > 1
+                  ? ` (property ${importInfo.batchDone} of ${importInfo.batchTotal})`
+                  : ""}
+                . Please double-check everything.
               </p>
+              {importInfo.addressNeedsConfirm && (
+                <p className="mt-1 text-xs font-medium text-amber-900">
+                  First: confirm the address by tapping the right suggestion in
+                  the dropdown under the Address box, that&apos;s what puts your
+                  listing on the map.
+                </p>
+              )}
               <p className="mt-1 text-xs leading-relaxed text-amber-800">
                 Highlighted fields came from your site; they turn white once you
                 edit them. Rent and lease terms usually still need your input,
@@ -948,6 +1070,11 @@ export default function ListingFormPanel({
                     <li key={i}>{n}</li>
                   ))}
                 </ul>
+              )}
+              {importInfo.nextName && (
+                <p className="mt-2 text-xs text-amber-800">
+                  Up next after you create this one: {importInfo.nextName}.
+                </p>
               )}
               <button
                 type="button"

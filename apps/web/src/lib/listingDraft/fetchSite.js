@@ -224,35 +224,147 @@ function normalizeImageUrl(u) {
   return u;
 }
 
-const IMG_JUNK = /logo|icon|favicon|sprite|badge|avatar|arrow|pixel|tracking|placeholder|\.svg(\?|$)/i;
+const IMG_JUNK =
+  /logo|icon|favicon|sprite|badge|avatar|arrow|pixel|tracking|placeholder|blank|spacer|\.svg(\?|$)/i;
 
-// Candidate property photos: [{ url, alt }], deduped, junk-filtered, capped.
+/*
+ * Candidate property photos: [{ url, alt }], deduped, junk-filtered, capped.
+ * Sites (Wix especially) often render galleries with JS, so <img> tags alone
+ * miss most photos — mine three sources in falling order of context quality:
+ *   1. <img> tags (src/data-src, with alt text)
+ *   2. og:image / twitter:image metas (the site's own pick for a cover)
+ *   3. raw image URLs anywhere in the HTML — catches gallery data embedded in
+ *      inline JSON (Wix warmupData, WP sliders) that never reaches an <img>.
+ */
 export function extractImageCandidates(html, baseUrl, cap = 40) {
   const seen = new Set();
   const out = [];
-  const tags = html.match(/<img[^>]+>/gi) ?? [];
-  for (const tag of tags) {
-    const src =
-      tag.match(/\bdata-src="([^"]+)"/i)?.[1] ??
-      tag.match(/\bsrc="([^"]+)"/i)?.[1];
-    if (!src || src.startsWith("data:")) continue;
+  const push = (rawSrc, alt = "") => {
+    if (out.length >= cap || !rawSrc || rawSrc.startsWith("data:")) return;
     let abs;
     try {
-      abs = new URL(decodeEntities(src), baseUrl).toString();
+      abs = new URL(decodeEntities(rawSrc), baseUrl).toString();
     } catch {
-      continue;
+      return;
     }
-    if (!abs.startsWith("http")) continue;
-    if (IMG_JUNK.test(abs)) continue;
+    if (!abs.startsWith("http")) return;
+    if (IMG_JUNK.test(abs) || IMG_JUNK.test(alt)) return;
     abs = normalizeImageUrl(abs);
-    if (seen.has(abs)) continue;
+    if (seen.has(abs)) return;
     seen.add(abs);
-    const alt = decodeEntities(tag.match(/\balt="([^"]*)"/i)?.[1] ?? "");
-    if (IMG_JUNK.test(alt)) continue;
     out.push({ url: abs, alt });
-    if (out.length >= cap) break;
+  };
+
+  for (const tag of html.match(/<img[^>]+>/gi) ?? []) {
+    push(
+      tag.match(/\bdata-src="([^"]+)"/i)?.[1] ?? tag.match(/\bsrc="([^"]+)"/i)?.[1],
+      decodeEntities(tag.match(/\balt="([^"]*)"/i)?.[1] ?? "")
+    );
+  }
+  for (const meta of html.match(
+    /<meta[^>]+(?:property|name)="(?:og:image|twitter:image)"[^>]+>/gi
+  ) ?? []) {
+    push(meta.match(/\bcontent="([^"]+)"/i)?.[1], "site cover image");
+  }
+  for (const m of html.matchAll(
+    /https?:\/\/[^\s"'<>\\()]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\)?]|$)/gi
+  )) {
+    push(m[0], "");
   }
   return out;
+}
+
+// JSON-LD structured data (schema.org) — WordPress/agency sites often carry the
+// address, images, and offers here even when the visible text doesn't.
+export function extractJsonLd(html, cap = 6000) {
+  const blocks =
+    html.match(
+      /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi
+    ) ?? [];
+  return blocks
+    .map((b) => b.replace(/<[^>]+>/g, "").trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, cap);
+}
+
+/*
+ * Optional headless-render fallback via Firecrawl (FIRECRAWL_API_KEY). Rescues
+ * JS-rendered galleries/pricing and bot-blocked sites; a no-op without the key.
+ * Only called for URLs that already passed the SSRF checks in fetchPage.
+ */
+async function renderPageViaFirecrawl(rawUrl) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ url: rawUrl, formats: ["html"], timeout: 30000 }),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const html = data?.data?.html;
+    if (typeof html !== "string" || !html) return null;
+    return {
+      html: html.slice(0, MAX_BYTES * 2),
+      finalUrl: data?.data?.metadata?.url || rawUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Codes where a render service can't help (or must not be asked to try).
+const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed"]);
+
+// 10-minute page cache so the pick-a-property second request (and background
+// queue prefetches) don't re-download pages this instance just fetched.
+// Per-instance and best-effort, like the rate limiter.
+const PAGE_CACHE_TTL_MS = 10 * 60 * 1000;
+const PAGE_CACHE_MAX = 40;
+const _pageCache = new Map(); // url -> { at, page }
+
+function cachePut(url, page) {
+  if (_pageCache.size >= PAGE_CACHE_MAX) {
+    const oldest = [..._pageCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    if (oldest) _pageCache.delete(oldest[0]);
+  }
+  _pageCache.set(url, { at: Date.now(), page });
+}
+
+/*
+ * The route's one entry point: cached plain fetch, upgraded to a Firecrawl
+ * render when the plain fetch was blocked or came back thin (JS-rendered site)
+ * and a key is configured. Throws DraftFetchError like fetchPage.
+ */
+export async function fetchPageSmart(rawUrl) {
+  const hit = _pageCache.get(rawUrl);
+  if (hit && Date.now() - hit.at < PAGE_CACHE_TTL_MS) return hit.page;
+
+  let page = null;
+  let fetchErr = null;
+  try {
+    page = await fetchPage(rawUrl);
+  } catch (err) {
+    if (!(err instanceof DraftFetchError) || NO_RENDER_CODES.has(err.code)) throw err;
+    fetchErr = err;
+  }
+
+  const thin = page ? htmlToText(page.html).length < 800 : true;
+  if (thin) {
+    const rendered = await renderPageViaFirecrawl(rawUrl);
+    if (
+      rendered &&
+      htmlToText(rendered.html).length > (page ? htmlToText(page.html).length : 0)
+    ) {
+      page = rendered;
+    }
+  }
+  if (!page) throw fetchErr ?? new DraftFetchError("unreachable");
+  cachePut(rawUrl, page);
+  return page;
 }
 
 // Registrable-domain match (naive last-two-labels compare — fine for the

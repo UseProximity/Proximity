@@ -6,10 +6,11 @@ export const maxDuration = 120;
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import {
-  fetchPage,
+  fetchPageSmart,
   htmlToText,
   extractImageCandidates,
   extractLinks,
+  extractJsonLd,
   detectAppfolio,
   sameSite,
   DraftFetchError,
@@ -86,42 +87,82 @@ export async function POST(req) {
 
     let main;
     try {
-      main = await fetchPage(pastedUrl);
+      main = await fetchPageSmart(pastedUrl);
     } catch (err) {
       if (err instanceof DraftFetchError) return fetchErrorResponse(err);
       throw err;
     }
 
-    const pages = [{ url: main.finalUrl, text: htmlToText(main.html) }];
-    let images = extractImageCandidates(main.html, main.finalUrl);
+    // Page text plus any schema.org JSON-LD — sites often carry the address,
+    // photos, and prices there even when the visible text doesn't.
+    const pageEntry = (fetched) => {
+      const jsonLd = extractJsonLd(fetched.html);
+      return {
+        url: fetched.finalUrl,
+        text:
+          htmlToText(fetched.html) +
+          (jsonLd ? `\n\nSTRUCTURED DATA (JSON-LD):\n${jsonLd}` : ""),
+      };
+    };
+
+    const pages = [pageEntry(main)];
+    // url -> { alt, pages:Set } — which page(s) each image candidate appeared
+    // on is the model's best signal for "this property's photo" vs site chrome.
+    const imageMap = new Map();
+    const addImages = (html, finalUrl, pageNum) => {
+      for (const im of extractImageCandidates(html, finalUrl)) {
+        const cur = imageMap.get(im.url);
+        if (cur) {
+          cur.pages.add(pageNum);
+          if (!cur.alt && im.alt) cur.alt = im.alt;
+        } else {
+          imageMap.set(im.url, { alt: im.alt, pages: new Set([pageNum]) });
+        }
+      }
+    };
+    addImages(main.html, main.finalUrl, 1);
     const links = extractLinks(main.html, main.finalUrl);
     const appfolioLinked = detectAppfolio(main.finalUrl, main.html);
 
-    // Secondary same-site pages (all landlord-initiated: either the property
-    // they picked, or obvious listings links when the pasted page is thin).
-    const followUrls = [];
+    // Secondary same-site pages, all landlord-initiated: the property they
+    // picked (plus its gallery/floor-plan pages), or obvious listings links
+    // when the pasted page is a thin marketing shell.
+    const followBestEffort = async (u) => {
+      try {
+        const sub = await fetchPageSmart(u);
+        pages.push(pageEntry(sub));
+        addImages(sub.html, sub.finalUrl, pages.length);
+        return sub;
+      } catch {
+        return null; // the pasted page alone still works
+      }
+    };
     if (targetProperty?.url && targetProperty.url !== main.finalUrl) {
-      followUrls.push(targetProperty.url);
+      const propPage = await followBestEffort(targetProperty.url);
+      if (propPage) {
+        const galleryish = extractLinks(propPage.html, propPage.finalUrl)
+          .filter(
+            (l) =>
+              /gallery|photo|amenit|floor|feature|tour/i.test(`${l.url} ${l.text}`) &&
+              l.url !== propPage.finalUrl &&
+              l.url !== main.finalUrl
+          )
+          .slice(0, 2);
+        for (const l of galleryish) await followBestEffort(l.url);
+      }
     } else if (pages[0].text.length < THIN_TEXT_CHARS) {
+      const followUrls = [];
       for (const l of links) {
         if (followUrls.length >= 2) break;
         if (LISTINGS_LINK_RE.test(`${l.url} ${l.text}`) && l.url !== main.finalUrl) {
           followUrls.push(l.url);
         }
       }
+      for (const u of followUrls) await followBestEffort(u);
     }
-    for (const u of followUrls) {
-      try {
-        const sub = await fetchPage(u);
-        pages.push({ url: sub.finalUrl, text: htmlToText(sub.html) });
-        images = images.concat(extractImageCandidates(sub.html, sub.finalUrl));
-      } catch {
-        // Secondary pages are best-effort; the pasted page alone still works.
-      }
-    }
-    // Dedupe images across pages, keep the cap sane for the prompt.
-    const seen = new Set();
-    images = images.filter((im) => !seen.has(im.url) && seen.add(im.url)).slice(0, 60);
+    const images = [...imageMap.entries()]
+      .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
+      .slice(0, 60);
 
     const totalText = pages.reduce((n, p) => n + p.text.length, 0);
     if (totalText < 200) {

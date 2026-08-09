@@ -74,11 +74,12 @@ const SYSTEM = `You extract structured rental-listing drafts from a landlord's o
 Rules, in order of importance:
 1. Trust ONLY the page text and candidate lists you are given. Never infer facts from a URL or page slug — sites reuse and mislabel URLs. If the page text says "723 Interdrive", the property is 723 Interdrive regardless of the URL.
 2. Every field is nullable: when the pages don't state a fact, return null (or omit from arrays). Do not pad, estimate, or average.
+2b. ADDRESS: return the most complete address the pages state. A street-only address like "718 Limit" or "723 Interdrive" IS worth returning — the landlord confirms the full address from a dropdown afterwards. Never invent a city, state, or zip the pages don't show.
 3. RENT: Proximity stores rent for the WHOLE unit per month. If the site gives a price per person / per bed / per room, or you cannot tell which convention it uses, set rent to null, set rentBasis accordingly ("per_person" or "unknown"), and add a sourceNote quoting the price you saw. Only set a rent number when you are confident it is the whole-unit monthly price (then rentBasis "total"). Prices like "$TBD" or "call for pricing" are null.
 4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its same-site URL from CANDIDATE LINKS if one clearly matches) and set "listing" to null. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
 5. UNITS are floor-plan types (e.g. "2 bed / 1 bath"), not physical apartments. Collapse repeats. "title" is the floor plan's marketing name if the site uses one (e.g. "The Loft").
 6. AMENITIES: map what the site states onto the allowed enum values; anything real that doesn't fit (e.g. "EV charging", "rooftop pool" beyond "pool"/"rooftop") goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
-7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. Use the alt text and filename as evidence. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. When unsure, leave it out.
+7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. Use the alt text, filename, and URL path as evidence. Prefer real photographs; include floor-plan diagrams only after the photos, and never as the first image. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
 8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. title: the property's display name as the site presents it (often the street address or building name).
 9. contact_*: only contact details shown on the pages for THIS landlord/property (leasing office email/phone). Never fabricate.
 10. sourceNotes: short plain-English notes for the landlord about anything ambiguous or worth double-checking ("Rent shown as $800/person for the 4-bed — enter the whole-unit price", "Availability dates weren't listed"). confidence: 0-1 overall.`;
@@ -132,8 +133,15 @@ export async function extractListingDraft({ pages, images, links, targetProperty
     (p, i) => `PAGE ${i + 1} (${p.url}):\n${p.text.slice(0, PAGE_TEXT_CAP)}`
   );
   sections.push(
-    `IMAGE CANDIDATES (url | alt):\n${
-      images.map((im) => `${im.url} | ${im.alt || "(no alt)"}`).join("\n") || "(none)"
+    `IMAGE CANDIDATES (url | alt | which PAGE sections it appeared on):\n${
+      images
+        .map(
+          (im) =>
+            `${im.url} | ${im.alt || "(no alt)"} | page(s) ${
+              (im.pages ?? [1]).join(",")
+            }`
+        )
+        .join("\n") || "(none)"
     }`
   );
   sections.push(

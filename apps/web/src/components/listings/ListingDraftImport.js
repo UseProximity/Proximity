@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Globe, Loader2, Sparkles } from "lucide-react";
 
-// Cycled while the server fetches + extracts (15-45s) so the wait feels alive.
+// Cycled while the server fetches + extracts so the wait feels alive.
 const LOADING_STEPS = [
   "Reading your website…",
   "Finding the property details…",
@@ -15,33 +15,47 @@ const LOADING_STEPS = [
 /*
  * "Paste your website" box for the add-listing flow. Calls
  * POST /api/landlord/listing-draft; when the site covers several properties it
- * shows a picker and asks again for the chosen one. Hands the finished draft to
- * the parent via onApply(listing, sourceUrl) — the form itself stays in
- * ListingFormPanel.
+ * shows a multi-select picker — the first pick prefills the form now and the
+ * rest queue up, applied one-by-one as each listing is created. Hands drafts to
+ * the parent via onApply(listing, { sourceUrl, pastedUrl, queue }).
  */
 export default function ListingDraftImport({ onApply, disabled }) {
   const [url, setUrl] = useState("");
   const [phase, setPhase] = useState("idle"); // idle | loading | picker | appfolio | done
   const [error, setError] = useState(null);
   const [propertyChoices, setPropertyChoices] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
   const [stepIdx, setStepIdx] = useState(0);
-  const stepTimer = useRef(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timers = useRef({});
 
-  useEffect(() => () => clearInterval(stepTimer.current), []);
+  useEffect(
+    () => () => {
+      clearInterval(timers.current.step);
+      clearInterval(timers.current.clock);
+    },
+    []
+  );
 
   const startLoading = () => {
     setError(null);
     setPhase("loading");
     setStepIdx(0);
-    clearInterval(stepTimer.current);
-    stepTimer.current = setInterval(
+    setElapsed(0);
+    clearInterval(timers.current.step);
+    clearInterval(timers.current.clock);
+    timers.current.step = setInterval(
       () => setStepIdx((i) => Math.min(i + 1, LOADING_STEPS.length - 1)),
-      6000
+      7000
     );
+    timers.current.clock = setInterval(() => setElapsed((s) => s + 1), 1000);
   };
-  const stopLoading = () => clearInterval(stepTimer.current);
+  const stopLoading = () => {
+    clearInterval(timers.current.step);
+    clearInterval(timers.current.clock);
+  };
 
-  const requestDraft = async (targetProperty) => {
+  const requestDraft = async (targetProperty, queue = []) => {
     if (!url.trim()) {
       setError("Paste your website address first.");
       return;
@@ -66,7 +80,8 @@ export default function ListingDraftImport({ onApply, disabled }) {
         return;
       }
       if (!data.listing && (data.properties?.length ?? 0) > 1) {
-        setPropertyChoices(data.properties.slice(0, 12));
+        setPropertyChoices(data.properties.slice(0, 40));
+        setSelected(new Set());
         setPhase("picker");
         return;
       }
@@ -78,12 +93,33 @@ export default function ListingDraftImport({ onApply, disabled }) {
         return;
       }
       setPhase("done");
-      onApply(data.listing, data.sourceUrl);
+      onApply(data.listing, {
+        sourceUrl: data.sourceUrl,
+        pastedUrl: url.trim(),
+        queue,
+      });
     } catch {
       stopLoading();
-      setPhase("idle");
+      setPhase(targetProperty ? "picker" : "idle");
       setError("Network error. Please try again.");
     }
+  };
+
+  const toggleSelected = (i) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+
+  const importSelected = () => {
+    const picks = propertyChoices.filter((_, i) => selected.has(i));
+    if (!picks.length) {
+      setError("Check at least one property first.");
+      return;
+    }
+    requestDraft(picks[0], picks.slice(1));
   };
 
   if (phase === "done") return null; // parent shows the import summary banner
@@ -107,6 +143,9 @@ export default function ListingDraftImport({ onApply, disabled }) {
             <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
               <Loader2 className="h-4 w-4 animate-spin text-red-600" />
               {LOADING_STEPS[stepIdx]}
+              <span className="text-xs text-gray-400">
+                {elapsed}s (usually 20–40s)
+              </span>
             </div>
           ) : phase === "appfolio" ? (
             <div className="mt-3 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700">
@@ -129,34 +168,76 @@ export default function ListingDraftImport({ onApply, disabled }) {
             </div>
           ) : phase === "picker" ? (
             <div className="mt-3">
-              <p className="text-sm font-medium text-gray-800">
-                Your site covers several properties. Which one is this listing for?
-              </p>
-              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-800">
+                  Your site covers several properties. Check every one you want to
+                  list — we&apos;ll set them up one at a time.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelected((prev) =>
+                      prev.size === propertyChoices.length
+                        ? new Set()
+                        : new Set(propertyChoices.map((_, i) => i))
+                    )
+                  }
+                  className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                >
+                  {selected.size === propertyChoices.length ? "Clear all" : "Select all"}
+                </button>
+              </div>
+              <div className="mt-2 grid max-h-64 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
                 {propertyChoices.map((p, i) => (
-                  <button
+                  <label
                     key={i}
-                    type="button"
-                    onClick={() => requestDraft(p)}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800 transition-colors hover:border-red-400 hover:bg-red-50"
+                    className={`flex cursor-pointer items-start gap-2 rounded-lg border bg-white px-3 py-2 text-left text-sm transition-colors ${
+                      selected.has(i)
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300 hover:border-red-400"
+                    }`}
                   >
-                    <span className="font-medium">{p.name}</span>
-                    {p.address && (
-                      <span className="block text-xs text-gray-500">{p.address}</span>
-                    )}
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(i)}
+                      onChange={() => toggleSelected(i)}
+                      className="mt-0.5 accent-red-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-gray-800">
+                        {p.name}
+                      </span>
+                      {p.address && (
+                        <span className="block truncate text-xs text-gray-500">
+                          {p.address}
+                        </span>
+                      )}
+                    </span>
+                  </label>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPhase("idle");
-                  setPropertyChoices([]);
-                }}
-                className="mt-2 text-xs text-gray-500 hover:text-gray-700"
-              >
-                ← Different website
-              </button>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={importSelected}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+                  disabled={selected.size === 0}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Import {selected.size > 1 ? `${selected.size} properties` : "selected"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhase("idle");
+                    setPropertyChoices([]);
+                    setSelected(new Set());
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  ← Different website
+                </button>
+              </div>
             </div>
           ) : (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
