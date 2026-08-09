@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-09T02:51:01.518Z",
-  "count": 45,
+  "_generated": "2026-08-09T16:06:35.560Z",
+  "count": 46,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -49,6 +49,10 @@
     },
     {
       "name": "EMAIL_USER",
+      "public": false
+    },
+    {
+      "name": "FIRECRAWL_API_KEY",
       "public": false
     },
     {

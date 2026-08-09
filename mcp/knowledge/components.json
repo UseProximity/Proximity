@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-09T02:51:01.464Z",
-  "count": 67,
+  "_generated": "2026-08-09T16:06:35.321Z",
+  "count": 78,
   "components": [
     {
       "name": "DormsView",
@@ -266,6 +266,61 @@
     {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "listingFormOptions",
+      "file": "src/components/listings/listingFormOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddListingWizard",
+      "file": "src/components/listings/wizard/AddListingWizard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepAddress",
+      "file": "src/components/listings/wizard/StepAddress.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepBasics",
+      "file": "src/components/listings/wizard/StepBasics.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepDescription",
+      "file": "src/components/listings/wizard/StepDescription.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepPerks",
+      "file": "src/components/listings/wizard/StepPerks.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepPhotos",
+      "file": "src/components/listings/wizard/StepPhotos.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepReview",
+      "file": "src/components/listings/wizard/StepReview.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepStart",
+      "file": "src/components/listings/wizard/StepStart.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepUnits",
+      "file": "src/components/listings/wizard/StepUnits.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "wizardShared",
+      "file": "src/components/listings/wizard/wizardShared.js",
       "description": "No description — run generate after adding a description above."
     },
     {
