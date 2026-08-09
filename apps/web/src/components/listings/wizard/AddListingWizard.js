@@ -887,7 +887,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         </div>
       )}
 
-      <div className="mt-3 text-center">
+      <div className="mt-3 flex items-center justify-center gap-4 text-center">
         <button
           type="button"
           onClick={onClose}
@@ -895,6 +895,17 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         >
           Save & exit
         </button>
+        {!onStart && (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Throw away this draft and start over?")) startFresh();
+            }}
+            className="text-xs text-gray-400 hover:text-red-600"
+          >
+            Start over
+          </button>
+        )}
       </div>
     </div>
   );
