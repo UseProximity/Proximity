@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-08T18:50:38.603Z",
-  "count": 35,
+  "_generated": "2026-08-10T15:51:58.102Z",
+  "count": 37,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -85,6 +85,14 @@
     },
     {
       "name": "NEXT_PUBLIC_MAPBOX_TOKEN",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_POSTHOG_HOST",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_POSTHOG_KEY",
       "public": true
     },
     {
