@@ -136,7 +136,11 @@ export default async function ListingDetailPage({ params }) {
           </div>
         }
       >
-        <ListingDetailClient listingId={id} session={session} />
+        <ListingDetailClient
+          listingId={id}
+          session={session}
+          initialListing={listing}
+        />
       </Suspense>
     </>
   );

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-08T21:42:27.874Z",
-  "count": 34,
+  "_generated": "2026-08-10T15:49:07.051Z",
+  "count": 35,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -54,6 +54,10 @@
     {
       "file": "src/lib/listings/listingSelect.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/listings/queryListings.js",
+      "description": "Server-side listing data for pages that render listings in their initial"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",

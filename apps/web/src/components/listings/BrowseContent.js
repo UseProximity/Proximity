@@ -39,10 +39,14 @@ const DEFAULT_FILTERS = {
   savedOnly: false,
 };
 
-export default function BrowseContent({ session }) {
+export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
-  const [listings, setListings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Seeded server-side so crawlers and first paint get real cards; the mount
+  // fetch below still runs as a freshness refresh over the 5-min server cache.
+  const [listings, setListings] = useState(initialListings ?? []);
+  const [loading, setLoading] = useState(
+    !(initialListings && initialListings.length)
+  );
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("search");
 
@@ -54,7 +58,7 @@ export default function BrowseContent({ session }) {
       try {
         const response = await fetch("/api/listings");
         const data = await response.json();
-        setListings(data);
+        if (Array.isArray(data)) setListings(data);
       } catch (error) {
         console.error("Error fetching listings:", error);
       } finally {

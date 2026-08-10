@@ -15,9 +15,10 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const RESULT_COUNT = 6;
 
-export async function GET() {
-  try {
-    const listings = (await fetchListings()).filter((l) => !l.unavailable);
+// Exported so the homepage can server-render the same ranked row (seeding the
+// client component); GET below stays the client-refresh path.
+export async function getPopularListings() {
+  const listings = (await fetchListings()).filter((l) => !l.unavailable);
 
     // Saves and contacts both live in user_listing_interactions, keyed by type.
     const { data: types } = await supabase
@@ -59,7 +60,12 @@ export async function GET() {
       return new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0);
     });
 
-    return Response.json(ranked.slice(0, RESULT_COUNT));
+    return ranked.slice(0, RESULT_COUNT);
+}
+
+export async function GET() {
+  try {
+    return Response.json(await getPopularListings());
   } catch (err) {
     console.error("[listings/popular GET] unexpected error:", err);
     return Response.json(
