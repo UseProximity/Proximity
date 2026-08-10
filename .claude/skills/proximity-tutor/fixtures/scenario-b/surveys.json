@@ -1,0 +1,15 @@
+{
+  "view": "active-surveys",
+  "window": { "from": "2026-08-10T00:00:00Z", "to": "2026-09-10T00:00:00Z" },
+  "active_surveys": [
+    {
+      "name": "Why didn't you contact a landlord?",
+      "responses": 11,
+      "aggregate": [
+        { "answer": "Still comparing options", "count": 6 },
+        { "answer": "Lease check didn't work for me", "count": 3 },
+        { "answer": "Found housing elsewhere", "count": 2 }
+      ]
+    }
+  ]
+}

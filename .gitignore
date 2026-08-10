@@ -72,8 +72,12 @@ sync-scripts
 scripts
 today.md
 
-# Claude Code local state (worktrees, memory, logs)
-.claude/
+# Claude Code local state (worktrees, memory, logs) — but the proximity-tutor
+# skill is part of the product and stays versioned
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/proximity-tutor/
 .claude-flow/
 
 # Codex local state
