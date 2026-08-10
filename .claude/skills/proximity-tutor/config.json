@@ -2,6 +2,8 @@
   "evidenceSource": "fixtures",
   "fixtureScenario": "scenario-a",
   "lessonsDb": "dev",
+  "maxProposalsPerRun": 3,
+  "standoutScoreFloor": 12,
   "posthog": {
     "projectId": null,
     "host": "https://us.i.posthog.com",
@@ -24,7 +26,8 @@
   ],
   "slack": {
     "recipient": "Ben Flicker (DM to workspace user matching bengrayflicker@gmail.com)",
-    "testMode": true
+    "testMode": true,
+    "webhookEnvVar": "TUTOR_SLACK_WEBHOOK_URL"
   },
   "preview": {
     "worktreePath": "../Proximity-tutor-preview",
