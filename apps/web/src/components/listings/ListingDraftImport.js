@@ -114,6 +114,13 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
           ]);
         }
         levelCache.current.set(fetchUrl, list);
+        // First time we see a level, every real property starts checked —
+        // most landlords want all of them. Unchecks stick when they revisit.
+        setSelected((prev) => {
+          const next = new Set(prev);
+          list.filter((p) => p.kind !== "group").forEach((p) => next.add(keyOf(p)));
+          return next;
+        });
         setChoices(list);
         setPhase("picker");
         return;
@@ -268,11 +275,33 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
                 </div>
               )}
 
-              <p className="text-sm font-medium text-gray-800">
-                {propertiesHere.length > 0
-                  ? "Check every property you want to list. We'll set them up one at a time."
-                  : "Open an area to see its properties."}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-800">
+                  {propertiesHere.length > 0
+                    ? "Check every property you want to list. We'll set them up one at a time."
+                    : "Open an area to see its properties."}
+                </p>
+                {propertiesHere.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        const allOn = propertiesHere.every((p) => next.has(keyOf(p)));
+                        propertiesHere.forEach((p) =>
+                          allOn ? next.delete(keyOf(p)) : next.add(keyOf(p))
+                        );
+                        return next;
+                      })
+                    }
+                    className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                  >
+                    {propertiesHere.every((p) => selected.has(keyOf(p)))
+                      ? "Clear all"
+                      : "Select all"}
+                  </button>
+                )}
+              </div>
 
               <div className="mt-2 grid max-h-64 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
                 {choices.map((p, i) =>

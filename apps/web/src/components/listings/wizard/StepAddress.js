@@ -87,7 +87,7 @@ export default function StepAddress({ w }) {
       subtitle={
         importedUnconfirmed
           ? `Your website says "${w.form.address}". Tap the matching suggestion so we can put it on the map.`
-          : "Students see real walk times to campus from this."
+          : "This sets the map pin and real walk times to campus. You'll pick the display name students see later."
       }
     >
       <div className="relative" ref={boxRef}>
