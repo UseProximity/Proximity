@@ -402,14 +402,39 @@ export function extractLinks(html, baseUrl, cap = 60) {
   return out;
 }
 
-// AppFolio-hosted pages render empty without JS — those landlords belong on the
-// PMS sync instead. Detect both a pasted appfolio URL and a site whose HTML
-// links out to one (extractLinks drops off-site links, so scan the raw HTML).
-export function detectAppfolio(url, html = "") {
+/*
+ * PMS-hosted listing portals render empty without JS. Detect which system a
+ * pasted URL or a site's HTML points at so the UI can react: the four systems
+ * Proximity syncs with get steered to the integration; the rest get an honest
+ * "your listings live in <system>" message instead of a generic failure.
+ */
+const PMS_PORTALS = [
+  { name: "appfolio", host: /(^|\.)appfolio\.com$/i, scan: /https?:\/\/[a-z0-9-]+\.appfolio\.com/i },
+  { name: "buildium", host: /(^|\.)managebuilding\.com$/i, scan: /https?:\/\/[a-z0-9-]+\.managebuilding\.com/i },
+  { name: "rentecdirect", host: /(^|\.)rentecdirect\.com$/i, scan: /https?:\/\/[a-z0-9-]+\.rentecdirect\.com/i },
+  { name: "doorloop", host: /(^|\.)doorloop\.com$/i, scan: /https?:\/\/app\.doorloop\.com/i },
+  { name: "propertyware", host: /(^|\.)propertyware\.com$/i, scan: /https?:\/\/[a-z0-9.-]*propertyware\.com/i },
+  { name: "showmojo", host: /(^|\.)showmojo\.com$/i, scan: /https?:\/\/showmojo\.com/i },
+  { name: "rentcafe", host: /(^|\.)(rentcafe|securecafe)\.com$/i, scan: /https?:\/\/[a-z0-9.-]*(rentcafe|securecafe)\.com/i },
+];
+
+// Systems the existing PMS sync supports — worth steering to instead.
+export const SYNCABLE_PMS = new Set(["appfolio", "buildium", "rentecdirect", "doorloop"]);
+
+// Returns the portal name, or null. Host match (pasted portal URL) wins; the
+// html scan catches marketing sites that link out to their portal.
+export function detectPmsPortal(url, html = "") {
+  let host = "";
   try {
-    if (new URL(url).hostname.endsWith(".appfolio.com")) return true;
+    host = new URL(url).hostname;
   } catch {
-    /* fall through to the html scan */
+    /* html scan below */
   }
-  return /https?:\/\/[a-z0-9-]+\.appfolio\.com/i.test(html);
+  for (const p of PMS_PORTALS) {
+    if (host && p.host.test(host)) return p.name;
+  }
+  for (const p of PMS_PORTALS) {
+    if (html && p.scan.test(html)) return p.name;
+  }
+  return null;
 }

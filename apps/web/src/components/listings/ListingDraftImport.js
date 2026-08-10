@@ -23,7 +23,8 @@ const LOADING_STEPS = [
  */
 export default function ListingDraftImport({ onApply, disabled, embedded = false }) {
   const [url, setUrl] = useState("");
-  const [phase, setPhase] = useState("idle"); // idle | loading | picker | appfolio | done
+  const [phase, setPhase] = useState("idle"); // idle | loading | picker | pms | done
+  const [pmsName, setPmsName] = useState("");
   const [error, setError] = useState(null);
   const [choices, setChoices] = useState([]); // current level: [{name,address,url,kind}]
   const [crumbs, setCrumbs] = useState([]); // [{label, url}] drill path
@@ -82,8 +83,13 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
       const data = await res.json().catch(() => ({}));
       stopLoading();
 
-      if (data.pms === "appfolio") {
-        setPhase("appfolio");
+      if (data.pms) {
+        setPmsName(
+          { appfolio: "AppFolio", buildium: "Buildium", rentecdirect: "Rentec Direct", doorloop: "DoorLoop" }[
+            data.pms
+          ] ?? "your property-management system"
+        );
+        setPhase("pms");
         return;
       }
       if (!res.ok) {
@@ -225,16 +231,16 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
               {LOADING_STEPS[stepIdx]}
               <span className="text-xs text-gray-400">{elapsed}s (usually 20-40s)</span>
             </div>
-          ) : phase === "appfolio" ? (
+          ) : phase === "pms" ? (
             <div className="mt-3 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700">
-              Looks like your listings run on <span className="font-semibold">AppFolio</span>.
+              Looks like your listings run on <span className="font-semibold">{pmsName}</span>.
               Good news: instead of a one-time import, you can connect it once and your
               listings will create and update themselves.
               <Link
                 href="/dashboard/landlord?tab=integrations"
                 className="mt-2 block font-medium text-red-600 hover:underline"
               >
-                Set up AppFolio auto-sync →
+                Set up {pmsName} auto-sync →
               </Link>
               <button
                 type="button"
@@ -335,11 +341,13 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
                         <span className="block truncate font-medium text-gray-800">
                           {p.name}
                         </span>
-                        {p.address && (
-                          <span className="block truncate text-xs text-gray-500">
-                            {p.address}
-                          </span>
-                        )}
+                        {p.address &&
+                          p.address.toLowerCase().replace(/[.\s]+$/, "") !==
+                            p.name.toLowerCase().replace(/[.\s]+$/, "") && (
+                            <span className="block truncate text-xs text-gray-500">
+                              {p.address}
+                            </span>
+                          )}
                       </span>
                     </label>
                   )
@@ -347,16 +355,18 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
               </div>
 
               <div className="mt-2 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={importSelected}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
-                  disabled={selectedCount === 0}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Import{" "}
-                  {selectedCount > 1 ? `${selectedCount} properties` : "selected"}
-                </button>
+                {(propertiesHere.length > 0 || selectedCount > 0) && (
+                  <button
+                    type="button"
+                    onClick={importSelected}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+                    disabled={selectedCount === 0}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Import{" "}
+                    {selectedCount > 1 ? `${selectedCount} properties` : "selected"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {

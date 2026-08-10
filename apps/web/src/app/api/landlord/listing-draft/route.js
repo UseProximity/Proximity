@@ -11,10 +11,18 @@ import {
   extractImageCandidates,
   extractLinks,
   extractJsonLd,
-  detectAppfolio,
+  detectPmsPortal,
+  SYNCABLE_PMS,
   sameSite,
   DraftFetchError,
 } from "@/lib/listingDraft/fetchSite";
+
+// Display names for PMS portals we can't sync but can at least name honestly.
+const PMS_DISPLAY = {
+  propertyware: "Propertyware",
+  showmojo: "ShowMojo",
+  rentcafe: "RentCafe",
+};
 import { extractListingDraft } from "@/lib/listingDraft/extract";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
 
@@ -79,10 +87,11 @@ export async function POST(req) {
           }
         : null;
 
-    // AppFolio-hosted listing pages render empty without JS — and those
-    // landlords have a better option: the existing PMS sync.
-    if (detectAppfolio(pastedUrl)) {
-      return NextResponse.json({ pms: "appfolio" });
+    // PMS-hosted listing pages render empty without JS. Syncable systems have
+    // a better option than importing: the existing PMS integration.
+    const pastedPortal = detectPmsPortal(pastedUrl);
+    if (pastedPortal && SYNCABLE_PMS.has(pastedPortal)) {
+      return NextResponse.json({ pms: pastedPortal });
     }
 
     let main;
@@ -122,7 +131,7 @@ export async function POST(req) {
     };
     addImages(main.html, main.finalUrl, 1);
     const links = extractLinks(main.html, main.finalUrl);
-    const appfolioLinked = detectAppfolio(main.finalUrl, main.html);
+    const linkedPortal = detectPmsPortal(main.finalUrl, main.html);
 
     // Secondary same-site pages, all landlord-initiated: the property they
     // picked (plus its gallery/floor-plan pages), or obvious listings links
@@ -164,15 +173,32 @@ export async function POST(req) {
       .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
       .slice(0, 60);
 
-    const totalText = pages.reduce((n, p) => n + p.text.length, 0);
-    if (totalText < 200) {
-      if (appfolioLinked) return NextResponse.json({ pms: "appfolio" });
+    // Empty-ish result with a known portal in play: name the system instead of
+    // failing generically (syncable ones steer to the integration).
+    const portalResponse = () => {
+      if (!linkedPortal) return null;
+      if (SYNCABLE_PMS.has(linkedPortal)) return NextResponse.json({ pms: linkedPortal });
       return NextResponse.json(
         {
-          error:
-            "We couldn't find readable listing info on that page. Try pasting your listings or availability page instead.",
+          error: `Your listings appear to live inside ${
+            PMS_DISPLAY[linkedPortal] ?? "your property-management system"
+          }, which we can't read from your website. You can still fill out the form manually.`,
         },
         { status: 422 }
+      );
+    };
+
+    const totalText = pages.reduce((n, p) => n + p.text.length, 0);
+    if (totalText < 200) {
+      return (
+        portalResponse() ??
+        NextResponse.json(
+          {
+            error:
+              "We couldn't find readable listing info on that page. Try pasting your listings or availability page instead.",
+          },
+          { status: 422 }
+        )
       );
     }
 
@@ -192,14 +218,15 @@ export async function POST(req) {
       );
     }
 
-    // Nothing useful extracted from a site that links to AppFolio → steer to sync.
+    // Nothing useful extracted from a site that links to a PMS portal → name it.
     const empty =
       !draft.listing ||
       (!draft.listing.address &&
         !draft.listing.description &&
         (draft.listing.units ?? []).length === 0);
-    if (empty && appfolioLinked && (draft.properties ?? []).length <= 1) {
-      return NextResponse.json({ pms: "appfolio" });
+    if (empty && (draft.properties ?? []).length <= 1) {
+      const pr = portalResponse();
+      if (pr) return pr;
     }
 
     return NextResponse.json({
