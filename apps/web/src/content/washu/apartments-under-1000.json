@@ -1,0 +1,30 @@
+{
+  "intro": [
+    "Stop overpaying. Under $1,000 a month per person is realistic near WashU if you share, pick the right blocks, and move before the good stuff is gone.",
+    "The listings below qualify because your share of rent, not the whole unit price, stays under $1,000. For shared apartments that means the unit rent divided by the bedrooms. Where a listing is priced by the room, we use that room price directly. Each card shows walk time to campus and reviews from students who lived there."
+  ],
+  "directAnswer": "Yes, you can live near WashU for under $1,000 a month per person, usually by sharing a 2 or 3 bedroom in Skinker-DeBaliviere or University City. For context, HUD's FY2026 fair market rent for a whole 1 bedroom in Skinker-DeBaliviere (63112) is $930, utilities included.",
+  "faqs": [
+    {
+      "q": "How do these listings qualify as under $1,000?",
+      "a": "By per-person cost. A $1,900 two bedroom counts because each person pays $950. Listings priced by the room count by their room price. The math is shown from each listing's real current rent, and utilities may be extra, so check what is included before you compare."
+    },
+    {
+      "q": "Which areas near WashU are cheapest?",
+      "a": "By HUD's FY2026 benchmarks, Skinker-DeBaliviere (63112) is the most affordable ZIP adjacent to campus, with a fair market rent of $930 for a 1 bedroom and $1,140 for a 2 bedroom, utilities included. University City (63130) benchmarks at $1,110 and $1,360. Clayton and the Central West End benchmark meaningfully higher."
+    },
+    {
+      "q": "Does moving off campus save money compared to the dorms?",
+      "a": "Usually yes, even paying a 12 month lease for a 9 month school year, which is the trap students worry about. Splitting a shared apartment typically comes in under WashU room and board, and you can sublease the summer to claw back more. Run your own numbers in our budget guide before deciding."
+    },
+    {
+      "q": "What is the catch with cheap places?",
+      "a": "The landlord, almost always. A low rent with a landlord who ignores maintenance is not a deal. That is exactly why reviews exist on every Proximity listing: students who lived there tell you if the deposit came back and how long the broken furnace took. Read them before you tour."
+    },
+    {
+      "q": "Will these prices go up?",
+      "a": "The trend says gradually, yes. Zillow's rent index had University City (63130) up 5.0% and Skinker-DeBaliviere (63112) up 6.5% year over year as of June 2026. Source: Zillow Research. The cheaper end of the market also moves fastest, so waiting rarely helps."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}

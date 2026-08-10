@@ -19,6 +19,13 @@ const NAV_COLS = [
     ],
   },
   {
+    heading: "Housing",
+    links: [
+      { label: "WashU Off-Campus Housing", href: "/washu" },
+      { label: "Housing Guides", href: "/guides" },
+    ],
+  },
+  {
     heading: "Company",
     links: [{ label: "About Us", href: "/about" }],
     contactButton: true,

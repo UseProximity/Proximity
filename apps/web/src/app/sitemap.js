@@ -11,6 +11,8 @@
  * and /listings/[id] still renders those rows — so this filter is load-bearing.
  */
 import { guides } from "@/lib/guides";
+import { washuPages } from "@/lib/washuPages";
+import { getWashuPageListings } from "@/lib/listings/queryListings";
 
 const SITE_URL = "https://useproximity.org";
 
@@ -30,7 +32,28 @@ const staticRoutes = [
   { path: "/about", priority: 0.6, changeFrequency: "monthly" },
   { path: "/CampusHub", priority: 0.6, changeFrequency: "weekly" },
   { path: "/lease-check", priority: 0.6, changeFrequency: "monthly" },
+  { path: "/washu", priority: 0.8, changeFrequency: "weekly" },
 ];
+
+// /washu child pages enter the sitemap only when they meet the same
+// inventory threshold that flips their robots meta to index — one gate,
+// both places, so they can never disagree.
+async function fetchWashuEntries() {
+  const results = await Promise.all(
+    washuPages.map(async (page) => ({
+      page,
+      result: await getWashuPageListings(page),
+    }))
+  );
+  return results
+    .filter(({ result }) => result.meetsThreshold)
+    .map(({ page }) => ({
+      url: `${SITE_URL}/washu/${page.slug}`,
+      lastModified: new Date(page.dateModified),
+      changeFrequency: "weekly",
+      priority: 0.7,
+    }));
+}
 
 async function fetchListingEntries() {
   // Lazy import so a missing env var degrades to a static-only sitemap
@@ -77,6 +100,12 @@ export default async function sitemap() {
       priority: 0.7,
     })),
   ];
+
+  try {
+    entries.push(...(await fetchWashuEntries()));
+  } catch (error) {
+    console.error("sitemap: failed to load /washu pages", error);
+  }
 
   try {
     entries.push(...(await fetchListingEntries()));

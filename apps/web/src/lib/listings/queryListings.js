@@ -26,6 +26,81 @@ export async function getCachedListings() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// /washu landing-page slices
+// ---------------------------------------------------------------------------
+
+import { minPerPersonRent } from "@/lib/listings/rentBasis";
+import { neighborhoodOfListing } from "@/lib/geo/neighborhoods";
+import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+
+// Pages with fewer than this many qualifying listings render but are
+// noindexed AND excluded from the sitemap + related-links (one function, both
+// gates, so they can never disagree).
+export const MIN_INVENTORY = 5;
+
+function matchesPageFilter(listing, filter) {
+  if (filter.bedrooms != null) {
+    return (listing.unitTypes ?? []).some(
+      (u) => u.available !== false && Number(u.bedrooms) === filter.bedrooms
+    );
+  }
+  if (filter.maxPerPerson != null) {
+    const per = minPerPersonRent(listing);
+    return per != null && per <= filter.maxPerPerson;
+  }
+  if (filter.neighborhood) {
+    return neighborhoodOfListing(listing)?.key === filter.neighborhood;
+  }
+  return false;
+}
+
+/**
+ * Qualifying available listings for one /washu page definition, sorted
+ * reviewed-first (rating desc) then by walk time to campus. Shared by the
+ * page body, its metadata, its JSON-LD, and the sitemap.
+ */
+export async function getWashuPageListings(pageDef) {
+  const all = await getCachedListings();
+  const listings = all
+    .filter((l) => !l.unavailable && matchesPageFilter(l, pageDef.filter))
+    .sort((a, b) => {
+      if ((b.numReviews > 0) !== (a.numReviews > 0))
+        return b.numReviews > 0 ? 1 : -1;
+      if (b.rating !== a.rating) return b.rating - a.rating;
+      const wa = campusWalkMinutes(a) ?? Infinity;
+      const wb = campusWalkMinutes(b) ?? Infinity;
+      return wa - wb;
+    });
+  return {
+    listings,
+    count: listings.length,
+    meetsThreshold: listings.length >= MIN_INVENTORY,
+  };
+}
+
+// Minimum walk-minutes to campus for a built listing, using the same
+// campus-place set as the /browse distance filter (grocery + Med Campus
+// excluded via NON_CAMPUS_WALK_PLACES).
+function campusWalkMinutes(listing) {
+  const pwm = listing?.placeWalkMinutes;
+  if (!pwm || typeof pwm !== "object") return null;
+  const campusMins = WASHU_PLACES.filter(
+    (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
+  )
+    .map((p) => pwm[p.name])
+    .filter((m) => m != null);
+  return campusMins.length ? Math.min(...campusMins) : null;
+}
+
+export function walkMinutesRange(listings) {
+  const vals = listings
+    .map((l) => campusWalkMinutes(l))
+    .filter((v) => v != null);
+  if (!vals.length) return null;
+  return { min: Math.min(...vals), max: Math.max(...vals) };
+}
+
 const cachedPopular = unstable_cache(
   async () => getPopularListings(),
   ["popular-listings"],

@@ -1,4 +1,7 @@
 import { guides } from "@/lib/guides";
+import { washuPages } from "@/lib/washuPages";
+import { washuContent } from "@/content/washu";
+import { getWashuPageListings } from "@/lib/listings/queryListings";
 
 export const revalidate = 3600;
 
@@ -7,13 +10,35 @@ const SITE_URL = "https://useproximity.org";
 // /llms.txt — a plain-markdown map of the site for AI assistants and answer
 // engines (llmstxt.org convention). Guide entries are imported from the same
 // registry the site renders from, so this file can never drift out of date.
-export function GET() {
+export async function GET() {
   const guideLines = guides
     .map(
       (guide) =>
         `- [${guide.title}](${SITE_URL}/guides/${guide.slug}): ${guide.description}`
     )
     .join("\n");
+
+  // Same threshold gate as the sitemap: only pages with real inventory.
+  let washuLines = "";
+  try {
+    const results = await Promise.all(
+      washuPages.map(async (p) => ({
+        page: p,
+        result: await getWashuPageListings(p),
+      }))
+    );
+    washuLines = results
+      .filter(({ result }) => result.meetsThreshold)
+      .map(
+        ({ page }) =>
+          `- [${page.h1}](${SITE_URL}/washu/${page.slug}): ${
+            washuContent[page.slug]?.directAnswer ?? page.metaDescription
+          }`
+      )
+      .join("\n");
+  } catch {
+    washuLines = "";
+  }
 
   const body = `# Proximity
 
@@ -25,6 +50,11 @@ export function GET() {
 - [Free matchmaking](${SITE_URL}/matchmaking): Tell Proximity your budget, move-in date, and preferences and get matched to apartments that fit.
 - [Lease check](${SITE_URL}/lease-check): Upload a lease before signing and get a plain-English breakdown of what it actually says.
 - [Campus Hub](${SITE_URL}/CampusHub): On-campus dorm reviews and housing information for WashU students.
+
+## Housing by neighborhood, size, and budget
+
+- [WashU Off-Campus Housing hub](${SITE_URL}/washu): Apartments near WashU organized by neighborhood, bedroom count, and budget, with walk times and student reviews.
+${washuLines}
 
 ## Housing guides
 
