@@ -414,6 +414,16 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       setIf("contact_email", listing.contact_email);
       setIf("contact_phone", listing.contact_phone);
       if (listing.furnished != null) next.furnished = listing.furnished;
+      // Earliest dated unit availability prefills the move-in date ("now"
+      // means available immediately, which an empty date already implies).
+      const availDates = (listing.units ?? [])
+        .map((u) => u.availableFrom)
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
+        .sort();
+      if (availDates[0] && !f.move_in_date) {
+        next.move_in_date = availDates[0];
+        marked.add("move_in_date");
+      }
       const AMENITIES = new Set(f.amenities);
       (listing.amenities ?? []).forEach((a) => AMENITIES.add(a));
       next.amenities = [...AMENITIES];

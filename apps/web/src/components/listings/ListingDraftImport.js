@@ -25,6 +25,9 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
   const [url, setUrl] = useState("");
   const [phase, setPhase] = useState("idle"); // idle | loading | picker | pms | done
   const [pmsName, setPmsName] = useState("");
+  // Set when the landlord chooses "read my website instead" of the PMS sync
+  // (their plan may not include API access); carried on every later request.
+  const skipPmsRef = useRef(false);
   const [error, setError] = useState(null);
   const [choices, setChoices] = useState([]); // current level: [{name,address,url,kind}]
   const [crumbs, setCrumbs] = useState([]); // [{label, url}] drill path
@@ -78,6 +81,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
         body: JSON.stringify({
           url: fetchUrl,
           ...(targetProperty ? { targetProperty } : {}),
+          ...(skipPmsRef.current ? { skipPmsSteer: true } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -234,18 +238,34 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
           ) : phase === "pms" ? (
             <div className="mt-3 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700">
               Looks like your listings run on <span className="font-semibold">{pmsName}</span>.
-              Good news: instead of a one-time import, you can connect it once and your
-              listings will create and update themselves.
-              <Link
-                href="/dashboard/landlord?tab=integrations"
-                className="mt-2 block font-medium text-red-600 hover:underline"
-              >
-                Set up {pmsName} auto-sync →
-              </Link>
+              Instead of a one-time import, you can connect it once and your listings
+              will create and update themselves.
+              <p className="mt-1.5 text-xs text-gray-500">
+                Heads up: syncing needs a {pmsName} plan that includes API access.
+                Not sure yours does? Import from your website instead.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <Link
+                  href="/dashboard/landlord?tab=integrations"
+                  className="font-medium text-red-600 hover:underline"
+                >
+                  Set up {pmsName} auto-sync →
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    skipPmsRef.current = true;
+                    requestDraft(null);
+                  }}
+                  className="font-medium text-gray-700 hover:text-red-600 hover:underline"
+                >
+                  Read my website instead
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setPhase("idle")}
-                className="mt-1 text-xs text-gray-500 hover:text-gray-700"
+                className="mt-1.5 text-xs text-gray-500 hover:text-gray-700"
               >
                 Try a different address instead
               </button>

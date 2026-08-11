@@ -18,11 +18,15 @@ import {
   DraftFetchError,
 } from "@/lib/listingDraft/fetchSite";
 
-// Display names for PMS portals we can't sync but can at least name honestly.
+// Display names for PMS portals named in landlord-facing messages.
 const PMS_DISPLAY = {
   propertyware: "Propertyware",
   showmojo: "ShowMojo",
   rentcafe: "RentCafe",
+  appfolio: "AppFolio",
+  buildium: "Buildium",
+  rentecdirect: "Rentec Direct",
+  doorloop: "DoorLoop",
 };
 import { extractListingDraft } from "@/lib/listingDraft/extract";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
@@ -89,9 +93,13 @@ export async function POST(req) {
         : null;
 
     // PMS-hosted listing pages render empty without JS. Syncable systems have
-    // a better option than importing: the existing PMS integration.
+    // a better option than importing: the existing PMS integration. The client
+    // sends skipPmsSteer when the landlord chose "read my website instead"
+    // (e.g. their plan doesn't include API access) — then we import anyway,
+    // leaning on the render fallbacks.
+    const skipPmsSteer = body.skipPmsSteer === true;
     const pastedPortal = detectPmsPortal(pastedUrl);
-    if (pastedPortal && SYNCABLE_PMS.has(pastedPortal)) {
+    if (!skipPmsSteer && pastedPortal && SYNCABLE_PMS.has(pastedPortal)) {
       return NextResponse.json({ pms: pastedPortal });
     }
 
@@ -138,7 +146,7 @@ export async function POST(req) {
     // before falling back to the "we can't read <system>" message.
     if (
       linkedPortal &&
-      !SYNCABLE_PMS.has(linkedPortal) &&
+      (skipPmsSteer || !SYNCABLE_PMS.has(linkedPortal)) &&
       pages[0].text.length < 3000
     ) {
       const rendered = await tryRenderPage(main.finalUrl);
@@ -196,7 +204,9 @@ export async function POST(req) {
     // failing generically (syncable ones steer to the integration).
     const portalResponse = () => {
       if (!linkedPortal) return null;
-      if (SYNCABLE_PMS.has(linkedPortal)) return NextResponse.json({ pms: linkedPortal });
+      if (!skipPmsSteer && SYNCABLE_PMS.has(linkedPortal)) {
+        return NextResponse.json({ pms: linkedPortal });
+      }
       return NextResponse.json(
         {
           error: `Your listings appear to live inside ${
