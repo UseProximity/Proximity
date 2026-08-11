@@ -369,6 +369,35 @@ async function renderPageViaTavily(rawUrl) {
 
 const RENDER_FALLBACKS = [renderPageViaFirecrawl, renderPageViaJina, renderPageViaTavily];
 
+// Run the render chain directly (SSRF-checked first) and return the best
+// result, or null. Used when a page passed the thin check but its listings
+// clearly live in a JS widget (PMS portal detected, little real content).
+export async function tryRenderPage(rawUrl) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  try {
+    await assertSafeUrl(url);
+  } catch {
+    return null;
+  }
+  let best = null;
+  let bestLen = 0;
+  for (const render of RENDER_FALLBACKS) {
+    const rendered = await render(rawUrl);
+    const len = rendered ? htmlToText(rendered.html).length : 0;
+    if (len > bestLen) {
+      best = rendered;
+      bestLen = len;
+    }
+    if (bestLen >= 3000) break;
+  }
+  return best;
+}
+
 // Codes where a render service can't help (or must not be asked to try).
 const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed"]);
 

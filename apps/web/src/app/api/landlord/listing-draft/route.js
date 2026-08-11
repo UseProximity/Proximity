@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import {
   fetchPageSmart,
+  tryRenderPage,
   htmlToText,
   extractImageCandidates,
   extractLinks,
@@ -130,8 +131,26 @@ export async function POST(req) {
       }
     };
     addImages(main.html, main.finalUrl, 1);
-    const links = extractLinks(main.html, main.finalUrl);
     const linkedPortal = detectPmsPortal(main.finalUrl, main.html);
+
+    // A non-syncable PMS widget with little surrounding content means the
+    // listings only exist after JS runs — worth spending a render credit on
+    // before falling back to the "we can't read <system>" message.
+    if (
+      linkedPortal &&
+      !SYNCABLE_PMS.has(linkedPortal) &&
+      pages[0].text.length < 3000
+    ) {
+      const rendered = await tryRenderPage(main.finalUrl);
+      if (rendered && htmlToText(rendered.html).length > pages[0].text.length) {
+        main = rendered;
+        pages[0] = pageEntry(main);
+        imageMap.clear();
+        addImages(main.html, main.finalUrl, 1);
+      }
+    }
+
+    const links = extractLinks(main.html, main.finalUrl);
 
     // Secondary same-site pages, all landlord-initiated: the property they
     // picked (plus its gallery/floor-plan pages), or obvious listings links
@@ -210,7 +229,30 @@ export async function POST(req) {
       );
     }
 
-    const draft = await extractListingDraft({ pages, images, links, targetProperty });
+    let draft = await extractListingDraft({ pages, images, links, targetProperty });
+
+    // Totally empty result on an un-rendered page usually means the content
+    // only exists after JS runs — spend one render credit and try once more.
+    const draftEmpty = (d) =>
+      !d || (!d.listing && (d.properties ?? []).length === 0);
+    if (draftEmpty(draft) && !targetProperty) {
+      const rendered = await tryRenderPage(main.finalUrl);
+      if (rendered && htmlToText(rendered.html).length > pages[0].text.length) {
+        main = rendered;
+        pages[0] = pageEntry(main);
+        imageMap.clear();
+        addImages(main.html, main.finalUrl, 1);
+        const rImages = [...imageMap.entries()]
+          .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
+          .slice(0, 60);
+        draft = await extractListingDraft({
+          pages,
+          images: rImages,
+          links: extractLinks(main.html, main.finalUrl),
+          targetProperty,
+        });
+      }
+    }
     if (!draft) {
       return NextResponse.json(
         { error: "We couldn't read that page. You can still fill out the form manually." },
