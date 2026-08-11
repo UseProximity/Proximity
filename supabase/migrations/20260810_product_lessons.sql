@@ -20,3 +20,7 @@ create table if not exists public.product_lessons (
 
 comment on table public.product_lessons is
   'Product Tutor loop memory. Written only by the proximity-tutor skill; changes are never auto-shipped.';
+
+-- RLS on with no policies: the app's anon/auth clients can never touch this
+-- table; only service-role access (the tutor via MCP) bypasses RLS.
+alter table public.product_lessons enable row level security;

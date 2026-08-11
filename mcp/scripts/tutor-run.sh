@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+# Local secrets (TUTOR_SLACK_WEBHOOK_URL) live outside the repo, never in git.
+[ -f "$HOME/.proximity-tutor.env" ] && source "$HOME/.proximity-tutor.env"
+
 REPO="${TUTOR_REPO:-$HOME/Proximity Repo UI updates/Proximity}"
 LOG_DIR="$HOME/Library/Logs/proximity-tutor"
 mkdir -p "$LOG_DIR"
