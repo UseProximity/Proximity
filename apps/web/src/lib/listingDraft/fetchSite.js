@@ -289,9 +289,12 @@ export function extractJsonLd(html, cap = 6000) {
 }
 
 /*
- * Optional headless-render fallback via Firecrawl (FIRECRAWL_API_KEY). Rescues
- * JS-rendered galleries/pricing and bot-blocked sites; a no-op without the key.
- * Only called for URLs that already passed the SSRF checks in fetchPage.
+ * Optional headless-render fallbacks, tried in order for URLs that already
+ * passed the SSRF checks in fetchPage. Each is a no-op without its key and
+ * fails soft (null) on any error, including exhausted free credits, so the
+ * import degrades to whatever the plain fetch got instead of breaking.
+ * Order: Firecrawl (best anti-bot) -> Jina Reader -> Tavily Extract
+ * (renewing monthly free tier, returns text + images, wrapped as pseudo-HTML).
  */
 async function renderPageViaFirecrawl(rawUrl) {
   const key = process.env.FIRECRAWL_API_KEY;
@@ -315,6 +318,56 @@ async function renderPageViaFirecrawl(rawUrl) {
     return null;
   }
 }
+
+async function renderPageViaJina(rawUrl) {
+  const key = process.env.JINA_READER_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(`https://r.jina.ai/${rawUrl}`, {
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "X-Return-Format": "html",
+        "X-Engine": "browser",
+      },
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    if (!html) return null;
+    return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
+  } catch {
+    return null;
+  }
+}
+
+async function renderPageViaTavily(rawUrl) {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch("https://api.tavily.com/extract", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: rawUrl, include_images: true, extract_depth: "advanced" }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const r = data?.results?.[0];
+    if (!r?.raw_content) return null;
+    // Tavily returns markdown text + an image URL list, not HTML — wrap it so
+    // the downstream text/image extraction sees a normal page shape.
+    const imgs = (r.images ?? [])
+      .slice(0, 40)
+      .map((u) => `<img src="${String(u).replace(/"/g, "")}" alt="">`)
+      .join("\n");
+    const html = `<html><body><div>${r.raw_content}</div>\n${imgs}</body></html>`;
+    return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
+  } catch {
+    return null;
+  }
+}
+
+const RENDER_FALLBACKS = [renderPageViaFirecrawl, renderPageViaJina, renderPageViaTavily];
 
 // Codes where a render service can't help (or must not be asked to try).
 const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed"]);
@@ -352,14 +405,16 @@ export async function fetchPageSmart(rawUrl) {
     fetchErr = err;
   }
 
-  const thin = page ? htmlToText(page.html).length < 800 : true;
-  if (thin) {
-    const rendered = await renderPageViaFirecrawl(rawUrl);
-    if (
-      rendered &&
-      htmlToText(rendered.html).length > (page ? htmlToText(page.html).length : 0)
-    ) {
-      page = rendered;
+  let bestLen = page ? htmlToText(page.html).length : 0;
+  if (bestLen < 800) {
+    for (const render of RENDER_FALLBACKS) {
+      const rendered = await render(rawUrl);
+      const len = rendered ? htmlToText(rendered.html).length : 0;
+      if (len > bestLen) {
+        page = rendered;
+        bestLen = len;
+      }
+      if (bestLen >= 800) break; // good enough — stop spending credits
     }
   }
   if (!page) throw fetchErr ?? new DraftFetchError("unreachable");
