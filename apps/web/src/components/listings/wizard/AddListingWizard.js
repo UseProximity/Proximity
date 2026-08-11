@@ -58,6 +58,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [visited, setVisited] = useState(() => new Set());
+  // "now" | "date" — the required one-tap availability ask on the basics step.
+  const [availabilityMode, setAvailabilityMode] = useState("now");
 
   // Photos staged in the browser; uploaded to R2 after the listing is created.
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -94,6 +96,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           (saved.units ?? []).some((u) => u.bedrooms !== "" || u.rent !== ""));
       if (!hasContent) return;
       setForm({ ...blankForm(user), ...saved.form });
+      if (saved.form?.move_in_date) setAvailabilityMode("date");
       setUnits(saved.units?.length ? saved.units : [emptyUnit()]);
       setCustomAmenities(saved.customAmenities ?? []);
       setCoords(saved.coords ?? { lat: null, lng: null });
@@ -150,6 +153,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setImportQueue([]);
     prefetchRef.current = null;
     importBatch.current = { done: 0, total: 0 };
+    setAvailabilityMode("now");
     setResumed(false);
     setError(null);
     setVisited(new Set());
@@ -420,7 +424,10 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       .map((u) => u.availableFrom)
       .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
       .sort();
-    if (availDates[0]) marked.add("move_in_date");
+    if (availDates[0]) {
+      marked.add("move_in_date");
+      setAvailabilityMode("date");
+    }
 
     setForm((f) => {
       const next = { ...f };
@@ -524,6 +531,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   const validateStep = (id) => {
     if (id === "address" && !form.address.trim()) return "Enter the property address to continue.";
+    if (id === "basics" && availabilityMode === "date" && !form.move_in_date)
+      return "Pick the date it becomes available, or tap Available now.";
     if (id === "units") {
       if (units.length === 0) return "Add at least one unit.";
       if (units.some((u) => u.bedrooms === "" || u.bathrooms === ""))
@@ -599,6 +608,10 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           ...form,
           unitTypes: unitPayload,
           customAmenities,
+          // /api/addListing reads camelCase moveInDate; the snake_case
+          // move_in_date in ...form was silently dropped (long-standing
+          // create-path bug — edit always saved it).
+          moveInDate: form.move_in_date || null,
           contactEmail: form.contact_email || null,
           contactPhone: form.contact_phone || null,
           contactName: form.contact_name || null,
@@ -714,6 +727,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setCoords({ lat: null, lng: null });
     setImportedFields(new Set());
     setVisited(new Set());
+    setAvailabilityMode("now");
     while (queue.length) {
       const target = queue[0];
       queue = queue.slice(1);
@@ -761,6 +775,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     removeStagedImage,
     coords,
     setCoords,
+    availabilityMode,
+    setAvailabilityMode,
     streetView,
     streetViewDeleted,
     setStreetViewDeleted,

@@ -100,7 +100,9 @@ export default function StepReview({ w }) {
           }${form.furnished ? " · Furnished" : ""}${
             form.sublease_friendly ? " · Sublease friendly" : ""
           }${form.twenty_one_plus ? " · 21+" : ""}${
-            form.move_in_date ? ` · Move-in ${form.move_in_date}` : ""
+            form.move_in_date
+              ? ` · Available from ${form.move_in_date}`
+              : " · Available now"
           }`}
           onChange={() => w.goTo("basics")}
         />

@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-09T16:06:35.560Z",
-  "count": 46,
+  "_generated": "2026-08-11T22:12:10.903Z",
+  "count": 48,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -69,6 +69,10 @@
     },
     {
       "name": "IMPORT_SECRET",
+      "public": false
+    },
+    {
+      "name": "JINA_READER_KEY",
       "public": false
     },
     {
@@ -177,6 +181,10 @@
     },
     {
       "name": "RESEND_API_KEY",
+      "public": false
+    },
+    {
+      "name": "TAVILY_API_KEY",
       "public": false
     },
     {
