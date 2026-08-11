@@ -397,33 +397,38 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   const applyDraft = (listing, meta) => {
     const { sourceUrl, pastedUrl, queue = [], isQueueAdvance = false } = meta ?? {};
+    // Compute the imported-field marks BEFORE any setState: React may run
+    // state-updater callbacks later (it batches during queue advances), so
+    // side effects inside the setForm updater are lost for the decisions
+    // below (which step to land on, address-confirm priority).
     const marked = new Set();
+    const importable = {
+      address: listing.address,
+      title: listing.title,
+      description: listing.description,
+      home_type: listing.home_type,
+      contact_name: listing.contact_name,
+      contact_email: listing.contact_email,
+      contact_phone: listing.contact_phone,
+    };
+    for (const [key, val] of Object.entries(importable)) {
+      if (val != null && val !== "") marked.add(key);
+    }
+    // Earliest dated unit availability prefills the move-in date ("now"
+    // means available immediately, which an empty date already implies).
+    const availDates = (listing.units ?? [])
+      .map((u) => u.availableFrom)
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
+      .sort();
+    if (availDates[0]) marked.add("move_in_date");
+
     setForm((f) => {
       const next = { ...f };
-      const setIf = (key, val) => {
-        if (val != null && val !== "") {
-          next[key] = val;
-          marked.add(key);
-        }
-      };
-      setIf("address", listing.address);
-      setIf("title", listing.title);
-      setIf("description", listing.description);
-      setIf("home_type", listing.home_type);
-      setIf("contact_name", listing.contact_name);
-      setIf("contact_email", listing.contact_email);
-      setIf("contact_phone", listing.contact_phone);
-      if (listing.furnished != null) next.furnished = listing.furnished;
-      // Earliest dated unit availability prefills the move-in date ("now"
-      // means available immediately, which an empty date already implies).
-      const availDates = (listing.units ?? [])
-        .map((u) => u.availableFrom)
-        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
-        .sort();
-      if (availDates[0] && !f.move_in_date) {
-        next.move_in_date = availDates[0];
-        marked.add("move_in_date");
+      for (const [key, val] of Object.entries(importable)) {
+        if (val != null && val !== "") next[key] = val;
       }
+      if (listing.furnished != null) next.furnished = listing.furnished;
+      if (availDates[0] && !f.move_in_date) next.move_in_date = availDates[0];
       const AMENITIES = new Set(f.amenities);
       (listing.amenities ?? []).forEach((a) => AMENITIES.add(a));
       next.amenities = [...AMENITIES];
@@ -807,9 +812,14 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     <div className="w-full max-w-2xl mx-auto px-4 py-8">
       {/* Queue-advance interstitial */}
       {importInfo?.loadingNext ? (
-        <div className="flex items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white p-10 text-sm text-gray-700 shadow-sm">
-          <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-red-600" />
-          Loading the next property: {importInfo.loadingNext}…
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white p-10 shadow-sm">
+          <div className="flex items-center gap-3 text-sm text-gray-700">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-red-600" />
+            Loading the next property: {importInfo.loadingNext}…
+          </div>
+          <p className="text-xs text-gray-400">
+            Reading its page now, usually under a minute.
+          </p>
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">

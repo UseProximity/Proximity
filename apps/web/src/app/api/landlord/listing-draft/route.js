@@ -12,6 +12,7 @@ import {
   extractImageCandidates,
   extractLinks,
   extractJsonLd,
+  extractSiteBrand,
   detectPmsPortal,
   SYNCABLE_PMS,
   sameSite,
@@ -239,7 +240,8 @@ export async function POST(req) {
       );
     }
 
-    let draft = await extractListingDraft({ pages, images, links, targetProperty });
+    const brandName = extractSiteBrand(main.html);
+    let draft = await extractListingDraft({ pages, images, links, targetProperty, brandName });
 
     // Totally empty result on an un-rendered page usually means the content
     // only exists after JS runs — spend one render credit and try once more.
@@ -260,6 +262,7 @@ export async function POST(req) {
           images: rImages,
           links: extractLinks(main.html, main.finalUrl),
           targetProperty,
+          brandName: extractSiteBrand(main.html) ?? brandName,
         });
       }
     }

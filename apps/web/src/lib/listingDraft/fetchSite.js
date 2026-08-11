@@ -451,6 +451,26 @@ export async function fetchPageSmart(rawUrl) {
   return page;
 }
 
+// The site's brand/company name (og:site_name, else the tail of <title>), so
+// extraction can be told BY NAME never to mention the management company —
+// a named ban sticks far better than a generic one, and the sanitizer scrubs
+// any survivors. Null when undetectable; imperfect guesses are harmless.
+export function extractSiteBrand(html) {
+  const og =
+    html.match(/property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i)?.[1] ??
+    html.match(/content=["']([^"']+)["'][^>]*property=["']og:site_name["']/i)?.[1];
+  if (og) return decodeEntities(og).trim().slice(0, 60) || null;
+  const t = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+  if (t) {
+    const parts = decodeEntities(t)
+      .split(/\s*[|]\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length > 1) return parts[parts.length - 1].slice(0, 60) || null;
+  }
+  return null;
+}
+
 // Registrable-domain match (naive last-two-labels compare — fine for the
 // .com/.org/.net landlord sites this feature targets).
 export function sameSite(a, b) {

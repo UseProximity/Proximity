@@ -93,7 +93,7 @@ Rules, in order of importance:
 6. AMENITIES: map what the site states onto the allowed enum values; anything real that doesn't fit (e.g. "EV charging", "rooftop pool" beyond "pool"/"rooftop") goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
 7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
 7b. FLOOR PLANS: a floor-plan diagram that clearly belongs to one specific unit type goes in that unit's floorPlanImageUrl (exact candidate URL) and NOT in imageUrls. Floor plans you can't match to a specific unit go at the END of imageUrls — students want them either way. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
-8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. title: the property's display name as the site presents it (often the street address or building name).
+8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. NEVER name the landlord, management company, or their website/brand in the description (students contact through Proximity; e.g. write "the landlord" instead of "Mosaic Living"). title: the property's name as students would know the building (often the street address); never append the management company's brand to it.
 9. contact_*: only contact details shown on the pages for THIS landlord/property (leasing office email/phone). Never fabricate.
 10. sourceNotes: short plain-English notes for the landlord about anything ambiguous or worth double-checking ("Rent shown as $800/person for the 4-bed — enter the whole-unit price", "Availability dates weren't listed"). confidence: 0-1 overall.`;
 
@@ -139,7 +139,7 @@ const PAGE_TEXT_CAP = 30000; // chars per page — well under the token budget
  * links: [{ url, text }]; targetProperty: { name, address?, url? } | null.
  * Returns the parsed draft or null when the model's output failed to parse.
  */
-export async function extractListingDraft({ pages, images, links, targetProperty }) {
+export async function extractListingDraft({ pages, images, links, targetProperty, brandName }) {
   const client = getClient();
 
   const sections = pages.map(
@@ -169,6 +169,11 @@ export async function extractListingDraft({ pages, images, links, targetProperty
         ". Ignore other properties on the site except for the properties list."
     );
   }
+  if (brandName) {
+    sections.push(
+      `MANAGEMENT COMPANY: this site belongs to "${brandName}". Never mention this name (or close variants of it) in the description or title, even when the site's own text does; write "the landlord" instead.`
+    );
+  }
 
   const response = await client.messages.parse({
     model: DRAFT_MODEL,
@@ -184,6 +189,26 @@ export async function extractListingDraft({ pages, images, links, targetProperty
   // as "couldn't read it", never as an empty success.
   if (!response.parsed_output) return null;
   const draft = stripEmDashes(response.parsed_output);
+
+  // Code-level backstop for the company-name ban: sites often open with
+  // "<Brand>'s newest property" and the copy-faithfully instinct sometimes
+  // wins in the model — scrub literal survivors.
+  if (draft.listing && brandName && brandName.length > 3) {
+    const brandRe = new RegExp(
+      brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"),
+      "gi"
+    );
+    if (draft.listing.description) {
+      draft.listing.description = draft.listing.description
+        .replace(brandRe, "the landlord")
+        .replace(/^the landlord/, "The landlord");
+    }
+    if (draft.listing.title) {
+      draft.listing.title =
+        draft.listing.title.replace(brandRe, "").replace(/[\s|,:-]+$/, "").trim() ||
+        draft.listing.title;
+    }
+  }
 
   if (draft.listing) {
     // Photos must be candidate URLs we actually offered — drop anything else.
