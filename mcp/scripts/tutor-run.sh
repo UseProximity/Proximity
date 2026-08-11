@@ -20,6 +20,17 @@ LOG="$LOG_DIR/run-$(date +%Y%m%d-%H%M%S).log"
 
 cd "$REPO"
 
+# launchd's PATH is minimal; find claude wherever it's installed.
+export PATH="$HOME/.claude/local:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+command -v claude >/dev/null || { echo "claude binary not found" >> "$LOG"; exit 1; }
+
+# TUTOR_SMOKE=1 verifies the launchd plumbing (env sourcing, repo, logging)
+# without invoking a real headless run.
+if [ "${TUTOR_SMOKE:-0}" = "1" ]; then
+  echo "smoke ok: repo=$REPO webhook_set=$([ -n "${TUTOR_SLACK_WEBHOOK_URL:-}" ] && echo yes || echo no) claude=$(command -v claude)" >> "$LOG"
+  exit 0
+fi
+
 # --permission-mode acceptEdits: file edits and the pre-approved MCP/Bash tools
 # run unattended; anything outside the allowlist still fails closed rather than
 # waiting forever on a prompt nobody will answer.
