@@ -5,6 +5,14 @@
       "schedule": "0 15 * * *"
     },
     {
+      "path": "/api/cron/pms-sync",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/availability-check",
+      "schedule": "0 16 * * *"
+    },
+    {
       "path": "/api/cron/auto-unavailable",
       "schedule": "0 * * * *"
     }

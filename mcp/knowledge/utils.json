@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-08T21:42:27.874Z",
-  "count": 34,
+  "_generated": "2026-08-12T20:54:13.492Z",
+  "count": 48,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -14,6 +14,10 @@
     {
       "file": "src/lib/autoUnavailable.js",
       "description": "Auto-unavailable: when a landlord reports a listing as leased through the"
+    },
+    {
+      "file": "src/lib/availabilityCheck.js",
+      "description": "One-click \"still available?\" landlord email."
     },
     {
       "file": "src/lib/contactTracking.js",
@@ -90,6 +94,58 @@
     {
       "file": "src/lib/outreach.js",
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
+    },
+    {
+      "file": "src/lib/pms/appfolio.js",
+      "description": "AppFolio connector (via Nango Proxy — \"private-api-basic\" template, key"
+    },
+    {
+      "file": "src/lib/pms/buildium.js",
+      "description": "Buildium connector (via Nango Proxy — provider config key \"buildium\")."
+    },
+    {
+      "file": "src/lib/pms/doorloop.js",
+      "description": "DoorLoop connector (via Nango Proxy — custom API config, key \"doorloop\")."
+    },
+    {
+      "file": "src/lib/pms/holdToken.js",
+      "description": "Signed release links for PMS swing-guard holds. Same trust model as the"
+    },
+    {
+      "file": "src/lib/pms/httpRetry.js",
+      "description": "fetch with timeout + backoff for PMS/Nango calls."
+    },
+    {
+      "file": "src/lib/pms/index.js",
+      "description": "PMS connector registry. Every connector implements the contract in types.js:"
+    },
+    {
+      "file": "src/lib/pms/ingest.js",
+      "description": "Create a Proximity listing from a normalized PMS property (shared by the"
+    },
+    {
+      "file": "src/lib/pms/mapping.js",
+      "description": "Mapping between PMS physical units and Proximity's listing model."
+    },
+    {
+      "file": "src/lib/pms/mock.js",
+      "description": "Demo mode — a synthetic PMS account for testing the entire flow (connect →"
+    },
+    {
+      "file": "src/lib/pms/nango.js",
+      "description": "Nango hosted-auth helper."
+    },
+    {
+      "file": "src/lib/pms/rentec.js",
+      "description": "Rentec Direct connector (via Nango Proxy — provider config key \"rentec\")."
+    },
+    {
+      "file": "src/lib/pms/sync.js",
+      "description": "The PMS sync engine — one connection per call, PMS as source of truth"
+    },
+    {
+      "file": "src/lib/pms/types.js",
+      "description": "PMS connector contract + normalized shapes."
     },
     {
       "file": "src/lib/r2.js",

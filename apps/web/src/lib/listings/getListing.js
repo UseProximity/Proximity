@@ -178,6 +178,10 @@ function buildListing(row, owner = null, reviews = []) {
     maxBathrooms: row.max_bathrooms != null ? Number(row.max_bathrooms) : null,
     minArea: row.min_area != null ? Number(row.min_area) : null,
     maxArea: row.max_area != null ? Number(row.max_area) : null,
+    // "Verified live" badge: the listing's data flows straight from the landlord's
+    // property management system (pms_connection_id marks the connection).
+    verifiedLive: !!row.pms_connection_id,
+    verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
@@ -209,6 +213,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
       city, state, zipcode, created_at,
+      pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),

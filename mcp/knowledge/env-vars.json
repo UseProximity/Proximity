@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-08T18:50:38.603Z",
-  "count": 35,
+  "_generated": "2026-08-12T20:54:13.544Z",
+  "count": 45,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -80,6 +80,30 @@
       "public": false
     },
     {
+      "name": "NANGO_APPFOLIO_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_BUILDIUM_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_DOORLOOP_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_HOST",
+      "public": false
+    },
+    {
+      "name": "NANGO_RENTEC_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_SECRET_KEY",
+      "public": false
+    },
+    {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
       "public": true
     },
@@ -93,6 +117,22 @@
     },
     {
       "name": "OUTREACH_TEST_RECIPIENT",
+      "public": false
+    },
+    {
+      "name": "PMS_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "PMS_LEASING_HORIZON_MONTHS",
+      "public": false
+    },
+    {
+      "name": "PMS_MOCK_LEASED",
+      "public": false
+    },
+    {
+      "name": "PMS_WATCH_DAYS",
       "public": false
     },
     {

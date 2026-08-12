@@ -31,6 +31,7 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+import { formatAvailableFrom } from "@/utils/listingFormatters";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 
@@ -1464,13 +1465,26 @@ export default function ListingModalInfo({
                   No photos available
                 </div>
               )}
-              {/* Tag listings whose cover photo was auto-pulled from Google Street View */}
-              {coverImage && listing.imageFromStreetView && (
-                <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                  Street View
+              {/* Cover badges: live PMS-verified availability + Street View attribution */}
+              {(listing.verifiedLive || (coverImage && listing.imageFromStreetView)) && (
+                <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-1.5">
+                  {listing.verifiedLive && !listing.unavailable && (
+                    <div className="flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+                      <span className="relative flex h-2 w-2" aria-hidden="true">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                      </span>
+                      <span className="uppercase tracking-wide">Live availability</span>
+                    </div>
+                  )}
+                  {coverImage && listing.imageFromStreetView && (
+                    <div className="flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      Street View
+                    </div>
+                  )}
                 </div>
               )}
               {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
@@ -1553,6 +1567,29 @@ export default function ListingModalInfo({
                 This listing is currently unavailable
               </div>
             )}
+            {/* PMS-synced listings: availability comes straight from the landlord's
+                management system, refreshed daily — Proximity's freshness guarantee. */}
+            {listing.verifiedLive && (
+              <div className="bg-white border border-gray-200 border-l-4 border-l-red-600 rounded-xl px-6 py-3 mb-4 flex items-center gap-2.5 text-sm shadow-sm">
+                <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
+                </span>
+                <span className="text-gray-900">
+                  Availability comes straight from the landlord&apos;s own system
+                  {listing.verifiedAt && (
+                    <>
+                      {", last synced "}
+                      {new Date(listing.verifiedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </>
+                  )}
+                  . <span className="text-gray-500">What you see is what&apos;s actually open.</span>
+                </span>
+              </div>
+            )}
             <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
               <div>
                 <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">
@@ -1560,6 +1597,12 @@ export default function ListingModalInfo({
                 </h1>
                 {cityStateZip && (
                   <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
+                )}
+                {/* Pre-leased until a known date: show the move-in instead of hiding */}
+                {!listing.unavailable && formatAvailableFrom(listing.availableFrom) && (
+                  <span className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2.5 py-1">
+                    {formatAvailableFrom(listing.availableFrom)}
+                  </span>
                 )}
               </div>
               <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
