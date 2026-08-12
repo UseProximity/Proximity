@@ -222,11 +222,11 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900">
-            Have a website? Paste it and we&apos;ll fill this out.
+            Paste your website. We&apos;ll build the listing from it.
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
-            We&apos;ll read your property site and pre-fill the form, photos included. You
-            review everything before it goes live.
+            Photos, units, rents, amenities: everything your site already shows,
+            filled in within a minute. Nothing goes live until you hit publish.
           </p>
 
           {phase === "loading" ? (
@@ -425,7 +425,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
                 disabled={disabled}
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
               >
-                <Sparkles className="h-4 w-4" /> Fill it out for me
+                <Sparkles className="h-4 w-4" /> Build my listing
               </button>
             </div>
           )}

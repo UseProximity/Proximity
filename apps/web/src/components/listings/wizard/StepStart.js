@@ -50,12 +50,16 @@ export default function StepStart({ w, onBegin }) {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
               <Globe className="h-5 w-5 text-red-600" />
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900">
-                I have a website. Fill it out for me
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                Import from your website
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  Fastest
+                </span>
               </p>
               <p className="text-xs text-gray-500">
-                Paste your property site. We pre-fill the details and photos.
+                Your photos, units, and details, pulled in automatically. Ready
+                to review in about a minute.
               </p>
             </div>
           </button>
