@@ -22,5 +22,15 @@
       "a": "The landlord's reputation above everything: reviews on the listing, how fast maintenance actually happens, and whether the deposit came back for previous tenants. Then the boring stuff that bites groups: subleasing rules for summer, who handles lawn or snow on houses, and exactly which utilities you carry."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

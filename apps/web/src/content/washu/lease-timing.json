@@ -26,5 +26,11 @@
       "a": "October of sophomore year. That sounds absurd and it is, but the November signing wave does not care. Have your group and budget settled by Halloween and you get first pick instead of February leftovers."
     }
   ],
-  "benchmarkNote": "Timeline reflects patterns WashU students consistently report in community discussions; individual landlords and years vary. Trend figures cite Zillow ZORI ZIP-level data as of June 2026. Source: Zillow Research."
+  "benchmarkNote": "Timeline reflects patterns WashU students consistently report in community discussions; individual landlords and years vary. Trend figures cite Zillow ZORI ZIP-level data as of June 2026. Source: Zillow Research.",
+  "sources": [
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

@@ -26,5 +26,15 @@
       "a": "For most students, no. Thousands of WashU students live off campus every year, and the practical habits above reduce a lot of the everyday risk. If safety is a top concern for you or your family, prioritize buildings with controlled entry and parking, blocks close to shuttle stops, and places where reviews from previous student tenants exist so you are not guessing."
     }
   ],
-  "benchmarkNote": "This page offers practical guidance, not guarantees or rankings. For crime data, consult official sources: the University City and St. Louis police departments and WashU's published annual security reports. Proximity does not score or rank neighborhoods by safety."
+  "benchmarkNote": "This page offers practical guidance, not guarantees or rankings. For crime data, consult official sources: the University City and St. Louis police departments and WashU's published annual security reports. Proximity does not score or rank neighborhoods by safety.",
+  "sources": [
+    {
+      "label": "WashU Police Department",
+      "url": "https://police.washu.edu"
+    },
+    {
+      "label": "WashU Residential Life",
+      "url": "https://reslife.washu.edu"
+    }
+  ]
 }

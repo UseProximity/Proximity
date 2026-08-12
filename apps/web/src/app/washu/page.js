@@ -170,27 +170,49 @@ export default async function WashuHubPage() {
           </section>
         ) : null}
 
-        <section className="rounded-2xl bg-gray-900 px-8 py-10 text-center mb-10">
-          <h2 className="text-3xl font-black text-white mb-3">
-            Skip the search. Get matched.
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-red-600 to-rose-700 px-8 py-12 text-center mb-10">
+          <div className="absolute -top-16 -right-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+          <h2 className="relative text-3xl md:text-4xl font-black text-white mb-3">
+            Your perfect WashU housing, found for you.
           </h2>
-          <p className="text-gray-300 mb-6 max-w-xl mx-auto">
-            Tell us your budget, move-in date, and vibe. Free matchmaking built
-            by WashU students who know these blocks.
+          <p className="relative text-red-50 mb-7 max-w-xl mx-auto leading-relaxed">
+            Share your budget and preferences, answer a few quick questions,
+            and matchmaking pairs you with places that actually fit. Free, no
+            spam, no broker fees.
           </p>
           <Link
             href="/matchmaking"
-            className="inline-flex items-center justify-center rounded-xl bg-red-600 px-6 py-3 font-semibold text-white hover:bg-red-700 transition"
+            className="relative inline-flex items-center justify-center rounded-xl bg-white px-7 py-3.5 font-bold text-red-600 hover:bg-red-50 transition shadow-lg"
           >
             Get matched free
           </Link>
         </section>
 
-        {content.benchmarkNote ? (
-          <p className="text-xs text-gray-400 max-w-3xl">
-            {content.benchmarkNote}
-          </p>
-        ) : null}
+        {(content.sources?.length || content.benchmarkNote) && (
+          <div className="max-w-3xl border-t border-gray-100 pt-5">
+            {content.sources?.length ? (
+              <p className="text-sm text-gray-600 mb-2">
+                <span className="font-semibold">Sources: </span>
+                {content.sources.map((s, i) => (
+                  <span key={s.url}>
+                    {i > 0 ? " · " : ""}
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-red-600 underline decoration-red-200 underline-offset-2 hover:decoration-red-600"
+                    >
+                      {s.label}
+                    </a>
+                  </span>
+                ))}
+              </p>
+            ) : null}
+            {content.benchmarkNote ? (
+              <p className="text-xs text-gray-400">{content.benchmarkNote}</p>
+            ) : null}
+          </div>
+        )}
       </div>
     </main>
   );

@@ -26,5 +26,11 @@
       "a": "The Lofts on the Loop are university connected housing that functions like apartment living with a shuttle to campus. Students searching for the Lofts, Greenway, or similar buildings should verify current management and availability on the official sites, since the university's building lists and management assignments change."
     }
   ],
-  "benchmarkNote": "Descriptions of company structure and signing timing reflect public information and patterns WashU students consistently report; building assignments change, so confirm current details on quadranglehousing.com and rentparallel.com. Proximity is independent and not affiliated with Washington University."
+  "benchmarkNote": "Descriptions of company structure and signing timing reflect public information and patterns WashU students consistently report; building assignments change, so confirm current details on the companies' official leasing sites and WashU's off-campus housing site. Proximity is independent and not affiliated with Washington University.",
+  "sources": [
+    {
+      "label": "WashU Residential Life",
+      "url": "https://reslife.washu.edu"
+    }
+  ]
 }

@@ -22,5 +22,15 @@
       "a": "Yes. Zillow's rent index for ZIP 63130 was up 5.0% year over year as of June 2026, ahead of the St. Louis metro at about 4.0%. Source: Zillow Research."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63130, whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63130, whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

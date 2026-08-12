@@ -22,5 +22,15 @@
       "a": "Fall for next August. Students report private landlords begin signing around November, and mid-range places in walkable blocks are the most competitive segment of the market. WashU-affiliated companies open signing later in spring, so you get two waves of inventory."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

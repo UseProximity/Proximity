@@ -22,5 +22,15 @@
       "a": "It can be, but be honest about the commute to the Danforth campus and about the social distance from where most undergrads live. Students who choose it usually have a med campus connection or specifically want out of the undergrad bubble."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63108, whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63108, whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

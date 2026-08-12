@@ -26,5 +26,15 @@
       "a": "Gradually. Zillow's rent index as of June 2026 shows University City (63130) up 5.0% year over year and Skinker-DeBaliviere (63112) up 6.5%, against about 4.0% for the St. Louis metro. Source: Zillow Research. Signing earlier in the fall cycle generally beats waiting for a deal that is not coming."
     }
   ],
-  "benchmarkNote": "All figures on this page cite HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "All figures on this page cite HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }
