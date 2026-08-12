@@ -705,10 +705,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           }
         }
       }
-      if (uploadError && importQueue.length === 0) {
-        setError(uploadError);
-        return;
-      }
+      // The listing exists either way — staying on the form would invite a
+      // duplicate publish. Toast the failure and complete the flow; the
+      // dashboard is where photos get re-added.
       if (uploadError) toast.error(uploadError, { duration: 8000 });
 
       // Contact info different from the profile? Hand the diff to onSuccess.
