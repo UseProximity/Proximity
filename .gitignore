@@ -90,16 +90,6 @@ mcp/knowledge/agent-sessions.json
 # Allow mcp/scripts/ even though root-level `scripts` is ignored
 !mcp/scripts/
 !mcp/scripts/**
-# SEO engine: validator + benchmark allowlist are shared tooling; weekly
-# review sheets stay machine-local. The seo-draft skill and content-draft
-# docs are part of the content workflow and travel with the repo.
-!scripts/seo-engine/
-!scripts/seo-engine/**
-scripts/seo-engine/reports/*.md
-!.claude/skills/
-!.claude/skills/**
-!docs/content-drafts/
-!docs/content-drafts/**
 
 # .mcp.json is committed so the team shares MCP server setup. It contains no
 # secrets — the Supabase access token is env-interpolated (${SUPABASE_ACCESS_TOKEN}).
@@ -108,3 +98,17 @@ scripts/seo-engine/reports/*.md
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
+
+# ── SEO engine (must stay at end of file: re-includes must follow excludes) ──
+# Validator + benchmark allowlist are shared tooling; the seo-draft skill and
+# content-draft docs travel with the repo. Weekly review sheets stay local.
+!scripts/
+scripts/*
+!scripts/seo-engine/
+scripts/seo-engine/reports/*.md
+!.claude/
+.claude/*
+!.claude/skills/
+!docs/
+docs/*
+!docs/content-drafts/

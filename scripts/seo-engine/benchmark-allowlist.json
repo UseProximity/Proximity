@@ -1,0 +1,12 @@
+{
+  "_comment": "Every dollar figure and percentage allowed to appear in /washu copy. Sources: HUD FY2026 SAFMR (huduser.gov) and Zillow ZORI (June 2026). Update this file, with its source, when benchmarks refresh; the validator rejects any draft figure not listed here and not already present in the previous version of the same file.",
+  "hud_fy2026_safmr": [
+    "$890", "$930", "$1,140", "$1,470", "$1,700",
+    "$1,070", "$1,110", "$1,360", "$1,750", "$2,020",
+    "$1,360", "$1,410", "$1,730", "$2,230", "$2,570",
+    "$1,420", "$1,480", "$1,810", "$2,330", "$2,690",
+    "$1,000", "$1,050", "$1,280", "$1,650", "$1,900"
+  ],
+  "zori_june_2026": ["5.0%", "6.5%", "4.0%"],
+  "page_thresholds": ["$1,000", "$1,500", "$800", "$950", "$1,900", "$2,800", "$1,400", "$1,200"]
+}
