@@ -11,7 +11,11 @@
 set -euo pipefail
 
 # Local secrets (TUTOR_SLACK_WEBHOOK_URL) live outside the repo, never in git.
+# `set -a` exports what the file defines, so the values reach the claude child
+# process even if the env file uses bare `NAME=value` assignments.
+set -a
 [ -f "$HOME/.proximity-tutor.env" ] && source "$HOME/.proximity-tutor.env"
+set +a
 
 REPO="${TUTOR_REPO:-$HOME/Proximity Repo UI updates/Proximity}"
 LOG_DIR="$HOME/Library/Logs/proximity-tutor"
@@ -34,8 +38,25 @@ fi
 # --permission-mode acceptEdits: file edits and the pre-approved MCP/Bash tools
 # run unattended; anything outside the allowlist still fails closed rather than
 # waiting forever on a prompt nobody will answer.
+#
+# The skill's "never ship anything" rule is an instruction, and instructions are
+# advisory. These deny rules are enforced by the harness instead, so an
+# unattended run cannot publish code or touch the production database even if it
+# decides it should. Keep this list in sync with SKILL.md's hard rules.
+DENY=(
+  "Bash(git push:*)"
+  "Bash(git merge:*)"
+  "Bash(gh:*)"
+  "Bash(vercel:*)"
+  "mcp__supabase-prod__execute_sql"
+  "mcp__supabase-prod__apply_migration"
+  "mcp__supabase-prod__deploy_edge_function"
+  "mcp__supabase-prod__merge_branch"
+)
+
 claude -p "Run the proximity-tutor skill (scheduled run). If the latest run's findings are still unanswered, send the nudge and stop." \
   --permission-mode acceptEdits \
+  --disallowed-tools "${DENY[@]}" \
   >> "$LOG" 2>&1
 
 echo "tutor run finished $(date)" >> "$LOG"

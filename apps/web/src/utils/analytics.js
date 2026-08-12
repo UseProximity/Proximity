@@ -1,6 +1,6 @@
 import { track } from "@vercel/analytics";
 import { sendGAEvent } from "@next/third-parties/google";
-import { phInit, phCapture, phSpaPageview } from "@/lib/posthog";
+import { phInit, phCapture } from "@/lib/posthog";
 
 export function trackEvent(eventName, props = {}) {
   try { track(eventName, props); } catch {}
@@ -15,11 +15,10 @@ const PREV_PATH_KEY = "prx_prev_path";
 const CURR_PATH_KEY = "prx_curr_path";
 
 export function recordPageVisit(pathname) {
-  phInit(); // no-op without NEXT_PUBLIC_POSTHOG_KEY; init itself captures the initial $pageview
+  phInit(); // no-op without NEXT_PUBLIC_POSTHOG_KEY; PostHog captures pageviews itself
   try {
     const curr = sessionStorage.getItem(CURR_PATH_KEY);
     if (curr === pathname) return;
-    if (curr) phSpaPageview(); // a stored different path means this is a client-side navigation
     if (curr) sessionStorage.setItem(PREV_PATH_KEY, curr);
     sessionStorage.setItem(CURR_PATH_KEY, pathname);
   } catch {}

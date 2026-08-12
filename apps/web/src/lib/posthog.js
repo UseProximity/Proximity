@@ -1,11 +1,11 @@
-import posthog from "posthog-js";
-
 /* PostHog is entirely key-gated: without NEXT_PUBLIC_POSTHOG_KEY every export
- * is a no-op (no network calls), so this can ship before the account exists.
- * Init is lazy — the first analytics call (Header's route tracker on mount)
- * boots the client, which also fires the initial $pageview. */
+ * is a no-op, so this can ship before the account exists. The SDK is loaded
+ * with a dynamic import so its ~76 KB stays out of the shared bundle until the
+ * key is set — until then the browser never downloads it at all.
+ * Pageviews (initial load AND client-side navigations) are handled by PostHog's
+ * own history-API tracking; we never capture $pageview by hand. */
 
-let initialized = false;
+let clientPromise = null;
 
 // One PostHog project serves all environments; hostname tells them apart so
 // staging traffic never pollutes production funnels.
@@ -19,17 +19,26 @@ function environmentFromHost() {
 function client() {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   if (!key || typeof window === "undefined") return null;
-  if (!initialized) {
-    posthog.init(key, {
-      api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
-      capture_pageview: true,   // full page loads; SPA navigations are captured in recordPageVisit
-      capture_pageleave: true,
-      session_recording: { maskAllInputs: true },
-    });
-    posthog.register({ environment: environmentFromHost() });
-    initialized = true;
+  if (!clientPromise) {
+    clientPromise = import("posthog-js")
+      .then(({ default: posthog }) => {
+        posthog.init(key, {
+          api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+          capture_pageview: "history_change", // initial load + SPA navigations, no double-counting
+          capture_pageleave: true,
+          // Every event we care about is an explicit trackEvent() call; autocapture
+          // would additionally record the text of whatever the student clicked.
+          autocapture: false,
+          // Replay must not carry student PII: mask form inputs and all rendered
+          // text (names, emails, chat messages) — shapes and layout still record.
+          session_recording: { maskAllInputs: true, maskTextSelector: "*" },
+        });
+        posthog.register({ environment: environmentFromHost() });
+        return posthog;
+      })
+      .catch(() => null);
   }
-  return posthog;
+  return clientPromise;
 }
 
 export function phInit() {
@@ -37,11 +46,5 @@ export function phInit() {
 }
 
 export function phCapture(eventName, props) {
-  try { client()?.capture(eventName, props); } catch {}
-}
-
-// Client-side route changes don't reload the page, so $pageview must be sent
-// manually; the initial load's $pageview comes from capture_pageview above.
-export function phSpaPageview() {
-  try { client()?.capture("$pageview"); } catch {}
+  try { client()?.then((ph) => ph?.capture(eventName, props)); } catch {}
 }

@@ -112,7 +112,7 @@ Then STOP and tell the user (in the terminal) the same summary. Do not proceed p
 
 Decisions are per finding, addressed by rank (`accept 2`, `reject 1: ...`, `accept all`):
 
-- **accept <n>** → update that row's status `accepted`; draft its change if not yet drafted (own `tutor/*` branch), then follow the normal working agreement: present a test plan, wait for approval, push branch, open PR into `staging`. After merge, set status `shipped`. Multiple accepted findings become separate branches/PRs so each success metric stays attributable.
+- **accept <n>** → update that row's status `accepted`; draft its change if not yet drafted (own `tutor/*` branch) and present a test plan. Then STOP: pushing the branch and opening the PR into `staging` is Ben's step, taken in an interactive session — never yours, and never in a scheduled run (Rule 1 has no exceptions, including this path). After the PR merges, set status `shipped`. Multiple accepted findings become separate branches/PRs so each success metric stays attributable.
 - **modify <n>: <notes>** → status `modified`, decision_notes = the notes; revise (or draft) the change and re-send that finding's block.
 - **reject <n>: <why>** → status `rejected`, decision_notes = the reason; delete that finding's tutor branch if one exists. The lesson stays in history as a suppressed repeat.
 

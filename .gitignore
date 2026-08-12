@@ -73,11 +73,14 @@ scripts
 today.md
 
 # Claude Code local state (worktrees, memory, logs) — but the proximity-tutor
-# skill is part of the product and stays versioned
-.claude/*
-!.claude/skills/
-.claude/skills/*
-!.claude/skills/proximity-tutor/
+# skill is part of the product and stays versioned. The leading slashes keep
+# this whitelist anchored to the repo root; the last line re-ignores .claude
+# directories nested anywhere else (e.g. apps/web/.claude/settings.local.json).
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/proximity-tutor/
+**/*/.claude/
 .claude-flow/
 
 # Codex local state
