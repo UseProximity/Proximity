@@ -743,10 +743,14 @@ export default function ListingFormPanel({
                 <div>
                   <p className="text-sm font-semibold text-gray-900">
                     Use Buildium, AppFolio, DoorLoop, or Rentec Direct?
+                    <span className="ml-1.5 inline-block whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 align-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                      Beta
+                    </span>
                   </p>
                   <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
                     Skip the typing. Connect your system once and your listings create
                     themselves, stay priced right, and come off the moment they lease.
+                    Auto sync is still in beta while we test it with live accounts.
                   </p>
                 </div>
               </div>
