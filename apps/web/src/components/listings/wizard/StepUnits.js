@@ -128,6 +128,19 @@ export default function StepUnits({ w }) {
                   placeholder="# months"
                   className="w-24 rounded-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
+                {(customTerm[i] ?? "") !== "" ? (
+                  <button
+                    type="button"
+                    onClick={() => addCustom(i)}
+                    className="rounded-full bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
+                  >
+                    Add ↵
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-gray-400">
+                    type a number, press Enter
+                  </span>
+                )}
               </div>
             </div>
 
