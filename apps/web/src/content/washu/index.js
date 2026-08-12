@@ -14,6 +14,8 @@ import sublease from "./sublease.json";
 import housingCost from "./housing-cost.json";
 import leaseTiming from "./lease-timing.json";
 import washuOwnedApartments from "./washu-owned-apartments.json";
+import studentSafety from "./student-safety.json";
+import graduateStudentHousing from "./graduate-student-housing.json";
 import universityCityApartments from "./university-city-apartments.json";
 import delmarLoopApartments from "./delmar-loop-apartments.json";
 import claytonApartments from "./clayton-apartments.json";
@@ -33,6 +35,8 @@ export const washuContent = {
   "housing-cost": housingCost,
   "lease-timing": leaseTiming,
   "washu-owned-apartments": washuOwnedApartments,
+  "student-safety": studentSafety,
+  "graduate-student-housing": graduateStudentHousing,
   "university-city-apartments": universityCityApartments,
   "delmar-loop-apartments": delmarLoopApartments,
   "clayton-apartments": claytonApartments,

@@ -189,6 +189,43 @@ export const washuPages = [
     related: ["lease-timing", "housing-cost", "delmar-loop-apartments"],
   },
   {
+    slug: "student-safety",
+    kind: "answer",
+    filter: null,
+    title: "Is University City Safe? An Honest Answer for WashU Students | Proximity",
+    h1: "Is it safe to live off campus at WashU?",
+    metaDescription:
+      "An honest, practical answer to whether University City, the Loop, and the WashU area are safe for students, and how to evaluate a specific block before signing.",
+    targetQueries: [
+      "is university city safe",
+      "is the delmar loop safe",
+      "is washu in a safe area",
+      "safest neighborhoods for washu students",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-08-12",
+    related: ["university-city-apartments", "delmar-loop-apartments", "lease-timing"],
+  },
+  {
+    slug: "graduate-student-housing",
+    kind: "answer",
+    filter: null,
+    title: "WashU Graduate Student Housing: Where Grads Actually Live | Proximity",
+    h1: "WashU graduate student housing",
+    metaDescription:
+      "Where WashU grad, law, and PhD students live off campus, how to sign a lease from another city or country, and what to know about guarantors and furnished places.",
+    targetQueries: [
+      "washu grad student housing",
+      "washu graduate housing",
+      "washu law housing",
+      "washu grad school housing",
+      "where do washu grad students live",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-08-12",
+    related: ["central-west-end-apartments", "clayton-apartments", "1-bedroom-apartments"],
+  },
+  {
     slug: "university-city-apartments",
     kind: "neighborhood",
     filter: { neighborhood: "university-city" },
