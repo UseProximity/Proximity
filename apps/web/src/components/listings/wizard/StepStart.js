@@ -23,7 +23,7 @@ export default function StepStart({ w, onBegin }) {
   return (
     <div>
       <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-        Add your listing
+        Add your listings
       </h2>
 
       {showImport ? (
