@@ -1,0 +1,9 @@
+{
+  "view": "core-action-retention",
+  "window": { "from": "2026-08-10T00:00:00Z", "to": "2026-09-10T00:00:00Z" },
+  "cohort_event": "Listing Opened",
+  "return_within_days": 7,
+  "cohort_users": 44,
+  "returned_users": 15,
+  "retention_rate": 0.341
+}

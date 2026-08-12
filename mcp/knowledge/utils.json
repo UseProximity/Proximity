@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-08T21:42:27.874Z",
-  "count": 34,
+  "_generated": "2026-08-10T15:51:58.036Z",
+  "count": 35,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -90,6 +90,10 @@
     {
       "file": "src/lib/outreach.js",
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
+    },
+    {
+      "file": "src/lib/posthog.js",
+      "description": "PostHog is entirely key-gated: without NEXT_PUBLIC_POSTHOG_KEY every export"
     },
     {
       "file": "src/lib/r2.js",

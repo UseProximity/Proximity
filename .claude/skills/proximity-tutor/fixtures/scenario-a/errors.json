@@ -1,0 +1,8 @@
+{
+  "view": "open-errors",
+  "window": { "from": "2026-07-27T00:00:00Z", "to": "2026-08-10T00:00:00Z" },
+  "exceptions": [
+    { "message": "TypeError: Cannot read properties of undefined (reading 'photos') at ListingModalInfo", "affected_users": 4, "occurrences": 6 },
+    { "message": "AbortError: The user aborted a request (streetview fetch)", "affected_users": 2, "occurrences": 3 }
+  ]
+}

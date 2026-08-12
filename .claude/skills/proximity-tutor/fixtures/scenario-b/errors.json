@@ -1,0 +1,9 @@
+{
+  "view": "open-errors",
+  "window": { "from": "2026-08-10T00:00:00Z", "to": "2026-09-10T00:00:00Z" },
+  "exceptions": [
+    { "message": "Error: lease upload failed (413 Payload Too Large) at LeaseCheckClient", "affected_users": 21, "occurrences": 47 },
+    { "message": "TypeError: Cannot read properties of undefined (reading 'photos') at ListingModalInfo", "affected_users": 3, "occurrences": 4 }
+  ],
+  "notes": "Lease-check upload failures affect 21/140 = 15% of active users in the window and correlate with the abandonment path and survey answers."
+}

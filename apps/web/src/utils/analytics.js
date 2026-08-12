@@ -1,9 +1,11 @@
 import { track } from "@vercel/analytics";
 import { sendGAEvent } from "@next/third-parties/google";
+import { phInit, phCapture } from "@/lib/posthog";
 
 export function trackEvent(eventName, props = {}) {
   try { track(eventName, props); } catch {}
   try { sendGAEvent("event", eventName, props); } catch {}
+  try { phCapture(eventName, props); } catch {}
 }
 
 /* ── Cross-page navigation source ──
@@ -13,6 +15,7 @@ const PREV_PATH_KEY = "prx_prev_path";
 const CURR_PATH_KEY = "prx_curr_path";
 
 export function recordPageVisit(pathname) {
+  phInit(); // no-op without NEXT_PUBLIC_POSTHOG_KEY; PostHog captures pageviews itself
   try {
     const curr = sessionStorage.getItem(CURR_PATH_KEY);
     if (curr === pathname) return;

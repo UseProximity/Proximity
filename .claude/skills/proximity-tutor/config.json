@@ -1,0 +1,37 @@
+{
+  "evidenceSource": "fixtures",
+  "fixtureScenario": "scenario-a",
+  "lessonsDb": "dev",
+  "maxProposalsPerRun": 3,
+  "standoutScoreFloor": 12,
+  "posthog": {
+    "projectId": null,
+    "host": "https://us.i.posthog.com",
+    "viewIds": {
+      "funnel": null,
+      "retention": null,
+      "paths": null,
+      "recordings": null,
+      "surveys": null,
+      "errors": null
+    }
+  },
+  "coreEvents": [
+    "Sign Up Completed",
+    "Matchmaking Opened",
+    "Proxy Recommendations Shown",
+    "Proxy Listing Clicked",
+    "Listing Opened",
+    "Contact Submitted"
+  ],
+  "slack": {
+    "recipient": "Ben Flicker (DM to workspace user matching bengrayflicker@gmail.com)",
+    "testMode": true,
+    "webhookEnvVar": "TUTOR_SLACK_WEBHOOK_URL"
+  },
+  "preview": {
+    "worktreePath": "../Proximity-tutor-preview",
+    "port": 3001,
+    "baseBranch": "staging"
+  }
+}

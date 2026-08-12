@@ -1,0 +1,14 @@
+{
+  "view": "core-journey-funnel",
+  "window": { "from": "2026-08-10T00:00:00Z", "to": "2026-09-10T00:00:00Z" },
+  "distinct_active_users": 140,
+  "steps": [
+    { "event": "Sign Up Completed", "users": 110 },
+    { "event": "Matchmaking Opened", "users": 58 },
+    { "event": "Proxy Recommendations Shown", "users": 52 },
+    { "event": "Proxy Listing Clicked", "users": 14 },
+    { "event": "Listing Opened", "users": 44 },
+    { "event": "Contact Submitted", "users": 8 }
+  ],
+  "notes": "Window assumes scenario-a's 'why this match' change shipped on 2026-08-12. Proxy click-through 14/52 = 26.9%, up from 18%, but n=52 is below the 150-student minimum sample."
+}

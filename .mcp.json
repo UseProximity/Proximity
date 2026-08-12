@@ -35,6 +35,14 @@
         "mcp-remote",
         "https://mcp.linear.app/mcp"
       ]
+    },
+    "posthog": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.posthog.com/mcp"
+      ]
     }
   }
 }
