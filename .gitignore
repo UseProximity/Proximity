@@ -23,6 +23,8 @@ coverage/
 # next.js (match at any depth for monorepo)
 .next/
 out/
+# build dir for the local content-recording mode (`npm run dev:demo`)
+.next-demo/
 
 # production
 build/
@@ -98,7 +100,3 @@ mcp/knowledge/agent-sessions.json
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
-
-# next-sitemap generated files (regenerated on every build)
-apps/web/public/sitemap*.xml
-apps/web/public/robots.txt

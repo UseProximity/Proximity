@@ -102,6 +102,27 @@ function noSessionIsSoft(body) {
   return !rejects;
 }
 
+// Explicit auth declarations, read from comments anywhere in the route file:
+//
+//   @auth optional          → applies to every handler in the file
+//   @auth POST public       → applies to POST only (wins over the file-wide form)
+//
+// The inference below reads the shape of the code, which can't see a guard that
+// lives behind a helper (e.g. a resolveActor() that 401s only in production).
+// An annotation is the route saying what it actually promises; always prefer it.
+function declaredAuth(content) {
+  const declared = { file: null, methods: {} };
+  for (const [, a, b] of content.matchAll(/@auth\s+([A-Za-z+]+)(?:\s+([A-Za-z+]+))?/g)) {
+    const asMethod = a.toUpperCase();
+    if (HTTP_METHODS.includes(asMethod)) {
+      if (b && b in AUTH_RANK) declared.methods[asMethod] = b;
+    } else if (a in AUTH_RANK) {
+      declared.file = a;
+    }
+  }
+  return declared;
+}
+
 function classifyHandlerAuth(body) {
   if (/requireSuper\(\)/.test(body) || /role\s*!==\s*["']super["']/.test(body)) return "super";
   if (!/\bauth\(\)/.test(body)) return "public"; // never consults the session
@@ -115,8 +136,11 @@ function inferRouteDetails(routePath, content) {
   // Extract HTTP methods defined in the file + judge each one's auth level.
   const bodies = extractHandlerBodies(content);
   const methods = HTTP_METHODS.filter((m) => bodies[m]);
+  const declared = declaredAuth(content);
   const methodAuth = {};
-  for (const m of methods) methodAuth[m] = classifyHandlerAuth(bodies[m]);
+  for (const m of methods) {
+    methodAuth[m] = declared.methods[m] ?? declared.file ?? classifyHandlerAuth(bodies[m]);
+  }
 
   // Route-level auth = the strongest guard across its methods (for summaries).
   let auth = "public";
@@ -187,6 +211,7 @@ const COMPONENT_DESCRIPTIONS = {
   "ProfileCompletionModal.js": "Onboarding modal for new users to complete their profile",
   "Providers.js": "Root Next.js providers: SessionProvider, Toaster, etc.",
   "ReviewsSection.js": "Renders a list of reviews with ratings for a listing",
+  "ui/StarRatingInput.js": "Shared half-star rating input with hover preview — used by every review-submission surface (/review, /refer, /review-invite, listing modal)",
   "UniversityLogosCarousel.js": "Auto-scrolling carousel of university logos on the landing page",
   "chat/ChatContext.js": "React context providing chat state and actions",
   "chat/ChatWidget.js": "Floating chat widget UI using @chatscope/chat-ui-kit-react",
@@ -311,14 +336,37 @@ function generateDomain() {
 
     // ── Process / working agreement ───────────────────────────────────────────
     workflow: {
+      pullKnowledgeFirst: {
+        rule: "START EVERY TASK BY PULLING KNOWLEDGE FROM `staging`, BEFORE reading code, planning, or editing anything.",
+        why: "`staging` is the trunk — every PR merges there first, and CI keeps mcp/knowledge/ in sync with it. The knowledge files this MCP serves are ordinary files in your working tree, so the MCP answers from whatever commit you happen to be sitting on. On a stale clone or a long-lived feature branch, `proximity://db-schema`, `proximity://api-routes`, and the rest silently describe an older codebase — and stale knowledge is worse than none, because it reads as authoritative. Pulling first is what makes these resources trustworthy.",
+        how: [
+          "`git fetch origin staging` — always, even if you branched recently.",
+          "Starting fresh work: branch off the freshly fetched `origin/staging` and the knowledge comes with it.",
+          "Already mid-branch: `git checkout origin/staging -- mcp/knowledge` to pull just the knowledge without disturbing your code.",
+          "Then read the `proximity://` resources you need (`domain`, `db-schema`, `api-routes`, `components`, `pages`, `utils`, `env-vars`, `active-tasks`).",
+          "Check for an open `chore/knowledge-sync-staging` PR — if one exists, `staging` has drifted and that PR holds the newest picture.",
+        ],
+        caveat:
+          "db-schema.json is HAND-maintained and can lag reality even when it is current with `staging`. For anything schema-dependent, verify columns against the live DB with the supabase-dev / supabase-prod MCP before writing code.",
+      },
       branchAndPr: [
+        "Pull knowledge from `staging` first — see workflow.pullKnowledgeFirst.",
         "For every fix or feature, create a branch off `staging` (e.g. `feat/...` or `fix/...`).",
         "Implement the change on that branch.",
         "Give the user a test plan and WAIT for approval — do not push before the user approves.",
         "After approval, push the branch and open a PR into `staging`.",
       ],
       knowledgeMaintenance:
-        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase. Knowledge files in mcp/knowledge/ are COMMITTED to git (shared across machines and agents) — commit regenerated knowledge together with the code change. A CI workflow (update-knowledge.yml) also regenerates and commits any drift after pushes to staging/main, covering contributors who don't run the MCP.",
+        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase. Knowledge files in mcp/knowledge/ are COMMITTED to git (shared across machines and agents) — commit regenerated knowledge together with the code change. NOTE: domain.json is REGENERATED from the template in mcp/scripts/generate-knowledge.mjs — edit the script, not the JSON, or your change is wiped on the next run. Only db-schema.json and active-tasks.json are edited as files.",
+      knowledgeSyncCi: {
+        workflow: ".github/workflows/update-knowledge.yml",
+        trigger:
+          "push to `staging` or `main` touching `apps/web/src/**` or `mcp/scripts/generate-knowledge.mjs`. Note it does NOT run on a knowledge-only change.",
+        behavior:
+          "Re-runs mcp/scripts/generate-knowledge.mjs on the pushed commit. No drift → logs 'Knowledge already current' and closes any stale sync PR. Drift → force-pushes the regenerated files to the fixed branch `chore/knowledge-sync-<base>` and opens (or reuses) a PR into that base. It does NOT push straight to `staging`/`main`: both are protected by a ruleset requiring a PR + 1 approval, and GitHub Actions is not an installable app so it cannot be granted a bypass. Because the sync branch is rebuilt from the base tip and force-pushed each run, one PR always shows the total current drift no matter how many pushes fed it.",
+        soWhat:
+          "The regenerated files are NOT on `staging` until that sync PR is merged. If it is open, treat it as the freshest knowledge. Committing regenerated knowledge alongside your own code change keeps the PR from ever opening — that remains the preferred path.",
+      },
       commitStyle:
         "Do NOT add AI/Claude attribution to commit messages or PR descriptions — no 'Co-Authored-By: Claude' trailer and no 'Generated with Claude Code' footer. Write them as a normal human contributor would.",
     },

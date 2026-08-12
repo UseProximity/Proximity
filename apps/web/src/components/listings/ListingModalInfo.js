@@ -15,6 +15,7 @@ import {
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import {
   getAreaRangeLabel,
@@ -32,6 +33,7 @@ import {
 import { trackEvent, getListingSource } from "@/utils/analytics";
 import { formatAvailableFrom } from "@/utils/listingFormatters";
 import ReviewReplySection from "./ReviewReplySection";
+import { isReviewEligibleEmail } from "@/lib/schools";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -167,31 +169,14 @@ function StarRow({ label, value, onChange, readOnly = false }) {
       {label && (
         <span className="text-sm text-gray-600 w-32 shrink-0">{label}</span>
       )}
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            disabled={readOnly}
-            onClick={() => !readOnly && onChange?.(star)}
-            className={`text-xl transition ${
-              star <= value
-                ? "text-red-500"
-                : "text-gray-300 hover:text-red-300"
-            } ${readOnly ? "cursor-default" : "cursor-pointer"}`}
-            aria-label={
-              readOnly ? undefined : `Rate ${star} star${star > 1 ? "s" : ""}`
-            }
-          >
-            ★
-          </button>
-        ))}
-      </div>
-      {!readOnly && (
-        <span className="text-xs text-gray-400">
-          {value ? `${value}/5` : "Select"}
-        </span>
-      )}
+      <StarRatingInput
+        value={value}
+        onChange={onChange}
+        px={20}
+        color="red"
+        readOnly={readOnly}
+        ariaLabelPrefix={label ? `Rate ${label}` : "Rate"}
+      />
     </div>
   );
 }
@@ -854,7 +839,7 @@ function ReviewsTab({
 
       {/* Leave a Review form */}
       <div className="border-t border-gray-100 pt-6 mt-4">
-        {session?.user?.email?.endsWith("@wustl.edu") ? (
+        {isReviewEligibleEmail(session?.user?.email) ? (
           <>
             <h3 className="text-base font-semibold text-gray-900 mb-4">
               Leave a Review
@@ -902,9 +887,8 @@ function ReviewsTab({
           </>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Reviews are only open to verified WashU students. Please sign in
-            with your <span className="font-semibold">@wustl.edu</span> Google
-            account.
+            Reviews are only open to verified students at a school we serve.
+            Please sign in with your school email.
           </div>
         )}
       </div>
@@ -1355,7 +1339,7 @@ export default function ListingModalInfo({
       toast.error("Only students can leave reviews.");
       return;
     }
-    if (reviewText.trim().length < 5 || rating < 1 || rating > 5) {
+    if (reviewText.trim().length < 5 || rating < 0.5 || rating > 5) {
       toast.error("Please write a valid review and select an overall rating.");
       return;
     }

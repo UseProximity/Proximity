@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-27T20:43:48.623Z",
-  "count": 43,
+  "_generated": "2026-08-12T20:54:13.492Z",
+  "count": 48,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -9,7 +9,11 @@
     },
     {
       "file": "src/lib/authMobile.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "Mobile bearer-token auth — the planned counterpart to `auth()` for a native client."
+    },
+    {
+      "file": "src/lib/autoUnavailable.js",
+      "description": "Auto-unavailable: when a landlord reports a listing as leased through the"
     },
     {
       "file": "src/lib/availabilityCheck.js",
@@ -28,6 +32,10 @@
       "description": "No description — add a top-of-file comment."
     },
     {
+      "file": "src/lib/jsonLd.js",
+      "description": "Serialize an object for embedding in a <script type=\"application/ld+json\">"
+    },
+    {
       "file": "src/lib/leaseCheck/analyzeLease.js",
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
     },
@@ -42,6 +50,10 @@
     {
       "file": "src/lib/leaseCheck/rateLimit.js",
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
+    },
+    {
+      "file": "src/lib/listings/getListing.js",
+      "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
       "file": "src/lib/listings/listingSelect.js",
@@ -73,6 +85,10 @@
     },
     {
       "file": "src/lib/matchmaking/questionScript.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/tradeoffTriage.js",
       "description": "No description — add a top-of-file comment."
     },
     {
@@ -134,6 +150,10 @@
     {
       "file": "src/lib/r2.js",
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
+    },
+    {
+      "file": "src/lib/schools.js",
+      "description": "The universities Proximity serves, and the email domains that prove membership."
     },
     {
       "file": "src/lib/streetview.js",

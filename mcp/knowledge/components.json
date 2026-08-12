@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-07-18T23:45:00.681Z",
-  "count": 66,
+  "_generated": "2026-08-05T04:07:39.002Z",
+  "count": 69,
   "components": [
     {
       "name": "DormsView",
@@ -91,6 +91,11 @@
     {
       "name": "GuideCTA",
       "file": "src/components/guides/GuideCTA.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GuideJsonLd",
+      "file": "src/components/guides/GuideJsonLd.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -294,6 +299,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "ReviewSubmitForm",
+      "file": "src/components/reviews/ReviewSubmitForm.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "Badge",
       "file": "src/components/ui/Badge.js",
       "description": "No description — run generate after adding a description above."
@@ -322,6 +332,11 @@
       "name": "StarRating",
       "file": "src/components/ui/StarRating.js",
       "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StarRatingInput",
+      "file": "src/components/ui/StarRatingInput.js",
+      "description": "Shared half-star rating input with hover preview — used by every review-submission surface (/review, /refer, /review-invite, listing modal)"
     },
     {
       "name": "UniversityLogosCarousel",

@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-27T20:43:48.639Z",
-  "count": 44,
+  "_generated": "2026-08-12T20:54:13.544Z",
+  "count": 45,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -13,6 +13,14 @@
     },
     {
       "name": "AUTH_SECRET",
+      "public": false
+    },
+    {
+      "name": "AUTO_UNAVAILABLE_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "AUTO_UNAVAILABLE_DRY_RUN",
       "public": false
     },
     {
@@ -96,14 +104,6 @@
       "public": false
     },
     {
-      "name": "NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL",
-      "public": true
-    },
-    {
-      "name": "NEXT_PUBLIC_FORMSPREE_EXIT_POLL_URL",
-      "public": true
-    },
-    {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
       "public": true
     },
@@ -113,6 +113,10 @@
     },
     {
       "name": "NODE_ENV",
+      "public": false
+    },
+    {
+      "name": "OUTREACH_TEST_RECIPIENT",
       "public": false
     },
     {

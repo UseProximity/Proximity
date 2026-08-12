@@ -1,13 +1,25 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { UNSURE } from "@/lib/matchmaking/questionScript";
 
+// ONE control scale across the whole chat: the answer chips, the answers-panel
+// editors, and the free-text composer all use this padding and text size, so
+// nothing in the window reads as a different size class from anything else.
 const CHIP =
-  "px-2.5 py-1 rounded-full bg-white border border-red-300 text-red-700 text-xs font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-default";
-const CHIP_ON = "px-2.5 py-1 rounded-full bg-red-600 border border-red-600 text-white text-xs font-medium transition";
+  "px-3 py-1.5 rounded-full bg-white border border-red-300 text-red-700 text-[13px] font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-default";
+const CHIP_ON = "px-3 py-1.5 rounded-full bg-red-600 border border-red-600 text-white text-[13px] font-medium transition";
 const UNSURE_CHIP =
-  "px-2.5 py-1 rounded-full bg-gray-100 border border-gray-300 text-gray-500 text-xs font-medium hover:bg-gray-200 transition disabled:opacity-50";
+  "px-3 py-1.5 rounded-full bg-gray-100 border border-gray-300 text-gray-500 text-[13px] font-medium hover:bg-gray-200 transition disabled:opacity-50";
+
+// Text fields match the chat composer (ChatWindow) so typing an answer looks the
+// same wherever it happens: a soft gray pill that owns the border/focus ring, and
+// a transparent input inside it. Padding and text size mirror the chips exactly,
+// so a field and a chip on the same row are the same height.
+const FIELD =
+  "flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-3 py-1.5 transition focus-within:border-red-300 focus-within:ring-1 focus-within:ring-red-200";
+const FIELD_INPUT =
+  "flex-1 min-w-0 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50";
 
 // Round paper-airplane send button — the single "submit this answer" affordance,
 // matching the chat composer's send button. Replaces the old text "Done"/"Send".
@@ -50,6 +62,11 @@ export default function QuestionControls({ question, onAnswer }) {
   // When a "choice" question offers an "Other" option, tapping it swaps the chip
   // row for a small text field so the user can type their own answer.
   const [otherMode, setOtherMode] = useState(false);
+  // Set to the floor of an open-ended "N+" chip (e.g. 5) when the student taps it
+  // on an expandCount question — swaps the chips for a min/max headcount pair.
+  const [countFloor, setCountFloor] = useState(null);
+  const [count, setCount] = useState("");
+  const [countMax, setCountMax] = useState("");
 
   // Pressing Enter while a chip is focused should SEND the current selection, not
   // re-trigger (and so toggle off) the focused chip. preventDefault stops the
@@ -78,16 +95,18 @@ export default function QuestionControls({ question, onAnswer }) {
     if (otherMode) {
       return (
         <div className="flex items-center gap-2">
-          <input
-            type="text"
-            autoFocus
-            placeholder="Type your answer…"
-            value={text}
-            disabled={!interactive}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
-            className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-          />
+          <div className={`flex-1 min-w-0 ${FIELD}`}>
+            <input
+              type="text"
+              autoFocus
+              placeholder="Type your answer…"
+              value={text}
+              disabled={!interactive}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
+              className={FIELD_INPUT}
+            />
+          </div>
           <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => setOtherMode(false)}>
             Back
           </button>
@@ -96,17 +115,78 @@ export default function QuestionControls({ question, onAnswer }) {
       );
     }
 
+    // An open-ended "N+" chip on an expandCount question: the chip row is replaced
+    // by a MIN and MAX pair, because a big group is usually still forming ("five
+    // or six of us, depends on Jamie"). Matching needs real numbers, not a bucket
+    // — it looks for units adding up to exactly a headcount in that span, so an
+    // honest range finds buildings a single guessed number would miss. Equal
+    // ends submit as a bare count ("6") so it reads as "6 people" in the chat.
+    if (countFloor != null) {
+      const lo = parseInt(count, 10);
+      const hi = parseInt(countMax, 10);
+      const valid = Number.isFinite(lo) && Number.isFinite(hi) && lo >= countFloor && hi >= lo;
+      const sendCount = () => valid && submit(lo === hi ? String(lo) : `${lo}-${hi}`);
+      return (
+        <div className="flex items-center gap-2">
+          <div className={`w-28 ${FIELD}`}>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={countFloor}
+              autoFocus
+              placeholder={`At least ${countFloor}`}
+              value={count}
+              disabled={!interactive}
+              onChange={(e) => setCount(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendCount()}
+              className={FIELD_INPUT}
+              aria-label="Fewest people"
+            />
+          </div>
+          <span className="text-sm text-gray-500 shrink-0">to</span>
+          <div className={`w-28 ${FIELD}`}>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={Number.isFinite(lo) ? Math.max(lo, countFloor) : countFloor}
+              placeholder="At most"
+              value={countMax}
+              disabled={!interactive}
+              onChange={(e) => setCountMax(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendCount()}
+              className={FIELD_INPUT}
+              aria-label="Most people"
+            />
+          </div>
+          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => setCountFloor(null)}>
+            Back
+          </button>
+          <SendButton className="ml-auto" onClick={sendCount} disabled={!interactive || !valid} />
+        </div>
+      );
+    }
+
     // Single-pick: tapping an option submits it immediately (no separate send).
     return (
       <div className="flex flex-wrap gap-1.5">
-        {baseOpts.map((opt) => (
-          <button key={opt} className={CHIP} disabled={!interactive} onClick={() => submit(opt)}>
-            {opt}
+        {baseOpts.map((opt) => {
+          const floor = meta?.expandCount && /^\d+\+$/.test(opt) ? parseInt(opt, 10) : null;
+          return (
+            <button
+              key={opt}
+              className={CHIP}
+              disabled={!interactive}
+              onClick={() => (floor != null ? setCountFloor(floor) : submit(opt))}
+            >
+              {opt}
+            </button>
+          );
+        })}
+        {!meta?.noOther && (
+          <button className={CHIP} disabled={!interactive} onClick={() => setOtherMode(true)}>
+            Something else…
           </button>
-        ))}
-        <button className={CHIP} disabled={!interactive} onClick={() => setOtherMode(true)}>
-          Something else…
-        </button>
+        )}
         {meta?.allowUnsure && (
           <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
             No Preference
@@ -134,7 +214,9 @@ export default function QuestionControls({ question, onAnswer }) {
     };
     return (
       <div onKeyDown={onEnter(sendMulti)}>
-        <div className="flex items-end gap-2">
+        {/* items-start, not items-end: once the chips wrap onto several rows the
+            send button should stay up on the first row, not drop to the last. */}
+        <div className="flex items-start gap-2">
           <div className="flex flex-wrap gap-1.5 flex-1">
             {options.map((opt) => {
               const on = selected.includes(opt);
@@ -166,16 +248,18 @@ export default function QuestionControls({ question, onAnswer }) {
         </div>
         {otherMode && (
           <div className="flex flex-wrap items-center gap-2 mt-2">
-            <input
-              type="text"
-              autoFocus
-              placeholder="Add your own…"
-              value={text}
-              disabled={!interactive}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMulti()}
-              className="flex-1 min-w-[10rem] text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-            />
+            <div className={`flex-1 min-w-[10rem] ${FIELD}`}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Add your own…"
+                value={text}
+                disabled={!interactive}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMulti()}
+                className={FIELD_INPUT}
+              />
+            </div>
             <button className={CHIP} disabled={!interactive || !text.trim()} onClick={addCustom}>
               Add
             </button>
@@ -191,7 +275,7 @@ export default function QuestionControls({ question, onAnswer }) {
     const toggle = (opt) =>
       setSelected((cur) => (cur.includes(opt) ? cur.filter((o) => o !== opt) : [...cur, opt]));
     return (
-      <div onKeyDown={onEnter(() => selected.length && submit(selected))} className="flex items-end gap-2">
+      <div onKeyDown={onEnter(() => selected.length && submit(selected))} className="flex items-start gap-2">
         <div className="flex flex-wrap gap-1.5 flex-1">
           {options.map((opt) => (
             <button
@@ -208,31 +292,6 @@ export default function QuestionControls({ question, onAnswer }) {
           </button>
         </div>
         <SendButton onClick={() => selected.length && submit(selected)} disabled={!interactive || selected.length === 0} />
-      </div>
-    );
-  }
-
-  if (kind === "pairwise") {
-    // One A-vs-B comparison. Two roomy chips (priority labels run long) plus an
-    // optional "no preference" skip for the whole ranking. Pick one, then send.
-    // Tapping a side submits it immediately (no separate send).
-    return (
-      <div className="flex flex-col gap-1.5 items-start">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            className="w-full text-left px-3 py-2 rounded-xl border text-xs font-medium transition disabled:opacity-50 disabled:cursor-default bg-white border-red-300 text-red-700 hover:bg-red-50"
-            disabled={!interactive}
-            onClick={() => submit(opt)}
-          >
-            {opt}
-          </button>
-        ))}
-        {meta?.allowUnsure && (
-          <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
-            No Preference
-          </button>
-        )}
       </div>
     );
   }
@@ -259,44 +318,22 @@ export default function QuestionControls({ question, onAnswer }) {
     );
   }
 
-  if (kind === "rank") {
-    return (
-      <RankControl
-        options={options}
-        interactive={interactive}
-        allowUnsure={meta?.allowUnsure}
-        onDone={(order) => submit(order)}
-        onUnsure={() => submit(UNSURE)}
-      />
-    );
-  }
-
-  if (kind === "slider") {
-    return (
-      <CapacityRange
-        meta={meta}
-        interactive={interactive}
-        allowUnsure={meta?.allowUnsure}
-        onSend={(value, label) => submit(value, label)}
-        onUnsure={() => submit(UNSURE)}
-      />
-    );
-  }
-
   if (kind === "budget_max") {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">$</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          placeholder={meta?.maxLabel ?? "Max /mo"}
-          value={max}
-          disabled={!interactive}
-          onChange={(e) => setMax(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && max && submit(max)}
-          className="w-28 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`w-36 ${FIELD}`}>
+          <span className="text-[13px] text-gray-400">$</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder={meta?.maxLabel ?? "Max /mo"}
+            value={max}
+            disabled={!interactive}
+            onChange={(e) => setMax(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && max && submit(max)}
+            className={FIELD_INPUT}
+          />
+        </div>
         <UnsureChip />
         <SendButton className="ml-auto" onClick={() => max && submit(max)} disabled={!interactive || !max} />
       </div>
@@ -306,15 +343,17 @@ export default function QuestionControls({ question, onAnswer }) {
   if (kind === "open_text") {
     return (
       <div className="flex items-center gap-2">
-        <input
-          type="text"
-          placeholder={meta?.placeholder || "Type anything…"}
-          value={text}
-          disabled={!interactive}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
-          className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`flex-1 min-w-0 ${FIELD}`}>
+          <input
+            type="text"
+            placeholder={meta?.placeholder || "Type anything…"}
+            value={text}
+            disabled={!interactive}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && text.trim() && submit(text.trim())}
+            className={FIELD_INPUT}
+          />
+        </div>
         <button className={UNSURE_CHIP} disabled={!interactive} onClick={() => submit(UNSURE)}>
           I&apos;m all set
         </button>
@@ -340,210 +379,22 @@ export default function QuestionControls({ question, onAnswer }) {
             Yes, that&apos;s me
           </button>
         )}
-        <input
-          type="text"
-          placeholder="Or type a name…"
-          value={name}
-          disabled={!interactive}
-          onChange={(e) => setName(e.target.value)}
-          className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
-        <SendButton onClick={send} disabled={!interactive || !name.trim()} />
+        {/* Sized to a name rather than stretched across the row: a full-width
+            field reads as "write a lot here" and crowds the send button. */}
+        <div className={`w-48 max-w-[55%] ${FIELD}`}>
+          <input
+            type="text"
+            placeholder="Or type a name…"
+            value={name}
+            disabled={!interactive}
+            onChange={(e) => setName(e.target.value)}
+            className={FIELD_INPUT}
+          />
+        </div>
+        <SendButton className="ml-auto" onClick={send} disabled={!interactive || !name.trim()} />
       </div>
     );
   }
 
   return null;
-}
-
-// Drag-to-rank list (with up/down arrows as a touch/keyboard fallback).
-function RankControl({ options, interactive, onDone, allowUnsure, onUnsure }) {
-  const [order, setOrder] = useState(options);
-  const dragIndex = useRef(null);
-
-  const move = (from, to) => {
-    setOrder((cur) => {
-      if (to < 0 || to >= cur.length) return cur;
-      const next = [...cur];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
-    });
-  };
-
-  return (
-    <div className="space-y-1">
-      {order.map((opt, i) => (
-        <div
-          key={opt}
-          draggable={interactive}
-          onDragStart={() => (dragIndex.current = i)}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={() => {
-            if (dragIndex.current !== null) move(dragIndex.current, i);
-            dragIndex.current = null;
-          }}
-          className={`flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 ${
-            interactive ? "cursor-grab active:cursor-grabbing" : "opacity-70"
-          }`}
-        >
-          <span className="text-gray-300 select-none">⠿</span>
-          <span className="w-4 text-red-600 font-semibold">{i + 1}</span>
-          <span className="flex-1">{opt}</span>
-          <span className="flex flex-col leading-none">
-            <button
-              disabled={!interactive || i === 0}
-              onClick={() => move(i, i - 1)}
-              className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-[10px]"
-              aria-label="Move up"
-            >
-              ▲
-            </button>
-            <button
-              disabled={!interactive || i === order.length - 1}
-              onClick={() => move(i, i + 1)}
-              className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-[10px]"
-              aria-label="Move down"
-            >
-              ▼
-            </button>
-          </span>
-        </div>
-      ))}
-      <div className="flex items-center gap-2 pt-1">
-        {allowUnsure && (
-          <button className={UNSURE_CHIP} disabled={!interactive} onClick={onUnsure}>
-            No strong preference
-          </button>
-        )}
-        <SendButton className="ml-auto" onClick={() => onDone(order)} disabled={!interactive} label="Done ranking" />
-      </div>
-    </div>
-  );
-}
-
-// Two-sided "capacity" range slider. The student drags a low and a high handle to
-// pick a group-size range (e.g. 2–4 people); the matcher then keeps only listings
-// whose capacity sits inside it. Compact enough to sit on one row with the
-// "No Preference" chip and the send button. The selected range shows as "X–Y" on
-// the side and updates live; a tooltip rides the handle you're dragging.
-function CapacityRange({ meta, interactive, allowUnsure, onSend, onUnsure }) {
-  const min = meta?.min ?? 1;
-  const max = meta?.max ?? 6;
-  const unit = meta?.unit || "";
-  const plusOnMax = !!meta?.plusOnMax;
-  const trackRef = useRef(null);
-  // Default to the full span — a neutral "any size" until the student narrows it.
-  const [lo, setLo] = useState(min);
-  const [hi, setHi] = useState(max);
-  const [active, setActive] = useState(null); // "lo" | "hi" while dragging
-
-  // The top stop reads (and submits) as "6+" — i.e. "or more", no upper bound.
-  const display = (n) => (plusOnMax && n >= max ? `${max}+` : String(n));
-  const pct = (n) => ((n - min) / (max - min)) * 100;
-  const plural = lo === 1 && hi === 1 ? unit : unit && `${unit}s`;
-
-  const valueFromX = (clientX) => {
-    const el = trackRef.current;
-    if (!el) return min;
-    const rect = el.getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    return Math.round(min + frac * (max - min));
-  };
-
-  const moveThumb = (which, v) => {
-    if (which === "lo") setLo(Math.min(v, hi));
-    else setHi(Math.max(v, lo));
-  };
-
-  const onPointerMove = (e) => {
-    if (!active) return;
-    moveThumb(active, valueFromX(e.clientX));
-  };
-  const endDrag = () => setActive(null);
-
-  // Tapping the track grabs the nearer handle (ties / taps past both go to the
-  // side they fall on) so an overlapped pair can always be pulled apart.
-  const onTrackDown = (e) => {
-    if (!interactive) return;
-    const v = valueFromX(e.clientX);
-    const which = v < lo ? "lo" : v > hi ? "hi" : Math.abs(v - lo) <= Math.abs(v - hi) ? "lo" : "hi";
-    moveThumb(which, v);
-    setActive(which);
-    trackRef.current?.setPointerCapture?.(e.pointerId);
-  };
-
-  const send = () => {
-    // Chip-compatible string the matcher parses: "2-4", or "2-6+" when the high
-    // handle sits at the top stop (meaning "2 or more"). The bubble shows "2–4 persons".
-    onSend(`${lo}-${display(hi)}`, unit ? `${display(lo)}–${display(hi)} ${plural}` : `${display(lo)}–${display(hi)}`);
-  };
-
-  const renderThumb = (which, value) => (
-    <div
-      key={which}
-      role="slider"
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={value}
-      tabIndex={interactive ? 0 : -1}
-      onPointerDown={(e) => {
-        if (!interactive) return;
-        e.stopPropagation();
-        setActive(which);
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-      }}
-      onKeyDown={(e) => {
-        if (!interactive) return;
-        if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); moveThumb(which, value - 1); }
-        if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); moveThumb(which, value + 1); }
-        if (e.key === "Enter") { e.preventDefault(); send(); }
-      }}
-      style={{ left: `${pct(value)}%` }}
-      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-red-500 shadow-sm transition-transform ${
-        interactive ? "cursor-grab active:cursor-grabbing hover:scale-110" : "opacity-60"
-      } ${active === which ? "scale-110 z-10" : ""}`}
-    >
-      {active === which && (
-        <span className="absolute -top-6 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-gray-800 text-white text-[10px] font-semibold leading-none tabular-nums whitespace-nowrap pointer-events-none">
-          {display(value)}
-        </span>
-      )}
-    </div>
-  );
-
-  return (
-    <div
-      className="flex items-center gap-3"
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerLeave={endDrag}
-      onPointerCancel={endDrag}
-    >
-      <span className="text-xs font-semibold text-red-600 tabular-nums whitespace-nowrap min-w-[2.75rem] text-center">
-        {display(lo)}
-        {"–"}
-        {display(hi)}
-      </span>
-      <div
-        ref={trackRef}
-        onPointerDown={onTrackDown}
-        className="relative flex-1 h-6 flex items-center select-none touch-none"
-      >
-        <div className="absolute inset-x-0 h-1.5 rounded-full bg-gray-200" />
-        <div
-          className="absolute h-1.5 rounded-full bg-red-500"
-          style={{ left: `${pct(lo)}%`, right: `${100 - pct(hi)}%` }}
-        />
-        {renderThumb("lo", lo)}
-        {renderThumb("hi", hi)}
-      </div>
-      {allowUnsure && (
-        <button className={UNSURE_CHIP} disabled={!interactive} onClick={onUnsure}>
-          No Preference
-        </button>
-      )}
-      <SendButton onClick={send} disabled={!interactive} />
-    </div>
-  );
 }

@@ -6,8 +6,6 @@ import { QUESTION_BY_ID, peopleLabel } from "@/lib/matchmaking/questionScript";
 
 const FIELD_LABELS = {
   name: "Name",
-  program: "Program",
-  grad_year: "Grad year",
   group_size: "Group size",
   budget_max: "Max rent ($/mo)",
   area: "Preferred area",
@@ -22,8 +20,6 @@ const FIELD_LABELS = {
 // A panel field maps back to the scripted question whose options drive its editor.
 const FIELD_TO_QID = {
   name: "name_confirm",
-  program: "program",
-  grad_year: "grad_year",
   group_size: "group_size",
   budget_max: "budget",
   area: "area",
@@ -35,10 +31,18 @@ const FIELD_TO_QID = {
   notes: "extras",
 };
 
+// Same control scale as the answer chips and the chat composer (see AnswerControls).
 const CHIP =
-  "px-2.5 py-1 rounded-full bg-white border border-red-300 text-red-700 text-xs font-medium hover:bg-red-50 transition disabled:opacity-50";
-const CHIP_ON = "px-2.5 py-1 rounded-full bg-red-600 border border-red-600 text-white text-xs font-medium transition";
-const SAVE_BTN = "px-3 py-1 rounded-full bg-red-600 text-white text-xs font-semibold disabled:opacity-40";
+  "px-3 py-1.5 rounded-full bg-white border border-red-300 text-red-700 text-[13px] font-medium hover:bg-red-50 transition disabled:opacity-50";
+const CHIP_ON = "px-3 py-1.5 rounded-full bg-red-600 border border-red-600 text-white text-[13px] font-medium transition";
+const SAVE_BTN = "px-3 py-1.5 rounded-full bg-red-600 text-white text-[13px] font-semibold disabled:opacity-40";
+
+// Same text-field treatment as the chat composer and the answer controls, sized
+// to match the chips it sits beside.
+const FIELD =
+  "flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-3 py-1.5 transition focus-within:border-red-300 focus-within:ring-1 focus-within:ring-red-200";
+const FIELD_INPUT =
+  "flex-1 min-w-0 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50";
 
 // The drop-down editor for a single answer: renders that question's own options
 // (chips / number / text), with an "Other" escape, and commits on choice/Save.
@@ -53,64 +57,26 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
   const [selected, setSelected] = useState(Array.isArray(value) ? value : []);
   const [otherMode, setOtherMode] = useState(false);
   const [otherText, setOtherText] = useState("");
-  // Slider editor seeds from the current value ("6+" → 6), else the question min.
-  const [sliderVal, setSliderVal] = useState(() => {
-    const n = parseInt(String(value ?? "").replace(/\+/g, ""), 10);
-    return Number.isFinite(n) ? n : null;
-  });
 
   if (!q) return null;
-
-  if (kind === "slider") {
-    const min = q.min ?? 1;
-    const max = q.max ?? 6;
-    const unit = q.unit || "";
-    const current = sliderVal ?? min;
-    const display = (n) => (q.plusOnMax && n >= max ? `${max}+` : String(n));
-    const noun = (n) => (n === 1 ? unit : unit && `${unit}s`);
-    return (
-      <div className="mt-2">
-        <div className="flex items-baseline gap-1.5 mb-1">
-          <span className="text-lg font-semibold text-red-600">{display(current)}</span>
-          {unit && <span className="text-xs text-gray-500">{noun(current)}</span>}
-        </div>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={1}
-          value={current}
-          disabled={disabled}
-          onChange={(e) => setSliderVal(Number(e.target.value))}
-          className="w-full accent-red-600 disabled:opacity-50"
-        />
-        <div className="flex justify-between text-[10px] text-gray-400 px-px">
-          {Array.from({ length: max - min + 1 }, (_, i) => (
-            <span key={i}>{display(min + i)}</span>
-          ))}
-        </div>
-        <button className={`mt-2 ${SAVE_BTN}`} disabled={disabled} onClick={() => onCommit(display(current))}>
-          Save
-        </button>
-      </div>
-    );
-  }
 
   if (kind === "budget_max") {
     const ok = text !== "" && !Number.isNaN(Number(text));
     return (
       <div className="flex items-center gap-2 mt-2">
-        <span className="text-xs text-gray-400">$</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          autoFocus
-          value={text}
-          disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && ok && onCommit(Number(text))}
-          className="w-24 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`w-32 ${FIELD}`}>
+          <span className="text-[13px] text-gray-400">$</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            autoFocus
+            value={text}
+            disabled={disabled}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && ok && onCommit(Number(text))}
+            className={FIELD_INPUT}
+          />
+        </div>
         <button className={SAVE_BTN} disabled={disabled || !ok} onClick={() => ok && onCommit(Number(text))}>
           Save
         </button>
@@ -122,15 +88,17 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
     const needsText = kind === "confirm_or_replace";
     return (
       <div className="flex items-center gap-2 mt-2">
-        <input
-          type="text"
-          autoFocus
-          value={text}
-          disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && (!needsText || text.trim()) && onCommit(text.trim())}
-          className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`flex-1 min-w-0 ${FIELD}`}>
+          <input
+            type="text"
+            autoFocus
+            value={text}
+            disabled={disabled}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (!needsText || text.trim()) && onCommit(text.trim())}
+            className={FIELD_INPUT}
+          />
+        </div>
         <button
           className={SAVE_BTN}
           disabled={disabled || (needsText && !text.trim())}
@@ -171,16 +139,18 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
         </div>
         {otherMode && (
           <div className="flex items-center gap-2 mt-2">
-            <input
-              type="text"
-              autoFocus
-              value={otherText}
-              disabled={disabled}
-              placeholder="Add your own…"
-              onChange={(e) => setOtherText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addOther()}
-              className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-            />
+            <div className={`flex-1 min-w-0 ${FIELD}`}>
+              <input
+                type="text"
+                autoFocus
+                value={otherText}
+                disabled={disabled}
+                placeholder="Add your own…"
+                onChange={(e) => setOtherText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addOther()}
+                className={FIELD_INPUT}
+              />
+            </div>
             <button className={CHIP} disabled={disabled || !otherText.trim()} onClick={addOther}>
               Add
             </button>
@@ -199,16 +169,18 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
   if (otherMode) {
     return (
       <div className="flex items-center gap-2 mt-2">
-        <input
-          type="text"
-          autoFocus
-          value={otherText}
-          disabled={disabled}
-          placeholder="Type your answer…"
-          onChange={(e) => setOtherText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && otherText.trim() && onCommit(otherText.trim())}
-          className="flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-2 py-1 outline-none disabled:opacity-50"
-        />
+        <div className={`flex-1 min-w-0 ${FIELD}`}>
+          <input
+            type="text"
+            autoFocus
+            value={otherText}
+            disabled={disabled}
+            placeholder="Type your answer…"
+            onChange={(e) => setOtherText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && otherText.trim() && onCommit(otherText.trim())}
+            className={FIELD_INPUT}
+          />
+        </div>
         <button className={SAVE_BTN} disabled={disabled || !otherText.trim()} onClick={() => otherText.trim() && onCommit(otherText.trim())}>
           Save
         </button>
@@ -240,6 +212,9 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
       if (k.startsWith("_")) return false; // internal flags
       if (v === null || v === undefined || v === "") return false;
       if (Array.isArray(v) && v.length === 0) return false;
+      // With one priority picked it IS the top priority (the question is skipped),
+      // so showing both rows would just repeat the same answer back.
+      if (k === "top_priority" && (preferences?.priorities?.length ?? 0) < 2) return false;
       return FIELD_LABELS[k]; // only show known, user-facing fields
     })
     .sort(([a], [b]) => Object.keys(FIELD_LABELS).indexOf(a) - Object.keys(FIELD_LABELS).indexOf(b));
