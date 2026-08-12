@@ -36,10 +36,13 @@ export const NEIGHBORHOODS = [
     lng: -90.263,
   },
   {
+    // Clayton is also a municipality; match the city position in the address
+    // (comma-anchored so "Clayton Rd" in St. Louis addresses cannot match).
     key: "clayton",
     matchmakingKey: "Clayton",
     displayName: "Clayton",
     slug: "clayton-apartments",
+    addressMatch: /,\s*clayton\b/i,
     lat: 38.647,
     lng: -90.332,
   },
@@ -65,10 +68,15 @@ export const NEIGHBORHOODS = [
     lng: -90.293,
   },
   {
+    // University City is a municipality, not a district: The Loop and parts
+    // of the student blocks sit INSIDE it, so centroid-nearest assignment
+    // starves it. addressMatch pulls in every listing whose address names the
+    // city (overlap with the Loop page is semantically correct).
     key: "university-city",
     matchmakingKey: null,
     displayName: "University City",
     slug: "university-city-apartments",
+    addressMatch: /,\s*university\s+city\b/i,
     lat: 38.6606,
     lng: -90.33,
   },

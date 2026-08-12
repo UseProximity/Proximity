@@ -31,7 +31,7 @@ export async function getCachedListings() {
 // ---------------------------------------------------------------------------
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
-import { neighborhoodOfListing } from "@/lib/geo/neighborhoods";
+import { neighborhoodOfListing, NEIGHBORHOODS } from "@/lib/geo/neighborhoods";
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 
 // Pages with fewer than this many qualifying listings render but are
@@ -50,6 +50,10 @@ function matchesPageFilter(listing, filter) {
     return per != null && per <= filter.maxPerPerson;
   }
   if (filter.neighborhood) {
+    // Municipalities (University City, Clayton) also match by the city named
+    // in the address; districts rely on nearest-centroid alone.
+    const area = NEIGHBORHOODS.find((n) => n.key === filter.neighborhood);
+    if (area?.addressMatch?.test(listing.address ?? "")) return true;
     return neighborhoodOfListing(listing)?.key === filter.neighborhood;
   }
   return false;
