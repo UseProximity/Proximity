@@ -1,6 +1,7 @@
 "use client";
 
 import { Camera, X } from "lucide-react";
+import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { StepFrame } from "@/components/listings/wizard/wizardShared";
 
 /*
@@ -23,47 +24,40 @@ export default function StepPhotos({ w }) {
         </p>
       )}
 
-      {(showStreetView || w.stagedPreviews.length > 0) && (
+      {showStreetView && (
         <div className="mb-4 flex flex-wrap gap-2.5">
-          {showStreetView && (
-            <div className="relative h-24 w-24 flex-shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={w.streetView.url}
-                alt="Street View of the property"
-                className="h-full w-full rounded-lg border border-gray-200 object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => w.setStreetViewDeleted(true)}
-                aria-label="Remove Street View photo"
-                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700"
-              >
-                <X className="h-3 w-3" />
-              </button>
-              <div className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/50 py-0.5 text-center text-[9px] text-white">
-                Street View
-              </div>
+          <div className="relative h-24 w-24 flex-shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={w.streetView.url}
+              alt="Street View of the property"
+              className="h-full w-full rounded-lg border border-gray-200 object-cover"
+            />
+            <button
+              type="button"
+              onClick={() => w.setStreetViewDeleted(true)}
+              aria-label="Remove Street View photo"
+              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700"
+            >
+              <X className="h-3 w-3" />
+            </button>
+            <div className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/50 py-0.5 text-center text-[9px] text-white">
+              Street View
             </div>
-          )}
-          {w.stagedPreviews.map((url, i) => (
-            <div key={i} className="relative h-24 w-24 flex-shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
-                alt=""
-                className="h-full w-full rounded-lg border border-gray-200 object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => w.removeStagedImage(i)}
-                aria-label="Remove photo"
-                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
+          </div>
+        </div>
+      )}
+
+      {/* Numbered, drag-to-reorder grid — order here is the listing's photo
+          order, first photo is the cover. */}
+      {w.stagedPreviews.length > 0 && (
+        <div className="mb-4">
+          <DraggableImageGrid
+            images={w.stagedPreviews}
+            onReorder={w.reorderStagedPhotos}
+            onRemove={w.removeStagedByUrl}
+            saving={false}
+          />
         </div>
       )}
 

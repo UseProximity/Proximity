@@ -274,6 +274,18 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setStagedPreviews((prev) => prev.filter((_, idx) => idx !== i));
   };
 
+  // Drag-reorder support: previews and files must stay index-aligned because
+  // upload order (= stagedFiles order) becomes the listing's photo order.
+  const reorderStagedPhotos = (nextUrls) => {
+    const byUrl = new Map(stagedPreviews.map((u, i) => [u, stagedFiles[i]]));
+    setStagedFiles(nextUrls.map((u) => byUrl.get(u)).filter(Boolean));
+    setStagedPreviews(nextUrls);
+  };
+  const removeStagedByUrl = (url) => {
+    const i = stagedPreviews.indexOf(url);
+    if (i >= 0) removeStagedImage(i);
+  };
+
   const fetchStreetViewPreview = async (address, lat, lng) => {
     setStreetViewDeleted(false);
     setStreetView({ available: false, url: null });
@@ -785,6 +797,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     stagedPreviews,
     handleImageFiles,
     removeStagedImage,
+    reorderStagedPhotos,
+    removeStagedByUrl,
     coords,
     setCoords,
     availabilityMode,
