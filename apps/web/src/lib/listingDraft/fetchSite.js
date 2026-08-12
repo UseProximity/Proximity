@@ -156,7 +156,11 @@ export async function fetchPage(rawUrl) {
 /*
  * Fetch a non-HTML asset (property photo) with the same SSRF guard. Returns the
  * Response so the caller can stream it; caller must enforce content-type/size.
+ * Assets get a longer timeout than pages: full-size property photos off slow
+ * CDNs regularly exceed 15s, which silently dropped imported photos.
  */
+const ASSET_TIMEOUT_MS = 45000;
+
 export async function fetchAssetResponse(rawUrl) {
   let url;
   try {
@@ -170,7 +174,7 @@ export async function fetchAssetResponse(rawUrl) {
     try {
       res = await fetch(url, {
         redirect: "manual",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
         headers: { "User-Agent": FETCH_UA, Accept: "image/*,*/*;q=0.5" },
       });
     } catch (err) {
@@ -218,9 +222,14 @@ export function htmlToText(html) {
 
 // Wix serves thumbnails via URL transformations; the bare media URL is the
 // original. Rewrite so imported photos aren't 56px blurred previews.
+// Shopify is the opposite problem: bare URLs are multi-MB originals that time
+// out the proxy — ask its CDN for a 1600px rendition (we recompress anyway).
 function normalizeImageUrl(u) {
   const wix = u.match(/^(https:\/\/static\.wixstatic\.com\/media\/[^/]+)\/v1\//);
   if (wix) return wix[1];
+  if (/(cdn\.shopify\.com|\/cdn\/shop\/)/.test(u) && !/[?&]width=/.test(u)) {
+    return u + (u.includes("?") ? "&" : "?") + "width=1600";
+  }
   return u;
 }
 

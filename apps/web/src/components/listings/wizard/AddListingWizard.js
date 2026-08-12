@@ -294,19 +294,30 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   // ------------------------------------------------------- website import
   const importPhotos = async (urls) => {
     const files = new Array(urls.length);
-    await Promise.allSettled(
-      urls.map(async (u, idx) => {
-        const res = await fetch(
-          `/api/landlord/listing-draft/image?url=${encodeURIComponent(u)}`
-        );
-        if (!res.ok) return;
-        const blob = await res.blob();
-        if (!blob.type.startsWith("image/")) return;
-        if (blob.size < 15000) return; // icons/thumbnails, not photos
-        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
-        files[idx] = new File([blob], `imported-${idx + 1}.${ext}`, { type: blob.type });
-      })
-    );
+    // Four at a time: firing a dozen full-size downloads at once overwhelms
+    // slow CDNs/connections and times out the proxy; a small pool finishes
+    // sooner AND drops fewer photos.
+    let cursor = 0;
+    const worker = async () => {
+      for (;;) {
+        const idx = cursor++;
+        if (idx >= urls.length) return;
+        try {
+          const res = await fetch(
+            `/api/landlord/listing-draft/image?url=${encodeURIComponent(urls[idx])}`
+          );
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          if (!blob.type.startsWith("image/")) continue;
+          if (blob.size < 15000) continue; // icons/thumbnails, not photos
+          const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+          files[idx] = new File([blob], `imported-${idx + 1}.${ext}`, { type: blob.type });
+        } catch {
+          /* skip this photo */
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
     const ok = files.filter(Boolean);
     if (ok.length) await handleImageFiles(ok);
     setImportInfo((prev) =>
