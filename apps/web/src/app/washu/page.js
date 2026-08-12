@@ -25,6 +25,8 @@ const KIND_LABELS = {
   neighborhood: "By neighborhood",
   beds: "By bedroom count",
   price: "By budget",
+  sublease: "Subleases",
+  answer: "Money, timing, and how it works",
 };
 
 export default async function WashuHubPage() {
@@ -40,7 +42,7 @@ export default async function WashuHubPage() {
   );
   const indexable = withCounts.filter(({ result }) => result.meetsThreshold);
 
-  const grouped = { neighborhood: [], beds: [], price: [] };
+  const grouped = { neighborhood: [], beds: [], price: [], sublease: [], answer: [] };
   for (const item of indexable) grouped[item.page.kind]?.push(item);
 
   const jsonLd = {
@@ -104,7 +106,7 @@ export default async function WashuHubPage() {
           ))}
         </section>
 
-        {["neighborhood", "beds", "price"].map((kind) =>
+        {["neighborhood", "beds", "price", "sublease", "answer"].map((kind) =>
           grouped[kind].length ? (
             <section key={kind} className="mb-10">
               <h2 className="text-2xl font-bold mb-4">{KIND_LABELS[kind]}</h2>
@@ -119,8 +121,9 @@ export default async function WashuHubPage() {
                       {page.h1}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {result.count} listing{result.count === 1 ? "" : "s"}{" "}
-                      available now
+                      {page.filter
+                        ? `${result.count} listing${result.count === 1 ? "" : "s"} available now`
+                        : "Straight answers, real sources"}
                     </p>
                   </Link>
                 ))}

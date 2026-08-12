@@ -91,10 +91,12 @@ export default async function WashuLandingPage({ params }) {
           <div className="mb-8" />
         )}
 
-        {/* Live inventory */}
-        <section className="mb-12">
-          <WashuListingGrid listings={listings} />
-        </section>
+        {/* Live inventory (answer pages are content-led and skip the grid) */}
+        {page.filter ? (
+          <section className="mb-12">
+            <WashuListingGrid listings={listings} />
+          </section>
+        ) : null}
 
         {/* Editorial intro */}
         <section className="max-w-3xl mb-12">

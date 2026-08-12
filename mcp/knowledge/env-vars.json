@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-08T18:50:38.603Z",
-  "count": 35,
+  "_generated": "2026-08-12T20:52:02.420Z",
+  "count": 40,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -60,6 +60,14 @@
       "public": false
     },
     {
+      "name": "GITHUB_REPO",
+      "public": false
+    },
+    {
+      "name": "GITHUB_TOKEN",
+      "public": false
+    },
+    {
       "name": "GOOGLE_ID",
       "public": false
     },
@@ -69,6 +77,18 @@
     },
     {
       "name": "GOOGLE_SECRET",
+      "public": false
+    },
+    {
+      "name": "GSC_CLIENT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "GSC_PRIVATE_KEY",
+      "public": false
+    },
+    {
+      "name": "GSC_SITE_URL",
       "public": false
     },
     {

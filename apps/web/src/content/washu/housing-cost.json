@@ -1,0 +1,30 @@
+{
+  "intro": [
+    "Nobody publishes a straight answer to what WashU housing costs, so here it is with sources. The honest version has two layers: the government benchmark for each neighborhood, and the premium student buildings charge on top of it.",
+    "The benchmark is HUD's Fair Market Rent, a federal figure set per ZIP code per bedroom count with utilities included. It represents the 40th percentile of an entire ZIP, so treat it as the floor of a neighborhood's range: student-oriented buildings near campus typically price above it, older walk-ups closer to it. The numbers below are the FY2026 figures for the neighborhoods WashU students actually live in."
+  ],
+  "directAnswer": "Off-campus housing near WashU benchmarks between $930 and $1,480 for a 1 bedroom depending on neighborhood, per HUD FY2026 fair market rents with utilities included: $930 in Skinker-DeBaliviere, $1,110 in University City, $1,410 in Clayton, $1,480 in the Central West End. Sharing a 2 or 3 bedroom cuts each person's share well below those figures.",
+  "faqs": [
+    {
+      "q": "What does each neighborhood cost?",
+      "a": "HUD FY2026 fair market rent for a 1 bedroom, utilities included: Skinker-DeBaliviere (63112) $930, University City (63130) $1,110, Clayton (63105) $1,410, Central West End (63108) $1,480. For a 2 bedroom, whole unit: $1,140, $1,360, $1,730, and $1,810 respectively. Source: HUD. Expect purpose-built student buildings to price above these ZIP-wide benchmarks."
+    },
+    {
+      "q": "How does per-person cost work in a shared apartment?",
+      "a": "Divide the whole-unit rent by the number of bedrooms, then add your share of any utilities not included. A 2 bedroom at the University City benchmark of $1,360 works out to $680 per person before extras, which is why sharing is the standard WashU move and why per-person math beats sticker price for comparing places."
+    },
+    {
+      "q": "Is off-campus housing cheaper than WashU dorms?",
+      "a": "For most students who share, yes, even carrying a 12 month lease across a 9 month school year. The comparison depends on your dorm tier, meal plan changes, utilities, and furniture, so run your own numbers with our budget guide, and remember a summer sublet can recover part of the extra months."
+    },
+    {
+      "q": "What costs surprise students beyond rent?",
+      "a": "Utilities where not included (electric and gas bills swing with St. Louis summers and winters), one-time setup like deposits and application fees, furniture for unfurnished places, parking fees in bigger buildings, and renters insurance. Students on r/washu regularly report surprise fees at move-out, which is exactly the kind of thing the reviews on each listing warn you about."
+    },
+    {
+      "q": "Are rents near WashU going up?",
+      "a": "Gradually. Zillow's rent index as of June 2026 shows University City (63130) up 5.0% year over year and Skinker-DeBaliviere (63112) up 6.5%, against about 4.0% for the St. Louis metro. Source: Zillow Research. Signing earlier in the fall cycle generally beats waiting for a deal that is not coming."
+    }
+  ],
+  "benchmarkNote": "All figures on this page cite HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-08T18:50:38.576Z",
-  "count": 64,
+  "_generated": "2026-08-12T20:52:02.360Z",
+  "count": 66,
   "routes": [
     {
       "path": "/api/addListing",
@@ -374,6 +374,20 @@
         "listing_landlords"
       ],
       "file": "src/app/api/cron/landlord-nudge/route.js"
+    },
+    {
+      "path": "/api/cron/seo-report",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "seo_query_metrics"
+      ],
+      "file": "src/app/api/cron/seo-report/route.js"
     },
     {
       "path": "/api/dev/matchmaking-edgecases",
@@ -841,6 +855,18 @@
         "users"
       ],
       "file": "src/app/api/searchUsers/route.js"
+    },
+    {
+      "path": "/api/seo/opportunities",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/seo/opportunities/route.js"
     },
     {
       "path": "/api/staging/email-recipients",

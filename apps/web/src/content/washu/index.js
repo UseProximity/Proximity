@@ -10,6 +10,10 @@ import twoBedroomApartments from "./2-bedroom-apartments.json";
 import threeBedroomApartments from "./3-bedroom-apartments.json";
 import apartmentsUnder1000 from "./apartments-under-1000.json";
 import apartmentsUnder1500 from "./apartments-under-1500.json";
+import sublease from "./sublease.json";
+import housingCost from "./housing-cost.json";
+import leaseTiming from "./lease-timing.json";
+import washuOwnedApartments from "./washu-owned-apartments.json";
 import universityCityApartments from "./university-city-apartments.json";
 import delmarLoopApartments from "./delmar-loop-apartments.json";
 import claytonApartments from "./clayton-apartments.json";
@@ -25,6 +29,10 @@ export const washuContent = {
   "3-bedroom-apartments": threeBedroomApartments,
   "apartments-under-1000": apartmentsUnder1000,
   "apartments-under-1500": apartmentsUnder1500,
+  sublease: sublease,
+  "housing-cost": housingCost,
+  "lease-timing": leaseTiming,
+  "washu-owned-apartments": washuOwnedApartments,
   "university-city-apartments": universityCityApartments,
   "delmar-loop-apartments": delmarLoopApartments,
   "clayton-apartments": claytonApartments,

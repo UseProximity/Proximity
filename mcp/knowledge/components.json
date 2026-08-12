@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-05T04:07:39.002Z",
-  "count": 69,
+  "_generated": "2026-08-12T20:52:02.368Z",
+  "count": 71,
   "components": [
     {
       "name": "DormsView",
@@ -341,6 +341,16 @@
     {
       "name": "UniversityLogosCarousel",
       "file": "src/components/ui/UniversityLogosCarousel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WashuListingGrid",
+      "file": "src/components/washu/WashuListingGrid.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WashuPageJsonLd",
+      "file": "src/components/washu/WashuPageJsonLd.js",
       "description": "No description — run generate after adding a description above."
     },
     {
