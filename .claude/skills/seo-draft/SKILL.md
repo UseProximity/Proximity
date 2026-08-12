@@ -29,7 +29,7 @@ locally before anything is pushed. Follow this workflow exactly.
    fails, fix the draft, never the validator.
 6. **Review sheet.** Write `scripts/seo-engine/reports/<ISO-week>.md`: for
    each change, in plain English: which page, what changed and why (quote
-   the flag data), the exact URL to view it (http://localhost:3001/washu/...,
+   the flag data), the exact URL to view it (http://localhost:3000/washu/...,
    or the port the preview server uses), and how real visitors reach the
    page (which searches, which internal links).
 7. **Present.** Start the dev server, give Ben the review sheet and URLs,
