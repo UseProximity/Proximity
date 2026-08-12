@@ -639,6 +639,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       }
 
       // Upload staged images via presigned URLs (browser -> R2 directly).
+      // A photo failure never un-saves the listing, so in queue mode it must
+      // not hold the remaining properties hostage: toast it and keep going.
+      let uploadError = null;
       if (stagedFiles.length > 0) {
         const listingId = data.listing?.id;
         if (listingId) {
@@ -652,51 +655,49 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           });
           if (!presignRes.ok) {
             const presignData = await presignRes.json().catch(() => ({}));
-            setError(
-              `Listing saved, but images failed to upload: ${
-                presignData.error || `server error ${presignRes.status}`
-              }`
+            uploadError = `Listing saved, but images failed to upload: ${
+              presignData.error || `server error ${presignRes.status}`
+            }`;
+          } else {
+            const { presigned } = await presignRes.json();
+            const uploadResults = await Promise.allSettled(
+              stagedFiles.map((file, i) =>
+                fetch(presigned[i].uploadUrl, {
+                  method: "PUT",
+                  body: file,
+                  headers: { "Content-Type": file.type },
+                })
+              )
             );
-            return;
-          }
-          const { presigned } = await presignRes.json();
-          const uploadResults = await Promise.allSettled(
-            stagedFiles.map((file, i) =>
-              fetch(presigned[i].uploadUrl, {
+            const failed = uploadResults.filter(
+              (r) => r.status === "rejected" || !r.value?.ok
+            );
+            if (failed.length > 0) {
+              uploadError = `Listing saved, but ${failed.length} image(s) failed to upload. You can re-add them from your dashboard.`;
+            } else {
+              const confirmRes = await fetch("/api/upload", {
                 method: "PUT",
-                body: file,
-                headers: { "Content-Type": file.type },
-              })
-            )
-          );
-          const failed = uploadResults.filter(
-            (r) => r.status === "rejected" || !r.value?.ok
-          );
-          if (failed.length > 0) {
-            setError(
-              `Listing saved, but ${failed.length} image(s) failed to upload. Please try re-uploading them from your dashboard.`
-            );
-            return;
-          }
-          const confirmRes = await fetch("/api/upload", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              listingId,
-              urls: presigned.map((p) => p.publicUrl),
-            }),
-          });
-          if (!confirmRes.ok) {
-            const confirmData = await confirmRes.json().catch(() => ({}));
-            setError(
-              `Listing saved, but images could not be attached: ${
-                confirmData.error || `server error ${confirmRes.status}`
-              }`
-            );
-            return;
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  listingId,
+                  urls: presigned.map((p) => p.publicUrl),
+                }),
+              });
+              if (!confirmRes.ok) {
+                const confirmData = await confirmRes.json().catch(() => ({}));
+                uploadError = `Listing saved, but images could not be attached: ${
+                  confirmData.error || `server error ${confirmRes.status}`
+                }`;
+              }
+            }
           }
         }
       }
+      if (uploadError && importQueue.length === 0) {
+        setError(uploadError);
+        return;
+      }
+      if (uploadError) toast.error(uploadError, { duration: 8000 });
 
       // Contact info different from the profile? Hand the diff to onSuccess.
       const diff = {};
