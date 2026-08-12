@@ -25,9 +25,6 @@ export default function StepStart({ w, onBegin }) {
       <h2 className="text-2xl font-bold tracking-tight text-gray-900">
         Add your listing
       </h2>
-      <p className="mt-1.5 text-sm text-gray-500">
-        Pick the fastest way in. You can review everything before it goes live.
-      </p>
 
       {showImport ? (
         <div className="mt-5">

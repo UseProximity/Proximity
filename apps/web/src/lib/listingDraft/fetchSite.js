@@ -492,7 +492,7 @@ export function sameSite(a, b) {
 }
 
 // Same-site links: [{ url, text }] for the model to name property subpages.
-export function extractLinks(html, baseUrl, cap = 60) {
+export function extractLinks(html, baseUrl, cap = 40) {
   const seen = new Set();
   const out = [];
   const re = /<a\b[^>]*href="([^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi;

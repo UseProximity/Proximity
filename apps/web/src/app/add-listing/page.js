@@ -31,7 +31,7 @@ export default function AddListingPage() {
           onClose={() => router.push("/dashboard/landlord")}
           onSuccess={() => {
             toast.success("Listing published!");
-            router.push("/dashboard/landlord");
+            router.push("/dashboard/landlord?tab=properties");
           }}
         />
       ) : (

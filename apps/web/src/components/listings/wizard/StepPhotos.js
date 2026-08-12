@@ -15,7 +15,7 @@ export default function StepPhotos({ w }) {
   return (
     <StepFrame
       title="Add some photos"
-      subtitle="Phone photos are fine. You can add or swap photos anytime after publishing."
+      subtitle="Drag to set the order students see them in. First photo is the cover."
     >
       {w.importInfo?.photosLoading && (
         <p className="mb-3 flex items-center gap-2 text-sm text-gray-600">
