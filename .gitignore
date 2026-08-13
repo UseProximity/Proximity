@@ -100,3 +100,6 @@ mcp/knowledge/agent-sessions.json
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
+
+# Firecrawl scrape output (research artifacts, not source)
+.firecrawl/
