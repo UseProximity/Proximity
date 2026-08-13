@@ -505,8 +505,14 @@ function RentalCard({ listing, index, isInView }) {
           aria-label={listing.title || listing.address}
           className="absolute inset-0 z-[1]"
           onClick={(e) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+              // Let the browser open the new tab, but stop the click reaching
+              // the wrapper's router.push — otherwise a cmd-click opens the
+              // listing in a background tab AND navigates this one to the
+              // modal, losing the reader's place on the homepage.
+              e.stopPropagation();
               return;
+            }
             e.preventDefault();
           }}
         />
@@ -604,7 +610,12 @@ function PopularRentals({ initialPopular = null }) {
           : Array.isArray(data?.listings)
           ? data.listings
           : [];
-        setListings(all.slice(0, 6));
+        // Keep the server-rendered cards if the refresh comes back empty (a
+        // 500 returns {error}, which parses to []). Overwriting unconditionally
+        // replaced six painted cards with an empty grid — and loading is
+        // already false by then, so not even skeletons. HeroMapSection guards
+        // this the same way.
+        if (all.length) setListings(all.slice(0, 6));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
