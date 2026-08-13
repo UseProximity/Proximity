@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -82,6 +84,16 @@ export async function POST(req) {
       }
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
+
+    // Read the request headers here: after() runs once the response is on its way.
+    const baseUrl = getBaseUrl(req);
+    after(() =>
+      notifyNewChatMessage({
+        threadId: data?.threadId,
+        senderId: session.user.id,
+        baseUrl,
+      })
+    );
 
     return NextResponse.json(data);
   } catch (error) {

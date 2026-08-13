@@ -101,6 +101,77 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   });
 }
 
+// Chat content is typed by one user and rendered in another user's inbox, so it can't be
+// interpolated raw — escaping keeps a message body from smuggling markup into the email.
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const MESSAGE_PREVIEW_LIMIT = 300;
+
+// Notification for a new in-app chat message. The same thread has two sides, so the copy
+// flips on recipientIsInterestedUser: the listing owner gets an inquiry ("someone messaged
+// you about your listing"), the student gets a reply.
+export async function sendChatMessageEmail({
+  to,
+  recipientName,
+  senderName,
+  listingLabel,
+  messageBody,
+  recipientIsInterestedUser,
+  threadUrl,
+}) {
+  const senderLabel = senderName || "Someone";
+  const listingText = listingLabel || "your conversation";
+  const sender = escapeHtml(senderLabel);
+  const listing = escapeHtml(listingText);
+  const firstName = recipientName ? escapeHtml(recipientName.split(" ")[0]) : "";
+
+  const body = (messageBody || "").trim();
+  const preview = escapeHtml(
+    body.length > MESSAGE_PREVIEW_LIMIT ? `${body.slice(0, MESSAGE_PREVIEW_LIMIT)}…` : body
+  );
+
+  const subject = recipientIsInterestedUser
+    ? `${senderLabel} replied about ${listingText}`
+    : `New message about ${listingLabel || "your listing"} (via Proximity)`;
+
+  const intro = recipientIsInterestedUser
+    ? `<strong>${sender}</strong> replied to you about <strong>${listing}</strong>.`
+    : `<strong>${sender}</strong> sent you a message${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
+
+  const closing = recipientIsInterestedUser
+    ? "Reply on Proximity to keep everything about this place in one thread."
+    : "Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.";
+
+  return sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
+    to,
+    subject,
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
+        <p>Hi ${firstName || "there"},</p>
+        <p>${intro}</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p style="margin: 6px 0;"><strong>${sender} wrote:</strong></p>
+        <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${preview}"</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <a href="${threadUrl}"
+           style="display:inline-block;margin:8px 0 16px;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Read and reply
+        </a>
+        <p>${closing}</p>
+        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+      </div>
+    `,
+  });
+}
+
 export async function sendVerificationEmail({ email, name, token, baseUrl }) {
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
   await sendMailSafe(transporter, {

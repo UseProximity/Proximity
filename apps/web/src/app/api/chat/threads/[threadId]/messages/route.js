@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 
 // Surfaced to the client as-is; everything else becomes a generic 500.
 const SAFE_SEND_MESSAGE_ERRORS = new Set([
@@ -123,6 +125,16 @@ export async function POST(req, { params }) {
       console.error("POST /api/chat/threads/[threadId]/messages failed:", error);
       return mapChatRpcError(error);
     }
+
+    // Read the request headers here: after() runs once the response is on its way.
+    const baseUrl = getBaseUrl(req);
+    after(() =>
+      notifyNewChatMessage({
+        threadId,
+        senderId: session.user.id,
+        baseUrl,
+      })
+    );
 
     return NextResponse.json(data);
   } catch (error) {
