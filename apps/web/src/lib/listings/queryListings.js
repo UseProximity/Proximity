@@ -41,8 +41,15 @@ export const MIN_INVENTORY = 5;
 
 function matchesPageFilter(listing, filter) {
   if (filter.bedrooms != null) {
+    // `u.bedrooms != null` first: buildListing emits null for an unsized unit,
+    // and Number(null) is 0 — so every unit with an unknown bedroom count would
+    // qualify as a studio and appear on /washu/studio-apartments, including in
+    // that page's ItemList JSON-LD.
     return (listing.unitTypes ?? []).some(
-      (u) => u.available !== false && Number(u.bedrooms) === filter.bedrooms
+      (u) =>
+        u.available !== false &&
+        u.bedrooms != null &&
+        Number(u.bedrooms) === filter.bedrooms
     );
   }
   if (filter.maxPerPerson != null) {

@@ -11,6 +11,10 @@
  * client + a readFileSync that throws when the skill file is missing).
  */
 
+// Pure text matching over title/description, no module-load side effects —
+// safe to pull into a server-rendered page (unlike listingFilter.js).
+import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
+
 export const MIN_PLAUSIBLE_PER_PERSON = 450;
 
 // Per-person and whole-unit rent for one lease, plus how we decided.
@@ -39,9 +43,14 @@ export function leaseRentBasis(lease, isRoomShare) {
 // carries the unit's first active lease rent). null when nothing is priced.
 export function minPerPersonRent(listing) {
   let best = null;
+  // The matchmaking caller passes the real flag; hardcoding false here read a
+  // room-share's already-per-person price as whole-unit rent and divided it by
+  // the bedroom count — a $1,500 room in a 3-bed became "$500/person", landing
+  // it on /washu/apartments-under-1000 at a third of what it actually costs.
+  const roomShare = isRoomShareListing(listing);
   for (const u of listing?.unitTypes ?? []) {
     if (u.available === false) continue;
-    const basis = leaseRentBasis(u, false);
+    const basis = leaseRentBasis(u, roomShare);
     if (basis && (best == null || basis.perPerson < best)) {
       best = basis.perPerson;
     }
