@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-12T20:54:13.544Z",
-  "count": 45,
+  "_generated": "2026-08-13T03:14:45.344Z",
+  "count": 49,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -60,6 +60,10 @@
       "public": false
     },
     {
+      "name": "FIRECRAWL_API_KEY",
+      "public": false
+    },
+    {
       "name": "GOOGLE_ID",
       "public": false
     },
@@ -76,7 +80,15 @@
       "public": false
     },
     {
+      "name": "JINA_READER_KEY",
+      "public": false
+    },
+    {
       "name": "LEASE_SCANNER_KEY",
+      "public": false
+    },
+    {
+      "name": "LISTING_DRAFT_KEY",
       "public": false
     },
     {
@@ -173,6 +185,10 @@
     },
     {
       "name": "RESEND_API_KEY",
+      "public": false
+    },
+    {
+      "name": "TAVILY_API_KEY",
       "public": false
     },
     {

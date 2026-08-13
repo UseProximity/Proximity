@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-12T20:54:13.492Z",
-  "count": 48,
+  "_generated": "2026-08-13T03:14:45.284Z",
+  "count": 51,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -50,6 +50,18 @@
     {
       "file": "src/lib/leaseCheck/rateLimit.js",
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
+    },
+    {
+      "file": "src/lib/listingDraft/extract.js",
+      "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
+    },
+    {
+      "file": "src/lib/listingDraft/fetchSite.js",
+      "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
+    },
+    {
+      "file": "src/lib/listingDraft/rateLimit.js",
+      "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
     },
     {
       "file": "src/lib/listings/getListing.js",
