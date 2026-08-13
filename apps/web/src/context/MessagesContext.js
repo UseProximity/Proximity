@@ -4,7 +4,8 @@
  * /api/chat/*; Supabase Realtime pushes chat_messages INSERTs — inbox-wide for
  * badge/preview refresh, and thread-scoped for the open chat. Opening a thread
  * (and receiving live messages while it's open) marks it read via
- * POST /api/chat/threads/[id]/read. Also tracks the other participant's
+ * POST /api/chat/threads/[id]/read, but only while the tab is visible.
+ * Also tracks the other participant's
  * last_read_at for "Read · time" receipts in ChatTranscript. Prefetches recent
  * thread histories so opening a conversation feels instant. No UI chrome
  * (composer text lives in ChatTranscript). Consumed by /messages, header
@@ -179,6 +180,13 @@ export function MessagesProvider({ children }) {
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
+
+    // A hidden tab isn't being read, whatever the thread state says. Without this, a
+    // background /messages tab marks incoming messages read — telling the sender they were
+    // seen, and suppressing the notification email that should have gone out instead.
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return null;
+    }
 
     // Clear badge immediately; restore via inbox refresh if the request fails.
     setThreads((prev) =>
