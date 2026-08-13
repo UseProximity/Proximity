@@ -52,29 +52,47 @@ async function getAccessToken() {
   return (await res.json()).access_token;
 }
 
+const GSC_PAGE_SIZE = 5000; // API maximum per request
+const GSC_MAX_ROWS = 100000; // stop runaway paging on a very large site
+
+/*
+ * GSC returns rows in descending-click order and pages via startRow. A single
+ * 5000-row request silently truncates once the site has more page+query pairs
+ * than that in a window — and because the cut lands on the long tail, the
+ * dropped rows are exactly the ones computeFlags would otherwise compare, so
+ * it emits false impressions_drop / zero_impressions flags for pages that are
+ * fine. Page until a short response comes back.
+ */
 async function queryRange(token, startDate, endDate) {
   const site = encodeURIComponent(process.env.GSC_SITE_URL);
-  const res = await fetch(
-    `https://www.googleapis.com/webmasters/v3/sites/${site}/searchAnalytics/query`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        startDate,
-        endDate,
-        dimensions: ["page", "query"],
-        rowLimit: 5000,
-      }),
+  const rows = [];
+  for (let startRow = 0; startRow < GSC_MAX_ROWS; startRow += GSC_PAGE_SIZE) {
+    const res = await fetch(
+      `https://www.googleapis.com/webmasters/v3/sites/${site}/searchAnalytics/query`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          startDate,
+          endDate,
+          dimensions: ["page", "query"],
+          rowLimit: GSC_PAGE_SIZE,
+          startRow,
+        }),
+      }
+    );
+    if (!res.ok) {
+      throw new Error(`GSC query failed: ${res.status} ${await res.text()}`);
     }
-  );
-  if (!res.ok) {
-    throw new Error(`GSC query failed: ${res.status} ${await res.text()}`);
+    const data = await res.json();
+    const page = data.rows ?? [];
+    rows.push(...page);
+    if (page.length < GSC_PAGE_SIZE) break;
   }
-  const data = await res.json();
-  return (data.rows ?? []).map((r) => ({
+  return rows.map((r) => ({
     page: r.keys[0],
     query: r.keys[1],
     clicks: r.clicks,
