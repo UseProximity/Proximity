@@ -9,7 +9,7 @@
  * listings self-maintain via the daily sync.
  */
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, ExternalLink, Home, Link2, Loader2, Plug, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import { CheckCircle2, ExternalLink, FlaskConical, Home, Link2, Loader2, Plug, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import Image from "next/image";
 import Nango from "@nangohq/frontend";
 import { Button } from "@/components/ui/Button";
@@ -58,6 +58,32 @@ function RadioDot({ on }) {
     >
       {on && <span className="h-2 w-2 rounded-full bg-red-600" />}
     </span>
+  );
+}
+
+// PMS sync ships ahead of its first live landlord run, so every entry point
+// says so plainly rather than letting someone assume it is a finished feature.
+function BetaNotice() {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-gray-900">PMS Sync is in beta</span>
+          <span className="rounded-full bg-amber-200/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+            Beta
+          </span>
+        </div>
+        <p className="text-sm leading-relaxed text-amber-900/90">
+          We are still testing this with live property management accounts. Keep an eye
+          on your listings after connecting, and email{" "}
+          <a href="mailto:info@useproximity.org" className="font-medium underline underline-offset-2">
+            info@useproximity.org
+          </a>{" "}
+          if anything looks wrong. You can disconnect at any time.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -222,6 +248,8 @@ export default function IntegrationsSection() {
   if (discovery) {
     return (
       <div className="space-y-6 max-w-3xl">
+        <BetaNotice />
+
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             Found {discovery.properties.length} propert{discovery.properties.length === 1 ? "y" : "ies"}
@@ -483,6 +511,8 @@ export default function IntegrationsSection() {
   // ---------- main screen ----------
   return (
     <div className="space-y-8 max-w-3xl">
+      <BetaNotice />
+
       <div>
         <p className="text-sm text-gray-600">
           Connect your property management system once. Leased units come off Proximity

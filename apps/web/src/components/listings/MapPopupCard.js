@@ -2,10 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+
+// Modifier/middle clicks fall through to the browser (open in new tab);
+// plain clicks are cancelled so the existing JS handlers keep control.
+function suppressPlainClick(e) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  e.preventDefault();
+}
 
 function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
@@ -62,6 +70,12 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       ? String(Math.min(...bathValues))
       : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
 
+  // Only legit, non-deleted reviews count toward rating (see buildListing), and
+  // rating comes back as 0 when there are none — so numReviews is the gate.
+  const numReviews = Number(listing.numReviews) || 0;
+  const rating = Number(listing.rating);
+  const hasRating = numReviews > 0 && Number.isFinite(rating) && rating > 0;
+
   return (
     <div
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
@@ -73,6 +87,15 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         }, 0);
       }}
     >
+      {/* Crawlable link to the listing page. Plain clicks are cancelled and
+          bubble to the card's onClick above, so panel/analytics behavior is
+          unchanged; cmd/ctrl/middle-click opens the listing in a new tab. */}
+      <a
+        href={`/listings/${listing._id}`}
+        aria-label={title}
+        className="absolute inset-0 z-[1]"
+        onClick={suppressPlainClick}
+      />
       <div
         ref={imgWrapperRef}
         className="relative aspect-video bg-gray-100"
@@ -149,14 +172,26 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             )}
           </span>
         </div>
-        <div className="flex items-center justify-between mt-auto pt-2 min-w-0">
+        <div className="flex items-center justify-between mt-auto pt-2 min-w-0 gap-2">
           <span className="text-gray-500 text-xs truncate flex-1">
             {bedLabel} bed{" | "}
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
+          {hasRating && (
+            <span
+              className="flex items-center gap-0.5 text-xs flex-shrink-0"
+              title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
+            >
+              <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
+              <span className="font-semibold text-gray-700 tabular-nums">
+                {rating.toFixed(1)}
+              </span>
+              <span className="text-gray-400 tabular-nums">({numReviews})</span>
+            </span>
+          )}
           {listing.owner?.name && !compact && (
-            <span className="text-gray-400 text-xs truncate ml-2 max-w-[40%]">
+            <span className="text-gray-400 text-xs truncate max-w-[40%]">
               {listing.owner.name}
             </span>
           )}
@@ -188,7 +223,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
+        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
           <HeartIcon listingId={listing._id} />
         </div>
       )}
@@ -219,12 +254,16 @@ export function MobileMapPopup({ listing, onClose, onViewListing }) {
             <span className="text-xs font-normal text-gray-500">/mo</span>
           )}
         </span>
-        <button
-          onClick={onViewListing}
-          className="px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
+        <a
+          href={`/listings/${listing._id}`}
+          onClick={(e) => {
+            suppressPlainClick(e);
+            if (e.defaultPrevented) onViewListing();
+          }}
+          className="inline-block px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
         >
           View listing →
-        </button>
+        </a>
       </div>
     </div>
   );

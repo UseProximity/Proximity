@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-09T02:51:01.458Z",
-  "count": 75,
+  "_generated": "2026-08-13T03:14:45.256Z",
+  "count": 76,
   "routes": [
     {
       "path": "/api/addListing",
@@ -302,6 +302,22 @@
       "file": "src/app/api/auth/verify-email/route.js"
     },
     {
+      "path": "/api/auto-unavailable/undo",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "auto_unavailable_actions"
+      ],
+      "file": "src/app/api/auto-unavailable/undo/route.js"
+    },
+    {
       "path": "/api/availability/confirm",
       "methods": [
         "GET",
@@ -344,6 +360,21 @@
         "users"
       ],
       "file": "src/app/api/contactLandlord/route.js"
+    },
+    {
+      "path": "/api/cron/auto-unavailable",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings",
+        "auto_unavailable_actions"
+      ],
+      "file": "src/app/api/cron/auto-unavailable/route.js"
     },
     {
       "path": "/api/cron/availability-check",
@@ -820,9 +851,6 @@
       },
       "tables": [
         "listings",
-        "users",
-        "listing_reviews",
-        "review_votes",
         "listing_landlords"
       ],
       "file": "src/app/api/listing/[listingId]/route.js"
@@ -858,37 +886,17 @@
       "file": "src/app/api/listings/popular/route.js"
     },
     {
-      "path": "/api/matchmaking",
-      "methods": [
-        "GET",
-        "POST",
-        "PATCH"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "optional",
-        "POST": "public",
-        "PATCH": "any"
-      },
-      "tables": [
-        "users",
-        "matchmaking_preferences",
-        "roles"
-      ],
-      "file": "src/app/api/matchmaking/route.js"
-    },
-    {
       "path": "/api/matchmaking/chat",
       "methods": [
         "GET",
         "POST",
         "PATCH"
       ],
-      "auth": "any",
+      "auth": "optional",
       "methodAuth": {
-        "GET": "any",
-        "POST": "any",
-        "PATCH": "any"
+        "GET": "optional",
+        "POST": "optional",
+        "PATCH": "optional"
       },
       "tables": [
         "listings",
@@ -978,6 +986,7 @@
       },
       "tables": [
         "listing_reviews",
+        "schools",
         "home_types",
         "users",
         "roles",
