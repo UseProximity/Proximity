@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Plus, RefreshCw, X } from "lucide-react";
+import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -30,6 +31,17 @@ import {
   LEASE_TERM_PRESETS,
   emptyUnit,
 } from "@/components/listings/listingFormOptions";
+
+// Edit mode groups the form into tabs so landlords land on what they came to
+// change instead of scrolling one long page (an 11-unit building buries the
+// photos two screens down). The add flow is untouched: it stays a single page.
+const EDIT_TABS = [
+  { id: "basics", label: "Basics" },
+  { id: "units", label: "Units" },
+  { id: "photos", label: "Photos" },
+  { id: "amenities", label: "Amenities" },
+  { id: "contact", label: "Contact" },
+];
 
 // Shared add/edit listing form for landlords. Renders as a modal by default
 // (used for editing inside the dashboard) or as a full-page form when `asPage`
@@ -109,6 +121,24 @@ export default function ListingFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  // Edit-mode tab navigation. showSection keeps the add flow rendering every
+  // section on one page; edit mode shows one tab at a time. All field state
+  // lives above this component level of the tree, so hidden tabs lose nothing.
+  const [activeTab, setActiveTab] = useState("basics");
+  const showSection = (id) => !isEdit || activeTab === id;
+
+  // A validation error on a hidden tab would read as "can't save, can't see
+  // why" — so name the tab in the message and jump straight to it.
+  const validationFail = (message, tabId) => {
+    const label = EDIT_TABS.find((t) => t.id === tabId)?.label ?? tabId;
+    if (isEdit && activeTab !== tabId) {
+      setError(`${message} We opened the ${label} tab so you can fix it.`);
+      setActiveTab(tabId);
+    } else {
+      setError(message);
+    }
+  };
 
   // Website-import draft state (add flow only). importedFields holds the names
   // of fields prefilled from the landlord's site ("address", "u0:rent", ...);
@@ -647,19 +677,19 @@ export default function ListingFormPanel({
     e.preventDefault();
     setError(null);
     if (!form.address.trim()) {
-      setError("Address is required.");
+      validationFail("Address is required.", "basics");
       return;
     }
     if (!form.description.trim()) {
-      setError("Description is required.");
+      validationFail("Description is required.", "basics");
       return;
     }
     if (units.length === 0) {
-      setError("At least one unit is required.");
+      validationFail("At least one unit is required.", "units");
       return;
     }
     if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
-      setError("Each unit needs bedrooms and bathrooms.");
+      validationFail("Each unit needs bedrooms and bathrooms.", "units");
       return;
     }
     // An available unit must offer at least one lease term, otherwise it would
@@ -671,8 +701,9 @@ export default function ListingFormPanel({
           !(Array.isArray(u.leaseTermMonths) && u.leaseTermMonths.length > 0)
       )
     ) {
-      setError(
-        "Each available unit needs at least one lease term (or mark it unavailable)."
+      validationFail(
+        "Each available unit needs at least one lease term (or mark it unavailable).",
+        "units"
       );
       return;
     }
@@ -915,6 +946,56 @@ export default function ListingFormPanel({
           </button>
         </div>
 
+        {/* Edit-mode section tabs. Sticky so navigation stays in reach while a
+            long section (an 11-unit building) scrolls. Counts orient before a
+            tap: a landlord checking photos sees how many are on the listing. */}
+        {isEdit && (
+          <div className="sticky top-0 z-20 border-b border-gray-200 bg-white px-4 sm:px-6">
+            <nav
+              className="-mb-px flex gap-1 overflow-x-auto"
+              role="tablist"
+              aria-label="Listing sections"
+            >
+              {EDIT_TABS.map((t) => {
+                const active = activeTab === t.id;
+                const count =
+                  t.id === "units"
+                    ? units.length
+                    : t.id === "photos"
+                    ? existingImages.length + stagedPreviews.length
+                    : null;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setActiveTab(t.id)}
+                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                      active
+                        ? "border-red-600 text-red-600"
+                        : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800"
+                    }`}
+                  >
+                    {t.label}
+                    {count != null && count > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+                          active
+                            ? "bg-red-50 text-red-600"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
         {/* PMS shortcut: landlords on a supported system should sync, not type.
             Add flow only; editing an existing listing stays manual. */}
         {!isEdit && (
@@ -1024,8 +1105,18 @@ export default function ListingFormPanel({
             <ListingDraftImport onApply={applyDraft} />
           ))}
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
+        <form onSubmit={handleSubmit} className="px-6 py-5">
+          {/* In edit mode the key remount plays a short settle-in as tabs
+              switch; in add mode the key never changes so nothing animates. */}
+          <motion.div
+            key={isEdit ? activeTab : "all"}
+            initial={isEdit ? { opacity: 0, y: 8 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="space-y-6"
+          >
           {/* Listing Details */}
+          {showSection("basics") && (
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Listing Details
@@ -1216,8 +1307,10 @@ export default function ListingFormPanel({
               </div>
             </div>
           </div>
+          )}
 
           {/* Amenities */}
+          {showSection("amenities") && (
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Amenities
@@ -1277,8 +1370,10 @@ export default function ListingFormPanel({
               </button>
             </div>
           </div>
+          )}
 
           {/* Utilities */}
+          {showSection("amenities") && (
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Utilities Included
@@ -1300,8 +1395,10 @@ export default function ListingFormPanel({
               ))}
             </div>
           </div>
+          )}
 
           {/* Contact Info */}
+          {showSection("contact") && (
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Contact Info
@@ -1327,8 +1424,10 @@ export default function ListingFormPanel({
               ))}
             </div>
           </div>
+          )}
 
           {/* Units */}
+          {showSection("units") && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -1544,8 +1643,10 @@ export default function ListingFormPanel({
               ))}
             </div>
           </div>
+          )}
 
           {/* Photos */}
+          {showSection("photos") && (
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Photos
@@ -1644,15 +1745,17 @@ export default function ListingFormPanel({
               </span>
             </label>
           </div>
+          )}
+          </motion.div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+            <div className="mt-6 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
               {error}
             </div>
           )}
 
           {/* Footer */}
-          <div className="flex gap-3 pt-2 border-t border-gray-100">
+          <div className="mt-6 flex gap-3 pt-2 border-t border-gray-100">
             <button
               type="submit"
               disabled={submitting}
