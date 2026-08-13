@@ -172,14 +172,17 @@ export default function PropertiesSection({
             </div>
 
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg group-hover:text-red-600 transition-colors">
-                {property.name}
-                {/*TODO should a property have a name? Would is be easier for the landlord to manage? */}
+              <CardTitle className="text-lg group-hover:text-red-600 transition-colors line-clamp-1">
+                {property.title || property.address}
               </CardTitle>
-              <div className="flex items-center gap-1 text-sm text-gray-500">
-                <MapPin className="h-3 w-3" />
-                <span className="truncate">{property.address}</span>
-              </div>
+              {/* Only show the address separately when the title isn't already it,
+                  otherwise every card reads the same line twice. */}
+              {property.title && (
+                <div className="flex items-center gap-1 text-sm text-gray-500">
+                  <MapPin className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{property.address}</span>
+                </div>
+              )}
             </CardHeader>
 
             <CardContent className="space-y-3">

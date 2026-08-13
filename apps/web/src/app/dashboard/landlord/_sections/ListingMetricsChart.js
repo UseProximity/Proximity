@@ -90,11 +90,12 @@ export default function ListingMetricsChart({ listingId, viewAsId }) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+      {/* Wraps rather than forcing a page-wide horizontal scroll on phones. */}
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
         <CardTitle className="text-sm font-medium">
           Engagement Over Time
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1">
             {["clicks", "saves", "contacts"].map((type) => {
               const active = selectedMetrics.includes(type);
