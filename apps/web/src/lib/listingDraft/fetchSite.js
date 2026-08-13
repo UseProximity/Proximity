@@ -108,6 +108,31 @@ async function readBodyCapped(res, maxBytes) {
 }
 
 /*
+ * Same idea for a binary asset, with one difference: a truncated page still
+ * extracts fine, but a truncated image is garbage. So this refuses instead of
+ * salvaging — it returns null once the cap is passed and the caller answers
+ * 413. Reading the stream is the point: buffering the whole response first and
+ * measuring afterwards means the cap protects nothing.
+ */
+export async function readAssetCapped(res, maxBytes) {
+  const reader = res.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+/*
  * Fetch one page with manual redirect handling so every hop is re-validated.
  * Returns { html, finalUrl } or throws DraftFetchError
  * (codes: unsupported_scheme, private_address, dns_failed, timeout, blocked, http_<status>).
@@ -329,7 +354,10 @@ async function renderPageViaFirecrawl(rawUrl) {
 }
 
 async function renderPageViaJina(rawUrl) {
-  const key = process.env.JINA_READER_KEY;
+  // JINA_API_KEY is the name people reach for (and the one the PR notes gave
+  // out); accept it too so a mis-set key degrades to "wrong name, still works"
+  // rather than a render fallback that silently never runs.
+  const key = process.env.JINA_READER_KEY || process.env.JINA_API_KEY;
   if (!key) return null;
   try {
     const res = await fetch(`https://r.jina.ai/${rawUrl}`, {
