@@ -3,7 +3,11 @@ export const maxDuration = 60;
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { fetchAssetResponse, DraftFetchError } from "@/lib/listingDraft/fetchSite";
+import {
+  fetchAssetResponse,
+  readAssetCapped,
+  DraftFetchError,
+} from "@/lib/listingDraft/fetchSite";
 
 /*
  * SSRF-guarded image proxy for the listing-draft import. The browser fetches
@@ -32,8 +36,11 @@ export async function GET(req) {
       res.body?.cancel?.().catch?.(() => {});
       return NextResponse.json({ error: "Not an image" }, { status: 415 });
     }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_IMAGE_BYTES) {
+    // Stream with the cap applied as we read. Buffering the whole body first
+    // and checking the length afterwards let an arbitrarily large remote image
+    // through the memory it was supposed to protect.
+    const buf = await readAssetCapped(res, MAX_IMAGE_BYTES);
+    if (buf === null) {
       return NextResponse.json({ error: "Image too large" }, { status: 413 });
     }
     return new Response(buf, {

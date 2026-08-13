@@ -80,6 +80,24 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const importBatch = useRef({ done: 0, total: 0 });
   const [resumed, setResumed] = useState(false);
 
+  /*
+   * Imported photos and floor plans download in the background (assets get a
+   * 45s timeout), so when the conveyor advances to the next property there can
+   * still be downloads in flight belonging to the property we just left. They
+   * used to finish and append themselves to whatever was staged by then — the
+   * next listing. Every asset job captures the epoch it started in and drops
+   * its results if it no longer matches; advancing bumps the epoch and aborts
+   * the outstanding fetches so we're not paying for them either.
+   */
+  const importEpoch = useRef(0);
+  const importAborters = useRef(new Set());
+
+  const cancelImportAssets = () => {
+    importEpoch.current += 1;
+    for (const c of importAborters.current) c.abort();
+    importAborters.current.clear();
+  };
+
   // ------------------------------------------------------------------ autosave
   const restoredRef = useRef(false);
   useEffect(() => {
@@ -139,6 +157,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   const startFresh = () => {
     clearAutosave();
+    cancelImportAssets();
     setForm(blankForm(user));
     setUnits([emptyUnit()]);
     setCustomAmenities([]);
@@ -305,6 +324,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   // ------------------------------------------------------- website import
   const importPhotos = async (urls) => {
+    const epoch = importEpoch.current;
+    const aborter = new AbortController();
+    importAborters.current.add(aborter);
     const files = new Array(urls.length);
     // Four at a time: firing a dozen full-size downloads at once overwhelms
     // slow CDNs/connections and times out the proxy; a small pool finishes
@@ -314,9 +336,11 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       for (;;) {
         const idx = cursor++;
         if (idx >= urls.length) return;
+        if (aborter.signal.aborted) return;
         try {
           const res = await fetch(
-            `/api/landlord/listing-draft/image?url=${encodeURIComponent(urls[idx])}`
+            `/api/landlord/listing-draft/image?url=${encodeURIComponent(urls[idx])}`,
+            { signal: aborter.signal }
           );
           if (!res.ok) continue;
           const blob = await res.blob();
@@ -329,7 +353,14 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
+    } finally {
+      importAborters.current.delete(aborter);
+    }
+    // The property moved on under us — these photos belong to the listing we
+    // already published, so staging them would attach them to the next one.
+    if (epoch !== importEpoch.current) return;
     const ok = files.filter(Boolean);
     if (ok.length) await handleImageFiles(ok);
     setImportInfo((prev) =>
@@ -345,7 +376,11 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
    * back to the photo stage so they're never silently lost.
    */
   const importFloorPlans = async (items) => {
+    const epoch = importEpoch.current;
     for (const { index, url } of items) {
+      // Same conveyor race as importPhotos: a floor plan resolving after the
+      // advance would land in the next property's unit slot.
+      if (epoch !== importEpoch.current) return;
       try {
         const res = await fetch(
           `/api/landlord/listing-draft/image?url=${encodeURIComponent(url)}`
@@ -362,11 +397,12 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         const up = await fetch("/api/upload/floor-plan", { method: "POST", body: fd });
         const data = await up.json().catch(() => ({}));
         if (!up.ok || !data.url) throw new Error("upload failed");
+        if (epoch !== importEpoch.current) return;
         setUnits((us) =>
           us.map((un, i) => (i === index ? { ...un, floorPlanImageUrl: data.url } : un))
         );
       } catch {
-        importPhotos([url]);
+        if (epoch === importEpoch.current) importPhotos([url]);
       }
     }
   };
@@ -378,7 +414,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       body: JSON.stringify({ url: importPastedUrl.current, targetProperty: target }),
     }).then(async (res) => {
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.listing) throw new Error(data.error || "extract failed");
+      if (!res.ok || !data.listing) {
+        // Carry the status: the queue advance has to tell "this property is
+        // unreadable" (skip it) apart from "we're throttled" (stop).
+        const err = new Error(data.error || "extract failed");
+        err.status = res.status;
+        throw err;
+      }
       return data;
     });
 
@@ -410,7 +452,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           );
         case "description":
           return !!form.description.trim();
+        // Basics carries the required availability answer, so it only counts
+        // once it's actually been seen — applyDraft marks it visited when the
+        // import supplied a dated availability. Treating any imported field as
+        // proof of basics made the bar show it done on the very flow that
+        // never asked the question.
         case "basics":
+          return visited.has(id);
         case "perks":
           return visited.has(id) || importedFields.size > 0;
         case "photos":
@@ -528,7 +576,16 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
     // Jump to the first gap. Steps the import satisfied count as visited so
     // the progress bar honestly shows them done (endowed progress you earned).
-    const importDone = new Set(["basics", "perks", "photos"]);
+    //
+    // Availability is the exception. It's a required signal, and the only way
+    // an import can answer it is a dated unit availability — everything else is
+    // us guessing. Counting "basics" as satisfied without one skipped the ask
+    // entirely and published every imported listing with an empty move_in_date,
+    // i.e. "available now" by default, which is the opposite of the deliberate
+    // signal this step exists to collect.
+    const availabilityImported = !!availDates[0];
+    const importDone = new Set(["perks", "photos"]);
+    if (availabilityImported) importDone.add("basics");
     if (listing.address) importDone.add("address");
     if (listing.description) importDone.add("description");
     setVisited((prev) => new Set([...prev, ...importDone]));
@@ -538,6 +595,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       nextUnits.every((u) => (u.leaseTermMonths ?? []).length > 0);
     const firstGap = !listing.address
       ? "address"
+      : !availabilityImported
+      ? "basics"
       : !unitsOk
       ? "units"
       : !listing.description
@@ -738,6 +797,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const advanceImportQueue = async (unitPayload, diff) => {
     let queue = importQueue;
     toast.success("Listing published!");
+    // Anything still downloading belongs to the listing we just published.
+    cancelImportAssets();
     // fresh form for the next property
     setForm(blankForm(user));
     setUnits([emptyUnit()]);
@@ -769,10 +830,34 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           isQueueAdvance: true,
         });
         return;
-      } catch {
+      } catch (err) {
+        // A 429 from the hourly limiter, a 5xx, or a dropped connection is not
+        // "this property is unreadable" — it will hit the next property too.
+        // Skipping on it walked the entire remaining queue in one loop, firing
+        // a red toast per property and then navigating away, so a landlord who
+        // queued 30 properties lost 29 of them with no explanation. Stop on the
+        // first non-specific failure and say what actually happened.
+        const status = err?.status;
+        const throttled = status === 429;
+        if (throttled || status == null || status >= 500) {
+          const left = queue.length + 1;
+          toast.error(
+            throttled
+              ? `Import limit reached — ${left} propert${
+                  left === 1 ? "y" : "ies"
+                } not imported. Paste your site again in an hour to finish them.`
+              : `Import stopped after a connection problem — ${left} propert${
+                  left === 1 ? "y" : "ies"
+                } not imported. Paste your site again to finish them.`,
+            { duration: 9000 }
+          );
+          break;
+        }
         toast.error(`Couldn't import ${target.name}, skipping it.`);
       }
     }
+    prefetchRef.current = null;
+    setImportQueue([]);
     setImportInfo(null);
     importBatch.current = { done: 0, total: 0 };
     await onSuccess(unitPayload, diff);
