@@ -12,7 +12,6 @@
  */
 import { guides } from "@/lib/guides";
 import { washuPages } from "@/lib/washuPages";
-import { getWashuPageListings } from "@/lib/listings/queryListings";
 
 const SITE_URL = "https://useproximity.org";
 
@@ -39,6 +38,12 @@ const staticRoutes = [
 // inventory threshold that flips their robots meta to index — one gate,
 // both places, so they can never disagree.
 async function fetchWashuEntries() {
+  // Lazy, for the same reason fetchListingEntries is: queryListings reaches
+  // @/lib/supabase, which throws from its module body when the DB env vars are
+  // missing. Imported at the top of this file that throw happens at module
+  // evaluation, before either try/catch below can run — killing the whole route
+  // rather than degrading to a static sitemap.
+  const { getWashuPageListings } = await import("@/lib/listings/queryListings");
   const results = await Promise.all(
     washuPages.map(async (page) => ({
       page,
