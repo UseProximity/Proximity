@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
 
@@ -131,6 +131,26 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         {listing.unavailable && (
           <div className="absolute top-3 left-3 bg-gray-800/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
             Unavailable
+          </div>
+        )}
+        {/* PMS-synced listing: availability is live from the property's system.
+            Pre-leased listings surface their move-in date instead of hiding. */}
+        {!listing.unavailable && (listing.verifiedLive || formatAvailableFrom(listing.availableFrom)) && (
+          <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+            {listing.verifiedLive && (
+              <div className="bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+                </span>
+                <span className="uppercase tracking-wide">Live</span>
+              </div>
+            )}
+            {formatAvailableFrom(listing.availableFrom) && (
+              <div className="bg-white/90 text-gray-900 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+                {formatAvailableFrom(listing.availableFrom)}
+              </div>
+            )}
           </div>
         )}
         {imageCount > 1 && !listing.unavailable && (

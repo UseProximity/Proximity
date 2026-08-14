@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-08T18:50:38.576Z",
-  "count": 64,
+  "_generated": "2026-08-14T01:04:35.776Z",
+  "count": 78,
   "routes": [
     {
       "path": "/api/addListing",
@@ -318,6 +318,23 @@
       "file": "src/app/api/auto-unavailable/undo/route.js"
     },
     {
+      "path": "/api/availability/confirm",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "listings",
+        "pms_review_queue"
+      ],
+      "file": "src/app/api/availability/confirm/route.js"
+    },
+    {
       "path": "/api/contacted",
       "methods": [
         "POST"
@@ -360,6 +377,21 @@
       "file": "src/app/api/cron/auto-unavailable/route.js"
     },
     {
+      "path": "/api/cron/availability-check",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings",
+        "users"
+      ],
+      "file": "src/app/api/cron/availability-check/route.js"
+    },
+    {
       "path": "/api/cron/landlord-nudge",
       "methods": [
         "GET"
@@ -374,6 +406,36 @@
         "listing_landlords"
       ],
       "file": "src/app/api/cron/landlord-nudge/route.js"
+    },
+    {
+      "path": "/api/cron/pms-sync",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "pms_connections",
+        "pms_review_queue",
+        "users"
+      ],
+      "file": "src/app/api/cron/pms-sync/route.js"
+    },
+    {
+      "path": "/api/cron/seo-report",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "seo_query_metrics"
+      ],
+      "file": "src/app/api/cron/seo-report/route.js"
     },
     {
       "path": "/api/dev/matchmaking-edgecases",
@@ -539,6 +601,30 @@
       "file": "src/app/api/getUser/route.js"
     },
     {
+      "path": "/api/landlord/listing-draft",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listing-draft/route.js"
+    },
+    {
+      "path": "/api/landlord/listing-draft/image",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listing-draft/image/route.js"
+    },
+    {
       "path": "/api/landlord/listings",
       "methods": [
         "GET"
@@ -624,6 +710,100 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/landlord/metrics/route.js"
+    },
+    {
+      "path": "/api/landlord/pms/confirm",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "pms_links",
+        "listings",
+        "listing_reviews",
+        "pms_connections",
+        "listing_landlords",
+        "listing_units"
+      ],
+      "file": "src/app/api/landlord/pms/confirm/route.js"
+    },
+    {
+      "path": "/api/landlord/pms/connect",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "DELETE": "public"
+      },
+      "tables": [
+        "pms_connections",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/pms/connect/route.js"
+    },
+    {
+      "path": "/api/landlord/pms/connect-session",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/pms/connect-session/route.js"
+    },
+    {
+      "path": "/api/landlord/pms/discover",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "pms_connections",
+        "listing_landlords",
+        "listings",
+        "listing_images",
+        "users"
+      ],
+      "file": "src/app/api/landlord/pms/discover/route.js"
+    },
+    {
+      "path": "/api/landlord/pms/links",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "pms_connections",
+        "pms_links",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/pms/links/route.js"
+    },
+    {
+      "path": "/api/landlord/pms/request-integration",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "pms_integration_requests"
+      ],
+      "file": "src/app/api/landlord/pms/request-integration/route.js"
     },
     {
       "path": "/api/landlord/reviews",
@@ -759,6 +939,24 @@
       "file": "src/app/api/pendingReviews/route.js"
     },
     {
+      "path": "/api/pms/hold",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "pms_review_queue",
+        "pms_connections",
+        "users"
+      ],
+      "file": "src/app/api/pms/hold/route.js"
+    },
+    {
       "path": "/api/referralPayment",
       "methods": [
         "GET",
@@ -841,6 +1039,18 @@
         "users"
       ],
       "file": "src/app/api/searchUsers/route.js"
+    },
+    {
+      "path": "/api/seo/opportunities",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/seo/opportunities/route.js"
     },
     {
       "path": "/api/staging/email-recipients",

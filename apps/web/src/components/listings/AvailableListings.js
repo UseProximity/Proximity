@@ -213,9 +213,12 @@ export default function AvailableListings({
             l.longitude >= viewportBounds.swLng &&
             l.longitude <= viewportBounds.neLng
         );
-    return [...filtered].sort(
-      (a, b) => (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0)
-    );
+    return [...filtered].sort((a, b) => {
+      // Unavailable listings last; among available, now before later.
+      const un = (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0);
+      if (un !== 0) return un;
+      return (a.availableFrom ? 1 : 0) - (b.availableFrom ? 1 : 0);
+    });
   }, [listings, viewportBounds]);
 
   /* ── Mobile UI state ── */
