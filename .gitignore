@@ -77,6 +77,9 @@ today.md
 # Claude Code local state (worktrees, memory, logs)
 .claude/
 .claude-flow/
+# Agent tooling writes credentials straight into these — never commit them
+claude-flow.config.json
+*.local.json
 
 # Codex local state
 .codex
