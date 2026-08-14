@@ -1,0 +1,26 @@
+{
+  "intro": [
+    "The 2 bedroom is the workhorse of WashU off-campus housing: one friend, one lease, and a per-person price that beats living alone almost every time.",
+    "Everything below is live inventory on Proximity with walk times to campus already computed and reviews from students who lived in the building. Do the per-person math before you tour: the sticker price is for the whole unit, so your share is roughly half."
+  ],
+  "directAnswer": "2 bedroom apartments near WashU are concentrated in Skinker-DeBaliviere, University City, and around the Delmar Loop. For context, HUD's FY2026 fair market rent for a 2 bedroom is $1,140 in Skinker-DeBaliviere (63112) and $1,360 in University City (63130), whole unit, utilities included.",
+  "faqs": [
+    {
+      "q": "How much is a 2 bedroom apartment near WashU?",
+      "a": "HUD's FY2026 fair market rent for a 2 bedroom is $1,140 in ZIP 63112 (Skinker-DeBaliviere), $1,360 in 63130 (University City), and $1,730 in 63105 (Clayton), whole unit with utilities included. Those are 40th percentile ZIP-wide benchmarks; buildings marketed to students near campus generally price above them. Each listing above shows its real current rent."
+    },
+    {
+      "q": "What does a 2 bedroom cost per person?",
+      "a": "Take the unit rent and divide by two, then add utilities if they are not included. That split is why 2 bedrooms are the most popular student setup: your share usually lands well below what a 1 bedroom or studio costs on its own."
+    },
+    {
+      "q": "When should two of us sign a lease for next year?",
+      "a": "Students consistently report that private landlords start signing for the next school year around November, and the good 2 bedrooms move first. WashU-affiliated companies like Quadrangle and Parallel typically open signing in spring. If you have your person locked in by late fall, you get the best selection."
+    },
+    {
+      "q": "Are rents near WashU going up?",
+      "a": "Yes, modestly. Zillow's rent index for ZIP 63130 (University City) was up 5.0% year over year and 63112 (Skinker-DeBaliviere) up 6.5% as of June 2026, against about 4.0% for the St. Louis metro. Source: Zillow Research. Signing earlier in the cycle generally beats waiting."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}

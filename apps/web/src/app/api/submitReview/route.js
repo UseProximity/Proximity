@@ -4,6 +4,12 @@ import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { isReviewEligibleEmail } from "@/lib/schools";
 
+// Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
+// /api/reviewReferral so both review entry points accept the same values.
+function isHalfStar(v) {
+  return typeof v === "number" && v >= 0.5 && v <= 5 && Number.isInteger(v * 2);
+}
+
 export async function POST(req) {
   try {
     const session = await auth();
@@ -32,7 +38,7 @@ export async function POST(req) {
       valueRating,
     } = body;
 
-    if (!rating || rating < 1 || rating > 5 || !comment || comment.trim().length < 5) {
+    if (!isHalfStar(rating) || !comment || comment.trim().length < 5) {
       return NextResponse.json({ error: "Invalid rating or comment" }, { status: 400 });
     }
 
@@ -42,9 +48,9 @@ export async function POST(req) {
 
     // Validate optional category ratings if provided
     for (const [key, val] of Object.entries({ communicationRating, locationRating, valueRating })) {
-      if (val != null && (val < 1 || val > 5)) {
+      if (val != null && !isHalfStar(val)) {
         return NextResponse.json(
-          { error: `Invalid ${key}: must be between 1 and 5` },
+          { error: `Invalid ${key}: must be between 0.5 and 5, in half-star steps` },
           { status: 400 }
         );
       }

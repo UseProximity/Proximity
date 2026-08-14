@@ -7,6 +7,9 @@
  * clear — the footer "Report a bug" link is the entry point there.
  * On /browse the launcher shrinks to a translucent icon so it stops covering the
  * listing description it sits on top of; hovering restores it to full opacity.
+ * The launcher sits at z-50 because it renders before {children} in the root layout,
+ * so any page content at z-40 (e.g. the homepage hero column) would otherwise paint
+ * over it and eat the click even though the button stays visible.
  * Also opens when any element dispatches the `proximity:open-feedback` window event —
  * the footer "Report a bug" link uses that so both entry points share one modal.
  * Submissions POST to /api/feedback, which emails the team.
@@ -19,9 +22,9 @@ import toast from "react-hot-toast";
 import { MessageSquarePlus, X } from "lucide-react";
 
 const TYPES = [
-  { value: "bug", label: "🐞 Bug" },
-  { value: "suggestion", label: "💡 Suggestion" },
-  { value: "other", label: "💬 Other" },
+  { value: "bug", label: "Bug" },
+  { value: "suggestion", label: "Suggestion" },
+  { value: "other", label: "Other" },
 ];
 
 export const OPEN_FEEDBACK_EVENT = "proximity:open-feedback";
@@ -95,7 +98,7 @@ export default function FeedbackWidget() {
         onClick={openModal}
         aria-label="Report a bug or suggest a fix"
         title="Report a bug or suggest a fix"
-        className={`hidden sm:flex fixed bottom-6 left-6 z-40 items-center rounded-full shadow-lg transition ${
+        className={`hidden sm:flex fixed bottom-6 left-6 z-50 items-center rounded-full shadow-lg transition ${
           subtle
             ? "p-3 bg-gray-900/40 text-white/70 backdrop-blur-sm hover:bg-gray-900 hover:text-white focus-visible:bg-gray-900 focus-visible:text-white"
             : "gap-2 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800"
@@ -127,7 +130,7 @@ export default function FeedbackWidget() {
               </button>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Spotted something broken or have an idea? Tell us — it goes straight to the team.
+              Spotted something broken or have an idea? Tell us and it goes straight to the team.
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">

@@ -23,6 +23,8 @@ coverage/
 # next.js (match at any depth for monorepo)
 .next/
 out/
+# build dir for the local content-recording mode (`npm run dev:demo`)
+.next-demo/
 
 # production
 build/
@@ -98,3 +100,20 @@ mcp/knowledge/agent-sessions.json
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
+
+# Firecrawl scrape output (research artifacts, not source)
+.firecrawl/
+
+# ── SEO engine (must stay at end of file: re-includes must follow excludes) ──
+# Validator + benchmark allowlist are shared tooling; the seo-draft skill and
+# content-draft docs travel with the repo. Weekly review sheets stay local.
+!scripts/
+scripts/*
+!scripts/seo-engine/
+scripts/seo-engine/reports/*.md
+!.claude/
+.claude/*
+!.claude/skills/
+!docs/
+docs/*
+!docs/content-drafts/

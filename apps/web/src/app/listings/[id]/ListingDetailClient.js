@@ -5,11 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
 
-export default function ListingDetailClient({ listingId, session }) {
+export default function ListingDetailClient({
+  listingId,
+  session,
+  initialListing = null,
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [listing, setListing] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // The server page seeds initialListing so the first paint (and crawler HTML)
+  // has the full listing. The mount fetch still runs: it counts the click
+  // metric and, for signed-in users, restores per-review vote state.
+  const [listing, setListing] = useState(initialListing);
+  const [loading, setLoading] = useState(!initialListing);
   const [notFound, setNotFound] = useState(false);
 
   const from = searchParams.get("from");
@@ -19,13 +26,14 @@ export default function ListingDetailClient({ listingId, session }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setListing(data);
-        else setNotFound(true);
+        else if (!initialListing) setNotFound(true);
         setLoading(false);
       })
       .catch(() => {
-        setNotFound(true);
+        if (!initialListing) setNotFound(true);
         setLoading(false);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listingId]);
 
   const handleBack = () => {

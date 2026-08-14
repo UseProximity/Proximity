@@ -1,89 +1,35 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Camera, Plus, X } from "lucide-react";
+import { Camera, Plus, RefreshCw, X } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import toast from "react-hot-toast";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import ListingDraftImport from "@/components/listings/ListingDraftImport";
+
+// The four PMSs the sync integration supports today. Shown as a shortcut on
+// the ADD flow only: landlords on one of these should connect it instead of
+// typing listings in by hand.
+const PMS_SYNC_OPTIONS = [
+  { label: "Buildium", logo: "/pms-logos/buildium.png" },
+  { label: "AppFolio", logo: "/pms-logos/appfolio.png" },
+  { label: "DoorLoop", logo: "/pms-logos/doorloop.png" },
+  { label: "Rentec Direct", logo: "/pms-logos/rentecdirect.png" },
+];
 
 // Add / Edit Listing Modal -------------------------------------------------------
-// Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
-// The API writes `row[name] = true` for each, so anything not in these lists is dropped.
-const AMENITY_OPTIONS = [
-  "air_conditioning",
-  "dishwasher",
-  "gym",
-  "laundry",
-  "mailroom",
-  "microwave",
-  "oven",
-  "parking",
-  "pets_allowed",
-  "pool",
-  "refrigerator",
-  "rooftop",
-  "storage",
-  "stove",
-  "study_room",
-];
-const AMENITY_LABELS = {
-  air_conditioning: "Air Conditioning",
-  dishwasher: "Dishwasher",
-  gym: "Gym",
-  laundry: "Laundry",
-  mailroom: "Mailroom",
-  microwave: "Microwave",
-  oven: "Oven",
-  parking: "Parking",
-  pets_allowed: "Pets Allowed",
-  pool: "Pool",
-  refrigerator: "Refrigerator",
-  rooftop: "Rooftop",
-  storage: "Storage",
-  stove: "Stove",
-  study_room: "Study Room",
-};
-const UTILITY_OPTIONS = [
-  "electric",
-  "gas",
-  "heat",
-  "water",
-  "internet",
-  "trash",
-  "cable",
-  "sewer",
-  "cooling",
-];
-const UTILITY_LABELS = {
-  electric: "Electric",
-  gas: "Gas",
-  heat: "Heat",
-  water: "Water",
-  internet: "Internet",
-  trash: "Trash",
-  cable: "Cable",
-  sewer: "Sewer",
-  cooling: "Cooling",
-};
-const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "other"];
-const LEASE_TYPES = ["standard", "sublease", "short-term"];
-
-const emptyUnit = () => ({
-  bedrooms: "",
-  bathrooms: "",
-  rent: "",
-  area: "",
-  available: true,
-  title: "",
-  floorPlanImageUrl: "",
-  leaseTermMonths: [], // months a unit can be leased for (multi-select)
-});
-
-// Named lease-term presets map to month counts; landlords can also type any number.
-const LEASE_TERM_PRESETS = [
-  { label: "Summer", months: 4 },
-  { label: "Semester", months: 5 },
-  { label: "10-Month", months: 10 },
-  { label: "12-Month", months: 12 },
-];
+// Option lists shared with the add-listing wizard (see listingFormOptions.js).
+import {
+  AMENITY_OPTIONS,
+  AMENITY_LABELS,
+  UTILITY_OPTIONS,
+  UTILITY_LABELS,
+  HOME_TYPES,
+  LEASE_TYPES,
+  LEASE_TERM_PRESETS,
+  emptyUnit,
+} from "@/components/listings/listingFormOptions";
 
 // Shared add/edit listing form for landlords. Renders as a modal by default
 // (used for editing inside the dashboard) or as a full-page form when `asPage`
@@ -163,6 +109,48 @@ export default function ListingFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  // Website-import draft state (add flow only). importedFields holds the names
+  // of fields prefilled from the landlord's site ("address", "u0:rent", ...);
+  // each clears when the landlord touches that field, dropping its amber tint.
+  const [importInfo, setImportInfo] = useState(null);
+  const [importedFields, setImportedFields] = useState(() => new Set());
+  // Multi-property conveyor belt: remaining picked properties (importQueue),
+  // the originally pasted URL the API needs for each, and a one-ahead prefetch
+  // so the next property is usually ready the moment this listing is created.
+  const [importQueue, setImportQueue] = useState([]);
+  const importPastedUrl = useRef(null);
+  const prefetchRef = useRef(null); // { name, promise }
+
+  const requestQueuedDraft = (target) =>
+    fetch("/api/landlord/listing-draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: importPastedUrl.current, targetProperty: target }),
+    }).then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.listing) throw new Error(data.error || "extract failed");
+      return data;
+    });
+
+  const prefetchNext = (queue) => {
+    const target = queue[0];
+    if (!target) {
+      prefetchRef.current = null;
+      return;
+    }
+    const promise = requestQueuedDraft(target).catch(() => null);
+    prefetchRef.current = { name: target.name, promise };
+  };
+  const clearImported = (key) =>
+    setImportedFields((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  const importedCls = (key) =>
+    importedFields.has(key) ? " ring-1 ring-amber-400 bg-amber-50" : "";
 
   // Image upload
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -260,8 +248,10 @@ export default function ListingFormPanel({
       setAddressLoading(true);
       try {
         const encoded = encodeURIComponent(query.trim());
+        // proximity biases ranking toward the WashU area so street-only
+        // queries ("718 Limit") surface the St. Louis match first.
         const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=5&country=US&types=address,place`
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=5&country=US&types=address,place&proximity=-90.3123,38.6488`
         );
         const data = await res.json();
         const suggestions = (data.features ?? []).map((f) => ({
@@ -280,6 +270,7 @@ export default function ListingFormPanel({
 
   const handleAddressInput = (e) => {
     const value = e.target.value;
+    clearImported("address");
     setForm((f) => ({ ...f, address: value }));
     fetchAddressSuggestions(value);
   };
@@ -312,7 +303,8 @@ export default function ListingFormPanel({
         resolve(file);
         return;
       }
-      const img = new Image();
+      // window.Image, not the next/image import this file shadows the global with.
+      const img = new window.Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(url);
@@ -372,6 +364,7 @@ export default function ListingFormPanel({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    clearImported(name);
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -385,10 +378,12 @@ export default function ListingFormPanel({
 
   const addUnit = () => setUnits((u) => [...u, emptyUnit()]);
   const removeUnit = (i) => setUnits((u) => u.filter((_, idx) => idx !== i));
-  const updateUnit = (i, field, val) =>
+  const updateUnit = (i, field, val) => {
+    clearImported(`u${i}:${field}`);
     setUnits((u) =>
       u.map((unit, idx) => (idx === i ? { ...unit, [field]: val } : unit))
     );
+  };
 
   const uploadFloorPlan = async (i, file) => {
     if (!file) return;
@@ -445,6 +440,207 @@ export default function ListingFormPanel({
       })
     );
     setCustomTermInput((prev) => ({ ...prev, [i]: "" }));
+  };
+
+  // Pull each photo Claude picked through the SSRF-guarded proxy and stage it
+  // like a normal upload, so imported photos ride the existing browser-to-R2
+  // pipeline and each one can be removed before submitting.
+  const importPhotos = async (urls) => {
+    const files = new Array(urls.length);
+    await Promise.allSettled(
+      urls.map(async (u, idx) => {
+        const res = await fetch(
+          `/api/landlord/listing-draft/image?url=${encodeURIComponent(u)}`
+        );
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (!blob.type.startsWith("image/")) return;
+        if (blob.size < 15000) return; // tiny files are icons/thumbnails, not photos
+        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+        files[idx] = new File([blob], `imported-${idx + 1}.${ext}`, {
+          type: blob.type,
+        });
+      })
+    );
+    const ok = files.filter(Boolean);
+    if (ok.length) await handleImageFiles(ok);
+    setImportInfo((prev) =>
+      prev ? { ...prev, photosLoading: false, photoCount: ok.length } : prev
+    );
+  };
+
+  // Tracks progress through a multi-property batch for the summary banner.
+  const importBatch = useRef({ done: 0, total: 0 });
+
+  // Apply an extracted website draft to the form. Only non-empty values land;
+  // everything applied gets marked "imported" until the landlord touches it.
+  // meta: { sourceUrl, pastedUrl, queue, isQueueAdvance }.
+  const applyDraft = (listing, meta) => {
+    const { sourceUrl, pastedUrl, queue = [], isQueueAdvance = false } = meta ?? {};
+    const marked = new Set();
+    setForm((f) => {
+      const next = { ...f };
+      const setIf = (key, val) => {
+        if (val != null && val !== "") {
+          next[key] = val;
+          marked.add(key);
+        }
+      };
+      setIf("address", listing.address);
+      setIf("title", listing.title);
+      setIf("description", listing.description);
+      setIf("home_type", listing.home_type);
+      setIf("contact_name", listing.contact_name);
+      setIf("contact_email", listing.contact_email);
+      setIf("contact_phone", listing.contact_phone);
+      if (listing.furnished != null) next.furnished = listing.furnished;
+      const known = (vals, options) =>
+        (vals ?? []).filter((v) => options.includes(v));
+      const knownAmenities = known(listing.amenities, AMENITY_OPTIONS);
+      if (knownAmenities.length) {
+        next.amenities = Array.from(new Set([...f.amenities, ...knownAmenities]));
+      }
+      const knownUtilities = known(listing.utilities_included, UTILITY_OPTIONS);
+      if (knownUtilities.length) {
+        next.utilities_included = Array.from(
+          new Set([...f.utilities_included, ...knownUtilities])
+        );
+      }
+      return next;
+    });
+    if (Array.isArray(listing.customAmenities) && listing.customAmenities.length) {
+      setCustomAmenities((prev) => {
+        const have = new Set(prev.map((a) => a.toLowerCase()));
+        const extra = listing.customAmenities
+          .map((a) => String(a).trim())
+          .filter((a) => a && !have.has(a.toLowerCase()));
+        return [...prev, ...extra];
+      });
+    }
+    if (Array.isArray(listing.units) && listing.units.length) {
+      setUnits(
+        listing.units.slice(0, 12).map((u, i) => {
+          for (const fld of ["bedrooms", "bathrooms", "rent", "area", "title"]) {
+            if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
+          }
+          return {
+            bedrooms: u.bedrooms ?? "",
+            bathrooms: u.bathrooms ?? "",
+            rent: u.rent ?? "",
+            area: u.area ?? "",
+            available: true,
+            title: u.title ?? "",
+            floorPlanImageUrl: "",
+            leaseTermMonths: [],
+          };
+        })
+      );
+    }
+    setImportedFields(marked);
+
+    // Open the Mapbox dropdown on the imported address so one tap upgrades a
+    // street-only address ("718 Limit") to the verified full address that
+    // powers geocoding, maps, and walk times.
+    if (marked.has("address") && listing.address) {
+      fetchAddressSuggestions(listing.address);
+    }
+
+    importPastedUrl.current = pastedUrl ?? importPastedUrl.current;
+    setImportQueue(queue);
+    prefetchNext(queue);
+    if (isQueueAdvance) importBatch.current.done += 1;
+    else importBatch.current = { done: 1, total: queue.length + 1 };
+
+    let host = "your website";
+    try {
+      host = new URL(sourceUrl).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep fallback label */
+    }
+    const photoUrls = Array.isArray(listing.imageUrls) ? listing.imageUrls : [];
+    setImportInfo({
+      host,
+      notes: Array.isArray(listing.sourceNotes) ? listing.sourceNotes.slice(0, 6) : [],
+      photoCount: 0,
+      photosTotal: photoUrls.length,
+      photosLoading: photoUrls.length > 0,
+      addressNeedsConfirm: marked.has("address"),
+      batchDone: importBatch.current.done,
+      batchTotal: importBatch.current.total,
+      nextName: queue[0]?.name ?? null,
+    });
+    if (photoUrls.length) importPhotos(photoUrls);
+  };
+
+  // Blank the form fields (used by "start over" and between queued properties).
+  const clearFormFields = () => {
+    setForm({
+      address: "",
+      title: "",
+      description: "",
+      home_type: "apartment",
+      lease_type: "standard",
+      furnished: false,
+      sublease_friendly: false,
+      twenty_one_plus: false,
+      move_in_date: "",
+      contact_email: user?.email ?? "",
+      contact_phone: user?.phone ?? "",
+      contact_name: user?.name ?? "",
+      amenities: [],
+      utilities_included: [],
+      lease_availability: [],
+    });
+    setUnits([emptyUnit()]);
+    setCustomAmenities([]);
+    stagedPreviews.forEach((url) => URL.revokeObjectURL(url));
+    setStagedFiles([]);
+    setStagedPreviews([]);
+    setImportedFields(new Set());
+  };
+
+  // "Start over": back to the blank form the landlord would have seen without
+  // the import, dropping any queued properties too.
+  const resetImport = () => {
+    clearFormFields();
+    setImportInfo(null);
+    setImportQueue([]);
+    prefetchRef.current = null;
+    importBatch.current = { done: 0, total: 0 };
+  };
+
+  // After a queued-import listing is created: blank the form and load the next
+  // property (usually instant thanks to the prefetch). onSuccess — which
+  // normally navigates away — only fires once the whole batch is done.
+  const advanceImportQueue = async (unitPayload, diff) => {
+    let queue = importQueue;
+    toast.success("Listing created!");
+    clearFormFields();
+    while (queue.length) {
+      const target = queue[0];
+      queue = queue.slice(1);
+      setImportQueue(queue);
+      setImportInfo({ loadingNext: target.name });
+      try {
+        const pre = prefetchRef.current;
+        prefetchRef.current = null;
+        const data =
+          pre && pre.name === target.name ? await pre.promise : null;
+        const resolved = data ?? (await requestQueuedDraft(target));
+        applyDraft(resolved.listing, {
+          sourceUrl: resolved.sourceUrl,
+          pastedUrl: importPastedUrl.current,
+          queue,
+          isQueueAdvance: true,
+        });
+        return;
+      } catch {
+        toast.error(`Couldn't import ${target.name}, skipping it.`);
+      }
+    }
+    setImportInfo(null);
+    importBatch.current = { done: 0, total: 0 };
+    await onSuccess(unitPayload, diff);
   };
 
   const handleSubmit = async (e) => {
@@ -661,6 +857,16 @@ export default function ListingFormPanel({
         diff.phone = trim(form.contact_phone);
       }
 
+      // Multi-property import: instead of navigating away, load the next
+      // queued property into a fresh form. onSuccess fires after the last one.
+      if (!isEdit && importQueue.length > 0) {
+        await advanceImportQueue(
+          unitPayload,
+          Object.keys(diff).length > 0 ? diff : null
+        );
+        return;
+      }
+
       await onSuccess(unitPayload, Object.keys(diff).length > 0 ? diff : null);
     } catch {
       setError("Network error. Please try again.");
@@ -709,6 +915,115 @@ export default function ListingFormPanel({
           </button>
         </div>
 
+        {/* PMS shortcut: landlords on a supported system should sync, not type.
+            Add flow only; editing an existing listing stays manual. */}
+        {!isEdit && (
+          <div className="mx-6 mt-5 rounded-xl border border-red-100 bg-gradient-to-r from-red-50/80 to-white p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex shrink-0 -space-x-2 pt-0.5">
+                  {PMS_SYNC_OPTIONS.map((p) => (
+                    <Image
+                      key={p.label}
+                      src={p.logo}
+                      alt={p.label}
+                      title={p.label}
+                      width={56}
+                      height={56}
+                      className="h-8 w-8 rounded-full border border-gray-200 bg-white object-contain p-1 shadow-sm"
+                    />
+                  ))}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Use Buildium, AppFolio, DoorLoop, or Rentec Direct?
+                    <span className="ml-1.5 inline-block whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 align-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                      Beta
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
+                    Skip the typing. Connect your system once and your listings create
+                    themselves, stay priced right, and come off the moment they lease.
+                    Auto sync is still in beta while we test it with live accounts.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/dashboard/landlord?tab=integrations"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+              >
+                <RefreshCw className="h-4 w-4" /> Set up auto sync
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Website import: paste a property site, get the form prefilled as a
+            draft. Add flow only; nothing here touches the edit path. */}
+        {!isEdit &&
+          (importInfo?.loadingNext ? (
+            <div className="mx-6 mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-amber-700" />
+              Loading the next property: {importInfo.loadingNext}…
+            </div>
+          ) : importInfo ? (
+            <div className="mx-6 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">
+                Imported from {importInfo.host}
+                {importInfo.batchTotal > 1
+                  ? ` (property ${importInfo.batchDone} of ${importInfo.batchTotal})`
+                  : ""}
+                . Please double-check everything.
+              </p>
+              {importInfo.addressNeedsConfirm && (
+                <p className="mt-1 text-xs font-medium text-amber-900">
+                  First: confirm the address by tapping the right suggestion in
+                  the dropdown under the Address box, that&apos;s what puts your
+                  listing on the map.
+                </p>
+              )}
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                Highlighted fields came from your site; they turn white once you
+                edit them. Rent and lease terms usually still need your input,
+                and every available unit needs at least one lease term.
+              </p>
+              {importInfo.photosLoading ? (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-800">
+                  <span className="h-3 w-3 animate-spin rounded-full border border-amber-300 border-t-amber-700" />
+                  Bringing over {importInfo.photosTotal} photo
+                  {importInfo.photosTotal === 1 ? "" : "s"} from your site…
+                </p>
+              ) : importInfo.photoCount > 0 ? (
+                <p className="mt-2 text-xs text-amber-800">
+                  {importInfo.photoCount} photo
+                  {importInfo.photoCount === 1 ? "" : "s"} staged in the Photos
+                  section below. Remove any you don&apos;t want, or add more.
+                </p>
+              ) : null}
+              {importInfo.notes.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-amber-800">
+                  {importInfo.notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              )}
+              {importInfo.nextName && (
+                <p className="mt-2 text-xs text-amber-800">
+                  Up next after you create this one: {importInfo.nextName}.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={resetImport}
+                className="mt-2 text-xs font-medium text-amber-900 underline hover:text-amber-700"
+              >
+                Start over with a blank form
+              </button>
+            </div>
+          ) : (
+            <ListingDraftImport onApply={applyDraft} />
+          ))}
+
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
           {/* Listing Details */}
           <div>
@@ -731,7 +1046,7 @@ export default function ListingFormPanel({
                     }
                     required
                     autoComplete="off"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 pr-8"
+                    className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 pr-8${importedCls("address")}`}
                     placeholder="123 Main St, St. Louis, MO 63130"
                   />
                   {addressLoading && (
@@ -802,7 +1117,7 @@ export default function ListingFormPanel({
                   name="title"
                   value={form.title}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("title")}`}
                   placeholder="e.g. Cozy Studio Near Campus"
                 />
               </div>
@@ -816,7 +1131,7 @@ export default function ListingFormPanel({
                   onChange={handleChange}
                   required
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("description")}`}
                   placeholder="Describe the property..."
                 />
               </div>
@@ -828,7 +1143,7 @@ export default function ListingFormPanel({
                   name="home_type"
                   value={form.home_type}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("home_type")}`}
                 >
                   {HOME_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -1006,7 +1321,7 @@ export default function ListingFormPanel({
                     type={type}
                     value={form[name]}
                     onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(name)}`}
                   />
                 </div>
               ))}
@@ -1061,7 +1376,7 @@ export default function ListingFormPanel({
                           step={step}
                           value={unit[field]}
                           onChange={(e) => updateUnit(i, field, e.target.value)}
-                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                          className={`w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(`u${i}:${field}`)}`}
                         />
                         {hint && (
                           <p className="mt-1 text-[11px] leading-tight text-gray-400">
@@ -1079,12 +1394,12 @@ export default function ListingFormPanel({
                         value={unit.title ?? ""}
                         onChange={(e) => updateUnit(i, "title", e.target.value)}
                         placeholder='e.g. "The Loft" or "Penthouse A" (shown instead of "2 Bed / 1 Bath")'
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        className={`w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(`u${i}:title`)}`}
                       />
                     </div>
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Lease Terms — select all this unit is offered for
+                        Lease Terms: select all this unit is offered for
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
                         {LEASE_TERM_PRESETS.map((p) => {
@@ -1325,7 +1640,7 @@ export default function ListingFormPanel({
                 Drop photos here or tap to browse
               </span>
               <span className="text-xs text-gray-400 mt-0.5">
-                JPG, PNG, WebP — auto-compressed if large
+                JPG, PNG, WebP (auto-compressed if large)
               </span>
             </label>
           </div>

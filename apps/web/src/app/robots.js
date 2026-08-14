@@ -11,7 +11,25 @@ export default function robots() {
   }
 
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/admin/"] }],
+    rules: [
+      {
+        userAgent: "*",
+        allow: "/",
+        // The admin surface lives under /dashboard (there is no /admin route);
+        // the rest are auth/utility shells with no search value.
+        disallow: [
+          "/api/",
+          "/dashboard/",
+          "/login",
+          "/reset-password",
+          "/review-invite/",
+          "/add-listing",
+          "/add-sublease",
+          "/add-sub-lease",
+          "/refer",
+        ],
+      },
+    ],
     sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }

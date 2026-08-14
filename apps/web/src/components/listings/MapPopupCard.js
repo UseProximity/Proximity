@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
 
@@ -96,6 +96,11 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
     <div
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
       onClick={() => {
+        // Server-rendered grids (the /washu landing pages) render this card
+        // without a handler — they can't pass one, being server components.
+        // Cancelling the plain click and then calling nothing left those cards
+        // dead: the overlay anchor below only navigates when we let it.
+        if (!onCardClick) return;
         onCardClick(listing._id);
         setTimeout(() => {
           const source = getListingSource(listing._id);
@@ -103,14 +108,16 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         }, 0);
       }}
     >
-      {/* Crawlable link to the listing page. Plain clicks are cancelled and
-          bubble to the card's onClick above, so panel/analytics behavior is
-          unchanged; cmd/ctrl/middle-click opens the listing in a new tab. */}
+      {/* Crawlable link to the listing page. With a handler, plain clicks are
+          cancelled and bubble to the card's onClick above so panel/analytics
+          behavior is unchanged; cmd/ctrl/middle-click opens a new tab. With no
+          handler this is the only navigation there is, so let it through and
+          let the destination page record the view. */}
       <a
         href={`/listings/${listing._id}`}
         aria-label={title}
         className="absolute inset-0 z-[1]"
-        onClick={suppressPlainClick}
+        onClick={onCardClick ? suppressPlainClick : undefined}
       />
       <div
         ref={imgWrapperRef}
@@ -140,6 +147,26 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         {listing.unavailable && (
           <div className="absolute top-3 left-3 bg-gray-800/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
             Unavailable
+          </div>
+        )}
+        {/* PMS-synced listing: availability is live from the property's system.
+            Pre-leased listings surface their move-in date instead of hiding. */}
+        {!listing.unavailable && (listing.verifiedLive || formatAvailableFrom(listing.availableFrom)) && (
+          <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+            {listing.verifiedLive && (
+              <div className="bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+                </span>
+                <span className="uppercase tracking-wide">Live</span>
+              </div>
+            )}
+            {formatAvailableFrom(listing.availableFrom) && (
+              <div className="bg-white/90 text-gray-900 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+                {formatAvailableFrom(listing.availableFrom)}
+              </div>
+            )}
           </div>
         )}
         {imageCount > 1 && !listing.unavailable && (

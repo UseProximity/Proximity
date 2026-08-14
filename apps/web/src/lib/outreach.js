@@ -14,7 +14,7 @@
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  */
-import { outreachEnabled } from "./appEnv";
+import { outreachEnabled } from "./appEnv.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
@@ -39,7 +39,12 @@ export async function sendMailSafe(transporter, message) {
 
   // Non-production (staging or local): redirect to the tester-chosen inbox if set,
   // otherwise suppress. The real recipient is never contacted off production.
-  const to = await stagingTestRecipient();
+  // Cron/webhook contexts have no request cookies, so OUTREACH_TEST_RECIPIENT
+  // provides the same redirect for them (cookie wins when both are present).
+  const envRecipient = EMAIL_RE.test(process.env.OUTREACH_TEST_RECIPIENT ?? "")
+    ? process.env.OUTREACH_TEST_RECIPIENT
+    : null;
+  const to = (await stagingTestRecipient()) ?? envRecipient;
   if (to) {
     const original = message?.to ?? "(none)";
     console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);

@@ -1,0 +1,26 @@
+{
+  "intro": [
+    "DeMun is the neighborhood students whisper about so it does not get more popular: tree-lined streets, sturdy brick apartment buildings, Kaldi's on the corner, and a genuinely quiet walk home. It sits on the Clayton edge of campus, close enough to walk and far enough to feel like an actual neighborhood.",
+    "Inventory here is small and turns over slowly, which is exactly why people love it. The listings below are what is live on Proximity right now, with walk times and reviews from students who lived there. If something in DeMun fits your budget, move quickly."
+  ],
+  "directAnswer": "DeMun is a small, quiet, tree-lined neighborhood on the Clayton side of WashU, known for classic brick apartments, its cafe corner, and a walkable route to campus. Inventory is limited and moves fast. For context, HUD's FY2026 fair market rent in ZIP 63105 is $1,410 for a 1 bedroom, utilities included.",
+  "faqs": [
+    {
+      "q": "Why do students love DeMun?",
+      "a": "It is calm without being remote: coffee and a park at the corner, campus within a walk, and buildings with more charm than the newer student towers. It suits students who are done with the party-adjacent blocks but still want to be close to everything."
+    },
+    {
+      "q": "How much does DeMun cost?",
+      "a": "DeMun sits in ZIP 63105, the same benchmark ZIP as Clayton, where HUD's FY2026 fair market rent is $1,360 for a studio, $1,410 for a 1 bedroom, and $1,730 for a 2 bedroom, utilities included. The classic DeMun walk-ups often price nearer the benchmark than Clayton's newer downtown buildings do."
+    },
+    {
+      "q": "Why are there so few DeMun listings?",
+      "a": "The neighborhood is small and tenants renew. Units often move by word of mouth before they are ever advertised. That is why it pays to check back, save a search, or use matchmaking so a DeMun opening finds you instead of the other way around."
+    },
+    {
+      "q": "Can I walk to campus from DeMun?",
+      "a": "Yes, most of DeMun is a reasonable walk to the south side of campus, and each listing above shows its exact computed walk time. It is one of the shortest quiet-neighborhood commutes available to WashU students."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63105, whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}
