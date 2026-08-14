@@ -1,0 +1,26 @@
+{
+  "intro": [
+    "Skinker-DeBaliviere is the beating heart of WashU off-campus life: the blocks behind the Loop where streets like Pershing, Waterman, and Kingsbury fill up with students every August. Big old flats, porches, housemates, and a walk to campus that beats most dorm-to-class commutes.",
+    "This is also where the landlord matters most. The housing stock is old, the management companies range from great to notorious, and the difference is your whole year. Every listing below carries reviews from students who actually lived there. Use them."
+  ],
+  "directAnswer": "Skinker-DeBaliviere is the neighborhood directly east of WashU behind the Delmar Loop, centered on streets like Pershing, Waterman, and Kingsbury, and it houses more WashU students than any other off-campus area. For context, HUD's FY2026 fair market rent in ZIP 63112 is $930 for a 1 bedroom and $1,140 for a 2 bedroom, utilities included.",
+  "faqs": [
+    {
+      "q": "Why is Skinker-DeBaliviere the most popular WashU neighborhood?",
+      "a": "Distance and price together. It starts at the edge of campus, the Loop is at the corner, and by HUD's FY2026 benchmarks it is the most affordable ZIP adjacent to campus: $930 fair market rent for a 1 bedroom and $1,140 for a 2 bedroom, utilities included. Big shared flats push per-person costs even lower."
+    },
+    {
+      "q": "What should I watch out for in Skinker-DeBaliviere?",
+      "a": "Old buildings and uneven landlords. The same block can hold a lovingly maintained flat and a neglected one, and students' recurring complaints are slow maintenance, deposit games, and surprise fees. Read the reviews on any listing here before touring, and ask previous tenants if you can."
+    },
+    {
+      "q": "How close is it to campus, really?",
+      "a": "The western blocks are minutes from the east end of campus, and even the farther streets are usually within a 15 to 25 minute walk. Every listing above shows its exact computed walk time, plus the nearest shuttle stop distance where relevant."
+    },
+    {
+      "q": "Are rents rising in Skinker-DeBaliviere?",
+      "a": "Fastest of the WashU-adjacent ZIPs: Zillow's rent index for 63112 was up 6.5% year over year as of June 2026, against about 4.0% for the metro. Source: Zillow Research. Popular blocks reward signing early in the fall cycle."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63112, whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}

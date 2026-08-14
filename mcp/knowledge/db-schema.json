@@ -21,7 +21,7 @@
       },
       {
         "table": "auto_unavailable_actions",
-        "description": "Audit/queue for automated hides driven by landlord \"leased\" reports from the email check-in system (see src/lib/autoUnavailable.js + /api/cron/auto-unavailable). One row per actioned report, with before/after state, the post-write verification against the public listings API, and undo tracking. Unique on (listing_id, coalesce(reported_at,'epoch')) so a single landlord report is actioned at most once \u2014 an undo is never re-hidden by the same report. Migration 20260808_auto_unavailable_actions; applied to BOTH dev and prod.",
+        "description": "Audit/queue for automated hides driven by landlord \"leased\" reports from the email check-in system (see src/lib/autoUnavailable.js + /api/cron/auto-unavailable). One row per actioned report, with before/after state, the post-write verification against the public listings API, and undo tracking. Unique on (listing_id, coalesce(reported_at,'epoch')) so a single landlord report is actioned at most once — an undo is never re-hidden by the same report. Migration 20260808_auto_unavailable_actions; applied to BOTH dev and prod.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -45,7 +45,7 @@
       },
       {
         "table": "chat_messages",
-        "description": "Messages within a chat thread. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Messages within a chat thread. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -57,7 +57,7 @@
       },
       {
         "table": "chat_participants",
-        "description": "Users participating in a chat thread + read state. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Users participating in a chat thread + read state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "thread_id:uuid",
           "user_id:uuid",
@@ -67,7 +67,7 @@
       },
       {
         "table": "chat_threads",
-        "description": "Chat threads, optionally tied to a listing. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Chat threads, optionally tied to a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",
@@ -80,7 +80,7 @@
       },
       {
         "table": "dorm_review_tags",
-        "description": "Join: dorm review \u2194 tag.",
+        "description": "Join: dorm review ↔ tag.",
         "columns": [
           "review_id:uuid",
           "tag_id:uuid",
@@ -145,7 +145,7 @@
       },
       {
         "table": "executed_lease_tenants",
-        "description": "Tenants/signers on an executed lease (Documenso integration). [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Tenants/signers on an executed lease (Documenso integration). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "executed_lease_id:uuid",
@@ -164,7 +164,7 @@
       },
       {
         "table": "executed_leases",
-        "description": "Lease documents through draft \u2192 signature lifecycle. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Lease documents through draft → signature lifecycle. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "template_id:uuid",
@@ -191,7 +191,7 @@
       },
       {
         "table": "fee_types",
-        "description": "Reference: categories of listing fees. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Reference: categories of listing fees. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -203,7 +203,7 @@
       },
       {
         "table": "furnishing_partners",
-        "description": "Third-party furnishing providers. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Third-party furnishing providers. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -225,7 +225,7 @@
       },
       {
         "table": "interaction_types",
-        "description": "Reference: kinds of user\u2194listing interactions.",
+        "description": "Reference: kinds of user↔listing interactions.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -234,7 +234,7 @@
       },
       {
         "table": "lease_checks",
-        "description": "Student lease-check results (feat/lease-check). Stores ONLY the analysis output \u2014 never the lease file, extracted address, rent, or landlord name (liability/retention decision; matched_listing_id points at public data instead). Migration 20260716090000; must exist on BOTH dev and prod.",
+        "description": "Student lease-check results (feat/lease-check). Stores ONLY the analysis output — never the lease file, extracted address, rent, or landlord name (liability/retention decision; matched_listing_id points at public data instead). Migration 20260716090000; must exist on BOTH dev and prod.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -253,7 +253,7 @@
       },
       {
         "table": "lease_extraction_runs",
-        "description": "AI lease-field extraction run metadata. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "AI lease-field extraction run metadata. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "template_id:uuid",
@@ -274,7 +274,7 @@
       },
       {
         "table": "lease_redlines",
-        "description": "Suggested lease edits with rationale + approval state. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Suggested lease edits with rationale + approval state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "executed_lease_id:uuid",
@@ -307,7 +307,7 @@
       },
       {
         "table": "lease_templates",
-        "description": "Landlord lease PDF templates + extracted variable fields. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Landlord lease PDF templates + extracted variable fields. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
@@ -328,7 +328,7 @@
       },
       {
         "table": "listing_active_conversations",
-        "description": "Active student\u2194listing leasing conversations. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Active student↔listing leasing conversations. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -347,7 +347,7 @@
       },
       {
         "table": "listing_amenities",
-        "description": "One boolean row per listing \u2014 amenity flags.",
+        "description": "One boolean row per listing — amenity flags.",
         "columns": [
           "listing_id:uuid",
           "air_conditioning:boolean",
@@ -371,7 +371,7 @@
       },
       {
         "table": "listing_concessions",
-        "description": "Promotional concessions on a listing/lease. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Promotional concessions on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -391,7 +391,7 @@
       },
       {
         "table": "listing_drive_times",
-        "description": "Precomputed drive minutes from a listing to each location \u2014 the driving counterpart of listing_walk_times, joined into /api/listings. Applied to BOTH dev and prod 2026-07-07.",
+        "description": "Precomputed drive minutes from a listing to each location — the driving counterpart of listing_walk_times, joined into /api/listings. Applied to BOTH dev and prod 2026-07-07.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -402,7 +402,7 @@
       },
       {
         "table": "listing_faqs",
-        "description": "Per-listing FAQ entries (often sourced from chat). [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Per-listing FAQ entries (often sourced from chat). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -420,7 +420,7 @@
       },
       {
         "table": "listing_fees",
-        "description": "Itemized fees on a listing/lease. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Itemized fees on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -439,7 +439,7 @@
       },
       {
         "table": "listing_field_states",
-        "description": "Per-field verification/confidence state for listing data. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Per-field verification/confidence state for listing data. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -459,7 +459,7 @@
       },
       {
         "table": "listing_furnishing",
-        "description": "Furnishing status/package for a listing. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Furnishing status/package for a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "listing_id:uuid",
           "status:text",
@@ -490,7 +490,7 @@
       },
       {
         "table": "listing_landlords",
-        "description": "Join: listing \u2194 landlord user (is_primary flags the owner).",
+        "description": "Join: listing ↔ landlord user (is_primary flags the owner).",
         "columns": [
           "listing_id:uuid",
           "user_id:uuid",
@@ -501,7 +501,7 @@
       },
       {
         "table": "listing_leases",
-        "description": "Lease/unit-group rows for a listing (rent, beds, baths, term). [AUDIT 2026-07-11: UNUSED \u2014 old lease model superseded by listing_units + unit_leases; still holds ~214 rows; cleanup-migration candidate]",
+        "description": "Lease/unit-group rows for a listing (rent, beds, baths, term). [AUDIT 2026-07-11: UNUSED — old lease model superseded by listing_units + unit_leases; still holds ~214 rows; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -545,7 +545,7 @@
       },
       {
         "table": "listing_pet_policies",
-        "description": "Free-text pet policy for a listing. [AUDIT 2026-07-11: ORPHANED \u2014 ~81 rows of real data but no app code reads or writes it]",
+        "description": "Free-text pet policy for a listing. [AUDIT 2026-07-11: ORPHANED — ~81 rows of real data but no app code reads or writes it]",
         "columns": [
           "listing_id:uuid",
           "policy_text:text",
@@ -598,7 +598,7 @@
       },
       {
         "table": "listing_screening_criteria",
-        "description": "Tenant screening requirements per listing. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Tenant screening requirements per listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "listing_id:uuid",
           "income_multiplier:numeric",
@@ -646,7 +646,7 @@
       },
       {
         "table": "listing_utilities",
-        "description": "One boolean row per listing \u2014 utilities-included flags.",
+        "description": "One boolean row per listing — utilities-included flags.",
         "columns": [
           "listing_id:uuid",
           "electric:boolean",
@@ -675,7 +675,7 @@
       },
       {
         "table": "listings",
-        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id \u2014 set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns \u2014 mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent]",
+        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent]",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -724,7 +724,7 @@
       },
       {
         "table": "location_types",
-        "description": "Reference: kinds of locations (campus, grocery, shuttle). [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Reference: kinds of locations (campus, grocery, shuttle). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -746,7 +746,7 @@
       },
       {
         "table": "matchmaking_chat_sessions",
-        "description": "Roommate/listing matchmaking chat sessions + AI state. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main \u2014 do NOT drop]",
+        "description": "Roommate/listing matchmaking chat sessions + AI state. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -785,7 +785,7 @@
       },
       {
         "table": "matchmaking_priority_mappings",
-        "description": "Ranked priority weights per preference set. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Ranked priority weights per preference set. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "preference_id:uuid",
@@ -806,7 +806,7 @@
       },
       {
         "table": "priority_types",
-        "description": "Reference: matchmaking priority categories. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main \u2014 do NOT drop]",
+        "description": "Reference: matchmaking priority categories. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -815,7 +815,7 @@
       },
       {
         "table": "review_incentive_partners",
-        "description": "Partners offering discounts for leaving reviews. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Partners offering discounts for leaving reviews. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -830,7 +830,7 @@
       },
       {
         "table": "review_incentive_redemptions",
-        "description": "Issued/redeemed review-incentive codes. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Issued/redeemed review-incentive codes. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -902,7 +902,7 @@
       },
       {
         "table": "thread_types",
-        "description": "Reference: chat thread kinds. [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Reference: chat thread kinds. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -928,7 +928,7 @@
       },
       {
         "table": "user_listing_interactions",
-        "description": "Log of user\u2194listing interactions (clicks, saves, contacts).",
+        "description": "Log of user↔listing interactions (clicks, saves, contacts).",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -939,7 +939,7 @@
       },
       {
         "table": "users",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews \u2192 users \u2192 schools (listing_reviews has no school column). role_id \u2192 roles; profile_complete gates onboarding modal; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -972,7 +972,7 @@
       },
       {
         "table": "verified_residencies",
-        "description": "Proof a user lived at a listing (via lease/verification). [AUDIT 2026-07-11: UNUSED \u2014 no app code references; cleanup-migration candidate]",
+        "description": "Proof a user lived at a listing (via lease/verification). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -990,7 +990,7 @@
       },
       {
         "table": "pms_connections",
-        "description": "PMS freshness integration (feat/pms-integration): one row per landlord \u00d7 provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token \u2014 the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000) \u2014 nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod.",
+        "description": "PMS freshness integration (feat/pms-integration): one row per landlord × provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token — the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000) — nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -1017,7 +1017,7 @@
       },
       {
         "table": "pms_links",
-        "description": "Canonical PMS-ID \u2194 Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique \u2192 listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present \u2192 apply; missing \u2192 delist.",
+        "description": "Canonical PMS-ID ↔ Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique → listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present → apply; missing → delist.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
@@ -1046,7 +1046,7 @@
       },
       {
         "table": "pms_review_queue",
-        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>\u00b120% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link.",
+        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>±20% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
@@ -1076,6 +1076,21 @@
           "applied:boolean",
           "result:text",
           "detail:jsonb",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "seo_query_metrics",
+        "description": "Weekly Search Console snapshots written by the seo-report cron (service role only; RLS enabled, no policies). One row per (captured_on, page, query).",
+        "columns": [
+          "id:bigint",
+          "captured_on:date",
+          "page:text",
+          "query:text",
+          "clicks:integer",
+          "impressions:integer",
+          "ctr:numeric",
+          "position:numeric",
           "created_at:timestamptz"
         ]
       }

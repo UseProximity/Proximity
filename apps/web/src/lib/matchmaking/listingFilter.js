@@ -13,6 +13,12 @@ import {
   subleaseTermMonthsFromDescription,
   isRoomShareListing,
 } from "./listingConstraints";
+import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import {
+  MATCHMAKING_CENTROIDS,
+  NEIGHBORHOOD_RADIUS_KM,
+  haversineKm,
+} from "@/lib/geo/neighborhoods";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
@@ -129,28 +135,11 @@ const PLUS_PHRASE = {
   proximity: "a shorter walk",
 };
 
-// Approximate centroids (lat/lng) for the neighborhood options in the `area`
-// question. Listings only carry coordinates, not a neighborhood label, so we
-// treat a listing as being "in" a neighborhood when it falls within
-// NEIGHBORHOOD_RADIUS_KM of the centroid; closeness decays linearly to 0 at the
-// edge. Coarse, but enough to let a stated neighborhood actually steer the pick.
-const NEIGHBORHOOD_CENTROIDS = {
-  "The Loop": { lat: 38.6555, lng: -90.3030 },
-  "Central West End": { lat: 38.6440, lng: -90.2630 },
-  "Clayton": { lat: 38.6426, lng: -90.3237 },
-  "DeMun": { lat: 38.6330, lng: -90.3095 },
-  "DeBaliviere": { lat: 38.6500, lng: -90.2930 },
-};
-const NEIGHBORHOOD_RADIUS_KM = 1.3;
-
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
+// Neighborhood centroids for the `area` question now live in the canonical
+// table at lib/geo/neighborhoods.js (shared with the /washu landing pages).
+// A listing is "in" a neighborhood when it falls within NEIGHBORHOOD_RADIUS_KM
+// of the centroid; closeness decays linearly to 0 at the edge.
+const NEIGHBORHOOD_CENTROIDS = MATCHMAKING_CENTROIDS;
 
 // 0..1 closeness of a listing to the NEAREST requested neighborhood centroid
 // (1 = on the centroid, 0 = at/beyond the radius edge). Returns null when no
@@ -338,27 +327,10 @@ function furnishedOk(listing, furnishedPref) {
 //
 // The test: divide by the bedroom count. If one bedroom would come out below what
 // any room near WashU actually rents for, the stored figure was ALREADY per
-// person. The threshold isn't on a knife edge — across the live data every
-// multi-bed lease divides to under $400/bed or over $480/bed, with a single
-// exception — but it IS a heuristic, so it's kept in one place and disclosed
-// downstream (see rentBreakdown / slimCandidate) rather than silently assumed.
-const MIN_PLAUSIBLE_PER_PERSON = 450;
-
-// Per-person and whole-unit rent for one lease, plus how we decided.
-// A one-bedroom (or unsized) unit is one person's rent under either convention.
-// A room-share is a single room by definition, so its price is already per person
-// whatever the unit's bedroom count says.
-function leaseRentBasis(lease, isRoomShare) {
-  const rent = Number(lease?.rent);
-  if (!Number.isFinite(rent) || rent <= 0) return null;
-  const beds = Number(lease?.bedrooms) || 0;
-  const asPerson = { perPerson: rent, unitRent: rent * Math.max(beds, 1), beds, basis: "person" };
-  if (isRoomShare || beds <= 1) return { ...asPerson, unitRent: rent };
-  const split = rent / beds;
-  return split >= MIN_PLAUSIBLE_PER_PERSON
-    ? { perPerson: split, unitRent: rent, beds, basis: "unit" }
-    : asPerson;
-}
+// person. The heuristic (and its MIN_PLAUSIBLE_PER_PERSON threshold) now lives
+// in lib/listings/rentBasis.js, shared with the /washu landing pages; it stays
+// disclosed downstream (see rentBreakdown / slimCandidate) rather than silently
+// assumed.
 
 // The cheapest per-person option in a listing, with the whole-unit price and the
 // basis we inferred. null when nothing is priced.

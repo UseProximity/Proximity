@@ -80,6 +80,11 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
     <div
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
       onClick={() => {
+        // Server-rendered grids (the /washu landing pages) render this card
+        // without a handler — they can't pass one, being server components.
+        // Cancelling the plain click and then calling nothing left those cards
+        // dead: the overlay anchor below only navigates when we let it.
+        if (!onCardClick) return;
         onCardClick(listing._id);
         setTimeout(() => {
           const source = getListingSource(listing._id);
@@ -87,14 +92,16 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         }, 0);
       }}
     >
-      {/* Crawlable link to the listing page. Plain clicks are cancelled and
-          bubble to the card's onClick above, so panel/analytics behavior is
-          unchanged; cmd/ctrl/middle-click opens the listing in a new tab. */}
+      {/* Crawlable link to the listing page. With a handler, plain clicks are
+          cancelled and bubble to the card's onClick above so panel/analytics
+          behavior is unchanged; cmd/ctrl/middle-click opens a new tab. With no
+          handler this is the only navigation there is, so let it through and
+          let the destination page record the view. */}
       <a
         href={`/listings/${listing._id}`}
         aria-label={title}
         className="absolute inset-0 z-[1]"
-        onClick={suppressPlainClick}
+        onClick={onCardClick ? suppressPlainClick : undefined}
       />
       <div
         ref={imgWrapperRef}

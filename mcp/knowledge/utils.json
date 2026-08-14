@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-13T03:14:45.284Z",
-  "count": 51,
+  "_generated": "2026-08-14T01:08:24.509Z",
+  "count": 58,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -26,6 +26,10 @@
     {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
+    },
+    {
+      "file": "src/lib/geo/neighborhoods.js",
+      "description": "Canonical neighborhood table for the WashU market. Listings only carry"
     },
     {
       "file": "src/lib/guides.js",
@@ -70,6 +74,14 @@
     {
       "file": "src/lib/listings/listingSelect.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/listings/queryListings.js",
+      "description": "Server-side listing data for pages that render listings in their initial"
+    },
+    {
+      "file": "src/lib/listings/rentBasis.js",
+      "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
@@ -168,6 +180,18 @@
       "description": "The universities Proximity serves, and the email domains that prove membership."
     },
     {
+      "file": "src/lib/seo/gsc.js",
+      "description": "Google Search Console client using a service account, with no new"
+    },
+    {
+      "file": "src/lib/seo/report.js",
+      "description": "Turns two GSC windows into the weekly flag list. Pure functions only —"
+    },
+    {
+      "file": "src/lib/seo/targets.js",
+      "description": "The evidence-backed target-query map the measurement engine tracks."
+    },
+    {
       "file": "src/lib/streetview.js",
       "description": "Google Street View Static API helper."
     },
@@ -182,6 +206,10 @@
     {
       "file": "src/lib/userRole.js",
       "description": "Resolve a user's authoritative role straight from the database."
+    },
+    {
+      "file": "src/lib/washuPages.js",
+      "description": "Registry for the /washu landing pages, mirroring lib/guides.js. Structure"
     },
     {
       "file": "src/utils/analytics.js",

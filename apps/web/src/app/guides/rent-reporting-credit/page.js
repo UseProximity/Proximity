@@ -7,6 +7,7 @@ import RelatedArticlesSidebar from "@/components/guides/RelatedArticlesSidebar";
 import BackNav from "@/components/guides/BackNav";
 import RelatedArticlesMobile from "@/components/guides/RelatedArticlesMobile";
 import ScrollToTop from "@/components/guides/ScrollToTop";
+import GuideJsonLd from "@/components/guides/GuideJsonLd";
 
 export const metadata = {
   title: "Rent Payments Can Build Your Credit. What Students Should Know",
@@ -21,6 +22,7 @@ const relatedGuides = guides.filter((guide) => guide.slug !== currentGuideSlug);
 export default function Page() {
   return (
     <main className="min-h-screen bg-white text-gray-900">
+      <GuideJsonLd slug={currentGuideSlug} />
       <BackNav />
 
       {/* ── Hero ── */}

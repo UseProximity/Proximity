@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-13T03:14:45.256Z",
-  "count": 76,
+  "_generated": "2026-08-14T01:08:24.489Z",
+  "count": 78,
   "routes": [
     {
       "path": "/api/addListing",
@@ -422,6 +422,20 @@
         "users"
       ],
       "file": "src/app/api/cron/pms-sync/route.js"
+    },
+    {
+      "path": "/api/cron/seo-report",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "seo_query_metrics"
+      ],
+      "file": "src/app/api/cron/seo-report/route.js"
     },
     {
       "path": "/api/dev/matchmaking-edgecases",
@@ -1025,6 +1039,18 @@
         "users"
       ],
       "file": "src/app/api/searchUsers/route.js"
+    },
+    {
+      "path": "/api/seo/opportunities",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/seo/opportunities/route.js"
     },
     {
       "path": "/api/staging/email-recipients",
