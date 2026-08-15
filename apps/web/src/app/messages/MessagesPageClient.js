@@ -26,6 +26,17 @@ export default function MessagesPageClient() {
     setActiveThreadId(threadParam);
   }, [threadParam, setActiveThreadId]);
 
+  // The provider outlives this page, so leaving /messages has to close the thread. Otherwise
+  // the inbox and visibility listeners keep marking it read for the rest of the session,
+  // sending the other participant read receipts for a conversation nobody is looking at.
+  // Clearing appliedThreadRef too lets a ?thread= link re-apply when the page mounts again.
+  useEffect(() => {
+    return () => {
+      appliedThreadRef.current = null;
+      setActiveThreadId(null);
+    };
+  }, [setActiveThreadId]);
+
   return (
     <div className="h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)] border-t border-gray-100">
       <MessagesPanel onBrowse={() => router.push("/browse")} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 
@@ -51,9 +52,14 @@ function formatSessionDivider(iso) {
 function shouldShowSessionDivider(prev, msg) {
   if (!msg?.createdAt) return false;
   if (!prev?.createdAt) return true;
-  const prevMs = new Date(prev.createdAt).getTime();
-  const msgMs = new Date(msg.createdAt).getTime();
+  const prevDate = new Date(prev.createdAt);
+  const msgDate = new Date(msg.createdAt);
+  const prevMs = prevDate.getTime();
+  const msgMs = msgDate.getTime();
   if (Number.isNaN(prevMs) || Number.isNaN(msgMs)) return false;
+  // A new calendar day always gets a header, even when the messages are minutes
+  // apart across midnight.
+  if (startOfLocalDay(prevDate) !== startOfLocalDay(msgDate)) return true;
   return msgMs - prevMs >= SESSION_GAP_MS;
 }
 
@@ -74,7 +80,8 @@ function findReadReceiptMessageId(list, otherUserLastReadAt) {
 
 /**
  * Message bubbles + composer for one thread (useMessages messages + sendMessage).
- * Session gaps (>3h) show a centered day·time. Otherwise time is hover / swipe-left.
+ * A centered day·time header starts each new day and each gap over 3h. Otherwise
+ * time is hover / swipe-left.
  */
 export default function ChatTranscript({
   thread,
@@ -89,6 +96,7 @@ export default function ChatTranscript({
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
+  const inputRef = useRef(null);
   const touchRef = useRef({
     x: 0,
     y: 0,
@@ -104,6 +112,7 @@ export default function ChatTranscript({
   );
   const readReceiptTime = formatMessageTime(thread?.otherUserLastReadAt);
   const showLoading = messagesLoading && list.length === 0;
+  const listingLabel = thread?.listingTitle || thread?.listingAddress || "";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -176,6 +185,9 @@ export default function ChatTranscript({
       toast.error(err?.message || "Failed to send message. Please try again.");
     } finally {
       setSending(false);
+      // Keep the composer focused so you can fire off several messages in a row
+      // without clicking back in. rAF waits for the textarea to un-disable first.
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }
 
@@ -214,19 +226,27 @@ export default function ChatTranscript({
           </button>
         )}
         <ChatAvatar
-          src={thread?.otherUserImage}
-          name={thread?.otherUserName}
+          src={thread?.listingImage || thread?.otherUserImage}
+          name={thread?.listingTitle || thread?.otherUserName}
           size="sm"
+          shape={thread?.listingImage ? "square" : "circle"}
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 truncate">
             {thread?.otherUserName || "Conversation"}
           </p>
-          {(thread?.listingTitle || thread?.listingAddress) && (
-            <p className="text-xs text-gray-400 truncate">
-              {thread.listingTitle || thread.listingAddress}
-            </p>
-          )}
+          {listingLabel &&
+            (thread?.listingId ? (
+              <Link
+                href={`/listings/${thread.listingId}`}
+                className="block text-xs text-gray-400 truncate hover:text-red-600 hover:underline"
+                title={`View ${listingLabel}`}
+              >
+                {listingLabel}
+              </Link>
+            ) : (
+              <p className="text-xs text-gray-400 truncate">{listingLabel}</p>
+            ))}
         </div>
         {headerActions}
       </div>
@@ -336,6 +356,7 @@ export default function ChatTranscript({
           }`}
         >
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value.slice(0, MAX_BODY))}
             onKeyDown={handleKeyDown}

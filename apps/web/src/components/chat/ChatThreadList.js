@@ -114,8 +114,9 @@ export default function ChatThreadList({
           >
             <div className="relative flex-shrink-0">
               <ChatAvatar
-                src={thread.otherUserImage}
-                name={thread.otherUserName}
+                src={thread.listingImage || thread.otherUserImage}
+                name={thread.listingTitle || thread.otherUserName}
+                shape={thread.listingImage ? "square" : "circle"}
               />
               {thread.hasUnread && (
                 <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" />

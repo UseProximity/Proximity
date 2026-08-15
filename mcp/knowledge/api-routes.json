@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-03T13:32:07.140Z",
-  "count": 66,
+  "_generated": "2026-08-13T22:09:00.562Z",
+  "count": 67,
   "routes": [
     {
       "path": "/api/addListing",
@@ -300,6 +300,18 @@
         "users"
       ],
       "file": "src/app/api/auth/verify-email/route.js"
+    },
+    {
+      "path": "/api/chat/access-token",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/access-token/route.js"
     },
     {
       "path": "/api/chat/realtime-token",

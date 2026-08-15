@@ -26,6 +26,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     gender: "unspecified",
     referralSource: "",
     role: "landlord",
+    emailNotifications: true,
   });
 
   const router = useRouter();
@@ -79,6 +80,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
       gender: user.gender || "unspecified",
       referralSource: user.referralSource || user.referral_source || "",
       role: (user.role || "landlord").toLowerCase(),
+      emailNotifications:
+        user.emailNotifications ?? user.email_notifications !== false,
     });
   }, [user]);
 
@@ -117,6 +120,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         gender: user.gender || "unspecified",
         referralSource: user.referralSource || user.referral_source || "",
         role: (user.role || "landlord").toLowerCase(),
+        emailNotifications:
+          user.emailNotifications ?? user.email_notifications !== false,
       });
     }
   };
@@ -139,6 +144,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
           gender: form.gender || "unspecified",
           referralSource: form.referralSource || "",
           role: form.role,
+          emailNotifications: !!form.emailNotifications,
         }),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);

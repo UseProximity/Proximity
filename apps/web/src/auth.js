@@ -1,15 +1,17 @@
 /*
- * Authentication configuration for the entire application. Sets up NextAuth v5 with two
- * sign-in methods: Google OAuth (primary, used by most students) and email/password
- * Credentials (for accounts created without Google). On first Google sign-in a new user
- * row is inserted into Supabase with a default "student" role. On subsequent Google
- * sign-ins the google_account flag and profile image are kept in sync.
+ * Authentication configuration for the entire application. Sets up NextAuth v5 with three
+ * sign-in methods: Google OAuth (primary, used by most students), email/password
+ * Credentials (for accounts created without Google), and chat-link Credentials (magic
+ * links from chat notification emails). On first Google sign-in a new user row is inserted
+ * into Supabase with a default "student" role. On subsequent Google sign-ins the
+ * google_account flag and profile image are kept in sync.
  *
  * The JWT callback caches userId, role, and profileComplete in the token so every
  * session() call is a zero-DB read. Role freshness is enforced by ROLE_REFRESH_MS (60s):
  * after that window the JWT callback re-fetches role and profileComplete from the DB so
- * admin-side role changes propagate without requiring a sign-out. The session callback
- * exposes those three fields to the client via session.user.
+ * admin-side role changes propagate without requiring a sign-out. Chat-link sessions set
+ * viaEmailLink on the JWT for analytics / future soft UI; they are otherwise full sessions.
+ * The session callback exposes those fields to the client via session.user.
  *
  * Exports: handlers (GET/POST for /api/auth/*), signIn, signOut, auth (server-side
  * session getter used by layout.js and protected API routes).
@@ -19,11 +21,28 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { hashChatAccessToken } from "@/lib/chat/accessToken";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
 // tab / by an admin) without requiring a sign-out.
 const ROLE_REFRESH_MS = 60_000;
+
+async function loadUserTokenFields(userId) {
+  const { data: existing } = await supabase
+    .from("users")
+    .select("id, profile_complete, name, email, roles!role_id(name)")
+    .eq("id", userId)
+    .single();
+  if (!existing) return null;
+  return {
+    userId: existing.id,
+    email: existing.email,
+    name: existing.name,
+    role: existing.roles?.name ?? "student",
+    profileComplete: existing.profile_complete ?? false,
+  };
+}
 
 const config = {
   providers: [
@@ -51,6 +70,40 @@ const config = {
         return { id: user.id, email: user.email, name: user.name };
       },
     }),
+    // Magic link from chat notification emails. Token is burned here (single-use).
+    Credentials({
+      id: "chat-link",
+      name: "Chat link",
+      credentials: {
+        token: { label: "Token", type: "text" },
+      },
+      async authorize(credentials) {
+        const raw = credentials?.token;
+        if (typeof raw !== "string" || !raw.trim()) return null;
+
+        const { data, error } = await supabase.rpc("rpc_consume_chat_access_token", {
+          p_token_hash: hashChatAccessToken(raw.trim()),
+          p_purpose: "thread_access",
+        });
+
+        if (error) {
+          console.error("chat-link authorize failed:", error);
+          return null;
+        }
+        if (!data?.userId) return null;
+
+        const fields = await loadUserTokenFields(data.userId);
+        if (!fields) return null;
+
+        return {
+          id: fields.userId,
+          email: fields.email,
+          name: fields.name,
+          viaEmailLink: true,
+          threadId: data.threadId ?? null,
+        };
+      },
+    }),
   ],
   session: { strategy: "jwt" },
   allowDangerousEmailAccountLinking: true,
@@ -61,18 +114,31 @@ const config = {
     async jwt({ token, user, account, trigger, session: updateData }) {
       // Credentials sign-in: user.id is the DB id returned from authorize()
       if (account?.provider === "credentials" && user?.id) {
-        const { data: existing } = await supabase
-          .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
-          .eq("id", user.id)
-          .single();
-        if (existing) {
-          token.userId = existing.id;
-          token.role = existing.roles?.name ?? "student";
-          token.profileComplete = existing.profile_complete ?? false;
-          if (existing.name) token.name = existing.name;
+        const fields = await loadUserTokenFields(user.id);
+        if (fields) {
+          token.userId = fields.userId;
+          token.role = fields.role;
+          token.profileComplete = fields.profileComplete;
+          if (fields.name) token.name = fields.name;
+          if (fields.email) token.email = fields.email;
           token.roleCheckedAt = Date.now();
         }
+        token.viaEmailLink = false;
+        return token;
+      }
+
+      // Chat magic-link: full session, flagged so we can tell how they arrived.
+      if (account?.provider === "chat-link" && user?.id) {
+        const fields = await loadUserTokenFields(user.id);
+        if (fields) {
+          token.userId = fields.userId;
+          token.role = fields.role;
+          token.profileComplete = fields.profileComplete;
+          if (fields.name) token.name = fields.name;
+          if (fields.email) token.email = fields.email;
+          token.roleCheckedAt = Date.now();
+        }
+        token.viaEmailLink = true;
         return token;
       }
 
@@ -126,6 +192,7 @@ const config = {
           if (existing.name) token.name = existing.name;
           token.roleCheckedAt = Date.now();
         }
+        token.viaEmailLink = false;
       }
 
       // Backfill old tokens issued before JWT caching was introduced
@@ -185,6 +252,7 @@ const config = {
       session.user.id = token.userId;
       session.user.role = token.role ?? "student";
       session.user.profileComplete = token.profileComplete ?? false;
+      session.user.viaEmailLink = !!token.viaEmailLink;
       return session;
     },
   },
