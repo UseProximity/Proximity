@@ -46,6 +46,7 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
       listingLabel: data.listingTitle || data.listingAddress || data.subject,
       messageBody: data.messageBody,
       recipientIsInterestedUser: data.recipientIsInterestedUser,
+      unreadCount: data.unreadCount,
       threadUrl,
     });
   } catch (err) {

@@ -116,7 +116,8 @@ const MESSAGE_PREVIEW_LIMIT = 300;
 
 // Notification for a new in-app chat message. The same thread has two sides, so the copy
 // flips on recipientIsInterestedUser: the listing owner gets an inquiry ("someone messaged
-// you about your listing"), the student gets a reply.
+// you about your listing"), the student gets a reply. When unreadCount > 1, subject and
+// intro mention how many messages are waiting; the body still quotes only the latest.
 export async function sendChatMessageEmail({
   to,
   recipientName,
@@ -125,29 +126,43 @@ export async function sendChatMessageEmail({
   messageBody,
   recipientIsInterestedUser,
   threadUrl,
+  unreadCount = 1,
 }) {
   const senderLabel = senderName || "Someone";
   const listingText = listingLabel || "your conversation";
   const sender = escapeHtml(senderLabel);
   const listing = escapeHtml(listingText);
   const firstName = recipientName ? escapeHtml(recipientName.split(" ")[0]) : "";
+  const count = Number.isFinite(Number(unreadCount)) ? Math.max(1, Math.floor(Number(unreadCount))) : 1;
+  const multi = count > 1;
 
   const body = (messageBody || "").trim();
   const preview = escapeHtml(
     body.length > MESSAGE_PREVIEW_LIMIT ? `${body.slice(0, MESSAGE_PREVIEW_LIMIT)}…` : body
   );
 
-  const subject = recipientIsInterestedUser
-    ? `${senderLabel} replied about ${listingText}`
-    : `New message about ${listingLabel || "your listing"} (via Proximity)`;
-
-  const intro = recipientIsInterestedUser
-    ? `<strong>${sender}</strong> replied to you about <strong>${listing}</strong>.`
-    : `<strong>${sender}</strong> sent you a message${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
+  let subject;
+  let intro;
+  if (multi) {
+    subject = recipientIsInterestedUser
+      ? `${count} messages from ${senderLabel} about ${listingText}`
+      : `${count} messages from ${senderLabel} about ${listingLabel || "your listing"} (via Proximity)`;
+    intro = recipientIsInterestedUser
+      ? `<strong>${sender}</strong> sent you <strong>${count} messages</strong> about <strong>${listing}</strong>.`
+      : `<strong>${sender}</strong> sent you <strong>${count} messages</strong>${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
+  } else if (recipientIsInterestedUser) {
+    subject = `${senderLabel} replied about ${listingText}`;
+    intro = `<strong>${sender}</strong> replied to you about <strong>${listing}</strong>.`;
+  } else {
+    subject = `New message about ${listingLabel || "your listing"} (via Proximity)`;
+    intro = `<strong>${sender}</strong> sent you a message${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
+  }
 
   const closing = recipientIsInterestedUser
     ? "Reply on Proximity to keep everything about this place in one thread."
     : "Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.";
+
+  const quoteLabel = multi ? "Most recent:" : `${sender} wrote:`;
 
   return sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
@@ -158,7 +173,7 @@ export async function sendChatMessageEmail({
         <p>Hi ${firstName || "there"},</p>
         <p>${intro}</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p style="margin: 6px 0;"><strong>${sender} wrote:</strong></p>
+        <p style="margin: 6px 0;"><strong>${quoteLabel}</strong></p>
         <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${preview}"</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
         <a href="${threadUrl}"
