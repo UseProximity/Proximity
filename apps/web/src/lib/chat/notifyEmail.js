@@ -45,6 +45,7 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
       // threads with no listing attached.
       listingLabel: data.listingTitle || data.listingAddress || data.subject,
       messageBody: data.messageBody,
+      messageType: data.messageType,
       recipientIsInterestedUser: data.recipientIsInterestedUser,
       unreadCount: data.unreadCount,
       threadUrl,

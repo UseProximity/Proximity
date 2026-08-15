@@ -13,6 +13,7 @@ import {
   Pencil,
   Users,
   Trash2,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -22,6 +23,7 @@ import {
   getAreaRangeLabel,
   getRentRangeLabel,
 } from "@/utils/listingFormatters";
+import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 export default function PropertiesSection({
   user,
@@ -232,7 +234,7 @@ export default function PropertiesSection({
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <div className="flex gap-2 pt-2 border-t border-gray-100 flex-wrap">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -243,6 +245,21 @@ export default function PropertiesSection({
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </button>
+                {!property.unavailable ? (
+                  <BroadcastListingOfferButton
+                    listingId={property._id || property.id}
+                    defaultRent={
+                      property.minRent ??
+                      property.min_rent ??
+                      property.unitTypes?.[0]?.rent ??
+                      ""
+                    }
+                    className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    Offer to savers
+                  </BroadcastListingOfferButton>
+                ) : null}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

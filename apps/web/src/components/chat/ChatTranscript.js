@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
+import DiscountOfferCard from "@/components/chat/DiscountOfferCard";
+import SendOfferForm from "@/components/chat/SendOfferForm";
+import { formatListingRentLabel } from "@/utils/listingFormatters";
 
 const MAX_BODY = 5000;
 const WARN_AT = 4500;
@@ -78,21 +81,45 @@ function findReadReceiptMessageId(list, otherUserLastReadAt) {
   return null;
 }
 
+function formatMoneyLabel(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+/** Newest accepted discount_offer in the thread, if any. */
+function findAcceptedOffer(list) {
+  if (!list?.length) return null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const msg = list[i];
+    if (msg?.messageType !== "discount_offer") continue;
+    if ((msg.metadata?.status || "pending") !== "accepted") continue;
+    const proposed = Number(msg.metadata?.proposedRent);
+    if (!Number.isFinite(proposed) || proposed <= 0) continue;
+    return msg;
+  }
+  return null;
+}
+
 /**
  * Message bubbles + composer for one thread (useMessages messages + sendMessage).
  * A centered day·time header starts each new day and each gap over 3h. Otherwise
- * time is hover / swipe-left.
+ * time is hover / swipe-left. discount_offer messages render as offer cards.
  */
 export default function ChatTranscript({
   thread,
   messages,
   messagesLoading = false,
   onSend,
+  onSendOffer,
+  onRespondOffer,
   onBack,
   headerActions = null,
 }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
@@ -113,6 +140,20 @@ export default function ChatTranscript({
   const readReceiptTime = formatMessageTime(thread?.otherUserLastReadAt);
   const showLoading = messagesLoading && list.length === 0;
   const listingLabel = thread?.listingTitle || thread?.listingAddress || "";
+  const listingRentLabel = formatListingRentLabel(
+    thread?.listingMinRent,
+    thread?.listingMaxRent
+  );
+  const acceptedOffer = findAcceptedOffer(list);
+  const acceptedRentLabel = acceptedOffer
+    ? formatMoneyLabel(acceptedOffer.metadata?.proposedRent)
+    : null;
+  const acceptedOriginalLabel =
+    formatMoneyLabel(acceptedOffer?.metadata?.originalRent) ||
+    formatMoneyLabel(thread?.listingMinRent);
+  // Either side of a listing thread can open an offer: the owner discounting the rent,
+  // or the interested user proposing one. The RPC re-checks participation.
+  const canSendOffer = !!onSendOffer && !!thread?.listingId;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -191,6 +232,25 @@ export default function ChatTranscript({
     }
   }
 
+  async function handleSendOffer({ proposedRent, note }) {
+    if (!onSendOffer || !thread?.threadId) return;
+    await onSendOffer(thread.threadId, { proposedRent, note });
+    toast.success("Offer sent");
+  }
+
+  async function handleRespondOffer(messageId, action, extra = {}) {
+    if (!onRespondOffer) return;
+    try {
+      await onRespondOffer(messageId, action, extra);
+      if (action === "accept") toast.success("Offer accepted");
+      else if (action === "deny") toast.success("Offer declined");
+      else if (action === "counter") toast.success("Counter offer sent");
+    } catch (err) {
+      toast.error(err?.message || "Could not update offer.");
+      throw err;
+    }
+  }
+
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -235,18 +295,42 @@ export default function ChatTranscript({
           <p className="text-sm font-semibold text-gray-900 truncate">
             {thread?.otherUserName || "Conversation"}
           </p>
-          {listingLabel &&
-            (thread?.listingId ? (
-              <Link
-                href={`/listings/${thread.listingId}`}
-                className="block text-xs text-gray-400 truncate hover:text-red-600 hover:underline"
-                title={`View ${listingLabel}`}
-              >
-                {listingLabel}
-              </Link>
-            ) : (
-              <p className="text-xs text-gray-400 truncate">{listingLabel}</p>
-            ))}
+          {(listingLabel || acceptedRentLabel || listingRentLabel) && (
+            <div className="flex items-baseline justify-between gap-2 min-w-0">
+              {listingLabel ? (
+                thread?.listingId ? (
+                  <Link
+                    href={`/listings/${thread.listingId}`}
+                    className="text-xs text-gray-400 truncate hover:text-red-600 hover:underline min-w-0"
+                    title={`View ${listingLabel}`}
+                  >
+                    {listingLabel}
+                  </Link>
+                ) : (
+                  <p className="text-xs text-gray-400 truncate min-w-0">
+                    {listingLabel}
+                  </p>
+                )
+              ) : (
+                <span className="min-w-0" />
+              )}
+              {acceptedRentLabel ? (
+                <p className="text-xs font-medium tabular-nums flex-shrink-0 flex items-baseline gap-1.5">
+                  <span className="text-green-700">{acceptedRentLabel}/mo</span>
+                  {acceptedOriginalLabel &&
+                  acceptedOriginalLabel !== acceptedRentLabel ? (
+                    <span className="text-gray-400 line-through">
+                      {acceptedOriginalLabel}/mo
+                    </span>
+                  ) : null}
+                </p>
+              ) : listingRentLabel ? (
+                <p className="text-xs font-medium text-gray-600 tabular-nums flex-shrink-0">
+                  {listingRentLabel}
+                </p>
+              ) : null}
+            </div>
+          )}
         </div>
         {headerActions}
       </div>
@@ -273,6 +357,7 @@ export default function ChatTranscript({
             const showSession = shouldShowSessionDivider(prev, msg);
             const timeLabel = formatMessageTime(msg.createdAt);
             const sessionLabel = formatSessionDivider(msg.createdAt);
+            const isOffer = msg.messageType === "discount_offer";
 
             return (
               <div key={msg.id} className="space-y-2">
@@ -291,46 +376,54 @@ export default function ChatTranscript({
                         shiftPx > 0 ? `translateX(${-shiftPx}px)` : undefined,
                     }}
                   >
-                    {!msg.isMine && (
+                    {!msg.isMine && !isOffer && (
                       <ChatAvatar
                         src={thread?.otherUserImage}
                         name={thread?.otherUserName}
                         size="sm"
                       />
                     )}
-                    <div
-                      className={`relative max-w-[72%] ${
-                        msg.isMine ? "items-end" : "items-start"
-                      }`}
-                    >
+                    {isOffer ? (
+                      <DiscountOfferCard
+                        message={msg}
+                        canRespond={!!onRespondOffer}
+                        onRespond={handleRespondOffer}
+                      />
+                    ) : (
                       <div
-                        className={`px-3 py-2 rounded-2xl text-sm leading-snug whitespace-pre-wrap break-words ${
-                          msg.isMine
-                            ? "bg-red-600 text-white rounded-br-sm"
-                            : "bg-gray-100 text-gray-800 rounded-bl-sm"
-                        } ${String(msg.id).startsWith("temp-") ? "opacity-70" : ""}`}
+                        className={`relative max-w-[72%] ${
+                          msg.isMine ? "items-end" : "items-start"
+                        }`}
                       >
-                        {msg.body}
-                      </div>
-                      {timeLabel && (
-                        <time
-                          dateTime={msg.createdAt}
-                          className={`pointer-events-none absolute bottom-1 text-[10px] text-gray-400 tabular-nums whitespace-nowrap opacity-0 transition-opacity duration-100 [@media(hover:hover)]:group-hover:opacity-100 ${
+                        <div
+                          className={`px-3 py-2 rounded-2xl text-sm leading-snug whitespace-pre-wrap break-words ${
                             msg.isMine
-                              ? "right-full mr-1.5 text-right"
-                              : "left-full ml-1.5 text-left"
-                          }`}
+                              ? "bg-red-600 text-white rounded-br-sm"
+                              : "bg-gray-100 text-gray-800 rounded-bl-sm"
+                          } ${String(msg.id).startsWith("temp-") ? "opacity-70" : ""}`}
                         >
-                          {timeLabel}
-                        </time>
-                      )}
-                      {msg.id === readReceiptMessageId && readReceiptTime && (
-                        <p className="mt-1 text-[11px] text-gray-400 text-right select-none">
-                          Read · {readReceiptTime}
-                        </p>
-                      )}
-                    </div>
+                          {msg.body}
+                        </div>
+                        {timeLabel && (
+                          <time
+                            dateTime={msg.createdAt}
+                            className={`pointer-events-none absolute bottom-1 text-[10px] text-gray-400 tabular-nums whitespace-nowrap opacity-0 transition-opacity duration-100 [@media(hover:hover)]:group-hover:opacity-100 ${
+                              msg.isMine
+                                ? "right-full mr-1.5 text-right"
+                                : "left-full ml-1.5 text-left"
+                            }`}
+                          >
+                            {timeLabel}
+                          </time>
+                        )}
+                      </div>
+                    )}
                   </div>
+                  {msg.id === readReceiptMessageId && readReceiptTime && (
+                    <p className="mt-1 text-[11px] text-gray-400 text-right select-none">
+                      Read · {readReceiptTime}
+                    </p>
+                  )}
                   {timeLabel && swipeReveal > 0 && (
                     <time
                       dateTime={msg.createdAt}
@@ -355,6 +448,17 @@ export default function ChatTranscript({
             sending ? "border-gray-200 opacity-80" : "border-gray-200"
           }`}
         >
+          {canSendOffer ? (
+            <button
+              type="button"
+              onClick={() => setOfferOpen(true)}
+              disabled={sending}
+              className="mb-0.5 flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"
+              aria-label="Send offer"
+            >
+              Offer
+            </button>
+          ) : null}
           <textarea
             ref={inputRef}
             value={input}
@@ -415,6 +519,14 @@ export default function ChatTranscript({
           </p>
         )}
       </div>
+
+      <SendOfferForm
+        mode="thread"
+        open={offerOpen}
+        onClose={() => setOfferOpen(false)}
+        onSubmit={handleSendOffer}
+        defaultRent={thread?.listingMinRent ?? ""}
+      />
     </div>
   );
 }
