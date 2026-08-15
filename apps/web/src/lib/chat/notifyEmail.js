@@ -12,6 +12,7 @@
  */
 import supabase from "@/lib/supabase";
 import { sendChatMessageEmail } from "@/lib/email";
+import { mintChatAccessToken } from "@/lib/chat/accessToken";
 
 export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
   try {
@@ -26,6 +27,16 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
     }
     if (!data?.recipientEmail) return;
 
+    // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
+    // /messages deep link so the notification still arrives.
+    const rawToken = await mintChatAccessToken({
+      userId: data.recipientId,
+      threadId: data.threadId,
+    });
+    const threadUrl = rawToken
+      ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
+      : `${baseUrl}/messages?thread=${data.threadId}`;
+
     await sendChatMessageEmail({
       to: data.recipientEmail,
       recipientName: data.recipientName,
@@ -35,7 +46,7 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
       listingLabel: data.listingTitle || data.listingAddress || data.subject,
       messageBody: data.messageBody,
       recipientIsInterestedUser: data.recipientIsInterestedUser,
-      threadUrl: `${baseUrl}/messages?thread=${data.threadId}`,
+      threadUrl,
     });
   } catch (err) {
     // The message is already delivered in-app; a notification failure must stay silent.

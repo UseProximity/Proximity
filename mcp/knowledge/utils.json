@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-13T18:14:57.073Z",
-  "count": 36,
+  "_generated": "2026-08-13T22:09:00.573Z",
+  "count": 37,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -10,6 +10,10 @@
     {
       "file": "src/lib/authMobile.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/chat/accessToken.js",
+      "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
     },
     {
       "file": "src/lib/chat/landlordCanChat.js",
