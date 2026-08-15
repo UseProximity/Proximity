@@ -81,6 +81,27 @@ function findReadReceiptMessageId(list, otherUserLastReadAt) {
   return null;
 }
 
+function formatMoneyLabel(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+/** Newest accepted discount_offer in the thread, if any. */
+function findAcceptedOffer(list) {
+  if (!list?.length) return null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const msg = list[i];
+    if (msg?.messageType !== "discount_offer") continue;
+    if ((msg.metadata?.status || "pending") !== "accepted") continue;
+    const proposed = Number(msg.metadata?.proposedRent);
+    if (!Number.isFinite(proposed) || proposed <= 0) continue;
+    return msg;
+  }
+  return null;
+}
+
 /**
  * Message bubbles + composer for one thread (useMessages messages + sendMessage).
  * A centered day·time header starts each new day and each gap over 3h. Otherwise
@@ -123,6 +144,13 @@ export default function ChatTranscript({
     thread?.listingMinRent,
     thread?.listingMaxRent
   );
+  const acceptedOffer = findAcceptedOffer(list);
+  const acceptedRentLabel = acceptedOffer
+    ? formatMoneyLabel(acceptedOffer.metadata?.proposedRent)
+    : null;
+  const acceptedOriginalLabel =
+    formatMoneyLabel(acceptedOffer?.metadata?.originalRent) ||
+    formatMoneyLabel(thread?.listingMinRent);
   // Either side of a listing thread can open an offer: the owner discounting the rent,
   // or the interested user proposing one. The RPC re-checks participation.
   const canSendOffer = !!onSendOffer && !!thread?.listingId;
@@ -267,7 +295,7 @@ export default function ChatTranscript({
           <p className="text-sm font-semibold text-gray-900 truncate">
             {thread?.otherUserName || "Conversation"}
           </p>
-          {(listingLabel || listingRentLabel) && (
+          {(listingLabel || acceptedRentLabel || listingRentLabel) && (
             <div className="flex items-baseline justify-between gap-2 min-w-0">
               {listingLabel ? (
                 thread?.listingId ? (
@@ -286,7 +314,17 @@ export default function ChatTranscript({
               ) : (
                 <span className="min-w-0" />
               )}
-              {listingRentLabel ? (
+              {acceptedRentLabel ? (
+                <p className="text-xs font-medium tabular-nums flex-shrink-0 flex items-baseline gap-1.5">
+                  <span className="text-green-700">{acceptedRentLabel}/mo</span>
+                  {acceptedOriginalLabel &&
+                  acceptedOriginalLabel !== acceptedRentLabel ? (
+                    <span className="text-gray-400 line-through">
+                      {acceptedOriginalLabel}/mo
+                    </span>
+                  ) : null}
+                </p>
+              ) : listingRentLabel ? (
                 <p className="text-xs font-medium text-gray-600 tabular-nums flex-shrink-0">
                   {listingRentLabel}
                 </p>
@@ -378,14 +416,14 @@ export default function ChatTranscript({
                             {timeLabel}
                           </time>
                         )}
-                        {msg.id === readReceiptMessageId && readReceiptTime && (
-                          <p className="mt-1 text-[11px] text-gray-400 text-right select-none">
-                            Read · {readReceiptTime}
-                          </p>
-                        )}
                       </div>
                     )}
                   </div>
+                  {msg.id === readReceiptMessageId && readReceiptTime && (
+                    <p className="mt-1 text-[11px] text-gray-400 text-right select-none">
+                      Read · {readReceiptTime}
+                    </p>
+                  )}
                   {timeLabel && swipeReveal > 0 && (
                     <time
                       dateTime={msg.createdAt}

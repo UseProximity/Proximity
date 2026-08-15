@@ -1,7 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+
+/** Soft (5%), mid (10%), and stronger (20%) discount chips, rounded to whole dollars. */
+const DISCOUNT_PERCENTS = [5, 10, 20];
+
+function buildDiscountSuggestions(baseRent) {
+  const base = Number(baseRent);
+  if (!Number.isFinite(base) || base <= 0) return [];
+
+  const suggestions = [];
+  const seen = new Set();
+  for (const pct of DISCOUNT_PERCENTS) {
+    const amount = Math.max(1, Math.round(base * (1 - pct / 100)));
+    if (amount >= base || seen.has(amount)) continue;
+    seen.add(amount);
+    suggestions.push({ pct, amount });
+  }
+  return suggestions;
+}
 
 /**
  * Small composer for sending a discount offer in one thread, or broadcasting
@@ -33,13 +51,16 @@ export default function SendOfferForm({
     setBusy(false);
   }, [open, defaultRent]);
 
+  const suggestions = useMemo(
+    () => buildDiscountSuggestions(defaultRent),
+    [defaultRent]
+  );
+
   if (!open) return null;
 
   const heading =
     title ||
-    (mode === "broadcast"
-      ? "Send offer to savers"
-      : "Send an offer");
+    (mode === "broadcast" ? "Send offer to savers" : "Make an offer");
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -70,13 +91,13 @@ export default function SendOfferForm({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <form
         onSubmit={handleSubmit}
-        className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3.5"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
           <h2 className="text-lg font-semibold text-gray-900">{heading}</h2>
           {mode === "broadcast" ? (
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               {saverCount == null
                 ? "Loading savers…"
                 : saverCount === 0
@@ -86,14 +107,14 @@ export default function SendOfferForm({
                     } who saved this listing.`}
             </p>
           ) : (
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               Propose a monthly rent. They can accept, counter, or deny.
             </p>
           )}
         </div>
 
         <label className="block text-sm text-gray-700">
-          Proposed rent ($/mo)
+          Your offer
           <input
             type="number"
             min="1"
@@ -106,6 +127,39 @@ export default function SendOfferForm({
           />
         </label>
 
+        {suggestions.length > 0 ? (
+          <div className="grid grid-cols-3 gap-2">
+            {suggestions.map(({ pct, amount }) => {
+              const selected = Number(rent) === amount;
+              return (
+                <button
+                  key={pct}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setRent(String(amount))}
+                  aria-label={`${pct}% off — $${amount.toLocaleString()} per month`}
+                  className={`h-[4.25rem] w-full flex flex-col items-center justify-center gap-1 rounded-xl border transition disabled:opacity-50 ${
+                    selected
+                      ? "border-red-300 bg-red-50 text-red-700"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-red-200 hover:text-red-600"
+                  }`}
+                >
+                  <span className="text-sm font-bold leading-none">
+                    {pct}% off
+                  </span>
+                  <span
+                    className={`text-xs tabular-nums leading-none ${
+                      selected ? "text-red-500" : "text-gray-500"
+                    }`}
+                  >
+                    ${amount.toLocaleString()}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
         <label className="block text-sm text-gray-700">
           Note (optional)
           <textarea
@@ -113,7 +167,6 @@ export default function SendOfferForm({
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, 1000))}
             className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-red-400 resize-none"
-            placeholder="e.g. Available for August move-in"
           />
         </label>
 

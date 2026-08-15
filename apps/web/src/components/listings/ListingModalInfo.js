@@ -1241,7 +1241,6 @@ function ContactTab({
         onClose={() => setOfferOpen(false)}
         onSubmit={handleSendOffer}
         defaultRent={offerDefaultRent}
-        title="Send an offer"
       />
     </div>
   );

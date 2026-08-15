@@ -15,7 +15,6 @@ const STATUS_LABEL = {
   pending: "Pending",
   accepted: "Accepted",
   denied: "Denied",
-  superseded: "Replaced",
 };
 
 /**
@@ -32,6 +31,7 @@ export default function DiscountOfferCard({
   const original = formatMoney(meta.originalRent);
   const note = typeof meta.note === "string" ? meta.note.trim() : "";
   const isMine = !!message?.isMine;
+  const isReplaced = status === "superseded";
   const showActions = canRespond && status === "pending" && !isMine;
 
   const [counterOpen, setCounterOpen] = useState(false);
@@ -50,37 +50,55 @@ export default function DiscountOfferCard({
     }
   }
 
+  const shellClass = isReplaced
+    ? `border-gray-200 bg-gray-100 ${isMine ? "ml-auto" : "mr-auto"}`
+    : isMine
+      ? "border-red-200 bg-red-50/80 ml-auto"
+      : "border-gray-200 bg-white mr-auto shadow-sm";
+
   return (
     <div
-      className={`w-full max-w-[min(100%,20rem)] rounded-2xl border px-3.5 py-3 ${
-        isMine
-          ? "border-red-200 bg-red-50/80 ml-auto"
-          : "border-gray-200 bg-white mr-auto shadow-sm"
-      } ${String(message?.id).startsWith("temp-") ? "opacity-70" : ""}`}
+      className={`w-full max-w-[min(100%,20rem)] rounded-2xl border px-3.5 py-3 ${shellClass} ${
+        String(message?.id).startsWith("temp-") || isReplaced ? "opacity-70" : ""
+      }`}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-          {isMine ? "Your offer" : "Offer"}
-        </p>
-        <span
-          className={`text-[11px] font-medium ${
-            status === "accepted"
-              ? "text-green-700"
-              : status === "denied"
-                ? "text-red-600"
-                : status === "superseded"
-                  ? "text-gray-400"
-                  : "text-amber-700"
+        <p
+          className={`text-[11px] font-semibold uppercase tracking-wide ${
+            isReplaced ? "text-gray-400" : "text-gray-500"
           }`}
         >
-          {STATUS_LABEL[status] || status}
-        </span>
+          {isMine ? "Your offer" : "Offer"}
+        </p>
+        {!isReplaced ? (
+          <span
+            className={`text-[11px] font-medium ${
+              status === "accepted"
+                ? "text-green-700"
+                : status === "denied"
+                  ? "text-red-600"
+                  : "text-amber-700"
+            }`}
+          >
+            {STATUS_LABEL[status] || status}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex items-baseline gap-2 flex-wrap">
-        <p className="text-xl font-bold text-gray-900 tabular-nums">
+        <p
+          className={`text-xl font-bold tabular-nums ${
+            isReplaced ? "text-gray-500" : "text-gray-900"
+          }`}
+        >
           {proposed || "—"}
-          <span className="text-sm font-normal text-gray-500">/mo</span>
+          <span
+            className={`text-sm font-normal ${
+              isReplaced ? "text-gray-400" : "text-gray-500"
+            }`}
+          >
+            /mo
+          </span>
         </p>
         {original && original !== proposed ? (
           <p className="text-sm text-gray-400 line-through tabular-nums">
@@ -90,7 +108,11 @@ export default function DiscountOfferCard({
       </div>
 
       {note ? (
-        <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap break-words">
+        <p
+          className={`mt-2 text-sm whitespace-pre-wrap break-words ${
+            isReplaced ? "text-gray-400" : "text-gray-600"
+          }`}
+        >
           {note}
         </p>
       ) : null}
