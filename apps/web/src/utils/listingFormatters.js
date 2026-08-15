@@ -49,6 +49,17 @@ export const getRentRangeLabel = (unitTypes = []) => {
   return formatRentRange(range.min, range.max);
 };
 
+/** Format listing aggregate min/max rent for chat headers (e.g. "$1,200/mo"). */
+export function formatListingRentLabel(minRent, maxRent) {
+  const min = Number(minRent);
+  const max = Number(maxRent ?? minRent);
+  if (!Number.isFinite(min) || min <= 0) return null;
+  if (!Number.isFinite(max) || max <= 0 || min === max) {
+    return `$${min.toLocaleString()}/mo`;
+  }
+  return `$${min.toLocaleString()}–$${max.toLocaleString()}/mo`;
+}
+
 export const getRentRangeDisplay = (unitTypes = []) => {
   const range = computeRentRange(unitTypes);
   if (!range) return { label: "Contact for Pricing", hasPrice: false };

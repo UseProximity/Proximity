@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-13T22:09:00.573Z",
+  "_generated": "2026-08-15T16:41:56.634Z",
   "count": 37,
   "utils": [
     {
@@ -141,7 +141,7 @@
     },
     {
       "file": "src/utils/listingFormatters.js",
-      "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
+      "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
     },
     {
       "file": "src/utils/walkTimes.js",

@@ -124,6 +124,7 @@ export async function sendChatMessageEmail({
   senderName,
   listingLabel,
   messageBody,
+  messageType,
   recipientIsInterestedUser,
   threadUrl,
   unreadCount = 1,
@@ -135,6 +136,7 @@ export async function sendChatMessageEmail({
   const firstName = recipientName ? escapeHtml(recipientName.split(" ")[0]) : "";
   const count = Number.isFinite(Number(unreadCount)) ? Math.max(1, Math.floor(Number(unreadCount))) : 1;
   const multi = count > 1;
+  const isOffer = messageType === "discount_offer";
 
   const body = (messageBody || "").trim();
   const preview = escapeHtml(
@@ -143,7 +145,14 @@ export async function sendChatMessageEmail({
 
   let subject;
   let intro;
-  if (multi) {
+  if (isOffer && !multi) {
+    subject = recipientIsInterestedUser
+      ? `${senderLabel} sent you an offer on ${listingText}`
+      : `New offer about ${listingLabel || "your listing"} (via Proximity)`;
+    intro = recipientIsInterestedUser
+      ? `<strong>${sender}</strong> sent you a rent offer about <strong>${listing}</strong>.`
+      : `<strong>${sender}</strong> sent a rent offer${listingLabel ? ` about <strong>${listing}</strong>` : ""} on Proximity.`;
+  } else if (multi) {
     subject = recipientIsInterestedUser
       ? `${count} messages from ${senderLabel} about ${listingText}`
       : `${count} messages from ${senderLabel} about ${listingLabel || "your listing"} (via Proximity)`;
@@ -159,10 +168,18 @@ export async function sendChatMessageEmail({
   }
 
   const closing = recipientIsInterestedUser
-    ? "Reply on Proximity to keep everything about this place in one thread."
+    ? isOffer
+      ? "Open the conversation on Proximity to accept, counter, or decline the offer."
+      : "Reply on Proximity to keep everything about this place in one thread."
     : "Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.";
 
-  const quoteLabel = multi ? "Most recent:" : `${sender} wrote:`;
+  const quoteLabel = isOffer
+    ? multi
+      ? "Most recent offer:"
+      : "Offer details:"
+    : multi
+      ? "Most recent:"
+      : `${sender} wrote:`;
 
   return sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
@@ -178,7 +195,7 @@ export async function sendChatMessageEmail({
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
         <a href="${threadUrl}"
            style="display:inline-block;margin:8px 0 16px;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Read and reply
+          ${isOffer ? "View offer" : "Read and reply"}
         </a>
         <p>${closing}</p>
         <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>

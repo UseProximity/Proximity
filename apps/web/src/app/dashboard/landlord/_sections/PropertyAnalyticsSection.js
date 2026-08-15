@@ -9,12 +9,14 @@ import {
   Star,
   MessageSquare,
   ThumbsUp,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import ListingMetricsChart from "./ListingMetricsChart";
+import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 export default function PropertyAnalyticsSection({
   handleBackToProperties,
@@ -105,6 +107,14 @@ export default function PropertyAnalyticsSection({
               Edit
             </button>
           )}
+          <BroadcastListingOfferButton
+            listingId={listingId}
+            defaultRent={p.minRent ?? p.min_rent ?? units?.[0]?.rent ?? ""}
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 hover:border-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <Tag className="h-3.5 w-3.5" />
+            Offer to savers
+          </BroadcastListingOfferButton>
         </div>
       </div>
 

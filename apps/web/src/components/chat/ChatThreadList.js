@@ -98,9 +98,17 @@ export default function ChatThreadList({
     <div className="flex-1 overflow-y-auto min-h-0">
       {threads.map((thread) => {
         const selected = thread.threadId === activeThreadId;
-        const preview = thread.lastMessageMine
-          ? `You: ${thread.lastMessageBody || ""}`
-          : thread.lastMessageBody || "";
+        const offerPreview =
+          thread.lastMessageType === "discount_offer"
+            ? thread.lastMessageMine
+              ? "You sent an offer"
+              : "Sent you an offer"
+            : null;
+        const preview = offerPreview
+          ? offerPreview
+          : thread.lastMessageMine
+            ? `You: ${thread.lastMessageBody || ""}`
+            : thread.lastMessageBody || "";
         return (
           <button
             key={thread.threadId}

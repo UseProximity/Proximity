@@ -62,15 +62,16 @@ export async function ensureRealtimeAuth() {
 }
 
 /**
- * Shared INSERT subscription on chat_messages.
- * @param {{ channelName: string, filter?: string, currentUserId?: string, onInsert: (message: object) => void, onStatus?: (status: string, err?: Error) => void }} opts
+ * Shared INSERT/UPDATE subscription on chat_messages.
+ * @param {{ channelName: string, filter?: string, currentUserId?: string, onChange: (message: object, eventType: string) => void, onStatus?: (status: string, err?: Error) => void }} opts
  */
-function subscribeChatMessageInserts({
+function subscribeChatMessageChanges({
   channelName,
   filter,
   currentUserId,
-  onInsert,
+  onChange,
   onStatus,
+  events = ["INSERT"],
 }) {
   let disposed = false;
   let client = null;
@@ -114,30 +115,31 @@ function subscribeChatMessageInserts({
       client = await ensureRealtimeAuth();
       if (disposed) return;
 
-      const changeFilter = {
-        event: "INSERT",
-        schema: "public",
-        table: "chat_messages",
-      };
-      if (filter) changeFilter.filter = filter;
-
-      channel = client
-        .channel(channelName)
-        .on("postgres_changes", changeFilter, (payload) => {
+      let ch = client.channel(channelName);
+      for (const event of events) {
+        const changeFilter = {
+          event,
+          schema: "public",
+          table: "chat_messages",
+        };
+        if (filter) changeFilter.filter = filter;
+        ch = ch.on("postgres_changes", changeFilter, (payload) => {
           const mapped = mapRealtimeMessage(payload?.new, currentUserId);
-          if (mapped) onInsert(mapped);
-        })
-        .subscribe((status, err) => {
-          onStatus?.(status, err);
-          if (disposed) return;
-          if (status === "SUBSCRIBED") {
-            reconnectAttempt = 0;
-            return;
-          }
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            scheduleReconnect();
-          }
+          if (mapped) onChange(mapped, event);
         });
+      }
+
+      channel = ch.subscribe((status, err) => {
+        onStatus?.(status, err);
+        if (disposed) return;
+        if (status === "SUBSCRIBED") {
+          reconnectAttempt = 0;
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          scheduleReconnect();
+        }
+      });
     } catch (err) {
       onStatus?.("AUTH_ERROR", err instanceof Error ? err : new Error(String(err)));
       if (!disposed) scheduleReconnect();
@@ -155,20 +157,22 @@ function subscribeChatMessageInserts({
 
 /**
  * Subscribe to INSERT events on chat_messages for one thread.
+ * Also listens for UPDATEs so offer accept/deny metadata syncs live.
  * Returns an unsubscribe function.
  *
  * @param {string} threadId
- * @param {(message: object) => void} onInsert — camelCase message matching the API
+ * @param {(message: object, eventType?: string) => void} onChange
  * @param {{ currentUserId?: string, onStatus?: (status: string, err?: Error) => void }} [options]
  */
-export function subscribeThreadMessages(threadId, onInsert, options = {}) {
+export function subscribeThreadMessages(threadId, onChange, options = {}) {
   const { currentUserId, onStatus } = options;
-  return subscribeChatMessageInserts({
+  return subscribeChatMessageChanges({
     channelName: `chat-thread:${threadId}`,
     filter: `thread_id=eq.${threadId}`,
     currentUserId,
-    onInsert,
+    onChange,
     onStatus,
+    events: ["INSERT", "UPDATE"],
   });
 }
 
@@ -182,11 +186,12 @@ export function subscribeThreadMessages(threadId, onInsert, options = {}) {
  */
 export function subscribeInboxMessages(onInsert, options = {}) {
   const { currentUserId, onStatus } = options;
-  return subscribeChatMessageInserts({
+  return subscribeChatMessageChanges({
     channelName: "chat-inbox",
     currentUserId,
-    onInsert,
+    onChange: (message) => onInsert(message),
     onStatus,
+    events: ["INSERT"],
   });
 }
 

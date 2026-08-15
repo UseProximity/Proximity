@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-04T04:29:43.177Z",
-  "count": 72,
+  "_generated": "2026-08-15T16:41:56.619Z",
+  "count": 75,
   "components": [
     {
       "name": "DormsView",
@@ -59,6 +59,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "BroadcastListingOfferButton",
+      "file": "src/components/chat/BroadcastListingOfferButton.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ChatAvatar",
       "file": "src/components/chat/ChatAvatar.js",
       "description": "Avatar with photo or initials fallback for chat list/transcript"
@@ -74,9 +79,19 @@
       "description": "Per-thread message bubbles and composer (5000-char limit, send toasts)"
     },
     {
+      "name": "DiscountOfferCard",
+      "file": "src/components/chat/DiscountOfferCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "MessagesPanel",
       "file": "src/components/chat/MessagesPanel.js",
       "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
+    },
+    {
+      "name": "SendOfferForm",
+      "file": "src/components/chat/SendOfferForm.js",
+      "description": "No description — run generate after adding a description above."
     },
     {
       "name": "chatEvents",

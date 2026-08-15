@@ -50,6 +50,22 @@ function replaceTempMessage(list, tempId, realMessage) {
   return upsertMessage(withoutTemp, realMessage);
 }
 
+function patchMessage(list, message) {
+  if (!message?.id) return list ?? [];
+  const prev = list ?? [];
+  const idx = prev.findIndex((m) => m.id === message.id);
+  if (idx === -1) return upsertMessage(prev, message);
+  const next = [...prev];
+  next[idx] = { ...next[idx], ...message };
+  return next;
+}
+
+function formatOfferBody(proposedRent) {
+  const n = Number(proposedRent);
+  if (!Number.isFinite(n)) return "Offer";
+  return `Offer: $${Math.round(n).toLocaleString()}/mo`;
+}
+
 export function MessagesProvider({ children }) {
   const { data: session, status: sessionStatus } = useSession();
   const userId = session?.user?.id ?? null;
@@ -264,6 +280,140 @@ export function MessagesProvider({ children }) {
     }
   }, [refreshThreads]);
 
+  const sendOffer = useCallback(
+    async (threadId, { proposedRent, note, parentOfferId } = {}) => {
+      if (!userIdRef.current || !threadId) {
+        throw new Error("Not signed in");
+      }
+      const rent = Number(proposedRent);
+      if (!Number.isFinite(rent) || rent <= 0) {
+        throw new Error("proposedRent must be a positive number");
+      }
+
+      const tempId = `temp-${crypto.randomUUID()}`;
+      const metadata = {
+        status: "pending",
+        proposedRent: rent,
+        originalRent: null,
+        note: note?.trim() || null,
+        parentOfferId: parentOfferId ?? null,
+        respondedAt: null,
+        respondedBy: null,
+      };
+      const optimistic = {
+        id: tempId,
+        threadId,
+        senderId: userIdRef.current,
+        isMine: true,
+        body: formatOfferBody(rent),
+        messageType: "discount_offer",
+        metadata,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessagesByThread((prev) => {
+        const list = (prev[threadId] ?? []).map((m) => {
+          if (
+            m.messageType === "discount_offer" &&
+            (m.metadata?.status || "pending") === "pending"
+          ) {
+            return {
+              ...m,
+              metadata: { ...m.metadata, status: "superseded" },
+            };
+          }
+          return m;
+        });
+        return {
+          ...prev,
+          [threadId]: upsertMessage(list, optimistic),
+        };
+      });
+
+      try {
+        const res = await fetch(`/api/chat/threads/${threadId}/offers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            proposedRent: rent,
+            note: note?.trim() || undefined,
+            parentOfferId: parentOfferId || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => null);
+          throw new Error(errBody?.error || `Failed to send offer (${res.status})`);
+        }
+        const data = await res.json();
+        const confirmed = {
+          ...optimistic,
+          id: data.messageId,
+          body: data.body || optimistic.body,
+          metadata: data.metadata || metadata,
+        };
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [threadId]: replaceTempMessage(prev[threadId], tempId, confirmed),
+        }));
+        refreshThreads().catch(() => {});
+        return confirmed;
+      } catch (err) {
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [threadId]: (prev[threadId] ?? []).filter((m) => m.id !== tempId),
+        }));
+        // Reload to restore superseded statuses if optimistic patch was wrong.
+        loadMessages(threadId).catch(() => {});
+        throw err;
+      }
+    },
+    [refreshThreads, loadMessages]
+  );
+
+  const respondOffer = useCallback(
+    async (messageId, action, { proposedRent, note } = {}) => {
+      if (!userIdRef.current || !messageId) {
+        throw new Error("Not signed in");
+      }
+
+      const res = await fetch(`/api/chat/offers/${messageId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          proposedRent,
+          note: note?.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error || `Failed to respond (${res.status})`);
+      }
+      const data = await res.json();
+      const threadId = data.threadId;
+
+      if (action === "counter" && threadId) {
+        // New offer row; also mark others superseded via reload for accuracy.
+        await loadMessages(threadId);
+      } else if (threadId && data.messageId) {
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [threadId]: patchMessage(prev[threadId], {
+            id: data.messageId,
+            threadId,
+            body: data.body,
+            messageType: "discount_offer",
+            metadata: data.metadata,
+          }),
+        }));
+      }
+
+      refreshThreads().catch(() => {});
+      return data;
+    },
+    [loadMessages, refreshThreads]
+  );
+
   const startListingChat = useCallback(
     async (listingId, body) => {
       if (!userIdRef.current) throw new Error("Not signed in");
@@ -403,8 +553,15 @@ export function MessagesProvider({ children }) {
 
     unsubMessages = subscribeThreadMessages(
       activeThreadId,
-      (message) => {
+      (message, eventType = "INSERT") => {
         if (cancelled) return;
+        if (eventType === "UPDATE") {
+          setMessagesByThread((prev) => ({
+            ...prev,
+            [activeThreadId]: patchMessage(prev[activeThreadId], message),
+          }));
+          return;
+        }
         setMessagesByThread((prev) => ({
           ...prev,
           [activeThreadId]: upsertMessage(prev[activeThreadId], message),
@@ -491,6 +648,8 @@ export function MessagesProvider({ children }) {
       loadMessages,
       prefetchMessages,
       sendMessage,
+      sendOffer,
+      respondOffer,
       startListingChat,
       markThreadRead,
       setActiveThreadId,
@@ -506,6 +665,8 @@ export function MessagesProvider({ children }) {
       loadMessages,
       prefetchMessages,
       sendMessage,
+      sendOffer,
+      respondOffer,
       startListingChat,
       markThreadRead,
     ]
