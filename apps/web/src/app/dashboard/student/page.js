@@ -87,6 +87,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
     phone: user.phone || "",
     description: user.description || "",
     referralSource: user.referralSource || "",
+    emailNotifications:
+      user.emailNotifications ?? user.email_notifications !== false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -289,6 +291,36 @@ function EditProfileModal({ user, onClose, onSaved }) {
               <option value="On Campus">On Campus</option>
               <option value="Other">Other</option>
             </select>
+          </div>
+
+          {/* Email notifications */}
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800">Email notifications</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Get an email when someone messages you about a listing.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.emailNotifications}
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  emailNotifications: !prev.emailNotifications,
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                form.emailNotifications ? "bg-red-600" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                  form.emailNotifications ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}

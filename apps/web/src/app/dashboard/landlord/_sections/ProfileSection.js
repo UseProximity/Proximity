@@ -196,6 +196,41 @@ export default function ProfileSection({
                 </select>
               </div>
 
+              <div className="col-span-1 md:col-span-2 flex items-start justify-between gap-3 rounded-md border border-gray-200 px-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800">
+                    Email notifications
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Get an email when someone messages you about a listing.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!form.emailNotifications}
+                  onClick={() =>
+                    onChange({
+                      target: {
+                        name: "emailNotifications",
+                        value: !form.emailNotifications,
+                      },
+                    })
+                  }
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                    form.emailNotifications ? "bg-red-600" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                      form.emailNotifications
+                        ? "translate-x-5"
+                        : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
               <div className="col-span-1 md:col-span-2 flex gap-3 pt-2">
                 <Button
                   type="submit"
