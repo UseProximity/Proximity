@@ -10,9 +10,10 @@ const UUID_RE =
 const SAFE_ERRORS = new Set([
   "proposed rent must be a positive number",
   "offer note exceeds the 1000 character limit",
-  "only the listing landlord can broadcast offers",
-  "only the listing landlord can list savers",
+  "only the listing owner can broadcast offers",
+  "only the listing owner can list savers",
   "listing not found",
+  "listing is not active",
   "listing has no landlord to contact",
 ]);
 

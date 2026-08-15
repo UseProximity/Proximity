@@ -123,10 +123,9 @@ export default function ChatTranscript({
     thread?.listingMinRent,
     thread?.listingMaxRent
   );
-  const canSendOffer =
-    !!onSendOffer &&
-    !!thread?.listingId &&
-    thread?.isInterestedUser === false;
+  // Either side of a listing thread can open an offer: the owner discounting the rent,
+  // or the interested user proposing one. The RPC re-checks participation.
+  const canSendOffer = !!onSendOffer && !!thread?.listingId;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

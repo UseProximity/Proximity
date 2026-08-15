@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
@@ -15,6 +16,10 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
     ? (listing.address || "")
     : (listing.address || "").replace(/^[^,]+,\s*/, "");
   const imageUrl = listing.images?.[0];
+  const listingId = listing._id || listing.id;
+  const isActive = !listing.unavailable;
+  const defaultRent =
+    listing.minRent ?? listing.min_rent ?? listing.unitTypes?.[0]?.rent ?? "";
 
   return (
     <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 flex flex-col">
@@ -45,23 +50,32 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100 flex-wrap">
           <Link
-            href={`/browse?listing=${listing._id}`}
-            className="flex-1 text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            href={`/browse?listing=${listingId}`}
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
           >
             View
           </Link>
           <button
             onClick={() => onEdit(listing)}
-            className="flex-1 text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
           >
             Edit
           </button>
+          {isActive ? (
+            <BroadcastListingOfferButton
+              listingId={listingId}
+              defaultRent={defaultRent}
+              className="flex-1 min-w-[5.5rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+            >
+              Offer to savers
+            </BroadcastListingOfferButton>
+          ) : null}
           <button
-            onClick={() => onDelete(listing._id || listing.id)}
+            onClick={() => onDelete(listingId)}
             disabled={deleting}
-            className="flex-1 text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
           >
             {deleting ? "..." : "Delete"}
           </button>

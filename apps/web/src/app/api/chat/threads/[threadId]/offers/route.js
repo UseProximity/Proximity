@@ -10,7 +10,7 @@ const UUID_RE =
 const SAFE_OFFER_ERRORS = new Set([
   "proposed rent must be a positive number",
   "offer note exceeds the 1000 character limit",
-  "only the listing landlord can send an offer",
+  "not allowed to send an offer in this conversation",
   "offers require a listing conversation",
   "parent offer not found",
   "parent offer is no longer pending",

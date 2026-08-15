@@ -245,19 +245,21 @@ export default function PropertiesSection({
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </button>
-                <BroadcastListingOfferButton
-                  listingId={property._id || property.id}
-                  defaultRent={
-                    property.minRent ??
-                    property.min_rent ??
-                    property.unitTypes?.[0]?.rent ??
-                    ""
-                  }
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  Offer to savers
-                </BroadcastListingOfferButton>
+                {!property.unavailable ? (
+                  <BroadcastListingOfferButton
+                    listingId={property._id || property.id}
+                    defaultRent={
+                      property.minRent ??
+                      property.min_rent ??
+                      property.unitTypes?.[0]?.rent ??
+                      ""
+                    }
+                    className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    Offer to savers
+                  </BroadcastListingOfferButton>
+                ) : null}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

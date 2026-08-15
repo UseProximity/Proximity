@@ -1,5 +1,6 @@
--- Discount offers in listing chat: send, respond (accept/deny/counter), list
--- savers, and broadcast to everyone who saved a listing.
+-- Discount offers in listing chat: send (in a thread, or as first contact from the
+-- listing modal), respond (accept/deny/counter), list savers, and broadcast to
+-- everyone who saved a listing.
 -- Uses chat_messages.message_type = 'discount_offer' + metadata jsonb.
 -- Apply to BOTH dev and prod.
 
@@ -56,7 +57,9 @@ $$;
 -- ============================================================
 -- rpc_send_discount_offer
 -- ============================================================
--- Initial offer: listing landlord only (p_parent_offer_id IS NULL).
+-- Initial offer (p_parent_offer_id IS NULL): either side of a listing thread may open
+-- one — the listing owner (any user linked on listing_landlords or primary_landlord_id,
+-- role does not matter) offering a discount, or the interested user proposing a rent.
 -- Counter: caller must be a participant and not the parent offer's sender;
 -- parent must be pending in this thread. Any other pending offers are
 -- superseded (dedupe).
@@ -106,8 +109,8 @@ BEGIN
   v_is_interested := (v_thread.interested_user_id = p_user_id);
 
   IF p_parent_offer_id IS NULL THEN
-    IF NOT v_is_landlord THEN
-      RAISE EXCEPTION 'only the listing landlord can send an offer';
+    IF NOT (v_is_landlord OR v_is_interested) THEN
+      RAISE EXCEPTION 'not allowed to send an offer in this conversation';
     END IF;
   ELSE
     SELECT * INTO v_parent
@@ -174,6 +177,162 @@ BEGIN
     'messageType','discount_offer',
     'metadata',   v_metadata,
     'listingId',  v_thread.listing_id
+  );
+END;
+$$;
+
+-- ============================================================
+-- rpc_start_listing_offer
+-- ============================================================
+-- First-contact offer from the listing modal: an interested user proposes a rent
+-- before any message exists. Start-or-get the listing thread on the same shape as
+-- rpc_start_or_get_listing_chat, then post the proposal as a discount_offer.
+
+CREATE OR REPLACE FUNCTION rpc_start_listing_offer(
+  p_user_id       uuid,
+  p_listing_id    uuid,
+  p_proposed_rent numeric,
+  p_note          text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_note           text;
+  v_type_id        uuid;
+  v_landlord_id    uuid;
+  v_thread_id      uuid;
+  v_message_id     uuid;
+  v_is_new         boolean := false;
+  v_subject        text;
+  v_contacted_type uuid;
+  v_original_rent  numeric;
+  v_body           text;
+  v_metadata       jsonb;
+BEGIN
+  IF p_user_id IS NULL OR p_listing_id IS NULL THEN
+    RAISE EXCEPTION 'user and listing are required';
+  END IF;
+
+  IF p_proposed_rent IS NULL OR p_proposed_rent <= 0 OR p_proposed_rent > 1000000 THEN
+    RAISE EXCEPTION 'proposed rent must be a positive number';
+  END IF;
+
+  v_note := NULLIF(btrim(COALESCE(p_note, '')), '');
+  IF v_note IS NOT NULL AND char_length(v_note) > 1000 THEN
+    RAISE EXCEPTION 'offer note exceeds the 1000 character limit';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM users WHERE id = p_user_id AND deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'sender not found';
+  END IF;
+
+  SELECT COALESCE(NULLIF(btrim(l.title), ''), NULLIF(btrim(l.address), '')),
+         l.min_rent
+  INTO v_subject, v_original_rent
+  FROM listings l
+  WHERE l.id = p_listing_id
+    AND l.deleted_at IS NULL
+    AND l.unavailable IS NOT TRUE;
+
+  IF NOT FOUND THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM listings WHERE id = p_listing_id AND deleted_at IS NULL
+    ) THEN
+      RAISE EXCEPTION 'listing not found';
+    END IF;
+    RAISE EXCEPTION 'listing is not active';
+  END IF;
+
+  v_type_id := fn_chat_direct_type_id();
+  IF v_type_id IS NULL THEN
+    RAISE EXCEPTION 'direct thread type is not configured';
+  END IF;
+
+  v_landlord_id := fn_chat_primary_landlord_id(p_listing_id);
+  IF v_landlord_id IS NULL THEN
+    RAISE EXCEPTION 'listing has no landlord to contact';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM users WHERE id = v_landlord_id AND deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'listing landlord is no longer an active user';
+  END IF;
+
+  IF fn_chat_user_is_listing_landlord(p_user_id, p_listing_id) THEN
+    RAISE EXCEPTION 'cannot send an offer on your own listing';
+  END IF;
+
+  PERFORM set_config('app.current_user_id', p_user_id::text, true);
+
+  -- Avoid duplicate threads on double-click.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_listing_id::text || ':' || p_user_id::text, 0::bigint)
+  );
+
+  SELECT id INTO v_thread_id
+  FROM chat_threads
+  WHERE listing_id = p_listing_id
+    AND interested_user_id = p_user_id
+    AND deleted_at IS NULL
+  LIMIT 1;
+
+  IF v_thread_id IS NULL THEN
+    v_is_new := true;
+
+    INSERT INTO chat_threads (thread_type_id, listing_id, interested_user_id, subject)
+    VALUES (v_type_id, p_listing_id, p_user_id, COALESCE(v_subject, 'Listing inquiry'))
+    RETURNING id INTO v_thread_id;
+
+    INSERT INTO chat_participants (thread_id, user_id)
+    VALUES (v_thread_id, p_user_id), (v_thread_id, v_landlord_id)
+    ON CONFLICT (thread_id, user_id) DO NOTHING;
+
+    -- Same contacted tracking as the message and email contact flows.
+    SELECT id INTO v_contacted_type
+    FROM interaction_types WHERE name = 'contacted' LIMIT 1;
+
+    IF v_contacted_type IS NOT NULL THEN
+      INSERT INTO user_listing_interactions (user_id, listing_id, interaction_type_id)
+      VALUES (p_user_id, p_listing_id, v_contacted_type)
+      ON CONFLICT (user_id, listing_id, interaction_type_id) DO NOTHING;
+    END IF;
+
+    PERFORM increment_listing_metric(p_listing_id, 'contacts');
+  END IF;
+
+  -- Dedupe: only one actionable pending offer per thread.
+  PERFORM fn_chat_supersede_pending_offers(v_thread_id, NULL);
+
+  v_body := fn_chat_format_offer_body(p_proposed_rent);
+  v_metadata := jsonb_build_object(
+    'status', 'pending',
+    'proposedRent', round(p_proposed_rent, 2),
+    'originalRent', CASE WHEN v_original_rent IS NULL THEN NULL ELSE to_jsonb(round(v_original_rent, 2)) END,
+    'note', to_jsonb(v_note),
+    'parentOfferId', NULL,
+    'respondedAt', NULL,
+    'respondedBy', NULL
+  );
+
+  INSERT INTO chat_messages (thread_id, sender_id, body, message_type, metadata)
+  VALUES (v_thread_id, p_user_id, v_body, 'discount_offer', v_metadata)
+  RETURNING id INTO v_message_id;
+
+  UPDATE chat_participants
+  SET last_read_at = now()
+  WHERE thread_id = v_thread_id AND user_id = p_user_id;
+
+  RETURN jsonb_build_object(
+    'threadId',    v_thread_id,
+    'messageId',   v_message_id,
+    'isNew',       v_is_new,
+    'body',        v_body,
+    'messageType', 'discount_offer',
+    'metadata',    v_metadata,
+    'listingId',   p_listing_id,
+    'landlordId',  v_landlord_id
   );
 END;
 $$;
@@ -298,7 +457,7 @@ BEGIN
   END IF;
 
   IF NOT fn_chat_user_is_listing_landlord(p_user_id, p_listing_id) THEN
-    RAISE EXCEPTION 'only the listing landlord can list savers';
+    RAISE EXCEPTION 'only the listing owner can list savers';
   END IF;
 
   IF NOT EXISTS (
@@ -375,13 +534,19 @@ BEGIN
   END IF;
 
   IF NOT fn_chat_user_is_listing_landlord(p_user_id, p_listing_id) THEN
-    RAISE EXCEPTION 'only the listing landlord can broadcast offers';
+    RAISE EXCEPTION 'only the listing owner can broadcast offers';
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM listings WHERE id = p_listing_id AND deleted_at IS NULL
+    SELECT 1 FROM listings
+    WHERE id = p_listing_id AND deleted_at IS NULL AND unavailable IS NOT TRUE
   ) THEN
-    RAISE EXCEPTION 'listing not found';
+    IF NOT EXISTS (
+      SELECT 1 FROM listings WHERE id = p_listing_id AND deleted_at IS NULL
+    ) THEN
+      RAISE EXCEPTION 'listing not found';
+    END IF;
+    RAISE EXCEPTION 'listing is not active';
   END IF;
 
   v_note := NULLIF(btrim(COALESCE(p_note, '')), '');
@@ -525,6 +690,7 @@ DECLARE
     'fn_chat_format_offer_body(numeric)',
     'fn_chat_supersede_pending_offers(uuid, uuid)',
     'rpc_send_discount_offer(uuid, uuid, numeric, text, uuid)',
+    'rpc_start_listing_offer(uuid, uuid, numeric, text)',
     'rpc_respond_discount_offer(uuid, uuid, text, numeric, text)',
     'rpc_list_listing_savers(uuid, uuid)',
     'rpc_broadcast_discount_offers(uuid, uuid, numeric, text)'

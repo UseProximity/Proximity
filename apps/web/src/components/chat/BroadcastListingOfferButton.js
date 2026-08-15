@@ -5,8 +5,8 @@ import toast from "react-hot-toast";
 import SendOfferForm from "@/components/chat/SendOfferForm";
 
 /**
- * Landlord: load saver count and broadcast a discount offer to everyone who
- * saved the listing.
+ * Any active listing owner (landlord or student) can load saver count and
+ * broadcast a discount offer to everyone who saved the listing.
  */
 export default function BroadcastListingOfferButton({
   listingId,

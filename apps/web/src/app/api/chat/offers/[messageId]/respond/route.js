@@ -21,7 +21,7 @@ const SAFE_RESPOND_ERRORS = new Set([
   "parent offer is no longer pending",
   "cannot counter your own offer",
   "not allowed to counter this offer",
-  "only the listing landlord can send an offer",
+  "not allowed to send an offer in this conversation",
   "offers require a listing conversation",
 ]);
 

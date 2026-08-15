@@ -9,7 +9,8 @@
  * last_read_at for "Read · time" receipts in ChatTranscript. Prefetches recent
  * thread histories so opening a conversation feels instant. No UI chrome
  * (composer text lives in ChatTranscript). Consumed by /messages, header
- * unread badge, and listing Message CTA via startListingChat.
+ * unread badge, and the listing modal's Message / Offer CTAs via startListingChat
+ * and startListingOffer.
  */
 "use client";
 
@@ -439,6 +440,38 @@ export function MessagesProvider({ children }) {
     [refreshThreads]
   );
 
+  const startListingOffer = useCallback(
+    async (listingId, { proposedRent, note } = {}) => {
+      if (!userIdRef.current) throw new Error("Not signed in");
+      const rent = Number(proposedRent);
+      if (!Number.isFinite(rent) || rent <= 0) {
+        throw new Error("proposedRent must be a positive number");
+      }
+
+      const res = await fetch("/api/chat/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId,
+          proposedRent: rent,
+          note: note?.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error || `Failed to send offer (${res.status})`);
+      }
+      const data = await res.json();
+      await refreshThreads();
+      if (data?.threadId) {
+        setActiveThreadId(data.threadId);
+        loadMessages(data.threadId).catch(() => {});
+      }
+      return data;
+    },
+    [refreshThreads, loadMessages]
+  );
+
   // Bootstrap inbox on login; clear on logout. Ignore session "loading" so we
   // don't wipe threads (or flash the empty state) before NextAuth hydrates.
   useEffect(() => {
@@ -651,6 +684,7 @@ export function MessagesProvider({ children }) {
       sendOffer,
       respondOffer,
       startListingChat,
+      startListingOffer,
       markThreadRead,
       setActiveThreadId,
     }),
@@ -668,6 +702,7 @@ export function MessagesProvider({ children }) {
       sendOffer,
       respondOffer,
       startListingChat,
+      startListingOffer,
       markThreadRead,
     ]
   );

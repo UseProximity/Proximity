@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 
+// A listing with no rent on file stores originalRent as null, and Number(null) is 0,
+// so without the null/zero guard the card renders a struck-through "$0".
 function formatMoney(value) {
+  if (value == null || value === "") return null;
   const n = Number(value);
-  if (!Number.isFinite(n)) return null;
+  if (!Number.isFinite(n) || n <= 0) return null;
   return `$${Math.round(n).toLocaleString()}`;
 }
 
