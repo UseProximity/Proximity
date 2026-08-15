@@ -18,6 +18,17 @@ import {
 
 const MAX_BODY = 5000;
 const WARN_AT = 4500;
+const COMPOSER_MAX_LINES = 10;
+
+function resizeComposerTextarea(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  const lineHeight = parseFloat(window.getComputedStyle(el).lineHeight) || 20;
+  const maxHeight = lineHeight * COMPOSER_MAX_LINES;
+  el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+  el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+}
+
 /** New centered day+time header when the gap from the previous message exceeds this. */
 const SESSION_GAP_MS = 3 * 60 * 60 * 1000;
 const SWIPE_TIME_PX = 56;
@@ -170,6 +181,10 @@ export default function ChatTranscript({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [list.length, lastMessageId]);
+
+  useEffect(() => {
+    resizeComposerTextarea(inputRef.current);
+  }, [input]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -533,13 +548,13 @@ export default function ChatTranscript({
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="flex items-start gap-2">
           {canSendOffer ? (
             <button
               type="button"
               onClick={() => setOfferOpen(true)}
               disabled={sending}
-              className="mb-0.5 flex-shrink-0 px-2.5 py-2 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"
+              className="mt-2 flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"
               aria-label="Send offer"
             >
               Offer
@@ -583,7 +598,10 @@ export default function ChatTranscript({
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value.slice(0, MAX_BODY))}
+              onChange={(e) => {
+                setInput(e.target.value.slice(0, MAX_BODY));
+                resizeComposerTextarea(e.target);
+              }}
               onKeyDown={handleKeyDown}
               rows={1}
               disabled={sending}
@@ -595,7 +613,7 @@ export default function ChatTranscript({
                     : "Type a message..."
               }
               aria-busy={sending}
-              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none max-h-24 py-1.5 disabled:cursor-not-allowed"
+              className="flex-1 bg-transparent text-sm leading-5 text-gray-800 placeholder-gray-400 outline-none resize-none overflow-hidden py-1.5 disabled:cursor-not-allowed"
             />
             <button
               type="button"
