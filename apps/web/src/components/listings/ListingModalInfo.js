@@ -1019,6 +1019,28 @@ function ContactTab({
 
   return (
     <div className="max-w-xl">
+      {owner && (
+        <div className="flex items-center gap-4 mb-6">
+          <img
+            src={
+              owner.image?.trim()
+                ? owner.image
+                : "/default-icons/default-user.png"
+            }
+            alt={owner.name}
+            className="w-14 h-14 rounded-full object-cover ring-2 ring-gray-100"
+          />
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide">
+              Listing by
+            </p>
+            <span className="text-lg font-semibold text-gray-900">
+              {owner.name}
+            </span>
+          </div>
+        </div>
+      )}
+
       {canMessage && (
         <div id="listing-in-app-message" className="mb-8">
           {chatThreadId !== null ? (
