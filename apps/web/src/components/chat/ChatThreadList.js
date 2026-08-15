@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Pin } from "lucide-react";
 import ChatAvatar from "@/components/chat/ChatAvatar";
+import { ASSISTANT_THREAD_ID } from "@/components/chat/assistantConstants";
 import {
   CHAT_GROUP_MODES,
   CHAT_GROUP_MODE_LABELS,
@@ -138,6 +140,45 @@ function GroupModeControl({ mode, onChange }) {
   );
 }
 
+function ProximityAssistantRow({ selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(ASSISTANT_THREAD_ID)}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-red-100/80 transition-colors ${
+        selected ? "bg-red-50/60" : "bg-red-50/30 hover:bg-red-50/50"
+      }`}
+    >
+      <div className="relative flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-white border border-red-100 flex items-center justify-center overflow-hidden">
+          <img src="/logo.svg" alt="" className="w-6 h-6" />
+        </div>
+        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-sm font-bold text-gray-900 truncate">
+              Proximity Assistant
+            </p>
+            <span className="inline-flex items-center gap-0.5 flex-shrink-0 rounded-md bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 border border-red-100">
+              <Pin className="w-2.5 h-2.5" />
+              Pin
+            </span>
+          </div>
+          <span className="text-[10px] text-gray-400 flex-shrink-0">now</span>
+        </div>
+        <p className="text-xs truncate mt-0.5 text-gray-700 font-medium">
+          Is 512 Forest Park Blvd still available?
+        </p>
+      </div>
+      <span className="flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+        1
+      </span>
+    </button>
+  );
+}
+
 /**
  * Inbox rows from useMessages().threads
  */
@@ -179,63 +220,83 @@ export default function ChatThreadList({
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center py-12 min-h-0">
-        <div
-          className="w-6 h-6 border-2 border-gray-200 border-t-red-500 rounded-full animate-spin"
-          role="status"
-          aria-label="Loading conversations"
+      <div className="flex flex-col flex-1 min-h-0">
+        <ProximityAssistantRow
+          selected={activeThreadId === ASSISTANT_THREAD_ID}
+          onSelect={onSelect}
         />
+        <div className="flex flex-1 items-center justify-center py-12 min-h-0">
+          <div
+            className="w-6 h-6 border-2 border-gray-200 border-t-red-500 rounded-full animate-spin"
+            role="status"
+            aria-label="Loading conversations"
+          />
+        </div>
       </div>
     );
   }
 
   if (error && !threads?.length) {
     return (
-      <div className="flex flex-col flex-1 items-center justify-center gap-3 py-12 px-6 text-center min-h-0">
-        <p className="text-sm text-gray-500 max-w-[240px]">
-          Couldn&apos;t load conversations. Check your connection and try again.
-        </p>
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-1 inline-flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
-          >
-            Try again
-          </button>
-        )}
+      <div className="flex flex-col flex-1 min-h-0">
+        <ProximityAssistantRow
+          selected={activeThreadId === ASSISTANT_THREAD_ID}
+          onSelect={onSelect}
+        />
+        <div className="flex flex-col flex-1 items-center justify-center gap-3 py-12 px-6 text-center min-h-0">
+          <p className="text-sm text-gray-500 max-w-[240px]">
+            Couldn&apos;t load conversations. Check your connection and try
+            again.
+          </p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-1 inline-flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+            >
+              Try again
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
   if (!threads?.length) {
     return (
-      <div className="flex flex-col flex-1 items-center justify-center gap-3 py-12 px-6 text-center min-h-0">
-        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
-          <svg
-            className="w-6 h-6 text-red-400"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            viewBox="0 0 24 24"
+      <div className="flex flex-col flex-1 min-h-0">
+        <ProximityAssistantRow
+          selected={activeThreadId === ASSISTANT_THREAD_ID}
+          onSelect={onSelect}
+        />
+        <div className="flex flex-col flex-1 items-center justify-center gap-3 py-12 px-6 text-center min-h-0">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-red-400"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
+              />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-500 max-w-[240px]">
+            No conversations yet. Message a landlord from a listing to get
+            started.
+          </p>
+          <Link
+            href="/browse"
+            onClick={() => onBrowse?.()}
+            className="mt-1 inline-flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
-            />
-          </svg>
+            Browse listings
+          </Link>
         </div>
-        <p className="text-sm text-gray-500 max-w-[240px]">
-          No conversations yet. Message a landlord from a listing to get started.
-        </p>
-        <Link
-          href="/browse"
-          onClick={() => onBrowse?.()}
-          className="mt-1 inline-flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
-        >
-          Browse listings
-        </Link>
       </div>
     );
   }
@@ -243,6 +304,10 @@ export default function ChatThreadList({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <GroupModeControl mode={groupMode} onChange={handleGroupModeChange} />
+      <ProximityAssistantRow
+        selected={activeThreadId === ASSISTANT_THREAD_ID}
+        onSelect={onSelect}
+      />
       <div className="flex-1 overflow-y-auto min-h-0">
         {organized.flat
           ? organized.flat.map((thread) => (

@@ -8,6 +8,8 @@ import { useCallback, useMemo } from "react";
 import { useMessages } from "@/context/MessagesContext";
 import ChatThreadList from "@/components/chat/ChatThreadList";
 import ChatTranscript from "@/components/chat/ChatTranscript";
+import ProximityAssistantTranscript from "@/components/chat/ProximityAssistantTranscript";
+import { ASSISTANT_THREAD_ID } from "@/components/chat/assistantConstants";
 
 /**
  * @param {{ headerActions?: import('react').ReactNode, onBrowse?: () => void, className?: string }} [props]
@@ -32,6 +34,8 @@ export default function MessagesPanel({
     prefetchMessages,
   } = useMessages();
 
+  const isAssistant = activeThreadId === ASSISTANT_THREAD_ID;
+
   const activeThread = useMemo(
     () => threads.find((t) => t.threadId === activeThreadId) ?? null,
     [threads, activeThreadId]
@@ -45,13 +49,16 @@ export default function MessagesPanel({
     : undefined;
   const messagesLoading =
     !!activeThreadId &&
+    !isAssistant &&
     (activeMessagesStatus === "loading" ||
       (activeMessagesStatus == null && activeMessages == null));
 
   const openThread = useCallback(
     (threadId) => {
       if (!threadId) return;
-      prefetchMessages(threadId);
+      if (threadId !== ASSISTANT_THREAD_ID) {
+        prefetchMessages(threadId);
+      }
       setActiveThreadId(threadId);
     },
     [prefetchMessages, setActiveThreadId]
@@ -79,6 +86,33 @@ export default function MessagesPanel({
   const showEmptyTranscript =
     !threadsLoading && threadsStatus !== "error" && threads.length === 0;
 
+  const transcript = isAssistant ? (
+    <ProximityAssistantTranscript onBack={backToList} />
+  ) : (
+    <ChatTranscript
+      thread={activeThread}
+      messages={activeMessages}
+      messagesLoading={messagesLoading}
+      onSend={sendMessage}
+      onSendOffer={sendOffer}
+      onRespondOffer={respondOffer}
+      onBack={backToList}
+    />
+  );
+
+  const desktopTranscript = isAssistant ? (
+    <ProximityAssistantTranscript onBack={null} />
+  ) : (
+    <ChatTranscript
+      thread={activeThread}
+      messages={activeMessages}
+      messagesLoading={messagesLoading}
+      onSend={sendMessage}
+      onSendOffer={sendOffer}
+      onRespondOffer={respondOffer}
+      onBack={null}
+    />
+  );
 
   return (
     <div
@@ -95,31 +129,11 @@ export default function MessagesPanel({
           <ChatThreadList {...listProps} />
         </div>
         <div className="flex-1 min-h-0 flex flex-col md:hidden">
-          {activeThreadId ? (
-            <ChatTranscript
-              thread={activeThread}
-              messages={activeMessages}
-              messagesLoading={messagesLoading}
-              onSend={sendMessage}
-              onSendOffer={sendOffer}
-              onRespondOffer={respondOffer}
-              onBack={backToList}
-            />
-          ) : (
-            <ChatThreadList {...listProps} />
-          )}
+          {activeThreadId ? transcript : <ChatThreadList {...listProps} />}
         </div>
         <div className="hidden md:flex flex-1 min-h-0 flex-col">
           {activeThreadId ? (
-            <ChatTranscript
-              thread={activeThread}
-              messages={activeMessages}
-              messagesLoading={messagesLoading}
-              onSend={sendMessage}
-              onSendOffer={sendOffer}
-              onRespondOffer={respondOffer}
-              onBack={null}
-            />
+            desktopTranscript
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400 px-6 text-center">
               {showEmptyTranscript
