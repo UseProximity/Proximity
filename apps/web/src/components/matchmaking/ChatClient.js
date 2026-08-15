@@ -869,7 +869,7 @@ export default function ChatClient() {
   // rather than an empty window that never answers.
   if (needsAuth) {
     return (
-      <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex items-center justify-center px-4">
+      <div className="h-[calc(100svh-82px)] bg-gray-50 flex items-center justify-center px-4">
         <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-8 text-center">
           <div className="w-12 h-12 mx-auto rounded-full bg-red-100 text-red-600 text-lg font-bold flex items-center justify-center">
             P
@@ -897,12 +897,12 @@ export default function ChatClient() {
 
   return (
     // Fill the viewport beneath the chrome above us so the chat is tall but the composer
-    // stays on screen. Subtracts the sticky header (83px mobile / 104px desktop) plus the
-    // ~26px localhost/staging banner; on production (no banner) this just leaves a small
-    // gap above the footer. The footer sits below the fold.
+    // stays on screen. Subtracts the sticky header (56px) plus the ~26px localhost/staging
+    // banner; on production (no banner) this just leaves a small gap above the footer.
+    // The footer sits below the fold.
     // svh, not dvh: sized to the SMALLEST viewport (mobile browser toolbars showing),
     // so the answer chips and composer at the bottom are never hidden behind them.
-    <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex flex-col overflow-hidden">
+    <div className="h-[calc(100svh-82px)] bg-gray-50 flex flex-col overflow-hidden">
 
       {/* Mobile: thin bar to open the answers drawer, with a progress line beneath */}
       <div className="md:hidden flex-shrink-0 bg-white border-b border-gray-100">

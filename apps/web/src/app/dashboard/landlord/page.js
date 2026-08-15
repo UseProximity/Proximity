@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart3, MapPin, Plug, Star, User, Menu, X } from "lucide-react";
+import { signOut } from "next-auth/react";
+import { BarChart3, LogOut, MapPin, Plug, Star, User, Menu, X } from "lucide-react";
 import ListingFormPanel from "@/components/listings/ListingFormPanel";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
 import IntegrationsSection from "./_sections/IntegrationsSection";
@@ -194,7 +195,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           <aside
             className={`${
               sidebarOpen ? "translate-x-0" : "-translate-x-full"
-            } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
+            } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0 flex flex-col`}
           >
             {/* h-16 matches the content header exactly so the two bottom
                 borders form one continuous line across the page. */}
@@ -283,6 +284,15 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   </button>
                 </div>
               </div>
+            </div>
+            <div className="mt-auto p-4 border-t border-gray-200">
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Log out
+              </button>
             </div>
           </aside>
 

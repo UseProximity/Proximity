@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { adminFetch, patchRow, prodConfirm, valuesEqual, PendingContext } from "@/components/admin/adminShared";
 import GearModal from "@/components/admin/GearModal";
 import ImageManagerPanel from "@/components/admin/ImageManagerPanel";
@@ -410,6 +410,13 @@ export default function AdminDashboard() {
             className="w-56 px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-400"
           />
           <ToolsMenu dbTarget={dbTarget} isProd={isProd} />
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="px-3 py-1.5 text-xs rounded-lg border border-gray-500 text-gray-300 hover:bg-gray-700"
+          >
+            Log out
+          </button>
         </div>
       </div>
 

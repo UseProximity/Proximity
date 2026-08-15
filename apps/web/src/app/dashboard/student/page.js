@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -664,6 +664,12 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                   className="mt-4 w-full py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Edit Profile
+                </button>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="mt-2 w-full py-2 text-sm font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Log out
                 </button>
               </div>
             </div>

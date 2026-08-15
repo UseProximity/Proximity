@@ -363,7 +363,7 @@ export default function BrowseContent({ session, initialListings = null }) {
   }
 
   return (
-    <div className="bg-gray-50 flex flex-col h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)]">
+    <div className="bg-gray-50 flex flex-col h-[calc(100dvh-56px)]">
       <div className="hidden md:block">
         <TopFilterBar
           search={search}
