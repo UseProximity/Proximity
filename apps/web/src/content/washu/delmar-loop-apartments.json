@@ -1,0 +1,26 @@
+{
+  "intro": [
+    "The Delmar Loop is the closest thing WashU has to a college main street: restaurants, the Pageant, Blueberry Hill, and a strip of apartments where you can roll out of bed and be at brunch in four minutes. Students say \"on the Loop\" or \"behind the Loop,\" and both count here.",
+    "Below is the live Loop-area inventory on Proximity, each with a walk time to campus and reviews from students who lived there. The newer buildings on Delmar trade price for amenities; the flats and walk-ups on the side streets trade amenities for price. Reviews tell you which buildings are worth it."
+  ],
+  "directAnswer": "Apartments on and behind the Delmar Loop put WashU students within walking distance of both campus and the Loop's restaurants and venues. Options range from newer amenity buildings on Delmar to older flats on the side streets. Each listing here shows its real rent, walk time, and student reviews.",
+  "faqs": [
+    {
+      "q": "Is living on the Loop loud?",
+      "a": "On Delmar itself, sometimes, especially near the venues on weekend nights. One street back it quiets down fast. If noise matters to you, check the reviews on a specific building; students mention it when it is a problem."
+    },
+    {
+      "q": "How much do Loop apartments cost?",
+      "a": "The Loop straddles ZIPs 63130 and 63112, where HUD's FY2026 fair market rent for a 2 bedroom is $1,360 and $1,140 respectively, utilities included. The newer purpose-built student buildings on Delmar generally price well above those ZIP-wide benchmarks, and students debate whether the amenities justify it. Read the reviews before paying the premium."
+    },
+    {
+      "q": "Can I walk to campus from the Loop?",
+      "a": "Yes, that is the point. Most Loop-area listings are a walkable distance to the Danforth campus, and several are near shuttle stops as well. Every listing above shows its computed walk time so you can compare blocks directly."
+    },
+    {
+      "q": "Should I pick a big student building or a smaller landlord on the Loop?",
+      "a": "Big buildings give you amenities, package rooms, and predictable leasing; smaller landlords often give you more space per dollar. What matters either way is management quality, and that is exactly what student reviews on each listing are for. A shiny lobby does not fix slow maintenance."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIPs 63130 and 63112, whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}

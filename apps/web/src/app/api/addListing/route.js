@@ -82,16 +82,8 @@ export async function POST(req) {
       leaseAvailability,
       lease_availability,
       leaseStructure,
-      homeType,
       amenities,
-      utilitiesIncluded,
-      subleaseFriendly,
-      twenty_one_plus,
       furnished,
-      moveInDate,
-      contactEmail,
-      contactPhone,
-      contactName,
       title,
       customAmenities,
       custom_amenities,
@@ -100,6 +92,23 @@ export async function POST(req) {
       // add a new unit to it rather than create a second property row.
       attachToListingId,
     } = body;
+
+    // The add forms hold their state in snake_case and spread it straight into
+    // the body, so any field this route read only in camelCase never arrived:
+    // home type silently fell back to "Other", utilities came out empty and
+    // sublease_friendly stayed false on every listing created through the app.
+    // Accept either spelling (as `lease_type` already does below).
+    // `||` for the text fields so a blank one falls through to null rather than
+    // reaching Postgres as "" (an empty move_in_date would fail the date cast);
+    // `??` for booleans and arrays so a deliberate false or [] is preserved.
+    const homeType = body.homeType || body.home_type || null;
+    const utilitiesIncluded = body.utilitiesIncluded ?? body.utilities_included;
+    const subleaseFriendly = body.subleaseFriendly ?? body.sublease_friendly;
+    const twenty_one_plus = body.twenty_one_plus ?? body.twentyOnePlus;
+    const moveInDate = body.moveInDate || body.move_in_date || null;
+    const contactEmail = body.contactEmail || body.contact_email || null;
+    const contactPhone = body.contactPhone || body.contact_phone || null;
+    const contactName = body.contactName || body.contact_name || null;
 
     // Validate required fields
     if (

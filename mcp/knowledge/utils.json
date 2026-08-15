@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-08T21:42:27.874Z",
-  "count": 34,
+  "_generated": "2026-08-14T01:08:24.509Z",
+  "count": 58,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -16,12 +16,20 @@
       "description": "Auto-unavailable: when a landlord reports a listing as leased through the"
     },
     {
+      "file": "src/lib/availabilityCheck.js",
+      "description": "One-click \"still available?\" landlord email."
+    },
+    {
       "file": "src/lib/contactTracking.js",
       "description": "Single source of truth for recording that a student contacted a listing."
     },
     {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
+    },
+    {
+      "file": "src/lib/geo/neighborhoods.js",
+      "description": "Canonical neighborhood table for the WashU market. Listings only carry"
     },
     {
       "file": "src/lib/guides.js",
@@ -48,12 +56,32 @@
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
     },
     {
+      "file": "src/lib/listingDraft/extract.js",
+      "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
+    },
+    {
+      "file": "src/lib/listingDraft/fetchSite.js",
+      "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
+    },
+    {
+      "file": "src/lib/listingDraft/rateLimit.js",
+      "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
+    },
+    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
       "file": "src/lib/listings/listingSelect.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/listings/queryListings.js",
+      "description": "Server-side listing data for pages that render listings in their initial"
+    },
+    {
+      "file": "src/lib/listings/rentBasis.js",
+      "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
@@ -92,12 +120,76 @@
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
     },
     {
+      "file": "src/lib/pms/appfolio.js",
+      "description": "AppFolio connector (via Nango Proxy — \"private-api-basic\" template, key"
+    },
+    {
+      "file": "src/lib/pms/buildium.js",
+      "description": "Buildium connector (via Nango Proxy — provider config key \"buildium\")."
+    },
+    {
+      "file": "src/lib/pms/doorloop.js",
+      "description": "DoorLoop connector (via Nango Proxy — custom API config, key \"doorloop\")."
+    },
+    {
+      "file": "src/lib/pms/holdToken.js",
+      "description": "Signed release links for PMS swing-guard holds. Same trust model as the"
+    },
+    {
+      "file": "src/lib/pms/httpRetry.js",
+      "description": "fetch with timeout + backoff for PMS/Nango calls."
+    },
+    {
+      "file": "src/lib/pms/index.js",
+      "description": "PMS connector registry. Every connector implements the contract in types.js:"
+    },
+    {
+      "file": "src/lib/pms/ingest.js",
+      "description": "Create a Proximity listing from a normalized PMS property (shared by the"
+    },
+    {
+      "file": "src/lib/pms/mapping.js",
+      "description": "Mapping between PMS physical units and Proximity's listing model."
+    },
+    {
+      "file": "src/lib/pms/mock.js",
+      "description": "Demo mode — a synthetic PMS account for testing the entire flow (connect →"
+    },
+    {
+      "file": "src/lib/pms/nango.js",
+      "description": "Nango hosted-auth helper."
+    },
+    {
+      "file": "src/lib/pms/rentec.js",
+      "description": "Rentec Direct connector (via Nango Proxy — provider config key \"rentec\")."
+    },
+    {
+      "file": "src/lib/pms/sync.js",
+      "description": "The PMS sync engine — one connection per call, PMS as source of truth"
+    },
+    {
+      "file": "src/lib/pms/types.js",
+      "description": "PMS connector contract + normalized shapes."
+    },
+    {
       "file": "src/lib/r2.js",
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
     },
     {
       "file": "src/lib/schools.js",
       "description": "The universities Proximity serves, and the email domains that prove membership."
+    },
+    {
+      "file": "src/lib/seo/gsc.js",
+      "description": "Google Search Console client using a service account, with no new"
+    },
+    {
+      "file": "src/lib/seo/report.js",
+      "description": "Turns two GSC windows into the weekly flag list. Pure functions only —"
+    },
+    {
+      "file": "src/lib/seo/targets.js",
+      "description": "The evidence-backed target-query map the measurement engine tracks."
     },
     {
       "file": "src/lib/streetview.js",
@@ -114,6 +206,10 @@
     {
       "file": "src/lib/userRole.js",
       "description": "Resolve a user's authoritative role straight from the database."
+    },
+    {
+      "file": "src/lib/washuPages.js",
+      "description": "Registry for the /washu landing pages, mirroring lib/guides.js. Structure"
     },
     {
       "file": "src/utils/analytics.js",

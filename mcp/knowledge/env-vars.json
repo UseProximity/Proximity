@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-08T18:50:38.603Z",
-  "count": 35,
+  "_generated": "2026-08-14T01:08:24.544Z",
+  "count": 55,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -60,6 +60,18 @@
       "public": false
     },
     {
+      "name": "FIRECRAWL_API_KEY",
+      "public": false
+    },
+    {
+      "name": "GITHUB_REPO",
+      "public": false
+    },
+    {
+      "name": "GITHUB_TOKEN",
+      "public": false
+    },
+    {
       "name": "GOOGLE_ID",
       "public": false
     },
@@ -72,11 +84,59 @@
       "public": false
     },
     {
+      "name": "GSC_CLIENT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "GSC_PRIVATE_KEY",
+      "public": false
+    },
+    {
+      "name": "GSC_SITE_URL",
+      "public": false
+    },
+    {
       "name": "IMPORT_SECRET",
       "public": false
     },
     {
+      "name": "JINA_API_KEY",
+      "public": false
+    },
+    {
+      "name": "JINA_READER_KEY",
+      "public": false
+    },
+    {
       "name": "LEASE_SCANNER_KEY",
+      "public": false
+    },
+    {
+      "name": "LISTING_DRAFT_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_APPFOLIO_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_BUILDIUM_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_DOORLOOP_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_HOST",
+      "public": false
+    },
+    {
+      "name": "NANGO_RENTEC_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_SECRET_KEY",
       "public": false
     },
     {
@@ -93,6 +153,22 @@
     },
     {
       "name": "OUTREACH_TEST_RECIPIENT",
+      "public": false
+    },
+    {
+      "name": "PMS_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "PMS_LEASING_HORIZON_MONTHS",
+      "public": false
+    },
+    {
+      "name": "PMS_MOCK_LEASED",
+      "public": false
+    },
+    {
+      "name": "PMS_WATCH_DAYS",
       "public": false
     },
     {
@@ -133,6 +209,10 @@
     },
     {
       "name": "RESEND_API_KEY",
+      "public": false
+    },
+    {
+      "name": "TAVILY_API_KEY",
       "public": false
     },
     {

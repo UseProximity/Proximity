@@ -109,12 +109,18 @@ export function buildListing(row, owner = null) {
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
       const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      const nextAvailable =
+        (u.unit_leases ?? [])
+          .filter((l) => l.available_from)
+          .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
+          ?.available_from ?? null;
       return {
         rent: activeRent != null ? Number(activeRent) : null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         available: u.available ?? true,
+        availableFrom: nextAvailable,
       };
     }),
     leaseType: (() => {
@@ -166,6 +172,27 @@ export function buildListing(row, owner = null) {
       // Empty unit lists do NOT flip the listing — that's a separate data issue.
       return units.length > 0 && units.every((u) => u.available === false);
     })(),
+    // Earliest future move-in across available units; null = available now.
+    // Non-null means every open unit is pre-leased until that date, so the UI
+    // shows "Available Aug 1" instead of hiding the listing.
+    availableFrom: (() => {
+      const today = new Date().toISOString().slice(0, 10);
+      const units = (row.listing_units ?? []).filter((u) => u.available !== false);
+      if (!units.length) return null;
+      const nexts = units.map(
+        (u) =>
+          (u.unit_leases ?? [])
+            .filter((l) => l.available_from)
+            .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
+            ?.available_from ?? null
+      );
+      if (nexts.some((d) => !d || String(d).slice(0, 10) <= today)) return null;
+      return String(nexts.sort()[0]).slice(0, 10);
+    })(),
+    // Live-verified: availability/pricing sync daily from the landlord's
+    // property management system (pms_connection_id marks the connection).
+    verifiedLive: !!row.pms_connection_id,
+    verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
     amenities: amenitiesRowToArray(row.listing_amenities),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
@@ -210,10 +237,11 @@ export async function fetchListings() {
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
       city, state, zipcode, created_at,
+      pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease)),
+      listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease, available_from)),
       listing_landlords(user_id, is_primary),
       listing_amenities(
         air_conditioning, dishwasher, gym, laundry, mailroom, microwave,

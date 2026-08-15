@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-05T04:07:39.002Z",
-  "count": 69,
+  "_generated": "2026-08-14T01:08:24.492Z",
+  "count": 83,
   "components": [
     {
       "name": "DormsView",
@@ -209,6 +209,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "ListingDraftImport",
+      "file": "src/components/listings/ListingDraftImport.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ListingFilters",
       "file": "src/components/listings/ListingFilters.js",
       "description": "No description — run generate after adding a description above."
@@ -266,6 +271,61 @@
     {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "listingFormOptions",
+      "file": "src/components/listings/listingFormOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddListingWizard",
+      "file": "src/components/listings/wizard/AddListingWizard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepAddress",
+      "file": "src/components/listings/wizard/StepAddress.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepBasics",
+      "file": "src/components/listings/wizard/StepBasics.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepDescription",
+      "file": "src/components/listings/wizard/StepDescription.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepPerks",
+      "file": "src/components/listings/wizard/StepPerks.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepPhotos",
+      "file": "src/components/listings/wizard/StepPhotos.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepReview",
+      "file": "src/components/listings/wizard/StepReview.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepStart",
+      "file": "src/components/listings/wizard/StepStart.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "StepUnits",
+      "file": "src/components/listings/wizard/StepUnits.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "wizardShared",
+      "file": "src/components/listings/wizard/wizardShared.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -341,6 +401,16 @@
     {
       "name": "UniversityLogosCarousel",
       "file": "src/components/ui/UniversityLogosCarousel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WashuListingGrid",
+      "file": "src/components/washu/WashuListingGrid.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WashuPageJsonLd",
+      "file": "src/components/washu/WashuPageJsonLd.js",
       "description": "No description — run generate after adding a description above."
     },
     {

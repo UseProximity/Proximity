@@ -125,6 +125,8 @@ export const guides = [
     readTime: "6 min read",
     slug: "rent-reporting-credit",
     image: "/blog/rent-reporting-credit.avif",
+    datePublished: "2026-08-01",
+    dateModified: "2026-08-01",
     summary:
       "A student's guide to rent reporting: what it is, what the research says about whether it actually moves your credit score, who it's worth it for, and how to sign up for free.",
     body: "Most students pay rent every month with nothing to show for it on their credit report. This guide explains how rent reporting services work, what randomized-controlled-trial research from the Urban Institute and others found about how much it actually helps, why some credit scores don't count rent at all, who should bother doing it, and how to sign up for free with Self.",

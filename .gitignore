@@ -77,6 +77,9 @@ today.md
 # Claude Code local state (worktrees, memory, logs)
 .claude/
 .claude-flow/
+# Agent tooling writes credentials straight into these — never commit them
+claude-flow.config.json
+*.local.json
 
 # Codex local state
 .codex
@@ -100,3 +103,20 @@ mcp/knowledge/agent-sessions.json
 docs/
 # CI impact-check artifacts (generated)
 ci-out/
+
+# Firecrawl scrape output (research artifacts, not source)
+.firecrawl/
+
+# ── SEO engine (must stay at end of file: re-includes must follow excludes) ──
+# Validator + benchmark allowlist are shared tooling; the seo-draft skill and
+# content-draft docs travel with the repo. Weekly review sheets stay local.
+!scripts/
+scripts/*
+!scripts/seo-engine/
+scripts/seo-engine/reports/*.md
+!.claude/
+.claude/*
+!.claude/skills/
+!docs/
+docs/*
+!docs/content-drafts/

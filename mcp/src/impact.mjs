@@ -17,8 +17,27 @@ import { execSync } from "child_process";
 import { readKnowledge } from "./resources.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "..", ".."); // repo root (the checkout the MCP lives in)
-const SRC = join(ROOT, "src");
+const REPO_ROOT = join(__dirname, "..", ".."); // monorepo root (contains apps/, packages/, mcp/)
+
+// Two roots, deliberately distinct: git and the SQL migrations are repo-relative
+// (`supabase/migrations/...`), while the dependency graph, `@/` resolution and
+// surface classification are app-relative (`src/app/...`). Conflating them is
+// what silently emptied this analyzer after the monorepo restructure.
+const APP_ROOT = existsSync(join(REPO_ROOT, "apps", "web", "src"))
+  ? join(REPO_ROOT, "apps", "web")
+  : REPO_ROOT; // pre-restructure checkout, or a future move back to the root
+const SRC = join(APP_ROOT, "src");
+
+// Path from the repo root down to the app root ("apps/web"), "" when they match.
+const APP_PREFIX = relative(REPO_ROOT, APP_ROOT).replace(/\\/g, "/");
+
+// Repo-relative git path → app-relative graph path; null if it's outside src/.
+function toAppRelative(repoPath) {
+  if (!APP_PREFIX) return repoPath.startsWith("src/") ? repoPath : null;
+  if (!repoPath.startsWith(`${APP_PREFIX}/`)) return null;
+  const appPath = repoPath.slice(APP_PREFIX.length + 1);
+  return appPath.startsWith("src/") ? appPath : null;
+}
 
 // ── File walking ────────────────────────────────────────────────────────────
 
@@ -38,7 +57,7 @@ function read(path) {
   try { return readFileSync(path, "utf-8"); } catch { return ""; }
 }
 
-const rel = (abs) => relative(ROOT, abs).replace(/\\/g, "/");
+const rel = (abs) => relative(APP_ROOT, abs).replace(/\\/g, "/");
 
 // Drop SQL comments so table-name parsing doesn't pick up words like "the" from prose.
 function stripSqlComments(sql) {
@@ -144,7 +163,7 @@ function extractApiCalls(content) {
 function pagesUnderLayout(relPath) {
   const m = relPath.match(/^(src\/app\/.*?)\/?(layout|template)\.js$/);
   if (!m) return [];
-  const dirAbs = join(ROOT, m[1]);
+  const dirAbs = join(APP_ROOT, m[1]);
   return walkSrc(dirAbs)
     .map(rel)
     .filter((p) => /page\.js$/.test(p))
@@ -165,7 +184,7 @@ function loadRouteMeta() {
 // ── Changed-file discovery ──────────────────────────────────────────────────
 
 function git(args) {
-  return execSync(`git ${args}`, { cwd: ROOT, encoding: "utf-8" }).trim();
+  return execSync(`git ${args}`, { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
 }
 
 function getChangedFiles({ base = "staging", head }) {
@@ -227,12 +246,34 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
     }
   }
 
-  const srcChanged = changed.files.filter((f) => f.startsWith("src/") && /\.(js|jsx)$/.test(f));
-  const migrationChanged = changed.files.filter((f) => f.startsWith("supabase/migrations/"));
-  const otherChanged = changed.files.filter((f) => !srcChanged.includes(f) && !migrationChanged.includes(f));
+  // Changed paths arrive repo-relative. Source files are re-based onto the app
+  // root so they match the graph's keys; migrations stay repo-relative.
+  const isSrc = (f) => /\.(js|jsx)$/.test(f) && toAppRelative(f) !== null;
+  const isMigration = (f) => f.startsWith("supabase/migrations/");
+
+  const srcChanged = changed.files.filter(isSrc).map(toAppRelative);
+  const migrationChanged = changed.files.filter(isMigration);
+  const otherChanged = changed.files.filter((f) => !isSrc(f) && !isMigration(f));
 
   const reverse = buildReverseGraph();
   const routeMeta = loadRouteMeta();
+
+  // A misconfigured root used to produce a confident, empty report — "no
+  // affected surfaces" reads as "safe to merge" when it really means "the
+  // analyzer never found the code". Surface that as a warning instead.
+  const warnings = [];
+  if (!reverse.size) {
+    warnings.push(
+      `No source files found under ${rel(SRC) || SRC} — the dependency graph is empty, ` +
+        `so affected surfaces cannot be computed. Check the app root in impact.mjs.`
+    );
+  }
+  if (!srcChanged.length && changed.files.some((f) => /\.(js|jsx)$/.test(f))) {
+    warnings.push(
+      `${changed.files.filter((f) => /\.(js|jsx)$/.test(f)).length} JS file(s) changed but none ` +
+        `resolved under the app root (${APP_PREFIX || "<repo root>"}/src) — they were counted as "other" and not analyzed.`
+    );
+  }
 
   const directApi = new Map();
   const directPage = new Map();
@@ -274,7 +315,7 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
   const routeList = [...routeMeta.values()];
   for (const f of srcChanged) {
     if (classifySurface(f)?.kind === "api") continue; // route files handled as direct
-    for (const callPath of extractApiCalls(read(join(ROOT, f)))) {
+    for (const callPath of extractApiCalls(read(join(APP_ROOT, f)))) {
       const matches = routeList.filter((r) => callMatchesRoute(callPath, r.path));
       for (const r of matches) {
         if (!calledApi.has(r.path)) {
@@ -303,7 +344,7 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
 
   const tablesTouched = new Set();
   for (const f of migrationChanged) {
-    const sql = stripSqlComments(read(join(ROOT, f))).toLowerCase();
+    const sql = stripSqlComments(read(join(REPO_ROOT, f))).toLowerCase();
     // DDL — the actual schema change; trust these even for brand-new tables.
     for (const m of sql.matchAll(/\b(?:create|alter|drop)\s+table\s+(?:if\s+(?:not\s+)?exists\s+)?["']?([a-z_][a-z0-9_]*)["']?/g)) {
       tablesTouched.add(m[1]);
@@ -332,6 +373,7 @@ export function analyzeImpact({ base = "staging", head, files: explicitFiles } =
     base,
     head: head ?? "(working tree)",
     totalPages,
+    ...(warnings.length ? { warnings } : {}),
     changedFiles: { src: srcChanged, migrations: migrationChanged, other: otherChanged },
     affected: {
       apiEndpoints: {
@@ -372,6 +414,11 @@ export function formatImpactReport(result) {
   let out = `## Impact Analysis\n`;
   out += `**Base:** \`${result.base}\` → **Head:** \`${result.head}\`\n`;
   out += `**Changed files:** ${totalChanged} (${changedFiles.src.length} src, ${changedFiles.migrations.length} migration, ${changedFiles.other.length} other)\n\n`;
+
+  // Loud, because the failure mode this guards against looks like a clean bill of health.
+  if (result.warnings?.length) {
+    out += result.warnings.map((w) => `> ⚠️ **Impact analysis may be incomplete:** ${w}`).join("\n>\n") + `\n\n`;
+  }
 
   if (totalChanged === 0) {
     return out + `_No changes detected against \`${result.base}\`. Nothing to test._`;

@@ -39,10 +39,14 @@ const DEFAULT_FILTERS = {
   savedOnly: false,
 };
 
-export default function BrowseContent({ session }) {
+export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
-  const [listings, setListings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Seeded server-side so crawlers and first paint get real cards; the mount
+  // fetch below still runs as a freshness refresh over the 5-min server cache.
+  const [listings, setListings] = useState(initialListings ?? []);
+  const [loading, setLoading] = useState(
+    !(initialListings && initialListings.length)
+  );
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("search");
 
@@ -54,7 +58,7 @@ export default function BrowseContent({ session }) {
       try {
         const response = await fetch("/api/listings");
         const data = await response.json();
-        setListings(data);
+        if (Array.isArray(data)) setListings(data);
       } catch (error) {
         console.error("Error fetching listings:", error);
       } finally {
@@ -325,14 +329,20 @@ export default function BrowseContent({ session }) {
         const bHasImages = b.images?.length > 0;
         if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
 
-        // 2) Within the same photo tier, reviewed listings rank first.
+        // 2) Available-now ranks above available-later (pre-leased listings
+        //    with a future availableFrom) — same result set, not a tab.
+        const aLater = !!a.availableFrom;
+        const bLater = !!b.availableFrom;
+        if (aLater !== bLater) return aLater ? 1 : -1;
+
+        // 3) Within the same tier, reviewed listings rank first.
         const aReviews = a.numReviews ?? 0;
         const bReviews = b.numReviews ?? 0;
         const aHasReviews = aReviews > 0;
         const bHasReviews = bReviews > 0;
         if (aHasReviews !== bHasReviews) return aHasReviews ? -1 : 1;
 
-        // 3) Among reviewed listings, higher rating wins, then more reviews.
+        // 4) Among reviewed listings, higher rating wins, then more reviews.
         if (aHasReviews && bHasReviews) {
           if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
           return bReviews - aReviews;
