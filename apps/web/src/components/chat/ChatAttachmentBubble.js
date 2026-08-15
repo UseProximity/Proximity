@@ -1,11 +1,29 @@
 "use client";
 
+import { useState } from "react";
+import ChatImageLightbox from "@/components/chat/ChatImageLightbox";
 import {
   chatAttachmentUrl,
   formatFileSize,
   isChatAttachmentImage,
   isChatAttachmentPdf,
 } from "@/lib/chat/attachments";
+
+/** Optimistic sends carry a blob URL and a local- id until the row comes back. */
+function isPersisted(attachment) {
+  return !!attachment?.id && !String(attachment.id).startsWith("local-");
+}
+
+function attachmentSrc(attachment) {
+  if (attachment?.localUrl) return attachment.localUrl;
+  return isPersisted(attachment) ? chatAttachmentUrl(attachment.id) : null;
+}
+
+function attachmentDownloadHref(attachment) {
+  return isPersisted(attachment)
+    ? chatAttachmentUrl(attachment.id, { download: true })
+    : null;
+}
 
 function DownloadIcon({ className }) {
   return (
@@ -45,16 +63,9 @@ function FileIcon({ className }) {
   );
 }
 
-function AttachmentImage({ attachment, mine }) {
-  const src = attachment.localUrl
-    ? attachment.localUrl
-    : attachment.id && !String(attachment.id).startsWith("local-")
-      ? chatAttachmentUrl(attachment.id)
-      : null;
-  const downloadHref =
-    attachment.id && !String(attachment.id).startsWith("local-")
-      ? chatAttachmentUrl(attachment.id, { download: true })
-      : null;
+function AttachmentImage({ attachment, mine, onOpen }) {
+  const src = attachmentSrc(attachment);
+  const downloadHref = attachmentDownloadHref(attachment);
 
   if (!src) {
     return (
@@ -70,12 +81,20 @@ function AttachmentImage({ attachment, mine }) {
 
   return (
     <div className="relative group/att overflow-hidden rounded-lg">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={attachment.fileName || "Attached photo"}
-        className="max-h-64 w-auto max-w-full object-contain rounded-lg"
-      />
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={!onOpen}
+        className="block w-full cursor-zoom-in disabled:cursor-default"
+        aria-label={`View ${attachment.fileName || "photo"} full screen`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={attachment.fileName || "Attached photo"}
+          className="max-h-64 w-auto max-w-full object-contain rounded-lg"
+        />
+      </button>
       {downloadHref ? (
         <a
           href={downloadHref}
@@ -169,29 +188,63 @@ export default function ChatAttachmentBubble({ message }) {
     typeof message?.metadata?.caption === "string"
       ? message.metadata.caption.trim()
       : "";
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+
+  const lightboxImages = attachments
+    .filter((att) => isChatAttachmentImage(att.contentType) || att.localUrl)
+    .map((att) => ({
+      src: attachmentSrc(att),
+      fileName: att.fileName,
+      downloadHref: attachmentDownloadHref(att),
+    }))
+    .filter((img) => img.src);
 
   return (
-    <div
-      className={`rounded-2xl overflow-hidden ${
-        mine
-          ? "bg-red-600 text-white rounded-br-sm"
-          : "bg-gray-100 text-gray-800 rounded-bl-sm"
-      } ${String(message?.id).startsWith("temp-") ? "opacity-70" : ""}`}
-    >
-      <div className="flex flex-col gap-1.5 p-1.5">
-        {attachments.map((att, i) => {
-          const key = att.id || `${att.fileName}-${i}`;
-          if (isChatAttachmentImage(att.contentType) || att.localUrl) {
-            return <AttachmentImage key={key} attachment={att} mine={mine} />;
-          }
-          return <AttachmentFile key={key} attachment={att} mine={mine} />;
-        })}
-      </div>
-      {caption ? (
-        <div className="px-3 pb-2 pt-0.5 text-sm leading-snug whitespace-pre-wrap break-words">
-          {caption}
+    <>
+      <div
+        className={`rounded-2xl overflow-hidden ${
+          mine
+            ? "bg-red-600 text-white rounded-br-sm"
+            : "bg-gray-100 text-gray-800 rounded-bl-sm"
+        } ${String(message?.id).startsWith("temp-") ? "opacity-70" : ""}`}
+      >
+        <div className="flex flex-col gap-1.5 p-1.5">
+          {attachments.map((att, i) => {
+            const key = att.id || `${att.fileName}-${i}`;
+            if (isChatAttachmentImage(att.contentType) || att.localUrl) {
+              const viewerIndex = lightboxImages.findIndex(
+                (img) => img.src === attachmentSrc(att)
+              );
+              return (
+                <AttachmentImage
+                  key={key}
+                  attachment={att}
+                  mine={mine}
+                  onOpen={
+                    viewerIndex >= 0
+                      ? () => setLightboxIndex(viewerIndex)
+                      : undefined
+                  }
+                />
+              );
+            }
+            return <AttachmentFile key={key} attachment={att} mine={mine} />;
+          })}
         </div>
+        {caption ? (
+          <div className="px-3 pb-2 pt-0.5 text-sm leading-snug whitespace-pre-wrap break-words">
+            {caption}
+          </div>
+        ) : null}
+      </div>
+      {lightboxIndex != null && lightboxImages.length > 0 ? (
+        <ChatImageLightbox
+          images={lightboxImages}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
       ) : null}
-    </div>
+    </>
   );
 }
