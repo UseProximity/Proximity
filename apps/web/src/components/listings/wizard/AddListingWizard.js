@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
-import { emptyUnit } from "@/components/listings/listingFormOptions";
+import { emptyUnit, parseUnitNumbers } from "@/components/listings/listingFormOptions";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";
@@ -64,6 +64,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   // Photos staged in the browser; uploaded to R2 after the listing is created.
   const [stagedFiles, setStagedFiles] = useState([]);
   const [stagedPreviews, setStagedPreviews] = useState([]);
+
+  // Property lookup — does a listing already exist at this address? Picking a
+  // known address attaches the lease to that property instead of creating a
+  // duplicate. See /api/properties/lookup.
+  const [propertyLookup, setPropertyLookup] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [unitSelection, setUnitSelection] = useState({ mode: "new", unitId: null });
 
   // Street View default cover (fetched when an address suggestion is picked).
   const [coords, setCoords] = useState({ lat: null, lng: null });
@@ -611,8 +618,34 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   // --------------------------------------------------------------- navigation
   const stepIndex = STEPS.findIndex((s) => s.id === stepId);
 
+  const existingProperty = propertyLookup?.property ?? null;
+  const attachingToExistingUnit =
+    unitSelection.mode === "existing" && !!unitSelection.unitId;
+
+  const lookupProperty = useCallback(async (address) => {
+    if (!address?.trim()) return;
+    setLookupLoading(true);
+    try {
+      const res = await fetch(
+        `/api/properties/lookup?address=${encodeURIComponent(address)}`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setPropertyLookup(data);
+      setUnitSelection({ mode: data?.property ? "existing" : "new", unitId: null });
+    } catch (err) {
+      console.error("Property lookup error:", err);
+    } finally {
+      setLookupLoading(false);
+    }
+  }, []);
+
   const validateStep = (id) => {
-    if (id === "address" && !form.address.trim()) return "Enter the property address to continue.";
+    if (id === "address") {
+      if (!form.address.trim()) return "Enter the property address to continue.";
+      if (existingProperty && unitSelection.mode === "existing" && !unitSelection.unitId)
+        return "Pick which unit this lease is for, or choose to add a new unit.";
+    }
     if (id === "basics" && availabilityMode === "date" && !form.move_in_date)
       return "Pick the date it becomes available, or tap Available now.";
     if (id === "units") {
@@ -627,6 +660,25 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         )
       )
         return "Pick at least one lease term for each available unit.";
+      // Attaching to an existing unit reuses that unit's identity, so the
+      // floor-plan cards aren't creating anything that needs identifying.
+      if (!attachingToExistingUnit) {
+        if (units.some((u) => !u.designator))
+          return "Pick a unit type for each floor plan (or “Whole property” for a house).";
+        if (units.some((u) => parseUnitNumbers(u.designator, u.unitNumbers).length === 0))
+          return "List the unit numbers for each floor plan, e.g. 2W, 2E.";
+        // Two cards claiming the same unit would create duplicate units at the
+        // property — exactly the collision this model exists to prevent.
+        const seen = new Set();
+        for (const u of units) {
+          for (const n of parseUnitNumbers(u.designator, u.unitNumbers)) {
+            const key = `${u.designator}|${n ?? ""}`;
+            if (seen.has(key))
+              return `Unit ${u.designator} ${n ?? ""} is listed on more than one floor plan.`;
+            seen.add(key);
+          }
+        }
+      }
     }
     if (id === "description" && !form.description.trim())
       return "A short description is required.";
@@ -670,26 +722,58 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setSubmitting(true);
     setError(null);
     try {
-      const unitPayload = units.map((u) => ({
-        bedrooms: Number(u.bedrooms),
-        bathrooms: Number(u.bathrooms),
-        rent: u.rent !== "" ? Number(u.rent) : null,
-        area: u.area !== "" ? Number(u.area) : null,
-        available: u.available !== false,
-        title: (u.title ?? "").trim() || null,
-        floorPlanImageUrl: u.floorPlanImageUrl || null,
-        leaseTermMonths: Array.isArray(u.leaseTermMonths)
-          ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
-          : [],
-      }));
+      // A card is a FLOOR PLAN; expand it into one payload row per physical unit
+      // sharing it, so each gets its own identity and its own lease.
+      const unitPayload = units.flatMap((u) =>
+        parseUnitNumbers(u.designator, u.unitNumbers).map((number) => ({
+          bedrooms: Number(u.bedrooms),
+          bathrooms: Number(u.bathrooms),
+          rent: u.rent !== "" ? Number(u.rent) : null,
+          area: u.area !== "" ? Number(u.area) : null,
+          available: u.available !== false,
+          title: (u.title ?? "").trim() || null,
+          floorPlanImageUrl: u.floorPlanImageUrl || null,
+          leaseTermMonths: Array.isArray(u.leaseTermMonths)
+            ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+            : [],
+          designator: u.designator || null,
+          number,
+        }))
+      );
 
-      const res = await fetch("/api/addListing", {
+      // The property and unit both already exist — only the caller's own lease
+      // is created. The sublease guard is enforced by the database.
+      const res = attachingToExistingUnit
+        ? await fetch("/api/leases", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              unitId: unitSelection.unitId,
+              rent: units[0]?.rent !== "" ? Number(units[0]?.rent) : null,
+              leaseTermMonths: Array.isArray(units[0]?.leaseTermMonths)
+                ? units[0].leaseTermMonths
+                    .map(Number)
+                    .filter((m) => Number.isFinite(m) && m > 0)
+                : [],
+              sublease: String(form.lease_type).toLowerCase() === "sublease",
+              available: units[0]?.available !== false,
+              description: form.description,
+              furnished: form.furnished,
+              contactEmail: form.contact_email || null,
+              contactPhone: form.contact_phone || null,
+              contactName: form.contact_name || null,
+            }),
+          })
+        : await fetch("/api/addListing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
           unitTypes: unitPayload,
           customAmenities,
+          // A property exists at this address and the user chose to add a new
+          // unit to it — attach rather than create a second property row.
+          ...(existingProperty ? { attachToListingId: existingProperty.id } : {}),
           // /api/addListing reads camelCase moveInDate; the snake_case
           // move_in_date in ...form was silently dropped (long-standing
           // create-path bug — edit always saved it).
@@ -892,6 +976,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setStreetViewDeleted,
     streetViewLoading,
     fetchStreetViewPreview,
+    propertyLookup,
+    lookupLoading,
+    lookupProperty,
+    existingProperty,
+    unitSelection,
+    setUnitSelection,
+    attachingToExistingUnit,
     importedFields,
     clearImported,
     importInfo,
