@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-15T17:13:37.593Z",
-  "count": 71,
+  "_generated": "2026-08-15T18:21:38.096Z",
+  "count": 73,
   "routes": [
     {
       "path": "/api/addListing",
@@ -314,6 +314,18 @@
       "file": "src/app/api/chat/access-token/route.js"
     },
     {
+      "path": "/api/chat/attachments/[attachmentId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/attachments/[attachmentId]/route.js"
+    },
+    {
       "path": "/api/chat/offers",
       "methods": [
         "POST"
@@ -362,6 +374,21 @@
       },
       "tables": [],
       "file": "src/app/api/chat/threads/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/attachments/presign",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "chat_participants",
+        "chat_threads"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/attachments/presign/route.js"
     },
     {
       "path": "/api/chat/threads/[threadId]/messages",

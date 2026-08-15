@@ -104,11 +104,19 @@ export default function ChatThreadList({
               ? "You sent an offer"
               : "Sent you an offer"
             : null;
+        const attachmentPreview =
+          thread.lastMessageType === "attachment"
+            ? thread.lastMessageMine
+              ? `You: ${thread.lastMessageBody || "Sent a file"}`
+              : thread.lastMessageBody || "Sent a file"
+            : null;
         const preview = offerPreview
           ? offerPreview
-          : thread.lastMessageMine
-            ? `You: ${thread.lastMessageBody || ""}`
-            : thread.lastMessageBody || "";
+          : attachmentPreview
+            ? attachmentPreview
+            : thread.lastMessageMine
+              ? `You: ${thread.lastMessageBody || ""}`
+              : thread.lastMessageBody || "";
         return (
           <button
             key={thread.threadId}

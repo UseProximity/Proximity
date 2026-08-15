@@ -137,6 +137,7 @@ export async function sendChatMessageEmail({
   const count = Number.isFinite(Number(unreadCount)) ? Math.max(1, Math.floor(Number(unreadCount))) : 1;
   const multi = count > 1;
   const isOffer = messageType === "discount_offer";
+  const isAttachment = messageType === "attachment";
 
   const body = (messageBody || "").trim();
   const preview = escapeHtml(
@@ -152,6 +153,13 @@ export async function sendChatMessageEmail({
     intro = recipientIsInterestedUser
       ? `<strong>${sender}</strong> sent you a rent offer about <strong>${listing}</strong>.`
       : `<strong>${sender}</strong> sent a rent offer${listingLabel ? ` about <strong>${listing}</strong>` : ""} on Proximity.`;
+  } else if (isAttachment && !multi) {
+    subject = recipientIsInterestedUser
+      ? `${senderLabel} sent a file about ${listingText}`
+      : `New file about ${listingLabel || "your listing"} (via Proximity)`;
+    intro = recipientIsInterestedUser
+      ? `<strong>${sender}</strong> sent you a photo or document about <strong>${listing}</strong>.`
+      : `<strong>${sender}</strong> sent a photo or document${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
   } else if (multi) {
     subject = recipientIsInterestedUser
       ? `${count} messages from ${senderLabel} about ${listingText}`
@@ -177,9 +185,13 @@ export async function sendChatMessageEmail({
     ? multi
       ? "Most recent offer:"
       : "Offer details:"
-    : multi
-      ? "Most recent:"
-      : `${sender} wrote:`;
+    : isAttachment
+      ? multi
+        ? "Most recent:"
+        : "Attachment:"
+      : multi
+        ? "Most recent:"
+        : `${sender} wrote:`;
 
   return sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,

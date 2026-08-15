@@ -29,6 +29,13 @@ import {
   subscribeThreadMessages,
   subscribeThreadReadReceipts,
 } from "@/lib/chat/realtime";
+import {
+  attachmentPreviewBody,
+  compressChatImage,
+  CHAT_ATTACHMENT_ALLOWED_TYPES,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_FILES,
+} from "@/lib/chat/attachments";
 
 const MessagesContext = createContext(null);
 
@@ -229,22 +236,99 @@ export function MessagesProvider({ children }) {
     }
   }, [refreshThreads]);
 
-  const sendMessage = useCallback(async (threadId, body) => {
+  const sendMessage = useCallback(async (threadId, body, files = []) => {
     if (!userIdRef.current || !threadId) {
       throw new Error("Not signed in");
     }
     const trimmed = typeof body === "string" ? body.trim() : "";
-    if (!trimmed) throw new Error("Message body required");
+    const rawFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+
+    if (rawFiles.length === 0) {
+      if (!trimmed) throw new Error("Message body required");
+
+      const tempId = `temp-${crypto.randomUUID()}`;
+      const optimistic = {
+        id: tempId,
+        threadId,
+        senderId: userIdRef.current,
+        isMine: true,
+        body: trimmed,
+        messageType: "text",
+        metadata: {},
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessagesByThread((prev) => ({
+        ...prev,
+        [threadId]: upsertMessage(prev[threadId], optimistic),
+      }));
+
+      try {
+        const res = await fetch(`/api/chat/threads/${threadId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: trimmed }),
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => null);
+          throw new Error(errBody?.error || `Failed to send (${res.status})`);
+        }
+        const data = await res.json();
+        const confirmed = { ...optimistic, id: data.messageId };
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [threadId]: replaceTempMessage(prev[threadId], tempId, confirmed),
+        }));
+        refreshThreads().catch(() => {});
+        return confirmed;
+      } catch (err) {
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [threadId]: (prev[threadId] ?? []).filter((m) => m.id !== tempId),
+        }));
+        throw err;
+      }
+    }
+
+    if (rawFiles.length > CHAT_ATTACHMENT_MAX_FILES) {
+      throw new Error(`Max ${CHAT_ATTACHMENT_MAX_FILES} files`);
+    }
+
+    const prepared = [];
+    for (const file of rawFiles) {
+      let next = file;
+      if (file.type?.startsWith("image/") || file.type === "image/heic") {
+        next = await compressChatImage(file);
+      }
+      if (!CHAT_ATTACHMENT_ALLOWED_TYPES.has(next.type)) {
+        throw new Error("Images (JPEG, PNG, WebP, GIF) and PDFs only");
+      }
+      if (!Number.isFinite(next.size) || next.size <= 0 || next.size > CHAT_ATTACHMENT_MAX_BYTES) {
+        throw new Error("Each file must be 20MB or smaller");
+      }
+      prepared.push(next);
+    }
 
     const tempId = `temp-${crypto.randomUUID()}`;
+    const localPreviews = prepared.map((file) => ({
+      id: `local-${crypto.randomUUID()}`,
+      fileName: file.name,
+      contentType: file.type,
+      sizeBytes: file.size,
+      localUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+    }));
+    const previewBody = trimmed || attachmentPreviewBody(prepared);
     const optimistic = {
       id: tempId,
       threadId,
       senderId: userIdRef.current,
       isMine: true,
-      body: trimmed,
-      messageType: "text",
-      metadata: {},
+      body: previewBody,
+      messageType: "attachment",
+      metadata: {
+        caption: trimmed || null,
+        attachments: localPreviews,
+      },
       createdAt: new Date().toISOString(),
     };
 
@@ -254,32 +338,89 @@ export function MessagesProvider({ children }) {
     }));
 
     try {
+      const presignRes = await fetch(
+        `/api/chat/threads/${threadId}/attachments/presign`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            files: prepared.map((f) => ({
+              name: f.name,
+              type: f.type,
+              size: f.size,
+            })),
+          }),
+        }
+      );
+      if (!presignRes.ok) {
+        const errBody = await presignRes.json().catch(() => null);
+        throw new Error(errBody?.error || `Failed to prepare upload (${presignRes.status})`);
+      }
+      const { presigned } = await presignRes.json();
+      if (!Array.isArray(presigned) || presigned.length !== prepared.length) {
+        throw new Error("Failed to prepare upload");
+      }
+
+      await Promise.all(
+        prepared.map(async (file, i) => {
+          const slot = presigned[i];
+          const putRes = await fetch(slot.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+          if (!putRes.ok) {
+            throw new Error(`Upload failed for ${file.name}`);
+          }
+        })
+      );
+
       const res = await fetch(`/api/chat/threads/${threadId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: trimmed }),
+        body: JSON.stringify({
+          body: trimmed || undefined,
+          attachments: presigned.map((slot) => ({
+            key: slot.key,
+            fileName: slot.fileName,
+            contentType: slot.contentType,
+            sizeBytes: slot.sizeBytes,
+          })),
+        }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
         throw new Error(errBody?.error || `Failed to send (${res.status})`);
       }
       const data = await res.json();
-      const confirmed = { ...optimistic, id: data.messageId };
+      const confirmed = {
+        ...optimistic,
+        id: data.messageId,
+        // Keep local previews until Realtime/history replaces metadata with real ids.
+        metadata: {
+          ...optimistic.metadata,
+          pendingMessageId: data.messageId,
+        },
+      };
       setMessagesByThread((prev) => ({
         ...prev,
         [threadId]: replaceTempMessage(prev[threadId], tempId, confirmed),
       }));
-      // Inbox preview / unread for the other party — refresh our side.
+      // Soft-refresh history so attachment ids (for /api/chat/attachments/…) land.
+      loadMessages(threadId).catch(() => {});
       refreshThreads().catch(() => {});
       return confirmed;
     } catch (err) {
+      localPreviews.forEach((p) => {
+        if (p.localUrl) URL.revokeObjectURL(p.localUrl);
+      });
       setMessagesByThread((prev) => ({
         ...prev,
         [threadId]: (prev[threadId] ?? []).filter((m) => m.id !== tempId),
       }));
       throw err;
     }
-  }, [refreshThreads]);
+  }, [refreshThreads, loadMessages]);
 
   const sendOffer = useCallback(
     async (threadId, { proposedRent, note, parentOfferId } = {}) => {

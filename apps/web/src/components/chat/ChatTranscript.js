@@ -4,9 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
+import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import DiscountOfferCard from "@/components/chat/DiscountOfferCard";
 import SendOfferForm from "@/components/chat/SendOfferForm";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  CHAT_ATTACHMENT_ALLOWED_TYPES,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_FILES,
+  formatFileSize,
+} from "@/lib/chat/attachments";
 
 const MAX_BODY = 5000;
 const WARN_AT = 4500;
@@ -105,7 +113,8 @@ function findAcceptedOffer(list) {
 /**
  * Message bubbles + composer for one thread (useMessages messages + sendMessage).
  * A centered day·time header starts each new day and each gap over 3h. Otherwise
- * time is hover / swipe-left. discount_offer messages render as offer cards.
+ * time is hover / swipe-left. discount_offer messages render as offer cards;
+ * attachment messages render inline images / downloadable files.
  */
 export default function ChatTranscript({
   thread,
@@ -118,12 +127,14 @@ export default function ChatTranscript({
   headerActions = null,
 }) {
   const [input, setInput] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const touchRef = useRef({
     x: 0,
     y: 0,
@@ -154,6 +165,7 @@ export default function ChatTranscript({
   // Either side of a listing thread can open an offer: the owner discounting the rent,
   // or the interested user proposing one. The RPC re-checks participation.
   const canSendOffer = !!onSendOffer && !!thread?.listingId;
+  const canSend = (!!input.trim() || pendingFiles.length > 0) && !sending;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -216,20 +228,51 @@ export default function ChatTranscript({
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || sending || !thread?.threadId) return;
+    const files = pendingFiles;
+    if ((!text && files.length === 0) || sending || !thread?.threadId) return;
     setSending(true);
     setInput("");
+    setPendingFiles([]);
     try {
-      await onSend(thread.threadId, text);
+      await onSend(thread.threadId, text, files);
     } catch (err) {
       setInput(text);
+      setPendingFiles(files);
       toast.error(err?.message || "Failed to send message. Please try again.");
     } finally {
       setSending(false);
-      // Keep the composer focused so you can fire off several messages in a row
-      // without clicking back in. rAF waits for the textarea to un-disable first.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
+  }
+
+  function handlePickFiles(e) {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (picked.length === 0) return;
+
+    setPendingFiles((prev) => {
+      const next = [...prev];
+      for (const file of picked) {
+        if (next.length >= CHAT_ATTACHMENT_MAX_FILES) {
+          toast.error(`Max ${CHAT_ATTACHMENT_MAX_FILES} files per message`);
+          break;
+        }
+        if (!CHAT_ATTACHMENT_ALLOWED_TYPES.has(file.type)) {
+          toast.error("Images (JPEG, PNG, WebP, GIF) and PDFs only");
+          continue;
+        }
+        if (!Number.isFinite(file.size) || file.size <= 0 || file.size > CHAT_ATTACHMENT_MAX_BYTES) {
+          toast.error("Each file must be 20MB or smaller");
+          continue;
+        }
+        next.push(file);
+      }
+      return next;
+    });
+  }
+
+  function removePendingFile(index) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleSendOffer({ proposedRent, note }) {
@@ -358,6 +401,7 @@ export default function ChatTranscript({
             const timeLabel = formatMessageTime(msg.createdAt);
             const sessionLabel = formatSessionDivider(msg.createdAt);
             const isOffer = msg.messageType === "discount_offer";
+            const isAttachment = msg.messageType === "attachment";
 
             return (
               <div key={msg.id} className="space-y-2">
@@ -389,6 +433,26 @@ export default function ChatTranscript({
                         canRespond={!!onRespondOffer}
                         onRespond={handleRespondOffer}
                       />
+                    ) : isAttachment ? (
+                      <div
+                        className={`relative max-w-[72%] ${
+                          msg.isMine ? "items-end" : "items-start"
+                        }`}
+                      >
+                        <ChatAttachmentBubble message={msg} />
+                        {timeLabel && (
+                          <time
+                            dateTime={msg.createdAt}
+                            className={`pointer-events-none absolute bottom-1 text-[10px] text-gray-400 tabular-nums whitespace-nowrap opacity-0 transition-opacity duration-100 [@media(hover:hover)]:group-hover:opacity-100 ${
+                              msg.isMine
+                                ? "right-full mr-1.5 text-right"
+                                : "left-full ml-1.5 text-left"
+                            }`}
+                          >
+                            {timeLabel}
+                          </time>
+                        )}
+                      </div>
                     ) : (
                       <div
                         className={`relative max-w-[72%] ${
@@ -443,11 +507,67 @@ export default function ChatTranscript({
       </div>
 
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
+        {pendingFiles.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {pendingFiles.map((file, i) => (
+              <span
+                key={`${file.name}-${i}`}
+                className="inline-flex items-center gap-1 max-w-full rounded-lg bg-gray-100 border border-gray-200 pl-2 pr-1 py-1 text-[11px] text-gray-700"
+              >
+                <span className="truncate max-w-[10rem]">{file.name}</span>
+                <span className="text-gray-400 flex-shrink-0">
+                  {formatFileSize(file.size)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removePendingFile(i)}
+                  disabled={sending}
+                  className="p-0.5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div
           className={`flex items-end gap-2 bg-gray-50 rounded-xl border px-3 py-2 ${
             sending ? "border-gray-200 opacity-80" : "border-gray-200"
           }`}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={CHAT_ATTACHMENT_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={handlePickFiles}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
+            className="mb-0.5 flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+            aria-label="Attach files"
+            title="Attach photos or PDFs"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.75}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.007-.007l.005.005M8.56 18.313l.005.005"
+              />
+            </svg>
+          </button>
           {canSendOffer ? (
             <button
               type="button"
@@ -466,14 +586,20 @@ export default function ChatTranscript({
             onKeyDown={handleKeyDown}
             rows={1}
             disabled={sending}
-            placeholder={sending ? "Sending…" : "Type a message..."}
+            placeholder={
+              sending
+                ? "Sending…"
+                : pendingFiles.length
+                  ? "Add a caption…"
+                  : "Type a message..."
+            }
             aria-busy={sending}
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none max-h-24 py-1.5 disabled:cursor-not-allowed"
           />
           <button
             type="button"
             onClick={handleSend}
-            disabled={!input.trim() || sending}
+            disabled={!canSend}
             className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
             aria-label="Send message"
           >

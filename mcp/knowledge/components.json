@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-15T16:41:56.619Z",
-  "count": 75,
+  "_generated": "2026-08-15T18:21:38.109Z",
+  "count": 76,
   "components": [
     {
       "name": "DormsView",
@@ -61,6 +61,11 @@
     {
       "name": "BroadcastListingOfferButton",
       "file": "src/components/chat/BroadcastListingOfferButton.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ChatAttachmentBubble",
+      "file": "src/components/chat/ChatAttachmentBubble.js",
       "description": "No description — run generate after adding a description above."
     },
     {
