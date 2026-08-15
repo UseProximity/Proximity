@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Plus, X } from "lucide-react";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import PropertyUnitPicker, {
+  UNIT_DESIGNATORS,
+  isUnitIdentityValid,
+} from "@/components/listings/PropertyUnitPicker";
 
 // Add / Edit Listing Modal -------------------------------------------------------
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
@@ -75,7 +79,17 @@ const emptyUnit = () => ({
   title: "",
   floorPlanImageUrl: "",
   leaseTermMonths: [], // months a unit can be leased for (multi-select)
+  // Unit identity — what lets a second landlord at the same property tell this
+  // unit apart from the others. "Whole" means the whole property, no number.
+  designator: "",
+  number: "",
 });
+
+// Lease specs a landlord can stamp across every unit at once. Deliberately does
+// NOT include unit identity (each unit must be identified individually) or
+// bedrooms/bathrooms — copying those is what previously filled the table with
+// units that were indistinguishable from one another.
+const BULK_APPLY_FIELDS = ["rent", "leaseTermMonths", "available"];
 
 // Named lease-term presets map to month counts; landlords can also type any number.
 const LEASE_TERM_PRESETS = [
@@ -152,9 +166,57 @@ export default function ListingFormPanel({
             : Array.isArray(u.lease_term_months)
             ? u.lease_term_months.map(Number)
             : [],
+          designator: u.designator ?? u.unit_designator ?? "",
+          number: u.number ?? u.unit_number ?? "",
         }))
       : [emptyUnit()]
   );
+
+  // ── Property lookup (address -> unit -> lease) ─────────────────────────────
+  // Entering an address that already has a listing attaches this lease to that
+  // property instead of creating a duplicate. Editing never re-homes a listing,
+  // so the lookup is create-only.
+  const [propertyLookup, setPropertyLookup] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [unitSelection, setUnitSelection] = useState({ mode: "new", unitId: null });
+
+  const lookupProperty = useCallback(
+    async (address) => {
+      if (isEdit || !address?.trim()) return;
+      setLookupLoading(true);
+      try {
+        const res = await fetch(
+          `/api/properties/lookup?address=${encodeURIComponent(address)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        setPropertyLookup(data);
+        // Default to attaching only when there is something to attach to.
+        setUnitSelection({ mode: data?.property ? "existing" : "new", unitId: null });
+      } catch (err) {
+        console.error("Property lookup error:", err);
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [isEdit]
+  );
+
+  const existingProperty = propertyLookup?.property ?? null;
+  const isSubleaseListing = String(form.lease_type).toLowerCase() === "sublease";
+  // A sublease is one person handing over one lease on one unit, so the
+  // multi-unit editor and bulk apply are both meaningless for it.
+  const allowMultipleUnits = !isSubleaseListing;
+  // The unit already exists, so the form is only collecting the lease on it —
+  // bedrooms, bathrooms, area and unit identity are all fixed by that unit.
+  const attachingToExistingUnitInForm =
+    !isEdit && unitSelection.mode === "existing" && !!unitSelection.unitId;
+
+  // Switching the lease type to sublease collapses the form to a single unit, so
+  // the shape of the form matches what the database will accept.
+  useEffect(() => {
+    if (isSubleaseListing) setUnits((prev) => (prev.length > 1 ? [prev[0]] : prev));
+  }, [isSubleaseListing]);
   const [customAmenities, setCustomAmenities] = useState(
     Array.isArray(listing?.customAmenities) ? listing.customAmenities : []
   );
@@ -303,6 +365,10 @@ export default function ListingFormPanel({
       setCoords({ lat, lng });
       if (!isEdit) fetchStreetViewPreview(suggestion.label, lat, lng);
     }
+
+    // Picking a suggestion is the point at which the address is settled enough
+    // to ask whether a property already exists there.
+    lookupProperty(suggestion.label);
   };
 
   const compressImage = (file) =>
@@ -385,6 +451,27 @@ export default function ListingFormPanel({
 
   const addUnit = () => setUnits((u) => [...u, emptyUnit()]);
   const removeUnit = (i) => setUnits((u) => u.filter((_, idx) => idx !== i));
+
+  // Copy one unit's lease specs onto every other unit. Identity and bed/bath are
+  // deliberately excluded — see BULK_APPLY_FIELDS.
+  const applyLeaseToAllUnits = (sourceIndex) =>
+    setUnits((prev) => {
+      const source = prev[sourceIndex];
+      if (!source) return prev;
+      return prev.map((unit, idx) =>
+        idx === sourceIndex
+          ? unit
+          : {
+              ...unit,
+              ...Object.fromEntries(
+                BULK_APPLY_FIELDS.map((field) => [
+                  field,
+                  Array.isArray(source[field]) ? [...source[field]] : source[field],
+                ])
+              ),
+            }
+      );
+    });
   const updateUnit = (i, field, val) =>
     setUnits((u) =>
       u.map((unit, idx) => (idx === i ? { ...unit, [field]: val } : unit))
@@ -458,12 +545,29 @@ export default function ListingFormPanel({
       setError("Description is required.");
       return;
     }
+    // Attaching to a unit that already exists: only the lease is being created,
+    // so the unit editor's rules don't apply.
+    const attachingToExistingUnit =
+      !isEdit && unitSelection.mode === "existing" && !!unitSelection.unitId;
+
+    if (!isEdit && existingProperty && unitSelection.mode === "existing" && !unitSelection.unitId) {
+      setError("Pick which unit this lease is for, or choose to add a new unit.");
+      return;
+    }
     if (units.length === 0) {
       setError("At least one unit is required.");
       return;
     }
-    if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
+    if (!attachingToExistingUnit && units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
       setError("Each unit needs bedrooms and bathrooms.");
+      return;
+    }
+    // Unit identity is what lets a second landlord at this property tell the
+    // units apart, so it is required for any unit being created.
+    if (!attachingToExistingUnit && units.some((u) => !isUnitIdentityValid(u))) {
+      setError(
+        "Each unit needs a type and number (or “Whole property” for a single-family house)."
+      );
       return;
     }
     // An available unit must offer at least one lease term, otherwise it would
@@ -494,10 +598,33 @@ export default function ListingFormPanel({
         leaseTermMonths: Array.isArray(u.leaseTermMonths)
           ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
           : [],
+        designator: u.designator || null,
+        // 'Whole' covers the entire property and must carry no number.
+        number: u.designator === "Whole" ? null : (u.number ?? "").trim() || null,
       }));
 
       let res;
-      if (isEdit) {
+      if (attachingToExistingUnit) {
+        // The property and unit already exist — this only adds the viewer's own
+        // lease to that unit. The sublease guard is enforced by the database.
+        const unit = units[0];
+        res = await fetch("/api/leases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            unitId: unitSelection.unitId,
+            rent: unit.rent !== "" ? Number(unit.rent) : null,
+            leaseTermMonths: unitPayload[0].leaseTermMonths,
+            sublease: isSubleaseListing,
+            available: unit.available !== false,
+            description: form.description,
+            furnished: form.furnished,
+            contactEmail: form.contact_email || null,
+            contactPhone: form.contact_phone || null,
+            contactName: form.contact_name || null,
+          }),
+        });
+      } else if (isEdit) {
         res = await fetch(
           `/api/landlord/listings/${listing._id || listing.id}`,
           {
@@ -534,6 +661,9 @@ export default function ListingFormPanel({
             ...form,
             unitTypes: unitPayload,
             customAmenities,
+            // A property already exists at this address and the user chose to add
+            // a new unit to it — attach rather than create a second property row.
+            ...(existingProperty ? { attachToListingId: existingProperty.id } : {}),
             // addListing expects camelCase for contact fields
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
@@ -794,6 +924,20 @@ export default function ListingFormPanel({
                   </ul>
                 )}
               </div>
+
+              {!isEdit && (lookupLoading || existingProperty) && (
+                <div className="sm:col-span-2">
+                  <PropertyUnitPicker
+                    loading={lookupLoading}
+                    property={existingProperty}
+                    leaseType={form.lease_type}
+                    selection={unitSelection}
+                    onSelectionChange={setUnitSelection}
+                    disabled={submitting}
+                  />
+                </div>
+              )}
+
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Display Name
@@ -1017,24 +1161,81 @@ export default function ListingFormPanel({
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Units *
+                {attachingToExistingUnitInForm ? "Your Lease *" : "Units *"}
               </h3>
-              <button
-                type="button"
-                onClick={addUnit}
-                className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
-              >
-                <Plus className="h-4 w-4" />
-                Add Unit
-              </button>
+              <div className="flex items-center gap-3">
+                {allowMultipleUnits && !attachingToExistingUnitInForm && units.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => applyLeaseToAllUnits(0)}
+                    className="text-sm font-medium text-gray-600 hover:text-gray-800"
+                    title="Copy the first unit's rent, lease terms and availability to every unit"
+                  >
+                    Apply first unit&rsquo;s lease to all
+                  </button>
+                )}
+                {allowMultipleUnits && !attachingToExistingUnitInForm && (
+                  <button
+                    type="button"
+                    onClick={addUnit}
+                    className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Unit
+                  </button>
+                )}
+              </div>
             </div>
+            {isSubleaseListing && (
+              <p className="mb-3 text-xs text-gray-500">
+                A sublease covers one unit, so only a single unit can be added.
+              </p>
+            )}
             <div className="space-y-3">
               {units.map((unit, i) => (
                 <div
                   key={i}
                   className="flex items-end gap-3 p-3 bg-gray-50 rounded-lg"
                 >
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="flex-1 space-y-3">
+                  {!attachingToExistingUnitInForm && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Unit type *
+                        </label>
+                        <select
+                          value={unit.designator ?? ""}
+                          onChange={(e) => {
+                            updateUnit(i, "designator", e.target.value);
+                            // 'Whole' covers the property and carries no number.
+                            if (e.target.value === "Whole") updateUnit(i, "number", "");
+                          }}
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        >
+                          <option value="">Select…</option>
+                          {UNIT_DESIGNATORS.map((d) => (
+                            <option key={d} value={d}>
+                              {d === "Whole" ? "Whole property" : d}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Unit number {unit.designator === "Whole" ? "" : "*"}
+                        </label>
+                        <input
+                          value={unit.number ?? ""}
+                          onChange={(e) => updateUnit(i, "number", e.target.value)}
+                          disabled={unit.designator === "Whole"}
+                          placeholder={unit.designator === "Whole" ? "—" : "2W"}
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
                       { field: "bedrooms", label: "Beds *", min: "0" },
                       {
@@ -1050,7 +1251,14 @@ export default function ListingFormPanel({
                         hint: "Whole unit, not per person",
                       },
                       { field: "area", label: "Area (sq ft)", min: "0" },
-                    ].map(({ field, label, min, step, hint }) => (
+                    ]
+                      .filter(
+                        // The unit already exists — only its lease is being added.
+                        ({ field }) =>
+                          !attachingToExistingUnitInForm ||
+                          field === "rent"
+                      )
+                      .map(({ field, label, min, step, hint }) => (
                       <div key={field}>
                         <label className="block text-xs font-medium text-gray-600 mb-1">
                           {label}
@@ -1070,6 +1278,8 @@ export default function ListingFormPanel({
                         )}
                       </div>
                     ))}
+                  </div>
+                    {!attachingToExistingUnitInForm && (
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Unit / Floor Plan Name
@@ -1082,6 +1292,7 @@ export default function ListingFormPanel({
                         className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>
+                    )}
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Lease Terms — select all this unit is offered for
