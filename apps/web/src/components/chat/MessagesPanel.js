@@ -120,11 +120,13 @@ export default function MessagesPanel({
               onRespondOffer={respondOffer}
               onBack={null}
             />
-          ) : showEmptyTranscript || threadsLoading || threadsStatus === "error" ? (
-            <ChatThreadList {...listProps} />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400 px-6 text-center">
-              Select a conversation to start messaging.
+              {showEmptyTranscript
+                ? "No conversations yet."
+                : threadsLoading || threadsStatus === "error"
+                  ? null
+                  : "Select a conversation to start messaging."}
             </div>
           )}
         </div>

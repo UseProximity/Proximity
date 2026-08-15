@@ -533,107 +533,109 @@ export default function ChatTranscript({
             ))}
           </div>
         )}
-        <div
-          className={`flex items-end gap-2 bg-gray-50 rounded-xl border px-3 py-2 ${
-            sending ? "border-gray-200 opacity-80" : "border-gray-200"
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={CHAT_ATTACHMENT_ACCEPT}
-            multiple
-            className="hidden"
-            onChange={handlePickFiles}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={sending || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
-            className="mb-0.5 flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-            aria-label="Attach files"
-            title="Attach photos or PDFs"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.75}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.007-.007l.005.005M8.56 18.313l.005.005"
-              />
-            </svg>
-          </button>
+        <div className="flex items-end gap-2">
           {canSendOffer ? (
             <button
               type="button"
               onClick={() => setOfferOpen(true)}
               disabled={sending}
-              className="mb-0.5 flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"
+              className="mb-0.5 flex-shrink-0 px-2.5 py-2 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"
               aria-label="Send offer"
             >
               Offer
             </button>
           ) : null}
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value.slice(0, MAX_BODY))}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            disabled={sending}
-            placeholder={
-              sending
-                ? "Sending…"
-                : pendingFiles.length
-                  ? "Add a caption…"
-                  : "Type a message..."
-            }
-            aria-busy={sending}
-            className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none max-h-24 py-1.5 disabled:cursor-not-allowed"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={!canSend}
-            className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
-            aria-label="Send message"
+          <div
+            className={`flex-1 min-w-0 flex items-end gap-2 bg-gray-50 rounded-xl border px-3 py-2 ${
+              sending ? "border-gray-200 opacity-80" : "border-gray-200"
+            }`}
           >
-            {sending ? (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={CHAT_ATTACHMENT_ACCEPT}
+              multiple
+              className="hidden"
+              onChange={handlePickFiles}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
+              className="mb-0.5 flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              aria-label="Attach files"
+              title="Attach photos or PDFs"
+            >
               <svg
-                className="w-4 h-4 animate-spin"
+                className="w-5 h-5"
                 fill="none"
+                stroke="currentColor"
+                strokeWidth={1.75}
                 viewBox="0 0 24 24"
-                aria-hidden
               >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
                 <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.007-.007l.005.005M8.56 18.313l.005.005"
                 />
               </svg>
-            ) : (
-              <svg
-                className="w-4 h-4 translate-x-px"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-              </svg>
-            )}
-          </button>
+            </button>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value.slice(0, MAX_BODY))}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              disabled={sending}
+              placeholder={
+                sending
+                  ? "Sending…"
+                  : pendingFiles.length
+                    ? "Add a caption…"
+                    : "Type a message..."
+              }
+              aria-busy={sending}
+              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none max-h-24 py-1.5 disabled:cursor-not-allowed"
+            />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={!canSend}
+              className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+              aria-label="Send message"
+            >
+              {sending ? (
+                <svg
+                  className="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-4 h-4 translate-x-px"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
         {nearLimit && (
           <p
