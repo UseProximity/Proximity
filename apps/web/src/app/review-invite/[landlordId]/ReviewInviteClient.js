@@ -5,8 +5,8 @@
  *
  * Flow:
  *   1. Tenant lands on the page (already sees the landlord's listings).
- *   2. Auth gate: must be signed in with a @wustl.edu account.
- *   3. Pick a listing from a dropdown, set integer 1–5 stars, write a review
+ *   2. Auth gate: must be signed in with a student account at a school we serve.
+ *   3. Pick a listing from a dropdown, set 0.5–5 stars (half-star), write a review
  *      (≥5 chars), optionally rate Communication / Location / Value.
  *   4. Submit to /api/submitReview (unchanged shared endpoint). Reviews
  *      auto-publish via the existing legitimacy=true path.
@@ -20,6 +20,8 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import AuthCard from "@/components/auth/AuthCard";
+import StarRatingInput from "@/components/ui/StarRatingInput";
+import { isReviewEligibleEmail } from "@/lib/schools";
 
 // Matches inputs across the rest of the site (see SubleaseFormPanel / ListingFormPanel).
 const INPUT_CLASS =
@@ -32,52 +34,17 @@ const SECTION_LABEL_CLASS =
 
 const PAGE_WRAPPER_CLASS = "min-h-screen bg-gray-50 py-8 px-4";
 
-function StarRow({ value, onChange, size = "text-3xl" }) {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          onClick={() => onChange(star)}
-          aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
-          className={`${size} leading-none transition ${
-            star <= value
-              ? "text-yellow-400"
-              : "text-gray-300 hover:text-yellow-300"
-          }`}
-        >
-          ★
-        </button>
-      ))}
-      <span className="ml-2 text-sm text-gray-500 w-16">
-        {value ? `${value} / 5` : ""}
-      </span>
-    </div>
-  );
-}
-
 function SubRatingRow({ label, value, onChange }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <span className="text-sm text-gray-700">{label}</span>
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            onClick={() => onChange(value === star ? 0 : star)}
-            aria-label={`Rate ${label} ${star} star${star > 1 ? "s" : ""}`}
-            className={`text-xl leading-none transition ${
-              star <= value
-                ? "text-yellow-400"
-                : "text-gray-300 hover:text-yellow-300"
-            }`}
-          >
-            ★
-          </button>
-        ))}
-      </div>
+      <StarRatingInput
+        value={value}
+        onChange={onChange}
+        px={22}
+        allowClear
+        ariaLabelPrefix={`Rate ${label}`}
+      />
     </div>
   );
 }
@@ -85,9 +52,7 @@ function SubRatingRow({ label, value, onChange }) {
 export default function ReviewInviteClient({ landlord, listings }) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
-  const isWustl = !!session?.user?.email
-    ?.toLowerCase()
-    .endsWith("@wustl.edu");
+  const eligible = isReviewEligibleEmail(session?.user?.email);
 
   const [listingId, setListingId] = useState(listings[0]?.id ?? "");
   const [rating, setRating] = useState(0);
@@ -111,8 +76,8 @@ export default function ReviewInviteClient({ landlord, listings }) {
     if (submitting) return;
 
     if (!listingId) return toast.error("Pick which property you're reviewing.");
-    if (rating < 1 || rating > 5)
-      return toast.error("Pick an overall rating between 1 and 5 stars.");
+    if (rating < 0.5 || rating > 5)
+      return toast.error("Pick an overall rating.");
     if (comment.trim().length < 5)
       return toast.error("Write at least 5 characters in your review.");
 
@@ -192,7 +157,7 @@ export default function ReviewInviteClient({ landlord, listings }) {
   }
 
   // Auth gate — signed-in WashU account required to submit a review.
-  if (status !== "loading" && (!loggedIn || !isWustl)) {
+  if (status !== "loading" && (!loggedIn || !eligible)) {
     return (
       <div className={PAGE_WRAPPER_CLASS}>
         <div className="max-w-md mx-auto">
@@ -201,9 +166,9 @@ export default function ReviewInviteClient({ landlord, listings }) {
               Review {landlord.name}’s property
             </h1>
             <p className="text-sm text-gray-600">
-              {loggedIn && !isWustl
-                ? "Reviews can only be left from a WashU (@wustl.edu) account — sign in with your WashU email below."
-                : "Sign in or create an account with your WashU (@wustl.edu) email to share your experience."}
+              {loggedIn && !eligible
+                ? "Reviews can only be left from a student account at a school we serve. Sign in with your school email below."
+                : "Sign in or create an account with your school email to share your experience."}
             </p>
           </div>
           <div className="flex justify-center">
@@ -258,7 +223,7 @@ export default function ReviewInviteClient({ landlord, listings }) {
                 <label className={FIELD_LABEL_CLASS}>
                   Overall rating <span className="text-red-500">*</span>
                 </label>
-                <StarRow value={rating} onChange={setRating} />
+                <StarRatingInput value={rating} onChange={setRating} />
               </div>
 
               <div>

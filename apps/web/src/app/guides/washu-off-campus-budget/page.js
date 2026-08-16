@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Clock3, Home } from "lucide-react";
 import { guides } from "@/lib/guides";
+import GuideJsonLd from "@/components/guides/GuideJsonLd";
 import GuideCTA from "@/components/guides/GuideCTA";
 import RelatedArticlesSidebar from "@/components/guides/RelatedArticlesSidebar";
 import BackNav from "@/components/guides/BackNav";
@@ -21,6 +22,7 @@ const relatedGuides = guides.filter((guide) => guide.slug !== currentGuideSlug);
 export default function Page() {
   return (
     <main className="min-h-screen bg-white text-gray-900">
+      <GuideJsonLd slug={currentGuideSlug} />
       <BackNav />
 
       {/* ── Hero ── */}
@@ -221,26 +223,41 @@ export default function Page() {
                   {
                     title: "The Delmar Loop and University City",
                     body: "The largest share of off-campus WashU students live here. Loop units are typically a 15 to 25 minute walk to campus. It's walkable to restaurants, coffee, bars, and shuttle stops. Good units go fast and the best prices get claimed early in the year. The budget spread is wide — older walk-ups can offer solid per-person value while new amenity buildings can run well past $1,200 per person.",
+                    listingsHref: "/washu/delmar-loop-apartments",
+                    listingsLabel: "See current Delmar Loop listings",
                   },
                   {
                     title: "Skinker-DeBaliviere",
                     body: "Just south of the Loop. Often the best per-person value for quality units close to campus. Typically a 15 to 25 minute walk, good shuttle access, and full of solid older brick buildings and renovated flats. For groups looking to stretch their budget without sacrificing location, this is consistently one of the stronger areas near WashU.",
+                    listingsHref: "/washu/skinker-debaliviere-apartments",
+                    listingsLabel: "See current Skinker-DeBaliviere listings",
                   },
                   {
                     title: "Central West End",
                     body: "East of campus, across Forest Park. A walkable neighborhood with a strong restaurant scene. However, it's not walkable to the Danforth campus — students here lean on the WashU shuttle, MetroLink, or their car. If you're commuting to the medical school, this is where to look first.",
+                    listingsHref: "/washu/central-west-end-apartments",
+                    listingsLabel: "See current Central West End listings",
                   },
                   {
                     title: "Clayton",
                     body: "Southeast of campus. Upscale and quiet, with very few undergrads. The farthest from the Loop social scene, and widely considered the safest area. Clayton is the most expensive area around WashU — rents run well above the broader St. Louis market. It makes sense for students who prioritize quiet and a polished neighborhood over proximity to campus.",
+                    listingsHref: "/washu/clayton-apartments",
+                    listingsLabel: "See current Clayton listings",
                   },
-                ].map(({ title, body }) => (
+                ].map(({ title, body, listingsHref, listingsLabel }) => (
                   <div key={title}>
                     <h3 className="text-xl font-bold tracking-tight text-gray-950 sm:text-2xl">
                       {title}
                     </h3>
                     <p className="mt-2 text-base leading-7 sm:text-lg sm:leading-8">
-                      {body}
+                      {body}{" "}
+                      <Link
+                        href={listingsHref}
+                        className="font-medium text-rose-600 hover:underline"
+                      >
+                        {listingsLabel}
+                      </Link>
+                      .
                     </p>
                   </div>
                 ))}

@@ -3,65 +3,1097 @@
   "_generated": "2026-06-01T04:48:18Z",
   "supabase": {
     "tables": [
-      { "table": "action_log", "description": "Audit trail of row changes (table, record, event, actor, before/after).", "columns": ["id:uuid", "table_name:text", "record_id:uuid", "event_type:text", "changed_by_id:uuid", "changed_by_source:text", "old_data:jsonb", "new_data:jsonb", "changed_fields:jsonb", "changed_at:timestamptz"] },
-      { "table": "chat_messages", "description": "Messages within a chat thread. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "thread_id:uuid", "sender_id:uuid", "body:text", "created_at:timestamptz", "deleted_at:timestamptz"] },
-      { "table": "chat_participants", "description": "Users participating in a chat thread + read state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["thread_id:uuid", "user_id:uuid", "joined_at:timestamptz", "last_read_at:timestamptz"] },
-      { "table": "chat_threads", "description": "Chat threads, optionally tied to a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "thread_type_id:uuid", "listing_id:uuid", "subject:text", "created_at:timestamptz", "updated_at:timestamptz", "deleted_at:timestamptz"] },
-      { "table": "dorm_review_tags", "description": "Join: dorm review ↔ tag.", "columns": ["review_id:uuid", "tag_id:uuid", "created_at:timestamptz"] },
-      { "table": "dorm_reviews", "description": "Reviews of on-campus dorms.", "columns": ["id:uuid", "mongo_id:text", "dorm_id:uuid", "reviewer_name:text", "class_year:integer", "rating:numeric", "dorm_type:text", "content:text", "created_at:timestamptz", "updated_at:timestamptz", "deleted_at:timestamptz", "user_id:uuid"] },
-      { "table": "dorm_room_types", "description": "Room types available in a dorm.", "columns": ["dorm_id:uuid", "room_type:text", "created_at:timestamptz"] },
-      { "table": "dorms", "description": "On-campus dorm buildings.", "columns": ["id:uuid", "mongo_id:text", "name:text", "description:text", "tags:ARRAY", "image:text", "created_at:timestamptz", "updated_at:timestamptz", "deleted_at:timestamptz", "school_id:uuid"] },
-      { "table": "events", "description": "Analytics events (page views, custom events).", "columns": ["id:uuid", "user_id:uuid", "session_id:text", "event_type:text", "page:text", "metadata:jsonb", "created_at:timestamptz"] },
-      { "table": "executed_lease_tenants", "description": "Tenants/signers on an executed lease (Documenso integration). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "executed_lease_id:uuid", "user_id:uuid", "email:text", "full_name:text", "role:text", "documenso_recipient_id:text", "signing_url:text", "signed_at:timestamptz", "signature_ip:text", "signature_audit_data:jsonb", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "executed_leases", "description": "Lease documents through draft → signature lifecycle. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "template_id:uuid", "listing_id:uuid", "listing_lease_id:uuid", "chat_thread_id:uuid", "documenso_document_id:text", "signed_lease_pdf_url:text", "redlined_pdf_url:text", "status:text", "draft_created_at:timestamptz", "landlord_approved_at:timestamptz", "sent_to_tenant_at:timestamptz", "tenant_signed_at:timestamptz", "landlord_countersigned_at:timestamptz", "fully_executed_at:timestamptz", "cancelled_at:timestamptz", "cancellation_reason:text", "attribution_source:text", "attribution_metadata:jsonb", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "fee_types", "description": "Reference: categories of listing fees. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "name:text", "category:text", "display_label:text", "sort_order:integer", "created_at:timestamptz"] },
-      { "table": "furnishing_partners", "description": "Third-party furnishing providers. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "name:text", "contact_email:text", "contact_phone:text", "website_url:text", "active:boolean", "created_at:timestamptz"] },
-      { "table": "home_types", "description": "Reference: apartment/house/studio/etc. ('Other' is the fallback.).", "columns": ["id:uuid", "label:text", "created_at:timestamptz"] },
-      { "table": "interaction_types", "description": "Reference: kinds of user↔listing interactions.", "columns": ["id:uuid", "name:text", "created_at:timestamptz"] },
-      { "table": "lease_checks", "description": "Student lease-check results (feat/lease-check). Stores ONLY the analysis output — never the lease file, extracted address, rent, or landlord name (liability/retention decision; matched_listing_id points at public data instead). Migration 20260716090000; must exist on BOTH dev and prod.", "columns": ["id:uuid", "user_id:uuid", "file_name:text", "file_type:text", "page_count:integer", "matched_listing_id:uuid", "match_confidence:text", "flags:jsonb", "summary:text", "unreadable_pages:ARRAY", "model:text", "created_at:timestamptz", "deleted_at:timestamptz"] },
-      { "table": "lease_extraction_runs", "description": "AI lease-field extraction run metadata. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "template_id:uuid", "listing_id:uuid", "executed_lease_id:uuid", "run_type:text", "prompt_version:text", "model_used:text", "duration_ms:integer", "fields_extracted_count:integer", "avg_confidence:numeric", "per_field_confidence:jsonb", "status:text", "error_message:text", "ran_at:timestamptz", "created_at:timestamptz"] },
-      { "table": "lease_redlines", "description": "Suggested lease edits with rationale + approval state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "executed_lease_id:uuid", "section_label:text", "section_anchor:text", "original_text:text", "suggested_text:text", "rationale:text", "rationale_chat_message_id:uuid", "status:text", "edited_text:text", "final_text:text", "approved_by:uuid", "approved_at:timestamptz", "ai_confidence:numeric", "extraction_run_id:uuid", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "lease_structures", "description": "Reference: lease term structures (e.g. 12-Month).", "columns": ["id:uuid", "label:text", "duration_months:integer", "created_at:timestamptz"] },
-      { "table": "lease_templates", "description": "Landlord lease PDF templates + extracted variable fields. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "landlord_id:uuid", "listing_id:uuid", "version:integer", "display_name:text", "template_pdf_url:text", "template_pdf_text:text", "extracted_fields:jsonb", "variable_fields:jsonb", "is_active:boolean", "uploaded_at:timestamptz", "uploaded_by:uuid", "last_verified_at:timestamptz", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_active_conversations", "description": "Active student↔listing leasing conversations. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "listing_id:uuid", "listing_lease_id:uuid", "student_user_id:uuid", "chat_thread_id:uuid", "state:text", "started_at:timestamptz", "last_activity_at:timestamptz", "expires_at:timestamptz", "closed_at:timestamptz", "notes:text", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_amenities", "description": "One boolean row per listing — amenity flags.", "columns": ["listing_id:uuid", "air_conditioning:boolean", "dishwasher:boolean", "gym:boolean", "laundry:boolean", "mailroom:boolean", "microwave:boolean", "oven:boolean", "parking:boolean", "pets_allowed:boolean", "pool:boolean", "refrigerator:boolean", "rooftop:boolean", "storage:boolean", "stove:boolean", "study_room:boolean", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_concessions", "description": "Promotional concessions on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "listing_id:uuid", "listing_lease_id:uuid", "description:text", "amount:numeric", "amount_type:text", "conditions:text", "valid_from:date", "valid_until:date", "active:boolean", "created_at:timestamptz", "updated_at:timestamptz", "last_verified_at:timestamptz", "last_verified_source:text"] },
-      { "table": "listing_faqs", "description": "Per-listing FAQ entries (often sourced from chat). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "listing_id:uuid", "question:text", "answer:text", "source:text", "source_chat_message_id:uuid", "approved_by:uuid", "approved_at:timestamptz", "is_public:boolean", "sort_order:integer", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_fees", "description": "Itemized fees on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "listing_id:uuid", "listing_lease_id:uuid", "fee_type_id:uuid", "amount:numeric", "basis:text", "conditions:text", "refundable:boolean", "notes:text", "created_at:timestamptz", "updated_at:timestamptz", "last_verified_at:timestamptz", "last_verified_source:text"] },
-      { "table": "listing_field_states", "description": "Per-field verification/confidence state for listing data. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "listing_id:uuid", "table_name:text", "record_id:uuid", "field_name:text", "state:text", "source:text", "ai_confidence:numeric", "evidence:text", "suggested_value:text", "last_changed_at:timestamptz", "changed_by:uuid", "extraction_run_id:uuid", "created_at:timestamptz"] },
-      { "table": "listing_furnishing", "description": "Furnishing status/package for a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["listing_id:uuid", "status:text", "partner_id:uuid", "package_name:text", "monthly_cost:numeric", "inventory_items:jsonb", "last_verified_at:timestamptz", "last_verified_source:text", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_images", "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover.", "columns": ["id:uuid", "listing_id:uuid", "url:text", "sort_order:integer", "alt_text:text", "media_type:text", "created_at:timestamptz", "updated_at:timestamptz", "source:text"] },
-      { "table": "listing_landlords", "description": "Join: listing ↔ landlord user (is_primary flags the owner).", "columns": ["listing_id:uuid", "user_id:uuid", "created_at:timestamptz", "is_primary:boolean", "id:uuid"] },
-      { "table": "listing_leases", "description": "Lease/unit-group rows for a listing (rent, beds, baths, term). [AUDIT 2026-07-11: UNUSED — old lease model superseded by listing_units + unit_leases; still holds ~214 rows; cleanup-migration candidate]", "columns": ["id:uuid", "listing_id:uuid", "bedrooms:integer", "bathrooms:numeric", "area:numeric", "unit_group_label:text", "floor_plan_image_url:text", "pricing_basis:text", "rent:numeric", "beds_in_lease:integer", "lease_structure_id:uuid", "lease_term_months:integer", "available_from:date", "summer_only:boolean", "semester_only:boolean", "is_active:boolean", "disabled_reason:text", "sublease:boolean", "concession_id:uuid", "created_at:timestamptz", "updated_at:timestamptz", "deleted_at:timestamptz", "last_verified_at:timestamptz", "last_verified_source:text", "price_locked_until:timestamptz", "total_bedrooms:integer", "total_bathrooms:numeric"] },
-      { "table": "listing_metrics_daily", "description": "Daily per-listing metric counts (views/saves/etc.).", "columns": ["id:uuid", "listing_id:uuid", "recorded_date:date", "count:integer", "metric_type_id:uuid"] },
-      { "table": "listing_pet_policies", "description": "Free-text pet policy for a listing. [AUDIT 2026-07-11: ORPHANED — ~81 rows of real data but no app code reads or writes it]", "columns": ["listing_id:uuid", "policy_text:text", "created_at:timestamptz", "updated_at:timestamptz", "last_verified_at:timestamptz", "last_verified_source:text"] },
-      { "table": "listing_review_replies", "description": "Landlord replies to reviews.", "columns": ["id:uuid", "review_id:uuid", "user_id:uuid", "reply:text", "created_at:timestamptz", "updated_at:timestamptz", "deleted_at:timestamptz"] },
-      { "table": "listing_reviews", "description": "Student reviews of listings. legitimacy gates display; referrer_id ties to the ambassador referral flow. Max 2 per user. [AUDIT 2026-07-11: reviewer_email dead; landlord_name/email/phone, unit_number, no_landlord_contact are write-only (collected, never displayed)]", "columns": ["id:uuid", "mongo_id:text", "user_id:uuid", "listing_id:uuid", "rating:numeric", "comment:text", "legitimacy:boolean", "communication_rating:numeric", "location_rating:numeric", "value_rating:numeric", "created_at:timestamptz", "updated_at:timestamptz", "name:text", "deleted_at:timestamptz", "referrer_id:uuid", "reviewer_email:text", "unit_number:text", "landlord_name:text", "landlord_email:text", "landlord_phone:text", "no_landlord_contact:boolean", "anonymous:boolean"] },
-      { "table": "listing_screening_criteria", "description": "Tenant screening requirements per listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["listing_id:uuid", "income_multiplier:numeric", "credit_score_minimum:integer", "cosigner_accepted:boolean", "cosigner_required:boolean", "international_student_friendly:boolean", "international_student_requirements:text", "eviction_history_disqualifying:boolean", "background_check_required:boolean", "application_fee_per_person:numeric", "notes:text", "last_verified_at:timestamptz", "last_verified_source:text", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_units", "description": "Physical units within a listing (beds/baths/area/availability). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2).", "columns": ["id:uuid", "listing_id:uuid", "bedrooms:integer", "bathrooms:numeric", "area:numeric", "title:text", "floor_plan_image_url:text", "created_at:timestamptz", "updated_at:timestamptz", "deleted_at:timestamptz", "available:boolean"] },
-      { "table": "listing_custom_amenities", "description": "Free-text 'other' amenities a landlord adds to a listing (one row per label).", "columns": ["id:uuid", "listing_id:uuid", "label:text", "created_at:timestamptz"] },
-      { "table": "listing_utilities", "description": "One boolean row per listing — utilities-included flags.", "columns": ["listing_id:uuid", "electric:boolean", "gas:boolean", "heat:boolean", "water:boolean", "internet:boolean", "trash:boolean", "cable:boolean", "sewer:boolean", "cooling:boolean", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "listing_walk_times", "description": "Precomputed walk minutes from a listing to each location.", "columns": ["id:uuid", "listing_id:uuid", "location_id:uuid", "minutes:integer", "created_at:timestamptz"] },
-      { "table": "listings", "description": "Core listing row. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, school_id, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent]", "columns": ["id:uuid", "mongo_id:text", "title:text", "address:text", "longitude:numeric", "latitude:numeric", "description:text", "lease_type:text", "furnished:boolean", "lease_structure:text", "move_in_date:text", "sublease_friendly:boolean", "unavailable:boolean", "contact_email:text", "contact_phone:text", "contact_name:text", "min_rent:numeric", "max_rent:numeric", "min_bedrooms:integer", "max_bedrooms:integer", "min_bathrooms:numeric", "max_bathrooms:numeric", "min_area:numeric", "max_area:numeric", "created_at:timestamptz", "updated_at:timestamptz", "lease_availability:ARRAY", "twenty_one_plus:boolean", "school_id:uuid", "primary_landlord_id:uuid", "home_type_id:uuid", "city:text", "state:text", "zipcode:text", "deleted_at:timestamptz", "last_verified_at:timestamptz", "last_verified_by:uuid", "last_verified_source:text", "paused_at:timestamptz", "demoted_at:timestamptz"] },
-      { "table": "location_types", "description": "Reference: kinds of locations (campus, grocery, shuttle). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "name:text", "created_at:timestamptz"] },
-      { "table": "locations", "description": "Named points (WashU places, shuttle stops) used for walk times.", "columns": ["id:uuid", "location_type_id:uuid", "name:text", "latitude:numeric", "longitude:numeric", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "matchmaking_chat_sessions", "description": "Roommate/listing matchmaking chat sessions + AI state. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]", "columns": ["id:uuid", "user_id:uuid", "status:text", "transcript:jsonb", "preferences:jsonb", "weights:jsonb", "candidates:jsonb", "recommendations:jsonb", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "matchmaking_preferences", "description": "User housing/roommate preferences.", "columns": ["id:uuid", "user_id:uuid", "budget_min:numeric", "budget_max:numeric", "move_in_date_earliest:date", "move_in_date_latest:date", "lease_term:text", "furnished:boolean", "group_size:integer", "student_type:text", "area:text", "notes:text", "created_at:timestamptz", "updated_at:timestamptz", "move_out_date:date", "open_to_roommates:boolean", "weights:jsonb"] },
-      { "table": "matchmaking_priority_mappings", "description": "Ranked priority weights per preference set. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "preference_id:uuid", "priority_type_id:uuid", "rank:integer", "weight:numeric", "created_at:timestamptz"] },
-      { "table": "metric_types", "description": "Reference: listing metric kinds.", "columns": ["id:uuid", "name:text", "created_at:timestamptz"] },
-      { "table": "priority_types", "description": "Reference: matchmaking priority categories. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]", "columns": ["id:uuid", "name:text", "created_at:timestamptz"] },
-      { "table": "review_incentive_partners", "description": "Partners offering discounts for leaving reviews. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "name:text", "contact_email:text", "discount_description:text", "discount_value_usd:numeric", "redemption_method:text", "active:boolean", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "review_incentive_redemptions", "description": "Issued/redeemed review-incentive codes. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "user_id:uuid", "partner_id:uuid", "review_id:uuid", "code_issued:text", "issued_at:timestamptz", "redeemed_at:timestamptz", "created_at:timestamptz"] },
-      { "table": "review_votes", "description": "Helpful/unhelpful votes on reviews.", "columns": ["id:uuid", "review_id:uuid", "user_id:uuid", "vote:text", "created_at:timestamptz"] },
-      { "table": "roles", "description": "Reference: user roles (student/landlord/super).", "columns": ["id:uuid", "name:text", "created_at:timestamptz"] },
-      { "table": "schools", "description": "Universities served (WashU is primary).", "columns": ["id:uuid", "name:text", "short_name:text", "city:text", "state:text", "latitude:numeric", "longitude:numeric", "website:text", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "tags", "description": "Reference: tags (e.g. dorm review tags).", "columns": ["id:uuid", "name:text", "created_at:timestamptz"] },
-      { "table": "testimonials", "description": "Marketing testimonials shown on the site.", "columns": ["id:uuid", "mongo_id:text", "text:text", "author:text", "rating:numeric", "created_at:timestamptz", "updated_at:timestamptz"] },
-      { "table": "thread_types", "description": "Reference: chat thread kinds. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "name:text", "description:text", "created_at:timestamptz"] },
-      { "table": "unit_leases", "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units.", "columns": ["id:uuid", "unit_id:uuid", "lease_structure_id:uuid", "rent:numeric", "available_from:date", "is_active:boolean", "created_at:timestamptz", "updated_at:timestamptz", "sublease:boolean", "lease_term_months:ARRAY"] },
-      { "table": "user_listing_interactions", "description": "Log of user↔listing interactions (clicks, saves, contacts).", "columns": ["id:uuid", "user_id:uuid", "listing_id:uuid", "interaction_type_id:uuid", "created_at:timestamptz"] },
-      { "table": "users", "description": "App users. role_id → roles; profile_complete gates onboarding modal; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]", "columns": ["id:uuid", "name:text", "email:text", "image:text", "birthday:timestamptz", "description:text", "gender:text", "phone:text", "profile_complete:boolean", "referral_source:text", "created_at:timestamptz", "updated_at:timestamptz", "graduation_year:integer", "graduation_month:integer", "school_id:uuid", "role_id:uuid", "is_system:boolean", "deleted_at:timestamptz", "password_hash:text", "email_verified:boolean", "email_verification_token:text", "email_verification_expires_at:timestamptz", "password_reset_token:text", "password_reset_expires_at:timestamptz", "google_account:boolean", "payment_method:text", "payment_handle:text"] },
-      { "table": "verified_residencies", "description": "Proof a user lived at a listing (via lease/verification). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]", "columns": ["id:uuid", "user_id:uuid", "listing_id:uuid", "verified_via:text", "verified_at:timestamptz", "lease_template_id:uuid", "executed_lease_id:uuid", "residency_start_date:date", "residency_end_date:date", "notes:text", "created_at:timestamptz", "updated_at:timestamptz"] }
+      {
+        "table": "action_log",
+        "description": "Audit trail of row changes (table, record, event, actor, before/after).",
+        "columns": [
+          "id:uuid",
+          "table_name:text",
+          "record_id:uuid",
+          "event_type:text",
+          "changed_by_id:uuid",
+          "changed_by_source:text",
+          "old_data:jsonb",
+          "new_data:jsonb",
+          "changed_fields:jsonb",
+          "changed_at:timestamptz"
+        ]
+      },
+      {
+        "table": "auto_unavailable_actions",
+        "description": "Audit/queue for automated hides driven by landlord \"leased\" reports from the email check-in system (see src/lib/autoUnavailable.js + /api/cron/auto-unavailable). One row per actioned report, with before/after state, the post-write verification against the public listings API, and undo tracking. Unique on (listing_id, coalesce(reported_at,'epoch')) so a single landlord report is actioned at most once — an undo is never re-hidden by the same report. Migration 20260808_auto_unavailable_actions; applied to BOTH dev and prod.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "reported_choice:text",
+          "reported_detail:text",
+          "reported_at:timestamptz",
+          "scope:jsonb",
+          "status:text",
+          "before_state:jsonb",
+          "after_state:jsonb",
+          "verify_result:text",
+          "verified_at:timestamptz",
+          "applied_at:timestamptz",
+          "digest_sent_at:timestamptz",
+          "correction_noted_at:timestamptz",
+          "undone_at:timestamptz",
+          "undo_verify_result:text",
+          "undo_digest_sent_at:timestamptz",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "chat_messages",
+        "description": "Messages within a chat thread. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "thread_id:uuid",
+          "sender_id:uuid",
+          "body:text",
+          "created_at:timestamptz",
+          "deleted_at:timestamptz"
+        ]
+      },
+      {
+        "table": "chat_participants",
+        "description": "Users participating in a chat thread + read state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "thread_id:uuid",
+          "user_id:uuid",
+          "joined_at:timestamptz",
+          "last_read_at:timestamptz"
+        ]
+      },
+      {
+        "table": "chat_threads",
+        "description": "Chat threads, optionally tied to a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "thread_type_id:uuid",
+          "listing_id:uuid",
+          "subject:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz"
+        ]
+      },
+      {
+        "table": "dorm_review_tags",
+        "description": "Join: dorm review ↔ tag.",
+        "columns": [
+          "review_id:uuid",
+          "tag_id:uuid",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "dorm_reviews",
+        "description": "Reviews of on-campus dorms.",
+        "columns": [
+          "id:uuid",
+          "mongo_id:text",
+          "dorm_id:uuid",
+          "reviewer_name:text",
+          "class_year:integer",
+          "rating:numeric",
+          "dorm_type:text",
+          "content:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz",
+          "user_id:uuid"
+        ]
+      },
+      {
+        "table": "dorm_room_types",
+        "description": "Room types available in a dorm.",
+        "columns": [
+          "dorm_id:uuid",
+          "room_type:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "dorms",
+        "description": "On-campus dorm buildings.",
+        "columns": [
+          "id:uuid",
+          "mongo_id:text",
+          "name:text",
+          "description:text",
+          "tags:ARRAY",
+          "image:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz",
+          "school_id:uuid"
+        ]
+      },
+      {
+        "table": "events",
+        "description": "Analytics events (page views, custom events).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "session_id:text",
+          "event_type:text",
+          "page:text",
+          "metadata:jsonb",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "executed_lease_tenants",
+        "description": "Tenants/signers on an executed lease (Documenso integration). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "executed_lease_id:uuid",
+          "user_id:uuid",
+          "email:text",
+          "full_name:text",
+          "role:text",
+          "documenso_recipient_id:text",
+          "signing_url:text",
+          "signed_at:timestamptz",
+          "signature_ip:text",
+          "signature_audit_data:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "executed_leases",
+        "description": "Lease documents through draft → signature lifecycle. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "template_id:uuid",
+          "listing_id:uuid",
+          "listing_lease_id:uuid",
+          "chat_thread_id:uuid",
+          "documenso_document_id:text",
+          "signed_lease_pdf_url:text",
+          "redlined_pdf_url:text",
+          "status:text",
+          "draft_created_at:timestamptz",
+          "landlord_approved_at:timestamptz",
+          "sent_to_tenant_at:timestamptz",
+          "tenant_signed_at:timestamptz",
+          "landlord_countersigned_at:timestamptz",
+          "fully_executed_at:timestamptz",
+          "cancelled_at:timestamptz",
+          "cancellation_reason:text",
+          "attribution_source:text",
+          "attribution_metadata:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "fee_types",
+        "description": "Reference: categories of listing fees. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "category:text",
+          "display_label:text",
+          "sort_order:integer",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "furnishing_partners",
+        "description": "Third-party furnishing providers. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "contact_email:text",
+          "contact_phone:text",
+          "website_url:text",
+          "active:boolean",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "home_types",
+        "description": "Reference: apartment/house/studio/etc. ('Other' is the fallback.).",
+        "columns": [
+          "id:uuid",
+          "label:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "interaction_types",
+        "description": "Reference: kinds of user↔listing interactions.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "lease_checks",
+        "description": "Student lease-check results (feat/lease-check). Stores ONLY the analysis output — never the lease file, extracted address, rent, or landlord name (liability/retention decision; matched_listing_id points at public data instead). Migration 20260716090000; must exist on BOTH dev and prod.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "file_name:text",
+          "file_type:text",
+          "page_count:integer",
+          "matched_listing_id:uuid",
+          "match_confidence:text",
+          "flags:jsonb",
+          "summary:text",
+          "unreadable_pages:ARRAY",
+          "model:text",
+          "created_at:timestamptz",
+          "deleted_at:timestamptz"
+        ]
+      },
+      {
+        "table": "lease_extraction_runs",
+        "description": "AI lease-field extraction run metadata. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "template_id:uuid",
+          "listing_id:uuid",
+          "executed_lease_id:uuid",
+          "run_type:text",
+          "prompt_version:text",
+          "model_used:text",
+          "duration_ms:integer",
+          "fields_extracted_count:integer",
+          "avg_confidence:numeric",
+          "per_field_confidence:jsonb",
+          "status:text",
+          "error_message:text",
+          "ran_at:timestamptz",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "lease_redlines",
+        "description": "Suggested lease edits with rationale + approval state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "executed_lease_id:uuid",
+          "section_label:text",
+          "section_anchor:text",
+          "original_text:text",
+          "suggested_text:text",
+          "rationale:text",
+          "rationale_chat_message_id:uuid",
+          "status:text",
+          "edited_text:text",
+          "final_text:text",
+          "approved_by:uuid",
+          "approved_at:timestamptz",
+          "ai_confidence:numeric",
+          "extraction_run_id:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "lease_structures",
+        "description": "Reference: lease term structures (e.g. 12-Month).",
+        "columns": [
+          "id:uuid",
+          "label:text",
+          "duration_months:integer",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "lease_templates",
+        "description": "Landlord lease PDF templates + extracted variable fields. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "listing_id:uuid",
+          "version:integer",
+          "display_name:text",
+          "template_pdf_url:text",
+          "template_pdf_text:text",
+          "extracted_fields:jsonb",
+          "variable_fields:jsonb",
+          "is_active:boolean",
+          "uploaded_at:timestamptz",
+          "uploaded_by:uuid",
+          "last_verified_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_active_conversations",
+        "description": "Active student↔listing leasing conversations. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "listing_lease_id:uuid",
+          "student_user_id:uuid",
+          "chat_thread_id:uuid",
+          "state:text",
+          "started_at:timestamptz",
+          "last_activity_at:timestamptz",
+          "expires_at:timestamptz",
+          "closed_at:timestamptz",
+          "notes:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_amenities",
+        "description": "One boolean row per listing — amenity flags.",
+        "columns": [
+          "listing_id:uuid",
+          "air_conditioning:boolean",
+          "dishwasher:boolean",
+          "gym:boolean",
+          "laundry:boolean",
+          "mailroom:boolean",
+          "microwave:boolean",
+          "oven:boolean",
+          "parking:boolean",
+          "pets_allowed:boolean",
+          "pool:boolean",
+          "refrigerator:boolean",
+          "rooftop:boolean",
+          "storage:boolean",
+          "stove:boolean",
+          "study_room:boolean",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_concessions",
+        "description": "Promotional concessions on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "listing_lease_id:uuid",
+          "description:text",
+          "amount:numeric",
+          "amount_type:text",
+          "conditions:text",
+          "valid_from:date",
+          "valid_until:date",
+          "active:boolean",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "last_verified_at:timestamptz",
+          "last_verified_source:text"
+        ]
+      },
+      {
+        "table": "listing_drive_times",
+        "description": "Precomputed drive minutes from a listing to each location — the driving counterpart of listing_walk_times, joined into /api/listings. Applied to BOTH dev and prod 2026-07-07.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "location_id:uuid",
+          "minutes:integer",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_faqs",
+        "description": "Per-listing FAQ entries (often sourced from chat). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "question:text",
+          "answer:text",
+          "source:text",
+          "source_chat_message_id:uuid",
+          "approved_by:uuid",
+          "approved_at:timestamptz",
+          "is_public:boolean",
+          "sort_order:integer",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_fees",
+        "description": "Itemized fees on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "listing_lease_id:uuid",
+          "fee_type_id:uuid",
+          "amount:numeric",
+          "basis:text",
+          "conditions:text",
+          "refundable:boolean",
+          "notes:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "last_verified_at:timestamptz",
+          "last_verified_source:text"
+        ]
+      },
+      {
+        "table": "listing_field_states",
+        "description": "Per-field verification/confidence state for listing data. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "table_name:text",
+          "record_id:uuid",
+          "field_name:text",
+          "state:text",
+          "source:text",
+          "ai_confidence:numeric",
+          "evidence:text",
+          "suggested_value:text",
+          "last_changed_at:timestamptz",
+          "changed_by:uuid",
+          "extraction_run_id:uuid",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_furnishing",
+        "description": "Furnishing status/package for a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "listing_id:uuid",
+          "status:text",
+          "partner_id:uuid",
+          "package_name:text",
+          "monthly_cost:numeric",
+          "inventory_items:jsonb",
+          "last_verified_at:timestamptz",
+          "last_verified_source:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_images",
+        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "url:text",
+          "sort_order:integer",
+          "alt_text:text",
+          "media_type:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "source:text"
+        ]
+      },
+      {
+        "table": "listing_landlords",
+        "description": "Join: listing ↔ landlord user (is_primary flags the owner).",
+        "columns": [
+          "listing_id:uuid",
+          "user_id:uuid",
+          "created_at:timestamptz",
+          "is_primary:boolean",
+          "id:uuid"
+        ]
+      },
+      {
+        "table": "listing_leases",
+        "description": "Lease/unit-group rows for a listing (rent, beds, baths, term). [AUDIT 2026-07-11: UNUSED — old lease model superseded by listing_units + unit_leases; still holds ~214 rows; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "bedrooms:integer",
+          "bathrooms:numeric",
+          "area:numeric",
+          "unit_group_label:text",
+          "floor_plan_image_url:text",
+          "pricing_basis:text",
+          "rent:numeric",
+          "beds_in_lease:integer",
+          "lease_structure_id:uuid",
+          "lease_term_months:integer",
+          "available_from:date",
+          "summer_only:boolean",
+          "semester_only:boolean",
+          "is_active:boolean",
+          "disabled_reason:text",
+          "sublease:boolean",
+          "concession_id:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz",
+          "last_verified_at:timestamptz",
+          "last_verified_source:text",
+          "price_locked_until:timestamptz",
+          "total_bedrooms:integer",
+          "total_bathrooms:numeric"
+        ]
+      },
+      {
+        "table": "listing_metrics_daily",
+        "description": "Daily per-listing metric counts (views/saves/etc.).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "recorded_date:date",
+          "count:integer",
+          "metric_type_id:uuid"
+        ]
+      },
+      {
+        "table": "listing_pet_policies",
+        "description": "Free-text pet policy for a listing. [AUDIT 2026-07-11: ORPHANED — ~81 rows of real data but no app code reads or writes it]",
+        "columns": [
+          "listing_id:uuid",
+          "policy_text:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "last_verified_at:timestamptz",
+          "last_verified_source:text"
+        ]
+      },
+      {
+        "table": "listing_review_replies",
+        "description": "Landlord replies to reviews.",
+        "columns": [
+          "id:uuid",
+          "review_id:uuid",
+          "user_id:uuid",
+          "reply:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_reviews",
+        "description": "Student reviews of listings. legitimacy gates display; referrer_id ties to the ambassador referral flow. Max 2 per user. [AUDIT 2026-07-11: reviewer_email dead; landlord_name/email/phone, unit_number, no_landlord_contact are write-only (collected, never displayed)]",
+        "columns": [
+          "id:uuid",
+          "mongo_id:text",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "rating:numeric",
+          "comment:text",
+          "legitimacy:boolean",
+          "communication_rating:numeric",
+          "location_rating:numeric",
+          "value_rating:numeric",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "name:text",
+          "deleted_at:timestamptz",
+          "referrer_id:uuid",
+          "reviewer_email:text",
+          "unit_number:text",
+          "landlord_name:text",
+          "landlord_email:text",
+          "landlord_phone:text",
+          "no_landlord_contact:boolean",
+          "anonymous:boolean"
+        ]
+      },
+      {
+        "table": "listing_screening_criteria",
+        "description": "Tenant screening requirements per listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "listing_id:uuid",
+          "income_multiplier:numeric",
+          "credit_score_minimum:integer",
+          "cosigner_accepted:boolean",
+          "cosigner_required:boolean",
+          "international_student_friendly:boolean",
+          "international_student_requirements:text",
+          "eviction_history_disqualifying:boolean",
+          "background_check_required:boolean",
+          "application_fee_per_person:numeric",
+          "notes:text",
+          "last_verified_at:timestamptz",
+          "last_verified_source:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_units",
+        "description": "Physical units within a listing (beds/baths/area/availability). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "bedrooms:integer",
+          "bathrooms:numeric",
+          "area:numeric",
+          "title:text",
+          "floor_plan_image_url:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz",
+          "available:boolean"
+        ]
+      },
+      {
+        "table": "listing_custom_amenities",
+        "description": "Free-text 'other' amenities a landlord adds to a listing (one row per label).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "label:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_utilities",
+        "description": "One boolean row per listing — utilities-included flags.",
+        "columns": [
+          "listing_id:uuid",
+          "electric:boolean",
+          "gas:boolean",
+          "heat:boolean",
+          "water:boolean",
+          "internet:boolean",
+          "trash:boolean",
+          "cable:boolean",
+          "sewer:boolean",
+          "cooling:boolean",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listing_walk_times",
+        "description": "Precomputed walk minutes from a listing to each location.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "location_id:uuid",
+          "minutes:integer",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "listings",
+        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent]",
+        "columns": [
+          "id:uuid",
+          "mongo_id:text",
+          "title:text",
+          "address:text",
+          "longitude:numeric",
+          "latitude:numeric",
+          "description:text",
+          "lease_type:text",
+          "furnished:boolean",
+          "lease_structure:text",
+          "move_in_date:text",
+          "sublease_friendly:boolean",
+          "unavailable:boolean",
+          "contact_email:text",
+          "contact_phone:text",
+          "contact_name:text",
+          "min_rent:numeric",
+          "max_rent:numeric",
+          "min_bedrooms:integer",
+          "max_bedrooms:integer",
+          "min_bathrooms:numeric",
+          "max_bathrooms:numeric",
+          "min_area:numeric",
+          "max_area:numeric",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "lease_availability:ARRAY",
+          "twenty_one_plus:boolean",
+          "school_id:uuid",
+          "primary_landlord_id:uuid",
+          "home_type_id:uuid",
+          "city:text",
+          "state:text",
+          "zipcode:text",
+          "deleted_at:timestamptz",
+          "last_verified_at:timestamptz",
+          "last_verified_by:uuid",
+          "last_verified_source:text",
+          "paused_at:timestamptz",
+          "demoted_at:timestamptz",
+          "pms_connection_id:uuid",
+          "pms_stale_flagged_at:timestamptz",
+          "availability_email_sent_at:timestamptz"
+        ]
+      },
+      {
+        "table": "location_types",
+        "description": "Reference: kinds of locations (campus, grocery, shuttle). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "locations",
+        "description": "Named points (WashU places, shuttle stops) used for walk times.",
+        "columns": [
+          "id:uuid",
+          "location_type_id:uuid",
+          "name:text",
+          "latitude:numeric",
+          "longitude:numeric",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "matchmaking_chat_sessions",
+        "description": "Roommate/listing matchmaking chat sessions + AI state. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "status:text",
+          "transcript:jsonb",
+          "preferences:jsonb",
+          "weights:jsonb",
+          "candidates:jsonb",
+          "recommendations:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "matchmaking_preferences",
+        "description": "User housing/roommate preferences.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "budget_min:numeric",
+          "budget_max:numeric",
+          "move_in_date_earliest:date",
+          "move_in_date_latest:date",
+          "lease_term:text",
+          "furnished:boolean",
+          "group_size:integer",
+          "student_type:text",
+          "area:text",
+          "notes:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "move_out_date:date",
+          "open_to_roommates:boolean",
+          "weights:jsonb"
+        ]
+      },
+      {
+        "table": "matchmaking_priority_mappings",
+        "description": "Ranked priority weights per preference set. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "preference_id:uuid",
+          "priority_type_id:uuid",
+          "rank:integer",
+          "weight:numeric",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "metric_types",
+        "description": "Reference: listing metric kinds.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "priority_types",
+        "description": "Reference: matchmaking priority categories. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "review_incentive_partners",
+        "description": "Partners offering discounts for leaving reviews. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "contact_email:text",
+          "discount_description:text",
+          "discount_value_usd:numeric",
+          "redemption_method:text",
+          "active:boolean",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "review_incentive_redemptions",
+        "description": "Issued/redeemed review-incentive codes. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "partner_id:uuid",
+          "review_id:uuid",
+          "code_issued:text",
+          "issued_at:timestamptz",
+          "redeemed_at:timestamptz",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "review_votes",
+        "description": "Helpful/unhelpful votes on reviews.",
+        "columns": [
+          "id:uuid",
+          "review_id:uuid",
+          "user_id:uuid",
+          "vote:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "roles",
+        "description": "Reference: user roles (student/landlord/super).",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "schools",
+        "description": "Universities served: WashU, SLU, UMSL. short_name is the join key to apps/web/src/lib/schools.js, which maps email domains to schools and gates who can leave reviews; it is uniquely indexed. Adding a campus = a row here + a row there.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "short_name:text",
+          "city:text",
+          "state:text",
+          "latitude:numeric",
+          "longitude:numeric",
+          "website:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "tags",
+        "description": "Reference: tags (e.g. dorm review tags).",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "testimonials",
+        "description": "Marketing testimonials shown on the site.",
+        "columns": [
+          "id:uuid",
+          "mongo_id:text",
+          "text:text",
+          "author:text",
+          "rating:numeric",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "thread_types",
+        "description": "Reference: chat thread kinds. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "description:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "unit_leases",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units.",
+        "columns": [
+          "id:uuid",
+          "unit_id:uuid",
+          "lease_structure_id:uuid",
+          "rent:numeric",
+          "available_from:date",
+          "is_active:boolean",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "sublease:boolean",
+          "lease_term_months:ARRAY"
+        ]
+      },
+      {
+        "table": "user_listing_interactions",
+        "description": "Log of user↔listing interactions (clicks, saves, contacts).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "interaction_type_id:uuid",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "users",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "email:text",
+          "image:text",
+          "birthday:timestamptz",
+          "description:text",
+          "gender:text",
+          "phone:text",
+          "profile_complete:boolean",
+          "referral_source:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "graduation_year:integer",
+          "graduation_month:integer",
+          "school_id:uuid",
+          "role_id:uuid",
+          "is_system:boolean",
+          "deleted_at:timestamptz",
+          "password_hash:text",
+          "email_verified:boolean",
+          "email_verification_token:text",
+          "email_verification_expires_at:timestamptz",
+          "password_reset_token:text",
+          "password_reset_expires_at:timestamptz",
+          "google_account:boolean",
+          "payment_method:text",
+          "payment_handle:text"
+        ]
+      },
+      {
+        "table": "verified_residencies",
+        "description": "Proof a user lived at a listing (via lease/verification). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "verified_via:text",
+          "verified_at:timestamptz",
+          "lease_template_id:uuid",
+          "executed_lease_id:uuid",
+          "residency_start_date:date",
+          "residency_end_date:date",
+          "notes:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "pms_connections",
+        "description": "PMS freshness integration (feat/pms-integration): one row per landlord × provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token — the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000) — nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "provider:text",
+          "nango_connection_id:text",
+          "status:text",
+          "credential_meta:jsonb",
+          "credential_mode:text",
+          "cred_ciphertext:text",
+          "cred_iv:text",
+          "cred_tag:text",
+          "cred_key_version:text",
+          "cred_fingerprint:text",
+          "radius_auto_include_km:numeric",
+          "sync_price:boolean",
+          "auto_apply:boolean",
+          "last_sync_at:timestamptz",
+          "last_sync_status:text",
+          "last_sync_error:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz"
+        ]
+      },
+      {
+        "table": "pms_links",
+        "description": "Canonical PMS-ID ↔ Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique → listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present → apply; missing → delist.",
+        "columns": [
+          "id:uuid",
+          "connection_id:uuid",
+          "external_property_id:text",
+          "external_unit_id:text",
+          "external_bed_id:text",
+          "external_label:text",
+          "listing_id:uuid",
+          "listing_unit_id:uuid",
+          "include:boolean",
+          "origin:text",
+          "link_status:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "pms_integration_requests",
+        "description": "Landlord requests for unsupported PMS connectors, fed by the dashboard PMS Sync section (migration 20260722100000; BOTH dev and prod). One row per landlord per system name (case-insensitive unique). Used to prioritize connector work.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "provider_name:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "pms_review_queue",
+        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>±20% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link.",
+        "columns": [
+          "id:uuid",
+          "connection_id:uuid",
+          "pms_link_id:uuid",
+          "listing_id:uuid",
+          "reason:text",
+          "status:text",
+          "detail:jsonb",
+          "landlord_notified_at:timestamptz",
+          "resolved_by:uuid",
+          "resolved_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "pms_sync_events",
+        "description": "Append-only PMS sync audit trail (result: created|updated|delisted|relisted|flagged|held|skipped|error). Watch this after enabling a new connection.",
+        "columns": [
+          "id:uuid",
+          "connection_id:uuid",
+          "pms_link_id:uuid",
+          "listing_id:uuid",
+          "external_unit_id:text",
+          "observed_available:boolean",
+          "observed_rent:numeric",
+          "applied:boolean",
+          "result:text",
+          "detail:jsonb",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "seo_query_metrics",
+        "description": "Weekly Search Console snapshots written by the seo-report cron (service role only; RLS enabled, no policies). One row per (captured_on, page, query).",
+        "columns": [
+          "id:bigint",
+          "captured_on:date",
+          "page:text",
+          "query:text",
+          "clicks:integer",
+          "impressions:integer",
+          "ctr:numeric",
+          "position:numeric",
+          "created_at:timestamptz"
+        ]
+      }
     ]
   }
 }

@@ -128,3 +128,46 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, req }
     req
   );
 }
+
+// One email per PMS sync run, only when a human should look: errored or
+// guard-held connections, suppressed delists, and dry-run connections with
+// intended changes waiting for review. Sent to PMS_ALERT_EMAIL or all supers.
+export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // i.note is our own trusted HTML (may carry the hold-release link);
+  // provider and landlord are data and get escaped.
+  const rows = items
+    .map(
+      (i) => `
+        <tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;font-weight:600;text-transform:capitalize">${esc(i.provider)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(i.landlord)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee">${i.note}</td>
+        </tr>`
+    )
+    .join("");
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `PMS sync: ${items.length} connection${items.length === 1 ? "" : "s"} need${items.length === 1 ? "s" : ""} a look`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111">
+        <h2 style="color:#111">PMS sync digest</h2>
+        <p style="color:#444">Today's sync flagged the following. Nothing here was applied
+           without its safety checks; anything held is waiting on you.</p>
+        <table style="border-collapse:collapse;width:100%;font-size:14px">
+          <tr>
+            <th align="left" style="padding:8px 10px;border-bottom:2px solid #111">System</th>
+            <th align="left" style="padding:8px 10px;border-bottom:2px solid #111">Landlord</th>
+            <th align="left" style="padding:8px 10px;border-bottom:2px solid #111">What happened</th>
+          </tr>
+          ${rows}
+        </table>
+        <p style="color:#666;font-size:13px;margin-top:16px">
+          Full detail lives in pms_sync_events and pms_review_queue${baseUrl ? ` (${baseUrl})` : ""}.
+        </p>
+      </div>
+    `,
+  });
+}

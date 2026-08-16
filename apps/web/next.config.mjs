@@ -13,6 +13,18 @@ const nextConfig = {
       { source: "/api/auth/mobile/:path*", headers: corsHeaders },
       { source: "/api/auth/signup", headers: corsHeaders },
       { source: "/api/auth/forgot-password", headers: corsHeaders },
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
     ];
   },
   images: {

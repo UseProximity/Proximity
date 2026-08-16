@@ -2,10 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
+import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+
+// Modifier/middle clicks fall through to the browser (open in new tab);
+// plain clicks are cancelled so the existing JS handlers keep control.
+function suppressPlainClick(e) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  e.preventDefault();
+}
 
 function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
@@ -62,10 +70,37 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       ? String(Math.min(...bathValues))
       : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
 
+  // Only legit, non-deleted reviews count toward rating (see buildListing), and
+  // rating comes back as 0 when there are none — so numReviews is the gate.
+  const numReviews = Number(listing.numReviews) || 0;
+  const rating = Number(listing.rating);
+  const hasRating = numReviews > 0 && Number.isFinite(rating) && rating > 0;
+
+  // Full cards stack this under the rent (above the landlord name); the compact
+  // variant has neither a city line nor a landlord name, so it rides inline on
+  // the bed/bath row instead of adding a line its sibling cards don't have.
+  const ratingBadge = hasRating ? (
+    <span
+      className="flex items-center gap-0.5 text-xs whitespace-nowrap flex-shrink-0"
+      title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
+    >
+      <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
+      <span className="font-semibold text-gray-700 tabular-nums">
+        {rating.toFixed(1)}
+      </span>
+      <span className="text-gray-400 tabular-nums">({numReviews})</span>
+    </span>
+  ) : null;
+
   return (
     <div
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
       onClick={() => {
+        // Server-rendered grids (the /washu landing pages) render this card
+        // without a handler — they can't pass one, being server components.
+        // Cancelling the plain click and then calling nothing left those cards
+        // dead: the overlay anchor below only navigates when we let it.
+        if (!onCardClick) return;
         onCardClick(listing._id);
         setTimeout(() => {
           const source = getListingSource(listing._id);
@@ -73,6 +108,17 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         }, 0);
       }}
     >
+      {/* Crawlable link to the listing page. With a handler, plain clicks are
+          cancelled and bubble to the card's onClick above so panel/analytics
+          behavior is unchanged; cmd/ctrl/middle-click opens a new tab. With no
+          handler this is the only navigation there is, so let it through and
+          let the destination page record the view. */}
+      <a
+        href={`/listings/${listing._id}`}
+        aria-label={title}
+        className="absolute inset-0 z-[1]"
+        onClick={onCardClick ? suppressPlainClick : undefined}
+      />
       <div
         ref={imgWrapperRef}
         className="relative aspect-video bg-gray-100"
@@ -103,6 +149,26 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             Unavailable
           </div>
         )}
+        {/* PMS-synced listing: availability is live from the property's system.
+            Pre-leased listings surface their move-in date instead of hiding. */}
+        {!listing.unavailable && (listing.verifiedLive || formatAvailableFrom(listing.availableFrom)) && (
+          <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+            {listing.verifiedLive && (
+              <div className="bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+                </span>
+                <span className="uppercase tracking-wide">Live</span>
+              </div>
+            )}
+            {formatAvailableFrom(listing.availableFrom) && (
+              <div className="bg-white/90 text-gray-900 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+                {formatAvailableFrom(listing.availableFrom)}
+              </div>
+            )}
+          </div>
+        )}
         {imageCount > 1 && !listing.unavailable && (
           // In the compact (matchmaking row) variant, hide on desktop where the card is small.
           <div className={`absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full ${compact ? "md:hidden" : ""}`}>
@@ -122,21 +188,29 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
               </p>
             )}
           </div>
-          <span className={`font-bold whitespace-nowrap flex-shrink-0 ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
-            {getRentRangeLabel(listing.unitTypes)}
-            {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
-              <span className="text-xs font-normal">/mo</span>
-            )}
-          </span>
+          {/* gap-1 matches the pt-1 on the row below, so the rating sits
+              evenly spaced between the rent and the landlord name. */}
+          <div className="flex flex-col items-end flex-shrink-0 gap-1">
+            <span className={`font-bold whitespace-nowrap ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
+              {getRentRangeLabel(listing.unitTypes)}
+              {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
+                <span className="text-xs font-normal">/mo</span>
+              )}
+            </span>
+            {!compact && ratingBadge}
+          </div>
         </div>
-        <div className="flex items-center justify-between mt-auto pt-2 min-w-0">
+        {/* pt-1 only where the rating stacks above — it offsets the extra line
+            that column adds, so the bed/bath row keeps its usual spacing. */}
+        <div className={`flex items-center justify-between mt-auto min-w-0 gap-2 ${hasRating && !compact ? "pt-1" : "pt-2"}`}>
           <span className="text-gray-500 text-xs truncate flex-1">
             {bedLabel} bed{" | "}
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
+          {compact && ratingBadge}
           {listing.owner?.name && !compact && (
-            <span className="text-gray-400 text-xs truncate ml-2 max-w-[40%]">
+            <span className="text-gray-400 text-xs truncate max-w-[40%]">
               {listing.owner.name}
             </span>
           )}
@@ -168,7 +242,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
+        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
           <HeartIcon listingId={listing._id} />
         </div>
       )}
@@ -199,12 +273,16 @@ export function MobileMapPopup({ listing, onClose, onViewListing }) {
             <span className="text-xs font-normal text-gray-500">/mo</span>
           )}
         </span>
-        <button
-          onClick={onViewListing}
-          className="px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
+        <a
+          href={`/listings/${listing._id}`}
+          onClick={(e) => {
+            suppressPlainClick(e);
+            if (e.defaultPrevented) onViewListing();
+          }}
+          className="inline-block px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
         >
           View listing →
-        </button>
+        </a>
       </div>
     </div>
   );

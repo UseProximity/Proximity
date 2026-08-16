@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-07-16T07:10:56.296Z",
-  "count": 28,
+  "_generated": "2026-08-14T01:04:35.786Z",
+  "count": 32,
   "pages": [
     {
       "path": "/",
@@ -68,6 +68,10 @@
       "file": "src/app/guides/four-types-washu-housing/page.js"
     },
     {
+      "path": "/guides/rent-reporting-credit",
+      "file": "src/app/guides/rent-reporting-credit/page.js"
+    },
+    {
       "path": "/guides/washu-apartment-checklist",
       "file": "src/app/guides/washu-apartment-checklist/page.js"
     },
@@ -112,8 +116,20 @@
       "file": "src/app/reset-password/page.js"
     },
     {
+      "path": "/review",
+      "file": "src/app/review/page.js"
+    },
+    {
       "path": "/review-invite/[landlordId]",
       "file": "src/app/review-invite/[landlordId]/page.js"
+    },
+    {
+      "path": "/washu",
+      "file": "src/app/washu/page.js"
+    },
+    {
+      "path": "/washu/[slug]",
+      "file": "src/app/washu/[slug]/page.js"
     }
   ]
 }

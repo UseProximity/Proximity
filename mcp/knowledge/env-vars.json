@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-01T16:46:39.003Z",
-  "count": 35,
+  "_generated": "2026-08-16T13:46:00.963Z",
+  "count": 58,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -9,6 +9,22 @@
     },
     {
       "name": "APP_ENV",
+      "public": false
+    },
+    {
+      "name": "AUTH_SECRET",
+      "public": false
+    },
+    {
+      "name": "AUTO_UNAVAILABLE_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "AUTO_UNAVAILABLE_DRY_RUN",
+      "public": false
+    },
+    {
+      "name": "AVAILABILITY_LINK_SECRET",
       "public": false
     },
     {
@@ -44,6 +60,18 @@
       "public": false
     },
     {
+      "name": "FIRECRAWL_API_KEY",
+      "public": false
+    },
+    {
+      "name": "GITHUB_REPO",
+      "public": false
+    },
+    {
+      "name": "GITHUB_TOKEN",
+      "public": false
+    },
+    {
       "name": "GOOGLE_ANDROID_CLIENT_ID",
       "public": false
     },
@@ -64,7 +92,27 @@
       "public": false
     },
     {
+      "name": "GSC_CLIENT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "GSC_PRIVATE_KEY",
+      "public": false
+    },
+    {
+      "name": "GSC_SITE_URL",
+      "public": false
+    },
+    {
       "name": "IMPORT_SECRET",
+      "public": false
+    },
+    {
+      "name": "JINA_API_KEY",
+      "public": false
+    },
+    {
+      "name": "JINA_READER_KEY",
       "public": false
     },
     {
@@ -72,16 +120,36 @@
       "public": false
     },
     {
+      "name": "LISTING_DRAFT_KEY",
+      "public": false
+    },
+    {
       "name": "MOBILE_JWT_SECRET",
       "public": false
     },
     {
-      "name": "NEXT_PUBLIC_FORMSPREE_CONCIERGE_URL",
-      "public": true
+      "name": "NANGO_APPFOLIO_KEY",
+      "public": false
     },
     {
-      "name": "NEXT_PUBLIC_FORMSPREE_EXIT_POLL_URL",
-      "public": true
+      "name": "NANGO_BUILDIUM_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_DOORLOOP_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_HOST",
+      "public": false
+    },
+    {
+      "name": "NANGO_RENTEC_KEY",
+      "public": false
+    },
+    {
+      "name": "NANGO_SECRET_KEY",
+      "public": false
     },
     {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
@@ -93,6 +161,26 @@
     },
     {
       "name": "NODE_ENV",
+      "public": false
+    },
+    {
+      "name": "OUTREACH_TEST_RECIPIENT",
+      "public": false
+    },
+    {
+      "name": "PMS_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "PMS_LEASING_HORIZON_MONTHS",
+      "public": false
+    },
+    {
+      "name": "PMS_MOCK_LEASED",
+      "public": false
+    },
+    {
+      "name": "PMS_WATCH_DAYS",
       "public": false
     },
     {
@@ -133,6 +221,10 @@
     },
     {
       "name": "RESEND_API_KEY",
+      "public": false
+    },
+    {
+      "name": "TAVILY_API_KEY",
       "public": false
     },
     {

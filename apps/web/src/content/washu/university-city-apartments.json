@@ -1,0 +1,26 @@
+{
+  "intro": [
+    "University City is the default answer to \"where do WashU students live off campus,\" and for good reason: it borders campus, it borders the Loop, and its blocks of brick apartments and old houses have housed generations of students. Quick geography note for out-of-towners: this is University City, Missouri, the suburb next to WashU, not the Philadelphia neighborhood Google keeps showing you.",
+    "The listings below are in U City right now on Proximity, with walk times to campus and reviews from students who lived in them. Streets like Eastgate, Kingsland, and the blocks north of the Loop are where student housing is thickest."
+  ],
+  "directAnswer": "University City, Missouri sits directly northwest of WashU and is one of the most popular neighborhoods for students living off campus, with easy walks to both campus and the Delmar Loop. For context, HUD's FY2026 fair market rent in ZIP 63130 is $1,110 for a 1 bedroom and $1,360 for a 2 bedroom, utilities included.",
+  "faqs": [
+    {
+      "q": "How much do University City apartments cost?",
+      "a": "HUD's FY2026 fair market rent for ZIP 63130 is $1,070 for a studio, $1,110 for a 1 bedroom, $1,360 for a 2 bedroom, and $1,750 for a 3 bedroom, whole unit with utilities included. That is a ZIP-wide 40th percentile benchmark; student-oriented buildings near the Loop typically price above it. Real rents are on each listing above."
+    },
+    {
+      "q": "How far is University City from WashU?",
+      "a": "Walkable, for most of the student blocks. Much of the housing students actually rent sits within a 10 to 25 minute walk of the Danforth campus, and each listing above shows its own computed walk time so you do not have to guess from a map."
+    },
+    {
+      "q": "Why do so many WashU students pick U City?",
+      "a": "Proximity and price, in that order. You can walk to class and stumble home from the Loop, and rents benchmark lower than Clayton or the Central West End. The housing stock is older, which cuts both ways: character and porches, but read the reviews to learn how each landlord handles maintenance."
+    },
+    {
+      "q": "Are rents in University City rising?",
+      "a": "Yes. Zillow's rent index for ZIP 63130 was up 5.0% year over year as of June 2026, ahead of the St. Louis metro at about 4.0%. Source: Zillow Research."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63130, whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}

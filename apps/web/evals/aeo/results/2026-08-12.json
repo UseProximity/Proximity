@@ -1,0 +1,126 @@
+{
+  "runDate": "2026-08-12",
+  "runner": "claude-code websearch (baseline, pre-/washu launch)",
+  "results": [
+    {
+      "id": "find-apartments",
+      "prompt": "help me find apartments near washu",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["reslife.washu.edu", "apartments.com", "trulia.com", "ars.wustl.edu", "clocktowercompany.com"],
+      "notes": "wustl.edu/washu.edu official pages (ResLife, OISS, ARS) plus apartments.com dominate; no marketplace startups cited."
+    },
+    {
+      "id": "best-website",
+      "prompt": "what is the best website for washu off campus housing",
+      "proximityCited": true,
+      "proximityRank": 7,
+      "topDomains": ["oiss.washu.edu", "ars.wustl.edu", "prked.com", "reslife.washu.edu", "uhousing.com"],
+      "notes": "useproximity.org appears at link position 7 of 9 and is named in the synthesized answer (verified listings, peer reviews, matchmaking); ARS still recommended as first stop. Only prompt of 15 citing Proximity."
+    },
+    {
+      "id": "two-bed",
+      "prompt": "2 bed apartment near washu",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["wustl.uloop.com", "collegestudentapartments.com", "apartments.com", "ars.wustl.edu", "facebook.com"],
+      "notes": "Uloop and ARS dominate; a WashU rentals Facebook group also surfaces. No Proximity."
+    },
+    {
+      "id": "two-bed-budget",
+      "prompt": "2 bedroom apartment near washu under $1500",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["collegestudentapartments.com", "wustl.uloop.com", "forrentuniversity.com", "apartments.com", "uhomes.com"],
+      "notes": "Aggregators dominate; results noisy (a Seattle apartments.com page and a Northeastern aptsearch page leaked in). No Proximity."
+    },
+    {
+      "id": "one-bed",
+      "prompt": "1 bedroom apartments near washu",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["wustl.uloop.com", "collegestudentapartments.com", "reslife.washu.edu", "uhomes.com", "apartments.com"],
+      "notes": "Uloop holds 3 of 7 links; rest split between aggregators and ResLife. No Proximity."
+    },
+    {
+      "id": "cheap",
+      "prompt": "cheap apartments near washu for students",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["amberstudent.com", "collegestudentapartments.com", "uhomes.com", "apartments.com", "apartmentfinder.com"],
+      "notes": "International student-housing aggregators (Amber, uhomes) plus mainstream rental sites; no washu.edu pages ranked here. No Proximity."
+    },
+    {
+      "id": "where-juniors-live",
+      "prompt": "where should a washu junior live off campus",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["studlife.com", "reslife.washu.edu", "oiss.washu.edu", "blog.collegevine.com", "gss.wustl.edu"],
+      "notes": "Student Life editorial and washu.edu ResLife pages dominate advice-style query; answer centers WashU-owned apartments (Lofts, UDrive, Rosedale). No marketplace cited."
+    },
+    {
+      "id": "where-students-live",
+      "prompt": "where do washu students live off campus",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["reslife.washu.edu", "oiss.washu.edu", "gss.wustl.edu", "prked.com", "issuu.com"],
+      "notes": "Almost entirely washu.edu/wustl.edu official pages; prked.com's WashU housing guide is the only third-party content ranking. No Proximity."
+    },
+    {
+      "id": "ucity",
+      "prompt": "university city apartments for washu students",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["reslife.washu.edu", "collegestudentapartments.com", "wustl.uloop.com", "ars.wustl.edu", "clocktowercompany.com"],
+      "notes": "ResLife, Uloop, and ARS neighborhood pages dominate; Clock Tower (alumni-run landlord) also surfaces. No Proximity."
+    },
+    {
+      "id": "loop",
+      "prompt": "apartments on the delmar loop for students",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["universityliving.com", "uhomes.com", "apartments.com", "hotpads.com", "everlyontheloop.com"],
+      "notes": "Property-direct sites (Everly on the Loop, Delmar Divine) and student-housing aggregators dominate; one ARS listing page appears mid-pack. No Proximity."
+    },
+    {
+      "id": "skinker",
+      "prompt": "skinker debaliviere apartments",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["apartments.com", "homes.com", "forrent.com", "hotpads.com", "redfin.com"],
+      "notes": "Pure mainstream rental-aggregator SERP (apartments.com, homes.com, forrent, hotpads, redfin, trulia); zero WashU or student-specific results. No Proximity."
+    },
+    {
+      "id": "rent-cost",
+      "prompt": "how much is rent near washu",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["collegestudentapartments.com", "amberstudent.com", "apartments.com", "uhomes.com", "rentcafe.com"],
+      "notes": "Aggregators supply the rent stats ($1,155/mo avg claim from collegestudentapartments); ResLife rates page appears once. No Proximity."
+    },
+    {
+      "id": "lease-timing",
+      "prompt": "when should washu students sign a lease for next year",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["reslife.washu.edu", "newstudents.washu.edu", "mindyknows.com", "colorado.edu", "isldev.uga.edu"],
+      "notes": "washu.edu housing-renewal pages dominate but none directly answer the off-campus lease-timing question; results padded with other universities' pages. Clear content gap. No Proximity."
+    },
+    {
+      "id": "ucity-safety",
+      "prompt": "is university city safe for washu students",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["collegevine.com", "studlife.com", "quora.com", "sites.wustl.edu", "tripadvisor.com"],
+      "notes": "Forum/UGC content (CollegeVine, Quora, Tripadvisor) plus Student Life dominate; no dedicated safety guide ranks. No Proximity."
+    },
+    {
+      "id": "sublease",
+      "prompt": "how do I find a washu sublease",
+      "proximityCited": false,
+      "proximityRank": null,
+      "topDomains": ["newstudents.washu.edu", "oiss.washu.edu", "wustl.uloop.com", "collegerentals.com", "rentcollegepads.com"],
+      "notes": "ARS pushed as the primary answer; Uloop, College Pads, College Rentals sublet pages and the WashU rentals Facebook group fill the rest. No Proximity."
+    }
+  ]
+}

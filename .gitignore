@@ -23,6 +23,8 @@ coverage/
 # next.js (match at any depth for monorepo)
 .next/
 out/
+# build dir for the local content-recording mode (`npm run dev:demo`)
+.next-demo/
 
 # production
 build/
@@ -50,6 +52,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
 .env.migration
 
@@ -76,6 +79,9 @@ today.md
 # Claude Code local state (worktrees, memory, logs)
 .claude/
 .claude-flow/
+# Agent tooling writes credentials straight into these — never commit them
+claude-flow.config.json
+*.local.json
 
 # Codex local state
 .codex
@@ -100,6 +106,19 @@ docs/
 # CI impact-check artifacts (generated)
 ci-out/
 
-# next-sitemap generated files (regenerated on every build)
-apps/web/public/sitemap*.xml
-apps/web/public/robots.txt
+# Firecrawl scrape output (research artifacts, not source)
+.firecrawl/
+
+# ── SEO engine (must stay at end of file: re-includes must follow excludes) ──
+# Validator + benchmark allowlist are shared tooling; the seo-draft skill and
+# content-draft docs travel with the repo. Weekly review sheets stay local.
+!scripts/
+scripts/*
+!scripts/seo-engine/
+scripts/seo-engine/reports/*.md
+!.claude/
+.claude/*
+!.claude/skills/
+!docs/
+docs/*
+!docs/content-drafts/

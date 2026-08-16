@@ -10,13 +10,15 @@
  *     on web, or an `x-staging-email-to` request header for clients that can't use cookies —
  *     namely the mobile app, see EXPO_PUBLIC_TEST_EMAIL_TO), every email is REDIRECTED to
  *     that inbox (cc/bcc dropped, original recipient noted in the subject) so flows can be
- *     tested end-to-end safely. With no recipient chosen, the email is suppressed (logged
- *     only). Pass the incoming `req` through when a caller has one, so mobile's header works.
+ *     tested end-to-end safely. Cron/webhook contexts have no request to read a cookie or
+ *     header from, so OUTREACH_TEST_RECIPIENT (env var) is the fallback there. With no
+ *     recipient chosen by any of the three, the email is suppressed (logged only). Pass the
+ *     incoming `req` through when a caller has one, so the header/cookie checks can run.
  *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  */
-import { outreachEnabled } from "./appEnv";
+import { outreachEnabled } from "./appEnv.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
@@ -46,7 +48,13 @@ export async function sendMailSafe(transporter, message, req) {
 
   // Non-production (staging or local): redirect to the tester-chosen inbox if set,
   // otherwise suppress. The real recipient is never contacted off production.
-  const to = await stagingTestRecipient(req);
+  // Cron/webhook contexts have no request (and mobile has no cookies), so
+  // OUTREACH_TEST_RECIPIENT provides the same redirect for them — header/cookie
+  // wins when present, env var is the fallback.
+  const envRecipient = EMAIL_RE.test(process.env.OUTREACH_TEST_RECIPIENT ?? "")
+    ? process.env.OUTREACH_TEST_RECIPIENT
+    : null;
+  const to = (await stagingTestRecipient(req)) ?? envRecipient;
   if (to) {
     const original = message?.to ?? "(none)";
     console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);

@@ -4,7 +4,7 @@
  * form. Invalid / unknown ids render a friendly notice instead of the form. Not indexed.
  */
 import supabase from "@/lib/supabase";
-import ReferReviewClient from "./ReferReviewClient";
+import ReviewSubmitForm from "@/components/reviews/ReviewSubmitForm";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +43,10 @@ export default async function ReferPage({ params }) {
   if (!referrer) return <InvalidLink />;
 
   return (
-    <ReferReviewClient
+    <ReviewSubmitForm
       referrerId={referrer.id}
       referrerName={referrer.name || "a Proximity ambassador"}
+      callbackUrl={`/refer/${referrer.id}`}
     />
   );
 }

@@ -1,0 +1,26 @@
+{
+  "intro": [
+    "The Central West End is where WashU's medical campus lives, which makes it the neighborhood of choice for med students, nursing students, and anyone doing research at the hospital complex. It is also simply a great neighborhood: Euclid Avenue cafes, Forest Park across the street, and a Metrolink stop that runs straight to the Danforth campus.",
+    "Below is the live CWE inventory on Proximity with commute context and reviews from students. If you are Danforth-based, mind the distance: the CWE is a train or bike commute to main campus, not a walk."
+  ],
+  "directAnswer": "The Central West End is the go-to neighborhood for WashU med campus students, sitting next to the hospital complex and Forest Park with a Metrolink connection to the Danforth campus. For context, HUD's FY2026 fair market rent in ZIP 63108 is $1,480 for a 1 bedroom and $1,810 for a 2 bedroom, utilities included.",
+  "faqs": [
+    {
+      "q": "How do CWE residents get to the Danforth campus?",
+      "a": "Metrolink is the usual answer: the Central West End station connects toward the Danforth campus stops in minutes, and biking through Forest Park is a popular fair-weather alternative. Driving is easy too. If you will be on the main campus daily, weigh that commute against just living near the Loop."
+    },
+    {
+      "q": "How much do CWE apartments cost?",
+      "a": "The CWE benchmarks near the top of the WashU market: HUD's FY2026 fair market rent for ZIP 63108 is $1,420 for a studio, $1,480 for a 1 bedroom, and $1,810 for a 2 bedroom, utilities included. High-rise buildings on and near Euclid typically price above the benchmark; older buildings on the side streets can come in closer to it."
+    },
+    {
+      "q": "Who should live in the CWE?",
+      "a": "Med campus people, first and foremost: being able to walk to the hospital complex changes your life during rotations. Beyond that, grad students and anyone who prefers a real city neighborhood with restaurants and Forest Park at the door over a college-street scene."
+    },
+    {
+      "q": "Is the CWE good for undergrads?",
+      "a": "It can be, but be honest about the commute to the Danforth campus and about the social distance from where most undergrads live. Students who choose it usually have a med campus connection or specifically want out of the undergrad bubble."
+    }
+  ],
+  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63108, whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+}
