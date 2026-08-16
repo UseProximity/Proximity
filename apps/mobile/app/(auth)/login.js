@@ -104,6 +104,10 @@ export default function LoginScreen() {
               editable={!isLoading}
             />
 
+            <Link href="/(auth)/forgot-password" style={styles.forgotLink}>
+              <Text style={styles.forgotLinkText}>Forgot password?</Text>
+            </Link>
+
             {needsVerification && (
               <View style={styles.verificationBox}>
                 <Text style={styles.verificationTitle}>Email not verified</Text>
@@ -252,6 +256,13 @@ const styles = StyleSheet.create({
   dividerText: {
     marginHorizontal: 12,
     color: "#9ca3af",
+    fontSize: 13,
+  },
+  forgotLink: {
+    alignSelf: "flex-end",
+  },
+  forgotLinkText: {
+    color: "#6b7280",
     fontSize: 13,
   },
   error: {

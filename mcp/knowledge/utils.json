@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-07-18T23:45:00.690Z",
-  "count": 29,
+  "_generated": "2026-08-01T16:46:38.985Z",
+  "count": 30,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -9,7 +9,7 @@
     },
     {
       "file": "src/lib/authMobile.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "Signs a short-lived access token (15 minutes)."
     },
     {
       "file": "src/lib/contactTracking.js",
@@ -18,6 +18,10 @@
     {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
+    },
+    {
+      "file": "src/lib/getRequestUser.js",
+      "description": "Resolves the current request's user via the NextAuth session (web) first,"
     },
     {
       "file": "src/lib/guides.js",

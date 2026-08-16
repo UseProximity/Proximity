@@ -10,6 +10,10 @@ const apiClient = createApiClient({
     const { refreshToken, user } = useAuthStore.getState();
     await useAuthStore.getState().setTokens({ accessToken, refreshToken, user });
   },
+  // Mobile equivalent of web's "📧 Test emails →" cookie picker — set this in
+  // .env to actually receive verification/reset emails while testing against
+  // a non-production API (the server ignores it in real production).
+  testEmailTo: process.env.EXPO_PUBLIC_TEST_EMAIL_TO || null,
 });
 
 /**

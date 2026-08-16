@@ -2,7 +2,12 @@ module.exports = {
   expo: {
     name: "Proximity",
     slug: "proximity",
-    scheme: "proximity",
+    // "org.useproximity.app" is registered in addition to "proximity" so
+    // Android has an intent-filter for expo-auth-session's Google OAuth
+    // redirect, which defaults to `${applicationId}:/oauthredirect` on native
+    // builds (see src/lib/googleAuth.js) — without this, Google's redirect
+    // has nowhere to go and the auth session is silently dismissed.
+    scheme: ["proximity", "org.useproximity.app"],
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",

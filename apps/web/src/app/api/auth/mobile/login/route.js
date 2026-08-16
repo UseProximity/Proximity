@@ -31,7 +31,11 @@ export async function POST(req) {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      signAccessToken({ id: user.id, role: user.roles?.name ?? "student" }),
+      signAccessToken({
+        id: user.id,
+        role: user.roles?.name ?? "student",
+        profileComplete: user.profile_complete ?? false,
+      }),
       signRefreshToken({ id: user.id }),
     ]);
 

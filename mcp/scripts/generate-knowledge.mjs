@@ -104,7 +104,8 @@ function noSessionIsSoft(body) {
 
 function classifyHandlerAuth(body) {
   if (/requireSuper\(\)/.test(body) || /role\s*!==\s*["']super["']/.test(body)) return "super";
-  if (!/\bauth\(\)/.test(body)) return "public"; // never consults the session
+  // getRequestUser() is the shared session-or-bearer-token helper (apps/web/src/lib/getRequestUser.js)
+  if (!/\bauth\(\)/.test(body) && !/getRequestUser\(/.test(body)) return "public"; // never consults the session
   if (noSessionIsSoft(body)) return "optional";  // personalizes but serves anon
   return /role[^;\n]*landlord/.test(body) ? "landlord+" : "any";
 }

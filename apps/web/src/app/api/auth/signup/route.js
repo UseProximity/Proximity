@@ -80,7 +80,7 @@ export async function POST(req) {
       .update({ email_verification_token: token, email_verification_expires_at: expires })
       .eq("id", newUser.id);
 
-    await sendVerificationEmail({ email, name: name.trim(), token, baseUrl: getBaseUrl(req) });
+    await sendVerificationEmail({ email, name: name.trim(), token, baseUrl: getBaseUrl(req), req });
 
     return NextResponse.json({ email });
   } catch (err) {

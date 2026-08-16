@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-07-18T23:45:00.716Z",
-  "count": 32,
+  "_generated": "2026-08-01T16:46:39.003Z",
+  "count": 35,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -44,7 +44,15 @@
       "public": false
     },
     {
+      "name": "GOOGLE_ANDROID_CLIENT_ID",
+      "public": false
+    },
+    {
       "name": "GOOGLE_ID",
+      "public": false
+    },
+    {
+      "name": "GOOGLE_IOS_CLIENT_ID",
       "public": false
     },
     {
@@ -61,6 +69,10 @@
     },
     {
       "name": "LEASE_SCANNER_KEY",
+      "public": false
+    },
+    {
+      "name": "MOBILE_JWT_SECRET",
       "public": false
     },
     {

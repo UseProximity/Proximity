@@ -16,17 +16,24 @@ import { FavoritesResource } from "./resources/favorites.js";
 // when there's no logged-in user, getToken()/getRefreshToken() return null
 // and requests just go out unauthenticated (used by every public resource —
 // listings, dormReviews, testimonials, contactLandlord, matchmaking).
-export function createApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed }) {
-  return new ApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed });
+//
+// testEmailTo is the mobile equivalent of web's `staging_email_to` cookie
+// (the "📧 Test emails →" picker): mobile has no cookies, so it sends the
+// same preference as an `x-staging-email-to` header instead. The server only
+// honors it outside real production (see apps/web/src/lib/outreach.js), so
+// it's inert/no-op if ever left set in a production build.
+export function createApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo }) {
+  return new ApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo });
 }
 
 class ApiClient {
-  constructor({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed }) {
+  constructor({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.getToken = getToken ?? (() => null);
     this.getRefreshToken = getRefreshToken ?? (() => null);
     this.onTokenExpired = onTokenExpired ?? (() => {});
     this.onTokenRefreshed = onTokenRefreshed ?? null;
+    this.testEmailTo = testEmailTo ?? null;
 
     this.listings = createListingsResource(this);
     this.dormReviews = createDormReviewsResource(this);
@@ -46,6 +53,7 @@ class ApiClient {
       "Content-Type": "application/json",
       ...(fetchOptions.headers ?? {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(this.testEmailTo ? { "x-staging-email-to": this.testEmailTo } : {}),
     };
 
     const url = this.baseUrl + path;

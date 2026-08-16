@@ -31,7 +31,11 @@ export async function POST(req) {
       return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
     }
 
-    const accessToken = await signAccessToken({ id: user.id, role: user.roles?.name ?? "student" });
+    const accessToken = await signAccessToken({
+      id: user.id,
+      role: user.roles?.name ?? "student",
+      profileComplete: user.profile_complete ?? false,
+    });
 
     return Response.json({ accessToken });
   } catch (err) {

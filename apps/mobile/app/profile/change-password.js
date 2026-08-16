@@ -56,14 +56,7 @@ export default function ChangePasswordScreen() {
     setSaving(true);
 
     try {
-      // Note: This endpoint may need to be created in the backend
-      await apiClient.request("/api/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-      });
+      await apiClient.auth.changePassword(currentPassword, newPassword);
 
       Alert.alert(
         "Success",

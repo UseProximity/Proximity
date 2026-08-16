@@ -1,38 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
-import { authMobile } from "@/lib/authMobile";
-
-// Helper to get user from either NextAuth session (web) or Bearer token (mobile)
-async function getAuthenticatedUser(req) {
-  // Try NextAuth session first (web)
-  const session = await auth();
-  if (session?.user?.email) {
-    return { email: session.user.email };
-  }
-
-  // Try Bearer token (mobile)
-  const mobileAuth = await authMobile(req);
-  if (mobileAuth?.user?.id) {
-    // For mobile, we have ID but need email - fetch it
-    const { data: user } = await supabase
-      .from("users")
-      .select("email")
-      .eq("id", mobileAuth.user.id)
-      .single();
-    
-    if (user?.email) {
-      return { email: user.email };
-    }
-  }
-
-  return null;
-}
+import { getRequestUser } from "@/lib/getRequestUser";
 
 export async function PATCH(req) {
   try {
-    const authUser = await getAuthenticatedUser(req);
+    const authUser = await getRequestUser(req);
     if (!authUser?.email) {
       console.error("PATCH /api/editProfile: no authenticated user");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

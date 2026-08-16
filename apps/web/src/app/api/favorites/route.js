@@ -1,28 +1,10 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
 import { insertAsUser, deleteAsUser } from "@/lib/supabaseWithUser";
-import { authMobile } from "@/lib/authMobile";
-
-// Helper to get user from either NextAuth session (web) or Bearer token (mobile)
-async function getAuthenticatedUser(req) {
-  // Try NextAuth session first (web)
-  const session = await auth();
-  if (session?.user?.id) {
-    return { id: session.user.id };
-  }
-
-  // Try Bearer token (mobile)
-  const mobileAuth = await authMobile(req);
-  if (mobileAuth?.user?.id) {
-    return { id: mobileAuth.user.id };
-  }
-
-  return null;
-}
+import { getRequestUser } from "@/lib/getRequestUser";
 
 export async function GET(req) {
-  const user = await getAuthenticatedUser(req);
+  const user = await getRequestUser(req);
   
   // Check if this is a mobile request (has Authorization header)
   const isMobile = req.headers.get("authorization")?.startsWith("Bearer ");
@@ -83,7 +65,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const user = await getAuthenticatedUser(req);
+    const user = await getRequestUser(req);
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
