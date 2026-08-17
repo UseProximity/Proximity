@@ -1,6 +1,6 @@
 "use client";
 
-import { HOME_TYPES } from "@/components/listings/listingFormOptions";
+import { HOME_TYPES } from "@proximity/shared";
 import { StepFrame, Chip, FieldLabel, inputCls, importedInputCls } from "@/components/listings/wizard/wizardShared";
 
 // Screen 2: what kind of place. Chips and toggles only — the availability ask

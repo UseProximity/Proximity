@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
-import { emptyUnit } from "@/components/listings/listingFormOptions";
+import { emptyUnit } from "@proximity/shared";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";

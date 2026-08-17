@@ -1,8 +1,9 @@
-// Ported from apps/web/src/components/listings/ListingFormPanel.js and
-// SubleaseFormPanel.js — the two files diverged slightly (ListingFormPanel
-// omits "studio" from HOME_TYPES; the two LEASE_TYPES arrays differ only in
-// order). Reconciled here as the union/canonical set. AMENITY_OPTIONS/LABELS
-// and UTILITY_OPTIONS/LABELS were identical in both files.
+// Ported from apps/web/src/components/listings/listingFormOptions.js — the
+// shared option-list source for the add-listing wizard (AddListingWizard.js)
+// and its edit-form counterpart (ListingFormPanel.js). Keep in sync with that
+// file; SubleaseFormPanel.js (a separate, unrelated student-sublease form)
+// keeps its own diverged inline copies and is intentionally not reconciled
+// here.
 //
 // Values are the exact boolean column names on `listing_amenities` /
 // `listing_utilities` — the API writes `row[name] = true` for each, so
@@ -68,6 +69,25 @@ export const UTILITY_LABELS = {
   cooling: "Cooling",
 };
 
-export const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "studio", "other"];
+export const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "other"];
 
 export const LEASE_TYPES = ["standard", "sublease", "short-term"];
+
+// Named lease-term presets map to month counts; landlords can also type any number.
+export const LEASE_TERM_PRESETS = [
+  { label: "Summer", months: 4 },
+  { label: "Semester", months: 5 },
+  { label: "10-Month", months: 10 },
+  { label: "12-Month", months: 12 },
+];
+
+export const emptyUnit = () => ({
+  bedrooms: "",
+  bathrooms: "",
+  rent: "",
+  area: "",
+  available: true,
+  title: "",
+  floorPlanImageUrl: "",
+  leaseTermMonths: [], // months a unit can be leased for (multi-select)
+});

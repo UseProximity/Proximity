@@ -10,6 +10,8 @@
     "expo": "~56.0.16",
     "expo-auth-session": "~56.0.15",
     "expo-crypto": "*",
+    "expo-image-manipulator": "~56.0.24",
+    "expo-image-picker": "~56.0.23",
     "expo-router": "~56.2.15",
     "expo-secure-store": "*",
     "expo-status-bar": "~56.0.4",

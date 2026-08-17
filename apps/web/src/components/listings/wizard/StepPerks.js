@@ -6,7 +6,7 @@ import {
   AMENITY_LABELS,
   UTILITY_OPTIONS,
   UTILITY_LABELS,
-} from "@/components/listings/listingFormOptions";
+} from "@proximity/shared";
 import { StepFrame, Chip, FieldLabel } from "@/components/listings/wizard/wizardShared";
 
 // Screen 4: amenities + included utilities. All chips, all optional.

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
-import { LEASE_TERM_PRESETS } from "@/components/listings/listingFormOptions";
+import { LEASE_TERM_PRESETS } from "@proximity/shared";
 import {
   StepFrame,
   Chip,

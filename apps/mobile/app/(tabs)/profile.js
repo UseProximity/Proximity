@@ -128,6 +128,13 @@ export default function ProfileScreen() {
           <MenuItem label="Change Password" icon="🔒" onPress={() => router.push("/profile/change-password")} showBorder={false} />
         </ProfileSection>
 
+        {/* Landlord Section */}
+        {(user.role === "landlord" || user.role === "super") && (
+          <ProfileSection title="Landlord">
+            <MenuItem label="Add Listing" icon="🏠" onPress={() => router.push("/listings/add")} showBorder={false} />
+          </ProfileSection>
+        )}
+
         {/* About Section */}
         <ProfileSection title="About">
           <MenuItem label="Terms of Service" icon="📄" onPress={() => {}} />

@@ -4,7 +4,7 @@ import {
   AMENITY_LABELS,
   UTILITY_LABELS,
   LEASE_TERM_PRESETS,
-} from "@/components/listings/listingFormOptions";
+} from "@proximity/shared";
 import { StepFrame } from "@/components/listings/wizard/wizardShared";
 
 const termLabel = (m) =>

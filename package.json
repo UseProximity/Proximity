@@ -12,6 +12,7 @@
     "dev:web":    "npm run dev   --workspace=apps/web",
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "build:web":  "npm run build --workspace=apps/web",
-    "lint":       "npm run lint  --workspaces --if-present"
+    "lint":       "npm run lint  --workspaces --if-present",
+    "postinstall": "node apps/mobile/scripts/fix-plugin-resolution.js"
   }
 }
