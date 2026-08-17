@@ -3,7 +3,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
 import { isProdData } from "@/lib/appEnv";
 
@@ -48,8 +48,8 @@ function addressToFolderSlug(address) {
 
 export async function PATCH(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -88,10 +88,10 @@ export async function PATCH(req) {
       .from("listing_landlords")
       .select("listing_id")
       .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
+      .eq("user_id", requestUser.id)
       .maybeSingle();
     const isOwner = !!own;
-    if (!isOwner && session.user.role !== "super") {
+    if (!isOwner && requestUser.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -137,7 +137,7 @@ export async function PATCH(req) {
       sort_order: maxOrder + 1 + i,
     }));
     await insertBatchAsUser(supabase, {
-      userId: session.user.id,
+      userId: requestUser.id,
       table: "listing_images",
       rows: imageRows,
     });
@@ -153,8 +153,8 @@ export async function PATCH(req) {
 // Body: { listingId, db?, files: [{ name, type }] }
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -181,10 +181,10 @@ export async function POST(req) {
       .from("listing_landlords")
       .select("listing_id")
       .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
+      .eq("user_id", requestUser.id)
       .maybeSingle();
     const isOwner = !!own;
-    if (!isOwner && session.user.role !== "super") {
+    if (!isOwner && requestUser.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -214,8 +214,8 @@ export async function POST(req) {
 // Body: { listingId, db?, urls: [string] }
 export async function PUT(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -242,10 +242,10 @@ export async function PUT(req) {
       .from("listing_landlords")
       .select("listing_id")
       .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
+      .eq("user_id", requestUser.id)
       .maybeSingle();
     const isOwner = !!own;
-    if (!isOwner && session.user.role !== "super") {
+    if (!isOwner && requestUser.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -263,7 +263,7 @@ export async function PUT(req) {
       sort_order: maxOrder + 1 + i,
     }));
     await insertBatchAsUser(supabase, {
-      userId: session.user.id,
+      userId: requestUser.id,
       table: "listing_images",
       rows: imageRows,
     });

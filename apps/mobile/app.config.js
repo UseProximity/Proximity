@@ -12,7 +12,20 @@ module.exports = {
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
-    plugins: ["expo-router", ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }]],
+    plugins: [
+      "expo-router",
+      ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }],
+      // Library-only picking for Add Listing photos — no live camera capture,
+      // so camera/microphone permissions are declined rather than requested.
+      [
+        "expo-image-picker",
+        {
+          photosPermission: "Proximity uses your photo library to let landlords add listing photos.",
+          cameraPermission: false,
+          microphonePermission: false,
+        },
+      ],
+    ],
     ios: {
       supportsTablet: true,
     },

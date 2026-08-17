@@ -19,7 +19,7 @@ const PMS_SYNC_OPTIONS = [
 ];
 
 // Add / Edit Listing Modal -------------------------------------------------------
-// Option lists shared with the add-listing wizard (see listingFormOptions.js).
+// Option lists shared with the add-listing wizard and mobile (@proximity/shared).
 import {
   AMENITY_OPTIONS,
   AMENITY_LABELS,
@@ -29,7 +29,7 @@ import {
   LEASE_TYPES,
   LEASE_TERM_PRESETS,
   emptyUnit,
-} from "@/components/listings/listingFormOptions";
+} from "@proximity/shared";
 
 // Shared add/edit listing form for landlords. Renders as a modal by default
 // (used for editing inside the dashboard) or as a full-page form when `asPage`
