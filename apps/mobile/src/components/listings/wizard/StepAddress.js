@@ -7,6 +7,7 @@
 // address" mode) is out of scope for mobile v1.
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { Check } from "lucide-react-native";
 import { colors } from "../../../theme/tokens";
 import { StepFrame } from "./wizardShared";
 
@@ -94,7 +95,10 @@ export default function StepAddress({ w }) {
       ) : null}
 
       {confirmed && suggestions.length === 0 ? (
-        <Text className="mt-2 text-xs text-green-700">✓ On the map. Walk times will be calculated automatically.</Text>
+        <View className="flex-row items-center gap-1 mt-2">
+          <Check size={12} color={colors.success} strokeWidth={2.5} />
+          <Text className="text-xs text-green-700">On the map. Walk times will be calculated automatically.</Text>
+        </View>
       ) : null}
     </StepFrame>
   );

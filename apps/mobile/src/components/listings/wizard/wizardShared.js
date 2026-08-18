@@ -4,18 +4,10 @@
 // product. RN equivalents of web's <button>/<label> primitives.
 import { Pressable, Text, View } from "react-native";
 
-export function Chip({ on, children, onPress }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={`px-3.5 py-2 rounded-full border mr-2 mb-2 ${
-        on ? "bg-red-600 border-red-600" : "bg-white border-gray-300"
-      }`}
-    >
-      <Text className={`text-sm font-medium ${on ? "text-white" : "text-gray-700"}`}>{children}</Text>
-    </Pressable>
-  );
-}
+// Chip moved to ui/Chip.js (design-system/pages/add-listing.md — it's
+// shared with FilterSheet.js and matchmaking's question components, not
+// wizard-only anymore). All 3 step files that used to import it from here
+// (StepBasics, StepPerks, StepUnits) now import it directly from ui/Chip.js.
 
 export function FieldLabel({ children, optional }) {
   return (
@@ -57,7 +49,10 @@ export function Stepper({ value, onChange, min = 0, step = 1, format }) {
 export function StepFrame({ title, subtitle, children }) {
   return (
     <View>
-      <Text className="text-2xl font-bold tracking-tight text-gray-900">{title}</Text>
+      {/* text-[28px] = the `title` type-scale token (design-system/MASTER.md
+          §3) — wizard step titles are its canonical example, not a stock
+          Tailwind size (text-2xl is 24px, text-3xl is 30px). */}
+      <Text className="text-[28px] font-bold tracking-tight text-gray-900">{title}</Text>
       {subtitle ? <Text className="mt-1.5 text-sm text-gray-500">{subtitle}</Text> : null}
       <View className="mt-6">{children}</View>
     </View>

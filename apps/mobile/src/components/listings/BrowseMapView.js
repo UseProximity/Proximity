@@ -15,10 +15,23 @@
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
 import { computeListingMapBounds, MAP_CAMPUS_CENTER } from "@proximity/shared";
 import Mapbox from "../../lib/mapbox";
 import { usePinIconAtlas, ratingIconId } from "./usePinIconAtlas";
 import { ShuttleStopsLayer } from "./ShuttleStopsLayer";
+import { colors } from "../../theme/tokens";
+
+// The one shadow tier design-system/MASTER.md §5 allows, reserved for
+// floating elements lifted off the map surface (this screen's toggle pill
+// and selected-listing preview card).
+const FLOATING_SHADOW = {
+  shadowColor: "#000000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.08,
+  shadowRadius: 8,
+  elevation: 3,
+};
 
 export function BrowseMapView({ listings }) {
   const router = useRouter();
@@ -99,9 +112,10 @@ export function BrowseMapView({ listings }) {
             setShowShuttleStops((v) => !v);
             setShuttleStopName(null);
           }}
-          className={`px-2.5 py-1.5 rounded-full shadow border ${
-            showShuttleStops ? "bg-teal-500 border-teal-500" : "bg-white border-gray-200"
+          className={`px-2.5 py-1.5 rounded-full border ${
+            showShuttleStops ? "bg-red-600 border-red-600" : "bg-white border-gray-200"
           }`}
+          style={FLOATING_SHADOW}
         >
           <Text className={`text-[11px] font-medium ${showShuttleStops ? "text-white" : "text-gray-700"}`}>
             {showShuttleStops ? "Hide Shuttle stops" : "Show Shuttle stops"}
@@ -121,7 +135,7 @@ export function BrowseMapView({ listings }) {
         <Pressable
           onPress={() => router.push(`/listings/${selected._id}`)}
           className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl border border-gray-100 p-3 flex-row items-center justify-between"
-          style={{ elevation: 4, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8 }}
+          style={FLOATING_SHADOW}
         >
           <View className="flex-1 min-w-0 mr-2">
             <Text numberOfLines={1} className="font-bold text-gray-900 text-sm">
@@ -131,7 +145,10 @@ export function BrowseMapView({ listings }) {
               {selected.address}
             </Text>
           </View>
-          <Text className="text-red-600 text-xs font-semibold">View →</Text>
+          <View className="flex-row items-center">
+            <Text className="text-red-600 text-xs font-semibold">View</Text>
+            <ChevronRight size={14} color={colors.primary} strokeWidth={2.5} />
+          </View>
         </Pressable>
       )}
     </View>

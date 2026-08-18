@@ -2,11 +2,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Search } from "lucide-react-native";
 import { DEFAULT_FILTERS, filterListings, countActiveFilters } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
+import { colors } from "../../src/theme/tokens";
 
 // Matches apps/web/src/components/listings/BrowseContent.js's sort order:
 // photos-first, then reviewed-first, then rating desc, then review-count desc.
@@ -88,14 +90,14 @@ export default function BrowseScreen() {
     <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
       <View className="flex-row items-center gap-2.5 px-4 pt-2 pb-3">
         <TextInput
-          className="flex-1 h-11 border border-gray-200 rounded-lg px-3 text-sm"
+          className="flex-1 h-11 border border-gray-200 rounded-xl px-3 text-sm"
           placeholder="Search by address or title"
           value={search}
           onChangeText={setSearch}
         />
         <Pressable
           onPress={() => setFilterSheetVisible(true)}
-          className="h-11 px-4 rounded-lg bg-gray-100 items-center justify-center flex-row gap-1.5"
+          className="h-11 px-4 rounded-xl bg-gray-100 items-center justify-center flex-row gap-1.5"
         >
           <Text className="text-sm font-medium text-gray-700">Filters</Text>
           {activeFilterCount > 0 && (
@@ -104,12 +106,12 @@ export default function BrowseScreen() {
             </View>
           )}
         </Pressable>
-        <View className="flex-row bg-gray-100 rounded-lg p-1">
+        <View className="flex-row bg-gray-100 rounded-xl p-1">
           {["list", "map"].map((v) => (
             <Pressable
               key={v}
               onPress={() => setView(v)}
-              className={`px-3 h-9 items-center justify-center rounded-md ${view === v ? "bg-white" : ""}`}
+              className={`px-3 h-9 items-center justify-center rounded-lg ${view === v ? "bg-white" : ""}`}
             >
               <Text className={`text-xs font-medium capitalize ${view === v ? "text-gray-900" : "text-gray-500"}`}>
                 {v}
@@ -130,6 +132,9 @@ export default function BrowseScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View className="items-center justify-center mt-20">
+              <View className="mb-3">
+                <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+              </View>
               <Text className="text-gray-500">No listings match your search.</Text>
             </View>
           }

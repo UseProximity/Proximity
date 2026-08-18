@@ -7,6 +7,7 @@
 // to confirm/delete here — see publish() in listings/add/index.js).
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { Camera, X } from "lucide-react-native";
 import { colors } from "../../../theme/tokens";
 import { StepFrame } from "./wizardShared";
 
@@ -39,7 +40,7 @@ export default function StepPhotos({ w }) {
                 hitSlop={8}
                 className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-red-600"
               >
-                <Text className="text-white text-xs leading-none">×</Text>
+                <X size={12} color="#ffffff" strokeWidth={2.5} />
               </Pressable>
             </View>
           ))}
@@ -55,7 +56,9 @@ export default function StepPhotos({ w }) {
           <ActivityIndicator color={colors.primary} />
         ) : (
           <>
-            <Text className="mb-1 text-2xl">📷</Text>
+            <View className="mb-1">
+              <Camera size={28} color={colors.textMuted} strokeWidth={1.5} />
+            </View>
             <Text className="text-sm font-medium text-gray-500">Tap to add photos</Text>
           </>
         )}

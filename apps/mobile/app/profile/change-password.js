@@ -107,7 +107,7 @@ export default function ChangePasswordScreen() {
               onChangeText={setCurrentPassword}
               placeholder="Enter current password"
               secureTextEntry
-              className="h-12 border border-gray-200 rounded-lg px-4 text-base"
+              className="h-12 border border-gray-200 rounded-xl px-4 text-base"
               editable={!saving}
             />
           </View>
@@ -122,7 +122,7 @@ export default function ChangePasswordScreen() {
               onChangeText={setNewPassword}
               placeholder="Enter new password"
               secureTextEntry
-              className="h-12 border border-gray-200 rounded-lg px-4 text-base"
+              className="h-12 border border-gray-200 rounded-xl px-4 text-base"
               editable={!saving}
             />
             <Text className="text-xs text-gray-500 mt-1">
@@ -140,20 +140,23 @@ export default function ChangePasswordScreen() {
               onChangeText={setConfirmPassword}
               placeholder="Re-enter new password"
               secureTextEntry
-              className="h-12 border border-gray-200 rounded-lg px-4 text-base"
+              className="h-12 border border-gray-200 rounded-xl px-4 text-base"
               editable={!saving}
             />
           </View>
 
           {/* Error */}
           {error && (
-            <View className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
               <Text className="text-red-700 text-sm">{error}</Text>
             </View>
           )}
 
-          {/* Security Tips */}
-          <View className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          {/* Security Tips — the `info` role (design-system/MASTER.md §2):
+              blue-50/blue-200/blue-900, blue-700 for body text as a second
+              tier under the heading. This is where that role originated;
+              the colors already matched, only the radius needed fixing. */}
+          <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
             <Text className="text-sm font-semibold text-blue-900 mb-2">
               Password Requirements:
             </Text>

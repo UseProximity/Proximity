@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, Text, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Heart } from "lucide-react-native";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
+import { colors } from "../../src/theme/tokens";
 
 export default function SavedScreen() {
   const router = useRouter();
@@ -35,7 +37,7 @@ export default function SavedScreen() {
         </Text>
         <Pressable
           onPress={() => router.push("/(auth)/login")}
-          className="bg-gray-900 rounded-lg px-6 py-3"
+          className="bg-red-600 rounded-xl px-6 py-3"
         >
           <Text className="text-white font-semibold text-sm">Sign in</Text>
         </Pressable>
@@ -64,14 +66,16 @@ export default function SavedScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View className="items-center">
-              <Text className="text-5xl mb-4">♡</Text>
+              <View className="mb-4">
+                <Heart size={40} color={colors.textMuted} strokeWidth={1.5} />
+              </View>
               <Text className="text-lg font-bold text-gray-900 mb-2">No saved listings yet</Text>
               <Text className="text-sm text-gray-500 text-center mb-6">
                 Start browsing to save your favorites!
               </Text>
               <Pressable
                 onPress={() => router.push("/(tabs)")}
-                className="bg-red-600 rounded-lg px-6 py-3"
+                className="bg-red-600 rounded-xl px-6 py-3"
               >
                 <Text className="text-white font-semibold text-sm">Browse Listings</Text>
               </Pressable>

@@ -14,28 +14,8 @@ import {
   UTILITY_OPTIONS,
   UTILITY_LABELS,
 } from "@proximity/shared";
-
-function Section({ title, children }) {
-  return (
-    <View className="mb-6">
-      <Text className="text-base font-bold text-gray-900 mb-2">{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Chip({ label, selected, onPress }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={`rounded-full px-3 py-1.5 mr-2 mb-2 border ${
-        selected ? "bg-red-600 border-red-600" : "bg-white border-gray-200"
-      }`}
-    >
-      <Text className={`text-xs font-medium ${selected ? "text-white" : "text-gray-700"}`}>{label}</Text>
-    </Pressable>
-  );
-}
+import { Section } from "../ui/Section";
+import { Chip } from "../ui/Chip";
 
 function ChipGroup({ options, labels, value, onChange }) {
   function toggle(option) {
@@ -44,7 +24,9 @@ function ChipGroup({ options, labels, value, onChange }) {
   return (
     <View className="flex-row flex-wrap">
       {options.map((option) => (
-        <Chip key={option} label={labels[option] ?? option} selected={value.includes(option)} onPress={() => toggle(option)} />
+        <Chip key={option} on={value.includes(option)} onPress={() => toggle(option)}>
+          {labels[option] ?? option}
+        </Chip>
       ))}
     </View>
   );

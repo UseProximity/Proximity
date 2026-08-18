@@ -29,6 +29,7 @@ import { ChatBubble } from "../../src/components/matchmaking/ChatBubble";
 import { AnswerBar } from "../../src/components/matchmaking/AnswerBar";
 import { RecommendationCard } from "../../src/components/matchmaking/RecommendationCard";
 import { DraftCompose } from "../../src/components/matchmaking/DraftCompose";
+import { SendButton } from "../../src/components/ui/SendButton";
 
 function TypingRow() {
   return (
@@ -90,7 +91,7 @@ export default function ChatScreen() {
           Answer a few quick questions and get free personalized off-campus housing matches near WashU.
         </Text>
         <Link href="/(auth)/login" asChild>
-          <Pressable className="bg-gray-900 rounded-lg px-6 py-3">
+          <Pressable className="bg-red-600 rounded-lg px-6 py-3">
             <Text className="text-white font-semibold text-sm">Sign in</Text>
           </Pressable>
         </Link>
@@ -170,13 +171,7 @@ export default function ChatScreen() {
                 onSubmitEditing={handleSend}
                 className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5"
               />
-              <Pressable
-                onPress={handleSend}
-                disabled={loading || !composerText.trim()}
-                className={`w-9 h-9 rounded-full items-center justify-center ${!loading && composerText.trim() ? "bg-red-600" : "bg-red-200"}`}
-              >
-                <Text className="text-white font-bold">→</Text>
-              </Pressable>
+              <SendButton onPress={handleSend} disabled={loading || !composerText.trim()} />
             </View>
           ) : null}
         </View>

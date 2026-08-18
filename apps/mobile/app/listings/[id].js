@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ChevronLeft, Footprints } from "lucide-react-native";
 import {
   getRentRangeLabel,
   getUnitValuesLabel,
@@ -34,6 +35,7 @@ import { ListingDetailMap } from "../../src/components/listings/ListingDetailMap
 import { HeartIcon } from "../../src/components/ui/HeartIcon";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import { useAuthStore } from "../../src/store/authStore";
+import { colors } from "../../src/theme/tokens";
 
 function walkTimesList(listing) {
   const pwm = listing.placeWalkMinutes;
@@ -141,8 +143,9 @@ export default function ListingDetailScreen() {
     <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Text className="text-red-600 text-base">← Back</Text>
+          <Pressable onPress={() => router.back()} hitSlop={12} className="flex-row items-center">
+            <ChevronLeft size={18} color={colors.primary} strokeWidth={2.5} />
+            <Text className="text-red-600 text-base">Back</Text>
           </Pressable>
           <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="2xl" />
         </View>
@@ -184,8 +187,18 @@ export default function ListingDetailScreen() {
 
             {(campusMin != null || shuttleMin != null) && (
               <View className="flex-row gap-4 mt-2">
-                {campusMin != null && <Text className="text-xs text-gray-500">🚶 {campusMin} min to campus</Text>}
-                {shuttleMin != null && <Text className="text-xs text-gray-500">🚶 {shuttleMin} min to shuttle</Text>}
+                {campusMin != null && (
+                  <View className="flex-row items-center gap-1">
+                    <Footprints size={13} color={colors.textSecondary} strokeWidth={2} />
+                    <Text className="text-xs text-gray-500">{campusMin} min to campus</Text>
+                  </View>
+                )}
+                {shuttleMin != null && (
+                  <View className="flex-row items-center gap-1">
+                    <Footprints size={13} color={colors.textSecondary} strokeWidth={2} />
+                    <Text className="text-xs text-gray-500">{shuttleMin} min to shuttle</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -265,14 +278,14 @@ export default function ListingDetailScreen() {
                 <View className="gap-2.5">
                   <View className="flex-row gap-2.5">
                     <TextInput
-                      className="flex-1 h-11 border border-gray-200 rounded-lg px-3 text-sm"
+                      className="flex-1 h-11 border border-gray-200 rounded-xl px-3 text-sm"
                       placeholder="First name"
                       value={contactForm.firstName}
                       onChangeText={(v) => setContactForm((f) => ({ ...f, firstName: v }))}
                       editable={!sending}
                     />
                     <TextInput
-                      className="flex-1 h-11 border border-gray-200 rounded-lg px-3 text-sm"
+                      className="flex-1 h-11 border border-gray-200 rounded-xl px-3 text-sm"
                       placeholder="Last name"
                       value={contactForm.lastName}
                       onChangeText={(v) => setContactForm((f) => ({ ...f, lastName: v }))}
@@ -280,7 +293,7 @@ export default function ListingDetailScreen() {
                     />
                   </View>
                   <TextInput
-                    className="h-11 border border-gray-200 rounded-lg px-3 text-sm"
+                    className="h-11 border border-gray-200 rounded-xl px-3 text-sm"
                     placeholder="Email"
                     keyboardType="email-address"
                     autoCapitalize="none"
@@ -289,7 +302,7 @@ export default function ListingDetailScreen() {
                     editable={!sending}
                   />
                   <TextInput
-                    className="h-11 border border-gray-200 rounded-lg px-3 text-sm"
+                    className="h-11 border border-gray-200 rounded-xl px-3 text-sm"
                     placeholder="Phone (optional)"
                     keyboardType="phone-pad"
                     value={contactForm.phone}
@@ -297,7 +310,7 @@ export default function ListingDetailScreen() {
                     editable={!sending}
                   />
                   <TextInput
-                    className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm"
+                    className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
                     placeholder="Message"
                     multiline
                     numberOfLines={4}
@@ -312,7 +325,7 @@ export default function ListingDetailScreen() {
                   <Pressable
                     onPress={handleContactSubmit}
                     disabled={sending}
-                    className={`h-11 rounded-lg items-center justify-center mt-1 ${sending ? "bg-gray-300" : "bg-red-600"}`}
+                    className={`h-11 rounded-xl items-center justify-center mt-1 ${sending ? "bg-gray-300" : "bg-red-600"}`}
                   >
                     {sending ? (
                       <ActivityIndicator color="#fff" />

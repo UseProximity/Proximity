@@ -54,7 +54,7 @@ export default function StepReview({ w }) {
 
   return (
     <StepFrame title="Check everything looks right" subtitle="This is exactly what students will learn about your place.">
-      <View className="rounded-xl border border-gray-200 px-4">
+      <View className="rounded-2xl border border-gray-200 px-4">
         <Row
           label="Address"
           value={form.address}

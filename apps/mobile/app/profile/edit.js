@@ -115,7 +115,7 @@ export default function EditProfileScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Enter your full name"
-              className="h-12 border border-gray-200 rounded-lg px-4 text-base"
+              className="h-12 border border-gray-200 rounded-xl px-4 text-base"
               editable={!saving}
             />
           </View>
@@ -129,7 +129,7 @@ export default function EditProfileScreen() {
               placeholder="Enter your email"
               keyboardType="email-address"
               autoCapitalize="none"
-              className="h-12 border border-gray-200 rounded-lg px-4 text-base"
+              className="h-12 border border-gray-200 rounded-xl px-4 text-base"
               editable={!saving}
             />
             <Text className="text-xs text-gray-500 mt-1">
@@ -149,7 +149,7 @@ export default function EditProfileScreen() {
                 placeholder="e.g. 2025"
                 keyboardType="number-pad"
                 maxLength={4}
-                className="h-12 border border-gray-200 rounded-lg px-4 text-base"
+                className="h-12 border border-gray-200 rounded-xl px-4 text-base"
                 editable={!saving}
               />
             </View>
@@ -157,13 +157,13 @@ export default function EditProfileScreen() {
 
           {/* Error */}
           {error && (
-            <View className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
               <Text className="text-red-700 text-sm">{error}</Text>
             </View>
           )}
 
           {/* Role Info */}
-          <View className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+          <View className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4">
             <Text className="text-xs text-gray-500">
               Role: <Text className="font-semibold">{user?.role}</Text>
             </Text>
