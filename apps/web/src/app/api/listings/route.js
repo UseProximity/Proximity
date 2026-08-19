@@ -223,12 +223,16 @@ export function buildListing(row, owner = null) {
 
 /**
  * Fetch every non-deleted listing, fully built into the frontend shape.
- * Exported so other routes (e.g. the popular-listings ranking) can reuse the
- * exact same data path instead of duplicating the select + landlord join.
- * Throws on a DB error — callers handle the response.
+ * Exported so other routes (e.g. the popular-listings ranking, mobile's
+ * favorites read path) can reuse the exact same data path instead of
+ * duplicating the select + landlord join. Pass `listingIds` to filter to a
+ * specific set of listings (e.g. a user's saved listings) instead of
+ * fetching everything; omit it (or leave it empty) to fetch all non-deleted
+ * listings, unchanged from before. Throws on a DB error — callers handle
+ * the response.
  */
-export async function fetchListings() {
-  const { data: listings, error } = await supabase
+export async function fetchListings(listingIds = null) {
+  let query = supabase
     .from("listings")
     .select(
       `
@@ -258,6 +262,12 @@ export async function fetchListings() {
       `
     )
     .is("deleted_at", null);
+
+  if (listingIds?.length > 0) {
+    query = query.in("id", listingIds);
+  }
+
+  const { data: listings, error } = await query;
 
   if (error) throw error;
 
