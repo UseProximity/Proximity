@@ -3,9 +3,9 @@
 > **Scope:** This document describes the **Proximity mobile app only** (`apps/mobile`, Expo + React Native + Expo Router + NativeWind).
 > It does **not** change, redefine, or apply to the Proximity **web** app (`apps/web`). Web is referenced in a few places below for brand-continuity context (existing colors, terminology) — that is a reference, not a target. Nothing in this document authorizes or implies a change to any file under `apps/web`.
 
-> **Override logic:** When implementing a specific mobile screen or feature, first check `design-system/pages/<name>.md`. If that file exists, its rules extend/override this Master for that area. Otherwise, follow this Master directly. Today the only overrides are `pages/add-listing.md` and `pages/chat.md` — every other mobile screen (Browse, Listing Detail, Saved, Profile, the 3 auth screens, Profile Completion, Filters) implements this Master directly with no override file of its own.
+> **Override logic:** When implementing a specific mobile screen or feature, first check `design-system/pages/<name>.md`. If that file exists, its rules extend/override this Master for that area. Otherwise, follow this Master directly. Today the only overrides are `pages/add-listing.md` and `pages/matchmaking.md` — every other mobile screen (Browse, Listing Detail, Saved, Profile, the 3 auth screens, Profile Completion, Filters, the placeholder Chat tab) implements this Master directly with no override file of its own.
 
-> **Status:** Approved design direction, not yet implemented in code. `apps/mobile/src/theme/tokens.js` and `apps/mobile/src/components/ui/*` still reflect pre-existing values as of this writing — implementation happens in a later, separate step and will update this doc's "Status" line when it lands.
+> **Status:** Implemented (Stages A–H, plus a Stage H revision pass after on-device review). `apps/mobile/src/theme/tokens.js` and `apps/mobile/src/components/ui/*` reflect this system.
 
 ---
 
@@ -102,9 +102,9 @@ Line-height: comfortable (~1.4–1.5×) for body copy; RN's narrow viewport make
 |---|---|---|
 | `control` | 12px | Buttons, text inputs, chip-as-rectangle elements — already what `Button.js`/`TextField.js` use |
 | `container` | 16px | Cards, sheets, images — matches web's actual `ListingCard`/`MapPopupCard` (`rounded-2xl`), which mobile's current `Card.js` (12px) currently undershoots |
-| `pill` | fully rounded | Chips, badges, avatars, chat composer |
+| `pill` | fully rounded | Chips, badges, avatars, chat composer, Browse's search field + its matched circular Filters button (an intentional exception to `control` for standard text inputs/icon buttons — search bars are conventionally pill-shaped in mobile UI, same reasoning as the chat composer) |
 
-Several older mobile screens are still on an 8px radius (Browse's search bar, the Filters button, Listing Detail's contact form inputs) — that's drift to resolve during implementation, not a third intentional tier.
+The 8px-radius drift originally noted here (Browse's search bar, the Filters button, Listing Detail's contact form inputs) has been resolved — all three are on their correct tiers now.
 
 ---
 
@@ -123,6 +123,18 @@ elevation: 3        // Android
 ```
 
 **Not used for:** standard cards, list rows, or buttons — those stay border-led (`border` token, §2) with no shadow at all.
+
+**A second, lighter tier, narrowly reserved for card-stack pages** (`tokens.js`'s `shadows.subtle`) — a page built as several substantial content cards on a light (`gray-50`) page background (Listing Detail) wants a gentler "just barely lifted" feel than the primary tier gives isolated floating controls, not the same weight repeated down a whole page of cards:
+
+```
+shadowColor: "#000000"
+shadowOffset: { width: 0, height: 1 }
+shadowOpacity: 0.05
+shadowRadius: 6
+elevation: 2        // Android
+```
+
+This is a named, intentional exception, not a general-purpose second tier — new floating controls (sheets, map buttons) still use the primary tier above.
 
 ---
 
@@ -148,17 +160,29 @@ elevation: 3        // Android
 
 **Text inputs** — bordered/filled (`surface` background, `border` outline), radius `control` (12px), minimum height 44px, label above, error message below in `error` color. Error messages should be programmatically announced at implementation time (`accessibilityLiveRegion`/`accessibilityRole="alert"`) — see §9.
 
-**Cards** — radius `container` (16px), `border`-outlined, white background, **no default shadow**. Tappable cards (e.g. `ListingCard`) get a subtle press state (background or border color shift) rather than a shadow lift.
+**Cards** — radius `container` (16px), `border`-outlined, white background, **no default shadow** by default. Tappable cards (e.g. `ListingCard`) get a subtle press state (background or border color shift) rather than a shadow lift. **Exception**: a page built as a stack of a few substantial, non-tappable content sections on a light (`gray-50`) page background — Listing Detail's Quick facts/Description/Amenities & Utilities/Location/Reviews/Contact landlord sections are the first case — uses the lighter `shadows.subtle` tier from §5 on each card, with a soft near-page-color border (`border-gray-50`, blending toward the page background rather than reading as a hard edge), so the cards read as gently lifted surfaces without standing out too heavily against the page. This is deliberately reserved for a handful of major sections per screen, not every piece of content — the goal is a clean hierarchy of a few cards, never a screen full of nested boxes.
 
-**Chips/tags** — `pill` radius. Selected: `primary` background, white text. Unselected: white background, `gray-300` border, `textPrimary`/`gray-700` text. This is already the shape of `wizardShared.js`'s `Chip` — that becomes the canonical pattern going forward (see `pages/add-listing.md`).
+**Chips/tags** — `pill` radius. Selected: `primary` background, white text. Unselected: white background, `gray-300` border, `textPrimary`/`gray-700` text. This is already the shape of `wizardShared.js`'s `Chip` — that becomes the canonical pattern going forward (see `pages/add-listing.md`). `ui/Chip.js` (the promoted, canonical version) also supports two additive, opt-in props used by `FilterSheet.js`: `showCheck` (prefixes a small checkmark on the selected state — for contexts like Filters where selection needs to read unambiguously, not just via color) and `icon` (prefixes a small Lucide recognition icon — used for Filters' Amenities/Utilities options that have a clean 1:1 icon, not applied everywhere). The two aren't designed to combine on the same chip.
+
+**Section headers** — a small icon-badged label (`ui/SectionHeader.js`: 28px `primary`-tinted circle containing a 14px Lucide icon, next to a bold title, optional muted subtitle) marks a distinct group within a longer form or content screen. Used to break `FilterSheet.js`'s options into 4 visually distinct clusters (Budget & Size, Property, Amenities & Utilities, Location & Move-in — each in its own `bg-gray-50 rounded-2xl p-4` container) and to separate Listing Detail's sections (Details, Location, Reviews, Contact landlord). This is the standard pattern for "this is a new section" going forward, in place of a bare bold `Text` title.
+
+**Photo-overlay icon treatment** — `HeartIcon.js` supports an opt-in `onImage` prop for icons sitting directly on a photo with **no background container** (`ListingCard`'s corner heart, Listing Detail's hero heart): both saved/unsaved states share a thick white stroke (`strokeWidth={3}` vs. the default `2`) so the icon stays legible against any photo — only **fill** distinguishes the two states, solid `primary` when saved, a semi-transparent black (`rgba(0,0,0,0.35)`) when not, so the photo shows through the heart's interior rather than it reading as a flat dark shape. Default is `false`, so contexts on a plain white background (e.g. none currently in use) are unaffected.
+
+**Persistent collapsing header** — Listing Detail's back button no longer lives inside the hero (where it would scroll away with the rest of the page); it's a fixed header positioned outside the scroll content, transparent with a `bg-black/40` translucent circle + white icon at rest (visually identical to sitting on the hero), crossfading via scroll-position-driven `Animated.Value` opacity into a solid white app bar (bottom hairline border, dark icon) once the page scrolls roughly past the hero's own measured height. This is the standard pattern for any future screen with a full-bleed hero image that scrolls (Airbnb/Zillow-style listing screens) — reuse this technique rather than a fixed floating button, which reads as disconnected from the rest of the UI.
 
 **Bottom sheets/modals** — when the sheet visually lifts off the page content, apply the one shadow tier from §5. Top corners get `container` radius (16px) on partial-height sheets. Full-screen modals need no radius/shadow (they fill the viewport).
 
-**Navigation/tab bar** — currently unstyled (default Expo Router `Tabs`). Active tab: `primary` icon + label. Inactive: `textMuted`. Icons from the Lucide set in §6.
+**Navigation/tab bar** (5 tabs): **Browse | Chat | Matchmaking | Saved | Profile**. All 5 tabs use the same flat treatment — active: `primary` icon + label, inactive: `textMuted`. Icons from the Lucide set in §6 — Browse→`Search`, Chat→`MessageCircle`, Matchmaking→`Sparkles` (reads as "AI-assisted smart matching," distinct from Chat's speech-bubble meaning despite the two tabs sitting next to each other), Saved→`Heart`, Profile→`User`.
+
+**Revision note:** Matchmaking briefly had a raised, brand-mark (logo) tab treatment — a 52×52 circle lifted above the bar with `ProximityLogoMark` inside, hidden label — as the true center tab. Reverted after on-device review: it read as too special-cased rather than consistent with the other 4 tabs. `ProximityLogoMark` (`src/components/icons/ProximityLogoMark.js`, ported from `apps/web/public/logo.svg`) still exists in the repo, unused, in case a future screen wants the real brand mark (e.g. a splash/about screen) — it is **not** used in the tab bar.
+
+The Chat tab (`app/(tabs)/chat.js`) is a placeholder only — no functionality, see §7's empty-state pattern below (it doesn't need its own page-override file). The real matchmaking/Proxy conversation experience lives at `app/(tabs)/matchmaking.js` (renamed from `chat.js`) — see `pages/matchmaking.md`.
 
 **List rows** — minimum 44px touch height, consistent 16px horizontal padding, `border-gray-100` row separators rather than a shadow/card per row — consistent with the border-led surface direction.
 
-**Image treatment** — `container` radius (16px) on cover images/carousels, `aspect-video` default for listing photos (already used), `surfaceAlt`/`gray-100` placeholder background while loading (already used).
+**Segmented toggles** (e.g. Browse's List/Map view control) — fully `pill`-rounded outer track (`bg-gray-100`), selected segment gets a `primary` fill + white text/icon (not a plain white/light highlight — the brand color reads immediately as "active," matching how selection is communicated everywhere else), small paired Lucide icon + label per segment. Matches the pill shape of Browse's search field and Filters button directly above it, so the header reads as one considered control group.
+
+**Image treatment** — `container` radius (16px) on cover images/carousels, `aspect-video` default for listing photos (already used), `surfaceAlt`/`gray-100` placeholder background while loading (already used). Photo carousels with more than one image get a small pagination affordance — a "1 / N" counter pill (`bg-black/50`, white text, bottom-right corner) rather than dot indicators, since dots get cramped past ~5–6 images and a counter degrades gracefully at any count (Listing Detail's hero carousel).
 
 **Badges** — `pill` radius, semantic color roles matching `Badge.js`'s existing variant naming (`default`/`secondary`/`outline`).
 
@@ -185,7 +209,7 @@ Minimal and functional, never decorative — directly matching "avoid overly fla
 
 ## 9. Accessibility Principles
 
-- **44×44px minimum touch targets.** Audit `HeartIcon` specifically at implementation time — it currently sizes by font size + 8px `hitSlop`, which may fall short depending on font metrics.
+- **44×44px minimum touch targets.** `HeartIcon` is a fixed 44×44 `Pressable` regardless of visual icon size (resolved in the shared-primitives pass) — the note that used to flag this as an open risk no longer applies.
 - **4.5:1 minimum text contrast.** `primary` (`#DC2626`) on white is already safe for body text (~4.8:1).
 - **Errors must be programmatically announced**, not color-only — use RN's `accessibilityLiveRegion="polite"` or `accessibilityRole="alert"` on error text, once implemented.
 - **Color is never the sole indicator** of state — pair color with text/icon, as the app already mostly does.

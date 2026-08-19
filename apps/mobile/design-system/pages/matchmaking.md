@@ -1,10 +1,12 @@
-# Page Override: Chat
+# Page Override: Matchmaking
 
-> ⚠️ Rules in this file extend/override `design-system/MASTER.md` for the Chat tab only. Everything not mentioned here follows the Master directly.
+> ⚠️ Rules in this file extend/override `design-system/MASTER.md` for the Matchmaking tab only. Everything not mentioned here follows the Master directly.
 
-**Scope:** `apps/mobile/app/(tabs)/chat.js`, `apps/mobile/src/components/matchmaking/*`.
+**Scope:** `apps/mobile/app/(tabs)/matchmaking.js`, `apps/mobile/src/components/matchmaking/*`.
 
-**Why this gets an override file:** Chat is a bubble-and-composer interface — structurally unlike every other screen in the app (list/detail/browse/form). Bubble layout, message-direction-based styling, and a pill-shaped composer are conventions specific to chat UIs and don't belong in the Master's general component list.
+**Renamed from `chat.md` (Stage H, 2026-08-18):** this file used to be `design-system/pages/chat.md`, matching the route's old filename. The route was renamed `chat.js` → `matchmaking.js` once the tab bar gained a separate, genuinely-empty future "Chat" tab — the real matchmaking/Proxy conversation experience documented below needed its own name to avoid colliding with it. Nothing about the actual UI described in this file changed, only its filename and the "Chat" → "Matchmaking" labels.
+
+**Why this gets an override file:** Matchmaking is a bubble-and-composer interface — structurally unlike every other screen in the app (list/detail/browse/form). Bubble layout, message-direction-based styling, and a pill-shaped composer are conventions specific to chat UIs and don't belong in the Master's general component list.
 
 ---
 
@@ -24,7 +26,7 @@ The message input is **pill-shaped** (`pill` radius / fully rounded) — this is
 
 ## Quick-reply / answer chips
 
-`AnswerBar.js`, `ChoiceChips.js`, `MultiChoiceChips.js`, `BudgetInput.js` all reuse the Master's canonical `Chip` (see `pages/add-listing.md` for where that shared component lives) — no separate chip styling needed here.
+`AnswerBar.js`, `ChoiceChips.js`, `MultiChoiceChips.js`, `BudgetInput.js`, `ConfirmOrReplace.js`, `OpenTextInput.js` all reuse the Master's canonical `Chip` (see `pages/add-listing.md` for where that shared component lives) — no separate chip styling needed here.
 
 ## Recommendation cards
 

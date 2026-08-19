@@ -20,18 +20,12 @@ import { computeListingMapBounds, MAP_CAMPUS_CENTER } from "@proximity/shared";
 import Mapbox from "../../lib/mapbox";
 import { usePinIconAtlas, ratingIconId } from "./usePinIconAtlas";
 import { ShuttleStopsLayer } from "./ShuttleStopsLayer";
-import { colors } from "../../theme/tokens";
+import { colors, shadows } from "../../theme/tokens";
 
 // The one shadow tier design-system/MASTER.md §5 allows, reserved for
 // floating elements lifted off the map surface (this screen's toggle pill
 // and selected-listing preview card).
-const FLOATING_SHADOW = {
-  shadowColor: "#000000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
-  elevation: 3,
-};
+const FLOATING_SHADOW = shadows.floating;
 
 export function BrowseMapView({ listings }) {
   const router = useRouter();

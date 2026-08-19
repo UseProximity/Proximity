@@ -11,14 +11,24 @@ const ICON_SIZE = { lg: 18, xl: 20, "2xl": 24 };
 // token for a saved/active indicator. Wrapped in a fixed 44x44 hit area
 // regardless of visual icon size, since the previous glyph + 8px hitSlop
 // fell short of the 44x44 minimum flagged in MASTER.md §9.
-export function HeartIcon({ isSaved = false, onPress, size = "xl", disabled = false }) {
+//
+// `onImage` (opt-in, default off — the Listing Detail header's heart on a
+// plain white bar is unaffected) is for contexts like ListingCard's photo
+// overlay and the Listing Detail hero, where the icon sits directly on a
+// photo with no background container at all. Both states share a thick
+// white stroke — legible against any photo without needing a circle behind
+// it — so only fill communicates saved vs. unsaved: solid `primary` when
+// saved, a semi-transparent black (~35%) when not, so the underlying photo
+// still shows through the heart's interior rather than reading as a flat
+// dark shape.
+export function HeartIcon({ isSaved = false, onPress, size = "xl", disabled = false, onImage = false }) {
   const iconSize = ICON_SIZE[size] ?? ICON_SIZE.xl;
   const icon = (
     <Heart
       size={iconSize}
-      color={isSaved ? colors.primary : colors.textMuted}
-      fill={isSaved ? colors.primary : "transparent"}
-      strokeWidth={2}
+      color={onImage ? colors.white : isSaved ? colors.primary : colors.textMuted}
+      fill={isSaved ? colors.primary : onImage ? "rgba(0, 0, 0, 0.35)" : "transparent"}
+      strokeWidth={onImage ? 3 : 2}
     />
   );
 

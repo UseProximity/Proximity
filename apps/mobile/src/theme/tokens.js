@@ -68,3 +68,31 @@ export const typography = {
   title: 28,
   display: 40, // reserved for one-off brand moments only (e.g. the auth wordmark)
 };
+
+// The app's primary shadow tier (design-system/MASTER.md §5) — was
+// independently redefined as a local FLOATING_SHADOW constant in
+// BrowseMapView.js and Browse's index.js; promoted here once a 3rd caller
+// (Listing Detail's card sections) needed the identical values, so all three
+// now share one source.
+export const shadows = {
+  floating: {
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  // A deliberately lighter second tier, narrowly reserved for Listing
+  // Detail's DetailCard stack (design-system/MASTER.md §5/§7) — a page built
+  // as several substantial content cards wants a softer "just barely lifted"
+  // feel, not the more pronounced lift `floating` gives isolated controls
+  // (search bar, filter button, map toggle). Not a general-purpose second
+  // tier for arbitrary use.
+  subtle: {
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+};
