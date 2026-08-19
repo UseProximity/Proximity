@@ -178,6 +178,24 @@ export const useChatStore = create((set, get) => ({
     await get().startFresh();
   },
 
+  // Leaves isInitialized false so a subsequent init() actually runs its auth
+  // check instead of no-op'ing on stale state from a previous session.
+  reset: () => {
+    set({ ...initialState });
+  },
+
+  // Called whenever the resolved auth identity changes (login or logout) —
+  // see the effect in app/(tabs)/matchmaking.js that watches authStore's
+  // user?.id. A mount-only init() can't catch this: once a tab has been
+  // visited it stays mounted for the app's lifetime (no unmountOnBlur), so
+  // nothing would otherwise re-run the auth check after a logout/login that
+  // happens while already mounted. init() itself decides the outcome —
+  // this just guarantees the check actually re-runs on every identity change.
+  reinit: async () => {
+    get().reset();
+    await get().init();
+  },
+
   // Chip/structured answer. Tradeoff and contact-offer answers are server-driven
   // (need live listing data / send email), so they skip the optimistic path.
   answerQuestion: (answer) => {
@@ -232,6 +250,10 @@ export const useChatStore = create((set, get) => ({
           });
         }
       } catch (err) {
+        if (err?.status === 401) {
+          set({ needsAuth: true, loading: false });
+          return;
+        }
         console.error("[chatStore] answerQuestion failed:", err);
       } finally {
         if (finalizing) set({ loading: false });
@@ -269,6 +291,10 @@ export const useChatStore = create((set, get) => ({
           get()._appendRecsWithContact(data);
         }
       } catch (err) {
+        if (err?.status === 401) {
+          set({ needsAuth: true, loading: false });
+          return;
+        }
         console.error("[chatStore] tradeoff failed:", err);
       } finally {
         set({ loading: false });
@@ -359,6 +385,10 @@ export const useChatStore = create((set, get) => ({
           ],
         }));
       } catch (err) {
+        if (err?.status === 401) {
+          set({ needsAuth: true, loading: false });
+          return;
+        }
         console.error("[chatStore] sendDraft failed:", err);
         set((state) => ({
           messages: [
@@ -420,6 +450,10 @@ export const useChatStore = create((set, get) => ({
           get()._appendRecsWithContact(data);
         }
       } catch (err) {
+        if (err?.status === 401) {
+          set({ needsAuth: true, loading: false });
+          return;
+        }
         console.error("[chatStore] sendMessage failed:", err);
       } finally {
         set({ loading: false });
@@ -442,7 +476,13 @@ export const useChatStore = create((set, get) => ({
       enqueue(() =>
         apiClient.matchmaking
           .rewind({ sessionId, transcript: truncated, preferences: rewound.preferences, weights: rewound.weights })
-          .catch((err) => console.error("[chatStore] rewind failed:", err))
+          .catch((err) => {
+            if (err?.status === 401) {
+              set({ needsAuth: true });
+              return;
+            }
+            console.error("[chatStore] rewind failed:", err);
+          })
       );
 
       return {

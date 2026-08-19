@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
-import { isProdData } from "@/lib/appEnv";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { handleTurn, computeRecommendations, continueRelaxedSearch, rewindToTradeoff } from "@/lib/matchmaking/chatOrchestrator";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
-
-// Shared identity for anonymous, no-login testing. Used ONLY outside production
-// (staging / Vercel previews / local) so anyone can try the matchmaker from a
-// test URL without an account. Must exist in the dev database.
-const GUEST_EMAIL = "guest@proximity.test";
 
 // Resolve a listing's primary-landlord contact (server-side, never trusting the
 // client) for the "have Proxy contact the owner" flow. Falls back to the listing's
@@ -33,49 +27,30 @@ async function resolveOwnerForListing(listingId) {
   return { email, name: owner?.name || row.contact_name || null, address: row.address, title: row.title };
 }
 
-async function resolveUserId(email) {
-  const { data: user } = await supabase
+// Resolve who is acting on this request. Honors either a web session cookie or
+// a mobile Bearer token (getRequestUser checks both) — no session/token means
+// no access, in every environment.
+async function resolveActor(req) {
+  const requestUser = await getRequestUser(req);
+  if (!requestUser?.id) {
+    return { error: { msg: "Unauthorized", status: 401 } };
+  }
+  const { data: profile } = await supabase
     .from("users")
-    .select("id, name, gender")
-    .eq("email", email.toLowerCase())
+    .select("id, name, gender, email")
+    .eq("id", requestUser.id)
     .single();
-  return user;
-}
-
-// Resolve who is acting on this request. A signed-in user is always honored.
-// With no session, production requires login (401); non-production falls back
-// to the shared guest tester so the chatbot is usable without an account.
-//
-// @auth optional
-//
-// Declared rather than inferred: the guard lives here, not as an `if (!session)`
-// in each handler, so the knowledge scanner would otherwise read these routes as
-// unconditionally guarded and flag the deliberate non-prod guest response as a
-// missing auth check. "optional" is the honest label — anonymous callers get a
-// safe response off production, and a 401 on it.
-async function resolveActor(session) {
-  if (session?.user?.email) {
-    const user = await resolveUserId(session.user.email);
-    if (!user) return { error: { msg: "User not found", status: 404 } };
-    return { actor: user, isGuest: false };
-  }
-  if (!isProdData()) {
-    const guest = await resolveUserId(GUEST_EMAIL);
-    if (!guest) return { error: { msg: "Guest tester not provisioned", status: 503 } };
-    return { actor: guest, isGuest: true };
-  }
-  return { error: { msg: "Unauthorized", status: 401 } };
+  if (!profile) return { error: { msg: "User not found", status: 404 } };
+  return { actor: profile };
 }
 
 export async function GET(request) {
   try {
-    const { actor, isGuest, error } = await resolveActor(await auth());
+    const { actor, error } = await resolveActor(request);
     if (error) return NextResponse.json({ error: error.msg }, { status: error.status });
 
     // The client remembers which session it was in (localStorage). When it asks
-    // for that one by id, hand it back — this is how a GUEST resumes: guests all
-    // share one identity, so "the latest session for this user" could be another
-    // tester's chat, but a session they hold the id for is provably theirs.
+    // for that one by id, hand it back.
     const wanted = new URL(request.url).searchParams.get("sessionId");
     if (wanted) {
       const { data: byId } = await supabase
@@ -88,7 +63,6 @@ export async function GET(request) {
       if (byId) return NextResponse.json({ session: byId });
       // Fall through: an unknown/foreign id just means "no session to resume".
     }
-    if (isGuest) return NextResponse.json({ session: null });
 
     const { data: chatSession } = await supabase
       .from("matchmaking_chat_sessions")
@@ -108,8 +82,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await auth();
-    const { actor, error: actorError } = await resolveActor(session);
+    const { actor, error: actorError } = await resolveActor(request);
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
 
     const body = await request.json();
@@ -229,14 +202,12 @@ export async function POST(request) {
     }
 
     // Contact owners: the student picked listings (from their 3 matches) and asked
-    // Proxy to reach out. Identity is the signed-in account; outside production an
-    // anonymous tester sends as a generic "Proximity Tester" (and every email is
-    // redirected to the staging test inbox by sendMailSafe — real owners are never hit).
+    // Proxy to reach out. Identity is always the signed-in account (every caller
+    // is authenticated by this point) — off production, sendMailSafe redirects
+    // every email to the staging test inbox, so real owners are never hit.
     if (action === "contact_owners") {
       const listingIds = Array.isArray(body.listingIds) ? [...new Set(body.listingIds.filter(Boolean))] : [];
-      const student = session?.user?.email
-        ? { name: (session.user.name || actor.name || "A Proximity student").trim(), email: session.user.email }
-        : { name: "Proximity Tester", email: GUEST_EMAIL };
+      const student = { name: (actor.name || "A Proximity student").trim(), email: actor.email };
 
       let sent = 0;
       for (const listingId of listingIds) {
@@ -323,7 +294,7 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   try {
-    const { actor, error: actorError } = await resolveActor(await auth());
+    const { actor, error: actorError } = await resolveActor(request);
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
 
     const body = await request.json();

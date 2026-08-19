@@ -5,10 +5,12 @@
 // copy of the web layout (custom FlatList, no @chatscope/chat-ui-kit-react —
 // web doesn't actually use it either).
 //
-// Auth-deferred, matching this phase's scope: no login is required here. The
-// API resolves anonymous requests to a shared guest identity whenever
-// isProdData() is false (dev/staging), which is what EXPO_PUBLIC_API_URL
-// points at during development — see the Phase 5 Audit in the build plan.
+// Requires a signed-in account (enforced server-side in
+// apps/web/src/app/api/matchmaking/chat/route.js) — chatStore's needsAuth
+// flag drives the sign-in fallback below. The init effect re-runs on every
+// auth identity change (not just mount) so logging out/in while this tab is
+// already mounted stays in sync — see the userId effect below and
+// chatStore.reinit().
 //
 // Route renamed from chat.js to matchmaking.js (Stage H) — the tab bar now
 // has a separate, genuinely-empty future "Chat" tab, so this file's old name
@@ -31,6 +33,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
 import { useChatStore } from "../../src/store/chatStore";
+import { useAuthStore } from "../../src/store/authStore";
 import { ChatBubble } from "../../src/components/matchmaking/ChatBubble";
 import { AnswerBar } from "../../src/components/matchmaking/AnswerBar";
 import { RecommendationCard } from "../../src/components/matchmaking/RecommendationCard";
@@ -58,19 +61,22 @@ export default function MatchmakingScreen() {
     needsAuth,
     error,
     isInitialized,
-    init,
     startOver,
     answerQuestion,
     sendMessage,
     sendDraft,
     editAnswer,
   } = useChatStore();
+  const userId = useAuthStore((s) => s.user?.id);
   const [composerText, setComposerText] = useState("");
   const listRef = useRef(null);
 
+  // Re-runs on every auth identity change (login or logout), not just mount —
+  // this tab stays mounted for the app's lifetime once visited once, so a
+  // mount-only check would go stale across a logout/login cycle.
   useEffect(() => {
-    init();
-  }, [init]);
+    useChatStore.getState().reinit();
+  }, [userId]);
 
   useEffect(() => {
     if (messages.length > 0) {
