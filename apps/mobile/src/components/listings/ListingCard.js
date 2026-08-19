@@ -99,9 +99,15 @@ export function ListingCard({ listing }) {
             <Text className="text-white text-xs font-semibold">Unavailable</Text>
           </View>
         )}
-        {/* Heart icon in top-right corner */}
-        <View className="absolute top-3 right-3 bg-white/90 rounded-full w-8 h-8 items-center justify-center">
-          <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="lg" />
+        {/* Heart icon in top-right corner — no background circle (design-
+            system polish pass): a thick white outline reads clearly against
+            any photo on its own, with fill (solid red vs. semi-transparent
+            black) distinguishing saved from unsaved, so a filled backing
+            pill isn't needed. HeartIcon's own Pressable still carries the
+            44x44 touch target via inline style, so removing the wrapper
+            doesn't shrink the tap area, only its visible background. */}
+        <View className="absolute top-2 right-2">
+          <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="lg" onImage />
         </View>
       </View>
 

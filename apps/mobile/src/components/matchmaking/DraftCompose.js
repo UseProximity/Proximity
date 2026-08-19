@@ -3,21 +3,26 @@
 // locks to a read-only "Sent" state once sent.
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
+import { Check } from "lucide-react-native";
+import { colors } from "../../theme/tokens";
 
 export function DraftCompose({ draft, onSend }) {
   const [message, setMessage] = useState(draft.message);
 
   if (draft.sent) {
     return (
-      <View className="mt-2 bg-white border border-gray-200 rounded-xl p-3">
+      <View className="mt-2 bg-white border border-gray-200 rounded-2xl p-3">
         <Text className="text-xs text-gray-500 italic">{draft.message}</Text>
-        <Text className="text-[11px] text-green-600 font-semibold mt-2">Sent ✓</Text>
+        <View className="flex-row items-center gap-1 mt-2">
+          <Check size={12} color={colors.success} strokeWidth={2.5} />
+          <Text className="text-[11px] text-green-700 font-semibold">Sent</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <View className="mt-2 bg-white border border-gray-200 rounded-xl p-3 gap-2">
+    <View className="mt-2 bg-white border border-gray-200 rounded-2xl p-3 gap-2">
       <TextInput
         value={message}
         onChangeText={setMessage}

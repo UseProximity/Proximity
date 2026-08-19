@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { AMENITY_OPTIONS, AMENITY_LABELS, UTILITY_OPTIONS, UTILITY_LABELS } from "@proximity/shared";
-import { Chip, FieldLabel, StepFrame } from "./wizardShared";
+import { Chip } from "../../ui/Chip";
+import { FieldLabel, StepFrame } from "./wizardShared";
 
 export default function StepPerks({ w }) {
   const [customInput, setCustomInput] = useState("");
@@ -22,8 +23,8 @@ export default function StepPerks({ w }) {
           </Chip>
         ))}
         {w.customAmenities.map((a) => (
-          <Chip key={a} on onPress={() => w.removeCustomAmenity(a)}>
-            {a} ×
+          <Chip key={a} on onPress={() => w.removeCustomAmenity(a)} onRemove={() => w.removeCustomAmenity(a)}>
+            {a}
           </Chip>
         ))}
       </View>

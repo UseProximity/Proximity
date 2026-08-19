@@ -5,6 +5,13 @@
 // (via Svg#toDataURL) into static images for the map's SymbolLayer — several
 // instances render side by side in the atlas, so gradient/clip ids are
 // namespaced per instance to avoid collisions, mirroring web's per-marker safeId.
+//
+// Pin red is `primary` (#DC2626, design-system/MASTER.md §2) — the ported
+// web version used a slightly different red (#E8000B); reconciled here so
+// the map pins match the rest of the app's single brand red. Rasterized
+// instances are cached by rating-bucket + isActive only (see
+// usePinIconAtlas.js), never by color, so this is a pure color-value swap
+// with no cache-invalidation implications.
 import { forwardRef } from "react";
 import Svg, { Defs, LinearGradient, Stop, ClipPath, Rect, Path, Circle } from "react-native-svg";
 
@@ -18,7 +25,7 @@ const STAR_HEIGHT = 23.06;
 
 export const ListingMapPin = forwardRef(function ListingMapPin({ rating, isActive, uid = "default" }, ref) {
   const hasRating = rating != null && rating > 0;
-  const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
+  const pinBodyStop2 = isActive ? "#FFDFDF" : "#DC2626";
   const pinBodyStopOpacity = isActive ? 0.9 : 1;
   const pgId = `pg-${uid}`;
   const sgId = `sg-${uid}`;
@@ -34,7 +41,7 @@ export const ListingMapPin = forwardRef(function ListingMapPin({ rating, isActiv
             <Stop offset="0.18" stopColor={pinBodyStop2} stopOpacity={pinBodyStopOpacity} />
           </LinearGradient>
         </Defs>
-        <Path d={PIN_PATH} fill={`url(#${pgId})`} stroke="#E8000B" strokeWidth={2} />
+        <Path d={PIN_PATH} fill={`url(#${pgId})`} stroke="#DC2626" strokeWidth={2} />
         <Circle cx={17.5} cy={20} r={5.5} fill={circleFill} opacity={0.9} />
       </Svg>
     );
@@ -65,7 +72,7 @@ export const ListingMapPin = forwardRef(function ListingMapPin({ rating, isActiv
           <Rect x={4} y={clipY} width={27} height={fillHeight} />
         </ClipPath>
       </Defs>
-      <Path d={PIN_PATH} fill={`url(#${pgId})`} stroke="#E8000B" strokeWidth={2} />
+      <Path d={PIN_PATH} fill={`url(#${pgId})`} stroke="#DC2626" strokeWidth={2} />
       <Path d={STAR_PATH} fill={starFill} clipPath={`url(#${scId})`} />
       <Path d={STAR_PATH} fill="none" stroke={starStroke} strokeWidth={0.75} />
     </Svg>

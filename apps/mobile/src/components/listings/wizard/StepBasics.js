@@ -6,7 +6,8 @@
 // moveInDate precedent — no date-picker library installed.
 import { TextInput, View } from "react-native";
 import { HOME_TYPES } from "@proximity/shared";
-import { Chip, FieldLabel, StepFrame } from "./wizardShared";
+import { Chip } from "../../ui/Chip";
+import { FieldLabel, StepFrame } from "./wizardShared";
 
 export default function StepBasics({ w }) {
   return (
@@ -56,7 +57,7 @@ export default function StepBasics({ w }) {
               placeholder="YYYY-MM-DD"
               autoFocus
               placeholderTextColor="#9ca3af"
-              className="h-11 w-32 border border-gray-200 rounded-lg px-3 text-sm text-gray-900 bg-gray-50"
+              className="h-11 w-32 border border-gray-200 rounded-xl px-3 text-sm text-gray-900 bg-gray-50"
             />
           ) : null}
         </View>

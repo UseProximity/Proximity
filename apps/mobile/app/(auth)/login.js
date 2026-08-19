@@ -1,18 +1,13 @@
 import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  SafeAreaView,
-} from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
+import { Check } from "lucide-react-native";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
+import { Button } from "../../src/components/ui/Button";
+import { TextField } from "../../src/components/ui/TextField";
+import { colors } from "../../src/theme/tokens";
 
 const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 
@@ -73,20 +68,23 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <View style={styles.container}>
-          <Text style={styles.wordmark}>proximity</Text>
-          <Text style={styles.tagline}>Find your perfect place near campus.</Text>
+    <SafeAreaView className="flex-1 bg-white">
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View className="flex-1 justify-center px-7 pb-8">
+          {/* text-[40px] = the `display` type-scale token (design-system/
+              MASTER.md §3) — reserved for one-off brand moments like this
+              wordmark. font-bold (not font-extrabold): DM Sans only has
+              400/500/600/700 weights loaded, so 700 is as heavy as it gets. */}
+          <Text className="text-[40px] font-bold tracking-tight text-gray-900 mb-1.5 text-center">
+            proximity
+          </Text>
+          <Text className="text-base text-gray-500 text-center mb-9">
+            Find your perfect place near campus.
+          </Text>
 
-          <View style={styles.form}>
-            <TextInput
-              style={styles.input}
+          <View className="gap-3">
+            <TextField
               placeholder="Email"
-              placeholderTextColor="#9ca3af"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -94,79 +92,67 @@ export default function LoginScreen() {
               autoCorrect={false}
               editable={!isLoading}
             />
-            <TextInput
-              style={styles.input}
+            <TextField
               placeholder="Password"
-              placeholderTextColor="#9ca3af"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               editable={!isLoading}
             />
 
-            <Link href="/(auth)/forgot-password" style={styles.forgotLink}>
-              <Text style={styles.forgotLinkText}>Forgot password?</Text>
+            <Link href="/(auth)/forgot-password" className="self-end">
+              <Text className="text-gray-500 text-[13px]">Forgot password?</Text>
             </Link>
 
             {needsVerification && (
-              <View style={styles.verificationBox}>
-                <Text style={styles.verificationTitle}>Email not verified</Text>
-                <Text style={styles.verificationText}>
+              <View className="bg-amber-100 border border-amber-400 rounded-xl p-4 gap-2">
+                <Text className="text-sm font-semibold text-amber-800">Email not verified</Text>
+                <Text className="text-[13px] text-amber-900 leading-[18px]">
                   Check your inbox for a verification link. Can't find it?
                 </Text>
                 {resendSuccess ? (
-                  <Text style={styles.successText}>
-                    ✓ Verification email sent! Check your inbox.
-                  </Text>
+                  <View className="flex-row items-center gap-1 mt-1">
+                    <Check size={13} color={colors.success} strokeWidth={2.5} />
+                    <Text className="text-[13px] font-medium text-green-700">
+                      Verification email sent! Check your inbox.
+                    </Text>
+                  </View>
                 ) : (
-                  <TouchableOpacity
-                    style={[styles.resendButton, resending && styles.buttonDisabled]}
+                  <Pressable
                     onPress={handleResendVerification}
                     disabled={resending}
+                    className="self-start mt-1 bg-white border border-amber-400 rounded-lg px-3 py-2"
                   >
                     {resending ? (
-                      <ActivityIndicator size="small" color="#ef4444" />
+                      <ActivityIndicator size="small" color={colors.error} />
                     ) : (
-                      <Text style={styles.resendButtonText}>Resend verification email</Text>
+                      <Text className="text-[13px] font-semibold text-amber-800">Resend verification email</Text>
                     )}
-                  </TouchableOpacity>
+                  </Pressable>
                 )}
               </View>
             )}
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? <Text className="text-red-500 text-[13px] text-center">{error}</Text> : null}
 
-            <TouchableOpacity
-              style={[styles.button, styles.buttonPrimary, isLoading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonPrimaryText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
+            <Button onPress={handleLogin} loading={isLoading}>
+              Sign In
+            </Button>
 
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.dividerLine} />
+            <View className="flex-row items-center my-1">
+              <View className="flex-1 h-px bg-gray-200" />
+              <Text className="mx-3 text-gray-400 text-[13px]">or</Text>
+              <View className="flex-1 h-px bg-gray-200" />
             </View>
 
-            <TouchableOpacity
-              style={[styles.button, styles.buttonSecondary, isLoading && styles.buttonDisabled]}
-              onPress={handleGoogleSignIn}
-              disabled={isLoading}
-            >
-              <Text style={styles.buttonSecondaryText}>Continue with Google</Text>
-            </TouchableOpacity>
+            <Button variant="secondary" onPress={handleGoogleSignIn} loading={isLoading}>
+              Continue with Google
+            </Button>
           </View>
 
-          <Link href="/(auth)/signup" style={styles.footerLink}>
-            <Text style={styles.footerText}>
-              Don&apos;t have an account?{" "}
-              <Text style={styles.footerLinkText}>Sign up</Text>
+          <Link href="/(auth)/signup" className="mt-7 self-center">
+            <Text className="text-gray-500 text-sm">
+              Don&apos;t have an account? <Text className="text-gray-900 font-semibold">Sign up</Text>
             </Text>
           </Link>
         </View>
@@ -174,151 +160,3 @@ export default function LoginScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  flex: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 28,
-    paddingBottom: 32,
-  },
-  wordmark: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: "#111827",
-    letterSpacing: -1,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  tagline: {
-    fontSize: 15,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 36,
-  },
-  form: {
-    gap: 12,
-  },
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    color: "#111827",
-    backgroundColor: "#f9fafb",
-  },
-  button: {
-    height: 50,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonPrimary: {
-    backgroundColor: "#111827",
-  },
-  buttonPrimaryText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  buttonSecondary: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  buttonSecondaryText: {
-    color: "#111827",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 4,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#e5e7eb",
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    color: "#9ca3af",
-    fontSize: 13,
-  },
-  forgotLink: {
-    alignSelf: "flex-end",
-  },
-  forgotLinkText: {
-    color: "#6b7280",
-    fontSize: 13,
-  },
-  error: {
-    color: "#ef4444",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  verificationBox: {
-    backgroundColor: "#fef3c7",
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  verificationTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#92400e",
-  },
-  verificationText: {
-    fontSize: 13,
-    color: "#78350f",
-    lineHeight: 18,
-  },
-  resendButton: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-  },
-  resendButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#92400e",
-  },
-  successText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#15803d",
-    marginTop: 4,
-  },
-  footerLink: {
-    marginTop: 28,
-  },
-  footerText: {
-    textAlign: "center",
-    color: "#6b7280",
-    fontSize: 14,
-  },
-  footerLinkText: {
-    color: "#111827",
-    fontWeight: "600",
-  },
-});

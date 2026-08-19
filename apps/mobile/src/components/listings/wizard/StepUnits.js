@@ -4,10 +4,12 @@
 // Mirrors apps/web/src/components/listings/wizard/StepUnits.js.
 import { useState } from "react";
 import { Pressable, Switch, Text, TextInput, View } from "react-native";
+import { X } from "lucide-react-native";
 import { LEASE_TERM_PRESETS } from "@proximity/shared";
 import { Card } from "../../ui/Card";
 import { TextField } from "../../ui/TextField";
-import { Chip, Stepper, StepFrame } from "./wizardShared";
+import { Chip } from "../../ui/Chip";
+import { Stepper, StepFrame } from "./wizardShared";
 
 export default function StepUnits({ w }) {
   const [customTerm, setCustomTerm] = useState({});
@@ -31,7 +33,7 @@ export default function StepUnits({ w }) {
               <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">Unit {i + 1}</Text>
               {w.units.length > 1 ? (
                 <Pressable onPress={() => w.removeUnit(i)} hitSlop={8}>
-                  <Text className="text-gray-300 text-lg leading-none">×</Text>
+                  <X size={16} color="#d1d5db" strokeWidth={2} />
                 </Pressable>
               ) : null}
             </View>
@@ -80,8 +82,13 @@ export default function StepUnits({ w }) {
                 {(unit.leaseTermMonths || [])
                   .filter((m) => !LEASE_TERM_PRESETS.some((p) => p.months === m))
                   .map((m) => (
-                    <Chip key={m} on onPress={() => w.toggleUnitTerm(i, m)}>
-                      {m}-Month ×
+                    <Chip
+                      key={m}
+                      on
+                      onPress={() => w.toggleUnitTerm(i, m)}
+                      onRemove={() => w.toggleUnitTerm(i, m)}
+                    >
+                      {m}-Month
                     </Chip>
                   ))}
               </View>

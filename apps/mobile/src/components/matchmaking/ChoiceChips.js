@@ -2,7 +2,9 @@
 // "month_select", and "tradeoff" — tapping a chip submits immediately (no
 // separate send button), matching apps/web/src/components/matchmaking/AnswerControls.js.
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { TextInput, View } from "react-native";
+import { Chip } from "../ui/Chip";
+import { SendButton } from "../ui/SendButton";
 
 export function ChoiceChips({ options, allowOther, unsureLabel, onPick, onUnsure }) {
   const [otherMode, setOtherMode] = useState(false);
@@ -19,36 +21,30 @@ export function ChoiceChips({ options, allowOther, unsureLabel, onPick, onUnsure
           onSubmitEditing={() => text.trim() && onPick(text.trim())}
           className="flex-1 text-sm bg-white border border-gray-200 rounded-lg px-3 py-2"
         />
-        <Pressable onPress={() => setOtherMode(false)} className="px-3 py-2 rounded-full bg-gray-100">
-          <Text className="text-xs font-medium text-gray-500">Back</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => text.trim() && onPick(text.trim())}
-          disabled={!text.trim()}
-          className={`w-9 h-9 rounded-full items-center justify-center ${text.trim() ? "bg-red-600" : "bg-red-200"}`}
-        >
-          <Text className="text-white font-bold">→</Text>
-        </Pressable>
+        <Chip tone="muted" onPress={() => setOtherMode(false)}>
+          Back
+        </Chip>
+        <SendButton onPress={() => text.trim() && onPick(text.trim())} disabled={!text.trim()} />
       </View>
     );
   }
 
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View className="flex-row flex-wrap">
       {options.map((opt) => (
-        <Pressable key={opt} onPress={() => onPick(opt)} className="px-3 py-1.5 rounded-full bg-white border border-red-300">
-          <Text className="text-red-700 text-sm font-medium">{opt}</Text>
-        </Pressable>
+        <Chip key={opt} tone="unselected" onPress={() => onPick(opt)}>
+          {opt}
+        </Chip>
       ))}
       {allowOther && (
-        <Pressable onPress={() => setOtherMode(true)} className="px-3 py-1.5 rounded-full bg-white border border-red-300">
-          <Text className="text-red-700 text-sm font-medium">Something else…</Text>
-        </Pressable>
+        <Chip tone="unselected" onPress={() => setOtherMode(true)}>
+          Something else…
+        </Chip>
       )}
       {onUnsure && (
-        <Pressable onPress={onUnsure} className="px-3 py-1.5 rounded-full bg-gray-100 border border-gray-300">
-          <Text className="text-gray-500 text-sm font-medium">{unsureLabel ?? "No Preference"}</Text>
-        </Pressable>
+        <Chip tone="muted" onPress={onUnsure}>
+          {unsureLabel ?? "No Preference"}
+        </Chip>
       )}
     </View>
   );

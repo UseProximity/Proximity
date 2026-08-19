@@ -3,6 +3,8 @@
 // "contact" (allowOther=false) offers only the given options plus an escape.
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
+import { Chip } from "../ui/Chip";
+import { SendButton } from "../ui/SendButton";
 
 export function MultiChoiceChips({ options, allowOther, escapeLabel, onSend, onEscape }) {
   const [selected, setSelected] = useState([]);
@@ -28,33 +30,26 @@ export function MultiChoiceChips({ options, allowOther, escapeLabel, onSend, onE
 
   return (
     <View className="gap-2">
-      <View className="flex-row flex-wrap items-center gap-2">
-        {options.map((opt) => {
-          const on = selected.includes(opt);
-          return (
-            <Pressable
-              key={opt}
-              onPress={() => toggle(opt)}
-              className={`px-3 py-1.5 rounded-full border ${on ? "bg-red-600 border-red-600" : "bg-white border-red-300"}`}
-            >
-              <Text className={`text-sm font-medium ${on ? "text-white" : "text-red-700"}`}>{opt}</Text>
-            </Pressable>
-          );
-        })}
+      <View className="flex-row flex-wrap items-center">
+        {options.map((opt) => (
+          <Chip key={opt} on={selected.includes(opt)} onPress={() => toggle(opt)}>
+            {opt}
+          </Chip>
+        ))}
         {customSelected.map((opt) => (
-          <Pressable key={opt} onPress={() => toggle(opt)} className="px-3 py-1.5 rounded-full bg-red-600 border border-red-600">
-            <Text className="text-white text-sm font-medium">{opt} ✕</Text>
-          </Pressable>
+          <Chip key={opt} tone="selected" onPress={() => toggle(opt)} onRemove={() => toggle(opt)}>
+            {opt}
+          </Chip>
         ))}
         {allowOther && (
-          <Pressable onPress={() => setOtherMode((v) => !v)} className="px-3 py-1.5 rounded-full bg-white border border-red-300">
-            <Text className="text-red-700 text-sm font-medium">Other…</Text>
-          </Pressable>
+          <Chip tone="unselected" onPress={() => setOtherMode((v) => !v)}>
+            Other…
+          </Chip>
         )}
         {escapeLabel && (
-          <Pressable onPress={onEscape} className="px-3 py-1.5 rounded-full bg-gray-100 border border-gray-300">
-            <Text className="text-gray-500 text-sm font-medium">{escapeLabel}</Text>
-          </Pressable>
+          <Chip tone="muted" onPress={onEscape}>
+            {escapeLabel}
+          </Chip>
         )}
       </View>
 
@@ -74,13 +69,7 @@ export function MultiChoiceChips({ options, allowOther, escapeLabel, onSend, onE
         </View>
       )}
 
-      <Pressable
-        onPress={send}
-        disabled={!canSend}
-        className={`self-end w-9 h-9 rounded-full items-center justify-center ${canSend ? "bg-red-600" : "bg-red-200"}`}
-      >
-        <Text className="text-white font-bold">→</Text>
-      </Pressable>
+      <SendButton onPress={send} disabled={!canSend} className="self-end" />
     </View>
   );
 }

@@ -4,12 +4,13 @@
 // above the map in the Detail screen's own layout.
 import { View } from "react-native";
 import Mapbox from "../../lib/mapbox";
+import { colors } from "../../theme/tokens";
 
 export function ListingDetailMap({ latitude, longitude }) {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
   return (
-    <View className="h-48 rounded-xl overflow-hidden border border-gray-100">
+    <View className="h-48 rounded-2xl overflow-hidden border border-gray-100">
       <Mapbox.MapView
         style={{ flex: 1 }}
         styleURL="mapbox://styles/mapbox/streets-v11"
@@ -22,9 +23,9 @@ export function ListingDetailMap({ latitude, longitude }) {
               width: 16,
               height: 16,
               borderRadius: 999,
-              backgroundColor: "#dc2626",
+              backgroundColor: colors.primary,
               borderWidth: 2,
-              borderColor: "#ffffff",
+              borderColor: colors.white,
             }}
           />
         </Mapbox.MarkerView>

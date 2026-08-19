@@ -12,11 +12,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Check, GraduationCap, Home } from "lucide-react-native";
 import apiClient from "../lib/apiClient";
+import { colors } from "../theme/tokens";
 
 const ROLES = [
-  { value: "student", label: "Student", emoji: "🎓" },
-  { value: "landlord", label: "Landlord", emoji: "🏠" },
+  { value: "student", label: "Student", icon: GraduationCap },
+  { value: "landlord", label: "Landlord", icon: Home },
 ];
 
 export function ProfileCompletionModal({ user, onComplete }) {
@@ -126,11 +128,11 @@ export function ProfileCompletionModal({ user, onComplete }) {
                       disabled={saving}
                       className={`flex-row items-center gap-3 p-4 border-2 rounded-xl ${
                         role === r.value
-                          ? "border-gray-900 bg-gray-50"
+                          ? "border-red-600 bg-red-50"
                           : "border-gray-200 bg-white"
                       }`}
                     >
-                      <Text className="text-2xl">{r.emoji}</Text>
+                      <r.icon size={24} color={role === r.value ? colors.primary : colors.textSecondary} strokeWidth={2} />
                       <View className="flex-1">
                         <Text
                           className={`text-base font-semibold ${
@@ -141,8 +143,8 @@ export function ProfileCompletionModal({ user, onComplete }) {
                         </Text>
                       </View>
                       {role === r.value && (
-                        <View className="w-6 h-6 rounded-full bg-gray-900 items-center justify-center">
-                          <Text className="text-white text-xs font-bold">✓</Text>
+                        <View className="w-6 h-6 rounded-full bg-red-600 items-center justify-center">
+                          <Check size={14} color="#ffffff" strokeWidth={3} />
                         </View>
                       )}
                     </Pressable>
@@ -184,7 +186,7 @@ export function ProfileCompletionModal({ user, onComplete }) {
               onPress={handleContinue}
               disabled={saving}
               className={`h-14 rounded-xl items-center justify-center ${
-                saving ? "bg-gray-300" : "bg-gray-900"
+                saving ? "bg-gray-300" : "bg-red-600"
               }`}
             >
               {saving ? (

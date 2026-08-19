@@ -11,7 +11,9 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ChevronLeft } from "lucide-react-native";
 import { emptyUnit } from "@proximity/shared";
+import { colors } from "../../../src/theme/tokens";
 import { useAuth } from "../../../src/hooks/useAuth";
 import apiClient from "../../../src/lib/apiClient";
 import { pickImages, compressImage, uploadImages } from "../../../src/lib/imageUpload";
@@ -315,8 +317,9 @@ export default function AddListingScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
-        <Pressable onPress={back} hitSlop={12}>
-          <Text className="text-red-600 text-base">← Back</Text>
+        <Pressable onPress={back} hitSlop={12} className="flex-row items-center">
+          <ChevronLeft size={18} color={colors.primary} strokeWidth={2.5} />
+          <Text className="text-red-600 text-base">Back</Text>
         </Pressable>
         <Text className="text-base font-semibold text-gray-900">Add Listing</Text>
         <View className="w-12" />
@@ -330,6 +333,9 @@ export default function AddListingScreen() {
           {STEPS.map((s, i) => {
             const done = stepComplete(s.id) || i < stepIndex;
             const reachable = i <= stepIndex || done;
+            // red-300 for "completed" (not `primarySoft`/red-50 — too pale
+            // to read as a filled progress segment against a white
+            // background) — design-system/pages/add-listing.md.
             return (
               <Pressable
                 key={s.id}
@@ -354,8 +360,9 @@ export default function AddListingScreen() {
 
       {stepId !== "review" ? (
         <View className="flex-row items-center justify-between border-t border-gray-100 px-4 py-3">
-          <Pressable onPress={back} hitSlop={12}>
-            <Text className="text-sm font-medium text-gray-500">← Back</Text>
+          <Pressable onPress={back} hitSlop={12} className="flex-row items-center">
+            <ChevronLeft size={16} color={colors.textSecondary} strokeWidth={2.5} />
+            <Text className="text-sm font-medium text-gray-500">Back</Text>
           </Pressable>
           <Button onPress={next}>Next</Button>
         </View>

@@ -1,6 +1,8 @@
 import { View, Text, Image } from "react-native";
+import { ThumbsDown, ThumbsUp } from "lucide-react-native";
 import { formatDate } from "@proximity/shared";
 import { StarRating } from "../ui/StarRating";
+import { colors } from "../../theme/tokens";
 
 // Read-only port of the review card in apps/web/src/components/listings/
 // ListingModalInfo.js's ReviewsTab. Voting and submitting reviews both
@@ -40,8 +42,14 @@ export function ReviewCard({ review, ownerName }) {
       )}
 
       <View className="flex-row items-center gap-4 mt-2">
-        <Text className="text-xs text-gray-400">👍 {review.upvotes ?? 0}</Text>
-        <Text className="text-xs text-gray-400">👎 {review.downvotes ?? 0}</Text>
+        <View className="flex-row items-center gap-1">
+          <ThumbsUp size={13} color={colors.textMuted} strokeWidth={2} />
+          <Text className="text-xs text-gray-400">{review.upvotes ?? 0}</Text>
+        </View>
+        <View className="flex-row items-center gap-1">
+          <ThumbsDown size={13} color={colors.textMuted} strokeWidth={2} />
+          <Text className="text-xs text-gray-400">{review.downvotes ?? 0}</Text>
+        </View>
       </View>
     </View>
   );
