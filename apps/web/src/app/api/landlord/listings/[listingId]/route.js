@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { deleteAsUser } from "@/lib/supabaseWithUser";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
@@ -35,29 +35,29 @@ function boolRow(cols, selected) {
   return row;
 }
 
-async function requireOwnership(listingId) {
-  const session = await auth();
-  if (!session?.user?.id) return { err: "Unauthorized", status: 401 };
-  if (!["landlord", "super", "student"].includes(session.user.role)) {
+async function requireOwnership(req, listingId) {
+  const user = await getRequestUser(req);
+  if (!user?.id) return { err: "Unauthorized", status: 401 };
+  if (!["landlord", "super", "student"].includes(user.role)) {
     return { err: "Forbidden", status: 403 };
   }
-  if (session.user.role === "super") return { session };
+  if (user.role === "super") return { user };
 
   const { data: own } = await supabase
     .from("listing_landlords")
     .select("listing_id")
     .eq("listing_id", listingId)
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!own) return { err: "Forbidden", status: 403 };
-  return { session };
+  return { user };
 }
 
 // PATCH /api/landlord/listings/[listingId] — full update + replace units
 export async function PATCH(req, { params }) {
   const { listingId } = await params;
-  const check = await requireOwnership(listingId);
+  const check = await requireOwnership(req, listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
   const body = await req.json();
@@ -132,7 +132,7 @@ export async function PATCH(req, { params }) {
 
   // All writes in one RPC transaction so fn_action_log captures the real user ID
   const { error: rpcError } = await supabase.rpc("rpc_edit_listing", {
-    p_user_id: check.session.user.id,
+    p_user_id: check.user.id,
     p_listing_id: listingId,
     p_listing_updates: Object.keys(safeUpdates).length > 0 ? safeUpdates : null,
     p_amenities: amenities !== undefined ? boolRow(AMENITY_COLS, amenities) : null,
@@ -159,13 +159,13 @@ export async function PATCH(req, { params }) {
 }
 
 // DELETE /api/landlord/listings/[listingId]
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   const { listingId } = await params;
-  const check = await requireOwnership(listingId);
+  const check = await requireOwnership(req, listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
   const { error } = await deleteAsUser(supabase, {
-    userId: check.session.user.id,
+    userId: check.user.id,
     table: "listings",
     rowId: listingId,
   });

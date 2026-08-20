@@ -3,6 +3,7 @@ import { createDormReviewsResource } from "./resources/dormReviews.js";
 import { createTestimonialsResource } from "./resources/testimonials.js";
 import { createContactLandlordResource } from "./resources/contactLandlord.js";
 import { createMatchmakingResource } from "./resources/matchmaking.js";
+import { createLandlordResource } from "./resources/landlord.js";
 import { AuthResource } from "./resources/auth.js";
 import { UserResource } from "./resources/user.js";
 import { FavoritesResource } from "./resources/favorites.js";
@@ -41,6 +42,7 @@ class ApiClient {
     this.testimonials = createTestimonialsResource(this);
     this.contactLandlord = createContactLandlordResource(this);
     this.matchmaking = createMatchmakingResource(this);
+    this.landlord = createLandlordResource(this);
     this.auth = new AuthResource(this);
     this.user = new UserResource(this);
     this.favorites = new FavoritesResource(this);

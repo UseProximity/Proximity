@@ -2,7 +2,8 @@
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
-import { ChevronRight, FileText, Home, LogOut, Lock, Pencil, ShieldCheck, Info, User } from "lucide-react-native";
+import { ChevronRight, FileText, LogOut, Lock, Pencil, ShieldCheck, Info, User } from "lucide-react-native";
+import { isLandlord } from "@proximity/auth-core";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import { colors } from "../../src/theme/tokens";
@@ -110,32 +111,30 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats */}
-        <Pressable
-          onPress={() => router.push("/(tabs)/saved")}
-          className="bg-white rounded-2xl border border-gray-200 p-4 mb-6"
-        >
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-2xl font-bold text-gray-900">{savedListings.length}</Text>
-              <Text className="text-sm text-gray-500 mt-0.5">Saved Listings</Text>
+        {/* Stats — Saved Listings is a student-facing concept; landlords have
+            their own My Listings tab instead, so this card (and its link to
+            the Saved tab) is hidden for them rather than pointing at a tab
+            that's no longer in their tab bar. */}
+        {!isLandlord(user.role) && (
+          <Pressable
+            onPress={() => router.push("/(tabs)/saved")}
+            className="bg-white rounded-2xl border border-gray-200 p-4 mb-6"
+          >
+            <View className="flex-row items-center justify-between">
+              <View>
+                <Text className="text-2xl font-bold text-gray-900">{savedListings.length}</Text>
+                <Text className="text-sm text-gray-500 mt-0.5">Saved Listings</Text>
+              </View>
+              <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
             </View>
-            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-          </View>
-        </Pressable>
+          </Pressable>
+        )}
 
         {/* Account Section */}
         <ProfileSection title="Account">
           <MenuItem label="Edit Profile" icon={Pencil} onPress={() => router.push("/profile/edit")} />
           <MenuItem label="Change Password" icon={Lock} onPress={() => router.push("/profile/change-password")} showBorder={false} />
         </ProfileSection>
-
-        {/* Landlord Section */}
-        {(user.role === "landlord" || user.role === "super") && (
-          <ProfileSection title="Landlord">
-            <MenuItem label="Add Listing" icon={Home} onPress={() => router.push("/listings/add")} showBorder={false} />
-          </ProfileSection>
-        )}
 
         {/* About Section */}
         <ProfileSection title="About">
