@@ -76,6 +76,22 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
   const rating = Number(listing.rating);
   const hasRating = numReviews > 0 && Number.isFinite(rating) && rating > 0;
 
+  // Closes the bed/bath row on every card. It used to stack under the rent on
+  // full cards to make room for the landlord name beside the specs; with that
+  // name gone the row is free, so both variants read the same way again.
+  const ratingBadge = hasRating ? (
+    <span
+      className="flex items-center gap-0.5 text-xs whitespace-nowrap flex-shrink-0"
+      title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
+    >
+      <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
+      <span className="font-semibold text-gray-700 tabular-nums">
+        {rating.toFixed(1)}
+      </span>
+      <span className="text-gray-400 tabular-nums">({numReviews})</span>
+    </span>
+  ) : null;
+
   return (
     <div
       className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
@@ -185,18 +201,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
-          {hasRating && (
-            <span
-              className="flex items-center gap-0.5 text-xs flex-shrink-0"
-              title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
-            >
-              <Star className="h-3 w-3 fill-red-400 text-red-400 flex-shrink-0" />
-              <span className="font-semibold text-gray-700 tabular-nums">
-                {rating.toFixed(1)}
-              </span>
-              <span className="text-gray-400 tabular-nums">({numReviews})</span>
-            </span>
-          )}
+          {ratingBadge}
         </div>
         {(() => {
           const pwm = listing.placeWalkMinutes;
