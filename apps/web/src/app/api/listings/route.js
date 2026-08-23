@@ -3,8 +3,9 @@
  * Changes from previous version:
  *   - Removed FK hint `!` syntax from all select() calls; plain table names only
  *     (each pair of tables has at most one FK, so Supabase resolves without hints)
- *   - listing_units: unit_leases NOT nested here (browse page doesn't need per-unit rent;
- *     unitTypes[].rent is null — acceptable per spec)
+ *   - listing_units: unit_leases ARE nested here as of 2026-08-22 — browse filters
+ *     per unit/lease (see lib/listings/filterListings.js), so unitTypes[].leases
+ *     carries every live offering in the same shape the detail fetch produces
  *   - listing_amenities / listing_utilities: PK is listing_id → Supabase returns single object,
  *     not array; amenitiesRowToArray / utilitiesRowToArray handle the object shape
  *   - listing_walk_times(minutes, locations(name)): shuttle_nearest handled separately
@@ -19,6 +20,7 @@
  */
 
 import supabase from "@/lib/supabase";
+import { shapeLeases } from "@/lib/listings/getListing";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -108,19 +110,30 @@ export function buildListing(row, owner = null) {
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      /*
+       * Same shape as the detail fetch (shapeLeases), so browse filtering and
+       * the panel agree on what a unit is offering. They used to disagree: this
+       * feed took the first is_active lease while the panel required
+       * is_active && !unavailable, and 79 leases sit in that gap — enough for a
+       * card to advertise a price the panel then refused to list.
+       */
+      const leases = shapeLeases(u.unit_leases, row);
       const nextAvailable =
-        (u.unit_leases ?? [])
-          .filter((l) => l.available_from)
-          .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
-          ?.available_from ?? null;
+        leases
+          .filter((l) => l.availableFrom)
+          .sort((a, b) => new Date(a.availableFrom) - new Date(b.availableFrom))[0]
+          ?.availableFrom ?? null;
       return {
-        rent: activeRent != null ? Number(activeRent) : null,
+        id: u.id,
+        // Cheapest live offering — the number the card shows. shapeLeases sorts
+        // cheapest-first with unpriced sunk, so this is just the head of the list.
+        rent: leases.find((l) => l.rent != null)?.rent ?? null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         available: u.available ?? true,
         availableFrom: nextAvailable,
+        leases,
       };
     }),
     leaseType: (() => {
@@ -241,7 +254,10 @@ export async function fetchListings() {
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease, available_from)),
+      listing_units(id, bedrooms, bathrooms, area, available,
+        unit_leases(id, rent, is_active, unavailable, sublease,
+                    available_from, lease_term_months, furnished,
+                    contact_name, contact_email, contact_phone)),
       listing_landlords(user_id, is_primary),
       listing_amenities(
         air_conditioning, dishwasher, gym, laundry, mailroom, microwave,

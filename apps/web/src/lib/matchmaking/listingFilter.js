@@ -187,10 +187,13 @@ const FilterResponseSchema = z.object({
 // Flatten the units model into a lease-like list: one entry per active priced
 // unit lease, carrying the unit's physical dimensions (bedrooms/bathrooms/area)
 // onto each lease so the rest of the ranking logic stays unit-agnostic.
+//
+// `unavailable` is excluded alongside `is_active`: a lease the owner withdrew is
+// not something a student can take, and browse/detail have always dropped those.
 function activeLeasesOf(listing) {
   return (listing.listing_units ?? []).flatMap((u) =>
     (u.unit_leases ?? [])
-      .filter((l) => l.is_active && l.rent > 0)
+      .filter((l) => l.is_active && !l.unavailable && l.rent > 0)
       .map((l) => ({
         rent: Number(l.rent),
         bedrooms: u.bedrooms,
@@ -201,6 +204,59 @@ function activeLeasesOf(listing) {
         lease_term_months: l.lease_term_months,
       }))
   );
+}
+
+/*
+ * ——— Coherent unit offers ————————————————————————————————————————————————
+ *
+ * One OFFER = one unit paired with one live offering on it. Everything a
+ * student asks about is a property of a specific offer — the bedroom count
+ * belongs to the unit, the price/term/furnishing belong to the lease — so the
+ * only honest way to answer "3 bedrooms under $900 each" is to find a single
+ * offer that satisfies both.
+ *
+ * Judging those separately is the bug this replaces: the ranker took the max
+ * bedroom count over the whole listing and the min per-person rent over the
+ * whole listing and treated the pair as one place. A building with a 1-bed at
+ * $800 and a 4-bed at $2,000/person therefore read as "4 bedrooms, $800 each",
+ * and was recommended — and quoted — to groups who could never rent it. The
+ * browse filters were fixed the same way; see lib/listings/filterListings.js.
+ *
+ * A unit with no live offering still yields ONE unpriced offer, because the
+ * ranker deliberately keeps listings that have room data but no published
+ * price and shows them with the price unknown.
+ */
+function unitOffers(listing) {
+  const roomShare = isRoomShareListing(listing);
+  const units = listing.listing_units ?? [];
+  // Fall back to every unit only when the listing marks none available, matching
+  // browse: a fully-let building still shows its own room shapes.
+  const open = units.filter((u) => u.available !== false);
+  const pool = open.length ? open : units;
+
+  return pool.flatMap((u) => {
+    const beds = Number(u.bedrooms) || 0;
+    const base = { unitId: u.id ?? null, beds, bathrooms: u.bathrooms, area: u.area };
+    const live = (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable);
+    if (!live.length) {
+      return [{ ...base, leaseId: null, perPerson: null, unitRent: null, basis: null,
+                sublease: false, termMonths: [], furnished: null, priced: false }];
+    }
+    return live.map((l) => {
+      const money = leaseRentBasis({ rent: l.rent, bedrooms: beds }, roomShare);
+      return {
+        ...base,
+        leaseId: l.id ?? null,
+        perPerson: money?.perPerson ?? null,
+        unitRent: money?.unitRent ?? null,
+        basis: money?.basis ?? null,
+        sublease: !!l.sublease,
+        termMonths: (l.lease_term_months ?? []).map(Number).filter(Number.isFinite),
+        furnished: l.furnished ?? null,
+        priced: money != null,
+      };
+    });
+  });
 }
 
 // Whether a listing IS a sublease: it has active leases and every one of them is
@@ -221,10 +277,23 @@ export function isSubleaseListing(listing) {
 function stripSubleaseLeases(listing) {
   return {
     ...listing,
-    listing_units: (listing.listing_units ?? []).map((u) => ({
-      ...u,
-      unit_leases: (u.unit_leases ?? []).filter((l) => !l.sublease),
-    })),
+    listing_units: (listing.listing_units ?? [])
+      .map((u) => ({
+        ...u,
+        unit_leases: (u.unit_leases ?? []).filter((l) => !l.sublease),
+      }))
+      /*
+       * Drop a unit whose offerings were ALL subleases. It isn't an unpriced
+       * room the student might still ask about — it is a room with nothing on
+       * offer that they'd accept, and leaving it in makes the listing look like
+       * it has a 3-bed available when only a sublease of one ever existed.
+       * A unit that never carried any lease is untouched: that really is just
+       * room data with no published price.
+       */
+      .filter((u, i) => {
+        const had = (listing.listing_units?.[i]?.unit_leases ?? []).some((l) => l.is_active && !l.unavailable);
+        return !had || u.unit_leases.some((l) => l.is_active && !l.unavailable);
+      }),
   };
 }
 
@@ -486,6 +555,67 @@ function bedMetrics(listing) {
   return { perPerson, maxBeds };
 }
 
+/*
+ * Which of the student's RELAXABLE constraints one offer fails. Same constraint
+ * set as relaxFailures() below, but asked of a single unit+lease pair, so price,
+ * term and furnishing are all read off the offering the student would actually
+ * sign — and the bedroom count off the unit that offering is on.
+ *
+ * Unknowns never fail: an unpriced offer can't be over budget, a lease with no
+ * term data can't contradict a term, and a null `furnished` asserts nothing.
+ * That mirrors the listing-level rules this replaces.
+ */
+function offerFailures(offer, { budgetMax, leaseTests, furnishedPref }) {
+  const fails = [];
+  if (offer.perPerson != null && budgetMax !== Infinity && offer.perPerson > budgetMax) {
+    fails.push({
+      constraint: "budget",
+      detail: `runs about $${Math.round(offer.perPerson - budgetMax)}/person over your $${Math.round(budgetMax)} budget`,
+    });
+  }
+  if (leaseTests.length && offer.termMonths.length &&
+      !offer.termMonths.some((m) => leaseTests.some((t) => t(m)))) {
+    fails.push({ constraint: "lease_term", detail: "doesn't offer a lease length matching your term" });
+  }
+  if (furnishedPref != null && offer.furnished != null && offer.furnished !== furnishedPref) {
+    fails.push({
+      constraint: "furnished",
+      detail: furnishedPref ? "isn't furnished" : "comes furnished, and you wanted unfurnished",
+    });
+  }
+  return fails;
+}
+
+/*
+ * The offer a student would actually be shown at this listing: among the units
+ * that can house their group, the one whose offering breaks the fewest of their
+ * stated constraints, cheapest first.
+ *
+ * Fewest-failures rather than strictly-passing because the shadow pool depends on
+ * knowing which SINGLE constraint a listing misses — a place whose only problem
+ * is being $40 over budget is still worth offering as a "if you'd stretch"
+ * option, and that judgement has to be made about one real unit.
+ *
+ * Returns null when no unit fits the group at all; group splits (5+) are handled
+ * by groupFit and keep their listing-level treatment.
+ */
+function bestOffer(listing, range, inputs) {
+  const fitting = unitOffers(listing).filter(
+    (o) => !range || bedsInGroupRange(o.beds, range)
+  );
+  if (!fitting.length) return null;
+  return fitting
+    .map((o) => ({ ...o, fails: offerFailures(o, inputs) }))
+    .reduce((best, o) => {
+      if (o.fails.length !== best.fails.length) return o.fails.length < best.fails.length ? o : best;
+      // Cheapest among equally-compliant offers; an unpriced one never displaces
+      // a real number.
+      if (o.perPerson == null) return best;
+      if (best.perPerson == null) return o;
+      return o.perPerson < best.perPerson ? o : best;
+    });
+}
+
 // How (and whether) a listing houses the requested group:
 //   { fits: true,  split: null }            one unit sleeps everyone
 //   { fits: true,  split: { count, beds } } a FLUSH multi-unit combo (5+ only)
@@ -644,11 +774,25 @@ export function extractCardData(listing) {
 
 // Slim, per-person-normalized projection sent to the ranking model. Forces it
 // to reason on the right (per-person) number and to see home_type explicitly.
-export function slimCandidate(listing) {
+export function slimCandidate(listing, offer = null) {
   const leases = activeLeasesOf(listing);
   const breakdown = rentBreakdown(listing);
-  const pp = breakdown?.perPerson ?? null;
-  const pricedBeds = Math.max(0, ...leases.map((l) => Number(l.bedrooms) || 0));
+  /*
+   * When the eligibility pass resolved a specific unit+lease for this student,
+   * report THAT — the model's whole job is to pick between real options, and it
+   * used to receive the building's largest bedroom count next to its cheapest
+   * price anywhere. It has no way to detect that those describe different units,
+   * so it quoted the combination as if it were one apartment.
+   */
+  const pp = offer ? offer.perPerson : breakdown?.perPerson ?? null;
+  const unitRent = offer ? offer.unitRent : breakdown?.unitRent ?? null;
+  const basis = offer ? offer.basis : breakdown?.basis ?? null;
+  const pricedBeds = offer
+    ? offer.beds
+    : Math.max(0, ...leases.map((l) => Number(l.bedrooms) || 0));
+  const termMonths = offer
+    ? offer.termMonths
+    : leases.flatMap((l) => l.lease_term_months ?? []).map(Number).filter(Number.isFinite);
   return {
     listing_id: listing.id,
     title: displayTitle(listing),
@@ -659,15 +803,23 @@ export function slimCandidate(listing) {
     // What the whole unit costs, and whether the listing was posted per person or
     // per unit (see rentBreakdown). Lets the ranker say "$1,098 each, $3,294 for
     // the 3 bedroom" instead of quoting one number that could mean either.
-    unit_rent: breakdown ? Math.round(breakdown.unitRent) : null,
-    rent_basis: breakdown ? breakdown.basis : null,
-    bedrooms_max: pricedBeds > 0 ? pricedBeds : unitMaxBeds(listing),
-    // Each lease carries its own array of allowed term lengths; flatten across
-    // the listing's active leases into a unique, ascending list of months.
-    lease_term_months: [
-      ...new Set(leases.flatMap((l) => l.lease_term_months ?? []).map(Number).filter(Number.isFinite)),
-    ].sort((a, b) => a - b),
-    furnished: listing.furnished ?? null,
+    unit_rent: unitRent == null ? null : Math.round(unitRent),
+    rent_basis: basis,
+    /*
+     * The matched unit's bedroom count when one was resolved, else the biggest
+     * single unit in the building. A resolved offer is reported as-is INCLUDING
+     * zero: a studio really is 0 bedrooms, and falling through to the building's
+     * largest unit there would re-invent the very mismatch this fixes (a $725
+     * studio was being announced as a 1-bed, which rents for $795).
+     */
+    bedrooms_max: offer ? offer.beds : pricedBeds > 0 ? pricedBeds : unitMaxBeds(listing),
+    // Term lengths the matched offering accepts (all live offerings when no unit
+    // was resolved), unique and ascending.
+    lease_term_months: [...new Set(termMonths)].sort((a, b) => a - b),
+    // Furnishing is a property of the OFFERING — the same unit can be let
+    // furnished by one landlord and bare by another — so prefer the matched
+    // lease and fall back to the property-level flag only when it says nothing.
+    furnished: offer ? offer.furnished ?? listing.furnished ?? null : listing.furnished ?? null,
     // True when the place itself is offered as a sublease (someone's lease being
     // taken over). Distinct from sublease_friendly (= subletting allowed). Only
     // ever true when the student opted in to subleases — by default sublease
@@ -863,11 +1015,34 @@ function splitRelaxable(candidates, relaxInputs) {
   const strict = [];
   const shadow = [];
   for (const x of candidates) {
-    const fails = relaxFailures(x, relaxInputs);
+    /*
+     * Judge the OFFER the student would take, not the building. Its price, term
+     * and furnishing all belong to one real offering, so "misses exactly one
+     * thing" now names something they could actually sign — rather than mixing
+     * the cheap unit's rent with the big unit's bedroom count. Neighborhood is
+     * a property of the address, so it stays listing-level either way.
+     *
+     * Candidates with no offer are the 5+ flush-split case; they keep the
+     * listing-level evaluation.
+     */
+    const fails = x.offer
+      ? [...offerFailures(x.offer, relaxInputs), ...neighborhoodFailure(x, relaxInputs)]
+      : relaxFailures(x, relaxInputs);
     if (fails.length === 0) strict.push(x);
     else if (fails.length === 1) shadow.push({ ...x, relax: fails[0] });
   }
   return { strict, shadow };
+}
+
+// The one relaxable constraint that belongs to the address rather than to any
+// single offering. Unknown coordinates count as "not confirmed" — the disclosure
+// keeps it honest without hard-dropping a possibly-fine listing.
+function neighborhoodFailure(x, { areas, wantsHood }) {
+  if (!wantsHood || neighborhoodScore(x.listing, areas) > 0) return [];
+  return [{
+    constraint: "neighborhood",
+    detail: "sits outside the neighborhoods you named (or I can't confirm it's inside)",
+  }];
 }
 
 // Shared preference-derived inputs for relaxFailures.
@@ -889,7 +1064,8 @@ function relaxInputsOf(preferences) {
 // (strict pool, shadow pool, narrowing counts) starts from this set.
 function hardEligible(allListings, preferences) {
   const groupRange = parseGroupRange(preferences?.group_size);
-  const { leaseTests } = relaxInputsOf(preferences);
+  const relaxInputs = relaxInputsOf(preferences);
+  const { leaseTests } = relaxInputs;
   const excluded = new Set([
     ...(preferences?._excluded ?? []), // places the student turned down
     ...(preferences?._setAside ?? []), // places already shown (never repeat)
@@ -900,9 +1076,26 @@ function hardEligible(allListings, preferences) {
   let candidates = applySubleaseTermGate(applySubleasePref(allListings, preferences), leaseTests)
     .filter((listing) => !excluded.has(listing.id) && !isListingExcludedForViewer(listing, preferences))
     .map((listing) => {
+      /*
+       * Size the listing on the unit the student would actually take, not on the
+       * building's extremes. bedMetrics() paired the largest unit with the
+       * cheapest lease anywhere in the building, which cut both ways: it quoted
+       * a 3-bed at the 2-bed's price, and — far more often — hid a mixed
+       * building from anyone whose group was smaller than its biggest unit.
+       */
+      const offer = bestOffer(listing, groupRange, relaxInputs);
+      if (offer) {
+        return { listing, perPerson: offer.perPerson, maxBeds: offer.beds, offer };
+      }
+      /*
+       * No single unit fits the group. That is normal for 5+ groups, who are
+       * housed by a flush multi-unit combo instead — keep them sized on the
+       * building as a whole and let the group filter below decide. For everyone
+       * else the group filter drops them, as it always did.
+       */
       const { perPerson, maxBeds } = bedMetrics(listing);
       if (perPerson == null && maxBeds === 0) return null;
-      return { listing, perPerson, maxBeds };
+      return { listing, perPerson, maxBeds, offer: null };
     })
     .filter(Boolean);
 
@@ -917,7 +1110,12 @@ function hardEligible(allListings, preferences) {
   // request (an exact 0-bed range). A plain solo search ("1") is open-topped and
   // filters nothing, so a single student still sees every size.
   if (groupRange.min >= 2 || Number.isFinite(groupRange.max)) {
-    candidates = candidates.filter((x) => listingFitsGroup(x.listing, groupRange));
+    // bestOffer() already kept only units inside the range, so a candidate that
+    // got this far has a single unit that fits. The listing-level check remains
+    // for the 5+ flush-split path, where no one unit sleeps everyone.
+    candidates = candidates.filter(
+      (x) => x.offer != null || listingFitsGroup(x.listing, groupRange)
+    );
   }
   // Room-shares are a single bed in an occupied unit, so no GROUP can ever take
   // one. A solo student (including a studio search) may still see them.
@@ -1164,8 +1362,11 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
 
   const picked = [...strictPicked, ...shadowPicked];
   const pool = picked.map((x) => x.listing);
+  // The unit+lease each listing earned its place with, so every downstream
+  // number the model sees describes that one option rather than the building.
+  const offerById = Object.fromEntries(picked.map((x) => [x.listing.id, x.offer ?? null]));
   if (pool.length === 0) {
-    return { pool: [], dims: {}, fitById: {}, perPersonById: {}, relaxById: {}, oversizedById: {}, roomShareById: {}, backfilledById: {}, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
+    return { pool: [], dims: {}, fitById: {}, perPersonById: {}, offerById: {}, relaxById: {}, oversizedById: {}, roomShareById: {}, backfilledById: {}, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
   }
 
   // ROOM-SHARE tag (solo searches only — groups never see these, see
@@ -1195,8 +1396,12 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
     if (backfilledById[id]) fitById[id] = (fitById[id] ?? 0) * 0.8;
   }
   pool.sort((a, b) => (fitById[b.id] ?? 0) - (fitById[a.id] ?? 0));
-  const perPersonById = Object.fromEntries(pool.map((l) => [l.id, minPerPerson(l)]));
-  return { pool, dims, fitById, perPersonById, relaxById, oversizedById, roomShareById, backfilledById, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
+  // Price of the matched unit, not the cheapest anywhere in the building — this
+  // feeds the budget prose and the "cheaper than X" comparisons.
+  const perPersonById = Object.fromEntries(
+    pool.map((l) => [l.id, offerById[l.id]?.perPerson ?? minPerPerson(l)])
+  );
+  return { pool, dims, fitById, perPersonById, offerById, relaxById, oversizedById, roomShareById, backfilledById, budgetMax, groupNote, budgetNote, relaxNote, mgmtStatsById };
 }
 
 // Pick the deterministic TOP 3. Product rule (deliberately NOT "what's
@@ -1507,7 +1712,7 @@ export async function rankListings({
   const allListings = await fetchActiveListings();
 
   const ctx = buildRankContext(allListings, preferences, weights, limit);
-  const { pool, dims, fitById, perPersonById, budgetMax, groupNote, budgetNote, relaxNote = null, relaxById = {}, oversizedById = {}, roomShareById = {}, mgmtStatsById = {} } = ctx;
+  const { pool, dims, fitById, perPersonById, offerById = {}, budgetMax, groupNote, budgetNote, relaxNote = null, relaxById = {}, oversizedById = {}, roomShareById = {}, mgmtStatsById = {} } = ctx;
   if (pool.length === 0) {
     return { ranked: [], usage: null, groupNote, budgetNote, relaxNote };
   }
@@ -1560,7 +1765,7 @@ export async function rankListings({
       const mgmt = mgmtStatsById[l.id] ?? { count: 0, avg: null };
       const split = needsGroup ? splitFor(l, groupRange) : null;
       return {
-        ...slimCandidate(l),
+        ...slimCandidate(l, offerById[l.id]),
         // true = no single unit sleeps the whole group; they'd take several units
         // in the same building that add up to EXACTLY the headcount (only ever
         // true at 5+). The reason MUST say so plainly.

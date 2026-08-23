@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { isPropertyOwner } from "@/lib/listings/ownership";
 import { deleteAsUser } from "@/lib/supabaseWithUser";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 
@@ -43,15 +44,45 @@ async function requireOwnership(listingId) {
   }
   if (session.user.role === "super") return { session };
 
-  const { data: own } = await supabase
-    .from("listing_landlords")
-    .select("listing_id")
-    .eq("listing_id", listingId)
-    .eq("user_id", session.user.id)
-    .maybeSingle();
+  /*
+   * PROPERTY-level ownership only. PATCH below replaces every unit on the
+   * listing and DELETE removes it, so holding a lease at this address is
+   * deliberately not enough — a landlord who attached an offering to someone
+   * else's property must not be able to edit or delete it, or wipe the units
+   * another landlord's leases hang off. They manage their own offering through
+   * /api/leases/[leaseId] instead. See lib/listings/ownership.js.
+   */
+  if (await isPropertyOwner(session.user.id, listingId)) return { session };
 
-  if (!own) return { err: "Forbidden", status: 403 };
-  return { session };
+  // Distinguish "not yours at all" from "yours, but only the lease" so the
+  // caller can be pointed at the route that will actually work.
+  const { data: unitRows } = await supabase
+    .from("listing_units")
+    .select("id")
+    .eq("listing_id", listingId)
+    .is("deleted_at", null);
+
+  const unitIds = (unitRows ?? []).map((u) => u.id);
+  let hasLease = false;
+  if (unitIds.length) {
+    const { data: mine } = await supabase
+      .from("unit_leases")
+      .select("id")
+      .eq("owner_id", session.user.id)
+      .in("unit_id", unitIds)
+      .limit(1);
+    hasLease = !!mine?.length;
+  }
+
+  if (hasLease) {
+    return {
+      err:
+        "You have a lease at this property but don't own the property record, so you can't edit it. Edit your own lease instead.",
+      status: 403,
+    };
+  }
+
+  return { err: "Forbidden", status: 403 };
 }
 
 // PATCH /api/landlord/listings/[listingId] — full update + replace units

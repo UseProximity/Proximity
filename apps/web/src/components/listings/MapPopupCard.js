@@ -197,11 +197,6 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
               <span className="text-gray-400 tabular-nums">({numReviews})</span>
             </span>
           )}
-          {listing.owner?.name && !compact && (
-            <span className="text-gray-400 text-xs truncate max-w-[40%]">
-              {listing.owner.name}
-            </span>
-          )}
         </div>
         {(() => {
           const pwm = listing.placeWalkMinutes;

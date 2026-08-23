@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-14T01:08:24.492Z",
-  "count": 83,
+  "_generated": "2026-08-23T21:32:46.258Z",
+  "count": 85,
   "components": [
     {
       "name": "DormsView",
@@ -204,6 +204,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "LeaseOptions",
+      "file": "src/components/listings/LeaseOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ListDetailPanel",
       "file": "src/components/listings/ListDetailPanel.js",
       "description": "No description — run generate after adding a description above."
@@ -251,6 +256,11 @@
     {
       "name": "ModalListing",
       "file": "src/components/listings/ModalListing.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PropertyUnitPicker",
+      "file": "src/components/listings/PropertyUnitPicker.js",
       "description": "No description — run generate after adding a description above."
     },
     {

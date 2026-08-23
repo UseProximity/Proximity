@@ -204,7 +204,7 @@ export async function buildNarrowingTurn(session) {
     // frame the "would you go over budget for this?" question honestly).
     const shadowIds = new Set(shadow.map((e) => e.listing.id));
     const candidates = [...strict, ...shadow].slice(0, POOL_CAP).map((e) => ({
-      ...slimCandidate(e.listing),
+      ...slimCandidate(e.listing, e.offer),
       units_for_group: needsGroup ? splitFor(e.listing, range)?.count ?? 1 : null,
       // The one stated constraint this listing misses, or null when it fits all.
       relax_needed: e.relax?.detail ?? null,

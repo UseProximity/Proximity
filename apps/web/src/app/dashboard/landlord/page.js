@@ -5,6 +5,7 @@ import ListingFormPanel from "@/components/listings/ListingFormPanel";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
 import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
+import EditLeaseModal from "./_modals/EditLeaseModal";
 import ProfileSection from "./_sections/ProfileSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
@@ -38,6 +39,11 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
+    handleEditLease,
+    handleWithdrawLease,
+    leaseModal,
+    setLeaseModal,
+    fetchUser,
     handleListingModalSuccess,
     handleProfileUpdate,
     handleNavigation,
@@ -68,6 +74,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
             onAddListing={handleAddListing}
             onEditListing={handleEditListing}
             onDeleteListing={handleDeleteListing}
+            onEditLease={handleEditLease}
+            onWithdrawLease={handleWithdrawLease}
             onManageCoOwners={handleManageCoOwners}
           />
         );
@@ -109,6 +117,14 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           listing={coOwnersModal}
           currentUserId={user?.id}
           onClose={() => setCoOwnersModal(null)}
+        />
+      )}
+      {leaseModal && (
+        <EditLeaseModal
+          property={leaseModal.property}
+          lease={leaseModal.lease}
+          onClose={() => setLeaseModal(null)}
+          onSaved={fetchUser}
         />
       )}
       {profileUpdatePrompt && (

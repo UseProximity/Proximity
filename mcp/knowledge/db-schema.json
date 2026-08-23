@@ -475,7 +475,7 @@
       },
       {
         "table": "listing_images",
-        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover.",
+        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover. [2026-08-12: owner_id = whose photography this is; NULL = property-level (Street View/exterior) shown on every offering. Stops one landlords photos being inherited by someone who later attaches a lease.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -486,7 +486,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "source:text"
-        ]
+        , "owner_id:uuid"]
       },
       {
         "table": "listing_landlords",
@@ -619,7 +619,7 @@
       },
       {
         "table": "listing_units",
-        "description": "Physical units within a listing (beds/baths/area/availability). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2).",
+        "description": "Physical units within a listing (beds/baths/area/availability). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2). [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -632,7 +632,7 @@
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
           "available:boolean"
-        ]
+        , "unit_designator:text", "unit_number:text"]
       },
       {
         "table": "listing_custom_amenities",
@@ -675,7 +675,7 @@
       },
       {
         "table": "listings",
-        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent]",
+        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent] [2026-08-12: a listing row is the PROPERTY, shared across owners (address, coordinates, walk/drive times, reviews, building amenities). Owner-specific content moved down to unit_leases. property_key = normalized street-line|zip from normalize_property_key(address), trigger-maintained, used to detect that a listing already exists at this address. Index is NOT unique yet — duplicate properties must be merged first.]",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -720,7 +720,7 @@
           "pms_connection_id:uuid",
           "pms_stale_flagged_at:timestamptz",
           "availability_email_sent_at:timestamptz"
-        ]
+        , "property_key:text"]
       },
       {
         "table": "location_types",
@@ -912,7 +912,7 @@
       },
       {
         "table": "unit_leases",
-        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units.",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. GUARD trigger unit_leases_sublease_guard blocks a sublease on a unit with a live lease; the reverse is allowed, so standard/sublease are mutually exclusive per unit and a property tagged BOTH always means different units.]",
         "columns": [
           "id:uuid",
           "unit_id:uuid",
@@ -924,7 +924,7 @@
           "updated_at:timestamptz",
           "sublease:boolean",
           "lease_term_months:ARRAY"
-        ]
+        , "owner_id:uuid", "contact_name:text", "contact_email:text", "contact_phone:text", "description:text", "furnished:boolean", "unavailable:boolean"]
       },
       {
         "table": "user_listing_interactions",

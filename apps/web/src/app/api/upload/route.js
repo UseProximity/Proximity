@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
+import { hasStakeInListing } from "@/lib/listings/ownership";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
 import { isProdData } from "@/lib/appEnv";
 
@@ -84,13 +85,12 @@ export async function PATCH(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const { data: own } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    const isOwner = !!own;
+    /*
+     * Photos belong to the PLACE, not to the listing record, so a landlord
+     * letting a unit here may add them even though the building's record isn't
+     * theirs. Editing the property itself still requires isPropertyOwner.
+     */
+    const isOwner = await hasStakeInListing(session.user.id, listingId);
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -177,13 +177,12 @@ export async function POST(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const { data: own } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    const isOwner = !!own;
+    /*
+     * Photos belong to the PLACE, not to the listing record, so a landlord
+     * letting a unit here may add them even though the building's record isn't
+     * theirs. Editing the property itself still requires isPropertyOwner.
+     */
+    const isOwner = await hasStakeInListing(session.user.id, listingId);
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -238,13 +237,12 @@ export async function PUT(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const { data: own } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    const isOwner = !!own;
+    /*
+     * Photos belong to the PLACE, not to the listing record, so a landlord
+     * letting a unit here may add them even though the building's record isn't
+     * theirs. Editing the property itself still requires isPropertyOwner.
+     */
+    const isOwner = await hasStakeInListing(session.user.id, listingId);
     if (!isOwner && session.user.role !== "super") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }

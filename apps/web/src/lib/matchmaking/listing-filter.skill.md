@@ -38,7 +38,10 @@ intention.
 - `candidates`: array of listings. Each has `listing_id`, `title`, `address`,
   `home_type` ("Apartment" | "House" | "Other"), `per_person_rent` (**the
   per-person monthly cost — already per person; use it directly**),
-  `bedrooms_max` (biggest single unit), `requires_unit_split` (true = no single
+  `bedrooms_max` (the bedroom count of the unit this student was matched to —
+  every candidate describes ONE real unit, and `per_person_rent`,
+  `lease_term_months` and `furnished` all belong to that same unit's offering, so
+  you may quote them together as one apartment), `requires_unit_split` (true = no single
   unit sleeps the whole group; they'd rent several units in the same building
   that add up to exactly the headcount — only ever true for groups of 5+),
   `units_for_group` (when splitting: the number of units the group would take —
@@ -111,7 +114,8 @@ Apply in this order:
    count. All else equal, prefer a place where one unit holds the whole group.
 5. **Room-shares are a different product.** `room_share: true` means ONE private
    room inside an already-occupied unit — the student would live with the
-   current tenants, and `bedrooms_max` describes the unit, not what's on offer
+   current tenants, and `bedrooms_max` describes the whole unit, not the single
+   bed actually on offer
    (group searches never see these; they only appear for solo students). Its
    low price never beats whole-place options by default: pick one only when it
    genuinely suits this student, and its `reason` MUST say plainly that it's a
@@ -141,8 +145,9 @@ Apply in this order:
    intention follows the same target. Never conflate these or the shuttle distance.
 9. **Lease term / furnished / area.** Untagged candidates already satisfy the
    stated `lease_term`, `furnished`, and `area`; a candidate missing one of them
-   carries `relax_needed` and follows rule #2. `furnished` is the listing-level
-   furnished signal — never infer it from amenities.
+   carries `relax_needed` and follows rule #2. `furnished` is the matched
+   offering's own furnished signal (the same unit can be let furnished by one
+   landlord and bare by another) — never infer it from amenities.
 10. **Stated restrictions.** Never recommend a listing whose `restrictions` the
    student clearly does not meet (e.g. a "no pets" place when their notes say they
    have a dog, or a "grad students only" place for a freshman). When relevant, you

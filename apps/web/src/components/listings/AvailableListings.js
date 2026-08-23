@@ -153,6 +153,16 @@ export default function AvailableListings({
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
+    /*
+     * Which unit satisfied the active filters, so the panel opens on the one the
+     * renter actually asked for instead of the smallest-first default. Carried in
+     * the URL rather than in state because the panel is URL-driven: this way it
+     * survives a reload, back/forward, and the desktop→mobile handoff to
+     * ?listing= below. Absent when no filter is on — there is no "match" to
+     * honour then, and clean URLs stay clean.
+     */
+    if (listing.matchedUnitId) params.set("unit", listing.matchedUnitId);
+    else params.delete("unit");
     router.push(`/browse?${params.toString()}`);
     // Fetch full detail (unit_leases for rent, review IDs for voting)
     fetch(`/api/listing/${listing._id}`)
@@ -167,6 +177,7 @@ export default function AvailableListings({
     setExpandedListing(null); // immediate UI
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
+    params.delete("unit");
     const qs = params.toString();
     router.push(`/browse${qs ? `?${qs}` : ""}`);
   };
@@ -364,6 +375,7 @@ export default function AvailableListings({
             >
               <ListDetailPanel
                 listing={expandedListing}
+                initialUnitId={searchParams.get("unit")}
                 onBack={() => {
                   setSelectedListing(null);
                   closePanel();

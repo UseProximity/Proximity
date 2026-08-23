@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not sta
 
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { unitIdentityLabel } from "@/lib/listings/getListing";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -39,14 +40,48 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     ? legitReviews.reduce((s, r) => s + r.rating, 0) / numReviews
     : 0;
 
+  /*
+   * The viewer's OWN offerings at this property. A property can now carry leases
+   * from several landlords, so the dashboard must be able to show a landlord
+   * their own terms rather than the building's aggregate — which, at someone
+   * else's property, is mostly other people's prices.
+   */
+  const myLeases = currentUserId
+    ? (l.listing_units ?? []).flatMap((u) =>
+        (u.unit_leases ?? [])
+          .filter((lease) => lease.owner_id === currentUserId)
+          .map((lease) => ({
+            id: lease.id,
+            unitId: u.id,
+            unitLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
+            bedrooms: u.bedrooms ?? null,
+            bathrooms: u.bathrooms ?? null,
+            rent: lease.rent != null ? Number(lease.rent) : null,
+            leaseTermMonths: Array.isArray(lease.lease_term_months)
+              ? lease.lease_term_months.map(Number)
+              : [],
+            sublease: !!lease.sublease,
+            furnished: lease.furnished ?? null,
+            availableFrom: lease.available_from ?? null,
+            isActive: !!lease.is_active,
+            unavailable: !!lease.unavailable,
+          }))
+      )
+    : [];
+
   return {
     _id: l.id?.toString(),
     id: l.id,
+    myLeases,
     title: l.title ?? null,
     address: l.address,
     description: l.description ?? null,
     unitTypes: (l.listing_units ?? []).map((u) => {
-      const activeLease = (u.unit_leases ?? []).find((lease) => lease.is_active);
+      // Live offerings only — a withdrawn lease (unavailable) is not this unit's
+      // current price, and showing one on the dashboard misreports the listing.
+      const activeLease = (u.unit_leases ?? []).find(
+        (lease) => lease.is_active && !lease.unavailable
+      );
       return {
         id: u.id,
         rent: activeLease?.rent != null ? Number(activeLease.rent) : null,
@@ -154,6 +189,7 @@ export async function GET() {
       { data: favInteractions },
       { data: contactedInteractions },
       { data: ownedRows },
+      { data: leasedRows },
     ] = await Promise.all([
       favoriteTypeId
         ? supabase
@@ -169,15 +205,42 @@ export async function GET() {
             .eq("user_id", userId)
             .eq("interaction_type_id", contactedTypeId)
         : Promise.resolve({ data: [] }),
+      // Property-level ownership. Lease-level ownership is unioned in below.
       supabase
         .from("listing_landlords")
         .select("listing_id")
         .eq("user_id", userId),
+      /*
+       * Properties where the landlord owns an OFFERING rather than the property
+       * record — the case created by attaching a lease to someone else's
+       * listing. Without this their own listing vanishes from the dashboard the
+       * moment they publish it. Whether they may edit the property itself is a
+       * separate question, answered by lib/listings/ownership.js.
+       */
+      supabase
+        .from("unit_leases")
+        .select("id, listing_units!unit_id(listing_id, deleted_at)")
+        .eq("owner_id", userId),
     ]);
 
     const favoriteIds = (favInteractions ?? []).map((r) => r.listing_id);
     const contactedIds = (contactedInteractions ?? []).map((r) => r.listing_id);
-    const ownedIds = (ownedRows ?? []).map((r) => r.listing_id);
+    /*
+     * Which KIND of ownership the landlord has at each property. A lease owner
+     * belongs on the dashboard, but must not be offered Edit/Delete — those act
+     * on the shared property record (PATCH replaces every unit, DELETE removes
+     * the listing) and would 403. See lib/listings/ownership.js.
+     * Property ownership wins when someone holds both; it is strictly broader.
+     */
+    const ownershipById = new Map();
+    for (const r of leasedRows ?? []) {
+      const u = r.listing_units;
+      if (u?.listing_id && !u.deleted_at) ownershipById.set(u.listing_id, "lease");
+    }
+    for (const r of ownedRows ?? []) {
+      if (r.listing_id) ownershipById.set(r.listing_id, "property");
+    }
+    const ownedIds = [...ownershipById.keys()];
 
     // Fetch full listing data for all three sets in parallel, plus all-time click metrics for owned listings
     const [
@@ -232,9 +295,10 @@ export async function GET() {
     const safeContacted = (contactedListings ?? []).map((l) => serializeListing(l));
     const safeContactedIds = safeContacted.map((l) => l._id);
 
-    const safeListings = (ownListings ?? []).map((l) =>
-      serializeListing(l, userId, coOwnerMap, metricsMap)
-    );
+    const safeListings = (ownListings ?? []).map((l) => ({
+      ...serializeListing(l, userId, coOwnerMap, metricsMap),
+      ownership: ownershipById.get(l.id) ?? "lease",
+    }));
     const listingsIds = safeListings.map((l) => l._id);
 
     const safeUser = {

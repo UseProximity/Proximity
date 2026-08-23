@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-14T01:08:24.489Z",
-  "count": 78,
+  "_generated": "2026-08-23T21:32:46.253Z",
+  "count": 81,
   "routes": [
     {
       "path": "/api/addListing",
@@ -15,6 +15,9 @@
       "tables": [
         "home_types",
         "locations",
+        "listings",
+        "listing_units",
+        "unit_leases",
         "listing_drive_times",
         "users"
       ],
@@ -356,6 +359,7 @@
         "POST": "any"
       },
       "tables": [
+        "unit_leases",
         "listings",
         "users"
       ],
@@ -595,6 +599,7 @@
         "interaction_types",
         "user_listing_interactions",
         "listing_landlords",
+        "unit_leases",
         "listings",
         "listing_metrics_daily"
       ],
@@ -634,7 +639,6 @@
         "GET": "public"
       },
       "tables": [
-        "listing_landlords",
         "listings"
       ],
       "file": "src/app/api/landlord/listings/route.js"
@@ -651,7 +655,8 @@
         "DELETE": "public"
       },
       "tables": [
-        "listing_landlords",
+        "listing_units",
+        "unit_leases",
         "home_types",
         "listings"
       ],
@@ -853,6 +858,37 @@
       "file": "src/app/api/lease-check/property/route.js"
     },
     {
+      "path": "/api/leases",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_units",
+        "unit_leases"
+      ],
+      "file": "src/app/api/leases/route.js"
+    },
+    {
+      "path": "/api/leases/[leaseId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "unit_leases"
+      ],
+      "file": "src/app/api/leases/[leaseId]/route.js"
+    },
+    {
       "path": "/api/listing/[listingId]",
       "methods": [
         "GET",
@@ -955,6 +991,20 @@
         "users"
       ],
       "file": "src/app/api/pms/hold/route.js"
+    },
+    {
+      "path": "/api/properties/lookup",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/properties/lookup/route.js"
     },
     {
       "path": "/api/referralPayment",
@@ -1119,7 +1169,6 @@
       },
       "tables": [
         "listings",
-        "listing_landlords",
         "listing_images"
       ],
       "file": "src/app/api/upload/route.js"
