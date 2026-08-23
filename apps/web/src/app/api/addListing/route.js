@@ -317,6 +317,24 @@ export async function POST(req) {
       if (!target || target.deleted_at) {
         return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
       }
+
+      /*
+       * The client picks the property from an address lookup, so the id and the
+       * submitted address must describe the same place. Checking only that the
+       * id exists let a crafted request graft units onto an unrelated
+       * landlord's property — changing their unit set, their aggregates, and
+       * what browse shows for them.
+       */
+      const [{ data: targetKey }, { data: submittedKey }] = await Promise.all([
+        supabase.rpc("normalize_property_key", { p_address: target.address }),
+        supabase.rpc("normalize_property_key", { p_address: address }),
+      ]);
+      if (!targetKey || !submittedKey || targetKey !== submittedKey) {
+        return NextResponse.json(
+          { error: "That property doesn't match the address you entered." },
+          { status: 400 }
+        );
+      }
     } else {
       // All property-level writes in one transaction — sets app.current_user_id
       // for action_log attribution.

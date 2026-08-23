@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { getOwnedListings } from "@/lib/listings/ownership";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
@@ -19,12 +20,17 @@ export async function GET(req) {
   const viewAsId = searchParams.get("viewAs");
   const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
 
-  const { data: ll } = await supabase
-    .from("listing_landlords")
-    .select("listing_id")
-    .eq("user_id", targetUserId);
-
-  const ids = (ll ?? []).map((r) => r.listing_id);
+  /*
+   * Includes properties the landlord only holds a LEASE at, not just ones they
+   * own the record for — otherwise a landlord who attached an offering to an
+   * existing property would never see it again after publishing.
+   *
+   * Each row carries `ownership` so the dashboard can tell the two apart:
+   * "property" may edit the listing and its units, "lease" may only edit its own
+   * offering. See lib/listings/ownership.js.
+   */
+  const owned = await getOwnedListings(targetUserId);
+  const ids = [...owned.keys()];
   if (ids.length === 0) return NextResponse.json([]);
 
   const { data, error } = await supabase
@@ -34,5 +40,8 @@ export async function GET(req) {
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+
+  return NextResponse.json(
+    (data ?? []).map((row) => ({ ...row, ownership: owned.get(row.id) ?? "lease" }))
+  );
 }

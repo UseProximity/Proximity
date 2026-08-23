@@ -4,7 +4,11 @@ import { useSession } from "next-auth/react";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
 
-export default function ListDetailPanel({ listing, onBack }) {
+export default function ListDetailPanel({
+  listing,
+  onBack,
+  initialUnitId = null,
+}) {
   const { data: session } = useSession();
 
   return (
@@ -37,6 +41,7 @@ export default function ListDetailPanel({ listing, onBack }) {
         session={session}
         excludeTabs={["map"]}
         compact={true}
+        initialUnitId={initialUnitId}
       />
     </div>
   );

@@ -77,6 +77,61 @@ function driveTimesToMap(driveTimes) {
   return map;
 }
 
+/**
+ * Human label for a unit's identity ("Apt 2W", "Whole property"), or null when
+ * the unit predates unit identity and has nothing to label it with. Callers must
+ * fall back to the floor-plan description rather than inventing a name — 60% of
+ * existing units are unidentified, and a made-up label would be indistinguishable
+ * from a real one.
+ */
+export function unitIdentityLabel(designator, number) {
+  if (!designator) return null;
+  if (designator === "Whole") return "Whole property";
+  return `${designator} ${number ?? ""}`.trim();
+}
+
+/**
+ * Shape a unit's lease rows into the offering list the UI renders beneath it.
+ *
+ * One lease = one owner's offering on that unit, so these are competing options
+ * a renter chooses between, not attributes of the unit. Withdrawn offers
+ * (is_active false, or the owner flagged unavailable) are dropped — they are
+ * neither contactable nor real choices.
+ *
+ * Contact falls back to the listing row because pre-migration leases carry the
+ * property-level contact; once a lease has its own, that wins.
+ */
+export function shapeLeases(unitLeases, listingRow) {
+  return (unitLeases ?? [])
+    .filter((l) => l.is_active && !l.unavailable)
+    .map((l) => ({
+      id: l.id,
+      rent: l.rent != null ? Number(l.rent) : null,
+      sublease: !!l.sublease,
+      furnished: l.furnished ?? null,
+      description: l.description ?? null,
+      availableFrom: l.available_from ?? null,
+      leaseTermMonths: Array.isArray(l.lease_term_months)
+        ? l.lease_term_months.map(Number).filter(Number.isFinite)
+        : [],
+      ownerId: l.owner_id ?? null,
+      // The person a renter would actually be emailing about THIS offering.
+      landlordName:
+        l.users?.name ?? l.contact_name ?? listingRow.contact_name ?? null,
+      landlordImage: l.users?.image ?? null,
+      contactEmail: l.contact_email ?? listingRow.contact_email ?? null,
+      contactPhone: l.contact_phone ?? listingRow.contact_phone ?? null,
+    }))
+    .sort((a, b) => {
+      // Cheapest first; unpriced offers sink so a "Contact for price" row never
+      // heads the list ahead of a real number.
+      if (a.rent == null && b.rent == null) return 0;
+      if (a.rent == null) return 1;
+      if (b.rent == null) return -1;
+      return a.rent - b.rent;
+    });
+}
+
 function buildListing(row, owner = null, reviews = []) {
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
@@ -95,14 +150,24 @@ function buildListing(row, owner = null, reviews = []) {
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      // Live offerings only, and cheapest first — a withdrawn lease is not this
+      // unit's price. Matches the browse feed (api/listings/route.js).
+      const liveLeases = (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable);
+      const activeRent = liveLeases
+        .map((l) => l.rent)
+        .filter((r) => r != null)
+        .sort((a, b) => Number(a) - Number(b))[0];
       const nextAvailable =
         (u.unit_leases ?? [])
           .filter((l) => l.available_from)
           .sort(
             (a, b) => new Date(a.available_from) - new Date(b.available_from)
           )[0]?.available_from ?? null;
-      const activeLease = (u.unit_leases ?? []).find((l) => l.is_active);
+      const activeLease = liveLeases[0];
+      // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
+      // above stay as the first-active-lease summary so existing callers (cards,
+      // filters, matchmaking) keep working unchanged.
+      const leases = shapeLeases(u.unit_leases, row);
       return {
         id: u.id,
         rent: activeRent != null ? Number(activeRent) : null,
@@ -111,6 +176,10 @@ function buildListing(row, owner = null, reviews = []) {
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         title: u.title ?? null,
         floorPlanImageUrl: u.floor_plan_image_url ?? null,
+        designator: u.unit_designator ?? null,
+        number: u.unit_number ?? null,
+        identityLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
+        leases,
         leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
           ? activeLease.lease_term_months.map(Number)
           : [],
@@ -219,7 +288,13 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       home_types(label),
       listing_units(
         id, bedrooms, bathrooms, area, available, title, floor_plan_image_url,
-        unit_leases(rent, is_active, available_from, sublease, lease_term_months)
+        unit_designator, unit_number,
+        unit_leases(
+          id, rent, is_active, available_from, sublease, lease_term_months,
+          unavailable, description, furnished, owner_id,
+          contact_name, contact_email, contact_phone,
+          users!owner_id(id, name, image)
+        )
       ),
       listing_custom_amenities(label),
       listing_landlords(user_id, is_primary),

@@ -23,6 +23,22 @@ import {
   getRentRangeLabel,
 } from "@/utils/listingFormatters";
 
+/**
+ * Rent across the landlord's OWN offerings at a property — the dashboard
+ * equivalent of getRentRangeLabel, but scoped to what is actually theirs.
+ */
+function myLeaseRentLabel(myLeases = []) {
+  const rents = myLeases
+    .filter((l) => !l.unavailable && l.rent != null)
+    .map((l) => Number(l.rent))
+    .filter(Number.isFinite);
+  if (!rents.length) return "Contact for Pricing";
+  const lo = Math.min(...rents);
+  const hi = Math.max(...rents);
+  const fmt = (n) => `$${n.toLocaleString("en-US")}`;
+  return lo === hi ? fmt(lo) : `${fmt(lo)}-${fmt(hi)}`;
+}
+
 export default function PropertiesSection({
   user,
   setUser,
@@ -31,6 +47,8 @@ export default function PropertiesSection({
   onAddListing,
   onEditListing,
   onDeleteListing,
+  onEditLease,
+  onWithdrawLease,
   onManageCoOwners,
 }) {
   const [togglingId, setTogglingId] = useState(null);
@@ -183,6 +201,15 @@ export default function PropertiesSection({
             </CardHeader>
 
             <CardContent className="space-y-3">
+              {property.ownership === "lease" && property.myLeases?.length > 0 && (
+                <p className="text-xs text-gray-500">
+                  Your {property.myLeases.length === 1 ? "listing" : "listings"}:{" "}
+                  {property.myLeases
+                    .map((x) => x.unitLabel ?? `${x.bedrooms ?? "?"} bed`)
+                    .join(", ")}
+                </p>
+              )}
+
               <div className="flex items-center justify-between text-xs text-gray-600">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">
@@ -206,8 +233,15 @@ export default function PropertiesSection({
                 </div>
               </div>
 
+              {/*
+                * At a property someone else owns, the building's rent range is
+                * mostly OTHER landlords' prices — quoting it back as "your"
+                * listing is simply wrong. Show their own offering instead.
+                */}
               <div className="text-xl font-bold text-gray-900">
-                {getRentRangeLabel(property.unitTypes)}
+                {property.ownership === "lease"
+                  ? myLeaseRentLabel(property.myLeases)
+                  : getRentRangeLabel(property.unitTypes)}
                 <span className="text-sm font-normal text-gray-500">
                   /month
                 </span>
@@ -232,37 +266,74 @@ export default function PropertiesSection({
                 </div>
               )}
 
+              {/*
+                * Edit / Co-owners / Delete all act on the shared PROPERTY record,
+                * so they belong to whoever owns that record. A landlord who owns
+                * only an offering here (ownership: "lease") gets their own
+                * controls instead — the property is not theirs to change, and
+                * showing them buttons that 403 is worse than showing none.
+                */}
               <div className="flex gap-2 pt-2 border-t border-gray-100">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditListing(property);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onManageCoOwners(property);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-purple-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-purple-50 transition-colors"
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  Co-owners
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteListing(property);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </button>
+                {property.ownership === "lease" ? (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditLease(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit my listing
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onWithdrawLease(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Withdraw
+                    </button>
+                    <span className="ml-auto self-center text-[11px] text-gray-400">
+                      Listed at another owner&apos;s property
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditListing(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onManageCoOwners(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-purple-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-purple-50 transition-colors"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      Co-owners
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteListing(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>

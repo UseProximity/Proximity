@@ -660,6 +660,14 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         )
       )
         return "Pick at least one lease term for each available unit.";
+      /*
+       * Attaching to an existing unit creates ONE offering on that one unit, so
+       * only the first card is submitted. Say so rather than accepting extra
+       * cards and dropping them silently.
+       */
+      if (attachingToExistingUnit && units.length > 1) {
+        return "You're adding your listing to one existing unit, so keep a single unit here. Choose “add a new unit” to list several.";
+      }
       // Attaching to an existing unit reuses that unit's identity, so the
       // floor-plan cards aren't creating anything that needs identifying.
       if (!attachingToExistingUnit) {
@@ -798,7 +806,14 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       // not hold the remaining properties hostage: toast it and keep going.
       let uploadError = null;
       if (stagedFiles.length > 0) {
-        const listingId = data.listing?.id;
+        /*
+         * The two submit paths return different shapes: /api/addListing gives
+         * back `listing`, /api/leases gives back `lease: { id, listingId }`.
+         * Reading only `data.listing.id` meant every photo added while
+         * attaching an offering to an existing unit was dropped on the floor —
+         * the block below was skipped entirely, with no upload and no error.
+         */
+        const listingId = data.listing?.id ?? data.lease?.listingId ?? null;
         if (listingId) {
           const presignRes = await fetch("/api/upload", {
             method: "POST",
@@ -846,6 +861,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
               }
             }
           }
+        } else {
+          uploadError =
+            "Saved, but your photos could not be attached. You can add them from your dashboard.";
         }
       }
       // The listing exists either way — staying on the form would invite a

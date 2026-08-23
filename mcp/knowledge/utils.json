@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-14T01:08:24.509Z",
-  "count": 58,
+  "_generated": "2026-08-23T21:32:46.274Z",
+  "count": 60,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -68,12 +68,20 @@
       "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
     },
     {
+      "file": "src/lib/listings/filterListings.js",
+      "description": "Browse filtering, evaluated against the property → unit → lease model."
+    },
+    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
       "file": "src/lib/listings/listingSelect.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
+    },
+    {
+      "file": "src/lib/listings/ownership.js",
+      "description": "Who owns what, now that a property can carry offerings from several landlords."
     },
     {
       "file": "src/lib/listings/queryListings.js",
@@ -97,7 +105,7 @@
     },
     {
       "file": "src/lib/matchmaking/listingFilter.js",
-      "description": "best-effort"
+      "description": "——— Coherent unit offers ————————————————————————————————————————————————"
     },
     {
       "file": "src/lib/matchmaking/narrowing.js",

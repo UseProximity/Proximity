@@ -4,6 +4,8 @@
  * round-trips. Manages the full filter state (rent range, bed/bath counts, walk times,
  * move-in date, home type, lease structure, amenities, utilities, sublease flag, and
  * saved-only toggle) as well as a free-text search across address and description fields.
+ * The matching itself lives in lib/listings/filterListings.js, which evaluates each
+ * listing unit-by-unit and lease-by-lease rather than against listing-level aggregates.
  * Reads an initial ?search= query param from the URL so the Header's search bar can
  * deep-link into a pre-filtered browse view. Passes the filtered listing array down to
  * AvailableListings (the split map+list panel) and TopFilterBar (the filter UI). Uses
@@ -17,27 +19,11 @@ import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
+import {
+  DEFAULT_FILTERS,
+  filterListings,
+} from "@/lib/listings/filterListings";
 
-const DEFAULT_FILTERS = {
-  minRent: "",
-  maxRent: "",
-  bedrooms: "", // min bedrooms
-  maxBedrooms: "", // max bedrooms
-  bathrooms: "", // min bathrooms
-  maxBathrooms: "", // max bathrooms
-  distance: "", // walking time to campus (minutes)
-  distanceToShuttle: "", // walking time to shuttle stop (minutes)
-  moveInDate: "",
-  homeType: [], // ['house','apartment','condo','townhouse','singleBedroom']
-  leaseAvailability: [], // ['semester','10-month','12-month']
-  amenities: [], // ['pool','studyRooms','inUnitLaundry','freeParking','petsAllowed']
-  furnished: "", // '' | 'furnished' | 'unfurnished'
-  utilitiesIncluded: [], // ['water','electric','gas', ...]
-  subleaseFriendly: false,
-  subleaseOnly: false, // only show actual sublease listings
-  leaseStructure: "", // '' | 'individual' | 'joint'
-  savedOnly: false,
-};
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -95,261 +81,25 @@ export default function BrowseContent({ session, initialListings = null }) {
     handleClearSearch();
   };
 
-  const filteredListings = useMemo(() => {
-    return listings
-      .filter((listing) => {
-        const lt = listing?.homeType?.toLowerCase() || "";
-        const desc = listing?.description?.toLowerCase() || "";
-        const amenitiesText = (listing?.amenities || [])
-          .join(" ")
-          .toLowerCase();
-        const combined = desc + " " + amenitiesText;
+  /*
+   * Minimum walk time to campus — the same place set the /washu pages use
+   * (grocery + Med Campus excluded via NON_CAMPUS_WALK_PLACES). Injected into
+   * the filter module so it stays free of WashU-specific geography.
+   */
+  const campusMinutes = (listing) => {
+    const pwm = listing.placeWalkMinutes;
+    const mins = WASHU_PLACES.filter(
+      (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
+    )
+      .map((p) => pwm?.[p.name])
+      .filter((m) => m != null);
+    return mins.length ? Math.min(...mins) : null;
+  };
 
-        // Search
-        const q = search.toLowerCase();
-        const matchSearch =
-          !q ||
-          listing?.address?.toLowerCase().includes(q) ||
-          listing?.title?.toLowerCase().includes(q);
-
-        // Price
-        const matchMinRent =
-          !filters.minRent || listing?.maxRent >= Number(filters.minRent);
-        const matchMaxRent =
-          !filters.maxRent || listing?.minRent <= Number(filters.maxRent);
-
-        // Beds / baths (range)
-        const matchBeds =
-          (!filters.bedrooms ||
-            listing?.maxBedrooms >= Number(filters.bedrooms)) &&
-          (!filters.maxBedrooms ||
-            listing?.minBedrooms <= Number(filters.maxBedrooms));
-        const matchBaths =
-          (!filters.bathrooms ||
-            listing?.maxBathrooms >= Number(filters.bathrooms)) &&
-          (!filters.maxBathrooms ||
-            listing?.minBathrooms <= Number(filters.maxBathrooms));
-
-        // Walking distance to campus — use the minimum walk time among all
-        // WashU places that count as "campus" (grocery + Med Campus excluded).
-        let matchDistance = true;
-        if (filters.distance) {
-          const maxMinutes = parseFloat(filters.distance);
-          const pwm = listing.placeWalkMinutes;
-          const campusMins = WASHU_PLACES.filter(
-            (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
-          )
-            .map((p) => pwm?.[p.name])
-            .filter((m) => m != null);
-          matchDistance =
-            campusMins.length > 0 &&
-            Math.min(...campusMins) <= maxMinutes;
-        }
-
-        // Walking time to nearest shuttle stop (use pre-computed DB value)
-        let matchShuttle = true;
-        if (filters.distanceToShuttle) {
-          const maxMinutes = parseFloat(filters.distanceToShuttle);
-          matchShuttle =
-            listing.shuttleWalkMinutes != null &&
-            listing.shuttleWalkMinutes <= maxMinutes;
-        }
-
-        // Home type
-        let matchHomeType = true;
-        if (filters.homeType && filters.homeType.length > 0) {
-          matchHomeType = filters.homeType.some((type) => {
-            switch (type) {
-              case "house":
-                return lt.includes("house");
-              case "apartment":
-                return lt.includes("apartment");
-              case "condo":
-                return lt.includes("condo");
-              case "townhouse":
-                return lt.includes("townhouse");
-              case "singleBedroom":
-                return listing?.minBedrooms === 1;
-              default:
-                return true;
-            }
-          });
-        }
-
-        // Lease availability (semester / 10-month / 12-month)
-        let matchLeaseAvail = true;
-        if (filters.leaseAvailability && filters.leaseAvailability.length > 0) {
-          const la = Array.isArray(listing?.leaseAvailability)
-            ? listing.leaseAvailability
-            : [];
-          matchLeaseAvail = filters.leaseAvailability.some((avail) => {
-            switch (avail) {
-              case "semester":
-                return la.includes("semester") || desc.includes("semester");
-              case "10-month":
-                return (
-                  la.includes("10-month") ||
-                  desc.includes("10 month") ||
-                  desc.includes("10-month")
-                );
-              case "12-month":
-                return (
-                  la.includes("12-month") ||
-                  desc.includes("12 month") ||
-                  desc.includes("12-month")
-                );
-              case "summer":
-                return la.includes("summer") || desc.includes("summer");
-              default:
-                return true;
-            }
-          });
-        }
-
-        // Amenities (all selected must match)
-        let matchAmenities = true;
-        if (filters.amenities && filters.amenities.length > 0) {
-          // Maps canonical snake_case filter value → all accepted DB values (snake_case + legacy ALL_CAPS)
-          const AMENITY_ALIASES = {
-            dishwasher: ["dishwasher", "DISHWASHER"],
-            in_unit_laundry: [
-              "in_unit_laundry",
-              "IN-UNIT LAUNDRY",
-              "IN UNIT LAUNDRY",
-            ],
-            ac_heating: ["ac_heating"],
-            mailroom: ["mailroom", "MAILROOM"],
-            pets_allowed: ["pets_allowed", "PETS ALLOWED"],
-            extra_storage: ["extra_storage", "EXTRA STORAGE"],
-            fireplace: ["fireplace", "FIREPLACE"],
-            private_parking: ["private_parking", "FREE PARKING"],
-            pool: ["pool", "POOL"],
-            study_room: ["study_room", "STUDY ROOMS"],
-            gym: ["gym", "GYM"],
-          };
-          const arr = listing.amenities || [];
-          matchAmenities = filters.amenities.every((amenity) => {
-            const aliases = AMENITY_ALIASES[amenity] ?? [amenity];
-            return aliases.some((v) => arr.includes(v));
-          });
-        }
-
-        // Furnished
-        let matchFurnished = true;
-        if (filters.furnished === "furnished") {
-          matchFurnished =
-            listing?.furnished === true ||
-            (combined.includes("furnished") &&
-              !combined.includes("unfurnished"));
-        } else if (filters.furnished === "unfurnished") {
-          matchFurnished =
-            listing?.furnished === false ||
-            combined.includes("unfurnished") ||
-            !combined.includes("furnished");
-        }
-
-        // Utilities included — listing must include ALL selected utilities
-        let matchUtilities = true;
-        if (filters.utilitiesIncluded?.length > 0) {
-          const listingUtils = Array.isArray(listing?.utilitiesIncluded)
-            ? listing.utilitiesIncluded
-            : [];
-          matchUtilities = filters.utilitiesIncluded.every((u) =>
-            listingUtils.includes(u)
-          );
-        }
-
-        // Sublease friendly
-        let matchSublease = true;
-        if (filters.subleaseFriendly) {
-          matchSublease =
-            listing?.subleaseFriendly === true ||
-            desc.includes("subleas") ||
-            desc.includes("subletting allowed");
-        }
-
-        // Sublease only — actual sublease listings (a unit lease flagged sublease)
-        let matchSubleaseOnly = true;
-        if (filters.subleaseOnly) {
-          matchSubleaseOnly =
-            String(listing?.leaseType ?? "").toLowerCase() === "sublease";
-        }
-
-        // Lease structure
-        let matchLeaseStructure = true;
-        if (filters.leaseStructure === "individual") {
-          matchLeaseStructure =
-            listing?.leaseStructure === "individual" ||
-            desc.includes("individual lease") ||
-            desc.includes("by the room");
-        } else if (filters.leaseStructure === "joint") {
-          matchLeaseStructure =
-            listing?.leaseStructure === "joint" ||
-            desc.includes("joint lease") ||
-            desc.includes("whole unit");
-        }
-
-        // Favorites / saved listings
-        const matchSaved =
-          !filters.savedOnly || savedIds.includes(String(listing._id)); // eslint-disable-line react-hooks/exhaustive-deps
-
-        // Move in Date — listings with no date set are always included
-        let matchMoveInDate = true;
-        if (filters.moveInDate) {
-          const desiredDate = new Date(filters.moveInDate);
-          const listingMoveInDate = new Date(listing.moveInDate);
-          matchMoveInDate =
-            isNaN(listingMoveInDate.getTime()) ||
-            listingMoveInDate <= desiredDate;
-        }
-
-        return (
-          matchSearch &&
-          matchMinRent &&
-          matchMaxRent &&
-          matchBeds &&
-          matchBaths &&
-          matchDistance &&
-          matchShuttle &&
-          matchHomeType &&
-          matchLeaseAvail &&
-          matchAmenities &&
-          matchFurnished &&
-          matchUtilities &&
-          matchSublease &&
-          matchSubleaseOnly &&
-          matchLeaseStructure &&
-          matchMoveInDate &&
-          matchSaved
-        );
-      })
-      .sort((a, b) => {
-        // 1) Listings with photos rank above photoless ones.
-        const aHasImages = a.images?.length > 0;
-        const bHasImages = b.images?.length > 0;
-        if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
-
-        // 2) Available-now ranks above available-later (pre-leased listings
-        //    with a future availableFrom) — same result set, not a tab.
-        const aLater = !!a.availableFrom;
-        const bLater = !!b.availableFrom;
-        if (aLater !== bLater) return aLater ? 1 : -1;
-
-        // 3) Within the same tier, reviewed listings rank first.
-        const aReviews = a.numReviews ?? 0;
-        const bReviews = b.numReviews ?? 0;
-        const aHasReviews = aReviews > 0;
-        const bHasReviews = bReviews > 0;
-        if (aHasReviews !== bHasReviews) return aHasReviews ? -1 : 1;
-
-        // 4) Among reviewed listings, higher rating wins, then more reviews.
-        if (aHasReviews && bHasReviews) {
-          if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
-          return bReviews - aReviews;
-        }
-        return 0;
-      });
-  }, [listings, search, filters]);
+  const filteredListings = useMemo(
+    () => filterListings(listings, { filters, search, savedIds, campusMinutes }),
+    [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   if (loading) {
     return (

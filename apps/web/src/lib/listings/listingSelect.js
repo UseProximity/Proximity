@@ -1,11 +1,20 @@
+/*
+ * The listing shape every non-browse surface reads (matchmaking, saved/contacted
+ * lists, admin). Units carry their own id and their leases carry `unavailable`
+ * and `furnished` because a unit is only a real option when ONE of its offerings
+ * satisfies the price, term and furnishing asked of it — see
+ * lib/listings/filterListings.js for the same rule on browse.
+ */
 export const LISTING_SELECT = `
   id, title, address, longitude, latitude, description,
   lease_type, contact_email, contact_phone, contact_name,
   lease_structure, lease_availability, furnished, move_in_date, sublease_friendly,
   twenty_one_plus, unavailable, created_at,
   home_types!home_type_id(label),
-  listing_units!listing_id(bedrooms, bathrooms, area, available,
-    unit_leases!unit_id(rent, is_active, sublease, available_from, lease_term_months)),
+  listing_units!listing_id(id, bedrooms, bathrooms, area, available,
+    unit_designator, unit_number,
+    unit_leases!unit_id(id, rent, is_active, unavailable, sublease,
+      available_from, lease_term_months, furnished, owner_id)),
   listing_landlords!listing_id(user_id, is_primary),
   listing_amenities!listing_id(
     air_conditioning, dishwasher, gym, laundry, mailroom, microwave,

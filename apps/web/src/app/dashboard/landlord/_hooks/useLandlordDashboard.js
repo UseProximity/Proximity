@@ -12,6 +12,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
 
   const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
   const [coOwnersModal, setCoOwnersModal] = useState(null); // null | listing
+  const [leaseModal, setLeaseModal] = useState(null); // null | { property, lease }
   const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // null | { name?, email?, phone? }
   const [updatingProfile, setUpdatingProfile] = useState(false);
 
@@ -202,6 +203,50 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     }
   };
 
+  /*
+   * Lease-level controls, for a landlord whose stake here is an OFFERING rather
+   * than the property record. These hit /api/leases/[leaseId], which is scoped
+   * to the caller's own lease — unlike the property routes above, which replace
+   * the whole unit set and would (rightly) 403 them.
+   */
+  const handleEditLease = (property) => {
+    const lease = (property.myLeases ?? []).find((x) => x.isActive) ?? property.myLeases?.[0];
+    if (!lease) {
+      alert("We couldn't find your listing at this property. Try reloading.");
+      return;
+    }
+    setLeaseModal({ property, lease });
+  };
+
+  const handleWithdrawLease = async (property) => {
+    const lease = (property.myLeases ?? []).find((x) => x.isActive) ?? property.myLeases?.[0];
+    if (!lease) {
+      alert("We couldn't find your listing at this property. Try reloading.");
+      return;
+    }
+    const where = lease.unitLabel ? `your listing for ${lease.unitLabel}` : "your listing";
+    if (
+      !confirm(
+        `Withdraw ${where} at ${property.title || property.address}? It stops showing to students. The property itself is not affected.`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+      if (res.ok) {
+        // Withdrawn, not deleted — the lease row survives as the ownership
+        // record, so the property stays on their dashboard, now with no live
+        // offering. Refetch rather than guess at the new shape.
+        await fetchUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not withdraw your listing. Please try again.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
   const handleListingModalSuccess = async (
     updatedUnits = null,
     profileDiff = null
@@ -320,6 +365,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     setListingModal,
     coOwnersModal,
     setCoOwnersModal,
+    leaseModal,
+    setLeaseModal,
     profileUpdatePrompt,
     updatingProfile,
     isEditing,
@@ -337,6 +384,9 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
+    handleEditLease,
+    handleWithdrawLease,
+    fetchUser,
     handleListingModalSuccess,
     handleProfileUpdate,
     handleNavigation,
