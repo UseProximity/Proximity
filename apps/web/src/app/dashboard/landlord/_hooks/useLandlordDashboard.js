@@ -270,6 +270,11 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handlePropertySelect = (property) => {
+    // Selecting a property swaps the whole view in place, so without this the
+    // landlord keeps the scroll offset they had in the grid and lands halfway
+    // down the analytics page. Instant, not smooth: the content underneath has
+    // already changed, so animating through it just looks like a glitch.
+    window.scrollTo({ top: 0 });
     setSelectedProperty(property);
     setActiveView("property-analytics");
     const p = new URLSearchParams({
@@ -281,6 +286,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleBackToProperties = () => {
+    window.scrollTo({ top: 0 });
     setSelectedProperty(null);
     setActiveView("properties");
     const p = new URLSearchParams({ tab: "properties" });
@@ -289,7 +295,10 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const getPageTitle = () => {
-    if (selectedProperty) return selectedProperty.name;
+    // Listings carry `title`, never `name` — reading `.name` left the header bar
+    // blank on every property page.
+    if (selectedProperty)
+      return selectedProperty.title || selectedProperty.address;
     switch (activeView) {
       case "properties":
         return "Properties";
