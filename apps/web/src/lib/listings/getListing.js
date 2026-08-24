@@ -137,6 +137,22 @@ function buildListing(row, owner = null, reviews = []) {
   // api/listings/route.js; PostgREST can't filter an embedded resource.
   row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
 
+  /*
+   * Photos carry a scope (listing_images.unit_id): null is a picture of the
+   * building, set is a picture of one unit. They are kept apart here because
+   * they answer different questions — `images` is what represents the PROPERTY,
+   * and a subletter's photo of one bedroom should not become the building's
+   * cover shot.
+   *
+   * The fallback exists so a property with no pictures of its own still has
+   * something to show: better a real unit photo than a grey placeholder.
+   */
+  const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const allImages = (row.listing_images ?? []).slice().sort(bySort);
+  const propertyImages = allImages.filter((img) => !img.unit_id);
+  const unitImages = allImages.filter((img) => img.unit_id);
+  const coverPool = propertyImages.length ? propertyImages : unitImages;
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find(
@@ -174,6 +190,8 @@ function buildListing(row, owner = null, reviews = []) {
       const leases = shapeLeases(u.unit_leases, row);
       return {
         id: u.id,
+        // This unit's own photos, in the order its landlord chose.
+        images: unitImages.filter((img) => img.unit_id === u.id).map((img) => img.url),
         rent: activeRent != null ? Number(activeRent) : null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
@@ -202,15 +220,14 @@ function buildListing(row, owner = null, reviews = []) {
       const pool = availablePool.length ? availablePool : activeLeases(units);
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
-    images: (row.listing_images ?? [])
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((img) => img.url),
-    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
-    imageFromStreetView:
-      (row.listing_images ?? [])
-        .slice()
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
-      "street_view",
+    images: coverPool.map((img) => img.url),
+    // Every photo at this property, whatever its scope — the gallery shows the
+    // building and its units together.
+    allImages: allImages.map((img) => img.url),
+    // True when the cover photo was auto-fetched from Google Street View. Read
+    // from the property's own photos: a unit photo is never a Street View grab,
+    // and letting one sit at position 0 would clear the badge wrongly.
+    imageFromStreetView: coverPool[0]?.source === "street_view",
     numReviews: legitReviews.length,
     rating: legitReviews.length
       ? Math.round(
@@ -310,7 +327,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
-      listing_images(url, sort_order, source),
+      listing_images(id, url, sort_order, source, unit_id),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `

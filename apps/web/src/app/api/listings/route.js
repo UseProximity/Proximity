@@ -104,6 +104,16 @@ export function buildListing(row, owner = null) {
    */
   row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
 
+  /*
+   * Card imagery is the PROPERTY's, falling back to a unit photo only when the
+   * building has none of its own. Otherwise whichever landlord uploaded first
+   * would pick the cover shot for a building they may not even own.
+   */
+  const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const sorted = (row.listing_images ?? []).slice().sort(bySort);
+  const propertyImages = sorted.filter((img) => !img.unit_id);
+  const coverPool = propertyImages.length ? propertyImages : sorted;
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find((wt) => wt.locations?.name === "shuttle_nearest");
@@ -156,15 +166,8 @@ export function buildListing(row, owner = null) {
       const pool = availablePool.length ? availablePool : activeLeases(units);
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
-    images: (row.listing_images ?? [])
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((img) => img.url),
-    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
-    imageFromStreetView:
-      (row.listing_images ?? [])
-        .slice()
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
-      "street_view",
+    images: coverPool.map((img) => img.url),
+    imageFromStreetView: coverPool[0]?.source === "street_view",
     numReviews: legitReviews.length,
     rating:
       legitReviews.length
@@ -276,7 +279,7 @@ export async function fetchListings() {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
-      listing_images(url, sort_order, source),
+      listing_images(url, sort_order, source, unit_id),
       listing_reviews(rating, legitimacy, deleted_at),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))

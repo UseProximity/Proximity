@@ -1267,9 +1267,32 @@ export default function ListingModalInfo({
   const images = Array.isArray(listing?.images)
     ? listing.images.filter(Boolean).map(sanitizeUrl)
     : [];
-  const coverImage = images[0];
-  const secondImage = images[1] || images[0] || null;
-  const thirdImage = images[2] || images[1] || images[0] || null;
+
+  /*
+   * The two tiles beside the cover follow the UNIT whose tab is open, whenever
+   * that unit has pictures of its own. The big shot stays the property's — it
+   * is what the building looks like, and it should not jump around as someone
+   * flicks between units — while the pair beside it becomes the evidence that
+   * these are genuinely different apartments rather than one listing wearing
+   * different labels.
+   *
+   * Both tiles switch together or neither does. Showing one unit photo next to
+   * one property photo reads as an accident rather than a distinction, so a
+   * unit with a single picture keeps the property's pair.
+   */
+  const unitImages = Array.isArray(selectedUnit?.images)
+    ? selectedUnit.images.filter(Boolean).map(sanitizeUrl)
+    : [];
+  const showingUnitPhotos = unitImages.length >= 2;
+
+  const coverImage = images[0] || unitImages[0];
+  /*
+   * The offset differs by source: the cover already consumed images[0] from the
+   * property set, but nothing has consumed the unit's, so its photos start at 0.
+   */
+  const [secondImage, thirdImage] = showingUnitPhotos
+    ? [unitImages[0], unitImages[1]]
+    : [images[1] || images[0] || null, images[2] || images[1] || images[0] || null];
 
   // Address
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
@@ -1499,13 +1522,20 @@ export default function ListingModalInfo({
                 {secondImage ? (
                   <Image
                     src={secondImage}
-                    alt="Listing photo 2"
+                    alt={showingUnitPhotos ? `${selectedUnitName ?? "Unit"} photo` : "Listing photo 2"}
                     fill
                     sizes="(max-width: 768px) 0vw, 35vw"
                     className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-200" />
+                )}
+                {/* Says whose photos these are, so switching tabs reads as a
+                    different apartment rather than the gallery reshuffling. */}
+                {showingUnitPhotos && selectedUnitName && (
+                  <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
+                    {selectedUnitName}
+                  </span>
                 )}
               </div>
               {/* Bottom thumbnail */}
@@ -1516,7 +1546,7 @@ export default function ListingModalInfo({
                 {thirdImage ? (
                   <Image
                     src={thirdImage}
-                    alt="Listing photo 3"
+                    alt={showingUnitPhotos ? `${selectedUnitName ?? "Unit"} photo` : "Listing photo 3"}
                     fill
                     sizes="(max-width: 768px) 0vw, 35vw"
                     className="object-cover"
