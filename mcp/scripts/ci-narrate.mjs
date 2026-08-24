@@ -162,7 +162,13 @@ async function main() {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 4096,
+      /*
+       * The test plan is now the longest section by far — one block per
+       * behavioral change, each carrying five labelled fields. At 4096 the
+       * narrative truncated mid-sentence before ever reaching it, which lost
+       * exactly the part the reader needs.
+       */
+      max_tokens: 16000,
       thinking: { type: "adaptive" },
       system,
       messages: [{ role: "user", content: userContent }],
@@ -192,7 +198,20 @@ async function main() {
     .join("\n")
     .trim();
 
-  const narrative = text || "_(no narrative produced)_";
+  /*
+   * Say so loudly if the model ran out of room. A truncated review looks
+   * complete — it just stops before the test plan and verdict, which is the
+   * failure mode that shipped once already.
+   */
+  const truncated = json.stop_reason === "max_tokens";
+  const narrative =
+    (text || "_(no narrative produced)_") +
+    (truncated
+      ? "\n\n> ⚠️ **This review was cut off** — it hit the output limit before finishing. " +
+        "Treat anything below the cut as missing, not as 'nothing to report', and raise " +
+        "`max_tokens` in `mcp/scripts/ci-narrate.mjs`."
+      : "");
+  if (truncated) console.warn("ci-narrate: response truncated at max_tokens.");
   writeFileSync(join(outDir, "narrative.md"), narrative);
   console.log(narrative);
 }
