@@ -47,7 +47,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
    * else's property, is mostly other people's prices.
    */
   const myLeases = currentUserId
-    ? (l.listing_units ?? []).flatMap((u) =>
+    ? (l.listing_units ?? []).filter((u) => !u.deleted_at).flatMap((u) =>
         (u.unit_leases ?? [])
           .filter((lease) => lease.owner_id === currentUserId)
           .map((lease) => ({
@@ -76,7 +76,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     title: l.title ?? null,
     address: l.address,
     description: l.description ?? null,
-    unitTypes: (l.listing_units ?? []).map((u) => {
+    unitTypes: (l.listing_units ?? []).filter((u) => !u.deleted_at).map((u) => {
       // Live offerings only — a withdrawn lease (unavailable) is not this unit's
       // current price, and showing one on the dashboard misreports the listing.
       const activeLease = (u.unit_leases ?? []).find(

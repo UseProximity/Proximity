@@ -970,7 +970,11 @@ export async function fetchActiveListings() {
     .eq("unavailable", false)
     .limit(80);
   if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
-  return data ?? [];
+  // Retired units (collapsed by a property merge) are not rentable options.
+  return (data ?? []).map((row) => ({
+    ...row,
+    listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at),
+  }));
 }
 
 // ---- Relaxable-constraint machinery (v2) -----------------------------------

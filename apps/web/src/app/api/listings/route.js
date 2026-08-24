@@ -95,6 +95,15 @@ function driveTimesToMap(driveTimes) {
 // ---------------------------------------------------------------------------
 
 export function buildListing(row, owner = null) {
+  /*
+   * Retired units must not reach the UI. PostgREST cannot filter an embedded
+   * resource from the select string, so it is done here — and it has to be done
+   * at all now that merging duplicate properties soft-deletes the units it
+   * collapses. Before that nothing had ever set listing_units.deleted_at, so
+   * nothing filtered on it.
+   */
+  row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find((wt) => wt.locations?.name === "shuttle_nearest");
@@ -254,7 +263,7 @@ export async function fetchListings() {
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, available,
+      listing_units(id, bedrooms, bathrooms, area, available, deleted_at,
         unit_leases(id, rent, is_active, unavailable, sublease,
                     available_from, lease_term_months, furnished,
                     contact_name, contact_email, contact_phone)),

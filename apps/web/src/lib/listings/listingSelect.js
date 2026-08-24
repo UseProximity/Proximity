@@ -11,7 +11,7 @@ export const LISTING_SELECT = `
   lease_structure, lease_availability, furnished, move_in_date, sublease_friendly,
   twenty_one_plus, unavailable, created_at,
   home_types!home_type_id(label),
-  listing_units!listing_id(id, bedrooms, bathrooms, area, available,
+  listing_units!listing_id(id, bedrooms, bathrooms, area, available, deleted_at,
     unit_designator, unit_number,
     unit_leases!unit_id(id, rent, is_active, unavailable, sublease,
       available_from, lease_term_months, furnished, owner_id)),

@@ -133,6 +133,10 @@ export function shapeLeases(unitLeases, listingRow) {
 }
 
 function buildListing(row, owner = null, reviews = []) {
+  // Retired units are not part of the property any more — see the note in
+  // api/listings/route.js; PostgREST can't filter an embedded resource.
+  row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find(
@@ -287,7 +291,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(
-        id, bedrooms, bathrooms, area, available, title, floor_plan_image_url,
+        id, bedrooms, bathrooms, area, available, deleted_at, title, floor_plan_image_url,
         unit_designator, unit_number,
         unit_leases(
           id, rent, is_active, available_from, sublease, lease_term_months,
