@@ -1,40 +1,67 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import {
+  canManagePropertyPhotos,
+  canAddUnitPhotos,
+} from "@/lib/listings/ownership";
 
-async function requireOwnership(listingId, userId, role) {
-  if (role === "super") return true;
-  const { data } = await supabase
-    .from("listing_landlords")
-    .select("listing_id")
-    .eq("listing_id", listingId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  return !!data;
-}
-
-// PATCH /api/landlord/listings/[listingId]/images
-// Body: { urls: string[] } — full ordered list of image URLs.
-// Updates sort_order for each image to match the supplied order.
+/*
+ * Reorder photos within ONE scope.
+ *
+ * Body: { urls: string[], unitId?: string }
+ *   unitId absent  -> the property's own photos; the property owner reorders.
+ *   unitId present -> that unit's photos; anyone offering it may reorder, as
+ *                     may the property owner.
+ *
+ * Scoping the write matters as much as scoping the permission: the previous
+ * version matched on (listing_id, url) alone, so once units have photos it
+ * would renumber a unit's pictures while reordering the property's — and the
+ * first property photo is the listing's cover.
+ *
+ * @auth user
+ */
 export async function PATCH(req, { params }) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { listingId } = await params;
-  if (!await requireOwnership(listingId, session.user.id, session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const body = await req.json().catch(() => null);
+  if (!body || !Array.isArray(body.urls)) {
+    return NextResponse.json({ error: "urls array required" }, { status: 400 });
+  }
+  const { urls, unitId = null } = body;
 
-  const { urls } = await req.json();
-  if (!Array.isArray(urls)) return NextResponse.json({ error: "urls array required" }, { status: 400 });
+  if (session.user.role !== "super") {
+    if (unitId) {
+      const check = await canAddUnitPhotos(session.user.id, unitId);
+      if (!check.ok) {
+        return check.reason === "not_found"
+          ? NextResponse.json({ error: "That unit no longer exists." }, { status: 404 })
+          : NextResponse.json({ error: "You don't have a listing on that unit." }, { status: 403 });
+      }
+      if (check.listingId !== listingId) {
+        return NextResponse.json({ error: "That unit isn't at this property." }, { status: 400 });
+      }
+    } else if (!(await canManagePropertyPhotos(session.user.id, listingId))) {
+      return NextResponse.json(
+        { error: "Only the property owner can reorder photos of the property." },
+        { status: 403 }
+      );
+    }
+  }
 
   await Promise.all(
-    urls.map((url, i) =>
-      supabase
+    urls.map((url, i) => {
+      const q = supabase
         .from("listing_images")
         .update({ sort_order: i })
         .eq("listing_id", listingId)
-        .eq("url", url)
-    )
+        .eq("url", url);
+      return unitId ? q.eq("unit_id", unitId) : q.is("unit_id", null);
+    })
   );
 
   return NextResponse.json({ ok: true });

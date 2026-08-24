@@ -77,6 +77,88 @@ export async function hasStakeInListing(userId, listingId) {
   );
 }
 
+/*
+ * ——— Photo permissions ———————————————————————————————————————————————————
+ *
+ * Photos carry a scope: listing_images.unit_id is null for a picture of the
+ * PROPERTY and set for a picture of one UNIT. The two answer to different
+ * people, which is the whole point — a subletter should be able to picture the
+ * apartment they are letting without touching the building's record.
+ */
+
+/**
+ * May add or remove photos of the PROPERTY itself — the exterior, the lobby,
+ * the shared spaces. The building's record is the property owner's, so this is
+ * isPropertyOwner and nothing looser.
+ */
+export async function canManagePropertyPhotos(userId, listingId) {
+  return isPropertyOwner(userId, listingId);
+}
+
+/**
+ * May add photos of ONE unit: anyone currently offering it, plus the property
+ * owner. Withdrawn offerings still count — a landlord whose lease is between
+ * tenants has not stopped owning their listing.
+ *
+ * Returns { ok, listingId, reason } so callers can 404 a missing unit apart
+ * from 403-ing a real one.
+ */
+export async function canAddUnitPhotos(userId, unitId) {
+  if (!userId || !unitId) return { ok: false, reason: "missing" };
+
+  const { data: unit, error } = await supabase
+    .from("listing_units")
+    .select("id, listing_id, deleted_at")
+    .eq("id", unitId)
+    .maybeSingle();
+
+  if (error) return { ok: false, reason: "error" };
+  if (!unit || unit.deleted_at) return { ok: false, reason: "not_found" };
+
+  if (await isPropertyOwner(userId, unit.listing_id)) {
+    return { ok: true, listingId: unit.listing_id };
+  }
+
+  const { data: lease } = await supabase
+    .from("unit_leases")
+    .select("id")
+    .eq("unit_id", unitId)
+    .eq("owner_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  return lease
+    ? { ok: true, listingId: unit.listing_id }
+    : { ok: false, listingId: unit.listing_id, reason: "forbidden" };
+}
+
+/**
+ * May remove ONE photo. Whoever uploaded it can take it down, and the property
+ * owner can prune anything on their building.
+ *
+ * Deliberately NOT "any lease owner on the unit": several landlords can offer
+ * the same unit, and one must never be able to delete another's pictures.
+ * Photos predating attribution (owner_id null) are the property owner's to
+ * manage, since nobody else can be shown to have added them.
+ */
+export async function canDeletePhoto(userId, imageId) {
+  if (!userId || !imageId) return { ok: false, reason: "missing" };
+
+  const { data: image, error } = await supabase
+    .from("listing_images")
+    .select("id, listing_id, unit_id, owner_id, url")
+    .eq("id", imageId)
+    .maybeSingle();
+
+  if (error) return { ok: false, reason: "error" };
+  if (!image) return { ok: false, reason: "not_found" };
+
+  if (image.owner_id && image.owner_id === userId) return { ok: true, image };
+  if (await isPropertyOwner(userId, image.listing_id)) return { ok: true, image };
+
+  return { ok: false, image, reason: "forbidden" };
+}
+
 /**
  * Property-level control: may edit the shared listing row, its unit set, and
  * delete it. Backed by listing_landlords alone — holding a lease is deliberately

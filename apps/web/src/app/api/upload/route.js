@@ -4,7 +4,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
-import { hasStakeInListing } from "@/lib/listings/ownership";
+import {
+  canManagePropertyPhotos,
+  canAddUnitPhotos,
+} from "@/lib/listings/ownership";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
 import { isProdData } from "@/lib/appEnv";
 
@@ -37,6 +40,44 @@ function getPublicBase(db) {
 // "1173 Moorlands Dr, St. Louis, MO 63117" → "1173-moorlands"
 // Takes the first two whitespace-tokens from the street part (before first comma),
 // lowercases them, strips non-alphanumeric chars, joins with a dash.
+/*
+ * Resolve which SCOPE an upload is for and whether the caller may write there.
+ *
+ * unitId absent  -> a photo of the property; only its owner may add one.
+ * unitId present -> a photo of that unit; anyone offering it may add one, as
+ *                   may the property owner.
+ *
+ * The unit is also checked to belong to the listing being written to, so a
+ * request cannot file a photo onto a unit at someone else's address. (The
+ * database enforces the same thing, but a 403 here beats a 500 from the
+ * trigger.)
+ */
+async function resolveUploadScope(session, listingId, unitId) {
+  if (session.user.role === "super") return { ok: true, unitId: unitId ?? null };
+
+  if (!unitId) {
+    return (await canManagePropertyPhotos(session.user.id, listingId))
+      ? { ok: true, unitId: null }
+      : {
+          ok: false,
+          status: 403,
+          error:
+            "Only the property owner can add photos of the property itself. Add them to your unit instead.",
+        };
+  }
+
+  const check = await canAddUnitPhotos(session.user.id, unitId);
+  if (!check.ok) {
+    return check.reason === "not_found"
+      ? { ok: false, status: 404, error: "That unit no longer exists." }
+      : { ok: false, status: 403, error: "You don't have a listing on that unit." };
+  }
+  if (check.listingId !== listingId) {
+    return { ok: false, status: 400, error: "That unit isn't at this property." };
+  }
+  return { ok: true, unitId };
+}
+
 function addressToFolderSlug(address) {
   const street = (address || "").split(",")[0].trim();
   const tokens = street.toLowerCase().split(/\s+/).filter(Boolean);
@@ -56,6 +97,7 @@ export async function PATCH(req) {
 
     const formData = await req.formData();
     const listingId = formData.get("listingId");
+    const unitId = formData.get("unitId") || null;
     const db = formData.get("db") || null;
     let files = formData.getAll("files");
 
@@ -85,14 +127,9 @@ export async function PATCH(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    /*
-     * Photos belong to the PLACE, not to the listing record, so a landlord
-     * letting a unit here may add them even though the building's record isn't
-     * theirs. Editing the property itself still requires isPropertyOwner.
-     */
-    const isOwner = await hasStakeInListing(session.user.id, listingId);
-    if (!isOwner && session.user.role !== "super") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+    const scope = await resolveUploadScope(session, listingId, unitId);
+    if (!scope.ok) {
+      return Response.json({ error: scope.error }, { status: scope.status });
     }
 
     const bucket = getBucket(db);
@@ -123,16 +160,26 @@ export async function PATCH(req) {
       return Response.json({ error: "No valid files" }, { status: 400 });
     }
 
-    // Find max current sort_order for this listing
-    const { data: existingImages } = await supabase
+    /*
+     * Ordering is per SCOPE: the property's photos order among themselves and
+     * each unit's among its own. Appending to a listing-wide sequence would let
+     * one unit's uploads push the property's cover photo out of position 0.
+     */
+    const orderQuery = supabase
       .from("listing_images")
       .select("sort_order")
       .eq("listing_id", listingId)
       .order("sort_order", { ascending: false })
       .limit(1);
+    const { data: existingImages } = await (scope.unitId
+      ? orderQuery.eq("unit_id", scope.unitId)
+      : orderQuery.is("unit_id", null));
     const maxOrder = existingImages?.[0]?.sort_order ?? -1;
     const imageRows = urls.map((url, i) => ({
       listing_id: listingId,
+      unit_id: scope.unitId,
+      // Who added it — the record that decides who may take it down again.
+      owner_id: session.user.id,
       url,
       sort_order: maxOrder + 1 + i,
     }));
@@ -158,7 +205,7 @@ export async function POST(req) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId, db, files } = await req.json();
+    const { listingId, unitId = null, db, files } = await req.json();
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -177,14 +224,9 @@ export async function POST(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    /*
-     * Photos belong to the PLACE, not to the listing record, so a landlord
-     * letting a unit here may add them even though the building's record isn't
-     * theirs. Editing the property itself still requires isPropertyOwner.
-     */
-    const isOwner = await hasStakeInListing(session.user.id, listingId);
-    if (!isOwner && session.user.role !== "super") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+    const scope = await resolveUploadScope(session, listingId, unitId);
+    if (!scope.ok) {
+      return Response.json({ error: scope.error }, { status: scope.status });
     }
 
     const bucket = getBucket(db);
@@ -218,7 +260,7 @@ export async function PUT(req) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId, db, urls } = await req.json();
+    const { listingId, unitId = null, db, urls } = await req.json();
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -237,26 +279,31 @@ export async function PUT(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    /*
-     * Photos belong to the PLACE, not to the listing record, so a landlord
-     * letting a unit here may add them even though the building's record isn't
-     * theirs. Editing the property itself still requires isPropertyOwner.
-     */
-    const isOwner = await hasStakeInListing(session.user.id, listingId);
-    if (!isOwner && session.user.role !== "super") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+    const scope = await resolveUploadScope(session, listingId, unitId);
+    if (!scope.ok) {
+      return Response.json({ error: scope.error }, { status: scope.status });
     }
 
-    // Find max current sort_order for this listing
-    const { data: existingImages } = await supabase
+    /*
+     * Ordering is per SCOPE: the property's photos order among themselves and
+     * each unit's among its own. Appending to a listing-wide sequence would let
+     * one unit's uploads push the property's cover photo out of position 0.
+     */
+    const orderQuery = supabase
       .from("listing_images")
       .select("sort_order")
       .eq("listing_id", listingId)
       .order("sort_order", { ascending: false })
       .limit(1);
+    const { data: existingImages } = await (scope.unitId
+      ? orderQuery.eq("unit_id", scope.unitId)
+      : orderQuery.is("unit_id", null));
     const maxOrder = existingImages?.[0]?.sort_order ?? -1;
     const imageRows = urls.map((url, i) => ({
       listing_id: listingId,
+      unit_id: scope.unitId,
+      // Who added it — the record that decides who may take it down again.
+      owner_id: session.user.id,
       url,
       sort_order: maxOrder + 1 + i,
     }));
