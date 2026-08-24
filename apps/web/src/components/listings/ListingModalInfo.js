@@ -1285,7 +1285,38 @@ export default function ListingModalInfo({
     : [];
   const showingUnitPhotos = unitImages.length >= 2;
 
+  /*
+   * What the gallery shows: the building's own photos AND the photos of the
+   * unit whose tab is open, kept as labelled sections. A renter looking at
+   * Apt 1W wants the building and that apartment — not every other unit's
+   * bedrooms, which is a different listing to them.
+   *
+   * propertyImages is read separately from `images` because the latter falls
+   * back to unit photos when the building has none of its own; using it here
+   * would file those under "the property".
+   */
+  const propertyGallery = Array.isArray(listing?.propertyImages)
+    ? listing.propertyImages.filter(Boolean).map(sanitizeUrl)
+    : images; // browse-feed shape, before the detail fetch lands
+
+  const gallerySections = [
+    ...(propertyGallery.length
+      ? [{ key: "property", label: "The property", photos: propertyGallery }]
+      : []),
+    ...(unitImages.length
+      ? [{ key: "unit", label: selectedUnitName ?? "This unit", photos: unitImages }]
+      : []),
+  ];
+  const galleryCount = gallerySections.reduce((n, sec) => n + sec.photos.length, 0);
+
   const coverImage = images[0] || unitImages[0];
+  /*
+   * Whether anything renders beside the cover. Keyed on the tiles themselves
+   * rather than on the property's photo count: a building with one picture and
+   * a unit with two does have a pair to show, and testing images.length alone
+   * would collapse the hero to full width and hide them.
+   */
+  const hasSideTiles = showingUnitPhotos || images.length > 1;
   /*
    * The offset differs by source: the cover already consumed images[0] from the
    * property set, but nothing has consumed the unit's, so its photos start at 0.
@@ -1444,7 +1475,7 @@ export default function ListingModalInfo({
             <div
               ref={heroImgWrapperRef}
               className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
-                images.length > 1
+                hasSideTiles
                   ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
                   : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
               }`}
@@ -1507,7 +1538,7 @@ export default function ListingModalInfo({
 
             {/* Two stacked thumbnails — fill remaining width, desktop only.
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
-            {images.length > 1 && (
+            {hasSideTiles && (
             <motion.div
               className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
@@ -1558,13 +1589,14 @@ export default function ListingModalInfo({
             </motion.div>
             )}
 
-            {/* "See all photos" button — only when there's more than one photo */}
-            {images.length > 1 && (
+            {/* "See all photos" — counts the property AND the open unit, which is
+                what the gallery actually opens with. */}
+            {galleryCount > 1 && (
               <button
                 onClick={() => setIsGalleryOpen(true)}
                 className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
               >
-                See all photos ({images.length})
+                See all photos ({galleryCount})
               </button>
             )}
           </div>
@@ -1838,7 +1870,7 @@ export default function ListingModalInfo({
           >
             <div className="flex items-center justify-between mb-6 text-white">
               <div className="text-lg font-semibold">
-                Photos ({images.length})
+                Photos ({galleryCount})
               </div>
               <button
                 type="button"
@@ -1849,19 +1881,34 @@ export default function ListingModalInfo({
                 ×
               </button>
             </div>
-            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-              {images.map((src) => (
-                <GalleryImage
-                  key={src}
-                  src={src}
-                  index={images.indexOf(src)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setLightboxSrc(src);
-                  }}
-                />
-              ))}
-            </div>
+            {gallerySections.map((section, sectionIdx) => (
+              <div key={section.key} className={sectionIdx ? "mt-10" : ""}>
+                {/* Only worth a heading when there is more than one section —
+                    a single group needs no label to tell it apart from. */}
+                {gallerySections.length > 1 && (
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">
+                    {section.label}
+                    <span className="ml-2 font-normal normal-case tracking-normal text-white/40">
+                      {section.photos.length}{" "}
+                      {section.photos.length === 1 ? "photo" : "photos"}
+                    </span>
+                  </h3>
+                )}
+                <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
+                  {section.photos.map((src, i) => (
+                    <GalleryImage
+                      key={`${section.key}-${src}`}
+                      src={src}
+                      index={i}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLightboxSrc(src);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

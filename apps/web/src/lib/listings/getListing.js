@@ -221,8 +221,14 @@ function buildListing(row, owner = null, reviews = []) {
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
     images: coverPool.map((img) => img.url),
-    // Every photo at this property, whatever its scope — the gallery shows the
-    // building and its units together.
+    /*
+     * The property's OWN photos, kept separate from `images` because that falls
+     * back to unit photos when the building has none. The gallery has to tell
+     * the two apart to label them, and cannot recover the distinction from a
+     * pool that may already be a fallback.
+     */
+    propertyImages: propertyImages.map((img) => img.url),
+    // Every photo at this property, whatever its scope.
     allImages: allImages.map((img) => img.url),
     // True when the cover photo was auto-fetched from Google Street View. Read
     // from the property's own photos: a unit photo is never a Street View grab,
