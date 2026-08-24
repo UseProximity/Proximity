@@ -44,6 +44,24 @@ async function main() {
   }
 
   const data = JSON.parse(readFileSync(join(outDir, "data.json"), "utf-8"));
+
+  // Seeded test data and the intent behind the change. Both are optional so an
+  // older checkout, or a seed step that failed, still produces a review.
+  const readOptional = (name) => {
+    try {
+      return readFileSync(join(outDir, name), "utf-8").trim();
+    } catch {
+      return "";
+    }
+  };
+  const fixturesRaw = readOptional("fixtures.json");
+  const commitsMd = readOptional("commits.md");
+  let fixtures = null;
+  try {
+    fixtures = fixturesRaw ? JSON.parse(fixturesRaw) : null;
+  } catch {
+    fixtures = null;
+  }
   // Narrate the diff that was actually tested this run: incremental runs review
   // only what changed since the last reviewed commit; the first run is the whole release.
   const diffBase = data.incremental ? data.testBase : data.releaseBase;
@@ -74,8 +92,18 @@ async function main() {
     "You are given: (1) a cumulative impact report listing every API endpoint and page downstream of the release's",
     "changed files, (2) the bug ledger for this run, (3) the results of live tests run this run against the staging",
     "deployment (public routes must not crash; guarded routes must reject anonymous access and work for a logged-in",
-    "user; mutations were NOT run), and (4) the diff tested this run. Ground every claim in those inputs — do not",
-    "invent endpoints or behavior not present.",
+    "user; mutations were NOT run), (4) the diff tested this run, (5) the commit messages under review, and",
+    "(6) a catalogue of TEST FIXTURES seeded fresh into the dev database for this run. Ground every claim in those",
+    "inputs — do not invent endpoints or behavior not present.",
+    "",
+    "The commit messages tell you INTENT — what the author was trying to change and why. Use them to state what the",
+    "new behavior should be, which a diff alone cannot tell you. Where you infer expected behavior rather than",
+    "observing it in a test result, mark it `(inferred)` so the reader knows which claims are checked and which",
+    "are your reading of the change.",
+    "",
+    "The fixtures are synthetic accounts and listings created for this review — they contain no real user data, and",
+    "they all share the password given in the catalogue. Use them: name the exact account, its role, and what it is",
+    "positioned to demonstrate. Never cite a real user, a real listing, or any id not present in the catalogue.",
     "",
     "Write GitHub-flavored markdown with exactly these sections:",
     "## What changed this run — for run 1, a product-level summary of the whole release; for later runs, what these",
@@ -85,16 +113,41 @@ async function main() {
     "## Production risk assessment — what could break in prod, ranked, limited to what this run touched. Call out",
     "auth/permission, DB schema/query, outreach/email, and anything touching money or PII. Note where live tests give",
     "confidence and where they do NOT (e.g. mutations weren't exercised).",
-    "## Test plan before merge — a concrete, numbered manual checklist tied to the surfaces changed/affected this run.",
-    "Be specific (which page/endpoint, which role, what to look for). Flag steps that need a human because automation skipped them.",
+    "## Test plan before merge — a numbered manual checklist covering EVERY behavioral change in this run. One step",
+    "per change; do not merge unrelated changes into a single step. Each step MUST have all five of these, as a short",
+    "labelled block — a step missing any of them is not usable:",
+    "  **Sign in as** — the exact fixture email and the password from the catalogue, plus what that account is",
+    "    (e.g. `ci-fixture-sublet@proximity.test` / `testing-password-2026` — a landlord who holds an offering on",
+    "    Apt 101 but does NOT own the property).",
+    "  **Go to** — a full clickable URL against the staging base URL, using real ids from the fixture catalogue.",
+    "  **Do** — the precise interaction (which control, which field, what value).",
+    "  **Expect** — the observable result, in specifics: exact counts, labels, prices, or status codes. Not 'it works'.",
+    "  **Broken if** — what the reader would see if the change regressed, so a failure is recognizable.",
+    "Order the steps so the riskiest and least-automatable come first. Mark any step whose expectation you inferred",
+    "from the diff or commit messages rather than from a test result with `(inferred)`. Where a change has no fixture",
+    "that can exercise it, say so plainly instead of inventing data.",
+    "Cover the negative cases too: a role that must be REFUSED is as important as one that must succeed.",
     "## Verdict — one of ✅ Looks safe / ⚠️ Merge with caution / ⛔ Do not merge, plus one sentence why. If any bug is",
     "still open, the verdict cannot be ✅.",
     "Be concise and skimmable. If the impact report shows no changes or errored, say so plainly.",
   ].join("\n");
 
+  const fixtureBlock = fixtures
+    ? `# Test fixtures seeded for this run\n\nStaging base URL: ${data.baseUrl}\n` +
+      `Every account below uses the password \`${fixtures.password}\`. These are synthetic —\n` +
+      `no real user data. Build your URLs from these ids.\n\n` +
+      "```json\n" +
+      JSON.stringify(fixtures, null, 2) +
+      "\n```"
+    : "# Test fixtures\n\nNone were seeded this run — write the plan without citing specific accounts or ids, and say so.";
+
   const userContent = [
     `# Run ${runNumber}${incremental ? ` (incremental since \`${data.lastShort}\`)` : " (first review)"}`,
     `# Bug ledger\n\n${data.ledgerMd}`,
+    fixtureBlock,
+    commitsMd
+      ? `# Commit messages under review (intent behind the diff)\n\n${commitsMd}`
+      : "# Commit messages\n\nUnavailable this run.",
     `# Cumulative impact report (full release)\n\n${data.impactMd}`,
     `# Live test results this run (staging: ${data.baseUrl})\n\n${testReports}`,
     `# Diff tested this run (\`${diffBase}\`...\`${data.head}\`)\n\n\`\`\`diff\n${diff}\n\`\`\``,
