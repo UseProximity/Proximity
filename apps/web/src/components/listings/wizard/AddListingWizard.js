@@ -814,12 +814,21 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
          * the block below was skipped entirely, with no upload and no error.
          */
         const listingId = data.listing?.id ?? data.lease?.listingId ?? null;
+        /*
+         * Attaching an offering to an existing unit means these photos are of
+         * that APARTMENT, not of a building the uploader may not even own. They
+         * are filed against the unit, which is also the only scope they are
+         * allowed to write to — /api/upload reserves property photos for the
+         * property owner, so sending these unscoped would now be rejected.
+         */
+        const photoUnitId = attachingToExistingUnit ? unitSelection.unitId : null;
         if (listingId) {
           const presignRes = await fetch("/api/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               listingId,
+              unitId: photoUnitId,
               files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
             }),
           });
@@ -850,6 +859,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   listingId,
+                  unitId: photoUnitId,
                   urls: presigned.map((p) => p.publicUrl),
                 }),
               });
