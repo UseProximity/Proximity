@@ -26,11 +26,18 @@ DELETE FROM unit_leases     WHERE unit_id IN (SELECT u.id FROM listing_units u J
 DELETE FROM listing_units   WHERE listing_id IN (SELECT id FROM listings WHERE address = '1 CI Fixture Way, St. Louis, MO 63130');
 DELETE FROM listing_landlords WHERE listing_id IN (SELECT id FROM listings WHERE address = '1 CI Fixture Way, St. Louis, MO 63130');
 DELETE FROM listings        WHERE address = '1 CI Fixture Way, St. Louis, MO 63130';
-DELETE FROM users           WHERE email LIKE 'ci-fixture-%';
+-- The ACCOUNTS are deliberately not dropped. They also live on prod, so the
+-- prod→dev snapshot restores them; deleting and recreating here would churn
+-- their ids for no reason and briefly break a link someone was following.
 
 -- ── The cast ─────────────────────────────────────────────────────────────────
 -- One shared password. pgcrypto's bcrypt is the same format bcryptjs verifies,
 -- which is what NextAuth checks against users.password_hash.
+--
+-- Upserted, not recreated. These four accounts also exist on PROD so that the
+-- prod→dev snapshot — which drops and replaces dev's whole public schema —
+-- preserves them; guest@proximity.test was lost exactly this way. Here we only
+-- reassert the password and role in case a snapshot brought an older row.
 INSERT INTO users (name, email, password_hash, role_id, email_verified, profile_complete)
 SELECT v.name, v.email, crypt('testing-password-2026', gen_salt('bf', 12)), r.id, true, true
 FROM (VALUES
@@ -38,7 +45,12 @@ FROM (VALUES
   ('CI Subletter','ci-fixture-sublet@proximity.test',  'landlord'),
   ('CI Rival',    'ci-fixture-rival@proximity.test',   'landlord'),
   ('CI Student',  'ci-fixture-student@wustl.edu',      'student')
-) AS v(name, email, role) JOIN roles r ON r.name = v.role;
+) AS v(name, email, role) JOIN roles r ON r.name = v.role
+ON CONFLICT (email) DO UPDATE
+  SET password_hash  = EXCLUDED.password_hash,
+      role_id        = EXCLUDED.role_id,
+      email_verified = true,
+      name           = EXCLUDED.name;
 
 -- ── The property ─────────────────────────────────────────────────────────────
 INSERT INTO listings (title, address, city, state, zipcode, latitude, longitude,
