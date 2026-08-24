@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
+import PropertyPhotosSection from "./PropertyPhotosSection";
 import ListingMetricsChart from "./ListingMetricsChart";
 
 export default function PropertyAnalyticsSection({
@@ -21,6 +22,7 @@ export default function PropertyAnalyticsSection({
   selectedProperty: p,
   onEditListing,
   viewAsId,
+  onPhotosChanged,
 }) {
   const router = useRouter();
   const [allTimeMetrics, setAllTimeMetrics] = useState([]);
@@ -200,6 +202,10 @@ export default function PropertyAnalyticsSection({
           </dl>
         </CardContent>
       </Card>
+
+      {/* Photos — sits above Units because a landlord edits pictures far more
+          often than they edit the unit table. */}
+      <PropertyPhotosSection property={p} onChanged={onPhotosChanged} />
 
       {/* Units */}
       {units.length > 0 && (

@@ -22,6 +22,6 @@ export const LISTING_SELECT = `
     storage, stove, study_room),
   listing_utilities!listing_id(
     electric, gas, heat, water, internet, trash, cable, sewer, cooling),
-  listing_images(url, sort_order),
+  listing_images(id, url, sort_order, unit_id, owner_id),
   listing_reviews!listing_id(rating, legitimacy, deleted_at)
 `.trim();

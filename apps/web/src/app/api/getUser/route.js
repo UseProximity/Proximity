@@ -89,6 +89,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         title: u.title ?? null,
+        identityLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
         floorPlanImageUrl: u.floor_plan_image_url ?? null,
         leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
           ? activeLease.lease_term_months.map(Number)
@@ -119,6 +120,21 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     images: (l.listing_images ?? [])
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((i) => i.url),
+    /*
+     * Photos as the dashboard has to manage them: by scope, with the id needed
+     * to delete one and a flag for whether this landlord may move it. A flat
+     * list of URLs cannot express "these are the building's, those are Apt 1W's,
+     * and that one is a competitor's you may see but not touch".
+     */
+    photos: (l.listing_images ?? [])
+      .slice()
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      .map((i) => ({
+        id: i.id,
+        url: i.url,
+        unitId: i.unit_id ?? null,
+        mine: !!currentUserId && i.owner_id === currentUserId,
+      })),
     rating,
     numReviews,
     numClicks: metricsMap[l.id] ?? 0,
