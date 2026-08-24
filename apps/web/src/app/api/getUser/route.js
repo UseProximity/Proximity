@@ -95,6 +95,35 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
           ? activeLease.lease_term_months.map(Number)
           : [],
         available: u.available ?? true,
+        /*
+         * EVERY offering on this unit, not just the first live one. A unit can
+         * carry competing leases from different landlords, so a dashboard that
+         * shows one rent per unit is describing a listing that doesn't exist —
+         * and gives a landlord no way to find the offering that is actually
+         * theirs. `mine` is what the UI gates editing on; the API re-checks it.
+         */
+        leases: (u.unit_leases ?? [])
+          .filter((lease) => lease.is_active)
+          .map((lease) => ({
+            id: lease.id,
+            rent: lease.rent != null ? Number(lease.rent) : null,
+            sublease: !!lease.sublease,
+            unavailable: !!lease.unavailable,
+            furnished: lease.furnished ?? null,
+            availableFrom: lease.available_from ?? null,
+            leaseTermMonths: Array.isArray(lease.lease_term_months)
+              ? lease.lease_term_months.map(Number)
+              : [],
+            mine: !!currentUserId && lease.owner_id === currentUserId,
+            landlordName: lease.contact_name ?? null,
+          }))
+          .sort((a, b) => {
+            // Live before withdrawn, then cheapest first.
+            if (a.unavailable !== b.unavailable) return a.unavailable ? 1 : -1;
+            if (a.rent == null) return 1;
+            if (b.rent == null) return -1;
+            return a.rent - b.rent;
+          }),
       };
     }),
     leaseType: l.lease_type ?? null,

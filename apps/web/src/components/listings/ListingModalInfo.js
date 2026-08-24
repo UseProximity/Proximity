@@ -1237,6 +1237,16 @@ export default function ListingModalInfo({
 
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);
+    /*
+     * Clicking Contact is an intent to send, so the form comes back even after
+     * a previous enquiry. It used to latch: contactSent was set on the first
+     * submit and never cleared, so every later lease showed "Your message was
+     * sent!" instead of a form — and on a unit with competing offerings, a
+     * renter who wrote to one landlord could not write to the next.
+     * The typed fields are deliberately kept, so asking several landlords about
+     * the same place doesn't mean retyping the same message.
+     */
+    setContactSent(false);
     setActiveTab("contact");
     setTimeout(
       () => scrollIntoContainer(document.getElementById("listing-tabs")),

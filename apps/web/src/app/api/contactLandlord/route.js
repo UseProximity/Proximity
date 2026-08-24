@@ -131,16 +131,24 @@ export async function POST(req) {
       const unit = lease.listing_units;
       const parentListing = unit?.listings;
 
-      // The lease's own contact wins, then its owner's account, then the
-      // property-level contact for leases that predate per-lease contacts.
+      /*
+       * The lease OWNER's account wins, then the contact typed on the lease,
+       * then the property's — which is what still carries the 49 imported
+       * leases that have no owner at all.
+       *
+       * The account comes first because it is the address the landlord signs in
+       * with and can change themselves; a contact field typed once during an
+       * import goes stale silently, and an enquiry sent to a dead address looks
+       * to the student like nobody answered.
+       */
       toEmail =
-        lease.contact_email ||
         lease.users?.email ||
+        lease.contact_email ||
         parentListing?.contact_email ||
         null;
       toName =
-        lease.contact_name ||
         lease.users?.name ||
+        lease.contact_name ||
         parentListing?.contact_name ||
         null;
 
