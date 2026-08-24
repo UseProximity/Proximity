@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-23T21:32:46.274Z",
+  "_generated": "2026-08-24T19:06:27.787Z",
   "count": 60,
   "utils": [
     {
@@ -81,7 +81,7 @@
     },
     {
       "file": "src/lib/listings/ownership.js",
-      "description": "Who owns what, now that a property can carry offerings from several landlords."
+      "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
     },
     {
       "file": "src/lib/listings/queryListings.js",
