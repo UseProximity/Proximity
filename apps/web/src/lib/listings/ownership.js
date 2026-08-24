@@ -1,6 +1,20 @@
 import supabase from "@/lib/supabase";
 
 /*
+ * Ids arrive from URL segments, so they are whatever the caller typed. The id
+ * columns are uuid, and Postgres raises on a malformed one — which used to
+ * surface as a 500 "could not load", reporting a client's typo as a server
+ * crash. Worse, finding that out cost a database round trip; on a cold
+ * serverless instance that was slow enough to blow a caller's timeout.
+ *
+ * Checking the shape first makes a bad id cheap and honest: no query, and a
+ * "malformed" reason the routes turn into a 400.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v) => typeof v === "string" && UUID_RE.test(v);
+
+/*
  * Who owns what, now that a property can carry offerings from several landlords.
  *
  * There are two DIFFERENT kinds of ownership and conflating them is a privilege
@@ -32,7 +46,7 @@ import supabase from "@/lib/supabase";
  */
 export async function getOwnedListings(userId) {
   const owned = new Map();
-  if (!userId) return owned;
+  if (!isUuid(userId)) return owned;
 
   const [{ data: landlordRows }, { data: leaseRows }] = await Promise.all([
     supabase.from("listing_landlords").select("listing_id").eq("user_id", userId),
@@ -64,7 +78,7 @@ export async function getOwnedListings(userId) {
  * Use isPropertyOwner for anything that changes the property itself.
  */
 export async function hasStakeInListing(userId, listingId) {
-  if (!userId || !listingId) return false;
+  if (!isUuid(userId) || !isUuid(listingId)) return false;
   if (await isPropertyOwner(userId, listingId)) return true;
 
   const { data } = await supabase
@@ -105,6 +119,7 @@ export async function canManagePropertyPhotos(userId, listingId) {
  */
 export async function canAddUnitPhotos(userId, unitId) {
   if (!userId || !unitId) return { ok: false, reason: "missing" };
+  if (!isUuid(unitId)) return { ok: false, reason: "malformed" };
 
   const { data: unit, error } = await supabase
     .from("listing_units")
@@ -143,6 +158,7 @@ export async function canAddUnitPhotos(userId, unitId) {
  */
 export async function canDeletePhoto(userId, imageId) {
   if (!userId || !imageId) return { ok: false, reason: "missing" };
+  if (!isUuid(imageId)) return { ok: false, reason: "malformed" };
 
   const { data: image, error } = await supabase
     .from("listing_images")
@@ -165,7 +181,7 @@ export async function canDeletePhoto(userId, imageId) {
  * NOT enough.
  */
 export async function isPropertyOwner(userId, listingId) {
-  if (!userId || !listingId) return false;
+  if (!isUuid(userId) || !isUuid(listingId)) return false;
   const { data } = await supabase
     .from("listing_landlords")
     .select("listing_id")
@@ -184,6 +200,7 @@ export async function isPropertyOwner(userId, listingId) {
  */
 export async function canManageLease(userId, leaseId) {
   if (!userId || !leaseId) return { ok: false, reason: "missing" };
+  if (!isUuid(leaseId)) return { ok: false, reason: "malformed" };
 
   const { data: lease, error } = await supabase
     .from("unit_leases")

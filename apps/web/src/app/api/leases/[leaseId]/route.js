@@ -66,6 +66,10 @@ export async function PATCH(req, { params }) {
     if (check.reason === "forbidden") {
       return NextResponse.json({ error: "This isn't your lease." }, { status: 403 });
     }
+    // A lease id that isn't even a uuid is a bad request, not a server fault.
+    if (check.reason === "malformed") {
+      return NextResponse.json({ error: "That isn't a valid lease id." }, { status: 400 });
+    }
     return NextResponse.json({ error: "Could not load that lease." }, { status: 500 });
   }
 
@@ -130,6 +134,10 @@ export async function DELETE(_req, { params }) {
     }
     if (check.reason === "forbidden") {
       return NextResponse.json({ error: "This isn't your lease." }, { status: 403 });
+    }
+    // A lease id that isn't even a uuid is a bad request, not a server fault.
+    if (check.reason === "malformed") {
+      return NextResponse.json({ error: "That isn't a valid lease id." }, { status: 400 });
     }
     return NextResponse.json({ error: "Could not load that lease." }, { status: 500 });
   }

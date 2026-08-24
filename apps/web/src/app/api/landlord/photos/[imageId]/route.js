@@ -53,6 +53,9 @@ export async function DELETE(req, { params }) {
         { status: 403 }
       );
     }
+    if (check.reason === "malformed") {
+      return NextResponse.json({ error: "That isn't a valid photo id." }, { status: 400 });
+    }
     return NextResponse.json({ error: "Could not remove that photo." }, { status: 500 });
   }
 

@@ -68,6 +68,9 @@ async function resolveUploadScope(session, listingId, unitId) {
 
   const check = await canAddUnitPhotos(session.user.id, unitId);
   if (!check.ok) {
+    if (check.reason === "malformed") {
+      return { ok: false, status: 400, error: "That isn't a valid unit id." };
+    }
     return check.reason === "not_found"
       ? { ok: false, status: 404, error: "That unit no longer exists." }
       : { ok: false, status: 403, error: "You don't have a listing on that unit." };
