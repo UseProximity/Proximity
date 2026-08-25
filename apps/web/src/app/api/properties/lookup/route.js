@@ -70,8 +70,7 @@ export async function GET(req) {
         id: lease.id,
         rent: lease.rent,
         sublease: !!lease.sublease,
-        // "Live" mirrors the unit_leases_sublease_guard trigger: an offering the
-        // owner has withdrawn no longer blocks a sublease.
+        // Whether a renter could take this offering today.
         live: !!lease.is_active && !lease.unavailable,
         ownerId: lease.owner_id,
         contactName: lease.contact_name,
@@ -99,9 +98,13 @@ export async function GET(req) {
         available: unit.available,
         leases,
         liveLeaseCount: liveLeases.length,
-        // Enforced for real by the database trigger; surfaced here so the form
-        // can disable the option instead of failing on submit.
-        canAddSublease: liveLeases.length === 0,
+        /*
+         * Always. Subletting is taking over part of a lease that exists, so a
+         * unit already being let is the normal case for it — the guard that
+         * refused this was removed in 202608240003. Kept as a field so callers
+         * don't have to know it is now unconditional.
+         */
+        canAddSublease: true,
       };
     });
 

@@ -1088,18 +1088,17 @@ export default function ListingModalInfo({
     );
     const isStudio = (u) => (u.bedrooms ?? 0) === 0;
 
-    // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
-    const seen = new Set();
-    const deduped = units.filter((u) => {
-      const key = `${u.title ?? ""}|${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${
-        u.rent ?? ""
-      }|${u.area ?? ""}|${u.leaseType ?? ""}|${
-        Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths.join(",") : ""
-      }`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    /*
+     * No deduplication. Two units that look identical are two apartments: a
+     * building with ten matching studios has ten of them, and each carries its
+     * own offering from possibly a different landlord.
+     *
+     * This used to collapse units matching on beds, baths, rent and area, which
+     * was written when a "unit" meant a floor-plan type. Under the property →
+     * unit → lease model it hid real inventory — and would have hidden one
+     * landlord's live offering behind another's identical-looking one.
+     */
+    const deduped = units;
 
     // Build base labels in original order for stable disambiguation numbering.
     // Each entry has a full label ("2 Bed / 1 Bath") and a short label
@@ -1223,6 +1222,10 @@ export default function ListingModalInfo({
       ? "Studio"
       : `${selectedUnit?.bedrooms ?? "?"} bed`,
     `${selectedUnit?.bathrooms ?? "?"} bath`,
+    // Only when it is known — "? sq ft" is worse than saying nothing.
+    ...(selectedUnit?.area != null
+      ? [`${Number(selectedUnit.area).toLocaleString()} sq ft`]
+      : []),
   ].join(" · ");
 
   /*
@@ -1286,14 +1289,16 @@ export default function ListingModalInfo({
    * these are genuinely different apartments rather than one listing wearing
    * different labels.
    *
-   * Both tiles switch together or neither does. Showing one unit photo next to
-   * one property photo reads as an accident rather than a distinction, so a
-   * unit with a single picture keeps the property's pair.
+   * The unit takes as many of the two tiles as it has pictures for: one photo
+   * replaces the top tile, two replace both. A unit with a single picture used
+   * to be shown none of it — the pair only switched together — which meant a
+   * landlord who uploaded one photo of their apartment saw no sign of it beside
+   * the cover.
    */
   const unitImages = Array.isArray(selectedUnit?.images)
     ? selectedUnit.images.filter(Boolean).map(sanitizeUrl)
     : [];
-  const showingUnitPhotos = unitImages.length >= 2;
+  const showingUnitPhotos = unitImages.length > 0;
 
   /*
    * What the gallery shows: the building's own photos AND the photos of the
@@ -1328,12 +1333,26 @@ export default function ListingModalInfo({
    */
   const hasSideTiles = showingUnitPhotos || images.length > 1;
   /*
+   * The two tiles, each tagged with where it came from so the caption only
+   * appears on a photo that really is of this unit.
+   *
    * The offset differs by source: the cover already consumed images[0] from the
    * property set, but nothing has consumed the unit's, so its photos start at 0.
+   * Unit photos claim tiles from the top down; the property's fill the rest.
    */
-  const [secondImage, thirdImage] = showingUnitPhotos
-    ? [unitImages[0], unitImages[1]]
-    : [images[1] || images[0] || null, images[2] || images[1] || images[0] || null];
+  const propertyTile = [
+    images[1] || images[0] || null,
+    images[2] || images[1] || images[0] || null,
+  ];
+  const sideTiles = [0, 1]
+    .map((i) =>
+      unitImages[i]
+        ? { src: unitImages[i], isUnit: true }
+        : propertyTile[i]
+          ? { src: propertyTile[i], isUnit: false }
+          : null
+    )
+    .filter(Boolean);
 
   // Address
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
@@ -1555,47 +1574,35 @@ export default function ListingModalInfo({
               animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
             >
-              {/* Top thumbnail */}
-              <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
-                onClick={() => setIsGalleryOpen(true)}
-              >
-                {secondImage ? (
+              {sideTiles.map((tile, i) => (
+                <div
+                  key={`${tile.src}-${i}`}
+                  className={`relative flex-1 cursor-pointer overflow-hidden bg-gray-100 ${
+                    i === 0 ? "rounded-tr-xl" : ""
+                  } ${i === sideTiles.length - 1 ? "rounded-br-xl" : ""}`}
+                  onClick={() => setIsGalleryOpen(true)}
+                >
                   <Image
-                    src={secondImage}
-                    alt={showingUnitPhotos ? `${selectedUnitName ?? "Unit"} photo` : "Listing photo 2"}
+                    src={tile.src}
+                    alt={
+                      tile.isUnit
+                        ? `${selectedUnitName ?? "Unit"} photo`
+                        : `Listing photo ${i + 2}`
+                    }
                     fill
                     sizes="(max-width: 768px) 0vw, 35vw"
                     className="object-cover"
                   />
-                ) : (
-                  <div className="w-full h-full bg-gray-200" />
-                )}
-                {/* Says whose photos these are, so switching tabs reads as a
-                    different apartment rather than the gallery reshuffling. */}
-                {showingUnitPhotos && selectedUnitName && (
-                  <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
-                    {selectedUnitName}
-                  </span>
-                )}
-              </div>
-              {/* Bottom thumbnail */}
-              <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl bg-gray-100"
-                onClick={() => setIsGalleryOpen(true)}
-              >
-                {thirdImage ? (
-                  <Image
-                    src={thirdImage}
-                    alt={showingUnitPhotos ? `${selectedUnitName ?? "Unit"} photo` : "Listing photo 3"}
-                    fill
-                    sizes="(max-width: 768px) 0vw, 35vw"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-300" />
-                )}
-              </div>
+                  {/* Says whose photo this is, so switching tabs reads as a
+                      different apartment rather than the gallery reshuffling.
+                      Only on the first unit tile — twice is clutter. */}
+                  {tile.isUnit && selectedUnitName && i === 0 && (
+                    <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
+                      {selectedUnitName}
+                    </span>
+                  )}
+                </div>
+              ))}
             </motion.div>
             )}
 

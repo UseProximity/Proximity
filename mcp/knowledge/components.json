@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-23T21:32:46.258Z",
-  "count": 85,
+  "_generated": "2026-08-25T22:01:32.846Z",
+  "count": 93,
   "components": [
     {
       "name": "DormsView",
@@ -209,6 +209,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "LeaseTermPicker",
+      "file": "src/components/listings/LeaseTermPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ListDetailPanel",
       "file": "src/components/listings/ListDetailPanel.js",
       "description": "No description — run generate after adding a description above."
@@ -281,6 +286,41 @@
     {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddListingFlow",
+      "file": "src/components/listings/add/AddListingFlow.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddressStep",
+      "file": "src/components/listings/add/AddressStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseStep",
+      "file": "src/components/listings/add/LeaseStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "UnitStep",
+      "file": "src/components/listings/add/UnitStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "EditorImageRows",
+      "file": "src/components/listings/editor/EditorImageRows.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "EditorOverview",
+      "file": "src/components/listings/editor/EditorOverview.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "EditorUnits",
+      "file": "src/components/listings/editor/EditorUnits.js",
       "description": "No description — run generate after adding a description above."
     },
     {

@@ -5,6 +5,7 @@ import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
+import { shortDescription } from "@/lib/listings/leaseDescription";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 
@@ -110,10 +111,17 @@ export async function POST(req) {
     const contactPhone = body.contactPhone || body.contact_phone || null;
     const contactName = body.contactName || body.contact_name || null;
 
-    // Validate required fields
+    /*
+     * Validate required fields.
+     *
+     * A description is NOT one of them. It used to be, which forced every
+     * landlord to write a paragraph before they could publish — and what they
+     * wrote then went to listings.description, a property-level column that the
+     * offering-level UI never shows. It is now the lease's own short blurb,
+     * optional, and read back behind the chevron on the offering it describes.
+     */
     if (
       !address?.trim() ||
-      !description?.trim() ||
       !Array.isArray(unitTypes) ||
       unitTypes.length === 0
     ) {
@@ -153,6 +161,17 @@ export async function POST(req) {
       ownerId = session?.user?.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+      }
+      /*
+       * Someone has to be reachable about the offering. Not asked of the
+       * importer, which creates unclaimed listings whose contact is whatever the
+       * source site published — sometimes nothing.
+       */
+      if (!contactEmail?.trim()) {
+        return NextResponse.json(
+          { error: "A contact email is required so students can reach you." },
+          { status: 400 }
+        );
       }
     }
 
@@ -269,6 +288,15 @@ export async function POST(req) {
     const resolvedLeaseType = leaseType ?? body.lease_type ?? "standard";
     const isSublease = String(resolvedLeaseType).toLowerCase() === "sublease";
 
+    /*
+     * The blurb that goes on the OFFERING. The add flow sends one short line;
+     * the importer sends whatever the source site published, which can run to
+     * several paragraphs and predates the cap, so it is copied across whole.
+     */
+    const leaseBlurb = isImportRequest
+      ? description?.trim() || null
+      : shortDescription(body.leaseDescription ?? description);
+
     const unitData = unitTypes.map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
@@ -283,6 +311,8 @@ export async function POST(req) {
             .filter((m) => Number.isFinite(m) && m > 0)
         : [],
       leaseAvailability: unit.leaseAvailability ?? null,
+      rentIsPerPerson:
+        unit.rentIsPerPerson == null ? null : !!unit.rentIsPerPerson,
       available: unit.available !== false,
       sublease: isSublease,
       // Unit identity. 'Whole' covers the entire property and carries no number
@@ -345,7 +375,9 @@ export async function POST(req) {
           address,
           longitude: resolvedLng,
           latitude: resolvedLat,
-          description,
+          // NOT NULL in the schema, and now optional in the form: a property
+          // created without one starts blank rather than refusing to save.
+          description: description?.trim() || "",
           lease_type: resolvedLeaseType,
           home_type_id: homeTypeId,
           lease_structure: leaseStructure ?? null,
@@ -402,12 +434,16 @@ export async function POST(req) {
         unit_id: insertedUnit.id,
         owner_id: ownerId,
         rent: unit.rent,
+        // Which number `rent` is. Dropped here until now, so an offering
+        // published as per-person came back out as whole-unit rent and was
+        // divided by the bedroom count a second time.
+        rent_is_per_person: unit.rentIsPerPerson,
         lease_term_months: unit.leaseTermMonths,
         available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
         sublease: unit.sublease,
         is_active: true,
         unavailable: !unit.available,
-        description,
+        description: leaseBlurb,
         furnished: furnished ?? null,
         contact_email: contactEmail ?? null,
         contact_phone: contactPhone ?? null,

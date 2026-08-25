@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { canManageLease } from "@/lib/listings/ownership";
+import { shortDescription } from "@/lib/listings/leaseDescription";
 
 /*
  * Manage ONE lease — the counterpart to the property-level routes under
@@ -20,7 +21,8 @@ import { canManageLease } from "@/lib/listings/ownership";
 // guard — is ignored rather than trusted.
 const EDITABLE = {
   rent: (v) => (v === null || v === "" ? null : Number(v)),
-  description: (v) => (typeof v === "string" ? v.trim() || null : null),
+  rent_is_per_person: (v) => (v == null ? null : !!v),
+  description: shortDescription,
   furnished: (v) => (v == null ? null : !!v),
   contact_name: (v) => (typeof v === "string" ? v.trim() || null : null),
   contact_email: (v) => (typeof v === "string" ? v.trim() || null : null),
@@ -37,6 +39,7 @@ const EDITABLE = {
 
 const BODY_TO_COLUMN = {
   rent: "rent",
+  rentIsPerPerson: "rent_is_per_person",
   description: "description",
   furnished: "furnished",
   contactName: "contact_name",
@@ -76,6 +79,16 @@ export async function PATCH(req, { params }) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
+  // Editing is where the contact requirement bites. Legacy offerings that only
+  // ever had the property's contact are left alone, but a landlord who opens
+  // one of their own can't save it back empty.
+  if ("contactEmail" in body && !String(body.contactEmail ?? "").trim()) {
+    return NextResponse.json(
+      { error: "A contact email is required so students can reach you." },
+      { status: 400 }
+    );
+  }
+
   const patch = {};
   for (const [key, column] of Object.entries(BODY_TO_COLUMN)) {
     if (key in body) patch[column] = EDITABLE[column](body[key]);
@@ -94,17 +107,6 @@ export async function PATCH(req, { params }) {
     .eq("owner_id", session.user.id);
 
   if (error) {
-    // Raised by unit_leases_sublease_guard: a sublease cannot go live on a unit
-    // that already has a live lease.
-    if (error.code === "23514" || /sublease/i.test(error.message)) {
-      return NextResponse.json(
-        {
-          error:
-            "This unit already has a live lease, so it can't be subleased.",
-        },
-        { status: 409 }
-      );
-    }
     console.error("[leases/:id] Update failed:", error.message);
     return NextResponse.json({ error: "Could not update that lease." }, { status: 500 });
   }

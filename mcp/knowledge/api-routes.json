@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-23T21:32:46.253Z",
-  "count": 81,
+  "_generated": "2026-08-25T22:01:32.842Z",
+  "count": 85,
   "routes": [
     {
       "path": "/api/addListing",
@@ -672,7 +672,6 @@
         "PATCH": "any"
       },
       "tables": [
-        "listing_landlords",
         "listing_images"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/images/route.js"
@@ -699,6 +698,56 @@
       "file": "src/app/api/landlord/listings/[listingId]/landlords/route.js"
     },
     {
+      "path": "/api/landlord/listings/[listingId]/property",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any"
+      },
+      "tables": [
+        "home_types",
+        "listings",
+        "listing_amenities",
+        "listing_utilities",
+        "listing_custom_amenities"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/property/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/units",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listings",
+        "listing_units"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/units/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/units/[unitId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "listing_units",
+        "unit_leases"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/units/[unitId]/route.js"
+    },
+    {
       "path": "/api/landlord/metrics",
       "methods": [
         "GET"
@@ -715,6 +764,20 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/landlord/metrics/route.js"
+    },
+    {
+      "path": "/api/landlord/photos/[imageId]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "DELETE": "any"
+      },
+      "tables": [
+        "listing_images"
+      ],
+      "file": "src/app/api/landlord/photos/[imageId]/route.js"
     },
     {
       "path": "/api/landlord/pms/confirm",
@@ -1161,11 +1224,11 @@
         "PUT",
         "PATCH"
       ],
-      "auth": "super",
+      "auth": "any",
       "methodAuth": {
-        "POST": "super",
-        "PUT": "super",
-        "PATCH": "super"
+        "POST": "any",
+        "PUT": "any",
+        "PATCH": "any"
       },
       "tables": [
         "listings",

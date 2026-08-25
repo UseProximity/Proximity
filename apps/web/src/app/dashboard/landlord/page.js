@@ -62,6 +62,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           onEditListing={handleEditListing}
           viewAsId={viewAsId}
           onPhotosChanged={fetchUser}
+          currentUserEmail={user?.email ?? null}
         />
       );
     switch (activeView) {

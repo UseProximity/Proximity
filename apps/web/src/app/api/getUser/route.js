@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not sta
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { unitIdentityLabel } from "@/lib/listings/getListing";
+import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -63,6 +64,8 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             sublease: !!lease.sublease,
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
+            contactEmail: lease.contact_email ?? l.contact_email ?? "",
+            description: lease.description ?? "",
             isActive: !!lease.is_active,
             unavailable: !!lease.unavailable,
           }))
@@ -107,6 +110,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
           .map((lease) => ({
             id: lease.id,
             rent: lease.rent != null ? Number(lease.rent) : null,
+            rentIsPerPerson: lease.rent_is_per_person ?? null,
             sublease: !!lease.sublease,
             unavailable: !!lease.unavailable,
             furnished: lease.furnished ?? null,
@@ -114,8 +118,15 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             leaseTermMonths: Array.isArray(lease.lease_term_months)
               ? lease.lease_term_months.map(Number)
               : [],
+            // The offering's own contact and blurb, falling back to the
+            // property's for leases that predate them. The editor opens on
+            // these, so leaving them unselected showed a landlord an empty
+            // contact box and lost the value on the next save.
+            contactEmail: lease.contact_email ?? l.contact_email ?? "",
+            contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
+            description: lease.description ?? "",
             mine: !!currentUserId && lease.owner_id === currentUserId,
-            landlordName: lease.contact_name ?? null,
+            landlordName: lease.contact_name ?? l.contact_name ?? null,
           }))
           .sort((a, b) => {
             // Live before withdrawn, then cheapest first.
@@ -179,26 +190,25 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
   };
 }
 
+/*
+ * The dashboard reads through the SHARED select rather than a copy of it.
+ *
+ * It had its own, and the copy silently fell behind: it never fetched
+ * unit_leases.owner_id, so `lease.owner_id === currentUserId` was false for
+ * every row and myLeases came back empty — which made a lease-only landlord's
+ * own units invisible on their dashboard while the same data rendered fine
+ * everywhere that used the shared list. Two selects over one table will drift
+ * again; one will not.
+ *
+ * The dashboard needs a few columns the renter-facing surfaces don't (the
+ * denormalised min/max aggregates, custom amenities, floor plans), so they are
+ * appended rather than duplicated.
+ */
 const LISTING_SELECT = `
-  id, title, address, longitude, latitude, description,
-  lease_type, contact_email, contact_phone, contact_name,
-  lease_structure, lease_availability, furnished, move_in_date, sublease_friendly,
-  twenty_one_plus, unavailable, created_at,
+  ${SHARED_LISTING_SELECT},
   min_rent, max_rent, min_bedrooms, max_bedrooms,
   min_bathrooms, max_bathrooms, min_area, max_area,
-  home_types!home_type_id(label),
-  listing_units!listing_id(id, bedrooms, bathrooms, area, available, title, floor_plan_image_url,
-    unit_leases!unit_id(rent, is_active, sublease, lease_term_months)),
-  listing_custom_amenities!listing_id(label),
-  listing_landlords!listing_id(user_id, is_primary),
-  listing_amenities!listing_id(
-    air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
-    oven, parking, pets_allowed, pool, refrigerator, rooftop,
-    storage, stove, study_room),
-  listing_utilities!listing_id(
-    electric, gas, heat, water, internet, trash, cable, sewer, cooling),
-  listing_images(url, sort_order),
-  listing_reviews!listing_id(rating, legitimacy, deleted_at)
+  listing_custom_amenities!listing_id(label)
 `.trim();
 
 export async function GET() {

@@ -1027,7 +1027,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const renderStep = () => {
     switch (stepId) {
       case "start":
-        return <StepStart w={w} onBegin={() => goTo("address")} />;
+        return <StepStart w={w} onBegin={() => goTo("address")} showScratch={false} />;
       case "address":
         return <StepAddress w={w} />;
       case "basics":

@@ -107,6 +107,8 @@ export function shapeLeases(unitLeases, listingRow) {
     .map((l) => ({
       id: l.id,
       rent: l.rent != null ? Number(l.rent) : null,
+      // null = the landlord never said; rentBasis falls back to inference.
+      rentIsPerPerson: l.rent_is_per_person ?? null,
       sublease: !!l.sublease,
       furnished: l.furnished ?? null,
       description: l.description ?? null,
@@ -317,7 +319,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
         id, bedrooms, bathrooms, area, available, deleted_at, title, floor_plan_image_url,
         unit_designator, unit_number,
         unit_leases(
-          id, rent, is_active, available_from, sublease, lease_term_months,
+          id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
           unavailable, description, furnished, owner_id,
           contact_name, contact_email, contact_phone,
           users!owner_id(id, name, image)

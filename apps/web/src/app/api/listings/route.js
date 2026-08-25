@@ -267,7 +267,7 @@ export async function fetchListings() {
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(id, bedrooms, bathrooms, area, available, deleted_at,
-        unit_leases(id, rent, is_active, unavailable, sublease,
+        unit_leases(id, rent, rent_is_per_person, is_active, unavailable, sublease,
                     available_from, lease_term_months, furnished,
                     contact_name, contact_email, contact_phone)),
       listing_landlords(user_id, is_primary),

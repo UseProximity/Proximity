@@ -196,6 +196,7 @@ function activeLeasesOf(listing) {
       .filter((l) => l.is_active && !l.unavailable && l.rent > 0)
       .map((l) => ({
         rent: Number(l.rent),
+        rent_is_per_person: l.rent_is_per_person ?? null,
         bedrooms: u.bedrooms,
         bathrooms: u.bathrooms,
         area: u.area,
@@ -243,7 +244,10 @@ function unitOffers(listing) {
                 sublease: false, termMonths: [], furnished: null, priced: false }];
     }
     return live.map((l) => {
-      const money = leaseRentBasis({ rent: l.rent, bedrooms: beds }, roomShare);
+      const money = leaseRentBasis(
+        { rent: l.rent, bedrooms: beds, rent_is_per_person: l.rent_is_per_person ?? null },
+        roomShare
+      );
       return {
         ...base,
         leaseId: l.id ?? null,

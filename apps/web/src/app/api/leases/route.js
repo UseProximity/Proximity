@@ -1,5 +1,6 @@
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
+import { shortDescription } from "@/lib/listings/leaseDescription";
 
 // Create a lease on a unit that already exists — step 3 of the
 // address -> unit -> lease flow, taken when the address matched a known property
@@ -21,9 +22,14 @@ export async function POST(req) {
   const {
     unitId,
     rent,
+    rentIsPerPerson,
     leaseTermMonths,
     sublease = false,
     available = true,
+    // The date this offering opens. It was collected on the way in but never
+    // read here, so every lease created through the flow landed with a null
+    // available_from and came back reading "Available now".
+    availableFrom,
     description,
     furnished,
     contactEmail,
@@ -33,6 +39,16 @@ export async function POST(req) {
 
   if (!unitId) {
     return Response.json({ error: "A unit is required." }, { status: 400 });
+  }
+
+  // A renter has to be able to reach someone. An offering with no contact is
+  // unanswerable, so it is not one we accept — the client pre-fills the
+  // landlord's own address, which makes this a guard rather than a chore.
+  if (!contactEmail?.trim()) {
+    return Response.json(
+      { error: "A contact email is required so students can reach you." },
+      { status: 400 }
+    );
   }
 
   // Confirm the unit exists and is live before writing against it.
@@ -60,13 +76,16 @@ export async function POST(req) {
       unit_id: unitId,
       owner_id: session.user.id,
       rent: rent != null && rent !== "" ? Number(rent) : null,
+      // Recorded rather than inferred — see 202608240004.
+      rent_is_per_person: rentIsPerPerson == null ? null : !!rentIsPerPerson,
       lease_term_months: terms,
       sublease: !!sublease,
       is_active: true,
       unavailable: available === false,
-      description: description?.trim() || null,
+      available_from: availableFrom || null,
+      description: shortDescription(description),
       furnished: furnished ?? null,
-      contact_email: contactEmail || null,
+      contact_email: contactEmail.trim(),
       contact_phone: contactPhone || null,
       contact_name: contactName || null,
     })
@@ -74,17 +93,6 @@ export async function POST(req) {
     .single();
 
   if (error) {
-    // Raised by unit_leases_sublease_guard: a sublease cannot be posted on a
-    // unit that is already being offered.
-    if (error.code === "23514" || /sublease/i.test(error.message)) {
-      return Response.json(
-        {
-          error:
-            "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one.",
-        },
-        { status: 409 }
-      );
-    }
     console.error("[leases] Insert failed:", error.message);
     return Response.json({ error: "Could not create that lease." }, { status: 500 });
   }

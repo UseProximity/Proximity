@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-23T21:32:46.274Z",
-  "count": 60,
+  "_generated": "2026-08-25T22:01:32.860Z",
+  "count": 62,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -76,12 +76,16 @@
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
+      "file": "src/lib/listings/leaseDescription.js",
+      "description": "A lease's blurb: the one or two sentences a landlord adds about THEIR offering"
+    },
+    {
       "file": "src/lib/listings/listingSelect.js",
       "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
     },
     {
       "file": "src/lib/listings/ownership.js",
-      "description": "Who owns what, now that a property can carry offerings from several landlords."
+      "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
     },
     {
       "file": "src/lib/listings/queryListings.js",
@@ -222,6 +226,10 @@
     {
       "file": "src/utils/analytics.js",
       "description": "── Cross-page navigation source ──"
+    },
+    {
+      "file": "src/utils/availability.js",
+      "description": "How an offering's start date reads to a person."
     },
     {
       "file": "src/utils/drivePlaces.js",
