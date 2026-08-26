@@ -23,11 +23,14 @@ export async function POST(req) {
 
     const { data: user } = await supabase
       .from("users")
-      .select("id, email, name, image, profile_complete, roles!role_id(name)")
+      .select("id, email, name, image, profile_complete, deleted_at, roles!role_id(name)")
       .eq("id", payload.sub)
       .single();
 
-    if (!user) {
+    // Refresh tokens live 30 days and are non-revocable by design, so this is
+    // the only chokepoint that can retire one: a deleted account stops getting
+    // new access tokens here.
+    if (!user || user.deleted_at) {
       return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
     }
 

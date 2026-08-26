@@ -13,11 +13,13 @@ export async function POST(req) {
 
     const { data: user } = await supabase
       .from("users")
-      .select("id, email, name, image, password_hash, email_verified, profile_complete, roles!role_id(name)")
+      .select("id, email, name, image, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
       .eq("email", email)
       .single();
 
-    if (!user || !user.password_hash) {
+    // A deleted account fails identically to a wrong password — same status,
+    // same message — so the response never confirms the address was registered.
+    if (!user || !user.password_hash || user.deleted_at) {
       return Response.json({ error: AUTH_ERRORS.INVALID_CREDENTIALS }, { status: 401 });
     }
 

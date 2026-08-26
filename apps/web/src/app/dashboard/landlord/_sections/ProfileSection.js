@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { calcAge } from "@/utils/listingFormatters";
+import DeleteAccountButton from "@/components/account/DeleteAccountButton";
 
 export default function ProfileSection({
   user,
@@ -233,6 +234,8 @@ export default function ProfileSection({
           ) : null}
         </div>
       </div>
+
+      <DeleteAccountButton />
     </div>
   );
 }
