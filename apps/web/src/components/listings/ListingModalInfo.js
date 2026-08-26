@@ -12,6 +12,8 @@ import {
   Car,
   FileText,
   Star,
+  LayoutGrid,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
@@ -1004,6 +1006,80 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+/*
+ * "View floor plan", beside the unit's beds and baths.
+ *
+ * Renders nothing when the unit has no plan, which is most of them — an
+ * always-present link to a missing diagram is worse than no link. The plan
+ * opens in place rather than navigating away, with the original a click further
+ * on for anyone who wants to keep it.
+ */
+function FloorPlanLink({ url, onOpen }) {
+  if (!url) return null;
+  return (
+    <>
+      <span className="mx-1.5 text-gray-300">·</span>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex items-center gap-1 font-medium text-red-600 underline underline-offset-2 transition hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+      >
+        <LayoutGrid className="h-3 w-3" />
+        View floor plan
+      </button>
+    </>
+  );
+}
+
+function FloorPlanViewer({ url, unitName, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Floor plan${unitName ? ` for ${unitName}` : ""}`}
+    >
+      <div
+        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Floor plan{unitName ? ` — ${unitName}` : ""}
+          </h3>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto text-xs font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
+          >
+            Open original
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close floor plan"
+            className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-gray-50 p-4">
+          {/* A plan can be a PDF as readily as an image, and an <img> would show
+              a broken icon for one. */}
+          {/\.pdf($|\?)/i.test(url) ? (
+            <iframe src={url} title="Floor plan" className="h-[70vh] w-full rounded-lg bg-white" />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={url} alt="Floor plan" className="mx-auto max-h-[70vh] w-auto object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ListingModalInfo({
   session,
   listing,
@@ -1078,6 +1154,7 @@ export default function ListingModalInfo({
 
   // Unit selector — sorted ascending by beds, then baths, then disambiguation index
   const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
+  const [floorPlanOpen, setFloorPlanOpen] = useState(false);
 
   // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
   // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
@@ -1169,6 +1246,11 @@ export default function ListingModalInfo({
   }, [initialUnitId, sortedUnits, listing.unitTypes]);
 
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
+
+  useEffect(() => {
+    // The plan belongs to one apartment; switching tabs makes it the wrong one.
+    setFloorPlanOpen(false);
+  }, [selectedUnitIdx]);
 
   /*
    * Leases on the unit whose tab is open. A unit can carry several competing
@@ -1738,11 +1820,19 @@ export default function ListingModalInfo({
                       </p>
                       <p className="mt-0.5 text-xs text-gray-500">
                         {selectedUnitSpecs}
+                        <FloorPlanLink
+                          url={selectedUnit?.floorPlanImageUrl}
+                          onOpen={() => setFloorPlanOpen(true)}
+                        />
                       </p>
                     </>
                   ) : (
                     <p className="text-sm font-semibold text-gray-900">
                       {selectedUnitSpecs}
+                      <FloorPlanLink
+                        url={selectedUnit?.floorPlanImageUrl}
+                        onOpen={() => setFloorPlanOpen(true)}
+                      />
                     </p>
                   )}
                 </div>
@@ -1874,6 +1964,15 @@ export default function ListingModalInfo({
           </motion.div>
         </div>
       </div>
+
+      {/* ── Floor plan ── */}
+      {floorPlanOpen && selectedUnit?.floorPlanImageUrl && (
+        <FloorPlanViewer
+          url={selectedUnit.floorPlanImageUrl}
+          unitName={selectedUnitName}
+          onClose={() => setFloorPlanOpen(false)}
+        />
+      )}
 
       {/* ── Full-screen Gallery Modal ── */}
       {isGalleryOpen && (

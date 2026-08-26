@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Eye,
-  Pencil,
   Star,
   MessageSquare,
   ThumbsUp,
@@ -21,7 +20,6 @@ import ListingMetricsChart from "./ListingMetricsChart";
 export default function PropertyAnalyticsSection({
   handleBackToProperties,
   selectedProperty: p,
-  onEditListing,
   viewAsId,
   onPhotosChanged,
   currentUserEmail,
@@ -98,15 +96,10 @@ export default function PropertyAnalyticsSection({
             <Eye className="h-3.5 w-3.5" />
             View as Student
           </button>
-          {onEditListing && (
-            <button
-              onClick={() => onEditListing(p)}
-              className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </button>
-          )}
+          {/* No Edit button. Everything below this header is editable in place
+              now — the old button opened a separate modal over a panel that
+              already edits itself, which meant two ways to change the same
+              record and two chances to disagree about it. */}
         </div>
       </div>
 

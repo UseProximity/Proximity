@@ -41,7 +41,7 @@ const field =
 // The saved state of an offering, as the form holds it. Shared by the initial
 // draft and by Discard, so "back to how it was" cannot drift from "how it
 // opened".
-const leaseDraft = (lease) => ({
+const leaseDraft = (lease, fallbackEmail) => ({
   rent: lease.rent ?? "",
   rentIsPerPerson: lease.rentIsPerPerson ?? false,
   leaseTermMonths: lease.leaseTermMonths ?? [],
@@ -49,13 +49,19 @@ const leaseDraft = (lease) => ({
   furnished: !!lease.furnished,
   availableFrom: lease.availableFrom ? String(lease.availableFrom).slice(0, 10) : "",
   unavailable: !!lease.unavailable,
-  contactEmail: lease.contactEmail ?? "",
+  /*
+   * Offerings from before the contact moved down to the lease have nothing here
+   * and nothing at the property either. Opening the form on the landlord's own
+   * address means saving fills the gap instead of being refused for a field
+   * they were never asked.
+   */
+  contactEmail: lease.contactEmail || fallbackEmail || "",
   contactPhone: lease.contactPhone ?? "",
   description: lease.description ?? "",
 });
 
-function LeaseRow({ lease, listingId, onChanged }) {
-  const [draft, setDraft] = useState(() => leaseDraft(lease));
+function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
+  const [draft, setDraft] = useState(() => leaseDraft(lease, currentUserEmail));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
@@ -63,7 +69,7 @@ function LeaseRow({ lease, listingId, onChanged }) {
   const avail = availabilityLabel(lease.availableFrom);
 
   const discard = () => {
-    setDraft(leaseDraft(lease));
+    setDraft(leaseDraft(lease, currentUserEmail));
     setDirty(false);
   };
 
@@ -364,7 +370,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <SectionLabel>Your listings on this unit</SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {myLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
+                  currentUserEmail={currentUserEmail} onChanged={onChanged} />
               ))}
             </ul>
           </>
@@ -372,14 +379,15 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
 
         {otherLeases.length > 0 && (
           <>
-            <SectionLabel hint="Shown to students alongside yours — not yours to edit">
+            <SectionLabel>
               {otherLeases.length === 1
                 ? "Other landlord's listing"
                 : `Other landlords' listings (${otherLeases.length})`}
             </SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {otherLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
+                  currentUserEmail={currentUserEmail} onChanged={onChanged} />
               ))}
             </ul>
           </>

@@ -59,7 +59,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         <PropertyAnalyticsSection
           handleBackToProperties={handleBackToProperties}
           selectedProperty={selectedProperty}
-          onEditListing={handleEditListing}
           viewAsId={viewAsId}
           onPhotosChanged={fetchUser}
           currentUserEmail={user?.email ?? null}

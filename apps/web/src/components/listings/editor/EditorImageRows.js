@@ -18,15 +18,23 @@ import { Lock, Plus, Trash2, LayoutGrid } from "lucide-react";
 import toast from "react-hot-toast";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 
+const BUSY_LABEL = {
+  upload: "Uploading…",
+  remove: "Deleting…",
+  reorder: "Saving order…",
+};
+
 function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onChanged, children }) {
-  const [busy, setBusy] = useState(false);
+  // null when idle, otherwise which act is in flight — a delete used to report
+  // itself as "Saving order…", which is a different thing happening.
+  const [busy, setBusy] = useState(null);
   const movable = canMoveAll ? photos : photos.filter((p) => p.mine);
   const pinned = canMoveAll ? [] : photos.filter((p) => !p.mine);
   const inputId = `img-${unitId ?? "property"}`;
 
   const upload = async (files) => {
     if (!files?.length) return;
-    setBusy(true);
+    setBusy("upload");
     try {
       const form = new FormData();
       form.append("listingId", listingId);
@@ -39,14 +47,14 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
     } catch {
       toast.error("Network error.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const remove = async (url) => {
     const photo = photos.find((p) => p.url === url);
     if (!photo) return;
-    setBusy(true);
+    setBusy("remove");
     try {
       const res = await fetch(`/api/landlord/photos/${photo.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
@@ -55,12 +63,12 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
     } catch {
       toast.error("Network error.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const reorder = async (urls) => {
-    setBusy(true);
+    setBusy("reorder");
     try {
       const res = await fetch(`/api/landlord/listings/${listingId}/images`, {
         method: "PATCH",
@@ -75,7 +83,7 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
     } catch {
       toast.error("Network error.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -112,7 +120,8 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
               images={movable.map((p) => p.url)}
               onReorder={reorder}
               onRemove={remove}
-              saving={busy}
+              saving={!!busy}
+              busyLabel={BUSY_LABEL[busy] ?? "Working…"}
             />
           )}
           {pinned.length > 0 && (

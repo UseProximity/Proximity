@@ -42,7 +42,14 @@ INSERT INTO users (name, email, password_hash, role_id, email_verified, profile_
 SELECT v.name, v.email, crypt('testing-password-2026', gen_salt('bf', 12)), r.id, true, true
 FROM (VALUES
   ('CI Owner',    'ci-fixture-owner@proximity.test',   'landlord'),
-  ('CI Subletter','ci-fixture-sublet@proximity.test',  'landlord'),
+  -- A subletter is a STUDENT, not a landlord. Subletting is a tenant passing on
+  -- part of a lease they hold, so the account that does it on Proximity is a
+  -- student account -- and that changes where the flow lives: a student manages
+  -- their sublease from /dashboard/student, because /dashboard/landlord
+  -- redirects any role that is not landlord or super (dashboard/landlord/layout.js).
+  -- Seeding this as a landlord made the review write test steps no real
+  -- subletter could follow.
+  ('CI Subletter','ci-fixture-sublet@proximity.test',  'student'),
   ('CI Rival',    'ci-fixture-rival@proximity.test',   'landlord'),
   ('CI Student',  'ci-fixture-student@wustl.edu',      'student')
 ) AS v(name, email, role) JOIN roles r ON r.name = v.role
@@ -143,12 +150,14 @@ SELECT json_build_object(
     json_build_object('email','ci-fixture-owner@proximity.test','role','landlord',
       'is','property owner of the fixture property, and holds one offering on Apt 101',
       'can','edit/delete the listing, manage property photos, move any photo on any unit'),
-    json_build_object('email','ci-fixture-sublet@proximity.test','role','landlord',
-      'is','lease-only owner — offers Apt 101 but does NOT own the property record',
-      'can','edit/withdraw only their own offering; add unit photos; reorder only their own'),
+    json_build_object('email','ci-fixture-sublet@proximity.test','role','student',
+      'is','a STUDENT subletting Apt 101 — holds the offering but does NOT own the property record',
+      'can','edit/withdraw only their own offering; add unit photos; reorder only their own',
+      'manageAt','/dashboard/student — a student is redirected away from /dashboard/landlord'),
     json_build_object('email','ci-fixture-rival@proximity.test','role','landlord',
       'is','a second landlord competing on the SAME unit (Apt 101)',
-      'can','the same as the subletter, and must NOT be able to move or delete their photos'),
+      'can','the same as the subletter, and must NOT be able to move or delete their photos',
+      'manageAt','/dashboard/landlord'),
     json_build_object('email','ci-fixture-student@wustl.edu','role','student',
       'is','a renter, for browse/matchmaking/contact flows','can','browse, save, contact, review')
   ),

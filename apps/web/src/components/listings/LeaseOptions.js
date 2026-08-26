@@ -17,19 +17,33 @@ import { availabilityLabel } from "@/utils/availability";
 const money = (n) =>
   n == null ? null : `$${Number(n).toLocaleString("en-US")}`;
 
+// Every term the landlord will accept, ascending and de-duplicated.
+export function leaseTermList(leaseTermMonths) {
+  return [
+    ...new Set(
+      (leaseTermMonths ?? [])
+        .map(Number)
+        .filter((m) => Number.isFinite(m) && m > 0)
+    ),
+  ].sort((a, b) => a - b);
+}
+
 /**
- * Lease length as a plain range. unit_leases.lease_term_months holds every term
- * a landlord will accept, so [12, 10] is one offering flexible between 10 and 12
- * months — not two offerings.
+ * Lease length. unit_leases.lease_term_months holds every term a landlord will
+ * accept, so [12, 10] is one offering flexible between 10 and 12 months — not
+ * two offerings.
+ *
+ * Up to three terms are listed outright, because "3, 6, 12 months" is the true
+ * answer and a range is not: "3–12 months" implies 7 and 9 are on offer when
+ * they are not. Past three the list stops fitting the column, so it collapses to
+ * a range with the full set behind a chevron.
  */
 export function durationLabel(leaseTermMonths) {
-  const months = (leaseTermMonths ?? [])
-    .map(Number)
-    .filter((m) => Number.isFinite(m) && m > 0);
+  const months = leaseTermList(leaseTermMonths);
   if (!months.length) return null;
-  const min = Math.min(...months);
-  const max = Math.max(...months);
-  return min === max ? `${min} months` : `${min}–${max} months`;
+  if (months.length === 1) return `${months[0]} months`;
+  if (months.length <= 3) return `${months.join(", ")} months`;
+  return `${months[0]}–${months[months.length - 1]} months`;
 }
 
 // Kept as a named export for callers that want the raw date text; the panel
@@ -40,6 +54,61 @@ export function moveInLabel(availableFrom) {
 
 export const leaseTypeLabel = (lease) =>
   lease?.sublease ? "Sublease" : "Standard";
+
+/*
+ * Duration, with the full set of terms a click away once there are more than
+ * three of them. The summary stays a range so the column keeps its width; the
+ * chevron is what tells a renter the range is a list rather than a span.
+ */
+function DurationCell({ leaseTermMonths }) {
+  const [open, setOpen] = useState(false);
+  const months = leaseTermList(leaseTermMonths);
+  const label = durationLabel(leaseTermMonths);
+  const expandable = months.length > 3;
+
+  if (!expandable) return <Cell label="Duration">{label}</Cell>;
+
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+        Duration
+      </dt>
+      <dd className="text-xs text-gray-700">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex items-center gap-0.5 rounded text-left hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown
+            className={`h-3 w-3 shrink-0 text-gray-400 transition-transform ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {/*
+          * Expands in place rather than floating. The whole offerings block sits
+          * inside an overflow-hidden card, so an absolutely-positioned menu is
+          * sheared off at the card's edge — worst on the last row, where all of
+          * it would be.
+          */}
+        {open && (
+          <span className="mt-1 flex flex-wrap gap-1">
+            {months.map((m) => (
+              <span
+                key={m}
+                className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-700"
+              >
+                {m} mo
+              </span>
+            ))}
+          </span>
+        )}
+      </dd>
+    </div>
+  );
+}
 
 function Cell({ label, children, className = "" }) {
   return (
@@ -137,7 +206,7 @@ function LeaseRow({ lease, onContact }) {
               );
             })()}
           </Cell>
-          <Cell label="Duration">{durationLabel(lease.leaseTermMonths)}</Cell>
+          <DurationCell leaseTermMonths={lease.leaseTermMonths} />
           <Cell label="Lease type">{leaseTypeLabel(lease)}</Cell>
           <Cell label="Listed by">{lease.landlordName}</Cell>
         </dl>
