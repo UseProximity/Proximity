@@ -221,7 +221,11 @@ export async function GET() {
     // Look up by email — reliable across auth provider ID differences
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("*")
+      // The role NAME, not just role_id. Callers were reading `user.role` and
+      // finding it undefined, and the dashboard's fallback turned every such
+      // user into a landlord — which is now load-bearing, since students reach
+      // that dashboard too and the landlord-only tabs key off this.
+      .select("*, roles!role_id(name)")
       .eq("email", session.user.email)
       .single();
 
@@ -358,6 +362,8 @@ export async function GET() {
 
     const safeUser = {
       ...user,
+      roles: undefined, // flattened into `role` below
+      role: user.roles?.name ?? null,
       _id: user.id?.toString(),
       favorites: safeFavorites,
       favoritesIds: safeFavoritesIds,

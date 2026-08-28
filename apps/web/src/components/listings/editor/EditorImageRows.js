@@ -181,6 +181,9 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
       form.append("listingId", listingId);
       form.append("unitId", unit.id);
       form.append("files", file);
+      // Store it, but keep it out of the unit's photo gallery — it belongs in
+      // the floor plan slot alone, not in both places.
+      form.append("attach", "false");
       const res = await fetch("/api/upload", { method: "PATCH", body: form });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Upload failed.");
@@ -276,10 +279,19 @@ export function PropertyPhotoRow({ listing, isPropertyOwner, onChanged }) {
  */
 export function UnitPhotoRow({ listing, unit, isPropertyOwner, onChanged }) {
   const listingId = listing?._id || listing?.id;
+  /*
+   * The plan is never one of the photos, even for units uploaded before the
+   * upload flag existed — those rows still carry the plan in the gallery, and
+   * they would otherwise be counted twice and shown twice.
+   */
+  const plan = unit?.floorPlanImageUrl || null;
+  const photos = (listing?.photos ?? []).filter(
+    (p) => p.unitId === unit.id && p.url !== plan
+  );
   return (
     <Row
       label="Photos"
-      photos={(listing?.photos ?? []).filter((p) => p.unitId === unit.id)}
+      photos={photos}
       canAdd
       canMoveAll={isPropertyOwner}
       listingId={listingId}

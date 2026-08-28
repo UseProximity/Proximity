@@ -53,6 +53,22 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     router,
   } = useLandlordDashboard({ initialViewAsId });
 
+  /*
+   * This dashboard is reachable by anyone holding a stake, which now includes a
+   * student subletting a room. Three of its sections are the property business's
+   * back office rather than anything about an offering: portfolio Analytics,
+   * Reviews of the landlord, and PMS Sync. A subletter has no portfolio, no
+   * reviews, and no property management system, so those are hidden for them.
+   *
+   * `role` comes from the DB via getUser, not from the JWT, so a freshly
+   * promoted landlord sees them without signing out. The APIs behind each
+   * section enforce their own access; this only decides what to show.
+   */
+  const role = (user?.role ?? "").toLowerCase();
+  // Sections that belong to running a property business, not to holding one lease.
+  const LANDLORD_ONLY = new Set(["analytics", "reviews", "integrations"]);
+  const isLandlord = role === "landlord" || role === "super";
+
   const renderContent = () => {
     if (selectedProperty)
       return (
@@ -64,7 +80,16 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           currentUserEmail={user?.email ?? null}
         />
       );
-    switch (activeView) {
+    /*
+     * Guarded as well as hidden: ?tab=analytics is a URL anyone can type, and a
+     * hidden button is not access control. Someone without the role lands on
+     * their properties — the thing they actually came here for — rather than a
+     * blank panel or an error.
+     */
+    const view =
+      LANDLORD_ONLY.has(activeView) && !isLandlord ? "properties" : activeView;
+
+    switch (view) {
       case "properties":
         return (
           <PropertiesSection
@@ -251,6 +276,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <User className="h-4 w-4" />
                     My Profile
                   </button>
+                  {isLandlord && (
                   <button
                     onClick={() => handleNavigation("analytics")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -262,6 +288,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <BarChart3 className="h-4 w-4" />
                     Analytics
                   </button>
+                  )}
                   <button
                     onClick={() => handleNavigation("properties")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -273,6 +300,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <MapPin className="h-4 w-4" />
                     Properties
                   </button>
+                  {isLandlord && (
                   <button
                     onClick={() => handleNavigation("reviews")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -284,6 +312,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <Star className="h-4 w-4" />
                     Reviews
                   </button>
+                  )}
+                  {isLandlord && (
                   <button
                     onClick={() => handleNavigation("integrations")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -298,6 +328,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                       Beta
                     </span>
                   </button>
+                  )}
                 </div>
               </div>
             </div>

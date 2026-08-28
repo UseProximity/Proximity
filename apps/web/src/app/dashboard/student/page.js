@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 
@@ -58,12 +58,14 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
           >
             Edit
           </button>
+          {/* "Withdraw", not "Delete" — it takes the offering off the market
+              and leaves the property alone. See handleWithdrawSublease. */}
           <button
-            onClick={() => onDelete(listing._id || listing.id)}
+            onClick={() => onDelete(listing)}
             disabled={deleting}
             className="flex-1 text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
           >
-            {deleting ? "..." : "Delete"}
+            {deleting ? "…" : "Withdraw"}
           </button>
         </div>
       </div>
@@ -426,7 +428,13 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
   const [editOpen, setEditOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const [subleaseModal, setSubleaseModal] = useState(null); // null | { mode: "add" } | { mode: "edit", listing }
+  /*
+   * The old flat sublease form. Editing no longer goes through it — Edit opens
+   * the property → unit → lease editor instead — so nothing sets mode "edit" any
+   * more. Kept because /add-sublease still renders the same panel, and this
+   * modal is the in-dashboard entry point to it.
+   */
+  const [subleaseModal, setSubleaseModal] = useState(null); // null | { mode: "add" }
   const [deletingId, setDeletingId] = useState(null);
 
   const notifRef = useRef(null);
@@ -508,13 +516,39 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     subleasePage * SUBLEASES_PER_PAGE + SUBLEASES_PER_PAGE
   );
 
-  async function handleDeleteSublease(listingId) {
-    if (!confirm("Delete this listing? This cannot be undone.")) return;
+  /*
+   * Take a sublease down.
+   *
+   * This withdraws the OFFERING, never the property. It used to DELETE the
+   * listing, which is the building's shared record — and since that endpoint is
+   * guarded by property ownership, the button silently did nothing for exactly
+   * the people it was for: a student subletting a room in someone else's
+   * building. Withdrawing is also the honest verb. The lease row survives as the
+   * record of who offered what, so nothing about the sublease is lost and it can
+   * be put back.
+   */
+  async function handleWithdrawSublease(listing) {
+    const listingId = listing._id || listing.id;
+    const lease =
+      (listing.myLeases ?? []).find((l) => l.isActive) ?? listing.myLeases?.[0];
+
+    if (!lease) {
+      alert(
+        "We couldn't find your sublease at this property. Try reloading the page."
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        "Take this sublease down? Students will stop seeing it. The property itself isn't affected, and you can put it back."
+      )
+    )
+      return;
+
     setDeletingId(listingId);
     try {
-      const res = await fetch(`/api/landlord/listings/${listingId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
       if (res.ok) {
         setDbUser((prev) => ({
           ...prev,
@@ -522,7 +556,12 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
             (l) => (l._id || l.id) !== listingId
           ),
         }));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not take that sublease down. Please try again.");
       }
+    } catch {
+      alert("Network error.");
     } finally {
       setDeletingId(null);
     }
@@ -817,13 +856,30 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                     </svg>
                     <h2 className="text-lg font-bold text-gray-900">My Subleases</h2>
                   </div>
-                  <button
-                    onClick={() => router.push("/add-sublease")}
-                    className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Sublease
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/*
+                      * Only once they have something to manage. The property
+                      * dashboard admits a stake rather than a role, so a student
+                      * with a sublease belongs there — but sending one who has
+                      * none would just bounce them straight back here.
+                      */}
+                    {subleases.length > 0 && (
+                      <button
+                        onClick={() => router.push("/dashboard/landlord?tab=properties")}
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                        Manage my listings
+                      </button>
+                    )}
+                    <button
+                      onClick={() => router.push("/add-sublease")}
+                      className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Sublease
+                    </button>
+                  </div>
                 </div>
                 <div className="border-b border-gray-200 mb-4" />
 
@@ -840,8 +896,19 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                         <SubleaseCard
                           key={listing._id}
                           listing={listing}
-                          onEdit={(l) => setSubleaseModal({ mode: "edit", listing: l })}
-                          onDelete={handleDeleteSublease}
+                          /*
+                            * Edit opens the full property → unit → lease editor
+                            * rather than the old flat form. Same screen a
+                            * landlord gets, with the same per-level rules: the
+                            * building read-only unless they own it, their own
+                            * terms editable.
+                            */
+                          onEdit={(l) =>
+                            router.push(
+                              `/dashboard/landlord?tab=properties&property=${l._id || l.id}`
+                            )
+                          }
+                          onDelete={handleWithdrawSublease}
                           deleting={deletingId === (listing._id || listing.id)}
                         />
                       ))}

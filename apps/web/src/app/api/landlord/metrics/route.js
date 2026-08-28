@@ -9,9 +9,13 @@ export async function GET(req) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!["landlord", "super"].includes(session.user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  /*
+   * No role check. The real guard is the scoping below: results are limited to
+   * listings the CALLER owns via listing_landlords, so this returns nothing for
+   * someone with no properties whatever their role. The role test added no
+   * protection and did cause harm — a student who posts a sublease at a new
+   * address owns that listing, and was refused metrics for their own property.
+   */
 
   const { searchParams } = new URL(req.url);
   const range = searchParams.get("range") || "30d";

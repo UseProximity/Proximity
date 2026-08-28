@@ -32,8 +32,14 @@ export default function PropertyAnalyticsSection({
   // "lease" ownership means they hold an offering here but not the property
   // record; getUser tags it, and every endpoint re-checks it server-side.
   const isPropertyOwner = p?.ownership !== "lease";
+  /*
+   * Traffic figures belong to the property, and the API scopes them to
+   * listing_landlords — so a lease-only stake gets an empty set no matter who
+   * asks. Fetching it anyway painted a row of confident zeroes over a building
+   * that is in fact being viewed and saved, which is worse than not showing it.
+   */
   useEffect(() => {
-    if (!listingId) return;
+    if (!listingId || !isPropertyOwner) return;
     const params = new URLSearchParams({ range: "all", listingIds: listingId });
     if (viewAsId) params.set("viewAs", viewAsId);
     fetch(`/api/landlord/metrics?${params}`)
@@ -43,7 +49,7 @@ export default function PropertyAnalyticsSection({
         setContactTotals(data.contactTotals ?? {});
       })
       .catch(console.error);
-  }, [listingId, viewAsId]);
+  }, [listingId, viewAsId, isPropertyOwner]);
 
   if (!p) return null;
 
@@ -116,7 +122,6 @@ export default function PropertyAnalyticsSection({
           ))}
         </div>
       )}
-
       {/* Stat cards */}
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         {[
@@ -160,7 +165,7 @@ export default function PropertyAnalyticsSection({
       </div>
 
       {/* Per-listing metrics chart */}
-      <ListingMetricsChart listingId={p._id || p.id} viewAsId={viewAsId} />
+        <ListingMetricsChart listingId={p._id || p.id} viewAsId={viewAsId} />
 
       {/*
         * The listing as a student sees it, made editable. Structured the same

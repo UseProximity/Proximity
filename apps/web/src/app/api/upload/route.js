@@ -102,6 +102,16 @@ export async function PATCH(req) {
     const listingId = formData.get("listingId");
     const unitId = formData.get("unitId") || null;
     const db = formData.get("db") || null;
+    /*
+     * A floor plan is stored on the unit (listing_units.floor_plan_image_url),
+     * not in the gallery. Without this it was written to BOTH: the same picture
+     * appeared as one of the unit's photos and as its plan, so a unit with four
+     * photos reported five and the diagram sat in the middle of the bedrooms.
+     *
+     * The upload and the permission check are identical either way — only the
+     * listing_images row is skipped — so this is a flag rather than a route.
+     */
+    const attach = formData.get("attach") !== "false";
     let files = formData.getAll("files");
 
     if (!listingId) {
@@ -161,6 +171,12 @@ export async function PATCH(req) {
     const urls = uploads.filter(Boolean);
     if (urls.length === 0) {
       return Response.json({ error: "No valid files" }, { status: 400 });
+    }
+
+    // Stored, but deliberately not filed in the gallery — the caller is putting
+    // it somewhere else (see `attach` above).
+    if (!attach) {
+      return Response.json({ urls, url: urls[0] });
     }
 
     /*
@@ -285,6 +301,12 @@ export async function PUT(req) {
     const scope = await resolveUploadScope(session, listingId, unitId);
     if (!scope.ok) {
       return Response.json({ error: scope.error }, { status: scope.status });
+    }
+
+    // Stored, but deliberately not filed in the gallery — the caller is putting
+    // it somewhere else (see `attach` above).
+    if (!attach) {
+      return Response.json({ urls, url: urls[0] });
     }
 
     /*

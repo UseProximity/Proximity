@@ -69,6 +69,33 @@ export async function getOwnedListings(userId) {
 }
 
 /**
+ * Whether the user holds a stake ANYWHERE — a property record, or a live
+ * offering on someone else's unit.
+ *
+ * This is the gate for reaching the property dashboard at all, as opposed to
+ * reaching one particular property (hasStakeInListing) or changing it
+ * (isPropertyOwner). It exists because the dashboard is not a landlord feature:
+ * a student subletting their room holds a lease exactly the way a landlord
+ * does, and every endpoint behind the dashboard already authorizes on ownership
+ * rather than role. Only the door was checking for a role.
+ */
+export async function hasAnyStake(userId) {
+  if (!isUuid(userId)) return false;
+
+  const [{ data: landlordRows }, { data: leaseRows }] = await Promise.all([
+    supabase.from("listing_landlords").select("listing_id").eq("user_id", userId).limit(1),
+    supabase
+      .from("unit_leases")
+      .select("id")
+      .eq("owner_id", userId)
+      .eq("is_active", true)
+      .limit(1),
+  ]);
+
+  return !!(landlordRows?.length || leaseRows?.length);
+}
+
+/**
  * Whether the user has ANY stake at this property — they own the listing record,
  * or they own a live offering on one of its units.
  *
