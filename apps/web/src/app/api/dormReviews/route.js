@@ -204,6 +204,8 @@ export async function POST(req) {
     let displayName = session?.user?.name || null;
     let setupToken = null;
     let setupEmail = null;
+    // Signed-out reviewer whose email already belongs to a real account.
+    let existingAccount = false;
 
     if (signedOutReviewer) {
       const email = String(signedOutReviewer.email || "").trim().toLowerCase();
@@ -234,6 +236,7 @@ export async function POST(req) {
       displayName = account.displayName;
       setupToken = account.setupToken;
       setupEmail = email;
+      existingAccount = !!account.existingAccount;
     } else if (!sessionUserId) {
       // Legacy Campus Hub path: a first name and nothing else.
       if (!name?.trim()) {
@@ -295,6 +298,7 @@ export async function POST(req) {
       {
         ...review,
         setupToken,
+        existingAccount,
         prefill: setupToken
           ? {
               firstName: String(signedOutReviewer.firstName || "").trim(),

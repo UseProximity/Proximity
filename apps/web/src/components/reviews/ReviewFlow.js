@@ -23,6 +23,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import ReviewSubmitForm from "./ReviewSubmitForm";
@@ -133,6 +134,11 @@ export default function ReviewFlow({
       if (data?.setupToken) {
         storeToken(data.setupToken);
         setSetup({ token: data.setupToken, prefill: data.prefill || null });
+      } else if (data?.existingAccount) {
+        // Signed out, but the email they gave already has an account. There is
+        // nothing to set up, so say where the review went instead of thanking
+        // them as though they were a stranger.
+        setFinished("existing");
       } else {
         setFinished("posted");
       }
@@ -156,24 +162,45 @@ export default function ReviewFlow({
   );
 
   if (finished) {
+    const headline =
+      finished === "completed"
+        ? "You’re all set!"
+        : finished === "existing"
+        ? "Welcome back!"
+        : "Thank you!";
+
+    let body;
+    if (finished === "completed") {
+      body =
+        "Your review is live and your profile is complete. Thanks for helping fellow students find a better place to live.";
+    } else if (finished === "existing") {
+      body =
+        "You already have a Proximity account with that email, so we posted this review to it. Sign in any time to see it.";
+    } else if (referrerName) {
+      body = `Your review has been posted. Thanks for helping fellow students through ${referrerName}.`;
+    } else {
+      body =
+        "Your review has been posted. Thanks for helping fellow students find a better place to live.";
+    }
+
     return shell(
       <div className="text-center py-12">
         <div className="text-5xl mb-4">🎉</div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          {finished === "completed" ? "You’re all set!" : "Thank you!"}
-        </h1>
-        <p className="text-gray-600">
-          {finished === "completed"
-            ? "Your review is live and your profile is complete. Thanks for helping fellow students find a better place to live."
-            : referrerName
-            ? `Your review has been posted. Thanks for helping fellow students through ${referrerName}.`
-            : "Your review has been posted. Thanks for helping fellow students find a better place to live."}
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">{headline}</h1>
+        <p className="text-gray-600">{body}</p>
         {finished === "skipped" && (
           <p className="mt-3 text-sm text-gray-500">
             We emailed you a link to finish setting up your account whenever you&apos;re
             ready.
           </p>
+        )}
+        {finished === "existing" && (
+          <Link
+            href="/login"
+            className="mt-6 inline-block px-5 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
+          >
+            Sign in
+          </Link>
         )}
       </div>
     );

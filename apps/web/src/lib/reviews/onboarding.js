@@ -140,6 +140,13 @@ export async function ensureReviewerAccount({
       isNewAccount: false,
       setupToken: claimable ? await issueProfileSetupToken(existing.id) : null,
       displayName: existing.name || displayName,
+      /*
+       * They already have a real account (credentials, a finished profile, or
+       * both), so there is nothing to set up. The caller still has to SAY that:
+       * a returning student who gets the same bare thank-you as everyone else
+       * has no idea their review landed on the account they already own.
+       */
+      existingAccount: !claimable,
     };
   }
 

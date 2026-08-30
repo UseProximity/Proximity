@@ -31,6 +31,7 @@ export default function DormReviewForm({ source = null, onSubmitted }) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
   const requireContact = status !== "loading" && !loggedIn;
+  const postingAs = loggedIn ? session?.user?.name || session?.user?.email : null;
 
   const [dorms, setDorms] = useState([]);
   const [dormsLoading, setDormsLoading] = useState(true);
@@ -209,6 +210,7 @@ export default function DormReviewForm({ source = null, onSubmitted }) {
           requireContact={requireContact}
           requireClassYear
           schoolMismatch={contactSchoolMismatch}
+          postingAs={postingAs}
         />
 
         <button

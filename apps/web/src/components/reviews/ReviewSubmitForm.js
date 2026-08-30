@@ -466,6 +466,7 @@ export default function ReviewSubmitForm({
           onAnonymousChange={setAnonymous}
           requireContact={requireContact}
           schoolMismatch={contactSchoolMismatch}
+          postingAs={loggedIn ? session?.user?.name || accountEmail : null}
         />
 
         <button

@@ -467,6 +467,8 @@ export async function POST(req) {
     let reviewerDisplayName = null;
     let emailSchool = null;
     let setupToken = null;
+    // Signed-out reviewer whose email already belongs to a real account.
+    let existingAccount = false;
 
     if (session?.user?.id) {
       emailSchool = schoolForEmail(session.user.email);
@@ -533,6 +535,7 @@ export async function POST(req) {
       reviewerEmail = email;
       reviewerDisplayName = account.displayName;
       setupToken = account.setupToken;
+      existingAccount = !!account.existingAccount;
     } else {
       return NextResponse.json(
         { error: "Add your name and school email, or sign in, to leave a review." },
@@ -773,6 +776,7 @@ export async function POST(req) {
       success: true,
       review,
       setupToken,
+      existingAccount,
       // What the profile step should open pre-filled with, so the student never
       // retypes what they just told us.
       prefill: setupToken

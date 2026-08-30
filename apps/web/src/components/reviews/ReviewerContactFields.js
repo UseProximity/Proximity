@@ -55,11 +55,22 @@ export default function ReviewerContactFields({
   requireContact,
   requireClassYear = false,
   schoolMismatch = false,
+  postingAs = null,
 }) {
   const set = (key) => (e) => onContactChange({ ...contact, [key]: e.target.value });
 
   return (
     <div className="space-y-4">
+      {/*
+        Signed in, so none of the identity questions are asked and no account is
+        created afterwards. Say so: without this the step just looks like it is
+        missing the fields a signed-out visitor sees.
+      */}
+      {!requireContact && postingAs && (
+        <p className="text-sm text-gray-500">
+          Posting as <span className="font-semibold text-gray-700">{postingAs}</span>.
+        </p>
+      )}
       {!requireContact && requireClassYear && (
         <div className="sm:max-w-[12rem]">
           <label htmlFor="reviewer-class-only" className="block text-sm text-gray-600 mb-1.5">
