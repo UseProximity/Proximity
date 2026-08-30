@@ -323,7 +323,7 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
 
     const { data: typeRows } = await supabase
       .from("listing_units")
-      .select("id, available, unit_leases(id, rent, available_from, is_active)")
+      .select("id, available, unit_leases(id, rent, available_from, is_active, unavailable, owner_id)")
       .eq("listing_id", listingId)
       .is("deleted_at", null);
     const typeById = new Map((typeRows ?? []).map((t) => [t.id, t]));
@@ -338,7 +338,16 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
         unitUpdates.push({ id: typeId, available: nextAvailable });
       }
 
-      const activeLease = (current.unit_leases ?? []).find((le) => le.is_active);
+      // The lease this connection may actually write to (see rpc_pms_apply's
+      // p_owner_id scope) — comparing against another landlord's price would
+      // trigger phantom "price changed" updates on every sync.
+      const ownerId = connection.user_id ?? null;
+      const activeLease = (current.unit_leases ?? []).find(
+        (le) =>
+          le.is_active &&
+          !le.unavailable &&
+          (le.owner_id == null || ownerId == null || le.owner_id === ownerId)
+      );
       const nextRent = rollUpRent(group.filter((o) => o.unit));
       const nextFrom = rollUpAvailableFrom(group.filter((o) => o.unit));
       const currentRent = activeLease?.rent != null ? Number(activeLease.rent) : null;
@@ -439,6 +448,10 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
           p_listing_updates: Object.keys(listingUpdates).length ? listingUpdates : null,
           p_unit_updates: unitUpdates.length ? unitUpdates : null,
           p_lease_updates: leaseUpdates.length ? leaseUpdates : null,
+          // Scope lease writes to THIS landlord's offerings. Several landlords
+          // can now offer the same unit, and without this the sync repriced
+          // whichever of them happened to be active — including a competitor's.
+          p_owner_id: connection.user_id ?? null,
         });
         if (error) {
           events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "error", detail: { error: error.message } });

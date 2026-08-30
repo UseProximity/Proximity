@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-08-14T01:04:35.786Z",
-  "count": 32,
+  "_generated": "2026-08-30T23:03:38.936Z",
+  "count": 34,
   "pages": [
     {
       "path": "/",
@@ -122,6 +122,14 @@
     {
       "path": "/review-invite/[landlordId]",
       "file": "src/app/review-invite/[landlordId]/page.js"
+    },
+    {
+      "path": "/review/claim",
+      "file": "src/app/review/claim/page.js"
+    },
+    {
+      "path": "/review/finish",
+      "file": "src/app/review/finish/page.js"
     },
     {
       "path": "/washu",

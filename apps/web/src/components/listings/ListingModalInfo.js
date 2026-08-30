@@ -11,19 +11,17 @@ import {
   ThumbsDown,
   Car,
   FileText,
+  Star,
+  LayoutGrid,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
-import {
-  getAreaRangeLabel,
-  getRentRangeLabel,
-  getUnitValuesLabel,
-  calcAge,
-  leaseMonthsToLabel,
-} from "@/utils/listingFormatters";
+import LeaseOptions from "@/components/listings/LeaseOptions";
+import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
   DRIVE_PLACES,
@@ -57,91 +55,6 @@ function scrollIntoContainer(el) {
 }
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
-
-const leaseAvailabilityMap = {
-  "10_month": "10 Month",
-  "12_month": "12 Month",
-  "10-month": "10 Month",
-  "12-month": "12 Month",
-  semester: "Semester",
-  summer: "Summer",
-};
-
-// Map a single lease-term value to a display label, including custom "<n>-month".
-function leaseLabel(v) {
-  if (leaseAvailabilityMap[v]) return leaseAvailabilityMap[v];
-  const m = /^(\d+)[-_]month$/.exec(String(v));
-  if (m) return `${m[1]} Month`;
-  return v;
-}
-
-function formatLeaseAvailability(val) {
-  if (!val) return "—";
-  const arr = Array.isArray(val) ? val : [val];
-  if (arr.length === 0) return "—";
-  return arr.map(leaseLabel).join(" · ");
-}
-
-function LeaseStatCell({ leaseAvailability }) {
-  const [open, setOpen] = useState(false);
-  const arr = Array.isArray(leaseAvailability)
-    ? leaseAvailability.filter(Boolean)
-    : leaseAvailability
-    ? [leaseAvailability]
-    : [];
-  const labels = arr.map(leaseLabel);
-
-  if (labels.length === 0) {
-    return (
-      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-        <div className="text-sm sm:text-lg font-semibold text-gray-900">—</div>
-        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-      </div>
-    );
-  }
-
-  if (labels.length === 1) {
-    return (
-      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-        <div className="text-sm sm:text-lg font-semibold text-gray-900">
-          {labels[0]}
-        </div>
-        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex flex-col items-center gap-0.5 group"
-      >
-        <span className="text-sm sm:text-lg font-semibold text-gray-900 leading-tight">
-          {labels[0]}
-        </span>
-        <span className="text-[11px] font-medium text-red-500 group-hover:text-red-600 transition-colors">
-          +{labels.length - 1} more
-        </span>
-      </button>
-      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-md py-1.5 min-w-[120px] text-center">
-            {labels.map((l) => (
-              <div key={l} className="text-xs text-gray-700 px-3 py-1">
-                {l}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 const TABS = [
   { id: "amenities", label: "Overview" },
@@ -196,50 +109,6 @@ function AmenityPill({ label }) {
   );
 }
 
-function StatCell({ label, value }) {
-  return (
-    <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-      <div className="text-sm sm:text-lg font-semibold text-gray-900 break-words">
-        {value}
-      </div>
-      <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-    </div>
-  );
-}
-
-// Clickable stat cell for the selected unit's floor plan. Images open in the
-// shared lightbox; PDFs open in a new tab (they can't render as <img>).
-function FloorPlanStatCell({ url, onOpen }) {
-  const isPdf = /\.pdf($|\?)/i.test(url);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex-1 px-4 py-3 text-center min-w-[80px] group focus:outline-none"
-      aria-label="View floor plan"
-    >
-      <div className="flex items-center justify-center h-[28px]">
-        {isPdf ? (
-          <FileText className="h-6 w-6 text-gray-800 group-hover:text-red-600 transition" />
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={url}
-            alt="Floor plan"
-            className="h-7 w-7 object-cover rounded border border-gray-200 group-hover:ring-2 group-hover:ring-red-400 transition"
-          />
-        )}
-      </div>
-      <div className="text-xs text-gray-500 mt-0.5 group-hover:text-red-600 transition">
-        Floor Plan
-      </div>
-    </button>
-  );
-}
-
-// ─── Tab: Amenities ───────────────────────────────────────────────────────────
-
-// Keys are the boolean column names from listing_amenities / listing_utilities.
 const AMENITY_LABELS = {
   air_conditioning: "Air Conditioning",
   dishwasher: "Dishwasher",
@@ -887,8 +756,7 @@ function ReviewsTab({
           </>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Reviews are only open to verified students at a school we serve.
-            Please sign in with your school email.
+            Sign in with your school email to leave a review
           </div>
         )}
       </div>
@@ -906,6 +774,7 @@ function ContactTab({
   handleContactSubmit,
   contactLoading,
   contactSent,
+  selectedLease = null,
 }) {
   const [ageStatus, setAgeStatus] = useState(
     listing.twentyOnePlus ? "loading" : "ok"
@@ -954,7 +823,20 @@ function ContactTab({
     );
   }
 
-  const owner = listing.owner;
+  /*
+   * The recipient is the owner of the SELECTED lease, not the property's primary
+   * landlord — several landlords can offer leases at one property, so "the
+   * landlord" is only meaningful once an offering is chosen. The lease options
+   * above already show that lease's price, term and type, so only the name is
+   * repeated here. The listing owner remains the fallback for properties whose
+   * units carry no lease at all.
+   */
+  const owner = selectedLease
+    ? {
+        name: selectedLease.landlordName ?? listing.owner?.name,
+        image: selectedLease.landlordImage ?? listing.owner?.image,
+      }
+    : listing.owner;
 
   const handleChange = (field) => (e) =>
     setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -1124,12 +1006,89 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+/*
+ * "View floor plan", beside the unit's beds and baths.
+ *
+ * Renders nothing when the unit has no plan, which is most of them — an
+ * always-present link to a missing diagram is worse than no link. The plan
+ * opens in place rather than navigating away, with the original a click further
+ * on for anyone who wants to keep it.
+ */
+function FloorPlanLink({ url, onOpen }) {
+  if (!url) return null;
+  return (
+    <>
+      <span className="mx-1.5 text-gray-300">·</span>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex items-center gap-1 font-medium text-red-600 underline underline-offset-2 transition hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+      >
+        <LayoutGrid className="h-3 w-3" />
+        View floor plan
+      </button>
+    </>
+  );
+}
+
+function FloorPlanViewer({ url, unitName, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Floor plan${unitName ? ` for ${unitName}` : ""}`}
+    >
+      <div
+        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Floor plan{unitName ? ` — ${unitName}` : ""}
+          </h3>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto text-xs font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
+          >
+            Open original
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close floor plan"
+            className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-gray-50 p-4">
+          {/* A plan can be a PDF as readily as an image, and an <img> would show
+              a broken icon for one. */}
+          {/\.pdf($|\?)/i.test(url) ? (
+            <iframe src={url} title="Floor plan" className="h-[70vh] w-full rounded-lg bg-white" />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={url} alt="Floor plan" className="mx-auto max-h-[70vh] w-auto object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ListingModalInfo({
   session,
   listing,
   excludeTabs = [],
   compact = false,
   tabBarAction = null,
+  // The unit that satisfied the browse filters, if the renter arrived from a
+  // filtered search. See lib/listings/filterListings.js.
+  initialUnitId = null,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -1195,6 +1154,7 @@ export default function ListingModalInfo({
 
   // Unit selector — sorted ascending by beds, then baths, then disambiguation index
   const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
+  const [floorPlanOpen, setFloorPlanOpen] = useState(false);
 
   // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
   // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
@@ -1205,18 +1165,17 @@ export default function ListingModalInfo({
     );
     const isStudio = (u) => (u.bedrooms ?? 0) === 0;
 
-    // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
-    const seen = new Set();
-    const deduped = units.filter((u) => {
-      const key = `${u.title ?? ""}|${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${
-        u.rent ?? ""
-      }|${u.area ?? ""}|${u.leaseType ?? ""}|${
-        Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths.join(",") : ""
-      }`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    /*
+     * No deduplication. Two units that look identical are two apartments: a
+     * building with ten matching studios has ten of them, and each carries its
+     * own offering from possibly a different landlord.
+     *
+     * This used to collapse units matching on beds, baths, rent and area, which
+     * was written when a "unit" meant a floor-plan type. Under the property →
+     * unit → lease model it hid real inventory — and would have hidden one
+     * landlord's live offering behind another's identical-looking one.
+     */
+    const deduped = units;
 
     // Build base labels in original order for stable disambiguation numbering.
     // Each entry has a full label ("2 Bed / 1 Bath") and a short label
@@ -1261,7 +1220,124 @@ export default function ListingModalInfo({
       });
   }, [listing.unitTypes]);
 
+  /*
+   * Open on the unit the renter's filters actually matched rather than the
+   * cheapest-by-bedroom default. Runs as an effect because sortedUnits is
+   * derived, and re-runs when the detail fetch replaces the browse-feed listing
+   * (the feed paints first, so the unit may not be resolvable on first render).
+   *
+   * Dedup above can collapse the matched unit into an identical twin, so fall
+   * back to the twin's tab — same beds/baths/rent, so it is the same answer.
+   */
+  useEffect(() => {
+    if (!initialUnitId) return;
+    let idx = sortedUnits.findIndex((s) => s.unit.id === initialUnitId);
+    if (idx < 0) {
+      const target = (listing.unitTypes ?? []).find((u) => u.id === initialUnitId);
+      if (target) {
+        idx = sortedUnits.findIndex(
+          (s) =>
+            s.unit.bedrooms === target.bedrooms &&
+            s.unit.bathrooms === target.bathrooms
+        );
+      }
+    }
+    if (idx >= 0) setSelectedUnitIdx(idx);
+  }, [initialUnitId, sortedUnits, listing.unitTypes]);
+
   const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
+
+  useEffect(() => {
+    // The plan belongs to one apartment; switching tabs makes it the wrong one.
+    setFloorPlanOpen(false);
+  }, [selectedUnitIdx]);
+
+  /*
+   * Leases on the unit whose tab is open. A unit can carry several competing
+   * offerings, so each row is independently contactable — there is no "selected"
+   * lease in the browse view.
+   */
+  const selectedUnitLeases = useMemo(
+    () => selectedUnit?.leases ?? [],
+    [selectedUnit]
+  );
+
+  /*
+   * The browse panel paints itself from the listing feed before the detail fetch
+   * resolves, and that feed carries no leases at all. An ABSENT `leases` key
+   * therefore means "not loaded yet", while an empty array means "genuinely none
+   * on offer" — getListing always sets one. Conflating them would tell a reader a
+   * unit has no lease when it simply hasn't arrived.
+   */
+  const leasesLoading = !!selectedUnit && selectedUnit.leases === undefined;
+
+  /*
+   * Which lease the contact form is about. Set by the Contact button on a lease
+   * row; falls back to the open unit's first offering when the Contact tab is
+   * reached from the tab strip instead.
+   */
+  const [selectedLeaseId, setSelectedLeaseId] = useState(null);
+  useEffect(() => {
+    setSelectedLeaseId((current) =>
+      current && selectedUnitLeases.some((l) => l.id === current)
+        ? current
+        : selectedUnitLeases[0]?.id ?? null
+    );
+  }, [selectedUnitLeases]);
+
+  const selectedLease =
+    selectedUnitLeases.find((l) => l.id === selectedLeaseId) ?? null;
+
+  /*
+   * Name of the open unit. Prefers its real identity, then the landlord's floor
+   * plan name, and only then a generated description — a unit that predates unit
+   * identity gets no invented label. Mirrors unitIdentityLabel in getListing.
+   */
+  // Null when the unit predates unit identity and the landlord never named it —
+  // 60% of rows. The specs line is promoted to the heading in that case rather
+  // than restating the bed/bath count twice.
+  const selectedUnitName =
+    selectedUnit?.identityLabel ?? selectedUnit?.title ?? null;
+
+  const selectedUnitSpecs = [
+    (selectedUnit?.bedrooms ?? 0) === 0
+      ? "Studio"
+      : `${selectedUnit?.bedrooms ?? "?"} bed`,
+    `${selectedUnit?.bathrooms ?? "?"} bath`,
+    // Only when it is known — "? sq ft" is worse than saying nothing.
+    ...(selectedUnit?.area != null
+      ? [`${Number(selectedUnit.area).toLocaleString()} sq ft`]
+      : []),
+  ].join(" · ");
+
+  /*
+   * Whether to offer furniture rental. Reads unit_leases.furnished — the
+   * per-offering flag — because two landlords on one unit can differ; the
+   * property-level listings.furnished is only a fallback for units whose leases
+   * haven't loaded.
+   */
+  const showFurnishCta = selectedUnitLeases.length
+    ? selectedUnitLeases.some((l) => !l.furnished)
+    : !listing.furnished;
+
+  const handleContactLease = (lease) => {
+    setSelectedLeaseId(lease.id);
+    /*
+     * Clicking Contact is an intent to send, so the form comes back even after
+     * a previous enquiry. It used to latch: contactSent was set on the first
+     * submit and never cleared, so every later lease showed "Your message was
+     * sent!" instead of a form — and on a unit with competing offerings, a
+     * renter who wrote to one landlord could not write to the next.
+     * The typed fields are deliberately kept, so asking several landlords about
+     * the same place doesn't mean retyping the same message.
+     */
+    setContactSent(false);
+    setActiveTab("contact");
+    setTimeout(
+      () => scrollIntoContainer(document.getElementById("listing-tabs")),
+      50
+    );
+  };
 
   // When the unit tabs don't all fit, the selector scrolls horizontally and
   // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
@@ -1286,9 +1362,79 @@ export default function ListingModalInfo({
   const images = Array.isArray(listing?.images)
     ? listing.images.filter(Boolean).map(sanitizeUrl)
     : [];
-  const coverImage = images[0];
-  const secondImage = images[1] || images[0] || null;
-  const thirdImage = images[2] || images[1] || images[0] || null;
+
+  /*
+   * The two tiles beside the cover follow the UNIT whose tab is open, whenever
+   * that unit has pictures of its own. The big shot stays the property's — it
+   * is what the building looks like, and it should not jump around as someone
+   * flicks between units — while the pair beside it becomes the evidence that
+   * these are genuinely different apartments rather than one listing wearing
+   * different labels.
+   *
+   * The unit takes as many of the two tiles as it has pictures for: one photo
+   * replaces the top tile, two replace both. A unit with a single picture used
+   * to be shown none of it — the pair only switched together — which meant a
+   * landlord who uploaded one photo of their apartment saw no sign of it beside
+   * the cover.
+   */
+  const unitImages = Array.isArray(selectedUnit?.images)
+    ? selectedUnit.images.filter(Boolean).map(sanitizeUrl)
+    : [];
+  const showingUnitPhotos = unitImages.length > 0;
+
+  /*
+   * What the gallery shows: the building's own photos AND the photos of the
+   * unit whose tab is open, kept as labelled sections. A renter looking at
+   * Apt 1W wants the building and that apartment — not every other unit's
+   * bedrooms, which is a different listing to them.
+   *
+   * propertyImages is read separately from `images` because the latter falls
+   * back to unit photos when the building has none of its own; using it here
+   * would file those under "the property".
+   */
+  const propertyGallery = Array.isArray(listing?.propertyImages)
+    ? listing.propertyImages.filter(Boolean).map(sanitizeUrl)
+    : images; // browse-feed shape, before the detail fetch lands
+
+  const gallerySections = [
+    ...(propertyGallery.length
+      ? [{ key: "property", label: "The property", photos: propertyGallery }]
+      : []),
+    ...(unitImages.length
+      ? [{ key: "unit", label: selectedUnitName ?? "This unit", photos: unitImages }]
+      : []),
+  ];
+  const galleryCount = gallerySections.reduce((n, sec) => n + sec.photos.length, 0);
+
+  const coverImage = images[0] || unitImages[0];
+  /*
+   * Whether anything renders beside the cover. Keyed on the tiles themselves
+   * rather than on the property's photo count: a building with one picture and
+   * a unit with two does have a pair to show, and testing images.length alone
+   * would collapse the hero to full width and hide them.
+   */
+  const hasSideTiles = showingUnitPhotos || images.length > 1;
+  /*
+   * The two tiles, each tagged with where it came from so the caption only
+   * appears on a photo that really is of this unit.
+   *
+   * The offset differs by source: the cover already consumed images[0] from the
+   * property set, but nothing has consumed the unit's, so its photos start at 0.
+   * Unit photos claim tiles from the top down; the property's fill the rest.
+   */
+  const propertyTile = [
+    images[1] || images[0] || null,
+    images[2] || images[1] || images[0] || null,
+  ];
+  const sideTiles = [0, 1]
+    .map((i) =>
+      unitImages[i]
+        ? { src: unitImages[i], isUnit: true }
+        : propertyTile[i]
+          ? { src: propertyTile[i], isUnit: false }
+          : null
+    )
+    .filter(Boolean);
 
   // Address
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
@@ -1391,6 +1537,9 @@ export default function ListingModalInfo({
         body: JSON.stringify({
           ...contactForm,
           listingId: listing._id,
+          // The recipient is resolved server-side from the lease. The names
+          // below are only a fallback for listings whose units carry no lease.
+          leaseId: selectedLease?.id ?? null,
           landlordEmail: listing.contactEmail ?? listing.owner?.email,
           landlordName: listing.contactName ?? listing.owner?.name,
           listingAddress: listing.address,
@@ -1437,7 +1586,7 @@ export default function ListingModalInfo({
             <div
               ref={heroImgWrapperRef}
               className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
-                images.length > 1
+                hasSideTiles
                   ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
                   : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
               }`}
@@ -1500,57 +1649,53 @@ export default function ListingModalInfo({
 
             {/* Two stacked thumbnails — fill remaining width, desktop only.
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
-            {images.length > 1 && (
+            {hasSideTiles && (
             <motion.div
               className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
             >
-              {/* Top thumbnail */}
-              <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
-                onClick={() => setIsGalleryOpen(true)}
-              >
-                {secondImage ? (
+              {sideTiles.map((tile, i) => (
+                <div
+                  key={`${tile.src}-${i}`}
+                  className={`relative flex-1 cursor-pointer overflow-hidden bg-gray-100 ${
+                    i === 0 ? "rounded-tr-xl" : ""
+                  } ${i === sideTiles.length - 1 ? "rounded-br-xl" : ""}`}
+                  onClick={() => setIsGalleryOpen(true)}
+                >
                   <Image
-                    src={secondImage}
-                    alt="Listing photo 2"
+                    src={tile.src}
+                    alt={
+                      tile.isUnit
+                        ? `${selectedUnitName ?? "Unit"} photo`
+                        : `Listing photo ${i + 2}`
+                    }
                     fill
                     sizes="(max-width: 768px) 0vw, 35vw"
                     className="object-cover"
                   />
-                ) : (
-                  <div className="w-full h-full bg-gray-200" />
-                )}
-              </div>
-              {/* Bottom thumbnail */}
-              <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl bg-gray-100"
-                onClick={() => setIsGalleryOpen(true)}
-              >
-                {thirdImage ? (
-                  <Image
-                    src={thirdImage}
-                    alt="Listing photo 3"
-                    fill
-                    sizes="(max-width: 768px) 0vw, 35vw"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-300" />
-                )}
-              </div>
+                  {/* Says whose photo this is, so switching tabs reads as a
+                      different apartment rather than the gallery reshuffling.
+                      Only on the first unit tile — twice is clutter. */}
+                  {tile.isUnit && selectedUnitName && i === 0 && (
+                    <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
+                      {selectedUnitName}
+                    </span>
+                  )}
+                </div>
+              ))}
             </motion.div>
             )}
 
-            {/* "See all photos" button — only when there's more than one photo */}
-            {images.length > 1 && (
+            {/* "See all photos" — counts the property AND the open unit, which is
+                what the gallery actually opens with. */}
+            {galleryCount > 1 && (
               <button
                 onClick={() => setIsGalleryOpen(true)}
                 className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
               >
-                See all photos ({images.length})
+                See all photos ({galleryCount})
               </button>
             )}
           </div>
@@ -1605,35 +1750,25 @@ export default function ListingModalInfo({
                   </span>
                 )}
               </div>
-              <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
-                <button
-                  onClick={() => {
-                    setActiveTab("contact");
-                    setTimeout(
-                      () =>
-                        scrollIntoContainer(
-                          document.getElementById("listing-tabs")
-                        ),
-                      50
-                    );
-                  }}
-                  className={`shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg transition ${
-                    listing.unavailable
-                      ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
-                      : "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-1 ring-red-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                  }`}
-                >
-                  Contact
-                </button>
-                {!listing.furnished && (
-                  <a
-                    href="https://cort.sjv.io/zzb9y0"
-                    target="_blank"
-                    rel="noopener noreferrer sponsored nofollow"
-                    className="shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg bg-red-50 text-red-700 border border-red-200 shadow-sm hover:bg-red-100 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                  >
-                    Furnish This Property
-                  </a>
+              <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
+                {/* Rating moved up from the removed stats bar. */}
+                {overallAvg ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Star
+                      className="h-8 w-8 shrink-0 fill-amber-400 text-amber-400"
+                      aria-hidden="true"
+                    />
+                    <span className="text-2xl font-semibold leading-none text-gray-900">
+                      {overallAvg}
+                    </span>
+                    <span className="text-md text-gray-500">
+                      ({legitimateReviews.length})
+                    </span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center h-9 text-sm text-gray-400">
+                    No reviews yet
+                  </span>
                 )}
               </div>
             </div>
@@ -1672,98 +1807,47 @@ export default function ListingModalInfo({
                     </span>
                   ))}
                 </div>
+
+                {/* Identity of the unit on the open tab. The tab label is the
+                    floor plan ("2 Bed / 1 Bath") or the landlord's own name for
+                    it, neither of which says WHICH unit — so the real identity
+                    ("Apt 1W") is stated here, above the offerings on it. */}
+                <div className="border-t border-gray-100 px-4 pt-3">
+                  {selectedUnitName ? (
+                    <>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {selectedUnitName}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {selectedUnitSpecs}
+                        <FloorPlanLink
+                          url={selectedUnit?.floorPlanImageUrl}
+                          onOpen={() => setFloorPlanOpen(true)}
+                        />
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-semibold text-gray-900">
+                      {selectedUnitSpecs}
+                      <FloorPlanLink
+                        url={selectedUnit?.floorPlanImageUrl}
+                        onOpen={() => setFloorPlanOpen(true)}
+                      />
+                    </p>
+                  )}
+                </div>
+
+                {/* Lease options for the unit on the open tab. Each row is one
+                    landlord's offering and carries its own Contact. */}
+                <div>
+                  <LeaseOptions
+                    leases={selectedUnitLeases}
+                    loading={leasesLoading}
+                    onContact={handleContactLease}
+                  />
+                </div>
               </div>
             )}
-
-            {/* ── Stats Bar ── */}
-            <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
-              <StatCell
-                label="/ mo"
-                value={
-                  selectedUnit
-                    ? selectedUnit.rent != null
-                      ? `$${selectedUnit.rent.toLocaleString()}`
-                      : "TBD"
-                    : (() => {
-                        const label = getRentRangeLabel(listing.unitTypes);
-                        if (label === "Contact for Pricing") return "TBD";
-                        const dashIdx = label.indexOf("-");
-                        if (dashIdx === -1) return label;
-                        return (
-                          <>
-                            <span className="whitespace-nowrap">
-                              {label.slice(0, dashIdx + 1)}
-                            </span>
-                            <wbr />
-                            <span className="whitespace-nowrap">
-                              {label.slice(dashIdx + 1)}
-                            </span>
-                          </>
-                        );
-                      })()
-                }
-              />
-              <StatCell
-                label="Beds"
-                value={
-                  selectedUnit
-                    ? selectedUnit.bedrooms != null
-                      ? String(selectedUnit.bedrooms)
-                      : "—"
-                    : getUnitValuesLabel(listing.unitTypes, "bedrooms")
-                }
-              />
-              <StatCell
-                label="Baths"
-                value={
-                  selectedUnit
-                    ? selectedUnit.bathrooms != null
-                      ? String(selectedUnit.bathrooms)
-                      : "—"
-                    : getUnitValuesLabel(listing.unitTypes, "bathrooms")
-                }
-              />
-              <StatCell
-                label="Sq Ft"
-                value={
-                  selectedUnit
-                    ? selectedUnit.area
-                      ? selectedUnit.area.toLocaleString()
-                      : "—"
-                    : getAreaRangeLabel(listing.unitTypes)
-                }
-              />
-              <LeaseStatCell
-                leaseAvailability={
-                  // Strictly the selected unit's own terms — never borrow another unit's
-                  // (a unit with no terms shows "—"). Only fall back to the listing-level
-                  // union when there is no selected unit at all.
-                  selectedUnit
-                    ? (Array.isArray(selectedUnit.leaseTermMonths)
-                        ? selectedUnit.leaseTermMonths
-                        : []
-                      ).map(leaseMonthsToLabel)
-                    : listing.leaseAvailability
-                }
-              />
-              {selectedUnit?.floorPlanImageUrl && (
-                <FloorPlanStatCell
-                  url={selectedUnit.floorPlanImageUrl}
-                  onOpen={() => {
-                    const url = selectedUnit.floorPlanImageUrl;
-                    if (/\.pdf($|\?)/i.test(url)) {
-                      window.open(url, "_blank", "noopener");
-                    } else {
-                      setLightboxSrc(url);
-                    }
-                  }}
-                />
-              )}
-              <StatCell
-                label="Rating"
-                value={overallAvg ? `★ ${overallAvg}` : "—"}
-              />
-            </div>
 
             {/* ── Sticky Tab Bar ── */}
             <div
@@ -1772,34 +1856,51 @@ export default function ListingModalInfo({
                 compact ? "top-[52px]" : "top-0 px-4"
               }`}
             >
-              <nav
-                className={`flex ${
-                  compact
-                    ? "justify-center"
-                    : "overflow-x-auto max-w-7xl mx-auto"
-                }`}
-              >
-                {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
-                  (tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
-                        activeTab === tab.id
-                          ? "text-red-600 border-red-600"
-                          : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
-                      }`}
+              {/* Three-column row so the tabs stay optically centred no matter
+                  how wide the right-hand action is. */}
+              <nav className="flex items-stretch max-w-7xl mx-auto">
+                <div className="flex-1" aria-hidden="true" />
+
+                <div className="flex overflow-x-auto">
+                  {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
+                    (tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
+                          activeTab === tab.id
+                            ? "text-red-600 border-red-600"
+                            : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    )
+                  )}
+                </div>
+
+                {/* Furniture rental, styled as a tab so it reads as part of this
+                    row. It only appears against an UNFURNISHED offering —
+                    furnished belongs to the lease now, not the building, so this
+                    asks whether any live offering on the open unit is
+                    unfurnished, falling back to listings.furnished when none has
+                    loaded. */}
+                <div className="flex flex-1 items-stretch justify-end">
+                  {showFurnishCta && (
+                    <a
+                      href="https://cort.sjv.io/zzb9y0"
+                      target="_blank"
+                      rel="noopener noreferrer sponsored nofollow"
+                      className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
                     >
-                      {tab.label}
-                    </button>
-                  )
-                )}
-                {tabBarAction ? (
-                  <div className="ml-auto flex items-center pl-3 pr-8">
-                    {tabBarAction}
-                  </div>
-                ) : null}
+                      Furnish This Property
+                    </a>
+                  )}
+                  {tabBarAction && (
+                    <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
+                  )}
+                </div>
               </nav>
             </div>
 
@@ -1856,12 +1957,22 @@ export default function ListingModalInfo({
                   handleContactSubmit={handleContactSubmit}
                   contactLoading={contactLoading}
                   contactSent={contactSent}
+                  selectedLease={selectedLease}
                 />
               )}
             </div>
           </motion.div>
         </div>
       </div>
+
+      {/* ── Floor plan ── */}
+      {floorPlanOpen && selectedUnit?.floorPlanImageUrl && (
+        <FloorPlanViewer
+          url={selectedUnit.floorPlanImageUrl}
+          unitName={selectedUnitName}
+          onClose={() => setFloorPlanOpen(false)}
+        />
+      )}
 
       {/* ── Full-screen Gallery Modal ── */}
       {isGalleryOpen && (
@@ -1875,7 +1986,7 @@ export default function ListingModalInfo({
           >
             <div className="flex items-center justify-between mb-6 text-white">
               <div className="text-lg font-semibold">
-                Photos ({images.length})
+                Photos ({galleryCount})
               </div>
               <button
                 type="button"
@@ -1886,19 +1997,34 @@ export default function ListingModalInfo({
                 ×
               </button>
             </div>
-            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-              {images.map((src) => (
-                <GalleryImage
-                  key={src}
-                  src={src}
-                  index={images.indexOf(src)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setLightboxSrc(src);
-                  }}
-                />
-              ))}
-            </div>
+            {gallerySections.map((section, sectionIdx) => (
+              <div key={section.key} className={sectionIdx ? "mt-10" : ""}>
+                {/* Only worth a heading when there is more than one section —
+                    a single group needs no label to tell it apart from. */}
+                {gallerySections.length > 1 && (
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">
+                    {section.label}
+                    <span className="ml-2 font-normal normal-case tracking-normal text-white/40">
+                      {section.photos.length}{" "}
+                      {section.photos.length === 1 ? "photo" : "photos"}
+                    </span>
+                  </h3>
+                )}
+                <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
+                  {section.photos.map((src, i) => (
+                    <GalleryImage
+                      key={`${section.key}-${src}`}
+                      src={src}
+                      index={i}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLightboxSrc(src);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

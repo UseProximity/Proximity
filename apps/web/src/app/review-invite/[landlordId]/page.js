@@ -42,12 +42,32 @@ export default async function ReviewInvitePage({ params }) {
   if (!landlord) notFound();
   if (!LANDLORD_ROLES.has(landlord.roles?.name)) notFound();
 
-  const { data: ownedRows } = await supabase
-    .from("listing_landlords")
-    .select("listing_id")
-    .eq("user_id", landlord.id);
+  /*
+   * Everywhere this landlord has something a student could review — which is
+   * not the same as the properties they own.
+   *
+   * A landlord who attached an offering to someone else's building owns the
+   * lease, not the listing record, so listing_landlords alone reported they had
+   * no listings at all and the invite dead-ended. Their tenants have just as
+   * much to review.
+   */
+  const [{ data: ownedRows }, { data: leasedRows }] = await Promise.all([
+    supabase.from("listing_landlords").select("listing_id").eq("user_id", landlord.id),
+    supabase
+      .from("unit_leases")
+      .select("id, listing_units!unit_id(listing_id, deleted_at)")
+      .eq("owner_id", landlord.id),
+  ]);
 
-  const ownedIds = (ownedRows ?? []).map((r) => r.listing_id);
+  const ownedIds = [
+    ...new Set([
+      ...(ownedRows ?? []).map((r) => r.listing_id),
+      ...(leasedRows ?? [])
+        .map((r) => r.listing_units)
+        .filter((u) => u?.listing_id && !u.deleted_at)
+        .map((u) => u.listing_id),
+    ]),
+  ];
 
   let listings = [];
   if (ownedIds.length > 0) {

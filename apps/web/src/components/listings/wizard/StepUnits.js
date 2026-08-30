@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
-import { LEASE_TERM_PRESETS } from "@/components/listings/listingFormOptions";
+import {
+  LEASE_TERM_PRESETS,
+  UNIT_DESIGNATORS,
+  parseUnitNumbers,
+} from "@/components/listings/listingFormOptions";
 import {
   StepFrame,
   Chip,
@@ -18,6 +22,18 @@ import {
  */
 export default function StepUnits({ w }) {
   const [customTerm, setCustomTerm] = useState({});
+
+  // Preview of what each floor-plan card will expand into, so the landlord sees
+  // the unit count before publishing rather than after.
+  const parsedPerCard = w.units.map((u) => parseUnitNumbers(u.designator, u.unitNumbers));
+  const parsedCounts = parsedPerCard.map((list) => list.length);
+  const parsedUnitLists = parsedPerCard.map((list) =>
+    list
+      .slice(0, 6)
+      .map((n) => (n == null ? "whole property" : n))
+      .join(", ") + (list.length > 6 ? `, +${list.length - 6} more` : "")
+  );
+  const totalUnits = parsedCounts.reduce((sum, n) => sum + n, 0);
 
   const addCustom = (i) => {
     const n = Number(customTerm[i]);
@@ -144,6 +160,58 @@ export default function StepUnits({ w }) {
               </div>
             </div>
 
+            {/* Which physical units share this floor plan. Each number becomes
+                its own unit + lease, which is what lets another landlord at the
+                same property attach to the right one later. Hidden when
+                attaching — that unit's identity already exists. */}
+            <div
+              className={`mt-4 rounded-lg bg-gray-50 p-3${
+                w.attachingToExistingUnit ? " hidden" : ""
+              }`}
+            >
+              <p className="mb-1.5 text-xs font-medium text-gray-600">
+                Which units have this floor plan?
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={unit.designator ?? ""}
+                  onChange={(e) => {
+                    w.updateUnit(i, "designator", e.target.value);
+                    if (e.target.value === "Whole") w.updateUnit(i, "unitNumbers", "");
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="">Type…</option>
+                  {UNIT_DESIGNATORS.map((d) => (
+                    <option key={d} value={d}>
+                      {d === "Whole" ? "Whole property" : d}
+                    </option>
+                  ))}
+                </select>
+
+                {unit.designator !== "Whole" && (
+                  <input
+                    type="text"
+                    value={unit.unitNumbers ?? ""}
+                    onChange={(e) => w.updateUnit(i, "unitNumbers", e.target.value)}
+                    disabled={!unit.designator}
+                    placeholder="2W, 2E, 3W, 3E — or 1-4"
+                    className={`${inputCls} w-64 disabled:bg-gray-100`}
+                  />
+                )}
+              </div>
+
+              <p className="mt-1.5 text-[11px] text-gray-500">
+                {unit.designator === "Whole"
+                  ? "One unit covering the whole property."
+                  : parsedCounts[i] > 0
+                  ? `Creates ${parsedCounts[i]} ${
+                      parsedCounts[i] === 1 ? "unit" : "units"
+                    }, each with its own lease: ${parsedUnitLists[i]}`
+                  : "Separate with commas. Pick “Whole property” for a single-family house."}
+              </p>
+            </div>
+
             <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
               <input
                 type="text"
@@ -168,13 +236,23 @@ export default function StepUnits({ w }) {
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={w.addUnit}
-        className="mt-4 flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700"
-      >
-        <Plus className="h-4 w-4" /> Add another floor plan
-      </button>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        {!w.attachingToExistingUnit && (
+          <button
+            type="button"
+            onClick={w.addUnit}
+            className="flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700"
+          >
+            <Plus className="h-4 w-4" /> Add another floor plan
+          </button>
+        )}
+        {totalUnits > 0 && !w.attachingToExistingUnit && (
+          <p className="text-xs text-gray-500">
+            {totalUnits} {totalUnits === 1 ? "unit" : "units"} across{" "}
+            {w.units.length} {w.units.length === 1 ? "floor plan" : "floor plans"}
+          </p>
+        )}
+      </div>
     </StepFrame>
   );
 }

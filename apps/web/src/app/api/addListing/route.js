@@ -5,6 +5,7 @@ import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
+import { shortDescription } from "@/lib/listings/leaseDescription";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 
@@ -88,6 +89,9 @@ export async function POST(req) {
       customAmenities,
       custom_amenities,
       attachStreetView,
+      // Set when the address matched an existing property and the user chose to
+      // add a new unit to it rather than create a second property row.
+      attachToListingId,
     } = body;
 
     // The add forms hold their state in snake_case and spread it straight into
@@ -107,10 +111,17 @@ export async function POST(req) {
     const contactPhone = body.contactPhone || body.contact_phone || null;
     const contactName = body.contactName || body.contact_name || null;
 
-    // Validate required fields
+    /*
+     * Validate required fields.
+     *
+     * A description is NOT one of them. It used to be, which forced every
+     * landlord to write a paragraph before they could publish — and what they
+     * wrote then went to listings.description, a property-level column that the
+     * offering-level UI never shows. It is now the lease's own short blurb,
+     * optional, and read back behind the chevron on the offering it describes.
+     */
     if (
       !address?.trim() ||
-      !description?.trim() ||
       !Array.isArray(unitTypes) ||
       unitTypes.length === 0
     ) {
@@ -150,6 +161,17 @@ export async function POST(req) {
       ownerId = session?.user?.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+      }
+      /*
+       * Someone has to be reachable about the offering. Not asked of the
+       * importer, which creates unclaimed listings whose contact is whatever the
+       * source site published — sometimes nothing.
+       */
+      if (!contactEmail?.trim()) {
+        return NextResponse.json(
+          { error: "A contact email is required so students can reach you." },
+          { status: 400 }
+        );
       }
     }
 
@@ -266,6 +288,15 @@ export async function POST(req) {
     const resolvedLeaseType = leaseType ?? body.lease_type ?? "standard";
     const isSublease = String(resolvedLeaseType).toLowerCase() === "sublease";
 
+    /*
+     * The blurb that goes on the OFFERING. The add flow sends one short line;
+     * the importer sends whatever the source site published, which can run to
+     * several paragraphs and predates the cap, so it is copied across whole.
+     */
+    const leaseBlurb = isImportRequest
+      ? description?.trim() || null
+      : shortDescription(body.leaseDescription ?? description);
+
     const unitData = unitTypes.map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
@@ -280,53 +311,193 @@ export async function POST(req) {
             .filter((m) => Number.isFinite(m) && m > 0)
         : [],
       leaseAvailability: unit.leaseAvailability ?? null,
+      rentIsPerPerson:
+        unit.rentIsPerPerson == null ? null : !!unit.rentIsPerPerson,
       available: unit.available !== false,
       sublease: isSublease,
+      // Unit identity. 'Whole' covers the entire property and carries no number
+      // (enforced by listing_units_number_check).
+      designator: unit.designator ?? null,
+      number: unit.designator === "Whole" ? null : unit.number ?? null,
     }));
 
     // listings.lease_availability is derived from the union of the units' lease terms.
     const leaseAvailabilityArr = deriveLeaseAvailability(unitData);
 
-    // All DB writes in one transaction — sets app.current_user_id for action_log attribution
-    const { data: listingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
-      p_user_id: ownerId,
-      p_listing_data: {
-        title: title?.trim() || null,
-        address,
-        longitude: resolvedLng,
-        latitude: resolvedLat,
-        description,
-        lease_type: resolvedLeaseType,
-        home_type_id: homeTypeId,
-        lease_structure: leaseStructure ?? null,
-        sublease_friendly: subleaseFriendly ?? false,
-        twenty_one_plus: twenty_one_plus ?? false,
-        furnished: furnished ?? false,
-        move_in_date: moveInDate ?? null,
+    // Units and leases are written directly rather than through the create RPC's
+    // p_units, because the RPC gives no way to tie each inserted unit back to the
+    // payload row it came from — every row in one transaction shares a created_at,
+    // so identity and lease ownership could not be attributed afterwards.
+    let listingId = attachToListingId ?? null;
+
+    if (listingId) {
+      // Attaching to an existing property: the property row, its amenities and
+      // its walk times already exist and belong to whoever created them. Only
+      // the new units and their leases are written.
+      const { data: target, error: targetError } = await supabase
+        .from("listings")
+        .select("id, address, deleted_at")
+        .eq("id", listingId)
+        .maybeSingle();
+
+      if (targetError) {
+        console.error("[addListing] Target listing lookup failed:", targetError.message);
+        return NextResponse.json({ error: "Could not verify that property." }, { status: 500 });
+      }
+      if (!target || target.deleted_at) {
+        return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+      }
+
+      /*
+       * The client picks the property from an address lookup, so the id and the
+       * submitted address must describe the same place. Checking only that the
+       * id exists let a crafted request graft units onto an unrelated
+       * landlord's property — changing their unit set, their aggregates, and
+       * what browse shows for them.
+       */
+      const [{ data: targetKey }, { data: submittedKey }] = await Promise.all([
+        supabase.rpc("normalize_property_key", { p_address: target.address }),
+        supabase.rpc("normalize_property_key", { p_address: address }),
+      ]);
+      if (!targetKey || !submittedKey || targetKey !== submittedKey) {
+        return NextResponse.json(
+          { error: "That property doesn't match the address you entered." },
+          { status: 400 }
+        );
+      }
+    } else {
+      // All property-level writes in one transaction — sets app.current_user_id
+      // for action_log attribution.
+      const { data: newListingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
+        p_user_id: ownerId,
+        p_listing_data: {
+          title: title?.trim() || null,
+          address,
+          longitude: resolvedLng,
+          latitude: resolvedLat,
+          // NOT NULL in the schema, and now optional in the form: a property
+          // created without one starts blank rather than refusing to save.
+          description: description?.trim() || "",
+          lease_type: resolvedLeaseType,
+          home_type_id: homeTypeId,
+          lease_structure: leaseStructure ?? null,
+          sublease_friendly: subleaseFriendly ?? false,
+          twenty_one_plus: twenty_one_plus ?? false,
+          furnished: furnished ?? false,
+          move_in_date: moveInDate ?? null,
+          contact_email: contactEmail ?? null,
+          contact_phone: contactPhone ?? null,
+          contact_name: contactName ?? null,
+          lease_availability: leaseAvailabilityArr,
+          unavailable: false,
+          deleted_at: null,
+        },
+        p_amenities: amenityObj,
+        p_utilities: utilityObj,
+        p_walk_times: walkTimeRows,
+        p_units: [],
+        p_lease_availability: leaseAvailabilityVal,
+        p_custom_amenities: customAmenityArr,
+        /*
+         * Creating the property record does not always mean owning it.
+         *
+         * A sublease means the poster is handing over part of a lease someone
+         * else holds — so the building is not theirs, even when they are the
+         * first person to put its address on the site. Claiming it would write
+         * them a listing_landlords row, which is what isPropertyOwner reads, and
+         * hand them the right to rewrite and delete a property they only rent a
+         * room in. Prod carries exactly that shape at 5803 Waterman and 729
+         * Westgate, both created this way.
+         *
+         * Their stake is the lease below (owner_id), which is the thing they
+         * actually hold. The property stays unclaimed until a landlord claims
+         * it — the same state every imported listing starts in.
+         */
+        p_claim_property: !isSublease,
+      });
+
+      if (listingError) {
+        console.error("Error creating listing:", listingError.message);
+        return NextResponse.json({ error: listingError.message }, { status: 500 });
+      }
+      listingId = newListingId;
+    }
+
+    /*
+     * ── Units + leases ──────────────────────────────────────────────────────
+     *
+     * The ids are collected because the caller needs them to file its photos.
+     * A poster who does not own the property may only upload against a unit
+     * they are letting (/api/upload), and after the sublease change above that
+     * now includes the person who just created the property. Returning the ids
+     * is what lets the client scope the upload instead of guessing.
+     */
+    const createdUnitIds = [];
+    for (const unit of unitData) {
+      const { data: insertedUnit, error: unitError } = await supabase
+        .from("listing_units")
+        .insert({
+          listing_id: listingId,
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          area: unit.area,
+          available: unit.available,
+          title: unit.title,
+          floor_plan_image_url: unit.floorPlanImageUrl,
+          unit_designator: unit.designator,
+          unit_number: unit.number,
+        })
+        .select("id")
+        .single();
+
+      if (unitError) {
+        console.error("[addListing] Unit insert failed:", unitError.message);
+        return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
+      }
+
+      createdUnitIds.push(insertedUnit.id);
+
+      const { error: leaseError } = await supabase.from("unit_leases").insert({
+        unit_id: insertedUnit.id,
+        owner_id: ownerId,
+        rent: unit.rent,
+        // Which number `rent` is. Dropped here until now, so an offering
+        // published as per-person came back out as whole-unit rent and was
+        // divided by the bedroom count a second time.
+        rent_is_per_person: unit.rentIsPerPerson,
+        lease_term_months: unit.leaseTermMonths,
+        available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+        sublease: unit.sublease,
+        is_active: true,
+        unavailable: !unit.available,
+        description: leaseBlurb,
+        furnished: furnished ?? null,
         contact_email: contactEmail ?? null,
         contact_phone: contactPhone ?? null,
         contact_name: contactName ?? null,
-        lease_availability: leaseAvailabilityArr,
-        unavailable: false,
-        deleted_at: null,
-      },
-      p_amenities: amenityObj,
-      p_utilities: utilityObj,
-      p_walk_times: walkTimeRows,
-      p_units: unitData,
-      p_lease_availability: leaseAvailabilityVal,
-      p_custom_amenities: customAmenityArr,
-    });
+      });
 
-    if (listingError) {
-      console.error("Error creating listing:", listingError.message);
-      return NextResponse.json({ error: listingError.message }, { status: 500 });
+      if (leaseError) {
+        // Raised by unit_leases_sublease_guard when a sublease is posted onto a
+        // unit that is already being offered.
+        if (leaseError.code === "23514" || /sublease/i.test(leaseError.message)) {
+          return NextResponse.json(
+            {
+              error:
+                "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one.",
+            },
+            { status: 409 }
+          );
+        }
+        console.error("[addListing] Lease insert failed:", leaseError.message);
+        return NextResponse.json({ error: "Could not save a lease." }, { status: 500 });
+      }
     }
 
     // Persist driving times (best-effort; never blocks listing creation). Written
     // after the create RPC rather than inside it — the service-role client bypasses
     // RLS, and the UNIQUE (listing_id, location_id) constraint makes this idempotent.
-    if (driveTimeRows.length) {
+    if (driveTimeRows.length && !attachToListingId) {
       try {
         const { error: driveErr } = await supabase
           .from("listing_drive_times")
@@ -344,7 +515,7 @@ export async function POST(req) {
 
     // Best-effort default photo from Google Street View. Stored at sort_order 0 (cover);
     // any user uploads land after it via /api/upload. Never blocks listing creation.
-    if (attachStreetView) {
+    if (attachStreetView && !attachToListingId) {
       try {
         await fetchAndStoreStreetView({
           supabase,
@@ -376,7 +547,10 @@ export async function POST(req) {
     }
 
     return NextResponse.json(
-      { message: "Listing created successfully", listing: { id: listingId, address } },
+      {
+        message: "Listing created successfully",
+        listing: { id: listingId, address, unitIds: createdUnitIds },
+      },
       { status: 201 }
     );
   } catch (e) {

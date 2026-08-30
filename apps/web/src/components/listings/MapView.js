@@ -24,34 +24,36 @@ const WASHU_CAMPUS_CENTER = {
   latitude: 38.6489,
 };
 
-function computeBoundsExcludingOutliers(listings) {
-  if (listings.length === 0) return null;
-  const lats = listings.map((l) => l.latitude);
-  const lngs = listings.map((l) => l.longitude);
-  const meanLat = lats.reduce((s, v) => s + v, 0) / lats.length;
-  const meanLng = lngs.reduce((s, v) => s + v, 0) / lngs.length;
-  const stdLat = Math.sqrt(
-    lats.reduce((s, v) => s + (v - meanLat) ** 2, 0) / lats.length
+// Pins shrink as the map zooms out so dense blocks overlap less, but far more
+// slowly than the map itself (which halves in scale per zoom level) — a pin is
+// still readable when the whole metro is in view. Exponent 1 would shrink in
+// lockstep with the map; 0.25 keeps pins comfortably oversized when zoomed out.
+const PIN_FULL_SIZE_ZOOM = 15.5;
+const PIN_SHRINK_EXPONENT = 0.25;
+const PIN_MIN_SCALE = 0.7;
+
+function pinScaleForZoom(zoom) {
+  if (zoom >= PIN_FULL_SIZE_ZOOM) return 1;
+  return Math.max(
+    PIN_MIN_SCALE,
+    Math.pow(2, PIN_SHRINK_EXPONENT * (zoom - PIN_FULL_SIZE_ZOOM))
   );
-  const stdLng = Math.sqrt(
-    lngs.reduce((s, v) => s + (v - meanLng) ** 2, 0) / lngs.length
+}
+
+// Initial fit covers the bulk of the listings rather than their full extent:
+// a handful of far-flung ones would otherwise pull the camera way back and
+// leave the dense area around campus unreadably small.
+const FIT_PERCENTILE = 0.6;
+const FIT_MIN_DELTA_DEG = 0.008; // ~0.5 mi, so a sparse result set can't over-zoom
+
+function percentile(values, p) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(p * sorted.length) - 1)
   );
-  const filtered = listings.filter(
-    (l) =>
-      Math.abs(l.latitude - meanLat) <= 2 * (stdLat || 1) &&
-      Math.abs(l.longitude - meanLng) <= 2 * (stdLng || 1)
-  );
-  const pool = filtered.length > 0 ? filtered : listings;
-  return [
-    [
-      Math.min(...pool.map((l) => l.longitude)),
-      Math.min(...pool.map((l) => l.latitude)),
-    ],
-    [
-      Math.max(...pool.map((l) => l.longitude)),
-      Math.max(...pool.map((l) => l.latitude)),
-    ],
-  ];
+  return sorted[idx];
 }
 
 export default function MapView({
@@ -238,6 +240,19 @@ export default function MapView({
           mapRef.current.resize();
         }
       });
+
+      // Drive pin size from the zoom level via one CSS variable on the
+      // container — every pin inherits it, so no per-marker work per frame.
+      const syncPinScale = () => {
+        const container = mapContainerRef.current;
+        if (!container || !mapRef.current) return;
+        container.style.setProperty(
+          "--pin-scale",
+          pinScaleForZoom(mapRef.current.getZoom()).toFixed(3)
+        );
+      };
+      syncPinScale();
+      mapRef.current.on("zoom", syncPinScale);
     }
 
     if (!heroMode) {
@@ -291,6 +306,12 @@ export default function MapView({
   function buildPinSVGElement(rating, listingId, isActive) {
     const el = document.createElement("div");
     el.style.cssText = "width:35px;height:49px;";
+    // The scale lives on an inner wrapper because Mapbox owns the marker
+    // element's own transform (it writes the lng/lat translate there each frame).
+    // Scaling from the bottom center keeps the pin's tip on its coordinate.
+    const WRAP_OPEN =
+      '<div style="width:35px;height:49px;transform-origin:bottom center;transform:scale(var(--pin-scale,1));will-change:transform">';
+    const WRAP_CLOSE = "</div>";
 
     const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
     const hasRating = rating != null && rating > 0;
@@ -304,7 +325,7 @@ export default function MapView({
       const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
       const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
       const circleFill = isActive ? "#FFA2A2" : "white";
-      el.innerHTML = `<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+      el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="pg_${safeId}" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
             <stop stop-color="white"/>
@@ -313,7 +334,7 @@ export default function MapView({
         </defs>
         <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
         <circle cx="17.5" cy="20" r="5.5" fill="${circleFill}" opacity="0.9"/>
-      </svg>`;
+      </svg>${WRAP_CLOSE}`;
     } else {
       // Star y-bounds: top≈8.34, bottom≈31.4, height≈23. Clip from bottom up for fractional fill.
       const STAR_BOTTOM = 31.4;
@@ -340,7 +361,7 @@ export default function MapView({
         : "#FFFFF6";
       const starStroke = isGold ? `url(#sg_${safeId})` : isActive ? "#FFA2A2" : "#FFFFF6";
 
-      el.innerHTML = `<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+      el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="pg_${safeId}" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
             <stop stop-color="white"/>
@@ -354,7 +375,7 @@ export default function MapView({
         <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
         <path d="${STAR_PATH}" fill="${starFill}" clip-path="url(#sc_${safeId})"/>
         <path d="${STAR_PATH}" fill="none" stroke="${starStroke}" stroke-width="0.75"/>
-      </svg>`;
+      </svg>${WRAP_CLOSE}`;
     }
 
     return el;
@@ -403,26 +424,32 @@ export default function MapView({
     // Zoom to fit all visible listings whenever the listings set changes
     if (listings.length > 0) {
       const valid = listings.filter((l) => l.longitude && l.latitude);
-      const bounds = computeBoundsExcludingOutliers(valid);
-      if (bounds) {
+      if (valid.length > 0) {
         const campusLng = WASHU_CAMPUS_CENTER.longitude;
         const campusLat = WASHU_CAMPUS_CENTER.latitude;
-        const maxDeltaLng = Math.max(
-          Math.abs(campusLng - bounds[0][0]),
-          Math.abs(bounds[1][0] - campusLng)
+        // Radius that contains FIT_PERCENTILE of the listings, not all of them.
+        const deltaLng = Math.max(
+          FIT_MIN_DELTA_DEG,
+          percentile(
+            valid.map((l) => Math.abs(l.longitude - campusLng)),
+            FIT_PERCENTILE
+          )
         );
-        const maxDeltaLat = Math.max(
-          Math.abs(campusLat - bounds[0][1]),
-          Math.abs(bounds[1][1] - campusLat)
+        const deltaLat = Math.max(
+          FIT_MIN_DELTA_DEG,
+          percentile(
+            valid.map((l) => Math.abs(l.latitude - campusLat)),
+            FIT_PERCENTILE
+          )
         );
         const symBounds = [
-          [campusLng - maxDeltaLng, campusLat - maxDeltaLat],
-          [campusLng + maxDeltaLng, campusLat + maxDeltaLat],
+          [campusLng - deltaLng, campusLat - deltaLat],
+          [campusLng + deltaLng, campusLat + deltaLat],
         ];
         const doFit = () => {
           const camera = map.cameraForBounds(symBounds, {
-            padding: 80,
-            maxZoom: 15,
+            padding: 48,
+            maxZoom: 15.5,
           });
           map.flyTo({
             center: [campusLng, campusLat],
@@ -431,8 +458,10 @@ export default function MapView({
             essential: true,
           });
         };
-        if (map.isStyleLoaded()) doFit();
-        else map.once("load", doFit);
+        // cameraForBounds/flyTo only need the map transform (container size),
+        // not a loaded style — gating on "load" here used to silently skip the
+        // fit whenever the style resolved after the listings did.
+        doFit();
       }
     }
 

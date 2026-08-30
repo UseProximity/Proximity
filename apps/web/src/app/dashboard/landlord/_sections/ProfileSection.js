@@ -42,13 +42,18 @@ export default function ProfileSection({
                 <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 break-words">
                   {user.name}
                 </h1>
-                <Badge
-                  variant="secondary"
-                  className="bg-red-50 text-red-700 border border-red-200"
-                  aria-label="Account role: Landlord"
-                >
-                  Landlord
-                </Badge>
+                {/* The real role. This said "Landlord" for everyone, which was
+                    merely redundant while only landlords could reach this page
+                    and became untrue the moment a student subletter could. */}
+                {user.role && (
+                  <Badge
+                    variant="secondary"
+                    className="bg-red-50 text-red-700 border border-red-200"
+                    aria-label={`Account role: ${user.role}`}
+                  >
+                    {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                  </Badge>
+                )}
               </div>
               {user.numReviews === 0 ? (
                 <p className="text-gray-500 text-sm italic">No ratings yet</p>

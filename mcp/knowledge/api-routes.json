@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-14T01:08:24.489Z",
-  "count": 78,
+  "_generated": "2026-08-30T23:03:38.928Z",
+  "count": 88,
   "routes": [
     {
       "path": "/api/addListing",
@@ -15,6 +15,9 @@
       "tables": [
         "home_types",
         "locations",
+        "listings",
+        "listing_units",
+        "unit_leases",
         "listing_drive_times",
         "users"
       ],
@@ -356,6 +359,7 @@
         "POST": "any"
       },
       "tables": [
+        "unit_leases",
         "listings",
         "users"
       ],
@@ -504,7 +508,9 @@
       },
       "tables": [
         "dorm_reviews",
-        "dorms"
+        "dorms",
+        "tags",
+        "dorm_review_tags"
       ],
       "file": "src/app/api/dormReviews/route.js"
     },
@@ -595,6 +601,7 @@
         "interaction_types",
         "user_listing_interactions",
         "listing_landlords",
+        "unit_leases",
         "listings",
         "listing_metrics_daily"
       ],
@@ -634,7 +641,6 @@
         "GET": "public"
       },
       "tables": [
-        "listing_landlords",
         "listings"
       ],
       "file": "src/app/api/landlord/listings/route.js"
@@ -651,7 +657,8 @@
         "DELETE": "public"
       },
       "tables": [
-        "listing_landlords",
+        "listing_units",
+        "unit_leases",
         "home_types",
         "listings"
       ],
@@ -667,7 +674,6 @@
         "PATCH": "any"
       },
       "tables": [
-        "listing_landlords",
         "listing_images"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/images/route.js"
@@ -694,6 +700,56 @@
       "file": "src/app/api/landlord/listings/[listingId]/landlords/route.js"
     },
     {
+      "path": "/api/landlord/listings/[listingId]/property",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any"
+      },
+      "tables": [
+        "home_types",
+        "listings",
+        "listing_amenities",
+        "listing_utilities",
+        "listing_custom_amenities"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/property/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/units",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listings",
+        "listing_units"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/units/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/units/[unitId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "listing_units",
+        "unit_leases"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/units/[unitId]/route.js"
+    },
+    {
       "path": "/api/landlord/metrics",
       "methods": [
         "GET"
@@ -710,6 +766,20 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/landlord/metrics/route.js"
+    },
+    {
+      "path": "/api/landlord/photos/[imageId]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "DELETE": "any"
+      },
+      "tables": [
+        "listing_images"
+      ],
+      "file": "src/app/api/landlord/photos/[imageId]/route.js"
     },
     {
       "path": "/api/landlord/pms/confirm",
@@ -853,6 +923,37 @@
       "file": "src/app/api/lease-check/property/route.js"
     },
     {
+      "path": "/api/leases",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_units",
+        "unit_leases"
+      ],
+      "file": "src/app/api/leases/route.js"
+    },
+    {
+      "path": "/api/leases/[leaseId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PATCH": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "unit_leases"
+      ],
+      "file": "src/app/api/leases/[leaseId]/route.js"
+    },
+    {
       "path": "/api/listing/[listingId]",
       "methods": [
         "GET",
@@ -957,6 +1058,68 @@
       "file": "src/app/api/pms/hold/route.js"
     },
     {
+      "path": "/api/profile/claim-review",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "dorm_reviews",
+        "users"
+      ],
+      "file": "src/app/api/profile/claim-review/route.js"
+    },
+    {
+      "path": "/api/profile/complete-from-review",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "roles"
+      ],
+      "file": "src/app/api/profile/complete-from-review/route.js"
+    },
+    {
+      "path": "/api/profile/set-review-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/profile/set-review-password/route.js"
+    },
+    {
+      "path": "/api/properties/lookup",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/properties/lookup/route.js"
+    },
+    {
       "path": "/api/referralPayment",
       "methods": [
         "GET",
@@ -993,14 +1156,13 @@
         "GET",
         "POST"
       ],
-      "auth": "any",
+      "auth": "optional",
       "methodAuth": {
-        "GET": "any",
-        "POST": "any"
+        "GET": "optional",
+        "POST": "optional"
       },
       "tables": [
         "listing_reviews",
-        "schools",
         "home_types",
         "users",
         "roles",
@@ -1111,15 +1273,14 @@
         "PUT",
         "PATCH"
       ],
-      "auth": "super",
+      "auth": "any",
       "methodAuth": {
-        "POST": "super",
-        "PUT": "super",
-        "PATCH": "super"
+        "POST": "any",
+        "PUT": "any",
+        "PATCH": "any"
       },
       "tables": [
         "listings",
-        "listing_landlords",
         "listing_images"
       ],
       "file": "src/app/api/upload/route.js"

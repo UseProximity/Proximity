@@ -17,7 +17,13 @@ const PMS_LOGOS = [
  * The fork in the road: import from a website, sync a PMS, or type it in.
  * One decision, three big targets, no form fields in sight yet.
  */
-export default function StepStart({ w, onBegin }) {
+/*
+ * `showScratch` is false when the caller already offered "type it in" — the
+ * add-listing page forks before mounting this, so repeating the option here
+ * would send a landlord who chose Import back to the manual path they just
+ * declined.
+ */
+export default function StepStart({ w, onBegin, showScratch = true }) {
   const [showImport, setShowImport] = useState(false);
 
   return (
@@ -89,6 +95,7 @@ export default function StepStart({ w, onBegin }) {
             <RefreshCw className="ml-auto h-4 w-4 shrink-0 text-gray-300 group-hover:text-red-500" />
           </Link>
 
+          {showScratch && (
           <button
             type="button"
             onClick={onBegin}
@@ -104,6 +111,7 @@ export default function StepStart({ w, onBegin }) {
               </p>
             </div>
           </button>
+          )}
         </div>
       )}
     </div>

@@ -76,9 +76,9 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
   const rating = Number(listing.rating);
   const hasRating = numReviews > 0 && Number.isFinite(rating) && rating > 0;
 
-  // Full cards stack this under the rent (above the landlord name); the compact
-  // variant has neither a city line nor a landlord name, so it rides inline on
-  // the bed/bath row instead of adding a line its sibling cards don't have.
+  // Closes the bed/bath row on every card. It used to stack under the rent on
+  // full cards to make room for the landlord name beside the specs; with that
+  // name gone the row is free, so both variants read the same way again.
   const ratingBadge = hasRating ? (
     <span
       className="flex items-center gap-0.5 text-xs whitespace-nowrap flex-shrink-0"
@@ -188,32 +188,20 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
               </p>
             )}
           </div>
-          {/* gap-1 matches the pt-1 on the row below, so the rating sits
-              evenly spaced between the rent and the landlord name. */}
-          <div className="flex flex-col items-end flex-shrink-0 gap-1">
-            <span className={`font-bold whitespace-nowrap ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
-              {getRentRangeLabel(listing.unitTypes)}
-              {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
-                <span className="text-xs font-normal">/mo</span>
-              )}
-            </span>
-            {!compact && ratingBadge}
-          </div>
+          <span className={`font-bold whitespace-nowrap flex-shrink-0 ${compact ? "text-sm md:text-xs" : "text-sm"} ${listing.unavailable ? "text-gray-400" : "text-[#3C4142]"}`}>
+            {getRentRangeLabel(listing.unitTypes)}
+            {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
+              <span className="text-xs font-normal">/mo</span>
+            )}
+          </span>
         </div>
-        {/* pt-1 only where the rating stacks above — it offsets the extra line
-            that column adds, so the bed/bath row keeps its usual spacing. */}
-        <div className={`flex items-center justify-between mt-auto min-w-0 gap-2 ${hasRating && !compact ? "pt-1" : "pt-2"}`}>
+        <div className="flex items-center justify-between mt-auto pt-2 min-w-0 gap-2">
           <span className="text-gray-500 text-xs truncate flex-1">
             {bedLabel} bed{" | "}
             {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </span>
-          {compact && ratingBadge}
-          {listing.owner?.name && !compact && (
-            <span className="text-gray-400 text-xs truncate max-w-[40%]">
-              {listing.owner.name}
-            </span>
-          )}
+          {ratingBadge}
         </div>
         {(() => {
           const pwm = listing.placeWalkMinutes;

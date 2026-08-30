@@ -3,34 +3,15 @@
 import { useState, useEffect } from "react";
 import { signOut, useSession } from "next-auth/react";
 import Modal from "@/components/ui/Modal";
-
-const ROLES = ["Student", "Landlord", "Parent", "Other"];
-
-const MONTHS = [
-  { value: 1, label: "January" },
-  { value: 2, label: "February" },
-  { value: 3, label: "March" },
-  { value: 4, label: "April" },
-  { value: 5, label: "May" },
-  { value: 6, label: "June" },
-  { value: 7, label: "July" },
-  { value: 8, label: "August" },
-  { value: 9, label: "September" },
-  { value: 10, label: "October" },
-  { value: 11, label: "November" },
-  { value: 12, label: "December" },
-];
-
-function getClassYear(gradYear, gradMonth) {
-  const now = new Date();
-  const monthsUntilGrad =
-    (gradYear - now.getFullYear()) * 12 + (gradMonth - (now.getMonth() + 1));
-  if (monthsUntilGrad <= 0) return "Graduate / Alumni";
-  if (monthsUntilGrad <= 12) return "Senior";
-  if (monthsUntilGrad <= 24) return "Junior";
-  if (monthsUntilGrad <= 36) return "Sophomore";
-  return "Freshman";
-}
+import {
+  ROLES,
+  GENDERS,
+  REFERRAL_SOURCES,
+  MONTHS,
+  graduationYearOptions,
+  getClassYear,
+  isProfileComplete,
+} from "./profileFields";
 
 export default function ProfileCompletionModal({ session }) {
   const { update } = useSession();
@@ -68,13 +49,7 @@ export default function ProfileCompletionModal({ session }) {
 
   const isStudent = formData.role === "Student";
 
-  const isFormValid =
-    formData.firstName &&
-    formData.lastName &&
-    formData.role &&
-    formData.gender &&
-    formData.referralSource &&
-    (!isStudent || (formData.graduationMonth && formData.graduationYear));
+  const isFormValid = isProfileComplete(formData);
 
   const classYear =
     isStudent && formData.graduationYear && formData.graduationMonth
@@ -119,8 +94,7 @@ export default function ProfileCompletionModal({ session }) {
     }
   };
 
-  const currentYear = new Date().getFullYear();
-  const graduationYears = Array.from({ length: 8 }, (_, i) => currentYear + i);
+  const graduationYears = graduationYearOptions();
 
   return (
     <Modal isOpen={isOpen} onClose={() => signOut({ callbackUrl: "/" })}>
@@ -233,9 +207,9 @@ export default function ProfileCompletionModal({ session }) {
               className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
             >
               <option value="">Select your gender</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Other">Other</option>
+              {GENDERS.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
             </select>
           </div>
 
@@ -252,11 +226,9 @@ export default function ProfileCompletionModal({ session }) {
               className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
             >
               <option value="" disabled>Select one…</option>
-              <option value="Social Media">Social Media</option>
-              <option value="A Friend">A Friend</option>
-              <option value="Colleague">Colleague</option>
-              <option value="On Campus">On Campus</option>
-              <option value="Other">Other</option>
+              {REFERRAL_SOURCES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
             </select>
           </div>
         </form>

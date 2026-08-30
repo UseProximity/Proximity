@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-14T01:08:24.509Z",
-  "count": 58,
+  "_generated": "2026-08-30T21:48:57.267Z",
+  "count": 65,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -68,12 +68,24 @@
       "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
     },
     {
+      "file": "src/lib/listings/filterListings.js",
+      "description": "Browse filtering, evaluated against the property → unit → lease model."
+    },
+    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
+      "file": "src/lib/listings/leaseDescription.js",
+      "description": "A lease's blurb: the one or two sentences a landlord adds about THEIR offering"
+    },
+    {
       "file": "src/lib/listings/listingSelect.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
+    },
+    {
+      "file": "src/lib/listings/ownership.js",
+      "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
     },
     {
       "file": "src/lib/listings/queryListings.js",
@@ -97,7 +109,7 @@
     },
     {
       "file": "src/lib/matchmaking/listingFilter.js",
-      "description": "best-effort"
+      "description": "——— Coherent unit offers ————————————————————————————————————————————————"
     },
     {
       "file": "src/lib/matchmaking/narrowing.js",
@@ -176,6 +188,18 @@
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
     },
     {
+      "file": "src/lib/reviews/onboarding.js",
+      "description": "Accounts born from a signed-out review (the QR flow)."
+    },
+    {
+      "file": "src/lib/reviews/rateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out review submissions: 5 per hour"
+    },
+    {
+      "file": "src/lib/reviews/source.js",
+      "description": "The campaign tag a printed QR code carries: /r?src=<tag>."
+    },
+    {
       "file": "src/lib/schools.js",
       "description": "The universities Proximity serves, and the email domains that prove membership."
     },
@@ -214,6 +238,10 @@
     {
       "file": "src/utils/analytics.js",
       "description": "── Cross-page navigation source ──"
+    },
+    {
+      "file": "src/utils/availability.js",
+      "description": "How an offering's start date reads to a person."
     },
     {
       "file": "src/utils/drivePlaces.js",
