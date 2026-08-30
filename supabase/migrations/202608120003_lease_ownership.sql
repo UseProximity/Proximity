@@ -64,13 +64,33 @@ WHERE ul.unit_id = lu.id
   AND ul.owner_id IS NULL;
 
 -- ── Backfill: contact + content from the listing ─────────────────────────────
+--
+-- The content columns are COALESCE(ul.x, l.x) — fill only what the offering has
+-- not got. `unavailable` cannot use that shape: it is NOT NULL DEFAULT false, so
+-- ul.unavailable is never null and COALESCE would always choose it, leaving the
+-- column stuck at false and never carrying hiddenness down at all.
+--
+-- So it ORs instead, which is one-directional on purpose. A property that is
+-- hidden hides its offerings; an offering its owner has withdrawn is never put
+-- back on sale.
+--
+-- On the first run the two are the same statement: the column has just been
+-- created and every row is false, and `X OR false` is `X`. The OR only matters
+-- if this ever runs a second time, and then it is the difference between
+-- carrying hiddenness down and republishing withdrawn listings — re-running the
+-- plain assignment against dev today puts 20 offerings back on sale, including
+-- real subletters' rooms.
+--
+-- Consequence worth stating: un-hiding a property no longer re-lists every
+-- offering on it. Relisting is each owner's decision now, made on their own
+-- lease.
 UPDATE unit_leases ul
 SET contact_name  = COALESCE(ul.contact_name,  l.contact_name),
     contact_email = COALESCE(ul.contact_email, l.contact_email),
     contact_phone = COALESCE(ul.contact_phone, l.contact_phone),
     description   = COALESCE(ul.description,   l.description),
     furnished     = COALESCE(ul.furnished,     l.furnished),
-    unavailable   = COALESCE(l.unavailable, false)
+    unavailable   = COALESCE(l.unavailable, false) OR ul.unavailable
 FROM listing_units lu
 JOIN listings l ON l.id = lu.listing_id
 WHERE ul.unit_id = lu.id;
