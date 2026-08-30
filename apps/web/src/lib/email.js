@@ -163,3 +163,37 @@ export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
     `,
   });
 }
+
+/*
+ * Welcome + finish-your-profile, sent when a signed-out review creates an
+ * account (the QR flow). One CTA on purpose: the link both verifies the address
+ * and opens the profile form, so there is nothing to choose between.
+ *
+ * `place` is what they reviewed, so the email reads as a receipt for a thing
+ * they actually did rather than an out-of-the-blue signup notice.
+ */
+export async function sendReviewWelcomeEmail({ email, name, token, baseUrl, place }) {
+  const finishUrl = `${baseUrl}/review/finish?token=${token}`;
+  const firstName = name ? String(name).split(" ")[0] : "";
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "Your review is live: finish setting up your account",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+        <h2 style="color:#111">Thanks for the review${firstName ? `, ${firstName}` : ""}!</h2>
+        <p>Your review${place ? ` of <strong>${place}</strong>` : ""} is live on Proximity and
+           helping other students right now.</p>
+        <p>We started an account for you so you can edit your review, save places and
+           message landlords. Finish setting it up, it takes about a minute:</p>
+        <a href="${finishUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Finish my profile
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${finishUrl}</p>
+        <p style="color:#999;font-size:12px">This link works for 7 days. You can also sign in
+           any time with Google using this email address.</p>
+      </div>
+    `,
+  });
+}

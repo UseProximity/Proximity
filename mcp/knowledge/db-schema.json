@@ -89,7 +89,7 @@
       },
       {
         "table": "dorm_reviews",
-        "description": "Reviews of on-campus dorms.",
+        "description": "Reviews of on-campus dorms. Written by the Campus Hub's inline form (unattributed, reviewer_name only) and by the on-campus branch of /review (user_id set; the signed-out QR path creates the account first). Tags live in dorm_review_tags, NOT on this table. source = the ?src= campaign tag off a printed QR code.",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -102,7 +102,8 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
-          "user_id:uuid"
+          "user_id:uuid",
+          "source:text"
         ]
       },
       {
@@ -485,8 +486,9 @@
           "media_type:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "source:text"
-        , "owner_id:uuid"]
+          "source:text",
+          "owner_id:uuid"
+        ]
       },
       {
         "table": "listing_landlords",
@@ -570,7 +572,7 @@
       },
       {
         "table": "listing_reviews",
-        "description": "Student reviews of listings. legitimacy gates display; referrer_id ties to the ambassador referral flow. Max 2 per user. [AUDIT 2026-07-11: reviewer_email dead; landlord_name/email/phone, unit_number, no_landlord_contact are write-only (collected, never displayed)]",
+        "description": "Student reviews of listings. legitimacy gates display; referrer_id ties to the ambassador referral flow. Max 2 per user. Written by BOTH a signed-in student and a signed-out one (the QR flow at /review), which creates the author's account first, so user_id is always set for new rows. unit_designator/unit_number mirror listing_units' vocabulary ('Whole' carries no number, DB CHECK). source = the ?src= campaign tag off a printed QR code. [AUDIT 2026-07-11: reviewer_email dead; landlord_name/email/phone, unit_number, no_landlord_contact are write-only (collected, never displayed)]",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -588,12 +590,14 @@
           "deleted_at:timestamptz",
           "referrer_id:uuid",
           "reviewer_email:text",
+          "unit_designator:text",
           "unit_number:text",
           "landlord_name:text",
           "landlord_email:text",
           "landlord_phone:text",
           "no_landlord_contact:boolean",
-          "anonymous:boolean"
+          "anonymous:boolean",
+          "source:text"
         ]
       },
       {
@@ -631,8 +635,10 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
-          "available:boolean"
-        , "unit_designator:text", "unit_number:text"]
+          "available:boolean",
+          "unit_designator:text",
+          "unit_number:text"
+        ]
       },
       {
         "table": "listing_custom_amenities",
@@ -719,8 +725,9 @@
           "demoted_at:timestamptz",
           "pms_connection_id:uuid",
           "pms_stale_flagged_at:timestamptz",
-          "availability_email_sent_at:timestamptz"
-        , "property_key:text"]
+          "availability_email_sent_at:timestamptz",
+          "property_key:text"
+        ]
       },
       {
         "table": "location_types",
@@ -912,7 +919,7 @@
       },
       {
         "table": "unit_leases",
-        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) \u2014 subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.]",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.]",
         "columns": [
           "id:uuid",
           "unit_id:uuid",
@@ -923,8 +930,15 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "sublease:boolean",
-          "lease_term_months:ARRAY"
-        , "owner_id:uuid", "contact_name:text", "contact_email:text", "contact_phone:text", "description:text", "furnished:boolean", "unavailable:boolean"]
+          "lease_term_months:ARRAY",
+          "owner_id:uuid",
+          "contact_name:text",
+          "contact_email:text",
+          "contact_phone:text",
+          "description:text",
+          "furnished:boolean",
+          "unavailable:boolean"
+        ]
       },
       {
         "table": "user_listing_interactions",
@@ -939,7 +953,7 @@
       },
       {
         "table": "users",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -967,7 +981,9 @@
           "password_reset_expires_at:timestamptz",
           "google_account:boolean",
           "payment_method:text",
-          "payment_handle:text"
+          "payment_handle:text",
+          "profile_setup_token:text",
+          "profile_setup_expires_at:timestamptz"
         ]
       },
       {

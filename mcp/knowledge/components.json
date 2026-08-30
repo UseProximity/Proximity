@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-25T22:01:32.846Z",
-  "count": 93,
+  "_generated": "2026-08-30T21:48:57.254Z",
+  "count": 100,
   "components": [
     {
       "name": "DormsView",
@@ -56,6 +56,11 @@
     {
       "name": "ProfileCompletionModal",
       "file": "src/components/auth/ProfileCompletionModal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "profileFields",
+      "file": "src/components/auth/profileFields.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -409,8 +414,38 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "DormReviewForm",
+      "file": "src/components/reviews/DormReviewForm.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ProfileCompletionStep",
+      "file": "src/components/reviews/ProfileCompletionStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewFlow",
+      "file": "src/components/reviews/ReviewFlow.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ReviewSubmitForm",
       "file": "src/components/reviews/ReviewSubmitForm.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewerContactFields",
+      "file": "src/components/reviews/ReviewerContactFields.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "dormReviewOptions",
+      "file": "src/components/reviews/dormReviewOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "reviewFormUi",
+      "file": "src/components/reviews/reviewFormUi.js",
       "description": "No description — run generate after adding a description above."
     },
     {
