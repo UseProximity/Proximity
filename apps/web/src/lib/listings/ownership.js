@@ -22,9 +22,9 @@ const isUuid = (v) => typeof v === "string" && UUID_RE.test(v);
  *
  *   PROPERTY ownership (listing_landlords)
  *     Control of the shared listing row — address, coordinates, amenities, and
- *     the unit set. `PATCH /api/landlord/listings/[id]` replaces every unit on
- *     the listing and `DELETE` removes it outright, so this must stay limited to
- *     whoever actually owns the building's record.
+ *     the unit set. `PATCH /api/landlord/listings/[id]` rewrites the building's
+ *     record and `DELETE` removes it outright, so this must stay limited to
+ *     whoever actually owns that record.
  *
  *   LEASE ownership (unit_leases.owner_id)
  *     Control of one offering on one unit. A landlord who attaches a lease to
@@ -35,6 +35,22 @@ const isUuid = (v) => typeof v === "string" && UUID_RE.test(v);
  * their own lease, but must never be able to edit or delete the property or
  * touch another landlord's units. Writing a listing_landlords row for them —
  * the obvious-looking fix — would hand them exactly those powers.
+ *
+ * CONTRIBUTING is not OWNING, and the difference is what makes the split usable
+ * rather than merely safe. Someone letting a unit here can add a unit to the
+ * property, photograph the unit they let, supply a floor plan the property has
+ * none of, and publish their own price, terms, description and contact. Every
+ * one of those either creates a row that is theirs or fills a blank; none of
+ * them changes something that was already someone else's. That is the line each
+ * predicate below draws, and the line the routes enforce.
+ *
+ * Subletting never confers property ownership at all — not even by being first.
+ * rpc_create_listing takes p_claim_property precisely so that a student posting
+ * a sublease at an address nobody has listed yet gets the lease and leaves the
+ * property unclaimed (202608300001_create_listing_claim.sql). Before that flag,
+ * being first made you the primary landlord of a house you rent one room in,
+ * which is how production came to hold subletter-owned property records at
+ * 5803 Waterman and 729 Westgate.
  */
 
 /**

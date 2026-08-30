@@ -4,7 +4,6 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { deleteAsUser } from "@/lib/supabaseWithUser";
-import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -45,12 +44,12 @@ async function requireOwnership(listingId) {
   if (session.user.role === "super") return { session };
 
   /*
-   * PROPERTY-level ownership only. PATCH below replaces every unit on the
-   * listing and DELETE removes it, so holding a lease at this address is
+   * PROPERTY-level ownership only. PATCH below rewrites the building's own
+   * record and DELETE removes it, so holding a lease at this address is
    * deliberately not enough — a landlord who attached an offering to someone
-   * else's property must not be able to edit or delete it, or wipe the units
-   * another landlord's leases hang off. They manage their own offering through
-   * /api/leases/[leaseId] instead. See lib/listings/ownership.js.
+   * else's property must not be able to edit or delete it. They manage their
+   * own offering through /api/leases/[leaseId] instead. See
+   * lib/listings/ownership.js.
    */
   if (await isPropertyOwner(session.user.id, listingId)) return { session };
 
@@ -85,19 +84,65 @@ async function requireOwnership(listingId) {
   return { err: "Forbidden", status: 403 };
 }
 
-// PATCH /api/landlord/listings/[listingId] — full update + replace units
+/*
+ * Payload keys this route used to accept and no longer will.
+ *
+ * Each of them made `rpc_edit_listing` rewrite rows that belong to OTHER people
+ * at the same property — which was invisible while a listing was one landlord's
+ * apartment, and is data loss now that it is a building several of them let in:
+ *
+ *   units   for each unit it took `the oldest active lease ORDER BY created_at
+ *           LIMIT 1` regardless of owner_id and overwrote its rent, sublease
+ *           flag and term — so a landlord's ordinary Save silently repriced a
+ *           subletter's offering and turned their sublease into a standard
+ *           lease. It then hard-deleted every unit the form did not echo back,
+ *           without checking deleted_at, taking that unit's leases with it.
+ *   images  `p_images_keep` deletes every listing_images row whose url is not in
+ *           the list, ignoring owner_id and unit_id — so the property owner's
+ *           save removed every subletter's photos of their own unit.
+ *   leases  writes the retired listing_leases table.
+ *
+ * This is the same defect 202608230001_pms_lease_owner_scope.sql fixed for the
+ * PMS path, reached through the dashboard instead of a nightly sync.
+ *
+ * Each one now has a scoped route that touches only the caller's own rows, so
+ * nothing is lost by refusing them here — and refusing them at the API is what
+ * makes the destructive path unreachable, rather than merely unused by our own
+ * client.
+ */
+const MOVED = {
+  units: "PATCH /api/landlord/listings/[listingId]/units/[unitId] (one unit at a time)",
+  images: "POST/DELETE /api/landlord/listings/[listingId]/images",
+  leases: "PATCH /api/leases/[leaseId] (each owner edits their own offering)",
+};
+
+// PATCH /api/landlord/listings/[listingId] — the property record, its amenities
+// and its utilities. Units, offerings and photos are edited through their own
+// routes; see MOVED above.
 export async function PATCH(req, { params }) {
   const { listingId } = await params;
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
   const body = await req.json();
+
+  const moved = Object.keys(MOVED).filter((k) => body[k] !== undefined);
+  if (moved.length) {
+    return NextResponse.json(
+      {
+        error:
+          `This route no longer changes ${moved.join(", ")} — doing so overwrote other ` +
+          `landlords' offerings and photos at the same property.`,
+        use: Object.fromEntries(moved.map((k) => [k, MOVED[k]])),
+      },
+      { status: 400 }
+    );
+  }
+
   const {
-    units,
     amenities,
     custom_amenities,
     utilities_included,
-    images,
     home_type,
     lease_availability,
     ...rest
@@ -109,13 +154,12 @@ export async function PATCH(req, { params }) {
     if (LISTING_COLS.has(k)) safeUpdates[k] = v;
   }
 
-  // listings.lease_availability (text[] of term labels, e.g. ["semester","12-month"]) is now
-  // DERIVED from the per-unit lease terms (unit_leases.lease_term_months) so the two never drift.
-  // When units are part of this edit, recompute it from them; otherwise fall back to an
-  // explicitly-supplied array (legacy callers).
-  if (Array.isArray(units)) {
-    safeUpdates.lease_availability = deriveLeaseAvailability(units);
-  } else if (lease_availability !== undefined) {
+  // listings.lease_availability (text[] of term labels, e.g. ["semester","12-month"]) is
+  // DERIVED from the per-unit lease terms (unit_leases.lease_term_months) so the two never
+  // drift. Units are no longer editable here, so the only remaining source is an
+  // explicitly-supplied array; the derivation happens where the terms are actually
+  // changed, in /api/leases/[leaseId].
+  if (lease_availability !== undefined) {
     safeUpdates.lease_availability = Array.isArray(lease_availability)
       ? lease_availability
           .filter((v) => typeof v === "string" && v.trim())
@@ -142,34 +186,23 @@ export async function PATCH(req, { params }) {
     return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
   })();
 
-  // rpc_edit_listing deletes + reinserts unit_leases when p_units is supplied,
-  // so carry the canonical sublease flag (unit_leases.sublease) through. Derive
-  // it from lease_type in the edit; if the edit omits lease_type, fall back to
-  // the listing's stored value so an unrelated edit doesn't clear the flag.
-  let unitsPayload = null;
-  if (Array.isArray(units)) {
-    let leaseType = safeUpdates.lease_type;
-    if (leaseType === undefined) {
-      const { data: existing } = await supabase
-        .from("listings")
-        .select("lease_type")
-        .eq("id", listingId)
-        .maybeSingle();
-      leaseType = existing?.lease_type;
-    }
-    const isSublease = String(leaseType ?? "").toLowerCase() === "sublease";
-    unitsPayload = units.map((u) => ({ ...u, sublease: isSublease }));
-  }
-
-  // All writes in one RPC transaction so fn_action_log captures the real user ID
+  /*
+   * All writes in one RPC transaction so fn_action_log captures the real user ID.
+   *
+   * p_units, p_images_keep and p_leases are deliberately never passed. They are
+   * the three arguments that reach rows belonging to other owners at this
+   * property, and the guard at the top of this handler rejects the payload keys
+   * that would fill them — passing null here is the second half of the same
+   * fix, so a future caller cannot reintroduce it by editing the guard alone.
+   */
   const { error: rpcError } = await supabase.rpc("rpc_edit_listing", {
     p_user_id: check.session.user.id,
     p_listing_id: listingId,
     p_listing_updates: Object.keys(safeUpdates).length > 0 ? safeUpdates : null,
     p_amenities: amenities !== undefined ? boolRow(AMENITY_COLS, amenities) : null,
     p_utilities: utilities_included !== undefined ? boolRow(UTILITY_COLS, utilities_included) : null,
-    p_images_keep: Array.isArray(images) ? images.filter((u) => typeof u === "string" && u) : null,
-    p_units: unitsPayload,
+    p_images_keep: null,
+    p_units: null,
     p_lease_availability: leaseAvailabilityVal,
     p_custom_amenities: Array.isArray(custom_amenities)
       ? custom_amenities.map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean)

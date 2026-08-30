@@ -10,7 +10,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
 
-  const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
   const [coOwnersModal, setCoOwnersModal] = useState(null); // null | listing
   const [leaseModal, setLeaseModal] = useState(null); // null | { property, lease }
   const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // null | { name?, email?, phone? }
@@ -171,8 +170,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleAddListing = () => router.push("/add-listing");
-  const handleEditListing = (listing) =>
-    setListingModal({ mode: "edit", listing });
   const handleManageCoOwners = (listing) => setCoOwnersModal(listing);
   const handleDeleteListing = async (property) => {
     if (
@@ -245,34 +242,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     } catch {
       alert("Network error.");
     }
-  };
-
-  const handleListingModalSuccess = async (
-    updatedUnits = null,
-    profileDiff = null
-  ) => {
-    if (updatedUnits && listingModal?.listing) {
-      const listingId = listingModal.listing._id || listingModal.listing.id;
-      setUser((prev) => ({
-        ...prev,
-        listings: prev.listings.map((l) =>
-          l._id === listingId || l.id === listingId
-            ? {
-                ...l,
-                unitTypes: updatedUnits.map((u) => ({
-                  bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
-                  bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-                  area: u.area != null ? Number(u.area) : null,
-                  rent: u.rent != null ? Number(u.rent) : null,
-                })),
-              }
-            : l
-        ),
-      }));
-    }
-    await fetchUser();
-    setListingModal(null);
-    if (profileDiff) setProfileUpdatePrompt(profileDiff);
   };
 
   const handleProfileUpdate = async (shouldUpdate) => {
@@ -361,8 +330,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     setSidebarOpen,
     user,
     setUser,
-    listingModal,
-    setListingModal,
     coOwnersModal,
     setCoOwnersModal,
     leaseModal,
@@ -381,13 +348,11 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     cancelEdit,
     saveProfile,
     handleAddListing,
-    handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
     handleEditLease,
     handleWithdrawLease,
     fetchUser,
-    handleListingModalSuccess,
     handleProfileUpdate,
     handleNavigation,
     handlePropertySelect,

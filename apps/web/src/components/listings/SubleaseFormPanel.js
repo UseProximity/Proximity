@@ -451,6 +451,17 @@ export default function SubleaseFormPanel({
         const listingId = isEdit
           ? (listing._id || listing.id)
           : data.listing?.id;
+        /*
+         * File a sublease's photos against the UNIT, not the property.
+         *
+         * They are pictures of the room being let, and the person letting it no
+         * longer owns the building's record — a sublease creates the property
+         * unclaimed rather than making the subletter its landlord. /api/upload
+         * reserves property photos for the property owner, so an unscoped upload
+         * would 403 for exactly the people this form is for. Same fix as the
+         * wizard's attach flow.
+         */
+        const unitId = isEdit ? null : (data.listing?.unitIds?.[0] ?? null);
         if (listingId) {
           // Step 1: get presigned PUT URLs for each file
           const presignRes = await fetch("/api/upload", {
@@ -458,6 +469,7 @@ export default function SubleaseFormPanel({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               listingId,
+              ...(unitId ? { unitId } : {}),
               files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
             }),
           });
@@ -492,6 +504,7 @@ export default function SubleaseFormPanel({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               listingId,
+              ...(unitId ? { unitId } : {}),
               urls: presigned.map((p) => p.publicUrl),
             }),
           });

@@ -1,7 +1,6 @@
 "use client";
 
 import { BarChart3, MapPin, Plug, Star, User, Menu, X } from "lucide-react";
-import ListingFormPanel from "@/components/listings/ListingFormPanel";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
 import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
@@ -20,8 +19,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     setSidebarOpen,
     user,
     setUser,
-    listingModal,
-    setListingModal,
     coOwnersModal,
     setCoOwnersModal,
     profileUpdatePrompt,
@@ -36,7 +33,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     cancelEdit,
     saveProfile,
     handleAddListing,
-    handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
     handleEditLease,
@@ -44,7 +40,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     leaseModal,
     setLeaseModal,
     fetchUser,
-    handleListingModalSuccess,
     handleProfileUpdate,
     handleNavigation,
     handlePropertySelect,
@@ -98,7 +93,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
             handlePropertySelect={handlePropertySelect}
             router={router}
             onAddListing={handleAddListing}
-            onEditListing={handleEditListing}
             onDeleteListing={handleDeleteListing}
             onEditLease={handleEditLease}
             onWithdrawLease={handleWithdrawLease}
@@ -130,14 +124,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
   return (
     <>
-      {listingModal && (
-        <ListingFormPanel
-          listing={listingModal.mode === "edit" ? listingModal.listing : null}
-          onClose={() => setListingModal(null)}
-          onSuccess={handleListingModalSuccess}
-          user={user}
-        />
-      )}
       {coOwnersModal && (
         <ManageCoOwnersModal
           listing={coOwnersModal}

@@ -50,31 +50,67 @@ export async function PATCH(req, { params }) {
     (await isPropertyOwner(session.user.id, listingId));
 
   /*
-   * One narrow exception to owner-only editing: the floor plan.
+   * One narrow exception to owner-only editing: CONTRIBUTING a floor plan.
    *
    * A landlord letting an apartment in someone else's building is the person
    * most likely to have its floor plan, and refusing them the one slot left the
    * section permanently empty and unclickable on every property they don't own.
-   * It is a single field with a single value, so the worst case is a wrong
-   * diagram the owner can replace — unlike bedroom counts, which feed search and
-   * are the building's facts rather than the offering's.
    *
-   * The request must touch NOTHING else, so this cannot be used as a door into
-   * the rest of the unit.
+   * But contributing is not the same as controlling, and this column is the last
+   * place the difference could be blurred: everything else a non-owner may add
+   * at a property — photos, their terms, their price — lands on a row that is
+   * theirs, while floor_plan_image_url is a single shared value on the property's
+   * own record. Letting a lease holder write it unconditionally meant one of
+   * them could replace the owner's diagram, or clear it, and the owner would
+   * have no way to tell who did.
+   *
+   * So a non-owner may FILL the slot and never change one that is already
+   * filled. An empty field is missing information anyone at the property can
+   * supply; a filled one is the owner's, and asking them to replace it is the
+   * right amount of friction. Clearing it is owner-only for the same reason.
+   *
+   * The request must also touch NOTHING else, so this cannot be used as a door
+   * into the rest of the unit.
    */
   if (!isOwner) {
     const keys = Object.keys(body);
     const floorPlanOnly =
       keys.length > 0 && keys.every((k) => k === "floorPlanImageUrl");
-    const check = floorPlanOnly
-      ? await canAddUnitPhotos(session.user.id, unitId)
-      : { ok: false };
+    const plan =
+      typeof body.floorPlanImageUrl === "string" ? body.floorPlanImageUrl.trim() : "";
+
+    if (!floorPlanOnly) {
+      return NextResponse.json(
+        { error: "Only the property owner can edit a unit's details." },
+        { status: 403 }
+      );
+    }
+    if (!plan) {
+      return NextResponse.json(
+        { error: "Only the property owner can remove a unit's floor plan." },
+        { status: 403 }
+      );
+    }
+
+    const check = await canAddUnitPhotos(session.user.id, unitId);
     if (!check.ok) {
       return NextResponse.json(
+        { error: "You don't have a listing on that unit." },
+        { status: 403 }
+      );
+    }
+
+    const { data: current } = await supabase
+      .from("listing_units")
+      .select("floor_plan_image_url")
+      .eq("id", unitId)
+      .maybeSingle();
+
+    if (current?.floor_plan_image_url) {
+      return NextResponse.json(
         {
-          error: floorPlanOnly
-            ? "You don't have a listing on that unit."
-            : "Only the property owner can edit a unit's details.",
+          error:
+            "This unit already has a floor plan. Only the property owner can replace it.",
         },
         { status: 403 }
       );

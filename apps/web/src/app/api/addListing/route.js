@@ -398,6 +398,22 @@ export async function POST(req) {
         p_units: [],
         p_lease_availability: leaseAvailabilityVal,
         p_custom_amenities: customAmenityArr,
+        /*
+         * Creating the property record does not always mean owning it.
+         *
+         * A sublease means the poster is handing over part of a lease someone
+         * else holds — so the building is not theirs, even when they are the
+         * first person to put its address on the site. Claiming it would write
+         * them a listing_landlords row, which is what isPropertyOwner reads, and
+         * hand them the right to rewrite and delete a property they only rent a
+         * room in. Prod carries exactly that shape at 5803 Waterman and 729
+         * Westgate, both created this way.
+         *
+         * Their stake is the lease below (owner_id), which is the thing they
+         * actually hold. The property stays unclaimed until a landlord claims
+         * it — the same state every imported listing starts in.
+         */
+        p_claim_property: !isSublease,
       });
 
       if (listingError) {
@@ -407,7 +423,16 @@ export async function POST(req) {
       listingId = newListingId;
     }
 
-    // ── Units + leases ──────────────────────────────────────────────────────
+    /*
+     * ── Units + leases ──────────────────────────────────────────────────────
+     *
+     * The ids are collected because the caller needs them to file its photos.
+     * A poster who does not own the property may only upload against a unit
+     * they are letting (/api/upload), and after the sublease change above that
+     * now includes the person who just created the property. Returning the ids
+     * is what lets the client scope the upload instead of guessing.
+     */
+    const createdUnitIds = [];
     for (const unit of unitData) {
       const { data: insertedUnit, error: unitError } = await supabase
         .from("listing_units")
@@ -429,6 +454,8 @@ export async function POST(req) {
         console.error("[addListing] Unit insert failed:", unitError.message);
         return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
       }
+
+      createdUnitIds.push(insertedUnit.id);
 
       const { error: leaseError } = await supabase.from("unit_leases").insert({
         unit_id: insertedUnit.id,
@@ -520,7 +547,10 @@ export async function POST(req) {
     }
 
     return NextResponse.json(
-      { message: "Listing created successfully", listing: { id: listingId, address } },
+      {
+        message: "Listing created successfully",
+        listing: { id: listingId, address, unitIds: createdUnitIds },
+      },
       { status: 201 }
     );
   } catch (e) {

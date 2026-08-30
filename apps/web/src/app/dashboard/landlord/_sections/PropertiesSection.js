@@ -45,7 +45,6 @@ export default function PropertiesSection({
   handlePropertySelect,
   router,
   onAddListing,
-  onEditListing,
   onDeleteListing,
   onEditLease,
   onWithdrawLease,
@@ -302,10 +301,19 @@ export default function PropertiesSection({
                   </>
                 ) : (
                   <>
+                    {/*
+                      * Opens the property itself, where the building, each unit
+                      * and each offering are edited in place through their own
+                      * endpoints. It used to open a flat form that posted the
+                      * whole listing back at once, which overwrote the rent and
+                      * sublease flag of whichever offering on each unit happened
+                      * to be oldest — someone else's, at a shared property — and
+                      * deleted every photo the form had not loaded.
+                      */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEditListing(property);
+                        handlePropertySelect(property);
                       }}
                       className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
                     >
