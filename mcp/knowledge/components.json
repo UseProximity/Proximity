@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-30T21:48:57.254Z",
-  "count": 100,
+  "_generated": "2026-08-30T23:03:38.931Z",
+  "count": 101,
   "components": [
     {
       "name": "DormsView",
@@ -421,6 +421,11 @@
     {
       "name": "ProfileCompletionStep",
       "file": "src/components/reviews/ProfileCompletionStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewAccountStep",
+      "file": "src/components/reviews/ReviewAccountStep.js",
       "description": "No description — run generate after adding a description above."
     },
     {

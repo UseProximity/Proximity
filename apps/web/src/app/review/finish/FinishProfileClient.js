@@ -1,16 +1,28 @@
 "use client";
 
 /*
- * Client half of /review/finish: renders the same profile step the inline flow
- * uses, and shows where they've landed once it's saved or skipped.
+ * Client half of /review/finish: the same two-step setup the inline flow runs
+ * (create the account, then the profile), and where they've landed once it's
+ * saved or skipped.
+ *
+ * Arriving here means opening a link sent to the address, which is what proves
+ * they own it, so the page has already marked the email verified. A password
+ * set from here therefore works immediately, with no second confirmation.
  */
 
 import { useState } from "react";
 import Link from "next/link";
 import ProfileCompletionStep from "@/components/reviews/ProfileCompletionStep";
+import ReviewAccountStep from "@/components/reviews/ReviewAccountStep";
 
-export default function FinishProfileClient({ token, prefill }) {
+export default function FinishProfileClient({
+  token,
+  prefill,
+  email,
+  hasCredentials = false,
+}) {
   const [outcome, setOutcome] = useState(null);
+  const [credentialsDone, setCredentialsDone] = useState(hasCredentials);
 
   if (outcome === "completed") {
     return (
@@ -43,14 +55,27 @@ export default function FinishProfileClient({ token, prefill }) {
     );
   }
 
+  if (!credentialsDone) {
+    return (
+      <ReviewAccountStep
+        token={token}
+        email={email || prefill?.email}
+        onPasswordSet={() => setCredentialsDone(true)}
+        onSkip={() => setOutcome("skipped")}
+        heading="Finish setting up your account"
+        intro="Thanks again for the review. Choose how you'd like to sign in from now on."
+      />
+    );
+  }
+
   return (
     <ProfileCompletionStep
       token={token}
       prefill={prefill}
       onCompleted={() => setOutcome("completed")}
       onSkip={() => setOutcome("skipped")}
-      heading="Finish setting up your account"
-      intro="Thanks again for the review. Fill in the rest and your Proximity account is ready to use."
+      heading="One last thing: finish your profile"
+      intro="Almost there. Fill in the rest and your Proximity account is ready to use."
     />
   );
 }

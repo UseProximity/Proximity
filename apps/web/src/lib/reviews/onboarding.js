@@ -208,7 +208,7 @@ export async function loadProfileSetupUser(token) {
 
   const { data: user } = await supabase
     .from("users")
-    .select("id, name, email, gender, referral_source, graduation_year, graduation_month, profile_complete, profile_setup_expires_at, roles!role_id(name)")
+    .select("id, name, email, gender, referral_source, graduation_year, graduation_month, profile_complete, profile_setup_expires_at, password_hash, google_account, apple_account, email_verified, roles!role_id(name)")
     .eq("profile_setup_token", clean)
     .is("deleted_at", null)
     .maybeSingle();
@@ -221,6 +221,12 @@ export async function loadProfileSetupUser(token) {
   const [firstName = "", ...rest] = String(user.name || "").trim().split(/\s+/);
   return {
     userId: user.id,
+    email: user.email || "",
+    // Whether this account can already be signed into. The account step asks for
+    // a password or Google only while this is false.
+    hasCredentials:
+      !!user.password_hash || !!user.google_account || !!user.apple_account,
+    emailVerified: !!user.email_verified,
     prefill: {
       firstName,
       lastName: rest.join(" "),

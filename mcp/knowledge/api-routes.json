@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-30T21:48:57.250Z",
-  "count": 86,
+  "_generated": "2026-08-30T23:03:38.928Z",
+  "count": 88,
   "routes": [
     {
       "path": "/api/addListing",
@@ -1058,6 +1058,24 @@
       "file": "src/app/api/pms/hold/route.js"
     },
     {
+      "path": "/api/profile/claim-review",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "dorm_reviews",
+        "users"
+      ],
+      "file": "src/app/api/profile/claim-review/route.js"
+    },
+    {
       "path": "/api/profile/complete-from-review",
       "methods": [
         "GET",
@@ -1072,6 +1090,20 @@
         "roles"
       ],
       "file": "src/app/api/profile/complete-from-review/route.js"
+    },
+    {
+      "path": "/api/profile/set-review-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/profile/set-review-password/route.js"
     },
     {
       "path": "/api/properties/lookup",

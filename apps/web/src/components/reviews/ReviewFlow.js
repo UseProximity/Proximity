@@ -29,6 +29,7 @@ import { motion } from "framer-motion";
 import ReviewSubmitForm from "./ReviewSubmitForm";
 import DormReviewForm from "./DormReviewForm";
 import ProfileCompletionStep from "./ProfileCompletionStep";
+import ReviewAccountStep from "./ReviewAccountStep";
 import { PAGE_BOTTOM_PADDING } from "./reviewFormUi";
 import { readReviewSource } from "@/lib/reviews/source";
 import { trackEvent } from "@/utils/analytics";
@@ -79,9 +80,22 @@ export default function ReviewFlow({
   const source = readReviewSource(searchParams);
 
   const [branch, setBranch] = useState(null); // "off" | "on"
-  // { token, prefill } once a signed-out review created an account.
+  /*
+   * { token, prefill, email, hasCredentials } once a signed-out review created
+   * an account. hasCredentials decides which half of the setup is still owed:
+   * the account step (a password or Google) comes before the profile fields,
+   * because signing in with Google can change which email the account ends up
+   * under, and finding that out after filling in a profile means filling it in
+   * twice.
+   */
   const [setup, setSetup] = useState(null);
-  const [finished, setFinished] = useState(null); // "completed" | "skipped" | "posted"
+  const [finished, setFinished] = useState(null); // "completed" | "skipped" | "posted" | "existing"
+  /*
+   * Set when they chose a password rather than Google. The address is still
+   * unproven at that point, so the Credentials provider will refuse the login
+   * until they open the emailed link, and the closing copy has to say so.
+   */
+  const [passwordEmail, setPasswordEmail] = useState(null);
   const [resuming, setResuming] = useState(true);
 
   useEffect(() => {
@@ -112,7 +126,14 @@ export default function ReviewFlow({
           return;
         }
         const data = await res.json();
-        if (active && data?.prefill) setSetup({ token, prefill: data.prefill });
+        if (active && data?.prefill) {
+          setSetup({
+            token,
+            prefill: data.prefill,
+            email: data.email || data.prefill.email || "",
+            hasCredentials: !!data.hasCredentials,
+          });
+        }
       } catch {
         /* leave the token alone; a network blip isn't a dead token */
       } finally {
@@ -133,7 +154,13 @@ export default function ReviewFlow({
       });
       if (data?.setupToken) {
         storeToken(data.setupToken);
-        setSetup({ token: data.setupToken, prefill: data.prefill || null });
+        setSetup({
+          token: data.setupToken,
+          prefill: data.prefill || null,
+          email: data.prefill?.email || "",
+          // Freshly created by this submission, so it has no way to sign in yet.
+          hasCredentials: false,
+        });
       } else if (data?.existingAccount) {
         // Signed out, but the email they gave already has an account. There is
         // nothing to set up, so say where the review went instead of thanking
@@ -188,6 +215,13 @@ export default function ReviewFlow({
         <div className="text-5xl mb-4">🎉</div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">{headline}</h1>
         <p className="text-gray-600">{body}</p>
+        {finished === "completed" && passwordEmail && (
+          <p className="mt-3 text-sm text-gray-500">
+            One last step: we sent a link to{" "}
+            <span className="font-semibold">{passwordEmail}</span>. Open it to confirm
+            your email, then you can sign in with your new password.
+          </p>
+        )}
         {finished === "skipped" && (
           <p className="mt-3 text-sm text-gray-500">
             We emailed you a link to finish setting up your account whenever you&apos;re
@@ -203,6 +237,20 @@ export default function ReviewFlow({
           </Link>
         )}
       </div>
+    );
+  }
+
+  if (setup && !setup.hasCredentials) {
+    return shell(
+      <ReviewAccountStep
+        token={setup.token}
+        email={setup.email}
+        onPasswordSet={(data) => {
+          setPasswordEmail(data?.emailVerified ? null : data?.email || setup.email);
+          setSetup((prev) => ({ ...prev, hasCredentials: true }));
+        }}
+        onSkip={handleProfileSkipped}
+      />
     );
   }
 

@@ -16,8 +16,9 @@
  * requires a POST from a human pressing Save. A review submission alone never
  * marks a profile finished.
  *
- * GET  ?token=… → the values the form should open pre-filled with (used by the
- *                 inline step after a refresh, and by /review/finish).
+ * GET  ?token=… → the values the form should open pre-filled with, plus whether
+ *                 the account can already be signed into (used by the inline
+ *                 step after a refresh, by /review/finish and by /review/claim).
  * POST           → apply the profile and mark it complete.
  */
 import { NextResponse } from "next/server";
@@ -39,7 +40,13 @@ export async function GET(req) {
     if (!found) {
       return NextResponse.json({ error: "This link is no longer valid." }, { status: 404 });
     }
-    return NextResponse.json({ prefill: found.prefill });
+    return NextResponse.json({
+      prefill: found.prefill,
+      email: found.email,
+      // Drives whether the caller still has to show "create your account".
+      hasCredentials: found.hasCredentials,
+      emailVerified: found.emailVerified,
+    });
   } catch (e) {
     console.error("GET /api/profile/complete-from-review failed:", e?.message);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

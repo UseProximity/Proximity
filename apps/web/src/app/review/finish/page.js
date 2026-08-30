@@ -40,7 +40,12 @@ export default async function FinishProfilePage({ searchParams }) {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10 pb-32 sm:pb-40">
-      <FinishProfileClient token={String(token)} prefill={found.prefill} />
+      <FinishProfileClient
+        token={String(token)}
+        prefill={found.prefill}
+        email={found.email}
+        hasCredentials={found.hasCredentials}
+      />
     </div>
   );
 }
