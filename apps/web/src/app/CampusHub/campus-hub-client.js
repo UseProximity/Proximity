@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { DORM_FORM_TAGS } from "@/components/reviews/dormReviewOptions";
+import StarRatingInput from "@/components/ui/StarRatingInput";
 import Image from "next/image";
 import ModalDorms from "../../components/listings/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
@@ -66,17 +68,6 @@ function normalizeRoomType(raw) {
   if (s.includes("double")) return "Modern Double";
   return null;
 }
-
-const FORM_TAGS = [
-  "Quiet Floor",
-  "Study Floor",
-  "Social Floor",
-  "Historic",
-  "New Building",
-  "Central Location",
-  "Apartment Style",
-  "Modern",
-];
 
 const EMPTY_FORM = {
   name: "",
@@ -826,17 +817,15 @@ export default function CampusHub() {
                                   </span>
                                 </div>
                               </div>
-                              <div className="flex gap-0.5 flex-shrink-0">
-                                {[1, 2, 3, 4, 5].map((s) => (
-                                  <AiFillStar
-                                    key={s}
-                                    className={
-                                      s <= r.rating
-                                        ? "text-red-500"
-                                        : "text-gray-200"
-                                    }
-                                  />
-                                ))}
+                              <div className="flex-shrink-0">
+                                <StarRatingInput
+                                  value={Number(r.rating) || 0}
+                                  readOnly
+                                  color="red"
+                                  px={16}
+                                  showValue={false}
+                                  ariaLabelPrefix="Rated"
+                                />
                               </div>
                             </div>
                             <p className="text-sm text-gray-700 leading-relaxed mb-3">
@@ -933,26 +922,13 @@ export default function CampusHub() {
                           <label className="text-xs font-semibold text-gray-600 mb-1 block">
                             Rating *
                           </label>
-                          <div className="flex gap-1">
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <button
-                                key={s}
-                                type="button"
-                                onClick={() =>
-                                  setForm((f) => ({ ...f, rating: s }))
-                                }
-                                className="text-2xl transition-transform hover:scale-110"
-                              >
-                                <AiFillStar
-                                  className={
-                                    s <= form.rating
-                                      ? "text-red-500"
-                                      : "text-gray-200"
-                                  }
-                                />
-                              </button>
-                            ))}
-                          </div>
+                          <StarRatingInput
+                            value={form.rating}
+                            onChange={(v) => setForm((f) => ({ ...f, rating: v }))}
+                            color="red"
+                            px={26}
+                            ariaLabelPrefix="Rate"
+                          />
                         </div>
 
                         <div>
@@ -960,7 +936,7 @@ export default function CampusHub() {
                             Tags
                           </label>
                           <div className="flex flex-wrap gap-2">
-                            {FORM_TAGS.map((tag) => {
+                            {DORM_FORM_TAGS.map((tag) => {
                               const active = form.tags.includes(tag);
                               return (
                                 <button

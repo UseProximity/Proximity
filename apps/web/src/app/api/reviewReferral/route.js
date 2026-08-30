@@ -3,13 +3,22 @@
  *   - /refer/<userId> — ambassador referral link (referrerId present, recorded on the review)
  *   - /review         — public "Add a Review" page (no referrer; referrer_id stays null)
  *
- * Auth: the reviewer must be signed in with a student account at a school we serve (see
- * lib/schools.js); the review is attributed to that account. Reviews auto-publish
- * (legitimacy=true). Max 2 per account.
+ * @auth optional
  *
- * School: the submitted school must match the account email's domain, so it's verified
- * rather than self-declared. It's stored on the USER (users.school_id) — a review's school
- * is derived by joining through its author, not duplicated onto the review row.
+ * Auth: signing in is OPTIONAL, because a student who scans a QR code on a flyer has no
+ * account yet and asking for one first loses the review.
+ *   - Signed in: the review is attributed to that account and the school must match its
+ *     email domain. Max 2 reviews per account.
+ *   - Signed out: the `reviewer` block (first, last, class, school email) creates an
+ *     incomplete account (lib/reviews/onboarding.js) which the review is attributed to,
+ *     and the response carries a profile-setup token so the caller can offer to finish it.
+ *     Soft per-client rate limit stands in for the login that isn't there.
+ * Either way reviews auto-publish (legitimacy=true).
+ *
+ * School: never self-declared. It is proved by an email domain in both paths (the
+ * session's when signed in, the submitted reviewer email when not). It's stored on the
+ * USER (users.school_id): a review's school is derived by joining through its author,
+ * not duplicated onto the review row.
  *
  * Listing resolution (no user choice): the reviewer-selected address is compared against
  * our catalog. On an EXACT street-address match the review is attached to that listing
@@ -37,6 +46,15 @@ import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { isKnownSchool, schoolMatchesEmail, schoolForEmail } from "@/lib/schools";
+import { getBaseUrl, sendReviewWelcomeEmail } from "@/lib/email";
+import { outreachEnabled } from "@/lib/appEnv";
+import { normalizeReviewSource } from "@/lib/reviews/source";
+import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
+import {
+  ensureReviewerAccount,
+  normalizeClassYear,
+  resolveSchoolId,
+} from "@/lib/reviews/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -70,17 +88,6 @@ async function countUserReviews(userId) {
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments.
 function isHalfStar(v) {
   return typeof v === "number" && v >= 0.5 && v <= 5 && Number.isInteger(v * 2);
-}
-
-// schools.short_name is the join key between lib/schools.js and the schools table.
-async function resolveSchoolId(shortName) {
-  if (!shortName) return null;
-  const { data } = await supabase
-    .from("schools")
-    .select("id")
-    .eq("short_name", shortName)
-    .maybeSingle();
-  return data?.id ?? null;
 }
 
 async function resolveOtherHomeTypeId() {
@@ -367,6 +374,7 @@ export async function POST(req) {
       valueRating,
       comment,
       unitNumber,
+      unitDesignator,
       address,
       latitude,
       longitude,
@@ -375,6 +383,8 @@ export async function POST(req) {
       landlordPhone,
       noLandlordContact,
       anonymous,
+      source,
+      reviewer,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
@@ -442,26 +452,96 @@ export async function POST(req) {
       );
     }
 
-    // ── Require a signed-in WashU account ───────────────────────────────────
+    /*
+     * ── Resolve the reviewer ────────────────────────────────────────────────
+     * Either a session, or the contact block a signed-out reviewer filled in at
+     * the bottom of the form. In BOTH cases the school is proved by an email
+     * domain and never taken on trust, which is the property that makes the
+     * school tag on a review worth anything.
+     */
     const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Please sign in to leave a review." }, { status: 401 });
-    }
-    const emailSchool = schoolForEmail(session.user.email);
-    if (!emailSchool) {
+    const signedOutReviewer = !session?.user?.id && reviewer ? reviewer : null;
+
+    let reviewerUserId = null;
+    let reviewerEmail = null;
+    let reviewerDisplayName = null;
+    let emailSchool = null;
+    let setupToken = null;
+    // Signed-out reviewer whose email already belongs to a real account.
+    let existingAccount = false;
+
+    if (session?.user?.id) {
+      emailSchool = schoolForEmail(session.user.email);
+      if (!emailSchool) {
+        return NextResponse.json(
+          { error: "Only students at a school we serve can leave reviews." },
+          { status: 403 }
+        );
+      }
+      if (!schoolMatchesEmail(school, session.user.email)) {
+        return NextResponse.json(
+          { error: `Your account email belongs to ${emailSchool.shortName}. Select that school.` },
+          { status: 403 }
+        );
+      }
+      reviewerUserId = session.user.id;
+      reviewerEmail = session.user.email;
+      reviewerDisplayName = session.user.name || null;
+    } else if (signedOutReviewer) {
+      const email = String(signedOutReviewer.email || "").trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) {
+        return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+      }
+      emailSchool = schoolForEmail(email);
+      if (!emailSchool) {
+        return NextResponse.json(
+          { error: "Use your school email address so we can verify your review." },
+          { status: 403 }
+        );
+      }
+      // The client derives `school` from this same address; re-derive rather than believe it.
+      if (school && !schoolMatchesEmail(school, email)) {
+        return NextResponse.json(
+          { error: `That email belongs to ${emailSchool.shortName}. Select that school.` },
+          { status: 403 }
+        );
+      }
+      if (!normalizeClassYear(signedOutReviewer.classYear)) {
+        return NextResponse.json({ error: "Select your class year." }, { status: 400 });
+      }
+      /*
+       * The signed-in path costs a verified school login and is capped per
+       * account. This path has neither, so a soft per-client limit is the only
+       * thing between one person and a hundred reviews.
+       */
+      if (anonReviewRateLimited(anonReviewRateKey(req, email))) {
+        return NextResponse.json(
+          { error: "That's a lot of reviews at once. Please try again later." },
+          { status: 429 }
+        );
+      }
+
+      const account = await ensureReviewerAccount({
+        firstName: signedOutReviewer.firstName,
+        lastName: signedOutReviewer.lastName,
+        email,
+        classYear: signedOutReviewer.classYear,
+        source: normalizeReviewSource(source),
+      });
+      if (account.error) {
+        return NextResponse.json({ error: account.error }, { status: 400 });
+      }
+      reviewerUserId = account.userId;
+      reviewerEmail = email;
+      reviewerDisplayName = account.displayName;
+      setupToken = account.setupToken;
+      existingAccount = !!account.existingAccount;
+    } else {
       return NextResponse.json(
-        { error: "Only students at a school we serve can leave reviews." },
-        { status: 403 }
+        { error: "Add your name and school email, or sign in, to leave a review." },
+        { status: 401 }
       );
     }
-    // The school must be backed by the account's email domain — never taken on trust.
-    if (!schoolMatchesEmail(school, session.user.email)) {
-      return NextResponse.json(
-        { error: `Your account email belongs to ${emailSchool.shortName}. Select that school.` },
-        { status: 403 }
-      );
-    }
-    const reviewerUserId = session.user.id;
 
     // Record the reviewer's school on their account. This is the only place the school is
     // persisted — a review's school comes from joining listing_reviews → users → schools.
@@ -597,8 +677,12 @@ export async function POST(req) {
         anonymous: !!anonymous,
         // When anonymous, don't even store the display name — identity lives only
         // in user_id (for moderation), never surfaced in public/landlord views.
-        name: anonymous ? null : session?.user?.name || null,
-        unit_number: unitNumber?.trim() || null,
+        name: anonymous ? null : reviewerDisplayName || null,
+        // 'Whole' covers the entire property and carries no number (DB CHECK).
+        unit_designator: unitDesignator || null,
+        unit_number:
+          unitDesignator === "Whole" ? null : unitNumber?.trim() || null,
+        source: normalizeReviewSource(source),
         landlord_name: landlordName.trim(),
         landlord_email: landlordEmailNorm,
         landlord_phone: hasPhone ? String(landlordPhone).trim() : null,
@@ -657,14 +741,57 @@ export async function POST(req) {
           listingId: resolvedListingId,
           ownerEmail: owner.email,
           submittedEmail: landlordEmailNorm,
-          reviewerName: session?.user?.name || session?.user?.email,
+          reviewerName: reviewerDisplayName || reviewerEmail,
         });
       }
     } catch (mailErr) {
       console.error("[reviewReferral] notification failed:", mailErr?.message);
     }
 
-    return NextResponse.json({ success: true, review });
+    /*
+     * Welcome + finish-your-profile, for an account this submission just
+     * created. Best-effort: a failed email must never fail a posted review,
+     * they still get the profile step inline on the page.
+     */
+    if (setupToken && reviewerEmail && outreachEnabled()) {
+      try {
+        const { data: reviewedListing } = await supabase
+          .from("listings")
+          .select("address")
+          .eq("id", resolvedListingId)
+          .maybeSingle();
+        await sendReviewWelcomeEmail({
+          email: reviewerEmail,
+          name: reviewerDisplayName,
+          token: setupToken,
+          baseUrl: getBaseUrl(req),
+          place: reviewedListing?.address || addressText,
+        });
+      } catch (mailErr) {
+        console.error("[reviewReferral] welcome email failed:", mailErr?.message);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      review,
+      setupToken,
+      existingAccount,
+      // What the profile step should open pre-filled with, so the student never
+      // retypes what they just told us.
+      prefill: setupToken
+        ? {
+            firstName: String(signedOutReviewer.firstName || "").trim(),
+            lastName: String(signedOutReviewer.lastName || "").trim(),
+            email: reviewerEmail,
+            role: "student",
+            graduationYear: normalizeClassYear(signedOutReviewer.classYear),
+            graduationMonth: 5,
+            gender: "",
+            referralSource: "",
+          }
+        : null,
+    });
   } catch (e) {
     console.error("POST /api/reviewReferral failed:", e?.message);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
