@@ -46,9 +46,9 @@ import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { isKnownSchool, schoolMatchesEmail, schoolForEmail } from "@/lib/schools";
-import { getBaseUrl, sendReviewWelcomeEmail } from "@/lib/email";
-import { outreachEnabled } from "@/lib/appEnv";
+import { getBaseUrl, sendReviewWelcomeEmail, sendReviewLiveEmail } from "@/lib/email";
 import { normalizeReviewSource } from "@/lib/reviews/source";
+import { listingPlaceName } from "@/lib/reviews/placeName";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
 import {
   ensureReviewerAccount,
@@ -749,11 +749,37 @@ export async function POST(req) {
     }
 
     /*
+     * "Your review is live", to whoever wrote it. Unlike the welcome email
+     * below this goes to EVERY reviewer, signed in or not: before this, a
+     * signed-in student got no acknowledgement of their own review at all.
+     *
+     * Best-effort, like every other send here. A dead mail server must never
+     * turn a posted review into an error.
+     */
+    if (reviewerEmail) {
+      try {
+        const { data: reviewed } = await supabase
+          .from("listings")
+          .select("title, address")
+          .eq("id", resolvedListingId)
+          .maybeSingle();
+        await sendReviewLiveEmail({
+          email: reviewerEmail,
+          name: reviewerDisplayName,
+          baseUrl: getBaseUrl(req),
+          placeName: listingPlaceName(reviewed || { address: addressText }),
+        });
+      } catch (mailErr) {
+        console.error("[reviewReferral] review-live email failed:", mailErr?.message);
+      }
+    }
+
+    /*
      * Welcome + finish-your-profile, for an account this submission just
      * created. Best-effort: a failed email must never fail a posted review,
      * they still get the profile step inline on the page.
      */
-    if (setupToken && reviewerEmail && outreachEnabled()) {
+    if (setupToken && reviewerEmail) {
       try {
         const { data: reviewedListing } = await supabase
           .from("listings")

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-30T21:48:57.267Z",
-  "count": 65,
+  "_generated": "2026-08-31T02:51:48.942Z",
+  "count": 66,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -190,6 +190,10 @@
     {
       "file": "src/lib/reviews/onboarding.js",
       "description": "Accounts born from a signed-out review (the QR flow)."
+    },
+    {
+      "file": "src/lib/reviews/placeName.js",
+      "description": "What to call the place a review is about, in copy addressed to the reviewer."
     },
     {
       "file": "src/lib/reviews/rateLimit.js",

@@ -197,3 +197,53 @@ export async function sendReviewWelcomeEmail({ email, name, token, baseUrl, plac
     `,
   });
 }
+
+/*
+ * "Your review is live", sent to the reviewer once their review posts.
+ *
+ * Goes to every reviewer, signed in or not, which is a change: before this only
+ * a brand-new QR account heard anything back, and only about finishing signup.
+ *
+ * `placeName` is the property or dorm, from lib/reviews/placeName.js. It is
+ * escaped rather than trusted: a stub listing's address comes from whatever the
+ * reviewer picked in the Mapbox autocomplete, so it is not our text.
+ *
+ * The one CTA is matchmaking, because the review is the moment a student has
+ * proved they care about this and the moment they are most likely to come back
+ * when they next need a place.
+ */
+export async function sendReviewLiveEmail({ email, name, baseUrl, placeName }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+  const place = esc(placeName || "your place");
+  const firstName = name ? esc(String(name).split(" ")[0]) : "";
+  const matchmakingUrl = `${baseUrl}/matchmaking`;
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `Your review of ${placeName || "your place"} is live`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111;font-size:20px;margin:0 0 16px">
+          ${firstName ? `${firstName}, your` : "Your"} review of ${place} is live.
+        </h2>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          Students move out every year and take what they learned about the building with
+          them. Now, yours stays. It&#39;s what the next person sees before they sign.
+        </p>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          Proximity is free for students. When you&#39;re looking for your next place, we
+          match you on budget, priorities, and reviews like the one you just wrote.
+        </p>
+        <a href="${matchmakingUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Matchmaking
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${matchmakingUrl}</p>
+      </div>
+    `,
+  });
+}
