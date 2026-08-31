@@ -1,11 +1,14 @@
 // Profile tab - Enhanced with full user management
+import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
-import { ChevronRight, FileText, LogOut, Lock, Pencil, ShieldCheck, Info, User } from "lucide-react-native";
+import { ChevronRight, FileText, LogOut, Lock, Pencil, ShieldCheck, Info, Trash2, User } from "lucide-react-native";
 import { isLandlord } from "@proximity/auth-core";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
+import apiClient from "../../src/lib/apiClient";
+import { getErrorMessage } from "../../src/lib/apiError";
 import { colors } from "../../src/theme/tokens";
 
 function ProfileSection({ title, children }) {
@@ -42,6 +45,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, isHydrated, logout } = useAuth();
   const savedListings = useFavoritesStore((state) => state.savedListings);
+  const [deleting, setDeleting] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -53,6 +57,46 @@ export default function ProfileScreen() {
           text: "Log out",
           style: "destructive",
           onPress: () => logout(),
+        },
+      ]
+    );
+  };
+
+  // Two-step confirmation: this is irreversible for the user, and Apple/Google
+  // both expect deletion to be deliberate rather than a single stray tap.
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete account",
+      "This deletes your Proximity account and personal data. Your account stops working immediately, and your data is permanently erased after 30 days. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () =>
+            Alert.alert("Are you sure?", "Deleting your account is permanent.", [
+              { text: "Keep my account", style: "cancel" },
+              {
+                text: "Delete account",
+                style: "destructive",
+                onPress: async () => {
+                  setDeleting(true);
+                  try {
+                    await apiClient.user.deleteAccount();
+                    // Clear local session/state; the account no longer authenticates
+                    // server-side, so anything cached would only 401.
+                    await logout();
+                  } catch (err) {
+                    Alert.alert(
+                      "Couldn't delete account",
+                      getErrorMessage(err, "Something went wrong. Please try again.")
+                    );
+                  } finally {
+                    setDeleting(false);
+                  }
+                },
+              },
+            ]),
         },
       ]
     );
@@ -133,7 +177,14 @@ export default function ProfileScreen() {
         {/* Account Section */}
         <ProfileSection title="Account">
           <MenuItem label="Edit Profile" icon={Pencil} onPress={() => router.push("/profile/edit")} />
-          <MenuItem label="Change Password" icon={Lock} onPress={() => router.push("/profile/change-password")} showBorder={false} />
+          <MenuItem label="Change Password" icon={Lock} onPress={() => router.push("/profile/change-password")} />
+          <MenuItem
+            label={deleting ? "Deleting…" : "Delete Account"}
+            icon={Trash2}
+            onPress={deleting ? () => {} : handleDeleteAccount}
+            destructive
+            showBorder={false}
+          />
         </ProfileSection>
 
         {/* About Section */}

@@ -33,9 +33,17 @@ export async function POST(req) {
     // Look up user by email
     const { data: existing } = await supabase
       .from("users")
-      .select("id, email, name, image, profile_complete, roles!role_id(name)")
+      .select("id, email, name, image, profile_complete, deleted_at, roles!role_id(name)")
       .eq("email", email)
       .single();
+
+    // Reject a deleted account explicitly. Falling through to the create branch
+    // below would try to insert a second row on an email that already exists.
+    // Unlike the password path, naming the reason leaks nothing here: Google
+    // already verified this caller owns the address.
+    if (existing?.deleted_at) {
+      return Response.json({ error: AUTH_ERRORS.ACCOUNT_DELETED }, { status: 403 });
+    }
 
     let userRow;
 

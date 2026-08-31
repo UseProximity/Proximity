@@ -19,6 +19,17 @@ export async function getRequestUser(req) {
   const mobileAuth = await authMobile(req);
   if (!mobileAuth?.user?.id) return null;
 
-  const { data } = await supabase.from("users").select("email").eq("id", mobileAuth.user.id).single();
-  return { id: mobileAuth.user.id, email: data?.email ?? null, role: mobileAuth.user.role ?? null };
+  // A deleted account must stop authenticating immediately, not whenever its
+  // 15-minute access token happens to expire. This branch already pays for a
+  // row lookup, so the check is free here; the web branch above is gated in
+  // auth.js's JWT callback instead (see its deleted_at handling) to keep the
+  // session path zero-DB.
+  const { data } = await supabase
+    .from("users")
+    .select("email, deleted_at")
+    .eq("id", mobileAuth.user.id)
+    .single();
+  if (!data || data.deleted_at) return null;
+
+  return { id: mobileAuth.user.id, email: data.email ?? null, role: mobileAuth.user.role ?? null };
 }

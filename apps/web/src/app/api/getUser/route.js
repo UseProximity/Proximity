@@ -99,6 +99,20 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
   };
 }
 
+// Every `users` column that is safe to return to the authenticated owner of the
+// row. Deliberately EXCLUDES the credential/verification columns that exist on
+// the table: password_hash, password_reset_token, password_reset_expires_at,
+// email_verification_token, email_verification_expires_at — plus apple_sub.
+// Keep this list in sync when adding a user column; anything new stays out of
+// the API response until it's added here on purpose.
+const USER_PUBLIC_COLUMNS = `
+  id, name, email, image, birthday, description, gender, phone,
+  profile_complete, referral_source, created_at, updated_at,
+  graduation_year, graduation_month, role_id, school_id, is_system,
+  deleted_at, email_verified, google_account, apple_account,
+  email_notifications, payment_method, payment_handle
+`.trim();
+
 const LISTING_SELECT = `
   id, title, address, longitude, latitude, description,
   lease_type, contact_email, contact_phone, contact_name,
@@ -128,10 +142,20 @@ export async function GET(req) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Look up by email — reliable across auth provider ID differences
+    // Look up by email — reliable across auth provider ID differences.
+    //
+    // Explicit allowlist, never `select("*")`: this row is serialized straight
+    // to the client below, so a wildcard ships `password_hash` and the live
+    // `password_reset_token` / `email_verification_token` (plus their expiries)
+    // to the browser and the mobile app — a working reset token in a JSON body
+    // is an account-takeover primitive. Allowlisting also fails closed: a
+    // future sensitive column is excluded by default rather than leaked.
+    // `apple_sub` is likewise omitted — an identity-provider subject ID that no
+    // client needs. Verified against the live dev schema, not db-schema.json,
+    // which lagged behind by three columns.
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("*")
+      .select(USER_PUBLIC_COLUMNS)
       .eq("email", requestUser.email)
       .single();
 

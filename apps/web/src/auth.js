@@ -39,11 +39,14 @@ const config = {
 
         const { data: user } = await supabase
           .from("users")
-          .select("id, email, name, password_hash, email_verified, profile_complete, roles!role_id(name)")
+          .select("id, email, name, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
           .eq("email", email)
           .single();
 
-        if (!user || !user.password_hash) return null;
+        // Deleted accounts fail exactly like a wrong password — same null
+        // return, no distinct error. Confirming "this account was deleted"
+        // would leak that the address was registered.
+        if (!user || !user.password_hash || user.deleted_at) return null;
         if (!user.email_verified) throw new Error(AUTH_ERRORS.EMAIL_NOT_VERIFIED);
 
         const valid = await bcrypt.compare(password, user.password_hash);
@@ -83,9 +86,21 @@ const config = {
 
         const { data: existing } = await supabase
           .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
+          .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
           .eq("email", user.email)
           .single();
+
+        // Deleted account: leave the token without an identity rather than
+        // falling through to the insert below, which would attempt a second row
+        // on an email that already exists. The session callback then yields no
+        // user.id, so this reads as signed-out everywhere downstream.
+        if (existing?.deleted_at) {
+          token.userId = null;
+          token.role = null;
+          token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
+          return token;
+        }
 
         if (!existing) {
           const { data: studentRole } = await supabase
@@ -129,14 +144,18 @@ const config = {
         }
       }
 
-      // Backfill old tokens issued before JWT caching was introduced
+      // Backfill old tokens issued before JWT caching was introduced.
+      // Must also honor deleted_at: this block keys off `!token.userId`, which
+      // is exactly the state the deletion guards above leave behind, so without
+      // the check it would re-resolve the row by email on the very next request
+      // and resurrect the signed-out session.
       if (!token.userId && token.email) {
         const { data: sbUser } = await supabase
           .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
+          .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
           .eq("email", token.email)
           .single();
-        if (sbUser) {
+        if (sbUser && !sbUser.deleted_at) {
           token.userId = sbUser.id;
           token.role = sbUser.roles?.name ?? "student";
           token.profileComplete = sbUser.profile_complete ?? false;
@@ -168,9 +187,28 @@ const config = {
       ) {
         const { data: fresh, error: refreshErr } = await supabase
           .from("users")
-          .select("profile_complete, roles!role_id(name)")
+          .select("profile_complete, deleted_at, roles!role_id(name)")
           .eq("id", token.userId)
           .single();
+        // Account deleted, or the row is definitively gone (PGRST116 = no rows
+        // matched): strip the identity off the token so the session callback
+        // below yields no user.id and every downstream guard treats this as
+        // signed-out. Piggybacks on the existing role-refresh query rather than
+        // adding a per-request lookup, so a deleted web session goes dead
+        // within ROLE_REFRESH_MS.
+        //
+        // Any OTHER error (DB unreachable, timeout) deliberately falls through
+        // and keeps the existing token: a transient blip must not sign every
+        // active user out. That's the same fail-open reasoning the original
+        // `if (!refreshErr && fresh)` guard had — only true deletion is
+        // fail-closed.
+        if (fresh?.deleted_at || refreshErr?.code === "PGRST116") {
+          token.userId = null;
+          token.role = null;
+          token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
+          return token;
+        }
         if (!refreshErr && fresh) {
           token.role = fresh.roles?.name ?? token.role ?? "student";
           token.profileComplete =
