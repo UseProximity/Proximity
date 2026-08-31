@@ -142,11 +142,26 @@ export function buildListing(row, owner = null) {
           .filter((l) => l.availableFrom)
           .sort((a, b) => new Date(a.availableFrom) - new Date(b.availableFrom))[0]
           ?.availableFrom ?? null;
+      // Cheapest live offering — the number the card shows. shapeLeases sorts
+      // cheapest-first with unpriced sunk, so this is just the head of the list.
+      const pricedHead = leases.find((l) => l.rent != null) ?? null;
       return {
         id: u.id,
-        // Cheapest live offering — the number the card shows. shapeLeases sorts
-        // cheapest-first with unpriced sunk, so this is just the head of the list.
-        rent: leases.find((l) => l.rent != null)?.rent ?? null,
+        rent: pricedHead?.rent ?? null,
+        /*
+         * Carried from the SAME offering that supplied `rent`, because the two
+         * are only meaningful together: $1,069 means one thing per person and
+         * another for a 3-bed apartment.
+         *
+         * shapeLeases already put this on unitTypes[].leases[], but the flattened
+         * unit summary dropped it — and the summary is what minPerPersonRent()
+         * reads. So a landlord who had stated their basis was still having it
+         * guessed at, on exactly the surface the guess feeds: the /washu price
+         * pages. LOCAL on Delmar is the case in hand — its unnamed rows quote
+         * per bed and its named units quote the apartment, and only the stated
+         * flag can tell those apart with certainty.
+         */
+        rentIsPerPerson: pricedHead?.rentIsPerPerson ?? null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
