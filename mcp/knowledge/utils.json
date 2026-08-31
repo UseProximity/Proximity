@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-31T02:51:48.942Z",
-  "count": 66,
+  "_generated": "2026-08-31T22:22:10.306Z",
+  "count": 67,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -86,6 +86,10 @@
     {
       "file": "src/lib/listings/ownership.js",
       "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
+    },
+    {
+      "file": "src/lib/listings/propertyName.js",
+      "description": "Display-name uniqueness for properties."
     },
     {
       "file": "src/lib/listings/queryListings.js",

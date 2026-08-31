@@ -8,6 +8,10 @@ import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import {
+  findPropertyNameConflict,
+  propertyNameTakenResponse,
+} from "@/lib/listings/propertyName";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -366,6 +370,20 @@ export async function POST(req) {
         );
       }
     } else {
+      /*
+       * A new property claims its display name. Only this branch checks: the
+       * attach branch above adds units to a property that already exists and
+       * never writes listings.title, so a name it does not touch cannot be one
+       * it takes.
+       *
+       * school_id is not set on create yet, so the lookup runs against the
+       * unschooled bucket — the same one the unique index folds NULLs into.
+       */
+      const nameConflict = await findPropertyNameConflict(title, { schoolId: null });
+      if (nameConflict) {
+        return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
+      }
+
       // All property-level writes in one transaction — sets app.current_user_id
       // for action_log attribution.
       const { data: newListingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
