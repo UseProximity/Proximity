@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-31T02:51:48.942Z",
-  "count": 66,
+  "_generated": "2026-08-31T21:16:48.052Z",
+  "count": 67,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -258,6 +258,10 @@
     {
       "file": "src/utils/listingFormatters.js",
       "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
+    },
+    {
+      "file": "src/utils/unitCounts.js",
+      "description": "Bedroom and bathroom counts."
     },
     {
       "file": "src/utils/walkTimes.js",

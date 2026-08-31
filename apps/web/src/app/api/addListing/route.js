@@ -6,6 +6,7 @@ import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { isValidCount } from "@/utils/unitCounts";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 
@@ -137,6 +138,20 @@ export async function POST(req) {
 
     if (invalidUnit) {
       return NextResponse.json({ error: "Invalid unit type" }, { status: 400 });
+    }
+
+    // Room counts are physical, so a negative is always a slip rather than a
+    // claim — four listings went live with -2 bed / -1 bath before this check
+    // existed. See @/utils/unitCounts.
+    if (
+      unitTypes.some(
+        (unit) => !isValidCount(unit.bedrooms) || !isValidCount(unit.bathrooms)
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Bedrooms and bathrooms cannot be negative." },
+        { status: 400 }
+      );
     }
 
     // Allow import script to bypass auth using a shared secret

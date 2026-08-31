@@ -151,6 +151,18 @@ export async function PATCH(req, { params }) {
         : (typeof body.number === "string" ? body.number.trim() : "") || null;
   }
 
+  // Room counts are physical facts, so a negative is a slipped spinner click
+  // rather than an answer. listing_units carries a CHECK for the same reason;
+  // this is here so the landlord gets a sentence instead of a 500.
+  for (const column of ["bedrooms", "bathrooms", "area"]) {
+    if (patch[column] != null && patch[column] < 0) {
+      return NextResponse.json(
+        { error: "Bedrooms, bathrooms, and square footage can't be negative." },
+        { status: 400 }
+      );
+    }
+  }
+
   if (!Object.keys(patch).length) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
@@ -163,10 +175,11 @@ export async function PATCH(req, { params }) {
 
   if (error) {
     if (error.code === "23514") {
-      return NextResponse.json(
-        { error: "A numbered unit needs a number, and “Whole property” can't have one." },
-        { status: 400 }
-      );
+      // 23514 is any CHECK on the table, so say which one actually failed.
+      const msg = /counts_nonneg/.test(error.message ?? "")
+        ? "Bedrooms, bathrooms, and square footage can't be negative."
+        : "A numbered unit needs a number, and “Whole property” can't have one.";
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
     console.error("[units/:id] update failed:", error.message);
     return NextResponse.json({ error: "Could not save that unit." }, { status: 500 });

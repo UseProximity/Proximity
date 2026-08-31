@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
+import { clampCount } from "@/utils/unitCounts";
 import { UnitPhotoRow } from "./EditorImageRows";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
@@ -308,18 +309,18 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           </label>
           <label className="block">
             <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Beds</span>
-            <input type="number" className={`mt-1 w-full ${field}`} value={draft.bedrooms}
-              onChange={(e) => set({ bedrooms: e.target.value })} />
+            <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.bedrooms}
+              onChange={(e) => set({ bedrooms: clampCount(e.target.value) })} />
           </label>
           <label className="block">
             <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Baths</span>
-            <input type="number" step="0.5" className={`mt-1 w-full ${field}`} value={draft.bathrooms}
-              onChange={(e) => set({ bathrooms: e.target.value })} />
+            <input type="number" min="0" step="0.5" className={`mt-1 w-full ${field}`} value={draft.bathrooms}
+              onChange={(e) => set({ bathrooms: clampCount(e.target.value) })} />
           </label>
           <label className="block">
             <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Sq ft</span>
-            <input type="number" className={`mt-1 w-full ${field}`} value={draft.area}
-              onChange={(e) => set({ area: e.target.value })} />
+            <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
+              onChange={(e) => set({ area: clampCount(e.target.value) })} />
           </label>
           <label className="block">
             <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Floor plan name</span>
@@ -527,21 +528,21 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
             Beds <span className="text-red-500">*</span>
           </span>
-          <input type="number" className={`mt-1 w-full ${field} ${bad("bedrooms")}`} value={draft.bedrooms}
-            onChange={(e) => set({ bedrooms: e.target.value })} />
+          <input type="number" min="0" className={`mt-1 w-full ${field} ${bad("bedrooms")}`} value={draft.bedrooms}
+            onChange={(e) => set({ bedrooms: clampCount(e.target.value) })} />
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
             Baths <span className="text-red-500">*</span>
           </span>
-          <input type="number" step="0.5" className={`mt-1 w-full ${field} ${bad("bathrooms")}`}
+          <input type="number" min="0" step="0.5" className={`mt-1 w-full ${field} ${bad("bathrooms")}`}
             value={draft.bathrooms}
-            onChange={(e) => set({ bathrooms: e.target.value })} />
+            onChange={(e) => set({ bathrooms: clampCount(e.target.value) })} />
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Sq ft</span>
-          <input type="number" className={`mt-1 w-full ${field}`} value={draft.area}
-            onChange={(e) => set({ area: e.target.value })} />
+          <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
+            onChange={(e) => set({ area: clampCount(e.target.value) })} />
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Floor plan name</span>
