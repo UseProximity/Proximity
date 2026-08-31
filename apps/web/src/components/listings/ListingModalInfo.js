@@ -29,7 +29,6 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
-import { formatAvailableFrom } from "@/utils/listingFormatters";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 
@@ -1743,12 +1742,16 @@ export default function ListingModalInfo({
                 {cityStateZip && (
                   <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
                 )}
-                {/* Pre-leased until a known date: show the move-in instead of hiding */}
-                {!listing.unavailable && formatAvailableFrom(listing.availableFrom) && (
-                  <span className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2.5 py-1">
-                    {formatAvailableFrom(listing.availableFrom)}
-                  </span>
-                )}
+                {/*
+                  * No property-level "Available <date>" pill here on purpose.
+                  * It used to read from listing.availableFrom, a rollup that
+                  * only the browse feed computes — so opening a listing showed
+                  * the pill for the split second the panel held feed data, then
+                  * dropped it the moment the detail fetch replaced that object.
+                  * A move-in date belongs to one offering anyway, not to the
+                  * building: LeaseOptions shows it per lease, where a renter can
+                  * see which unit the date actually applies to.
+                  */}
               </div>
               <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
                 {/* Rating moved up from the removed stats bar. */}

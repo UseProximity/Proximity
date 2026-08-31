@@ -20,6 +20,7 @@ const PMS_SYNC_OPTIONS = [
 
 // Add / Edit Listing Modal -------------------------------------------------------
 // Option lists shared with the add-listing wizard (see listingFormOptions.js).
+import { clampCount } from "@/utils/unitCounts";
 import {
   AMENITY_OPTIONS,
   AMENITY_LABELS,
@@ -1375,7 +1376,7 @@ export default function ListingFormPanel({
                           min={min}
                           step={step}
                           value={unit[field]}
-                          onChange={(e) => updateUnit(i, field, e.target.value)}
+                          onChange={(e) => updateUnit(i, field, clampCount(e.target.value))}
                           className={`w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(`u${i}:${field}`)}`}
                         />
                         {hint && (
