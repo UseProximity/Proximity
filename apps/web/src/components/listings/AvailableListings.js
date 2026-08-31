@@ -225,10 +225,14 @@ export default function AvailableListings({
             l.longitude <= viewportBounds.neLng
         );
     return [...filtered].sort((a, b) => {
-      // Unavailable listings last; among available, now before later.
-      const un = (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0);
-      if (un !== 0) return un;
-      return (a.availableFrom ? 1 : 0) - (b.availableFrom ? 1 : 0);
+      /*
+       * Unavailable (greyed-out) listings last — that is the only demotion.
+       * Everything above it keeps the order filterListings already ranked it
+       * in, which includes pre-leased listings with a future availableFrom:
+       * those are live inventory wearing an "Available Aug 1" badge, so they
+       * sit in the mix with the ones open today rather than in a tier below.
+       */
+      return (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0);
     });
   }, [listings, viewportBounds]);
 
