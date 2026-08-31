@@ -4,6 +4,10 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { deleteAsUser } from "@/lib/supabaseWithUser";
+import {
+  findPropertyNameConflict,
+  propertyNameTakenResponse,
+} from "@/lib/listings/propertyName";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -152,6 +156,37 @@ export async function PATCH(req, { params }) {
   const safeUpdates = {};
   for (const [k, v] of Object.entries(rest)) {
     if (LISTING_COLS.has(k)) safeUpdates[k] = v;
+  }
+
+  /*
+   * A renamed property must not take a name another one at this school already
+   * holds. Only checked when `title` is actually in the payload — the form sends
+   * the whole record on every save, so most PATCHes carry the name unchanged, and
+   * excludeListingId is what stops those from colliding with themselves.
+   *
+   * The listing's own school_id is read rather than trusted from the body:
+   * school_id is not in LISTING_COLS, so this route cannot change it, and the
+   * bucket a name is checked against has to be the one it will be stored in.
+   */
+  if (safeUpdates.title !== undefined) {
+    const { data: current, error: currentError } = await supabase
+      .from("listings")
+      .select("school_id")
+      .eq("id", listingId)
+      .maybeSingle();
+
+    if (currentError) {
+      console.error("[landlord PATCH] school lookup failed:", currentError.message);
+      return NextResponse.json({ error: "Could not save that property." }, { status: 500 });
+    }
+
+    const conflict = await findPropertyNameConflict(safeUpdates.title, {
+      schoolId: current?.school_id ?? null,
+      excludeListingId: listingId,
+    });
+    if (conflict) {
+      return NextResponse.json(propertyNameTakenResponse(conflict), { status: 409 });
+    }
   }
 
   // listings.lease_availability (text[] of term labels, e.g. ["semester","12-month"]) is

@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-30T23:03:38.928Z",
+  "_generated": "2026-08-31T22:22:10.282Z",
   "count": 88,
   "routes": [
     {
@@ -659,8 +659,8 @@
       "tables": [
         "listing_units",
         "unit_leases",
-        "home_types",
-        "listings"
+        "listings",
+        "home_types"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/route.js"
     },

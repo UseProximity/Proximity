@@ -379,18 +379,17 @@ export function filterListings(listings, { filters, search = "", savedIds = [], 
       const bHasImages = b.images?.length > 0;
       if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
 
-      // 2) Available-now ranks above available-later (pre-leased listings
-      //    with a future availableFrom) — same result set, not a tab.
-      const aLater = !!a.availableFrom;
-      const bLater = !!b.availableFrom;
-      if (aLater !== bLater) return aLater ? 1 : -1;
-
-      // 3) Within the same tier, reviewed listings rank first.
+      // 2) Reviewed listings rank first. A future availableFrom is deliberately
+      //    NOT a demotion: a pre-leased listing still shows in full colour with
+      //    an "Available Aug 1" badge, and it is inventory a renter can sign
+      //    today for a later move-in. It competes on the same footing as one
+      //    open now. Only `unavailable` sinks, and that happens in
+      //    AvailableListings where the greyed-out cards are collected.
       const aReviews = a.numReviews ?? 0;
       const bReviews = b.numReviews ?? 0;
       if (aReviews > 0 !== bReviews > 0) return aReviews > 0 ? -1 : 1;
 
-      // 4) Among reviewed listings, higher rating wins, then more reviews.
+      // 3) Among reviewed listings, higher rating wins, then more reviews.
       if (aReviews > 0 && bReviews > 0) {
         if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
         return bReviews - aReviews;

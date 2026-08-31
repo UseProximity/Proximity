@@ -97,10 +97,23 @@ export default function StepDescription({ w }) {
           value={w.form.title}
           onChange={(e) => w.setField("title", e.target.value)}
           placeholder='e.g. "Cozy 2BR near the Loop"'
+          aria-invalid={w.fieldError?.field === "title" || undefined}
           className={`${inputCls}${
             w.importedFields.has("title") ? importedInputCls : ""
-          }`}
+          }${w.fieldError?.field === "title" ? " border-red-500" : ""}`}
         />
+        {w.fieldError?.field === "title" && (
+          <p className="mt-1 text-sm text-red-600">
+            {w.fieldError.message}
+            {w.fieldError.conflict?.address && (
+              <span className="text-gray-600">
+                {" "}
+                — already used by {w.fieldError.conflict.address}. Add something
+                that tells them apart, like the street.
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       <div className="mt-7">
