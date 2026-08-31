@@ -157,8 +157,9 @@ export default function LeaseOptions({ leases = [], loading = false, onContact }
 /*
  * One offering. The five columns are what a renter compares across offerings;
  * everything that is true of only this one — the landlord's own note, whether
- * they furnish it, a phone number — lives behind the chevron, so a unit with
- * four competing offerings still fits on a screen.
+ * they furnish it — lives behind the chevron, so a unit with four competing
+ * offerings still fits on a screen. Reaching the landlord goes through Contact,
+ * never a phone number printed on the row.
  */
 function LeaseRow({ lease, onContact }) {
   const [open, setOpen] = useState(false);
@@ -166,7 +167,6 @@ function LeaseRow({ lease, onContact }) {
     lease.furnished == null
       ? null
       : { label: "Furnished", value: lease.furnished ? "Yes" : "No" },
-    lease.contactPhone ? { label: "Phone", value: lease.contactPhone } : null,
   ].filter(Boolean);
   const hasDetails = !!lease.description || details.length > 0;
 

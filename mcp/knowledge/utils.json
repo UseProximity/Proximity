@@ -264,6 +264,10 @@
       "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
     },
     {
+      "file": "src/utils/unitCounts.js",
+      "description": "Bedroom and bathroom counts."
+    },
+    {
       "file": "src/utils/walkTimes.js",
       "description": "No description — add a top-of-file comment."
     },

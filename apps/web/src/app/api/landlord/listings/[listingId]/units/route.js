@@ -55,6 +55,14 @@ export async function POST(req, { params }) {
       { status: 400 }
     );
   }
+  // A room count below zero is a slipped spinner click, not an answer — four
+  // listings went live at -2 bed / -1 bath before the inputs clamped.
+  if (bedrooms < 0 || bathrooms < 0) {
+    return NextResponse.json(
+      { error: "Bedrooms and bathrooms cannot be negative." },
+      { status: 400 }
+    );
+  }
 
   // "Whole" covers the entire property and carries no number, which
   // listing_units_number_check enforces at the column level too.

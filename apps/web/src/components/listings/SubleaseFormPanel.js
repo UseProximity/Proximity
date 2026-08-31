@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Plus, X } from "lucide-react";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import { clampCount } from "@/utils/unitCounts";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -786,7 +787,7 @@ export default function SubleaseFormPanel({
                         <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
                         <input
                           type="number" min={min} step={step} value={unit[field]}
-                          onChange={(e) => updateUnit(i, field, e.target.value)}
+                          onChange={(e) => updateUnit(i, field, clampCount(e.target.value))}
                           className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
                       </div>
