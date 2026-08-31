@@ -175,10 +175,17 @@ function buildListing(row, owner = null, reviews = []) {
       // Live offerings only, and cheapest first — a withdrawn lease is not this
       // unit's price. Matches the browse feed (api/listings/route.js).
       const liveLeases = (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable);
-      const activeRent = liveLeases
-        .map((l) => l.rent)
-        .filter((r) => r != null)
-        .sort((a, b) => Number(a) - Number(b))[0];
+      /*
+       * Keep the cheapest priced OFFERING, not just its number, so the rent and
+       * the basis that explains it travel together. Taking the flag from
+       * liveLeases[0] instead would pair them wrongly whenever the first live
+       * offering is not the cheapest one — which is the normal case on a unit
+       * several landlords are competing for.
+       */
+      const cheapestPriced = liveLeases
+        .filter((l) => l.rent != null)
+        .sort((a, b) => Number(a.rent) - Number(b.rent))[0] ?? null;
+      const activeRent = cheapestPriced?.rent;
       const nextAvailable =
         (u.unit_leases ?? [])
           .filter((l) => l.available_from)
@@ -195,6 +202,8 @@ function buildListing(row, owner = null, reviews = []) {
         // This unit's own photos, in the order its landlord chose.
         images: unitImages.filter((img) => img.unit_id === u.id).map((img) => img.url),
         rent: activeRent != null ? Number(activeRent) : null,
+        // From the same offering as `rent` — see cheapestPriced above.
+        rentIsPerPerson: cheapestPriced?.rent_is_per_person ?? null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,

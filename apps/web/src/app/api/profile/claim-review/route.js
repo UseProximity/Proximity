@@ -26,6 +26,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { loadProfileSetupUser, clearProfileSetupToken } from "@/lib/reviews/onboarding";
+import { getBaseUrl, sendReviewLiveEmail } from "@/lib/email";
+import { listingPlaceName } from "@/lib/reviews/placeName";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +120,7 @@ export async function POST(req) {
 
     // ── Move the reviews first ──────────────────────────────────────────────
     let moved = 0;
+    const movedIds = { listing_reviews: [], dorm_reviews: [] };
     for (const table of ["listing_reviews", "dorm_reviews"]) {
       const { data, error } = await supabase
         .from(table)
@@ -128,6 +131,7 @@ export async function POST(req) {
         console.error(`claim-review: moving ${table} failed:`, error.message);
         return NextResponse.json({ error: "Couldn't move your review." }, { status: 500 });
       }
+      movedIds[table] = (data ?? []).map((r) => r.id);
       moved += data?.length ?? 0;
     }
 
@@ -156,6 +160,45 @@ export async function POST(req) {
       // The reviews are already safely on the real account, so this is untidy
       // rather than broken: leave the shell behind and say nothing to the user.
       console.error("claim-review: placeholder delete failed:", delErr.message);
+    }
+
+    /*
+     * The "your review is live" email already went out at submit, to the address
+     * they typed. That account has just been deleted, so this send is the only
+     * copy that reaches an inbox they can actually sign into. Sent per review,
+     * which in practice is one.
+     *
+     * Best-effort and last: the merge is already committed, and a mail failure
+     * must not report it as failed.
+     */
+    if (moved && session.user.email) {
+      try {
+        const places = [];
+        if (movedIds.listing_reviews.length) {
+          const { data } = await supabase
+            .from("listing_reviews")
+            .select("listings(title, address)")
+            .in("id", movedIds.listing_reviews);
+          for (const row of data ?? []) places.push(listingPlaceName(row.listings));
+        }
+        if (movedIds.dorm_reviews.length) {
+          const { data } = await supabase
+            .from("dorm_reviews")
+            .select("dorms(name)")
+            .in("id", movedIds.dorm_reviews);
+          for (const row of data ?? []) if (row.dorms?.name) places.push(row.dorms.name);
+        }
+        for (const placeName of places) {
+          await sendReviewLiveEmail({
+            email: session.user.email,
+            name: session.user.name,
+            baseUrl: getBaseUrl(req),
+            placeName,
+          });
+        }
+      } catch (mailErr) {
+        console.error("claim-review: review-live re-send failed:", mailErr?.message);
+      }
     }
 
     return NextResponse.json({ ok: true, moved, sameAccount: false });

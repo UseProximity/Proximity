@@ -31,7 +31,13 @@ import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import AuthCard from "@/components/auth/AuthCard";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import { UNIT_DESIGNATORS } from "@/components/listings/listingFormOptions";
-import { SCHOOLS, schoolForEmail, isReviewEligibleEmail } from "@/lib/schools";
+import {
+  SCHOOLS,
+  schoolForEmail,
+  isReviewEligibleEmail,
+  schoolFromSourceTag,
+  DEFAULT_SCHOOL_SHORT_NAME,
+} from "@/lib/schools";
 import { INPUT_CLASS, PAGE_BOTTOM_PADDING, Step, SubRating } from "./reviewFormUi";
 import ReviewerContactFields, {
   EMAIL_RE,
@@ -63,6 +69,23 @@ export default function ReviewSubmitForm({
   }, [emailSchool]);
   const schoolMismatch = !!school && !!emailSchool && school !== emailSchool.shortName;
   const schoolReady = loggedIn ? !!school && !schoolMismatch : true;
+
+  /*
+   * Which campus address autocomplete searches around. A student almost always
+   * lived within a few miles of their own school, and street names repeat across
+   * the country, so the campus is what turns "6659 washington" into the one in
+   * University City rather than the one in Michigan.
+   *
+   * Best evidence first: a signed-in account's email domain proves the school
+   * outright. Signed out, the printed QR code's ?src= tag is the only hint that
+   * arrives before the address is typed — the contact email that would prove it
+   * isn't collected until the end of the form. Neither means WashU, which is where
+   * the overwhelming majority of reviews come from.
+   */
+  const searchSchool =
+    emailSchool?.shortName ||
+    schoolFromSourceTag(source)?.shortName ||
+    DEFAULT_SCHOOL_SHORT_NAME;
 
   // Address selection
   const [addressQuery, setAddressQuery] = useState("");
@@ -332,6 +355,7 @@ export default function ReviewSubmitForm({
             onSelectSuggestion={handleSelectSuggestion}
             placeholder="Start typing an address…"
             className={INPUT_CLASS}
+            near={searchSchool}
           />
         )}
         {picked && (
