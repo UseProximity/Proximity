@@ -56,6 +56,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const [units, setUnits] = useState([emptyUnit()]);
   const [customAmenities, setCustomAmenities] = useState([]);
   const [error, setError] = useState(null);
+  /*
+   * A rejection that belongs to one input — currently only a taken property
+   * name. Kept separate from `error` because the wizard shows `error` on the
+   * step the landlord is standing on, and the name lives back on the
+   * Description step; publish happens from Review.
+   */
+  const [fieldError, setFieldError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [visited, setVisited] = useState(() => new Set());
   // "now" | "date" — the required one-tap availability ask on the basics step.
@@ -197,6 +204,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   const setField = (name, value) => {
     clearImported(name);
+    // Editing the field the server rejected retires the rejection.
+    setFieldError((fe) => (fe?.field === name ? null : fe));
     setForm((f) => ({ ...f, [name]: value }));
   };
 
@@ -719,6 +728,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   // ------------------------------------------------------------------ publish
   const publish = async () => {
+    setFieldError(null);
     for (const s of STEPS) {
       const problem = validateStep(s.id);
       if (problem) {
@@ -797,7 +807,27 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Something went wrong.");
+        /*
+         * A `field` rejection is fixable at exactly one input, and that input is
+         * on an earlier step. Send the landlord back to it rather than printing
+         * a message on Review beside a control that cannot resolve it.
+         */
+        if (data.field === "title") {
+          setFieldError({
+            field: "title",
+            message: data.error || "That value is already in use.",
+            conflict: data.conflict ?? null,
+          });
+          goTo("description");
+        } else if (data.field) {
+          setFieldError({
+            field: data.field,
+            message: data.error || "That value is already in use.",
+            conflict: data.conflict ?? null,
+          });
+        } else {
+          setError(data.error || "Something went wrong.");
+        }
         return;
       }
 
@@ -1020,6 +1050,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     goTo,
     startFresh,
     error,
+    fieldError,
     submitting,
     publish,
   };

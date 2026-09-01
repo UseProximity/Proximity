@@ -6,8 +6,13 @@ import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { isValidCount } from "@/utils/unitCounts";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import {
+  findPropertyNameConflict,
+  propertyNameTakenResponse,
+} from "@/lib/listings/propertyName";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -137,6 +142,20 @@ export async function POST(req) {
 
     if (invalidUnit) {
       return NextResponse.json({ error: "Invalid unit type" }, { status: 400 });
+    }
+
+    // Room counts are physical, so a negative is always a slip rather than a
+    // claim — four listings went live with -2 bed / -1 bath before this check
+    // existed. See @/utils/unitCounts.
+    if (
+      unitTypes.some(
+        (unit) => !isValidCount(unit.bedrooms) || !isValidCount(unit.bathrooms)
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Bedrooms and bathrooms cannot be negative." },
+        { status: 400 }
+      );
     }
 
     // Allow import script to bypass auth using a shared secret
@@ -366,6 +385,20 @@ export async function POST(req) {
         );
       }
     } else {
+      /*
+       * A new property claims its display name. Only this branch checks: the
+       * attach branch above adds units to a property that already exists and
+       * never writes listings.title, so a name it does not touch cannot be one
+       * it takes.
+       *
+       * school_id is not set on create yet, so the lookup runs against the
+       * unschooled bucket — the same one the unique index folds NULLs into.
+       */
+      const nameConflict = await findPropertyNameConflict(title, { schoolId: null });
+      if (nameConflict) {
+        return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
+      }
+
       // All property-level writes in one transaction — sets app.current_user_id
       // for action_log attribution.
       const { data: newListingId, error: listingError } = await supabase.rpc("rpc_create_listing", {

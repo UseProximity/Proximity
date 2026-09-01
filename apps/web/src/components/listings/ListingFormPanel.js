@@ -20,6 +20,7 @@ const PMS_SYNC_OPTIONS = [
 
 // Add / Edit Listing Modal -------------------------------------------------------
 // Option lists shared with the add-listing wizard (see listingFormOptions.js).
+import { clampCount } from "@/utils/unitCounts";
 import {
   AMENITY_OPTIONS,
   AMENITY_LABELS,
@@ -109,6 +110,13 @@ export default function ListingFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  /*
+   * A rejection the landlord can only fix at one input — right now just a
+   * taken property name. Held apart from `error` so it can be shown ON the
+   * field instead of in the banner at the bottom of a long form, which is
+   * scrolled well out of view by the time a name is being edited.
+   */
+  const [fieldError, setFieldError] = useState(null);
 
   // Website-import draft state (add flow only). importedFields holds the names
   // of fields prefilled from the landlord's site ("address", "u0:rent", ...);
@@ -365,6 +373,9 @@ export default function ListingFormPanel({
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     clearImported(name);
+    // Editing the field the server complained about retires the complaint; the
+    // next save re-checks it anyway.
+    setFieldError((fe) => (fe?.field === name ? null : fe));
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -646,6 +657,7 @@ export default function ListingFormPanel({
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setFieldError(null);
     if (!form.address.trim()) {
       setError("Address is required.");
       return;
@@ -750,7 +762,20 @@ export default function ListingFormPanel({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Something went wrong.");
+        /*
+         * `field` marks a rejection that belongs to one input (a taken property
+         * name). It goes to that input rather than the banner so the landlord is
+         * looking at the thing they have to change.
+         */
+        if (data.field) {
+          setFieldError({
+            field: data.field,
+            message: data.error || "That value is already in use.",
+            conflict: data.conflict ?? null,
+          });
+        } else {
+          setError(data.error || "Something went wrong.");
+        }
         return;
       }
 
@@ -1117,9 +1142,26 @@ export default function ListingFormPanel({
                   name="title"
                   value={form.title}
                   onChange={handleChange}
-                  className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls("title")}`}
+                  aria-invalid={fieldError?.field === "title" || undefined}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                    fieldError?.field === "title"
+                      ? "border-red-500 focus:ring-red-500"
+                      : "border-gray-300 focus:ring-red-500"
+                  }${importedCls("title")}`}
                   placeholder="e.g. Cozy Studio Near Campus"
                 />
+                {fieldError?.field === "title" && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {fieldError.message}
+                    {fieldError.conflict?.address && (
+                      <span className="text-gray-600">
+                        {" "}
+                        — already used by {fieldError.conflict.address}. Add
+                        something that tells them apart, like the street.
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1375,7 +1417,7 @@ export default function ListingFormPanel({
                           min={min}
                           step={step}
                           value={unit[field]}
-                          onChange={(e) => updateUnit(i, field, e.target.value)}
+                          onChange={(e) => updateUnit(i, field, clampCount(e.target.value))}
                           className={`w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${importedCls(`u${i}:${field}`)}`}
                         />
                         {hint && (

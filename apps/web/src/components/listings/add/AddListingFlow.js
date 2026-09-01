@@ -25,6 +25,7 @@ import toast from "react-hot-toast";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
 import LeaseStep from "./LeaseStep";
+import { clampCount } from "@/utils/unitCounts";
 
 const emptyLease = (email) => ({
   rent: "",
@@ -287,26 +288,26 @@ export default function AddListingFlow({ user }) {
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Sq ft</span>
-                <input type="number" className={field} value={newUnit.area}
-                  onChange={(e) => setNewUnit({ ...newUnit, area: e.target.value })} />
+                <input type="number" min="0" className={field} value={newUnit.area}
+                  onChange={(e) => setNewUnit({ ...newUnit, area: clampCount(e.target.value) })} />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
                   Bedrooms <span className="text-red-500">*</span>
                 </span>
-                <input type="number" className={`${field} ${flag("bedrooms")}`}
+                <input type="number" min="0" className={`${field} ${flag("bedrooms")}`}
                   data-invalid={attempted && missingKeys.has("bedrooms")}
                   value={newUnit.bedrooms}
-                  onChange={(e) => setNewUnit({ ...newUnit, bedrooms: e.target.value })} />
+                  onChange={(e) => setNewUnit({ ...newUnit, bedrooms: clampCount(e.target.value) })} />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
                   Bathrooms <span className="text-red-500">*</span>
                 </span>
-                <input type="number" step="0.5" className={`${field} ${flag("bathrooms")}`}
+                <input type="number" min="0" step="0.5" className={`${field} ${flag("bathrooms")}`}
                   data-invalid={attempted && missingKeys.has("bathrooms")}
                   value={newUnit.bathrooms}
-                  onChange={(e) => setNewUnit({ ...newUnit, bathrooms: e.target.value })} />
+                  onChange={(e) => setNewUnit({ ...newUnit, bathrooms: clampCount(e.target.value) })} />
               </label>
             </div>
           )}
