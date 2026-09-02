@@ -623,7 +623,7 @@
       },
       {
         "table": "listing_units",
-        "description": "Physical units within a listing (beds/baths/area/availability). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2). [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.]",
+        "description": "Physical units within a listing (beds/baths/area). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2). [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED — a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -635,7 +635,6 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
-          "available:boolean",
           "unit_designator:text",
           "unit_number:text"
         ]

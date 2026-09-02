@@ -14,6 +14,7 @@ import {
   isRoomShareListing,
 } from "./listingConstraints";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import { unitIsAvailable, liveLeasesOf } from "@/lib/listings/unitAvailability";
 import {
   MATCHMAKING_CENTROIDS,
   NEIGHBORHOOD_RADIUS_KM,
@@ -232,7 +233,7 @@ function unitOffers(listing) {
   const units = listing.listing_units ?? [];
   // Fall back to every unit only when the listing marks none available, matching
   // browse: a fully-let building still shows its own room shapes.
-  const open = units.filter((u) => u.available !== false);
+  const open = units.filter(unitIsAvailable);
   const pool = open.length ? open : units;
 
   return pool.flatMap((u) => {
@@ -269,9 +270,11 @@ function unitOffers(listing) {
 // its room data, so a priced-leases-only check would let it slip through. Distinct
 // from listings.sublease_friendly, which only means subletting is ALLOWED there.
 export function isSubleaseListing(listing) {
-  const leases = (listing?.listing_units ?? []).flatMap((u) =>
-    (u.unit_leases ?? []).filter((l) => l.is_active)
-  );
+  // Withdrawn offerings get no vote. They used to: a sublease-only listing that
+  // also carried one withdrawn standard lease failed `every(sublease)` and came
+  // back "not a sublease", which slipped it past the default sublease exclusion
+  // and put it in front of students who had asked not to see one.
+  const leases = (listing?.listing_units ?? []).flatMap(liveLeasesOf);
   return leases.length > 0 && leases.every((l) => !!l.sublease);
 }
 
@@ -512,7 +515,10 @@ function unitMaxBeds(listing) {
 // exist, so we don't build a split out of units nobody can actually lease).
 function unitBedSizes(listing) {
   const units = (listing.listing_units ?? []).filter((u) => (Number(u.bedrooms) || 0) > 0);
-  const priced = units.filter((u) => (u.unit_leases ?? []).some((l) => l.is_active && l.rent > 0));
+  // Live offerings only — a withdrawn lease still carries its old rent, and
+  // counting it as "priced" built room-share splits out of units nobody can
+  // actually lease, which is the exact thing the comment above forbids.
+  const priced = units.filter((u) => liveLeasesOf(u).some((l) => l.rent > 0));
   return (priced.length ? priced : units).map((u) => Number(u.bedrooms) || 0);
 }
 

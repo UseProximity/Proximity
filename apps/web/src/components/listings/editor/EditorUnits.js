@@ -281,7 +281,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           {unit.area != null ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
         </span>
         {!unit.available && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">Unavailable</span>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
         )}
         {isPropertyOwner && dirty && (
           <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
@@ -435,26 +435,20 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
         </div>
       </div>
 
-      {/* The renter-facing panel puts Contact here. For a landlord the equivalent
-          action is deciding whether the unit is on the market at all. */}
+      {/* The renter-facing panel puts Contact here. For a landlord it is the
+          honest answer to "can students see this?" — and that is now decided by
+          the offerings above rather than by a switch of the unit's own. A unit
+          used to carry its own availability flag, set here and reported nowhere
+          the landlord looked; it drifted out of step with the marketplace and
+          quietly hid live properties. Withdraw the last offering to take a unit
+          off the market; add or restore one to put it back. */}
       {isPropertyOwner && (
-        <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+        <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
           <span className="text-xs text-gray-500">
             {unit.available
-              ? "This unit is on the market."
-              : "Hidden from students — no offering on it can be found."}
+              ? "On the market — students can see this unit."
+              : "Hidden from students: every offering on this unit has been withdrawn. Restore one above, or add a new one, to relist it."}
           </span>
-          <button
-            onClick={() => patchUnit({ available: !unit.available },
-              unit.available ? "Unit marked unavailable." : "Unit is available again.")}
-            disabled={saving}
-            className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
-              unit.available
-                ? "border border-gray-300 text-gray-700 hover:border-red-300 hover:text-red-600"
-                : "bg-green-600 text-white hover:bg-green-700"}`}
-          >
-            {unit.available ? "Mark unavailable" : "Mark available"}
-          </button>
         </div>
       )}
     </div>
@@ -721,8 +715,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
             }`}
           >
             {unitTabLabel(u)}
-            {/* A withdrawn unit still gets a tab — it is the only way back to
-                one — but it should not look like an active listing. */}
+            {/* A unit with nothing on offer still gets a tab — it is the only
+                way back to one — but it should not look like an active listing. */}
             {!u.available && (
               <span className={`ml-1.5 text-[10px] font-normal ${
                 openUnit.id === u.id && !drafting ? "text-red-100" : "text-red-400"}`}>
