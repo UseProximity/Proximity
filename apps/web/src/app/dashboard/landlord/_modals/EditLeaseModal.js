@@ -1,8 +1,9 @@
 "use client";
 
 /*
- * Edit ONE offering — the counterpart to ListingFormPanel for a landlord whose
- * stake at a property is a lease rather than the property record.
+ * Edit ONE offering — the counterpart to the property editor
+ * (components/listings/editor/) for a landlord whose stake at a property is a
+ * lease rather than the property record.
  *
  * The editable surface is deliberately narrow: their own terms, and nothing that
  * belongs to the building or to another landlord. That mirrors the API

@@ -2,7 +2,7 @@
 
 /*
  * Site-wide bug-report / suggestion widget. Renders a small floating button in the
- * bottom-left corner on desktop only (kept clear of the bottom-right ChatWidget)
+ * bottom-left corner on desktop only (kept clear of the bottom-right corner)
  * and a modal form. On mobile the launcher is hidden to keep the small viewport
  * clear — the footer "Report a bug" link is the entry point there.
  * On /browse the launcher shrinks to a translucent icon so it stops covering the

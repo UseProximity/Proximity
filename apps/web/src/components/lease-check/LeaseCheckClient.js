@@ -16,7 +16,7 @@ const MAX_FILES = 25;
 const SEVERITY_ORDER = { red: 0, yellow: 1, green: 2 };
 
 /*
- * Canvas compression (same approach as ListingFormPanel): ~1600px long edge, JPEG
+ * Canvas compression (same approach as SubleaseFormPanel): ~1600px long edge, JPEG
  * q0.72. HEIC is ALWAYS converted regardless of size — Safari can decode it in an
  * <img>, and the API can't take HEIC. PDFs pass through untouched.
  */

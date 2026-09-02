@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-30T23:03:38.931Z",
-  "count": 101,
+  "_generated": "2026-09-02T03:39:45.860Z",
+  "count": 93,
   "components": [
     {
       "name": "DormsView",
@@ -49,11 +49,6 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "ButtonAuth",
-      "file": "src/components/auth/ButtonAuth.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
       "name": "ProfileCompletionModal",
       "file": "src/components/auth/ProfileCompletionModal.js",
       "description": "No description — run generate after adding a description above."
@@ -64,23 +59,8 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "ChatWidget",
-      "file": "src/components/chat/ChatWidget.js",
-      "description": "Floating chat widget UI using @chatscope/chat-ui-kit-react"
-    },
-    {
       "name": "leasing-funnel",
       "file": "src/components/dashboard/leasing-funnel.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "market-comparisons",
-      "file": "src/components/dashboard/market-comparisons.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "trend-indicators",
-      "file": "src/components/dashboard/trend-indicators.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -199,16 +179,6 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "HeroMapPreview",
-      "file": "src/components/listings/HeroMapPreview.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "HeroSection",
-      "file": "src/components/listings/HeroSection.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
       "name": "LeaseOptions",
       "file": "src/components/listings/LeaseOptions.js",
       "description": "No description — run generate after adding a description above."
@@ -226,16 +196,6 @@
     {
       "name": "ListingDraftImport",
       "file": "src/components/listings/ListingDraftImport.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListingFilters",
-      "file": "src/components/listings/ListingFilters.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListingFormPanel",
-      "file": "src/components/listings/ListingFormPanel.js",
       "description": "No description — run generate after adding a description above."
     },
     {

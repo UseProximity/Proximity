@@ -16,8 +16,9 @@ import StepReview from "@/components/listings/wizard/StepReview";
  * Step-by-step Add Listing flow. One themed question set per screen, a labeled
  * progress bar that never lies, autosave to localStorage, and a review screen
  * before publishing. A website import fills what it can, then the wizard jumps
- * straight to the gaps. Editing an existing listing keeps the classic full
- * form (ListingFormPanel) — random access beats steps once data exists.
+ * straight to the gaps. Editing an existing listing goes through the property
+ * editor (components/listings/editor/) instead — random access beats steps once
+ * data exists.
  */
 
 export const STEPS = [
