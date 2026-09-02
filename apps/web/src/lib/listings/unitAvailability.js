@@ -9,17 +9,24 @@
  * the landlord could see ever mentioned it again.
  *
  * So availability is no longer a stored fact. It is read off the offerings —
- * the thing a renter actually signs:
+ * the thing a renter actually signs. A unit is available when at least one of
+ * its offerings is live (active, and not withdrawn by its owner), and not
+ * otherwise. No offering means nothing to take, which means not on the market.
  *
- *   one or more LIVE offerings   -> AVAILABLE. Someone is letting it right now.
- *   offerings, all withdrawn     -> UNAVAILABLE. It was on the market; it isn't.
- *   no offerings at all          -> AVAILABLE (unknown).
+ * A NOTE ON "NO OFFERINGS AT ALL", because it is the whole risk here:
  *
- * That last clause is load-bearing, not a nicety. Unpriced room data — a
- * scraped building nobody has published terms for — is a large share of the
- * marketplace, and `filterListings` is built around keeping it visible and
- * sinking it rather than dropping it. Reading "no offering" as "gone" would
- * have hidden 8 live properties the day this shipped. Unknown is not gone.
+ * This rule reads an offering-less unit as UNAVAILABLE. That is only safe
+ * because the units that had no offering were fixed first rather than written
+ * off. Eight live properties — Kingsland Courtyard, Five-Nine, University
+ * Square, four Roberts Realty addresses and 520 Westgate — carried their leases
+ * only in the retired `listing_leases` table: the 2026-03/04 bulk imports wrote
+ * unit rows and legacy lease rows and never created the `unit_leases` offering.
+ * They were never empty listings; the app was reading the wrong table. The
+ * backfill in 202609020002 gives each of them a real offering, after which
+ * exactly zero live listings depend on the lenient reading.
+ *
+ * If you are about to relax this back to "no offerings means available", find
+ * out what that is covering for first. It masked a data bug for five months.
  *
  * One definition, imported everywhere, so browse, the detail panel, the
  * sitemap, the landlord dashboard, admin and Proxy cannot disagree again.
@@ -34,9 +41,7 @@ export function liveLeasesOf(unit) {
 }
 
 export function unitIsAvailable(unit) {
-  const leases = unit?.unit_leases ?? [];
-  if (!leases.length) return true; // unknown, not gone — see above
-  return leases.some(isLiveLease);
+  return (unit?.unit_leases ?? []).some(isLiveLease);
 }
 
 /**
@@ -48,7 +53,8 @@ export function unitIsAvailable(unit) {
  *
  * Below that, a listing is hidden when it HAS units and not one is available.
  * A listing carrying no units at all is never flipped by this: that is missing
- * data, not a leased-out building.
+ * data about the building itself — a different bug with a different fix, and
+ * 23 live listings are in that state today.
  */
 export function listingIsUnavailable(row) {
   if (row?.unavailable) return true;

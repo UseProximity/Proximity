@@ -14,10 +14,18 @@
 -- form's checkbox had been unticked once at save time. Three listings were in
 -- that state the day this was written; all three come back when this lands.
 --
--- DEPLOY ORDER: the application code that stops reading and writing this column
--- must be LIVE BEFORE this migration runs. PL/pgSQL bodies are not re-checked
--- when a column disappears, so the old code would not fail at deploy — it would
--- fail per-request, on the first browse query that selects the column.
+-- DEPLOY ORDER — three steps, in this order, and they are not interchangeable:
+--
+--   1. 202609020001_backfill_legacy_unit_leases.sql   BEFORE the deploy.
+--      The new rule reads a unit with no live offering as off-market. Eight
+--      live properties have no offering only because their leases were left in
+--      the retired listing_leases table. Ship the code first and they go dark.
+--   2. Deploy the application code.
+--   3. THIS migration.
+--
+-- Step 3 must follow step 2 because PL/pgSQL bodies are not re-checked when a
+-- column disappears: the old code would not fail at deploy, it would fail
+-- per-request, on the first browse query that selects the column.
 --
 -- Applies to BOTH dev and prod (see .claude/rules/api.md).
 -- ===========================================================================
