@@ -1,286 +1,188 @@
 # Proximity
 
-Student housing platform for Washington University in St. Louis. Provides verified off-campus listings, honest peer reviews, a roommate matchmaking concierge, and role-based dashboards for students, landlords, and admins.
+Off-campus housing marketplace for university students, starting at WashU. Students browse verified
+listings, read reviews written by people who actually lived there, get matched to places by a chat
+concierge, and scan a lease for red flags. Landlords post and manage properties and see how they
+perform.
 
-**Live:** [useproximity.org](https://useproximity.org)
+**Live:** [useproximity.org](https://useproximity.org) · Deployed on Vercel
 
 ---
 
-## Tech Stack
+## Quick start
 
-| Layer | Technology |
+```bash
+git clone git@github.com:UseProximity/Proximity.git
+cd Proximity
+npm install                       # installs all workspaces
+
+# ask a maintainer for .env.local — put it in the REPO ROOT
+# (apps/web/.env.local is a symlink to it; the app and the scripts share one file)
+
+npm run dev:web -- -p 3000        # http://localhost:3000
+```
+
+**Local dev must run on port 3000.** `NEXTAUTH_URL` in `.env.local` points at
+`http://localhost:3000`, and the dev Cloudflare R2 bucket only allows browser uploads from that
+origin. On any other port, login silently bounces and photo uploads fail.
+
+Other commands:
+
+```bash
+npm run build:web    # production build — run before opening a PR
+npm run lint         # ESLint across all workspaces
+```
+
+Node 20+ (24 in use). There is **no unit-test suite** — verify changes by running the app and
+querying the database through the Supabase MCP.
+
+---
+
+## Repo map
+
+```
+apps/web/            ← the product. Everything real lives here.
+  src/app/           Next.js App Router: pages + /api route handlers
+  src/components/    React components, grouped by feature
+  src/lib/           Server-side domain logic (Supabase, listings, matchmaking, PMS, email…)
+  src/utils/         Small pure client-safe helpers (formatters, walk/drive times)
+  src/content/washu/ Hand-written SEO landing-page copy (JSON)
+  src/auth.js        NextAuth config — the auth entry point
+  src/middleware.ts  Edge middleware (injects x-pathname / x-search headers)
+  evals/             Offline eval harnesses for the AI features (lease-check, PMS, AEO)
+
+supabase/migrations/ 80+ date-prefixed SQL migrations
+scripts/             One-off + recurring ops scripts (prod→dev snapshot, SEO engine, backfills)
+mcp/                 Local MCP "knowledge server" — the deep, current docs (see below)
+.github/workflows/   CI: knowledge sync, release-PR impact check, snapshot cron
+
+apps/mobile/         ⚠️ SCAFFOLD ONLY — Expo boilerplate; every screen/lib file is `export {}`
+packages/            ⚠️ SCAFFOLD ONLY — all 14 files are `export {}`; nothing imports them
+```
+
+The monorepo shape (`apps/*` + `packages/*`) was set up in anticipation of a React Native app.
+That app was never written. Treat `apps/web` as the whole codebase until someone picks the mobile
+work back up.
+
+---
+
+## Where things live
+
+| I want to work on… | Start here |
 |---|---|
-| Framework | Next.js 15 (App Router) |
-| Auth | NextAuth v5 — Google OAuth + email/password |
-| Database | Supabase (PostgreSQL) — separate dev and prod projects |
-| ORM / Client | `@supabase/supabase-js`, `@supabase/ssr` |
-| Storage | Cloudflare R2 (S3-compatible) — listing and profile images |
-| Map | Mapbox GL JS |
-| Email | Nodemailer over SMTP |
-| Styling | Tailwind CSS |
-| Charts | Recharts |
-| Animation | Framer Motion |
-| Deployment | Vercel |
-| Analytics | Vercel Analytics + Google Analytics (GA4) |
+| Browse page, map, filters | `components/listings/BrowseContent.js` → `AvailableListings.js`, `TopFilterBar.js`, `MapView.js` |
+| Listing detail | `app/listings/[id]/` and `components/listings/ListingModalInfo.js` |
+| Creating a listing | `app/add-listing/page.js` — forks to `components/listings/add/` (manual) or `wizard/` (import) |
+| Subleases | `components/listings/SubleaseFormPanel.js`, `app/add-sublease/` |
+| Matchmaking chat | `app/matchmaking/`, `components/matchmaking/`, `lib/matchmaking/` |
+| Lease red-flag scanner | `app/lease-check/`, `lib/leaseCheck/` |
+| Reviews (listing + dorm) | `app/review/`, `components/reviews/`, `lib/reviews/` |
+| Landlord dashboard | `app/dashboard/landlord/` (`_sections/`, `_hooks/`, `_modals/`) |
+| Admin tools | `app/dashboard/admin/`, `components/admin/`, `app/api/admin/` |
+| PMS integrations (AppFolio, Buildium…) | `lib/pms/` — has its own `README.md` |
+| SEO landing pages | `app/washu/[slug]/`, `src/content/washu/*.json`, `lib/seo/` |
+
+`app/api/` mirrors the URL: `/api/landlord/listings/[listingId]` is
+`app/api/landlord/listings/[listingId]/route.js`. Most routes carry a header comment explaining
+what they do — **the codebase is unusually well-commented, and the comments are accurate. Read
+the file header before the code.**
 
 ---
 
-## Project Structure
+## The seven things you need to know
+
+**1. Auth is NextAuth, not Supabase Auth.** `src/auth.js` configures Google OAuth + email/password.
+Roles (`student` / `landlord` / `super`) are cached in the JWT and refreshed every 60s. Always read
+the role from `session.user.role` — never from `dbUser.role`, which is a foreign-key id.
+
+**2. Database access goes through the service-role client.** `lib/supabase.js` is the admin client
+used by API routes; RLS is not the access-control layer here — the route handlers are. Guard every
+route explicitly.
+
+**3. User writes go through `lib/supabaseWithUser.js`.** Its RPCs set `app.current_user_id` inside
+the same transaction so the `fn_action_log()` trigger can attribute every mutation. Use it for
+anything a user initiated; the plain client is for system writes.
+
+**4. There are three environments, switched by `APP_ENV`** (`lib/appEnv.js`):
+
+| | Database + R2 bucket | Outreach (email/Airtable) | Notes |
+|---|---|---|---|
+| `production` | prod | ON | the real site |
+| `staging` | **dev** | **OFF** | Vercel deploy on a prod-data snapshot; shows a banner |
+| `development` | **dev** | **OFF** | local |
+
+Never branch on `NODE_ENV` for data or outreach decisions — use `isProdData()` and
+`outreachEnabled()`. The resolver is deliberately fail-safe: anything ambiguous resolves to
+non-production.
+
+**5. Listings are a four-level tree**, and almost every bug lives in getting it wrong:
 
 ```
-src/
-├── app/                        # Next.js App Router — pages and API routes
-│   ├── api/                    # All API route handlers
-│   ├── dashboard/              # Role-gated dashboards (student, landlord, admin)
-│   ├── browse/                 # Listing search and map view
-│   ├── matchmaking/            # Roommate concierge form
-│   ├── CampusHub/              # Dorm reviews and campus info
-│   └── ...                     # login, reset-password, add-listing, etc.
-├── components/
-│   ├── layout/                 # Header, Footer, Providers
-│   ├── ui/                     # Stateless primitives (Modal, HeartIcon, etc.)
-│   ├── listings/               # Listing cards, map, modals, filters, reviews
-│   ├── dashboard/              # Landlord analytics widgets
-│   ├── auth/                   # ButtonAuth, ProfileCompletionModal
-│   └── chat/                   # ChatWidget (floating messenger)
-├── context/
-│   ├── FavoritesContext.js     # Global saved-listing IDs
-│   └── ChatContext.js          # In-memory chat conversation state
-├── lib/
-│   ├── supabase.js             # Service-role admin client (server only)
-│   ├── supabaseWithUser.js     # Write-as-user RPCs for action_log attribution
-│   ├── supabase/
-│   │   ├── client.ts           # Browser anon client
-│   │   ├── server.ts           # Server anon client (cookie-based)
-│   │   └── middleware.ts       # Middleware session-refresh client
-│   ├── r2.js                   # Cloudflare R2 / S3 client
-│   └── email.js                # Nodemailer — password reset + verification emails
-├── utils/
-│   ├── listingFormatters.js    # Rent, unit, and area label helpers
-│   ├── walkTimes.js            # Campus walk time calculations
-│   ├── washuPlaces.js          # WashU location reference data
-│   └── analytics.js            # GA4 event helpers
-├── auth.js                     # NextAuth config — providers, JWT, session callbacks
-└── middleware.ts               # Edge middleware — Supabase session refresh + URL headers
-
-supabase/migrations/            # 35+ versioned SQL migrations (date-prefixed)
-docs/                           # Architecture and schema documentation
-mcp/                            # Internal MCP server for AI tooling
-public/                         # Static assets — logos, dorm photos, map icons
+listing            a building/property (address, amenities, utilities, images)
+└── listing_unit   a unit TYPE, e.g. "2BR Corner" — not a physical apartment
+    └── unit_lease an OFFERING on that unit: rent, term, furnished, available_from,
+                   sublease?, per-person vs whole-unit rent
 ```
+
+A place is only a real match when **one** offering satisfies price *and* term *and* furnishing.
+The canonical query shape is `lib/listings/listingSelect.js`; the browse-side filter rules are
+`lib/listings/filterListings.js`.
+
+**6. Any page can open a listing detail modal** by putting `?listing=<id>` in the URL.
+`GlobalListingModal`, mounted in the root layout, watches that param. Shareable deep links and
+back-button support come free.
+
+**7. Schema migrations must be applied to BOTH the dev and prod Supabase projects.** A migration
+file committed to `supabase/migrations/` is *not* applied — a file in the repo has silently broken
+production before. Apply it and verify against the live database.
 
 ---
 
-## Getting Started
+## How to ship a change
 
-### Prerequisites
+1. **Refresh the knowledge base first:** `git fetch origin staging` and branch off fresh
+   `origin/staging`. `staging` is the trunk — every PR merges there first.
+2. Build the change on one branch. One feature = one branch = **one PR** into `staging`.
+   Don't stack PRs; use commits for reviewable steps.
+3. Run `npm run build:web` and `npm run lint`.
+4. Post a test plan and get sign-off before pushing.
+5. If you changed a route, component, page, util, env var, or the schema, regenerate the MCP
+   knowledge (`node mcp/scripts/generate-knowledge.mjs`) and commit it alongside your code.
 
-- Node.js 18+
-- A Supabase project (dev and optionally prod)
-- Cloudflare R2 bucket
-- Mapbox account
-- SMTP credentials (Gmail App Password or equivalent)
-- Google OAuth app (for Google sign-in)
-
-### Installation
-
-```bash
-git clone https://github.com/simaoribeiroo/proximity.git
-cd proximity
-npm install
-```
-
-### Environment Variables
-
-Create `.env.local` in the project root:
-
-```env
-# NextAuth
-NEXTAUTH_SECRET=your_secret_here
-
-# Google OAuth
-GOOGLE_ID=your_google_client_id
-GOOGLE_SECRET=your_google_client_secret
-
-# Supabase — Dev
-DEV_SUPABASE_URL=https://your-dev-project.supabase.co
-DEV_SUPABASE_SERVICE_KEY=your_dev_service_role_key
-DEV_SUPABASE_DEFAULT_KEY=your_dev_anon_key
-
-# Supabase — Prod
-PROD_SUPABASE_URL=https://your-prod-project.supabase.co
-PROD_SUPABASE_SERVICE_KEY=your_prod_service_role_key
-PROD_SUPABASE_DEFAULT_KEY=your_prod_anon_key
-
-# Cloudflare R2
-CLOUDFLARE_ACCOUNT_ID=your_account_id
-R2_ACCESS_KEY_ID=your_r2_access_key
-R2_SECRET_ACCESS_KEY=your_r2_secret_key
-R2_BUCKET_NAME=your_bucket_name
-R2_PUBLIC_URL=https://your-r2-public-url
-
-# Mapbox
-NEXT_PUBLIC_MAPBOX_TOKEN=pk.your_mapbox_token
-
-# Email (SMTP)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=your@email.com
-EMAIL_PASS=your_app_password
-```
-
-### Running Locally
-
-```bash
-npm run dev       # starts at http://localhost:3000
-npm run build     # production build
-npm run lint      # ESLint
-```
-
-### Database
-
-Migrations are managed with the Supabase CLI. To apply all migrations to your dev project:
-
-```bash
-supabase db push
-```
-
-Migration files live in `supabase/migrations/` and are applied in date order. See `docs/DATABASE_ARCHITECTURE.md` for schema documentation.
+No AI attribution in commit messages or PR descriptions.
 
 ---
 
-## Pages
+## Deeper docs
 
-| Route | Description | Auth |
-|---|---|---|
-| `/` | Home — hero, featured listings, matchmaking CTA | Public |
-| `/browse` | Listing search with map, filters, and saved toggle | Public |
-| `/CampusHub` | Dorm reviews and campus housing info | Public |
-| `/about` | Team and mission | Public |
-| `/matchmaking` | Roommate concierge intake form | Public |
-| `/login` | Email/password and Google sign-in | Public |
-| `/reset-password` | Password reset via token | Public |
-| `/add-listing` | Multi-step listing creation form | Landlord |
-| `/add-sub-lease` | Sublease listing form | Student |
-| `/_landlord/[landlordId]` | Public landlord profile page | Public |
-| `/dashboard` | Role-aware redirect to student/landlord/admin dashboard | Authenticated |
-| `/dashboard/student` | Saved listings, contacts, profile | Student |
-| `/dashboard/landlord` | Listing management and analytics | Landlord |
-| `/dashboard/admin` | User management, review moderation, DB tools | Admin |
-| `/dashboard/view-as/[userId]` | Admin impersonation view | Admin |
+The authoritative, machine-generated description of this codebase is the local **`proximity` MCP
+server** (`mcp/`, registered in `.mcp.json`). It is regenerated from the source on every push to
+`staging`, so it does not go stale the way a hand-written doc does. Read these resources:
 
----
-
-## API Routes
-
-### Auth — `/api/auth/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET/POST | `/api/auth/[...nextauth]` | NextAuth handler — sign in, sign out, session |
-| POST | `/api/auth/signup` | Create account with email/password, sends verification email |
-| GET | `/api/auth/verify-email` | Consume email verification token |
-| POST | `/api/auth/resend-verification` | Re-send verification email |
-| POST | `/api/auth/forgot-password` | Generate reset token and send reset email |
-| POST | `/api/auth/reset-password` | Consume reset token and update password |
-
-### Users — `/api/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/getUser` | Fetch the current user's full profile |
-| POST | `/api/editProfile` | Update profile fields (name, phone, bio, role, etc.) |
-| POST | `/api/uploadProfilePhoto` | Upload profile photo to R2 |
-| GET | `/api/searchUsers` | Search users by name or email (admin / matchmaking) |
-
-### Listings — `/api/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/listings` | Fetch all active listings with units and amenities |
-| GET | `/api/listing/[listingId]` | Fetch a single listing by ID |
-| POST | `/api/addListing` | Create a new listing with units, amenities, and media |
-| POST | `/api/upload` | Upload listing images to R2 |
-
-### Landlord — `/api/landlord/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/landlord/listings` | Fetch listings owned by the current landlord |
-| GET/PATCH/DELETE | `/api/landlord/listings/[listingId]` | Get, update, or delete a specific listing |
-| GET/POST/DELETE | `/api/landlord/listings/[listingId]/landlords` | Manage co-landlord assignments |
-| GET | `/api/landlord/metrics` | Aggregated analytics (views, contacts, saves) |
-| GET | `/api/landlord/reviews` | Reviews submitted for the landlord's listings |
-
-### Favorites — `/api/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/favorites` | Get all saved listing IDs for the current user |
-| POST/DELETE | `/api/favorites/[listingId]` | Save or unsave a listing |
-
-### Reviews — `/api/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/submitReview` | Submit a review for a listing |
-| POST | `/api/reviewVote` | Upvote or downvote a review |
-| GET | `/api/pendingReviews` | Reviews awaiting moderation |
-| GET | `/api/dormReviews` | Fetch dorm reviews (optionally filtered by dorm) |
-| GET | `/api/dorms` | Fetch dorm list with metadata |
-
-### Social / Engagement — `/api/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/favorites` | (see above) |
-| POST | `/api/contactLandlord` | Log a contact event and notify landlord |
-| GET | `/api/contacted` | Listings the current user has contacted |
-| POST | `/api/matchmaking` | Submit roommate concierge intake form |
-| GET | `/api/testimonials` | Fetch homepage testimonials |
-| POST | `/api/events` | Track GA4-style events server-side |
-
-### Admin — `/api/admin/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET/POST/PATCH/DELETE | `/api/admin/[table]` | Generic CRUD on any Supabase table |
-| GET/PATCH | `/api/admin/pending-reviews` | Approve or reject pending reviews |
-| GET | `/api/admin/schema` | Fetch live DB schema for the admin UI |
-| GET | `/api/admin/db-env` | Show which DB environment is active |
-| GET | `/api/admin/listing-images` | List R2 images for a listing |
-| POST | `/api/admin/update-campus-walk-times` | Recalculate walk times for all listings |
-| GET | `/api/admin/viewUser` | Look up a user by ID (for impersonation) |
-
-### Webhooks — `/api/webhooks/`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/webhooks/new-user` | Triggered on new user creation — sends welcome email |
-| POST | `/api/webhooks/new-listing` | Triggered on new listing — internal notification |
-
----
-
-## Roles
-
-Three user roles control access throughout the app:
-
-| Role | Access |
+| Resource | What it holds |
 |---|---|
-| `student` | Browse, save, contact landlords, submit reviews, matchmaking |
-| `landlord` | All student access + create/edit listings, view analytics |
-| `admin` | All landlord access + user management, review moderation, DB tools, impersonation |
+| `proximity://domain` | Product domain concepts and vocabulary |
+| `proximity://db-schema` | All 67 tables, columns, relationships |
+| `proximity://api-routes` | Every API route with its auth level |
+| `proximity://components`, `://pages`, `://utils` | Full inventories |
+| `proximity://env-vars` | Every `process.env.*` the app reads |
 
-Role is stored in Supabase, cached in the NextAuth JWT, and refreshed automatically every 60 seconds. Always read role from `session.user.role` — never from `dbUser.role` (which is a foreign key ID, not the role name).
+It also exposes `analyze-impact` (maps a diff to the pages and endpoints downstream of it) and
+`run-impact-tests` (runs that checklist against a running app).
+
+- `CLAUDE.md` — conventions and the working agreement, for humans and coding agents alike.
+- `lib/pms/README.md` — the property-management-system integration layer.
+- `apps/web/evals/*/README.md` — how to run the AI evals.
+- `PMS_APPFOLIO_BRIEF.md` — background on the AppFolio integration.
 
 ---
 
-## Key Architectural Decisions
+## Stack
 
-**Dual Supabase clients:** The service-role client (`src/lib/supabase.js`) is used in API routes where RLS should be bypassed (auth callbacks, admin operations). The anon clients (`src/lib/supabase/client.ts` and `server.ts`) are used for user-facing queries that respect RLS.
+Next.js 15 (App Router) · React 18 · Tailwind · plain JavaScript (no TypeScript except
+`middleware.ts`) · NextAuth v5 · Supabase Postgres (separate dev + prod projects) · Cloudflare R2 ·
+Mapbox GL · Anthropic API (matchmaking, lease-check, listing import) · Nodemailer · Recharts ·
+Framer Motion · Vercel.
 
-**Write-as-user RPCs:** All user-initiated writes go through `src/lib/supabaseWithUser.js` instead of direct Supabase calls. Each RPC sets `app.current_user_id` in PostgreSQL config within the same transaction so `fn_action_log()` can attribute every mutation to the authenticated user.
-
-**URL-driven listing modal:** Any page can open a listing detail view by setting `?listing=<id>` in the URL. `GlobalListingModal` (mounted in the root layout) watches this param and fetches the listing. This enables shareable deep links and back-button support with no extra routing logic.
-
-**JWT role caching:** User role and `profileComplete` are stored in the NextAuth JWT and refreshed every 60 seconds rather than on every request, keeping session reads at zero DB cost while still propagating admin-side role changes within a minute.
+Conventions: Tailwind only — no CSS modules, no inline styles. Import with the `@/` alias
+(`@/components/...`, `@/lib/...`). Keep components small; extract sub-components as they grow.
