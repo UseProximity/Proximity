@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-03T05:02:21.425Z",
-  "count": 70,
+  "_generated": "2026-09-03T19:57:20.696Z",
+  "count": 72,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -246,6 +246,14 @@
     {
       "file": "src/lib/userRole.js",
       "description": "Resolve a user's authoritative role straight from the database."
+    },
+    {
+      "file": "src/lib/users/dashboardUser.js",
+      "description": "The dashboard payload, built once for whoever is being looked at."
+    },
+    {
+      "file": "src/lib/users/viewAs.js",
+      "description": "Who a dashboard request is actually ABOUT."
     },
     {
       "file": "src/lib/washuPages.js",
