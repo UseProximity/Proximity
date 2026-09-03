@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-03T20:53:25.402Z",
-  "count": 88,
+  "_generated": "2026-09-03T21:05:55.980Z",
+  "count": 90,
   "routes": [
     {
       "path": "/api/addListing",
@@ -423,6 +423,18 @@
         "users"
       ],
       "file": "src/app/api/cron/pms-sync/route.js"
+    },
+    {
+      "path": "/api/cron/review-confirmations",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/review-confirmations/route.js"
     },
     {
       "path": "/api/cron/seo-report",
@@ -1155,6 +1167,20 @@
         "listing_drive_times"
       ],
       "file": "src/app/api/reviewReferral/route.js"
+    },
+    {
+      "path": "/api/reviews/confirm",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/reviews/confirm/route.js"
     },
     {
       "path": "/api/reviewVote",
