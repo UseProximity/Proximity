@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Home,
   Plus,
@@ -13,6 +12,7 @@ import {
   Pencil,
   Users,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -27,19 +27,12 @@ import {
  * Rent across the landlord's OWN offerings at a property — the dashboard
  * equivalent of getRentRangeLabel, but scoped to what is actually theirs.
  */
-/*
- * Mirrors listingIsUnavailable() against the dashboard's already-shaped units,
- * so un-hiding a property updates the badge without a refetch. The server stays
- * the authority — this only has to hold until the next load.
- */
-function allUnitsClosed(listing) {
-  const units = listing.unitTypes ?? [];
-  return units.length > 0 && units.every((u) => u.available === false);
-}
-
 function myLeaseRentLabel(myLeases = []) {
+  // Nothing on the market is not a price on request. It is no offer at all,
+  // and "Contact for Pricing" invites an enquiry students cannot make.
+  if (myLeases.length && !myLeases.some((l) => l.isLive)) return "Not listed";
   const rents = myLeases
-    .filter((l) => !l.unavailable && l.rent != null)
+    .filter((l) => l.isLive && l.rent != null)
     .map((l) => Number(l.rent))
     .filter(Number.isFinite);
   if (!rents.length) return "Contact for Pricing";
@@ -51,50 +44,15 @@ function myLeaseRentLabel(myLeases = []) {
 
 export default function PropertiesSection({
   user,
-  setUser,
   handlePropertySelect,
   router,
   onAddListing,
   onDeleteListing,
   onEditLease,
   onWithdrawLease,
+  onRepublishLease,
   onManageCoOwners,
 }) {
-  const [togglingId, setTogglingId] = useState(null);
-
-  /*
-   * This button owns ONE thing: the landlord's own hide switch
-   * (`listings.unavailable`, surfaced as `hiddenByOwner`). Whether students can
-   * actually see the property is a wider question — a listing every offering
-   * has been withdrawn from is hidden no matter what this switch says — so the
-   * badge reads `unavailable` and this reads `hiddenByOwner`. Toggling them as
-   * one value is what let the dashboard report "Available" on a property browse
-   * had hidden for weeks.
-   */
-  async function handleToggleHidden(e, property) {
-    e.stopPropagation();
-    setTogglingId(property._id);
-    try {
-      const res = await fetch(`/api/listing/${property._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unavailable: !property.hiddenByOwner }),
-      });
-      if (res.ok) {
-        const { unavailable: hiddenByOwner } = await res.json();
-        setUser((prev) => ({
-          ...prev,
-          listings: prev.listings.map((l) =>
-            l._id === property._id
-              ? { ...l, hiddenByOwner, unavailable: hiddenByOwner || allUnitsClosed(l) }
-              : l
-          ),
-        }));
-      }
-    } finally {
-      setTogglingId(null);
-    }
-  }
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -196,25 +154,14 @@ export default function PropertiesSection({
               >
                 {property.unavailable ? "Unavailable" : "Available"}
               </Badge>
-              <button
-                onClick={(e) => handleToggleHidden(e, property)}
-                disabled={togglingId === property._id}
-                className="absolute bottom-3 left-3 bg-white/90 hover:bg-white text-xs font-semibold px-2.5 py-1 rounded-full shadow transition disabled:opacity-50"
-              >
-                {togglingId === property._id
-                  ? "Saving…"
-                  : property.hiddenByOwner
-                  ? "Mark Available"
-                  : "Mark Unavailable"}
-              </button>
             </div>
-            {/* Hidden, but not by the switch above — so say which lever to pull.
-                Without this the landlord sees a grey badge and a button already
-                reading "Mark Unavailable", and nothing explains the gap. */}
-            {property.unavailable && !property.hiddenByOwner && (
+            {/* Availability is not a switch anyone flips here. It is the sum of
+                the offerings on this property, so when the badge reads grey the
+                useful thing to say is which offerings would turn it green. */}
+            {property.unavailable && (
               <p className="px-4 pt-3 text-xs text-amber-700">
-                Students can&apos;t see this: every unit&apos;s offering has been
-                withdrawn. Add or restore a lease to put it back on the market.
+                Students can&apos;t see this: no unit here has a live offering.
+                Publish a listing on a unit to put it back on the market.
               </p>
             )}
 
@@ -231,12 +178,28 @@ export default function PropertiesSection({
 
             <CardContent className="space-y-3">
               {property.ownership === "lease" && property.myLeases?.length > 0 && (
-                <p className="text-xs text-gray-500">
-                  Your {property.myLeases.length === 1 ? "listing" : "listings"}:{" "}
-                  {property.myLeases
-                    .map((x) => x.unitLabel ?? `${x.bedrooms ?? "?"} bed`)
-                    .join(", ")}
-                </p>
+                <>
+                  <p className="text-xs text-gray-500">
+                    Your {property.myLeases.length === 1 ? "listing" : "listings"}:{" "}
+                    {property.myLeases
+                      .map(
+                        (x) =>
+                          `${x.unitLabel ?? `${x.bedrooms ?? "?"} bed`}${
+                            x.isLive ? "" : " (withdrawn)"
+                          }`
+                      )
+                      .join(", ")}
+                  </p>
+                  {/* The withdrawal itself always worked; only the card never
+                      admitted it, so the button read as broken and got pressed
+                      again. Say the state, and offer the way back. */}
+                  {!property.myLeases.some((x) => x.isLive) && (
+                    <p className="text-xs text-amber-700">
+                      Withdrawn. Students can&apos;t see your price or contact
+                      details. Publish it again when you&apos;re ready.
+                    </p>
+                  )}
+                </>
               )}
 
               <div className="flex items-center justify-between text-xs text-gray-600">
@@ -315,16 +278,29 @@ export default function PropertiesSection({
                       <Pencil className="h-3.5 w-3.5" />
                       Edit my listing
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onWithdrawLease(property);
-                      }}
-                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Withdraw
-                    </button>
+                    {property.myLeases?.some((x) => x.isLive) ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onWithdrawLease(property);
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Withdraw
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRepublishLease(property);
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-green-700 font-medium px-2.5 py-1.5 rounded-md hover:bg-green-50 transition-colors"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Publish again
+                      </button>
+                    )}
                     <span className="ml-auto self-center text-[11px] text-gray-400">
                       Listed at another owner&apos;s property
                     </span>

@@ -365,6 +365,7 @@ export async function claimUnclaimedProperty({ userId, listingId, sublease = fal
       console.error("[ownership] property handover failed:", error.message);
       return false;
     }
+    await releaseSystemHide(listingId);
     return true;
   }
 
@@ -375,5 +376,31 @@ export async function claimUnclaimedProperty({ userId, listingId, sublease = fal
     console.error("[ownership] property claim failed:", error.message);
     return false;
   }
+  await releaseSystemHide(listingId);
   return true;
+}
+
+/*
+ * Clear the system hide on a property that has just found an owner.
+ *
+ * A review stub is created with listings.unavailable set, because a property
+ * with no units at all is not flipped by listingIsUnavailable() and would
+ * otherwise sit in browse advertising nothing. That flag is ours, not the
+ * landlord's, and no landlord-facing route sets or clears it.
+ *
+ * So it has to be released here. Leaving it set would hand someone a building
+ * they own and cannot publish, with no control anywhere that explains why: the
+ * exact dead end this whole path exists to remove.
+ *
+ * Safe to clear unconditionally at this point because every caller claims after
+ * writing a unit, so the property has at least one, and availability falls
+ * through to the offerings on it: no live lease still means not on the market.
+ */
+async function releaseSystemHide(listingId) {
+  const { error } = await supabase
+    .from("listings")
+    .update({ unavailable: false })
+    .eq("id", listingId)
+    .eq("unavailable", true);
+  if (error) console.error("[ownership] releasing system hide failed:", error.message);
 }
