@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { unitIdentityLabel } from "@/lib/listings/getListing";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
-import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import { isLiveLease, unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -69,6 +69,15 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             description: lease.description ?? "",
             isActive: !!lease.is_active,
             unavailable: !!lease.unavailable,
+            /*
+             * Whether this offering is on the market, by the same definition
+             * browse uses. is_active and unavailable are two halves of one
+             * answer and reading either alone gets it wrong: a withdrawal sets
+             * both, and the dashboard used to test is_active by itself — which
+             * is how "Withdraw" stayed on screen after a withdrawal and, worse,
+             * re-withdrew the same lease when pressed again.
+             */
+            isLive: isLiveLease(lease),
           }))
       )
     : [];

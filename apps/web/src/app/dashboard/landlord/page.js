@@ -37,6 +37,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     handleDeleteListing,
     handleEditLease,
     handleWithdrawLease,
+    handleRepublishLease,
     leaseModal,
     setLeaseModal,
     fetchUser,
@@ -96,6 +97,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
             onDeleteListing={handleDeleteListing}
             onEditLease={handleEditLease}
             onWithdrawLease={handleWithdrawLease}
+            onRepublishLease={handleRepublishLease}
             onManageCoOwners={handleManageCoOwners}
           />
         );

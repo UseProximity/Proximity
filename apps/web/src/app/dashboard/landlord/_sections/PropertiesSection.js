@@ -13,6 +13,7 @@ import {
   Pencil,
   Users,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -38,8 +39,11 @@ function allUnitsClosed(listing) {
 }
 
 function myLeaseRentLabel(myLeases = []) {
+  // Nothing on the market is not a price on request — it is no offer at all,
+  // and "Contact for Pricing" invites an enquiry students cannot make.
+  if (myLeases.length && !myLeases.some((l) => l.isLive)) return "Not listed";
   const rents = myLeases
-    .filter((l) => !l.unavailable && l.rent != null)
+    .filter((l) => l.isLive && l.rent != null)
     .map((l) => Number(l.rent))
     .filter(Number.isFinite);
   if (!rents.length) return "Contact for Pricing";
@@ -58,6 +62,7 @@ export default function PropertiesSection({
   onDeleteListing,
   onEditLease,
   onWithdrawLease,
+  onRepublishLease,
   onManageCoOwners,
 }) {
   const [togglingId, setTogglingId] = useState(null);
@@ -231,12 +236,28 @@ export default function PropertiesSection({
 
             <CardContent className="space-y-3">
               {property.ownership === "lease" && property.myLeases?.length > 0 && (
-                <p className="text-xs text-gray-500">
-                  Your {property.myLeases.length === 1 ? "listing" : "listings"}:{" "}
-                  {property.myLeases
-                    .map((x) => x.unitLabel ?? `${x.bedrooms ?? "?"} bed`)
-                    .join(", ")}
-                </p>
+                <>
+                  <p className="text-xs text-gray-500">
+                    Your {property.myLeases.length === 1 ? "listing" : "listings"}:{" "}
+                    {property.myLeases
+                      .map(
+                        (x) =>
+                          `${x.unitLabel ?? `${x.bedrooms ?? "?"} bed`}${
+                            x.isLive ? "" : " (withdrawn)"
+                          }`
+                      )
+                      .join(", ")}
+                  </p>
+                  {/* The withdrawal itself always worked; only the card never
+                      admitted it, so the button read as broken and got pressed
+                      again. Say the state, and offer the way back. */}
+                  {!property.myLeases.some((x) => x.isLive) && (
+                    <p className="text-xs text-amber-700">
+                      Withdrawn — students can&apos;t see your price or contact
+                      details. Publish it again when you&apos;re ready.
+                    </p>
+                  )}
+                </>
               )}
 
               <div className="flex items-center justify-between text-xs text-gray-600">
@@ -315,16 +336,29 @@ export default function PropertiesSection({
                       <Pencil className="h-3.5 w-3.5" />
                       Edit my listing
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onWithdrawLease(property);
-                      }}
-                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Withdraw
-                    </button>
+                    {property.myLeases?.some((x) => x.isLive) ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onWithdrawLease(property);
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Withdraw
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRepublishLease(property);
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-green-700 font-medium px-2.5 py-1.5 rounded-md hover:bg-green-50 transition-colors"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Publish again
+                      </button>
+                    )}
                     <span className="ml-auto self-center text-[11px] text-gray-400">
                       Listed at another owner&apos;s property
                     </span>
