@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 
 /*
  * Add a unit to a property.
@@ -15,6 +16,12 @@ import supabase from "@/lib/supabase";
  * The unit is created with no offering on it. Terms belong to whoever is letting
  * it and are added through /api/leases, which is a separate act of ownership:
  * adding a unit says the apartment exists, not that it is yours.
+ *
+ * The exception is a property nobody owns — a review stub carrying the Proximity
+ * placeholder, or an import with no landlord row. There, a landlord adding the
+ * first real unit takes the property record with it, because otherwise they have
+ * furnished a building they cannot edit or publish. claimUnclaimedProperty holds
+ * the guards on that.
  *
  * Bedrooms and bathrooms are required — they are NOT NULL on the table, and
  * more to the point a unit with unknown specs would appear in browse and match
@@ -137,5 +144,15 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: "Could not add that unit." }, { status: 500 });
   }
 
-  return NextResponse.json({ message: "Unit added", unit: { id: unit.id } }, { status: 201 });
+  // Best-effort, and deliberately after the insert: the unit is the thing the
+  // caller asked for, and a claim that fails must not fail it.
+  const claimed = await claimUnclaimedProperty({
+    userId: session.user.id,
+    listingId,
+  });
+
+  return NextResponse.json(
+    { message: "Unit added", unit: { id: unit.id }, claimedProperty: claimed },
+    { status: 201 }
+  );
 }

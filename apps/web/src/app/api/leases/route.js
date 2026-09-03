@@ -1,6 +1,7 @@
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 
 // Create a lease on a unit that already exists — step 3 of the
 // address -> unit -> lease flow, taken when the address matched a known property
@@ -10,6 +11,12 @@ import { shortDescription } from "@/lib/listings/leaseDescription";
 // own offering. Owner-specific content (contact, description, furnished) is
 // written onto the lease, so it never overwrites what another landlord at the
 // same property has published.
+//
+// One thing it can change: a property nobody owns — a review stub carrying the
+// Proximity placeholder, or an import with no landlord row — is handed to a
+// landlord publishing a real (non-sublease) offering on it. This is the step
+// where sublease is actually known, which is why the claim is tried here as well
+// as on unit creation. See claimUnclaimedProperty.
 //
 // @auth user
 export async function POST(req) {
@@ -97,8 +104,18 @@ export async function POST(req) {
     return Response.json({ error: "Could not create that lease." }, { status: 500 });
   }
 
+  const claimed = await claimUnclaimedProperty({
+    userId: session.user.id,
+    listingId: unit.listing_id,
+    sublease: !!sublease,
+  });
+
   return Response.json(
-    { message: "Lease created", lease: { id: lease.id, listingId: unit.listing_id } },
+    {
+      message: "Lease created",
+      lease: { id: lease.id, listingId: unit.listing_id },
+      claimedProperty: claimed,
+    },
     { status: 201 }
   );
 }

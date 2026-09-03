@@ -1,4 +1,5 @@
 import supabase from "@/lib/supabase";
+import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
 
 /*
  * Ids arrive from URL segments, so they are whatever the caller typed. The id
@@ -265,4 +266,114 @@ export async function canManageLease(userId, leaseId) {
   }
 
   return { ok: true, lease, listingId };
+}
+
+/*
+ * ——— Claiming an unowned property ————————————————————————————————————————
+ *
+ * Two kinds of property sit on the site with nobody behind them:
+ *
+ *   The review stubs. A student reviews an address that isn't listed yet and
+ *   /api/reviewReferral creates the property so the review has somewhere to
+ *   live, with the shared Proximity account as its landlord. The detail panel
+ *   duly reads "Listed by Proximity".
+ *
+ *   The genuinely unclaimed. Imports and scrapes create no listing_landlords
+ *   row at all, and neither does a student posting a sublease (p_claim_property
+ *   — see 202608300002).
+ *
+ * Both leave a real landlord who turns up later stuck: adding a unit gives them
+ * a LEASE, and isPropertyOwner reads listing_landlords, so the building's own
+ * record — its address, its amenities, its availability, its unit set — stays
+ * locked against the only person who can actually maintain it. That is what
+ * happened at 6675 Washington, where the landlord added a unit, ten photos and
+ * a floor plan to a review stub she could not then edit or publish.
+ *
+ * So the first landlord to put a real offering on an unowned property takes the
+ * record. The guards are what keep that from being a land grab:
+ *
+ *   Landlord role only. A student is subletting, not managing a building.
+ *   Never on a sublease. Same rule as p_claim_property, for the same reason:
+ *     subletting is taking over part of someone else's lease.
+ *   Nobody else may already hold a stake. Another person's lease here — live or
+ *     withdrawn — means this is a shared property, and a shared property is
+ *     claimed by talking to us, not by being second.
+ *
+ * Returns true when the caller ended up owning the property.
+ */
+export async function claimUnclaimedProperty({ userId, listingId, sublease = false }) {
+  if (!isUuid(userId) || !isUuid(listingId)) return false;
+  if (sublease) return false;
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("id, deleted_at, roles!role_id(name)")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!user || user.deleted_at || user.roles?.name !== "landlord") return false;
+
+  const { data: landlords, error: landlordErr } = await supabase
+    .from("listing_landlords")
+    .select("id, user_id")
+    .eq("listing_id", listingId);
+  // A read failure is not evidence the property is free. Leave it alone.
+  if (landlordErr) return false;
+
+  const placeholderId = await resolveProximityLandlordId();
+  const placeholderRow = (landlords ?? []).find((r) => r.user_id === placeholderId);
+  // Anyone real on the record — the caller included, in which case there is
+  // nothing left to do — means this property is already owned.
+  if ((landlords ?? []).some((r) => r.user_id !== placeholderId)) return false;
+
+  /*
+   * A lease belonging to someone else is a stake, and stakes are what make a
+   * property shared rather than free. Withdrawn ones count: a landlord between
+   * tenants has not stopped being here. Ownerless leases (owner_id null) don't —
+   * those are imported contacts with no account behind them, which is precisely
+   * the state this function exists to resolve.
+   */
+  const { data: units } = await supabase
+    .from("listing_units")
+    .select("id")
+    .eq("listing_id", listingId)
+    .is("deleted_at", null);
+
+  const unitIds = (units ?? []).map((u) => u.id);
+  if (unitIds.length) {
+    const { data: rival } = await supabase
+      .from("unit_leases")
+      .select("id")
+      .in("unit_id", unitIds)
+      .not("owner_id", "is", null)
+      .neq("owner_id", userId)
+      .limit(1);
+    if (rival?.length) return false;
+  }
+
+  /*
+   * Handing over the placeholder's own row rather than inserting a second one
+   * and deleting the first: one statement, so there is no window where the
+   * property has two primary landlords (which owner the panel then shows is
+   * arbitrary) or none at all.
+   */
+  if (placeholderRow) {
+    const { error } = await supabase
+      .from("listing_landlords")
+      .update({ user_id: userId, is_primary: true })
+      .eq("id", placeholderRow.id);
+    if (error) {
+      console.error("[ownership] property handover failed:", error.message);
+      return false;
+    }
+    return true;
+  }
+
+  const { error } = await supabase
+    .from("listing_landlords")
+    .insert({ listing_id: listingId, user_id: userId, is_primary: true });
+  if (error) {
+    console.error("[ownership] property claim failed:", error.message);
+    return false;
+  }
+  return true;
 }

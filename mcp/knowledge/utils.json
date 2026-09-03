@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-02T18:52:53.736Z",
+  "_generated": "2026-09-03T04:25:02.306Z",
   "count": 69,
   "utils": [
     {
@@ -86,6 +86,10 @@
     {
       "file": "src/lib/listings/ownership.js",
       "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
+    },
+    {
+      "file": "src/lib/listings/placeholderOwner.js",
+      "description": "The shared \"Proximity\" landlord account."
     },
     {
       "file": "src/lib/listings/propertyName.js",
