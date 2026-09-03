@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-30T23:03:38.931Z",
-  "count": 101,
+  "_generated": "2026-09-03T20:53:25.405Z",
+  "count": 102,
   "components": [
     {
       "name": "DormsView",
@@ -26,6 +26,11 @@
     {
       "name": "ReferenceView",
       "file": "src/components/admin/ReferenceView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewsView",
+      "file": "src/components/admin/ReviewsView.js",
       "description": "No description — run generate after adding a description above."
     },
     {

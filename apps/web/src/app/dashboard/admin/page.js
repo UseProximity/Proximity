@@ -8,6 +8,7 @@ import GearModal from "@/components/admin/GearModal";
 import ImageManagerPanel from "@/components/admin/ImageManagerPanel";
 import ListingsView from "@/components/admin/ListingsView";
 import UsersView from "@/components/admin/UsersView";
+import ReviewsView from "@/components/admin/ReviewsView";
 import DormsView from "@/components/admin/DormsView";
 import TestimonialsView from "@/components/admin/TestimonialsView";
 import ReferenceView from "@/components/admin/ReferenceView";
@@ -15,6 +16,7 @@ import ReferenceView from "@/components/admin/ReferenceView";
 const VIEWS = [
   { key: "listings", label: "Listings" },
   { key: "users", label: "Users" },
+  { key: "reviews", label: "Reviews" },
   { key: "dorms", label: "Dorms" },
   { key: "testimonials", label: "Testimonials" },
   { key: "reference", label: "Reference data" },
@@ -435,6 +437,7 @@ export default function AdminDashboard() {
           <>
             {view === "listings" && <ListingsView {...viewProps} />}
             {view === "users" && <UsersView {...viewProps} />}
+            {view === "reviews" && <ReviewsView {...viewProps} />}
             {view === "dorms" && <DormsView {...viewProps} />}
             {view === "testimonials" && <TestimonialsView {...viewProps} />}
             {view === "reference" && <ReferenceView {...viewProps} />}
