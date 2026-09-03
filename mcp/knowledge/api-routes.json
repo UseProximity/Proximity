@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-03T05:43:15.877Z",
+  "_generated": "2026-09-03T19:57:20.647Z",
   "count": 88,
   "routes": [
     {
@@ -188,16 +188,12 @@
       "methods": [
         "GET"
       ],
-      "auth": "any",
+      "auth": "super",
       "methodAuth": {
-        "GET": "any"
+        "GET": "super"
       },
       "tables": [
-        "users",
-        "interaction_types",
-        "listing_landlords",
-        "user_listing_interactions",
-        "listings"
+        "users"
       ],
       "file": "src/app/api/admin/viewUser/route.js"
     },
@@ -596,15 +592,7 @@
       "methodAuth": {
         "GET": "any"
       },
-      "tables": [
-        "users",
-        "interaction_types",
-        "user_listing_interactions",
-        "listing_landlords",
-        "unit_leases",
-        "listings",
-        "listing_metrics_daily"
-      ],
+      "tables": [],
       "file": "src/app/api/getUser/route.js"
     },
     {
