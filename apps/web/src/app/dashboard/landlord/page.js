@@ -18,7 +18,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     sidebarOpen,
     setSidebarOpen,
     user,
-    setUser,
     coOwnersModal,
     setCoOwnersModal,
     profileUpdatePrompt,
@@ -90,7 +89,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return (
           <PropertiesSection
             user={user}
-            setUser={setUser}
             handlePropertySelect={handlePropertySelect}
             router={router}
             onAddListing={handleAddListing}

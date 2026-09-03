@@ -20,6 +20,7 @@ This file mirrors the authoritative project knowledge served by the local **`pro
 - **Local dev runs on `localhost:3000`** (`npm run dev -- -p 3000`): `NEXTAUTH_URL` in `.env.local` must match the served origin or login silently bounces, and the dev R2 bucket's CORS policy allows browser photo uploads from `http://localhost:3000` only — any Cloudflare R2 testing must happen on 3000 (Wyatt, 2026-08-12).
 - Plain JavaScript everywhere (no TypeScript except `middleware.ts`); Tailwind CSS only — no CSS modules, no inline styles.
 - Use the `@/` path alias (`@/components/...`, `@/lib/...`, `@/utils/...`). Keep components reasonably small; extract sub-components when they grow.
+- **No em dashes.** Not in code comments, UI copy, commit messages, PR descriptions or docs (Wyatt, 2026-09-03). Use a full stop, a comma, a colon or brackets instead. This applies to anything written into this repo.
 - API/auth/DB conventions live in `.claude/rules/api.md` (auto-loads when working under `src/`). One rule worth repeating: **schema migrations always go to BOTH dev and prod.**
 
 ## Environments (`src/lib/appEnv.js`)
