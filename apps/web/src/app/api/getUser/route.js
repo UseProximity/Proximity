@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { unitIdentityLabel } from "@/lib/listings/getListing";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -97,7 +98,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
         leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
           ? activeLease.lease_term_months.map(Number)
           : [],
-        available: u.available ?? true,
+        available: unitIsAvailable(u),
         /*
          * EVERY offering on this unit, not just the first live one. A unit can
          * carry competing leases from different landlords, so a dashboard that
@@ -148,7 +149,17 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     utilitiesIncluded: utilitiesRowToArray(l.listing_utilities),
     subleaseFriendly: l.sublease_friendly ?? false,
     twentyOnePlus: l.twenty_one_plus ?? false,
-    unavailable: l.unavailable ?? false,
+    /*
+     * What a STUDENT sees, not what the owner last toggled. The dashboard used
+     * to render its green "Available" badge straight off `listings.unavailable`
+     * while browse hid the same property for having no live offering — 721
+     * Limit spent three weeks that way, invisible and reported healthy. The
+     * badge now answers the same question the marketplace does.
+     */
+    unavailable: listingIsUnavailable(l),
+    // The owner's own hide switch, kept separate so the toggle reflects its own
+    // state and the UI can distinguish "I hid this" from "nothing is on offer".
+    hiddenByOwner: !!l.unavailable,
     minRent: l.min_rent != null ? Number(l.min_rent) : null,
     maxRent: l.max_rent != null ? Number(l.max_rent) : null,
     minBathrooms: l.min_bathrooms != null ? Number(l.min_bathrooms) : null,

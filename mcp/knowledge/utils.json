@@ -104,6 +104,10 @@
       "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
     },
     {
+      "file": "src/lib/listings/unitAvailability.js",
+      "description": "Is this unit something a renter can actually take?"
+    },
+    {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
       "description": "No description — add a top-of-file comment."
     },

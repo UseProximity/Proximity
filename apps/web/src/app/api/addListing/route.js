@@ -333,6 +333,9 @@ export async function POST(req) {
       leaseAvailability: unit.leaseAvailability ?? null,
       rentIsPerPerson:
         unit.rentIsPerPerson == null ? null : !!unit.rentIsPerPerson,
+      // Availability of the OFFERING, not of the unit — it lands on
+      // unit_leases.unavailable below. Units no longer carry a flag of their
+      // own; whether one is available is read back off its offerings.
       available: unit.available !== false,
       sublease: isSublease,
       // Unit identity. 'Whole' covers the entire property and carries no number
@@ -475,7 +478,6 @@ export async function POST(req) {
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms,
           area: unit.area,
-          available: unit.available,
           title: unit.title,
           floor_plan_image_url: unit.floorPlanImageUrl,
           unit_designator: unit.designator,

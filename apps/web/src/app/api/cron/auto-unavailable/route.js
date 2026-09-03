@@ -41,6 +41,11 @@ import {
   sendReviewDigestEmail,
   resolveDigestRecipients,
 } from "@/lib/autoUnavailable";
+import {
+  unitIsAvailable,
+  liveLeasesOf,
+  listingIsUnavailable,
+} from "@/lib/listings/unitAvailability";
 
 const fingerprint = (listingId, reportedAt) =>
   `${listingId}|${reportedAt ? new Date(reportedAt).getTime() : 0}`;
@@ -53,16 +58,14 @@ function findCandidates(listings, { includeTest = false } = {}) {
   for (const l of listings) {
     if (isTestRow(l) && !includeTest) continue;
 
-    // Effective visibility mirrors buildListing() in /api/listings: a listing
-    // whose units are ALL unavailable is already hidden from students even when
-    // the unavailable flag is false. Skipping those keeps this list identical
-    // to the leasing dashboard's "Remove from site" panel (which checks the
-    // site API), so the pre-launch dry-run comparison can match exactly.
+    // Effective visibility mirrors buildListing() in /api/listings through the
+    // one shared helper: a listing with no live offering anywhere is already
+    // hidden from students even when the unavailable flag is false. Skipping
+    // those keeps this list identical to the leasing dashboard's "Remove from
+    // site" panel (which checks the site API), so the pre-launch dry-run
+    // comparison can match exactly.
     const allUnits = l.listing_units ?? [];
-    const effectivelyHidden =
-      l.unavailable === true ||
-      (allUnits.length > 0 && allUnits.every((u) => u.available === false));
-    if (effectivelyHidden) continue;
+    if (listingIsUnavailable(l)) continue;
 
     const saidLeased = LEASED_CHOICES.includes(l.checkin_response_choice);
     if (saidLeased) {
@@ -82,14 +85,38 @@ function findCandidates(listings, { includeTest = false } = {}) {
       .map(([beds]) => Number(beds));
     if (!goneBeds.length) continue;
     const units = allUnits.filter(
-      (u) => goneBeds.includes(Number(u.bedrooms)) && u.available !== false
+      (u) => goneBeds.includes(Number(u.bedrooms)) && unitIsAvailable(u)
     );
-    if (units.length) {
+    if (!units.length) continue;
+
+    /*
+     * Hiding a bedroom type now means withdrawing the offerings on it — units
+     * carry no availability of their own. The lease ids are recorded in scope
+     * so Undo restores exactly what this hid and nothing else.
+     *
+     * A targeted unit with no live offering has nothing to withdraw. It is
+     * already invisible on price (no rent shows) but still countable as room
+     * data, and silently passing over it is how a "hidden" listing stays up.
+     * It is reported instead — verifyHidden would catch it anyway, loudly.
+     */
+    const withLeases = units
+      .map((u) => ({ u, leaseIds: liveLeasesOf(u).map((l2) => l2.id) }))
+      .filter((x) => x.leaseIds.length);
+    const unhidable = units.length - withLeases.length;
+
+    if (withLeases.length) {
       candidates.push({
         listing: l,
         reportedChoice: "unit_type_status",
-        scope: { units: units.map((u) => ({ id: u.id, bedrooms: u.bedrooms })) },
-        units,
+        scope: {
+          units: withLeases.map(({ u, leaseIds }) => ({
+            id: u.id,
+            bedrooms: u.bedrooms,
+            leaseIds,
+          })),
+        },
+        units: withLeases.map((x) => x.u),
+        unhidable,
       });
     }
   }
@@ -97,13 +124,20 @@ function findCandidates(listings, { includeTest = false } = {}) {
 }
 
 async function applyHide(candidate) {
-  const { listing, scope, units } = candidate;
+  const { listing, scope } = candidate;
   const args = {
     p_user_id: SYSTEM_USER_ID,
     p_listing_id: listing.id,
   };
   if (scope.listing) args.p_listing_updates = { unavailable: true };
-  else args.p_unit_updates = units.map((u) => ({ id: u.id, available: false }));
+  // Unit-scoped hides withdraw the exact offerings recorded in scope. Still
+  // expressed as p_unit_updates: the RPC keeps that shape and applies it to the
+  // named leases, so the audited write path is unchanged.
+  else args.p_unit_updates = (scope.units ?? []).map((u) => ({
+    id: u.id,
+    available: false,
+    lease_ids: u.leaseIds ?? null,
+  }));
   const { error } = await supabase.rpc("rpc_pms_apply", args);
   return error?.message ?? null;
 }
@@ -111,7 +145,9 @@ async function applyHide(candidate) {
 async function snapshotState(listingId) {
   const { data } = await supabase
     .from("listings")
-    .select("id, unavailable, updated_at, listing_units(id, bedrooms, available)")
+    .select(
+      "id, unavailable, updated_at, listing_units(id, bedrooms, unit_leases(id, is_active, unavailable))"
+    )
     .eq("id", listingId)
     .maybeSingle();
   return data ?? null;
@@ -134,7 +170,7 @@ export async function GET(req) {
     .select(
       `id, title, address, contact_email, contact_name, unavailable,
        last_verified_at, checkin_response_choice, leased_elsewhere_detail,
-       unit_type_status, listing_units(id, bedrooms, available)`
+       unit_type_status, listing_units(id, bedrooms, unit_leases(id, is_active, unavailable))`
     )
     .is("deleted_at", null)
     .is("pms_connection_id", null);
@@ -158,6 +194,21 @@ export async function GET(req) {
 
   // ---- Apply + verify (skipped entirely in dry-run) ----------------------
   const applied = [];
+  /*
+   * Bedroom types the landlord reported gone that carried no live offering to
+   * withdraw. Nothing is hidden for them, so they are reported rather than
+   * quietly dropped — an unactioned report is exactly what this cron exists to
+   * make impossible. Computed from the candidates themselves so the dry run,
+   * which writes nothing, still surfaces them: that run is the pre-launch
+   * comparison against the leasing dashboard, and a gap it cannot show is a gap
+   * nobody finds.
+   */
+  const unhidableNotes = candidates
+    .filter((c) => c.unhidable)
+    .map((c) => ({
+      title: c.listing.title || c.listing.address || c.listing.id,
+      note: `${c.unhidable} reported bedroom type(s) had no live offering to withdraw, so nothing was hidden for them. Check the listing — those rooms still show as available with no price.`,
+    }));
   if (!dryRun) {
     for (const c of candidates) {
       const before = await snapshotState(c.listing.id);
@@ -283,6 +334,8 @@ export async function GET(req) {
     digest.corrections = [];
     digest.undone = [];
   }
+
+  if (unhidableNotes.length) digest.anomalies.push(...unhidableNotes);
 
   // ---- Send (skip only when truly nothing happened) ----------------------
   const total =
