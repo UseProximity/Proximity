@@ -25,6 +25,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import ReviewSubmitForm from "./ReviewSubmitForm";
 import DormReviewForm from "./DormReviewForm";
@@ -75,9 +76,26 @@ export default function ReviewFlow({
   referrerId = null,
   referrerName = null,
   callbackUrl = "/review",
+  /*
+   * Present when this flow was opened from an emailed invite:
+   * { token, email, prefill }. It changes two things and nothing else. The
+   * reviewer's email is supplied rather than asked for, and the account that
+   * results is already email-verified, because the token proved the inbox
+   * before the review was written rather than after.
+   */
+  invite = null,
 }) {
   const searchParams = useSearchParams();
   const source = readReviewSource(searchParams);
+  const { data: session } = useSession();
+  const sessionEmail = session?.user?.email || null;
+  /*
+   * An invite link opened on a device already signed in as a different account.
+   * The API takes the session over the invite (a real login outranks a mailed
+   * token) and leaves the invite unspent, so the UI must not promise otherwise.
+   */
+  const signedInElsewhere =
+    !!invite && !!sessionEmail && sessionEmail.toLowerCase() !== invite.email.toLowerCase();
 
   const [branch, setBranch] = useState(null); // "off" | "on"
   /*
@@ -118,7 +136,16 @@ export default function ReviewFlow({
    * typed the second time would fork them onto a second account, which breaks
    * the batching outright by splitting one session across two reviewers.
    */
-  const [reviewerContact, setReviewerContact] = useState(null);
+  const [reviewerContact, setReviewerContact] = useState(
+    invite?.prefill
+      ? {
+          firstName: invite.prefill.firstName || "",
+          lastName: invite.prefill.lastName || "",
+          classYear: invite.prefill.classYear || "",
+          email: invite.email,
+        }
+      : null
+  );
 
   useEffect(() => {
     if (source) trackEvent("qr_review_start", { src: source });
@@ -415,6 +442,26 @@ export default function ReviewFlow({
           Tell other students what it was really like to live there. No account needed,
           it takes about two minutes.
         </p>
+        {invite && !signedInElsewhere && (
+          <p className="mt-2 text-sm text-gray-500">
+            You&apos;re posting as{" "}
+            <span className="font-semibold text-gray-700">{invite.email}</span>, the
+            address we sent your invite to.
+          </p>
+        )}
+        {/*
+          Signed in as somebody else on this device. The review will post under
+          the account that is actually logged in, and the invite stays unused, so
+          say so rather than showing an address their review will not carry.
+        */}
+        {signedInElsewhere && (
+          <p className="mt-2 text-sm text-amber-700">
+            You&apos;re signed in as{" "}
+            <span className="font-semibold">{sessionEmail}</span>, so your review
+            posts under that account rather than {invite.email}. Log out first if
+            you meant to use the invite.
+          </p>
+        )}
       </header>
 
       {!branch ? (
@@ -467,12 +514,16 @@ export default function ReviewFlow({
               source={source}
               onSubmitted={(data) => handleSubmitted(data, "off_campus")}
               initialContact={reviewerContact}
+              inviteToken={invite?.token || null}
+              lockedEmail={invite?.email || null}
             />
           ) : (
             <DormReviewForm
               source={source}
               onSubmitted={(data) => handleSubmitted(data, "on_campus")}
               initialContact={reviewerContact}
+              inviteToken={invite?.token || null}
+              lockedEmail={invite?.email || null}
             />
           )}
         </>
