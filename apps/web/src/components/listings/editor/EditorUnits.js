@@ -647,7 +647,15 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
       }
       justAdded.current = data.unit?.id ?? null;
       setDrafting(false);
-      toast.success("Unit added — add your listing on it below.");
+      // Adding the first real unit to a property nobody owns hands it over (see
+      // claimUnclaimedProperty). Worth saying out loud: the rest of the editor
+      // unlocks on the refetch below, and silently growing new powers is
+      // confusing where being told is not.
+      toast.success(
+        data.claimedProperty
+          ? "Unit added — this property is now yours to manage."
+          : "Unit added — add your listing on it below."
+      );
       await onChanged();
     } catch {
       toast.error("Network error.");

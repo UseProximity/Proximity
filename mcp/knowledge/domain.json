@@ -1,6 +1,6 @@
 {
   "_description": "Core domain knowledge for the Proximity housing marketplace.",
-  "_generated": "2026-08-08T21:39:50.187Z",
+  "_generated": "2026-09-03T05:43:15.880Z",
   "app": {
     "name": "Proximity",
     "purpose": "Off-campus housing marketplace for WashU (Washington University in St. Louis) students",
@@ -136,6 +136,7 @@
     "apiResponses": "Use Response.json() for all API responses. Use NextResponse.json() only when setting custom headers or redirects.",
     "errorShape": "{ error: 'message string' } with appropriate HTTP status code",
     "dbColumnNaming": "Supabase columns use snake_case (e.g. lease_type). JS layer converts to camelCase (e.g. leaseType) in buildListing().",
+    "prose": "No em dashes anywhere written into this repo: code comments, UI copy, commit messages, PR descriptions, docs. Use a full stop, a comma, a colon or brackets instead (Wyatt, 2026-09-03).",
     "envVars": {
       "GOOGLE_ID": "Google OAuth client ID",
       "GOOGLE_SECRET": "Google OAuth client secret",

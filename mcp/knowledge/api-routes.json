@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-08-31T22:22:10.282Z",
+  "_generated": "2026-09-03T05:43:15.877Z",
   "count": 88,
   "routes": [
     {
@@ -956,18 +956,13 @@
     {
       "path": "/api/listing/[listingId]",
       "methods": [
-        "GET",
-        "PATCH"
+        "GET"
       ],
       "auth": "any",
       "methodAuth": {
-        "GET": "any",
-        "PATCH": "any"
+        "GET": "any"
       },
-      "tables": [
-        "listings",
-        "listing_landlords"
-      ],
+      "tables": [],
       "file": "src/app/api/listing/[listingId]/route.js"
     },
     {
@@ -1164,11 +1159,10 @@
       "tables": [
         "listing_reviews",
         "home_types",
-        "users",
-        "roles",
         "locations",
         "listings",
         "listing_landlords",
+        "users",
         "listing_drive_times"
       ],
       "file": "src/app/api/reviewReferral/route.js"

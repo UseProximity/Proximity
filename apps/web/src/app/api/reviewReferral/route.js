@@ -50,6 +50,7 @@ import { getBaseUrl, sendReviewWelcomeEmail, sendReviewLiveEmail } from "@/lib/e
 import { normalizeReviewSource } from "@/lib/reviews/source";
 import { listingPlaceName } from "@/lib/reviews/placeName";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
+import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
 import {
   ensureReviewerAccount,
   normalizeClassYear,
@@ -59,7 +60,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PROXIMITY_EMAIL = "info@useproximity.org"; // shared placeholder landlord account
 const TEAM_EMAIL = "info@useproximity.org"; // BCC / internal alerts
 const REVIEW_LIMIT = 2; // max reviews per account (all reviews count)
 const SITE_URL = "https://useproximity.org";
@@ -97,33 +97,6 @@ async function resolveOtherHomeTypeId() {
     .eq("label", "Other")
     .maybeSingle();
   return data?.id ?? null;
-}
-
-// Look up (or lazily create) the shared Proximity landlord account.
-async function resolveProximityLandlordId() {
-  const { data: existing } = await supabase
-    .from("users")
-    .select("id")
-    .eq("email", PROXIMITY_EMAIL)
-    .maybeSingle();
-  if (existing?.id) return existing.id;
-
-  const { data: role } = await supabase
-    .from("roles")
-    .select("id")
-    .eq("name", "landlord")
-    .maybeSingle();
-  const { data: created } = await supabase
-    .from("users")
-    .insert({
-      email: PROXIMITY_EMAIL,
-      name: "Proximity",
-      role_id: role?.id ?? null,
-      profile_complete: true,
-    })
-    .select("id")
-    .maybeSingle();
-  return created?.id ?? null;
 }
 
 // Canonical forms for common USPS street-type suffixes + directionals. Lets equivalent

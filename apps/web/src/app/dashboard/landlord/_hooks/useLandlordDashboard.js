@@ -216,15 +216,23 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleWithdrawLease = async (property) => {
-    const lease = (property.myLeases ?? []).find((x) => x.isActive) ?? property.myLeases?.[0];
+    /*
+     * The lease that is actually ON the market — not merely is_active, which a
+     * withdrawn lease can still be. Picking by is_active alone found a withdrawn
+     * lease, fell through to myLeases[0] when it found none, and re-withdrew the
+     * same offering: a write that changed nothing, on a card that looked the
+     * same afterwards. A landlord reported it as the button doing nothing, and
+     * pressed it twice more.
+     */
+    const lease = (property.myLeases ?? []).find((x) => x.isLive);
     if (!lease) {
-      alert("We couldn't find your listing at this property. Try reloading.");
+      alert("That listing is already withdrawn.");
       return;
     }
     const where = lease.unitLabel ? `your listing for ${lease.unitLabel}` : "your listing";
     if (
       !confirm(
-        `Withdraw ${where} at ${property.title || property.address}? It stops showing to students. The property itself is not affected.`
+        `Withdraw ${where} at ${property.title || property.address}? Students stop seeing your price, terms and contact details, and can no longer enquire. The building stays on the site as unavailable, and your unit and photos are kept — you can publish it again whenever you like.`
       )
     )
       return;
@@ -238,6 +246,34 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || "Could not withdraw your listing. Please try again.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
+  /*
+   * Put a withdrawn offering back on the market — the inverse of the above, and
+   * the reason withdrawing is safe to do. Without it the only way back was the
+   * lease editor, which does not say that withdrawal is what it is undoing.
+   */
+  const handleRepublishLease = async (property) => {
+    const lease = (property.myLeases ?? []).find((x) => !x.isLive);
+    if (!lease) {
+      alert("We couldn't find a withdrawn listing at this property. Try reloading.");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      if (res.ok) {
+        await fetchUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not publish your listing. Please try again.");
       }
     } catch {
       alert("Network error.");
@@ -352,6 +388,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     handleDeleteListing,
     handleEditLease,
     handleWithdrawLease,
+    handleRepublishLease,
     fetchUser,
     handleProfileUpdate,
     handleNavigation,

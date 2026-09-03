@@ -13,6 +13,7 @@ import {
   findPropertyNameConflict,
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
+import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -529,6 +530,18 @@ export async function POST(req) {
       }
     }
 
+    /*
+     * Attaching to a property nobody owns — a review stub carrying the Proximity
+     * placeholder, or an import with no landlord row — hands it to the landlord
+     * who just put real units on it. A no-op on a property that already has an
+     * owner, which includes the one this request may have created a moment ago.
+     */
+    const claimedProperty = await claimUnclaimedProperty({
+      userId: ownerId,
+      listingId,
+      sublease: isSublease,
+    });
+
     // Persist driving times (best-effort; never blocks listing creation). Written
     // after the create RPC rather than inside it — the service-role client bypasses
     // RLS, and the UNIQUE (listing_id, location_id) constraint makes this idempotent.
@@ -584,7 +597,7 @@ export async function POST(req) {
     return NextResponse.json(
       {
         message: "Listing created successfully",
-        listing: { id: listingId, address, unitIds: createdUnitIds },
+        listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty },
       },
       { status: 201 }
     );

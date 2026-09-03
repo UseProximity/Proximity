@@ -18,7 +18,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     sidebarOpen,
     setSidebarOpen,
     user,
-    setUser,
     coOwnersModal,
     setCoOwnersModal,
     profileUpdatePrompt,
@@ -37,6 +36,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     handleDeleteListing,
     handleEditLease,
     handleWithdrawLease,
+    handleRepublishLease,
     leaseModal,
     setLeaseModal,
     fetchUser,
@@ -89,13 +89,13 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return (
           <PropertiesSection
             user={user}
-            setUser={setUser}
             handlePropertySelect={handlePropertySelect}
             router={router}
             onAddListing={handleAddListing}
             onDeleteListing={handleDeleteListing}
             onEditLease={handleEditLease}
             onWithdrawLease={handleWithdrawLease}
+            onRepublishLease={handleRepublishLease}
             onManageCoOwners={handleManageCoOwners}
           />
         );
