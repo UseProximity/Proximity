@@ -13,6 +13,7 @@
 
 import { cache } from "react";
 import supabase from "@/lib/supabase";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -217,7 +218,8 @@ function buildListing(row, owner = null, reviews = []) {
           ? activeLease.lease_term_months.map(Number)
           : [],
         leaseAvailability: nextAvailable,
-        available: u.available ?? true,
+        // Derived from the offerings above, not stored — see unitAvailability.js.
+        available: unitIsAvailable(u),
       };
     }),
     leaseType: (() => {
@@ -227,7 +229,7 @@ function buildListing(row, owner = null, reviews = []) {
       // Decide the listing's label from its AVAILABLE units when it has any, so an
       // available sublease surfaces as "Sublease" even alongside an unavailable
       // standard lease (and an unavailable sublease no longer forces the badge).
-      const availablePool = activeLeases(units.filter((u) => u.available !== false));
+      const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
@@ -271,11 +273,7 @@ function buildListing(row, owner = null, reviews = []) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: (() => {
-      if (row.unavailable) return true;
-      const units = row.listing_units ?? [];
-      return units.length > 0 && units.every((u) => u.available === false);
-    })(),
+    unavailable: listingIsUnavailable(row),
     amenities: amenitiesRowToArray(row.listing_amenities),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
@@ -325,7 +323,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(
-        id, bedrooms, bathrooms, area, available, deleted_at, title, floor_plan_image_url,
+        id, bedrooms, bathrooms, area, deleted_at, title, floor_plan_image_url,
         unit_designator, unit_number,
         unit_leases(
           id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,

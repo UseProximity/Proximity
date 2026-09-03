@@ -222,15 +222,6 @@ export default function StepUnits({ w }) {
                   w.importedFields.has(`u${i}:title`) ? importedInputCls : ""
                 }`}
               />
-              <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
-                <input
-                  type="checkbox"
-                  checked={unit.available !== false}
-                  onChange={(e) => w.updateUnit(i, "available", e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                />
-                Currently available
-              </label>
             </div>
           </div>
         ))}

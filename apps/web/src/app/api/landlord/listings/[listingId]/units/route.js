@@ -114,7 +114,6 @@ export async function POST(req, { params }) {
       title: typeof body.title === "string" ? body.title.trim() || null : null,
       unit_designator: designator,
       unit_number: number,
-      available: body.available !== false,
     })
     .select("id")
     .single();

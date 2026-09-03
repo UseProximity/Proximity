@@ -21,6 +21,7 @@
 
 import supabase from "@/lib/supabase";
 import { shapeLeases } from "@/lib/listings/getListing";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -165,7 +166,8 @@ export function buildListing(row, owner = null) {
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-        available: u.available ?? true,
+        // Derived from the offerings above, not stored — see unitAvailability.js.
+        available: unitIsAvailable(u),
         availableFrom: nextAvailable,
         leases,
       };
@@ -177,7 +179,7 @@ export function buildListing(row, owner = null) {
       // Decide the listing's label from its AVAILABLE units when it has any, so an
       // available sublease surfaces as "Sublease" even alongside an unavailable
       // standard lease (and an unavailable sublease no longer forces the badge).
-      const availablePool = activeLeases(units.filter((u) => u.available !== false));
+      const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
@@ -205,19 +207,13 @@ export function buildListing(row, owner = null) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: (() => {
-      if (row.unavailable) return true;
-      const units = row.listing_units ?? [];
-      // Treat the listing as unavailable if it has units and none of them are available.
-      // Empty unit lists do NOT flip the listing — that's a separate data issue.
-      return units.length > 0 && units.every((u) => u.available === false);
-    })(),
+    unavailable: listingIsUnavailable(row),
     // Earliest future move-in across available units; null = available now.
     // Non-null means every open unit is pre-leased until that date, so the UI
     // shows "Available Aug 1" instead of hiding the listing.
     availableFrom: (() => {
       const today = new Date().toISOString().slice(0, 10);
-      const units = (row.listing_units ?? []).filter((u) => u.available !== false);
+      const units = (row.listing_units ?? []).filter(unitIsAvailable);
       if (!units.length) return null;
       const nexts = units.map(
         (u) =>
@@ -281,7 +277,7 @@ export async function fetchListings() {
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, available, deleted_at,
+      listing_units(id, bedrooms, bathrooms, area, deleted_at,
         unit_leases(id, rent, rent_is_per_person, is_active, unavailable, sublease,
                     available_from, lease_term_months, furnished,
                     contact_name, contact_email, contact_phone)),

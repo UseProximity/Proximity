@@ -23,7 +23,6 @@ const EDITABLE = {
   area: (v) => (v === "" || v == null ? null : Number(v)),
   title: (v) => (typeof v === "string" ? v.trim() || null : null),
   floor_plan_image_url: (v) => (typeof v === "string" ? v.trim() || null : null),
-  available: (v) => !!v,
 };
 const BODY_TO_COLUMN = {
   bedrooms: "bedrooms",
@@ -31,7 +30,6 @@ const BODY_TO_COLUMN = {
   area: "area",
   title: "title",
   floorPlanImageUrl: "floor_plan_image_url",
-  available: "available",
 };
 
 export async function PATCH(req, { params }) {

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-31T22:39:41.409Z",
-  "count": 68,
+  "_generated": "2026-09-02T18:52:53.736Z",
+  "count": 69,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -98,6 +98,10 @@
     {
       "file": "src/lib/listings/rentBasis.js",
       "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
+    },
+    {
+      "file": "src/lib/listings/unitAvailability.js",
+      "description": "Is this unit something a renter can actually take?"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
