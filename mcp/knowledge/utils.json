@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-03T04:25:02.306Z",
-  "count": 69,
+  "_generated": "2026-09-03T05:02:21.425Z",
+  "count": 70,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
