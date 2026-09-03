@@ -32,9 +32,12 @@
  *     we fall back to the listing owner — but never when the listing is a sublease or the
  *     owner is a student (i.e. a sublease manager); those cases send no landlord email.
  *   - Messaging depends on whether the recipient has an account and whether the property
- *     is new. info@useproximity.org is BCC'd on every notification.
+ *     is new. info@useproximity.org is BCC'd on the notification UNLESS a mismatch alert
+ *     is also going out, which would put two emails about one review in that inbox.
  *   - For an existing listing, if the landlord email entered in the review differs from
  *     the listing owner's email, a mismatch alert is sent to info@useproximity.org.
+ *   - The reviewer hears nothing from here. Their confirmation is batched per reviewer
+ *     rather than per review — see lib/reviews/confirmation.js.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -46,7 +49,6 @@ import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { isKnownSchool, schoolMatchesEmail, schoolForEmail } from "@/lib/schools";
-import { getBaseUrl, sendReviewWelcomeEmail, sendReviewLiveEmail } from "@/lib/email";
 import { normalizeReviewSource } from "@/lib/reviews/source";
 import { listingPlaceName } from "@/lib/reviews/placeName";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
@@ -61,7 +63,7 @@ export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TEAM_EMAIL = "info@useproximity.org"; // BCC / internal alerts
-const REVIEW_LIMIT = 2; // max reviews per account (all reviews count)
+const REVIEW_LIMIT = 4; // max reviews per account (all reviews count)
 const SITE_URL = "https://useproximity.org";
 
 const _mailer = nodemailer.createTransport({
@@ -249,7 +251,7 @@ async function getRealOwner(listingId, proximityId) {
   return owners[0];
 }
 
-async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, scenario }) {
+async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, scenario, bccTeam = true }) {
   if (!emailConfigured()) {
     console.warn("[reviewReferral] Email env not set — skipping landlord notification.");
     return;
@@ -279,7 +281,7 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
   await sendMailSafe(_mailer, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
-    bcc: TEAM_EMAIL,
+    bcc: bccTeam ? TEAM_EMAIL : undefined,
     subject,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
@@ -697,18 +699,37 @@ export async function POST(req) {
       } else if (owner && !isSubleaseListing && owner.role !== "student") {
         recipient = { to: owner.email, toName: owner.name || landlordName.trim(), scenario: "alert_old" };
       }
-      if (recipient?.to) {
+      /*
+       * Existing listing + a provided landlord email that doesn't match the owner.
+       * Resolved before the notification goes out because it decides whether that
+       * notification still needs to BCC the team: the alert below already carries
+       * the address and both email addresses, so BCC'ing as well would put two
+       * emails about one review in the same inbox.
+       */
+      const mismatch = !!(
+        owner &&
+        landlordEmailNorm &&
+        owner.email.toLowerCase() !== landlordEmailNorm
+      );
+
+      /*
+       * PROXIMITY_EMAIL and TEAM_EMAIL are the same address, so a review that
+       * names the shared placeholder landlord as its contact would send the
+       * notification TO the team inbox and BCC the same inbox — two identical
+       * copies. The team hears about it either way, via the BCC or the alert.
+       */
+      if (recipient?.to && recipient.to.toLowerCase() !== TEAM_EMAIL) {
         await sendLandlordReviewEmail({
           to: recipient.to,
           toName: recipient.toName,
           listingAddress: listingRow?.address,
           listingId: resolvedListingId,
           scenario: recipient.scenario,
+          bccTeam: !mismatch,
         });
       }
 
-      // Existing listing + a provided landlord email that doesn't match the owner.
-      if (owner && landlordEmailNorm && owner.email.toLowerCase() !== landlordEmailNorm) {
+      if (mismatch) {
         await sendContactMismatchAlert({
           listingAddress: listingRow?.address,
           listingId: resolvedListingId,
@@ -722,60 +743,20 @@ export async function POST(req) {
     }
 
     /*
-     * "Your review is live", to whoever wrote it. Unlike the welcome email
-     * below this goes to EVERY reviewer, signed in or not: before this, a
-     * signed-in student got no acknowledgement of their own review at all.
-     *
-     * Best-effort, like every other send here. A dead mail server must never
-     * turn a posted review into an error.
+     * How many property reviews this account has now, so the flow knows whether
+     * to offer another one. Asking here rather than letting the form find out
+     * at the cap means a student is never invited to write a review that the
+     * POST above would reject. Dorm reviews are uncapped and not counted.
      */
-    if (reviewerEmail) {
-      try {
-        const { data: reviewed } = await supabase
-          .from("listings")
-          .select("title, address")
-          .eq("id", resolvedListingId)
-          .maybeSingle();
-        await sendReviewLiveEmail({
-          email: reviewerEmail,
-          name: reviewerDisplayName,
-          baseUrl: getBaseUrl(req),
-          placeName: listingPlaceName(reviewed || { address: addressText }),
-        });
-      } catch (mailErr) {
-        console.error("[reviewReferral] review-live email failed:", mailErr?.message);
-      }
-    }
-
-    /*
-     * Welcome + finish-your-profile, for an account this submission just
-     * created. Best-effort: a failed email must never fail a posted review,
-     * they still get the profile step inline on the page.
-     */
-    if (setupToken && reviewerEmail) {
-      try {
-        const { data: reviewedListing } = await supabase
-          .from("listings")
-          .select("address")
-          .eq("id", resolvedListingId)
-          .maybeSingle();
-        await sendReviewWelcomeEmail({
-          email: reviewerEmail,
-          name: reviewerDisplayName,
-          token: setupToken,
-          baseUrl: getBaseUrl(req),
-          place: reviewedListing?.address || addressText,
-        });
-      } catch (mailErr) {
-        console.error("[reviewReferral] welcome email failed:", mailErr?.message);
-      }
-    }
+    const reviewCount = await countUserReviews(reviewerUserId);
 
     return NextResponse.json({
       success: true,
       review,
       setupToken,
       existingAccount,
+      reviewCount,
+      reviewLimit: REVIEW_LIMIT,
       // What the profile step should open pre-filled with, so the student never
       // retypes what they just told us.
       prefill: setupToken

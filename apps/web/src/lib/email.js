@@ -163,86 +163,87 @@ export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
     `,
   });
 }
-
 /*
- * Welcome + finish-your-profile, sent when a signed-out review creates an
- * account (the QR flow). One CTA on purpose: the link both verifies the address
- * and opens the profile form, so there is nothing to choose between.
+ * The one email a reviewer gets after reviewing.
  *
- * `place` is what they reviewed, so the email reads as a receipt for a thing
- * they actually did rather than an out-of-the-blue signup notice.
+ * It replaces a pair that used to fire back-to-back — a "your review is live"
+ * note and a separate "finish setting up your account" welcome — which meant a
+ * new reviewer received two emails within a second of each other, both
+ * announcing the same thing. There is now one, sent once per REVIEWER rather
+ * than once per review, so someone who reviewed three places hears about all
+ * three together. lib/reviews/confirmation.js decides when it goes out.
+ *
+ * `places` is every place they just reviewed. Names are escaped rather than
+ * trusted: a stub listing's address comes from whatever the reviewer picked in
+ * the Mapbox autocomplete, so it is not our text.
+ *
+ * `setupToken` is what splits the two versions. When the account still has a
+ * profile to finish, the CTA is that — it is the only thing standing between
+ * them and an account they can sign into. When there is nothing to finish, the
+ * CTA is matchmaking, because a review is the moment a student has proved they
+ * care and the moment they are most likely to come back.
  */
-export async function sendReviewWelcomeEmail({ email, name, token, baseUrl, place }) {
-  const finishUrl = `${baseUrl}/review/finish?token=${token}`;
-  const firstName = name ? String(name).split(" ")[0] : "";
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Your review is live: finish setting up your account",
-    html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-        <h2 style="color:#111">Thanks for the review${firstName ? `, ${firstName}` : ""}!</h2>
-        <p>Your review${place ? ` of <strong>${place}</strong>` : ""} is live on Proximity and
-           helping other students right now.</p>
-        <p>We started an account for you so you can edit your review, save places and
-           message landlords. Finish setting it up, it takes about a minute:</p>
-        <a href="${finishUrl}"
-           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Finish my profile
-        </a>
-        <p style="color:#666;font-size:14px">Or copy this link:<br>${finishUrl}</p>
-        <p style="color:#999;font-size:12px">This link works for 7 days. You can also sign in
-           any time with Google using this email address.</p>
-      </div>
-    `,
-  });
-}
-
-/*
- * "Your review is live", sent to the reviewer once their review posts.
- *
- * Goes to every reviewer, signed in or not, which is a change: before this only
- * a brand-new QR account heard anything back, and only about finishing signup.
- *
- * `placeName` is the property or dorm, from lib/reviews/placeName.js. It is
- * escaped rather than trusted: a stub listing's address comes from whatever the
- * reviewer picked in the Mapbox autocomplete, so it is not our text.
- *
- * The one CTA is matchmaking, because the review is the moment a student has
- * proved they care about this and the moment they are most likely to come back
- * when they next need a place.
- */
-export async function sendReviewLiveEmail({ email, name, baseUrl, placeName }) {
+export async function sendReviewConfirmationEmail({ email, name, baseUrl, places, setupToken }) {
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
     );
-  const place = esc(placeName || "your place");
+
+  const list = (places ?? []).filter(Boolean);
+  const safe = list.map(esc);
+  // "A", "A and B", "A, B and C" — the subject and body both read as a sentence.
+  const phrase =
+    safe.length === 0
+      ? "your place"
+      : safe.length === 1
+      ? safe[0]
+      : `${safe.slice(0, -1).join(", ")} and ${safe[safe.length - 1]}`;
+  const plural = list.length > 1;
   const firstName = name ? esc(String(name).split(" ")[0]) : "";
-  const matchmakingUrl = `${baseUrl}/matchmaking`;
+
+  const subject = plural
+    ? `Your ${list.length} reviews are live`
+    : `Your review of ${list[0] || "your place"} is live`;
+
+  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/matchmaking`;
+  const ctaLabel = setupToken ? "Finish my profile" : "Matchmaking";
+
+  const tail = setupToken
+    ? `<p style="font-size:15px;line-height:1.6;color:#333">
+         We started an account for you so you can edit ${plural ? "them" : "it"}, save places
+         and message landlords. Finish setting it up, it takes about a minute:
+       </p>`
+    : `<p style="font-size:15px;line-height:1.6;color:#333">
+         Proximity is free for students. When you&#39;re looking for your next place, we
+         match you on budget, priorities, and reviews like the ${plural ? "ones" : "one"} you just wrote.
+       </p>`;
 
   await sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: `Your review of ${placeName || "your place"} is live`,
+    subject,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
         <h2 style="color:#111;font-size:20px;margin:0 0 16px">
-          ${firstName ? `${firstName}, your` : "Your"} review of ${place} is live.
+          ${firstName ? `${firstName}, your` : "Your"} review${plural ? "s" : ""} of ${phrase}
+          ${plural ? "are" : "is"} live.
         </h2>
         <p style="font-size:15px;line-height:1.6;color:#333">
           Students move out every year and take what they learned about the building with
           them. Now, yours stays. It&#39;s what the next person sees before they sign.
         </p>
-        <p style="font-size:15px;line-height:1.6;color:#333">
-          Proximity is free for students. When you&#39;re looking for your next place, we
-          match you on budget, priorities, and reviews like the one you just wrote.
-        </p>
-        <a href="${matchmakingUrl}"
+        ${tail}
+        <a href="${ctaUrl}"
            style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Matchmaking
+          ${ctaLabel}
         </a>
-        <p style="color:#666;font-size:14px">Or copy this link:<br>${matchmakingUrl}</p>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${ctaUrl}</p>
+        ${
+          setupToken
+            ? `<p style="color:#999;font-size:12px">This link works for 7 days. You can also sign in
+                 any time with Google using this email address.</p>`
+            : ""
+        }
       </div>
     `,
   });

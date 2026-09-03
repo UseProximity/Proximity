@@ -51,6 +51,7 @@ export default function ReviewSubmitForm({
   callbackUrl = "/review",
   source = null,
   onSubmitted,
+  initialContact = null,
 }) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
@@ -107,7 +108,7 @@ export default function ReviewSubmitForm({
   const [noContact, setNoContact] = useState(false);
 
   // Who's reviewing (signed-out only) + how it's shown
-  const [contact, setContact] = useState(EMPTY_CONTACT);
+  const [contact, setContact] = useState(initialContact || EMPTY_CONTACT);
   const [anonymous, setAnonymous] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);

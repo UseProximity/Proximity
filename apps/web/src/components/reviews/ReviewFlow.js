@@ -97,6 +97,28 @@ export default function ReviewFlow({
    */
   const [passwordEmail, setPasswordEmail] = useState(null);
   const [resuming, setResuming] = useState(true);
+  /*
+   * What the last submission told us, held while we ask whether they want to
+   * review somewhere else. Applying it is deferred to leaveLoop() so that
+   * saying "yes" can return to the branch question without the profile step or
+   * a thank-you flashing past in between.
+   */
+  const [pending, setPending] = useState(null);
+  const [askAnother, setAskAnother] = useState(false);
+  /*
+   * Property reviews are capped per account (dorm reviews are not), so the
+   * offer to write another is withheld once the account is at the cap rather
+   * than letting them fill in a form the API would reject.
+   */
+  const [atCap, setAtCap] = useState(false);
+  /*
+   * Who the reviewer said they were on their first submission, carried into
+   * any further ones. Without this a second review asks a signed-out student
+   * for their name, class and email all over again — and a different address
+   * typed the second time would fork them onto a second account, which breaks
+   * the batching outright by splitting one session across two reviewers.
+   */
+  const [reviewerContact, setReviewerContact] = useState(null);
 
   useEffect(() => {
     if (source) trackEvent("qr_review_start", { src: source });
@@ -145,6 +167,47 @@ export default function ReviewFlow({
     };
   }, []);
 
+  /*
+   * Ask the server to send the batched confirmation now.
+   *
+   * Only ever an early send: /api/cron/review-confirmations covers the same
+   * reviews 30 minutes on, so a failure here costs a little delay and nothing
+   * else. That is why it is fire-and-forget and never blocks the screen.
+   */
+  const flushConfirmation = useCallback((token) => {
+    fetch("/api/reviews/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setupToken: token || null }),
+    }).catch(() => {
+      /* the sweep is the backstop */
+    });
+  }, []);
+
+  /*
+   * Leave the review loop and settle up. A signed-out reviewer is handed the
+   * profile step first — the confirmation waits until we know whether they
+   * finished it, so the email can either carry the setup link or not. Everyone
+   * else has nothing left to do, so their confirmation goes out now.
+   */
+  const leaveLoop = useCallback(
+    (outcome) => {
+      setAskAnother(false);
+      if (outcome?.setupToken) {
+        setSetup({
+          token: outcome.setupToken,
+          prefill: outcome.prefill || null,
+          email: outcome.prefill?.email || "",
+          hasCredentials: false,
+        });
+        return;
+      }
+      flushConfirmation(null);
+      setFinished(outcome?.existingAccount ? "existing" : "posted");
+    },
+    [flushConfirmation]
+  );
+
   const handleSubmitted = useCallback(
     (data, which) => {
       trackEvent("review_submitted", {
@@ -152,33 +215,62 @@ export default function ReviewFlow({
         branch: which,
         signedOut: !!data?.setupToken,
       });
-      if (data?.setupToken) {
-        storeToken(data.setupToken);
-        setSetup({
-          token: data.setupToken,
-          prefill: data.prefill || null,
-          email: data.prefill?.email || "",
-          // Freshly created by this submission, so it has no way to sign in yet.
-          hasCredentials: false,
-        });
-      } else if (data?.existingAccount) {
+      // Freshly created by this submission, so it has no way to sign in yet.
+      if (data?.setupToken) storeToken(data.setupToken);
+
+      const outcome = {
+        setupToken: data?.setupToken || null,
+        prefill: data?.prefill || null,
         // Signed out, but the email they gave already has an account. There is
         // nothing to set up, so say where the review went instead of thanking
         // them as though they were a stranger.
-        setFinished("existing");
-      } else {
-        setFinished("posted");
+        existingAccount: !!data?.existingAccount,
+      };
+
+      /*
+       * Only the property form reports a count; dorm reviews are uncapped, so a
+       * missing count means there is no ceiling to be at.
+       */
+      const capped =
+        typeof data?.reviewCount === "number" &&
+        typeof data?.reviewLimit === "number" &&
+        data.reviewCount >= data.reviewLimit;
+      if (data?.prefill) {
+        setReviewerContact({
+          firstName: data.prefill.firstName || "",
+          lastName: data.prefill.lastName || "",
+          email: data.prefill.email || "",
+          classYear: data.prefill.graduationYear
+            ? String(data.prefill.graduationYear)
+            : "",
+        });
       }
+
+      setAtCap(capped);
+      setPending(outcome);
+
+      // At the cap there is nothing to offer, so settle up straight away.
+      if (capped) leaveLoop(outcome);
+      else setAskAnother(true);
     },
-    [source]
+    [source, leaveLoop]
   );
 
   function handleProfileCompleted() {
+    // The token is spent, so the confirmation must go out without a setup link.
+    flushConfirmation(null);
     clearStoredToken();
     setSetup(null);
     setFinished("completed");
   }
 
+  /*
+   * No flush here, on purpose. They still have an account to finish, so the
+   * 30-minute sweep is left to send the confirmation — by then the setup token
+   * is either spent (they came back) or still live, and the email says the
+   * right thing either way. Flushing now would mail them a "finish your
+   * account" link seconds after they declined to.
+   */
   function handleProfileSkipped() {
     setSetup(null);
     setFinished("skipped");
@@ -187,6 +279,45 @@ export default function ReviewFlow({
   const shell = (children) => (
     <div className={`max-w-xl mx-auto px-4 py-10 ${PAGE_BOTTOM_PADDING}`}>{children}</div>
   );
+
+  if (askAnother) {
+    return shell(
+      <div className="text-center py-12">
+        <div className="text-5xl mb-4">🎉</div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Thanks!</h1>
+        <p className="text-gray-600">
+          Your review has been posted. Lived somewhere else? Reviewing it too takes
+          another minute and helps the next student just as much.
+        </p>
+        <div className="mt-8 space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent("review_another_accepted", { src: source || "direct" });
+              // Back to the branching question: the next place may be a dorm
+              // even when the last one wasn't.
+              setAskAnother(false);
+              setPending(null);
+              setBranch(null);
+            }}
+            className="w-full px-5 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
+          >
+            Review another place
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent("review_another_declined", { src: source || "direct" });
+              leaveLoop(pending);
+            }}
+            className="w-full px-5 py-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-semibold transition"
+          >
+            No thanks
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (finished) {
     const headline =
@@ -224,8 +355,14 @@ export default function ReviewFlow({
         )}
         {finished === "skipped" && (
           <p className="mt-3 text-sm text-gray-500">
-            We emailed you a link to finish setting up your account whenever you&apos;re
-            ready.
+            We&apos;ll email you a link to finish setting up your account whenever
+            you&apos;re ready.
+          </p>
+        )}
+        {atCap && (
+          <p className="mt-3 text-sm text-gray-500">
+            That&apos;s the most reviews we take from one account — thanks for all of
+            them.
           </p>
         )}
         {finished === "existing" && (
@@ -329,11 +466,13 @@ export default function ReviewFlow({
               callbackUrl={callbackUrl}
               source={source}
               onSubmitted={(data) => handleSubmitted(data, "off_campus")}
+              initialContact={reviewerContact}
             />
           ) : (
             <DormReviewForm
               source={source}
               onSubmitted={(data) => handleSubmitted(data, "on_campus")}
+              initialContact={reviewerContact}
             />
           )}
         </>
