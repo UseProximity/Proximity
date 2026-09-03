@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmtDate, fmtMoney, shortId, Stars, Badge, GearButton } from "@/components/admin/adminShared";
+import { fmtDate, fmtMoney, shortId, sortByDate, SortToggle, SORT_NEWEST, Stars, Badge, GearButton } from "@/components/admin/adminShared";
 
 function roleColor(role) {
   if (role === "super") return "red";
@@ -13,15 +13,21 @@ function roleColor(role) {
 export default function UsersView({ data, search, onOpenGear }) {
   const [expanded, setExpanded] = useState(new Set());
   const [roleFilter, setRoleFilter] = useState("all");
+  // The route already returns newest first; this makes that visible and
+  // reversible rather than an invisible property of the query.
+  const [sort, setSort] = useState(SORT_NEWEST);
 
   const users = data || [];
   const q = search.trim().toLowerCase();
-  const filtered = users.filter((u) => {
-    const role = u.roles?.name || "student";
-    if (roleFilter !== "all" && role !== roleFilter) return false;
-    if (!q) return true;
-    return [u.name, u.email, u.id].some((v) => (v || "").toLowerCase().includes(q));
-  });
+  const filtered = sortByDate(
+    users.filter((u) => {
+      const role = u.roles?.name || "student";
+      if (roleFilter !== "all" && role !== roleFilter) return false;
+      if (!q) return true;
+      return [u.name, u.email, u.id].some((v) => (v || "").toLowerCase().includes(q));
+    }),
+    sort
+  );
 
   const roles = ["all", ...new Set(users.map((u) => u.roles?.name || "student"))];
 
@@ -37,7 +43,9 @@ export default function UsersView({ data, search, onOpenGear }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <p className="text-xs text-gray-500">{filtered.length} of {users.length} users</p>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-3 flex-wrap">
+          <SortToggle value={sort} onChange={setSort} label="Joined" />
+          <div className="flex items-center gap-1">
           {roles.map((r) => (
             <button
               key={r}
@@ -50,6 +58,7 @@ export default function UsersView({ data, search, onOpenGear }) {
               {r}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
