@@ -22,6 +22,9 @@
  * Modes:
  *   ?dry_run=1 (or AUTO_UNAVAILABLE_DRY_RUN=1): compute + email what WOULD happen;
  *     zero writes. Used for the pre-launch parallel run against the leasing dashboard.
+ *     Still computes hourly, but only MAILS on one fixed UTC hour a day
+ *     (AUTO_UNAVAILABLE_DRY_RUN_HOUR, default 13) — dry run has no dedupe memory of its
+ *     own, so without this a still-visible candidate mails every single hour.
  *   ?include_test=1: allow TEST- rows — ONLY for the supervised end-to-end rehearsal
  *     of the test protocol; normal runs always exclude them.
  *
@@ -49,6 +52,18 @@ import {
 
 const fingerprint = (listingId, reportedAt) =>
   `${listingId}|${reportedAt ? new Date(reportedAt).getTime() : 0}`;
+
+// Real runs dedupe by stamping auto_unavailable_actions once the digest lands, so a
+// listing is reported once and then goes quiet. A dry run is specified as zero writes
+// (see lib/autoUnavailable.js), so it never stamps, has no memory, and rediscovers the
+// same still-visible candidate on every hourly pass — 24 identical emails a day for as
+// long as the candidate exists. Throttle the SEND instead of the compute: keep checking
+// hourly as before (so the parallel-run comparison against the leasing dashboard stays
+// live), but only mail on one fixed hour a day. A listing that gets hidden for real (by
+// this cron once dry run ends, or by hand on the admin dashboard) drops out of
+// `candidates` on the next pass regardless of the hour, so this never delays the digest
+// going quiet — only the redundant hourly repeats while it stays visible.
+const AUTO_UNAVAILABLE_DRY_RUN_HOUR = Number(process.env.AUTO_UNAVAILABLE_DRY_RUN_HOUR ?? 13);
 
 // Listings the landlord reported leased that students can still see.
 // Mirrors build_actions() in the automation repo's export_leasing_snapshot.py
@@ -161,6 +176,10 @@ export async function GET(req) {
 
   const url = new URL(req.url);
   const dryRun = url.searchParams.get("dry_run") === "1" || process.env.AUTO_UNAVAILABLE_DRY_RUN === "1";
+  // Zero-writes contract means dry run has no dedupe memory of its own; gate the send on
+  // the clock instead. Computing still happens every hour so a throttled run's response
+  // shape matches every other run's.
+  const throttledByDryRun = dryRun && new Date().getUTCHours() !== AUTO_UNAVAILABLE_DRY_RUN_HOUR;
   const includeTest = url.searchParams.get("include_test") === "1";
   const baseUrl = getBaseUrl(req);
 
@@ -341,7 +360,7 @@ export async function GET(req) {
   const total =
     digest.hidden.length + digest.anomalies.length + digest.corrections.length + digest.undone.length;
   let emailed = false;
-  if (total > 0) {
+  if (total > 0 && !throttledByDryRun) {
     const recipients = await resolveDigestRecipients(supabase);
     if (recipients.length) {
       const result = await sendReviewDigestEmail({
@@ -366,6 +385,7 @@ export async function GET(req) {
 
   return NextResponse.json({
     dryRun,
+    throttledByDryRun,
     candidates: candidates.map((c) => ({
       listingId: c.listing.id,
       title: c.listing.title,
