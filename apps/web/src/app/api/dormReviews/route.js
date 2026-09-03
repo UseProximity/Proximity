@@ -20,7 +20,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
-import { getBaseUrl, sendReviewWelcomeEmail, sendReviewLiveEmail } from "@/lib/email";
 import { schoolForEmail } from "@/lib/schools";
 import { normalizeReviewSource } from "@/lib/reviews/source";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
@@ -205,13 +204,6 @@ export async function POST(req) {
     let setupEmail = null;
     // Signed-out reviewer whose email already belongs to a real account.
     let existingAccount = false;
-    /*
-     * Where "your review is live" goes. The session's address when signed in,
-     * the typed one when not, and nothing at all for the legacy Campus Hub form,
-     * which asks for a first name and never an email.
-     */
-    let notifyEmail = session?.user?.email || null;
-
     if (signedOutReviewer) {
       const email = String(signedOutReviewer.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email) || !schoolForEmail(email)) {
@@ -241,7 +233,6 @@ export async function POST(req) {
       displayName = account.displayName;
       setupToken = account.setupToken;
       setupEmail = email;
-      notifyEmail = email;
       existingAccount = !!account.existingAccount;
     } else if (!sessionUserId) {
       // Legacy Campus Hub path: a first name and nothing else.
@@ -284,35 +275,6 @@ export async function POST(req) {
     }
 
     if (review?.id) await attachDormTags(review.id, tags);
-
-    // "Your review is live", to whoever wrote it (best-effort; never blocks it).
-    if (notifyEmail) {
-      try {
-        await sendReviewLiveEmail({
-          email: notifyEmail,
-          name: displayName,
-          baseUrl: getBaseUrl(req),
-          placeName: dormRecord.name,
-        });
-      } catch (e) {
-        console.error("[dormReviews] review-live email failed:", e?.message);
-      }
-    }
-
-    // Welcome + finish-your-profile (best-effort; never blocks the review).
-    if (setupToken && setupEmail) {
-      try {
-        await sendReviewWelcomeEmail({
-          email: setupEmail,
-          name: displayName,
-          token: setupToken,
-          baseUrl: getBaseUrl(req),
-          place: dormRecord.name,
-        });
-      } catch (e) {
-        console.error("[dormReviews] welcome email failed:", e?.message);
-      }
-    }
 
     return NextResponse.json(
       {

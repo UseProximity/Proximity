@@ -27,7 +27,7 @@ import ReviewerContactFields, {
   contactReady,
 } from "./ReviewerContactFields";
 
-export default function DormReviewForm({ source = null, onSubmitted }) {
+export default function DormReviewForm({ source = null, onSubmitted, initialContact = null }) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
   const requireContact = status !== "loading" && !loggedIn;
@@ -39,7 +39,7 @@ export default function DormReviewForm({ source = null, onSubmitted }) {
   const [rating, setRating] = useState(0);
   const [tags, setTags] = useState([]);
   const [content, setContent] = useState("");
-  const [contact, setContact] = useState(EMPTY_CONTACT);
+  const [contact, setContact] = useState(initialContact || EMPTY_CONTACT);
   const [anonymous, setAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
