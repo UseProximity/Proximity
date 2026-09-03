@@ -86,25 +86,42 @@ WHERE u.deleted_at IS NULL
     SELECT 1 FROM unit_leases ul WHERE ul.unit_id = u.id
   );
 
--- Fail loudly rather than half-apply: every live unit on a visible listing must
--- now carry an offering, because that is exactly the precondition the new
--- availability rule relies on.
+-- Fail loudly rather than half-apply.
+--
+-- The precondition the new rule actually needs is LISTING-level: no visible
+-- listing may be left with zero available units, because that is what makes a
+-- property disappear from browse. It is not that every unit must carry an
+-- offering — a spare unit type with nothing on offer is a normal, correct
+-- "not on the market" and hides only itself. Asserting the unit-level version
+-- first was wrong, and dev proved it: The Pershing (Demo) and the CI release
+-- fixture each carry an extra 0-bed type with no offering and no legacy row to
+-- restore, on listings whose other units are perfectly live.
 DO $check$
 DECLARE
-  v_orphans int;
+  v_dark int;
 BEGIN
-  SELECT count(*) INTO v_orphans
-  FROM listing_units u
-  JOIN listings l ON l.id = u.listing_id
-  WHERE u.deleted_at IS NULL
-    AND l.deleted_at IS NULL
+  SELECT count(*) INTO v_dark
+  FROM listings l
+  WHERE l.deleted_at IS NULL
     AND l.unavailable = false
-    AND NOT EXISTS (SELECT 1 FROM unit_leases ul WHERE ul.unit_id = u.id);
+    AND EXISTS (
+      SELECT 1 FROM listing_units u
+      WHERE u.listing_id = l.id AND u.deleted_at IS NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM listing_units u
+      JOIN unit_leases ul ON ul.unit_id = u.id
+      WHERE u.listing_id = l.id
+        AND u.deleted_at IS NULL
+        AND ul.is_active
+        AND NOT COALESCE(ul.unavailable, false)
+    );
 
-  IF v_orphans > 0 THEN
+  IF v_dark > 0 THEN
     RAISE EXCEPTION
-      'backfill-legacy-unit-leases: % unit(s) on visible listings still have no offering — deploying the strict availability rule would hide them. Investigate before continuing.',
-      v_orphans;
+      'backfill-legacy-unit-leases: % visible listing(s) would still have no available unit — deploying the strict availability rule would hide them. Investigate before continuing.',
+      v_dark;
   END IF;
 END
 $check$;
