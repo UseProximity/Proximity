@@ -1,5 +1,6 @@
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
+import { unitIsAvailable } from "@/lib/listings/unitAvailability";
 
 // Look up whether a property already exists at an address, and if so return its
 // units and the live leases on each. This drives the address -> unit -> lease
@@ -41,7 +42,7 @@ export async function GET(req) {
     .select(
       `id, title, address, latitude, longitude, created_at,
        listing_units!listing_id(
-         id, unit_designator, unit_number, bedrooms, bathrooms, area, available, deleted_at,
+         id, unit_designator, unit_number, bedrooms, bathrooms, area, deleted_at,
          unit_leases!unit_id(id, rent, sublease, is_active, unavailable, owner_id, contact_name)
        )`
     )
@@ -95,7 +96,7 @@ export async function GET(req) {
         bedrooms: unit.bedrooms,
         bathrooms: unit.bathrooms,
         area: unit.area,
-        available: unit.available,
+        available: unitIsAvailable(unit),
         leases,
         liveLeaseCount: liveLeases.length,
         /*

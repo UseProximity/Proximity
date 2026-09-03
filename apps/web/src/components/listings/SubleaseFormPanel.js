@@ -914,17 +914,6 @@ export default function SubleaseFormPanel({
                         )}
                       </div>
                     </div>
-                    <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-4">
-                      <input
-                        type="checkbox"
-                        checked={unit.available !== false}
-                        onChange={(e) =>
-                          updateUnit(i, "available", e.target.checked)
-                        }
-                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                      />
-                      Available
-                    </label>
                   </div>
                   {units.length > 1 && (
                     <button type="button" onClick={() => removeUnit(i)}

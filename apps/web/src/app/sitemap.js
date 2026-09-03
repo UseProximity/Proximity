@@ -12,6 +12,7 @@
  */
 import { guides } from "@/lib/guides";
 import { washuPages } from "@/lib/washuPages";
+import { listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 const SITE_URL = "https://useproximity.org";
 
@@ -69,7 +70,7 @@ async function fetchListingEntries() {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from("listings")
-      .select("id, updated_at, unavailable, listing_units(available)")
+      .select("id, updated_at, unavailable, listing_units(unit_leases(is_active, unavailable))")
       .is("deleted_at", null)
       .eq("unavailable", false)
       .order("id")
@@ -80,10 +81,7 @@ async function fetchListingEntries() {
   }
 
   return rows
-    .filter((row) => {
-      const units = row.listing_units ?? [];
-      return !(units.length > 0 && units.every((u) => u.available === false));
-    })
+    .filter((row) => !listingIsUnavailable(row))
     .map((row) => ({
       url: `${SITE_URL}/listings/${row.id}`,
       ...(row.updated_at ? { lastModified: new Date(row.updated_at) } : {}),

@@ -9,6 +9,7 @@ import {
   Stars, Badge, GearButton, TrashButton,
   InlineToggle, InlineNumber, usePending,
 } from "@/components/admin/adminShared";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 const AMENITY_COLS = ["air_conditioning","dishwasher","gym","laundry","mailroom","microwave","oven","parking","pets_allowed","pool","refrigerator","rooftop","storage","stove","study_room"];
 const UTILITY_COLS = ["electric","gas","heat","water","internet","trash","cable","sewer","cooling"];
@@ -24,13 +25,13 @@ function sortedImages(listing) {
   return [...(listing.listing_images || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
-// Effective availability, mirroring the browse API logic exactly:
-// unavailable only when the manual override is set or every unit is marked
-// unavailable. Leases never gate availability — they only control which rent shows.
+// Effective availability, mirroring the browse API exactly — same helper, so
+// the two cannot drift. Leases now DO gate availability: a unit whose every
+// offering has been withdrawn is not one a student can take (a unit carrying no
+// offering at all still counts as available; see unitAvailability.js).
 function availability(listing) {
-  const units = listing.listing_units || [];
   if (listing.unavailable) return { label: "Hidden (override)", color: "red" };
-  if (units.length > 0 && units.every((u) => u.available === false)) return { label: "Unavailable", color: "red" };
+  if (listingIsUnavailable(listing)) return { label: "No live offerings", color: "red" };
   return { label: "Available", color: "green" };
 }
 
@@ -252,7 +253,6 @@ function AddUnitForm({ listingId, dbTarget, isProd, onDone, onCancel }) {
         bedrooms: Number(beds),
         bathrooms: Number(baths),
         area: area === "" ? null : Number(area),
-        available: true,
       }, dbTarget);
       onDone();
     } catch (err) {
@@ -299,7 +299,6 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
           area: u.area === "" ? null : Number(u.area),
-          available: true,
         }, dbTarget);
         if (u.rent !== "" && !isNaN(Number(u.rent))) {
           await insertRow("unit_leases", {
@@ -453,7 +452,9 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                   <span className="text-xs text-gray-500">
                     <InlineNumber table="listing_units" id={u.id} field="area" value={u.area} disabled={isReadOnly} className="w-16" /> sqft
                   </span>
-                  <InlineToggle table="listing_units" id={u.id} field="available" value={u.available !== false} disabled={isReadOnly} label="Available" />
+                  <Badge color={unitIsAvailable(u) ? "green" : "red"}>
+                    {unitIsAvailable(u) ? "available" : "no live offering"}
+                  </Badge>
                   {u.deleted_at && <Badge color="red">deleted</Badge>}
                   <span className="ml-auto flex items-center gap-0.5">
                     {!isReadOnly && <TrashButton title="Delete unit" onClick={() => handleDelete("listing_units", u.id, "unit")} />}
@@ -461,7 +462,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                   </span>
                 </div>
                 <div className="pl-6 pr-3 py-2 space-y-1">
-                  {leases.length === 0 && <p className="text-[11px] text-gray-400 italic">No leases — the unit can still be available, but no rent will display.</p>}
+                  {leases.length === 0 && <p className="text-[11px] text-gray-400 italic">No leases — the unit still shows as available (terms unknown), but no rent will display.</p>}
                   {leases.map((l) => {
                     const future = l.available_from && new Date(l.available_from) > new Date();
                     return (
