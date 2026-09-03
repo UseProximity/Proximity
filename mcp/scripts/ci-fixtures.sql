@@ -75,8 +75,10 @@ WHERE l.address = '1 CI Fixture Way, St. Louis, MO 63130'
 -- Apt 101 — one unit, three landlords competing on it.
 -- Apt 102 — a single offering the owner has withdrawn.
 -- Apt 103 — a real unit nobody is currently offering (no price at all).
-INSERT INTO listing_units (listing_id, unit_designator, unit_number, bedrooms, bathrooms, area, available)
-SELECT l.id, v.d, v.n, v.beds, v.baths, v.area, true
+-- No `available` column: 202609020003 retired it, and these three units say
+-- everything they need to say through the offerings written below.
+INSERT INTO listing_units (listing_id, unit_designator, unit_number, bedrooms, bathrooms, area)
+SELECT l.id, v.d, v.n, v.beds, v.baths, v.area
 FROM listings l, (VALUES
   ('Apt','101', 2, 1.0, 900),
   ('Apt','102', 1, 1.0, 600),
