@@ -31,8 +31,9 @@ create index if not exists dorm_reviews_pending_confirmation_idx
  * Backfill every review that already exists.
  *
  * Without this the first sweep after deploy treats the entire back catalogue as
- * unconfirmed and emails months-old reviews to the students who wrote them —
- * 146 rows across 24 people on production at the time of writing.
+ * unconfirmed and emails months-old reviews to the students who wrote them.
+ * Applied to production on 2026-09-03: 166 rows (100 listing, 66 dorm) across
+ * 43 people, every one stamped with its own created_at.
  *
  * created_at is the honest stamp rather than now(): under the previous
  * behaviour a confirmation really did go out the moment each review posted, so
