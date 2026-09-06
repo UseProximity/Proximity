@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-03T19:57:20.696Z",
-  "count": 72,
+  "_generated": "2026-09-03T21:38:47.678Z",
+  "count": 74,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -198,6 +198,14 @@
     {
       "file": "src/lib/r2.js",
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
+    },
+    {
+      "file": "src/lib/reviews/confirmation.js",
+      "description": "Batched \"your review is live\" confirmations."
+    },
+    {
+      "file": "src/lib/reviews/invites.js",
+      "description": "Tokenized review invites: proving a reviewer owns the address they review under."
     },
     {
       "file": "src/lib/reviews/onboarding.js",

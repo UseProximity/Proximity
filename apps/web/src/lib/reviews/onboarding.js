@@ -250,12 +250,16 @@ export async function clearProfileSetupToken(userId) {
 }
 
 /*
- * Opening the emailed setup link proves control of the inbox, which is exactly
- * what email verification asks. Marking it here means a QR-born account becomes
- * fully usable without a second round-trip email. The inline (never-emailed)
- * path deliberately does NOT reach this.
+ * Opening a link we emailed proves control of the inbox, which is exactly what
+ * email verification asks. Marking it here means an account born from a review
+ * becomes fully usable without a second round-trip email.
+ *
+ * Two paths reach this, and both carry the same proof. The profile-setup link
+ * sent after a QR review, and a review invite, whose token was mailed to one
+ * address before the review was written. The inline (never-emailed) path
+ * deliberately does NOT reach this.
  */
-export async function markEmailVerifiedFromSetupLink(userId) {
+export async function markEmailVerifiedFromLink(userId) {
   const { error } = await supabase
     .from("users")
     .update({
