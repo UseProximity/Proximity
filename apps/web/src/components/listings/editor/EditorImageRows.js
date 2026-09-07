@@ -17,12 +17,19 @@ import { useState } from "react";
 import { Lock, Plus, Trash2, LayoutGrid } from "lucide-react";
 import toast from "react-hot-toast";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import { compressImage } from "@/utils/compressImage";
 
 const BUSY_LABEL = {
   upload: "Uploading…",
   remove: "Deleting…",
   reorder: "Saving order…",
 };
+
+// Compression brings most photos well under this, but an extreme source image
+// (huge panorama, oddly-encoded file) can still come out too big to upload.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const TOO_LARGE_MESSAGE =
+  "This image is too large. Please upload an image smaller than 10 MB.";
 
 function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onChanged, children }) {
   // null when idle, otherwise which act is in flight — a delete used to report
@@ -36,10 +43,17 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
     if (!files?.length) return;
     setBusy("upload");
     try {
+      // Large camera JPEGs blow Vercel's ~4.5MB serverless body limit before
+      // this ever reaches the route handler; downscale the same way the
+      // add-listing flow does before sending them.
+      const compressed = await Promise.all(files.map(compressImage));
+      const valid = compressed.filter((f) => f.size <= MAX_UPLOAD_BYTES);
+      if (valid.length < compressed.length) toast.error(TOO_LARGE_MESSAGE);
+      if (!valid.length) return;
       const form = new FormData();
       form.append("listingId", listingId);
       if (unitId) form.append("unitId", unitId);
-      for (const f of files) form.append("files", f);
+      for (const f of valid) form.append("files", f);
       const res = await fetch("/api/upload", { method: "PATCH", body: form });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Those photos couldn't be added.");
