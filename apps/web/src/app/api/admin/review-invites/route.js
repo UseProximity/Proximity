@@ -25,6 +25,12 @@
  * requests of this size, which keeps each one well inside the function timeout
  * and gives the admin real progress instead of one long spinner that might be
  * a hung connection.
+ *
+ * body.exportOnly: true mints the same way but returns { email, link } instead of
+ * sending. Same admin auth (an export needs an admin session same as a send —
+ * nothing here is exposed to a lower role), same eligibility check, same
+ * outstanding-invite guard. For a campaign that sends from somewhere other than
+ * this dashboard.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -179,6 +185,17 @@ export async function POST(req) {
     const message = typeof body.message === "string" ? body.message.trim() : "";
 
     /*
+     * exportOnly: mint the same way, skip sendReviewInviteEmail, hand the link back
+     * instead. For campaigns sent from somewhere other than this dashboard (e.g. a
+     * personal wustl.edu address through Outlook, so replies land with a person
+     * instead of an inbox nobody reads) that still need every guard below —
+     * eligibility, the outstanding-invite check, one mint per address — without
+     * anyone hand-copying mintInvite() and quietly drifting from it over time.
+     * sent_at is deliberately left null; nothing has been emailed yet.
+     */
+    const exportOnly = body.exportOnly === true;
+
+    /*
      * A custom message that never renders the link is an email that wastes a
      * token and asks the student to do something they have no way to do. Caught
      * here as well as in the composer, because this endpoint is reachable
@@ -247,6 +264,11 @@ export async function POST(req) {
       const minted = await mintInvite({ email, rosterId, listingId, invitedBy: user.id });
       if (minted.error) {
         results.push({ email, ok: false, error: minted.error });
+        continue;
+      }
+
+      if (exportOnly) {
+        results.push({ email, ok: true, link: `${baseUrl}/review-invite/t/${encodeURIComponent(minted.token)}` });
         continue;
       }
 
