@@ -21,6 +21,21 @@
  * the email, so a browser that could interpolate a link would be a browser
  * holding 200 working credentials.
  *
+ * TWO MODES, ONE SET OF GUARDS. mode:"send" mails the invite from info@. Its
+ * mode:"export" twin mints the same invites and returns the links for a CSV, so
+ * outreach can go out of an admin's own mailbox and read as a person writing to
+ * a classmate rather than a product emailing a list. Export deliberately shares
+ * every check above it: school-email eligibility, the outstanding-invite guard
+ * that makes a double-invite impossible across the two paths, invited_by
+ * attribution and the ledger row. That shared path is the entire argument for
+ * this mode existing rather than an admin minting rows against the database by
+ * hand, which is the same send with all of those guards removed.
+ *
+ * EXPORT HANDS OUT LIVE CREDENTIALS. The returned links are the one artifact in
+ * this system that can be replayed into a verified review, which is why this is
+ * admin-only, why the caller is told to delete the file after the merge, and why
+ * the rows are stamped sent_via='export' rather than passed off as our own mail.
+ *
  * Sending is capped per request. A bulk campaign is chunked by the caller into
  * requests of this size, which keeps each one well inside the function timeout
  * and gives the admin real progress instead of one long spinner that might be
@@ -76,7 +91,7 @@ export async function GET(req) {
     const { data, error } = await supabase
       .from("review_invites")
       .select(
-        "id, invited_email, sent_at, expires_at, used_at, review_kind, created_at, listings!listing_id(address, title), inviter:users!invited_by(name, email)"
+        "id, invited_email, sent_at, sent_via, expires_at, used_at, review_kind, created_at, listings!listing_id(address, title), inviter:users!invited_by(name, email)"
       )
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -87,6 +102,9 @@ export async function GET(req) {
       id: row.id,
       email: row.invited_email,
       sentAt: row.sent_at,
+      // 'export' means an admin mailed this one themselves, so a bounce or a
+      // "never got it" is theirs to chase and not ours to look for in our logs.
+      sentVia: row.sent_via || "app",
       usedAt: row.used_at,
       expiresAt: row.expires_at,
       reviewKind: row.review_kind,
@@ -175,6 +193,7 @@ export async function POST(req) {
 
     const body = await req.json().catch(() => ({}));
     const listingId = body.listingId || null;
+    const isExport = body.mode === "export";
     const subject = typeof body.subject === "string" ? body.subject.trim() : "";
     const message = typeof body.message === "string" ? body.message.trim() : "";
 
@@ -183,14 +202,20 @@ export async function POST(req) {
      * token and asks the student to do something they have no way to do. Caught
      * here as well as in the composer, because this endpoint is reachable
      * without it.
+     *
+     * Neither this nor the first-name rule below applies to an export: the
+     * composer's message is not the thing being sent, so validating it would be
+     * refusing a batch of links over the wording of an email nobody will use.
+     * The greeting is the mail merge's problem, and first_name ships as a column
+     * so the merge can make its own call about the rows that lack one.
      */
-    if (message && !message.includes("{link}")) {
+    if (!isExport && message && !message.includes("{link}")) {
       return NextResponse.json(
         { error: "Your message must include {link} so the student has something to click." },
         { status: 400 }
       );
     }
-    const needsFirstName = message.includes("{first_name}");
+    const needsFirstName = !isExport && message.includes("{first_name}");
 
     const recipients = await resolveRecipients(body);
     if (!recipients.length) {
@@ -250,6 +275,25 @@ export async function POST(req) {
         continue;
       }
 
+      /*
+       * Export: the link leaves in the response instead of an email. There is no
+       * try/catch twin of the send path here because there is nothing left that
+       * can fail. Once the row is stamped the caller holds the only copy of the
+       * token, so discarding it on a later error would revoke a link that is
+       * already on its way out the door.
+       */
+      if (isExport) {
+        await markInviteSent(minted.inviteId, { via: "export" });
+        results.push({
+          email,
+          ok: true,
+          firstName: firstName || "",
+          link: `${baseUrl}/review-invite/t/${encodeURIComponent(minted.token)}`,
+          expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 86400000).toISOString(),
+        });
+        continue;
+      }
+
       try {
         await sendReviewInviteEmail({
           email,
@@ -273,7 +317,7 @@ export async function POST(req) {
     }
 
     const sent = results.filter((r) => r.ok).length;
-    return NextResponse.json({ sent, failed: results.length - sent, results });
+    return NextResponse.json({ sent, failed: results.length - sent, mode: isExport ? "export" : "send", results });
   } catch (err) {
     console.error("admin/review-invites POST:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
