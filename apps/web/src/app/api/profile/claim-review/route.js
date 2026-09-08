@@ -26,8 +26,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { loadProfileSetupUser, clearProfileSetupToken } from "@/lib/reviews/onboarding";
-import { getBaseUrl, sendReviewLiveEmail } from "@/lib/email";
-import { listingPlaceName } from "@/lib/reviews/placeName";
+import { getBaseUrl } from "@/lib/email";
+import { flushReviewConfirmation } from "@/lib/reviews/confirmation";
 
 export const dynamic = "force-dynamic";
 
@@ -119,19 +119,24 @@ export async function POST(req) {
     }
 
     // ── Move the reviews first ──────────────────────────────────────────────
+    /*
+     * confirmation_sent_at is cleared along with the move. Any confirmation that
+     * already went out went to the placeholder's address; from the claiming
+     * account's point of view these reviews have never been acknowledged, so
+     * clearing the stamp lets the flush below send one email to the inbox they
+     * can actually sign into.
+     */
     let moved = 0;
-    const movedIds = { listing_reviews: [], dorm_reviews: [] };
     for (const table of ["listing_reviews", "dorm_reviews"]) {
       const { data, error } = await supabase
         .from(table)
-        .update({ user_id: targetId })
+        .update({ user_id: targetId, confirmation_sent_at: null })
         .eq("user_id", placeholderId)
         .select("id");
       if (error) {
         console.error(`claim-review: moving ${table} failed:`, error.message);
         return NextResponse.json({ error: "Couldn't move your review." }, { status: 500 });
       }
-      movedIds[table] = (data ?? []).map((r) => r.id);
       moved += data?.length ?? 0;
     }
 
@@ -163,41 +168,21 @@ export async function POST(req) {
     }
 
     /*
-     * The "your review is live" email already went out at submit, to the address
-     * they typed. That account has just been deleted, so this send is the only
-     * copy that reaches an inbox they can actually sign into. Sent per review,
-     * which in practice is one.
+     * Confirmations for the reviews that just moved.
+     *
+     * The placeholder account these came from has been deleted, so anything
+     * sent at submit went to an inbox that no longer maps to an account. This
+     * is the copy that reaches the address they can actually sign into, and it
+     * covers every moved review in one email rather than one per review.
      *
      * Best-effort and last: the merge is already committed, and a mail failure
      * must not report it as failed.
      */
     if (moved && session.user.email) {
       try {
-        const places = [];
-        if (movedIds.listing_reviews.length) {
-          const { data } = await supabase
-            .from("listing_reviews")
-            .select("listings(title, address)")
-            .in("id", movedIds.listing_reviews);
-          for (const row of data ?? []) places.push(listingPlaceName(row.listings));
-        }
-        if (movedIds.dorm_reviews.length) {
-          const { data } = await supabase
-            .from("dorm_reviews")
-            .select("dorms(name)")
-            .in("id", movedIds.dorm_reviews);
-          for (const row of data ?? []) if (row.dorms?.name) places.push(row.dorms.name);
-        }
-        for (const placeName of places) {
-          await sendReviewLiveEmail({
-            email: session.user.email,
-            name: session.user.name,
-            baseUrl: getBaseUrl(req),
-            placeName,
-          });
-        }
+        await flushReviewConfirmation({ userId: targetId, baseUrl: getBaseUrl(req) });
       } catch (mailErr) {
-        console.error("claim-review: review-live re-send failed:", mailErr?.message);
+        console.error("claim-review: confirmation send failed:", mailErr?.message);
       }
     }
 

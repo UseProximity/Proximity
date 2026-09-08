@@ -13,6 +13,10 @@
  *     incomplete account (lib/reviews/onboarding.js) which the review is attributed to,
  *     and the response carries a profile-setup token so the caller can offer to finish it.
  *     Soft per-client rate limit stands in for the login that isn't there.
+ *   - Signed out WITH an `inviteToken` (/review-invite/t/<token>): the same path, except
+ *     the reviewer's email is read off the invite row instead of the request body, so it
+ *     cannot be forged. The token was mailed to that one address, which makes the account
+ *     email-verified on creation and makes the rate limit unnecessary.
  * Either way reviews auto-publish (legitimacy=true).
  *
  * School: never self-declared. It is proved by an email domain in both paths (the
@@ -32,9 +36,12 @@
  *     we fall back to the listing owner — but never when the listing is a sublease or the
  *     owner is a student (i.e. a sublease manager); those cases send no landlord email.
  *   - Messaging depends on whether the recipient has an account and whether the property
- *     is new. info@useproximity.org is BCC'd on every notification.
+ *     is new. info@useproximity.org is BCC'd on the notification UNLESS a mismatch alert
+ *     is also going out, which would put two emails about one review in that inbox.
  *   - For an existing listing, if the landlord email entered in the review differs from
  *     the listing owner's email, a mismatch alert is sent to info@useproximity.org.
+ *   - The reviewer hears nothing from here. Their confirmation is batched per reviewer
+ *     rather than per review — see lib/reviews/confirmation.js.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -46,22 +53,23 @@ import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { isKnownSchool, schoolMatchesEmail, schoolForEmail } from "@/lib/schools";
-import { getBaseUrl, sendReviewWelcomeEmail, sendReviewLiveEmail } from "@/lib/email";
 import { normalizeReviewSource } from "@/lib/reviews/source";
 import { listingPlaceName } from "@/lib/reviews/placeName";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
 import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
 import {
   ensureReviewerAccount,
+  markEmailVerifiedFromLink,
   normalizeClassYear,
   resolveSchoolId,
 } from "@/lib/reviews/onboarding";
+import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TEAM_EMAIL = "info@useproximity.org"; // BCC / internal alerts
-const REVIEW_LIMIT = 2; // max reviews per account (all reviews count)
+const REVIEW_LIMIT = 4; // max reviews per account (all reviews count)
 const SITE_URL = "https://useproximity.org";
 
 const _mailer = nodemailer.createTransport({
@@ -249,7 +257,7 @@ async function getRealOwner(listingId, proximityId) {
   return owners[0];
 }
 
-async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, scenario }) {
+async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, scenario, bccTeam = true }) {
   if (!emailConfigured()) {
     console.warn("[reviewReferral] Email env not set — skipping landlord notification.");
     return;
@@ -279,7 +287,7 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
   await sendMailSafe(_mailer, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
-    bcc: TEAM_EMAIL,
+    bcc: bccTeam ? TEAM_EMAIL : undefined,
     subject,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
@@ -358,6 +366,7 @@ export async function POST(req) {
       anonymous,
       source,
       reviewer,
+      inviteToken,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
@@ -435,6 +444,27 @@ export async function POST(req) {
     const session = await auth();
     const signedOutReviewer = !session?.user?.id && reviewer ? reviewer : null;
 
+    /*
+     * An emailed invite. The token is the only thing here that proves anything:
+     * it was mailed to exactly one address, so opening it demonstrates control
+     * of that inbox.
+     *
+     * A token that is present but does not resolve (unknown, expired, already
+     * spent) is REJECTED rather than ignored. Falling back to the ordinary
+     * signed-out path would look harmless, since that path is what /review uses
+     * anyway, but it quietly posts the review under whatever email the body
+     * claims while the caller still believes the address was verified. Refusing
+     * outright keeps "this review was invited" a property that cannot be half
+     * true. Anyone holding a dead link can still use /review like everyone else.
+     */
+    const invite = inviteToken ? await resolveInvite(inviteToken) : null;
+    if (inviteToken && !invite) {
+      return NextResponse.json(
+        { error: "This invite link has expired or has already been used." },
+        { status: 410 }
+      );
+    }
+
     let reviewerUserId = null;
     let reviewerEmail = null;
     let reviewerDisplayName = null;
@@ -461,7 +491,15 @@ export async function POST(req) {
       reviewerEmail = session.user.email;
       reviewerDisplayName = session.user.name || null;
     } else if (signedOutReviewer) {
-      const email = String(signedOutReviewer.email || "").trim().toLowerCase();
+      /*
+       * With an invite, the address comes from the invite row and NEVER from the
+       * request body. This is the whole point of the feature: the browser can
+       * post any email it likes, and on this path it is ignored, so a tampered
+       * field cannot put a review under someone else's address.
+       */
+      const email = invite
+        ? invite.email
+        : String(signedOutReviewer.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) {
         return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
       }
@@ -486,8 +524,14 @@ export async function POST(req) {
        * The signed-in path costs a verified school login and is capped per
        * account. This path has neither, so a soft per-client limit is the only
        * thing between one person and a hundred reviews.
+       *
+       * An invite is exempt: the token IS the scarce credential (one per address,
+       * single-use, admin-issued), so it already bounds what one person can do
+       * far more tightly than an IP heuristic. Leaving the limit on would also
+       * punish a whole dorm behind one campus NAT for opening their invites on
+       * the same afternoon, which is exactly the burst we are hoping for.
        */
-      if (anonReviewRateLimited(anonReviewRateKey(req, email))) {
+      if (!invite && anonReviewRateLimited(anonReviewRateKey(req, email))) {
         return NextResponse.json(
           { error: "That's a lot of reviews at once. Please try again later." },
           { status: 429 }
@@ -509,6 +553,14 @@ export async function POST(req) {
       reviewerDisplayName = account.displayName;
       setupToken = account.setupToken;
       existingAccount = !!account.existingAccount;
+
+      /*
+       * The invite link was opened, which is the same proof the profile-setup
+       * link carries, only earlier. So the account is verified before the
+       * review is even written, and the student never gets a second email
+       * asking them to confirm an address we already watched them use.
+       */
+      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
     } else {
       return NextResponse.json(
         { error: "Add your name and school email, or sign in, to leave a review." },
@@ -669,6 +721,25 @@ export async function POST(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
+    /*
+     * Spend the invite only now that a review actually exists. Burning it any
+     * earlier would mean a validation failure or a crash costs the student
+     * their one link, with no way to get back in.
+     *
+     * And only when the review really did land on the invited address. Someone
+     * already signed in as a different account who opens an invite link takes
+     * the session branch above, so their review is theirs and has nothing to do
+     * with this invite. Consuming it there would burn a link belonging to a
+     * student who has not used it yet, and would point review_id at a review the
+     * invited address never wrote.
+     */
+    if (invite && reviewerEmail === invite.email) {
+      await consumeInvite(invite.inviteId, {
+        reviewId: review?.id ?? null,
+        reviewKind: "listing",
+      });
+    }
+
     // ── Notify the landlord + flag email mismatches (best-effort) ───────────
     try {
       const proximityId = await resolveProximityLandlordId();
@@ -697,18 +768,37 @@ export async function POST(req) {
       } else if (owner && !isSubleaseListing && owner.role !== "student") {
         recipient = { to: owner.email, toName: owner.name || landlordName.trim(), scenario: "alert_old" };
       }
-      if (recipient?.to) {
+      /*
+       * Existing listing + a provided landlord email that doesn't match the owner.
+       * Resolved before the notification goes out because it decides whether that
+       * notification still needs to BCC the team: the alert below already carries
+       * the address and both email addresses, so BCC'ing as well would put two
+       * emails about one review in the same inbox.
+       */
+      const mismatch = !!(
+        owner &&
+        landlordEmailNorm &&
+        owner.email.toLowerCase() !== landlordEmailNorm
+      );
+
+      /*
+       * PROXIMITY_EMAIL and TEAM_EMAIL are the same address, so a review that
+       * names the shared placeholder landlord as its contact would send the
+       * notification TO the team inbox and BCC the same inbox — two identical
+       * copies. The team hears about it either way, via the BCC or the alert.
+       */
+      if (recipient?.to && recipient.to.toLowerCase() !== TEAM_EMAIL) {
         await sendLandlordReviewEmail({
           to: recipient.to,
           toName: recipient.toName,
           listingAddress: listingRow?.address,
           listingId: resolvedListingId,
           scenario: recipient.scenario,
+          bccTeam: !mismatch,
         });
       }
 
-      // Existing listing + a provided landlord email that doesn't match the owner.
-      if (owner && landlordEmailNorm && owner.email.toLowerCase() !== landlordEmailNorm) {
+      if (mismatch) {
         await sendContactMismatchAlert({
           listingAddress: listingRow?.address,
           listingId: resolvedListingId,
@@ -722,60 +812,20 @@ export async function POST(req) {
     }
 
     /*
-     * "Your review is live", to whoever wrote it. Unlike the welcome email
-     * below this goes to EVERY reviewer, signed in or not: before this, a
-     * signed-in student got no acknowledgement of their own review at all.
-     *
-     * Best-effort, like every other send here. A dead mail server must never
-     * turn a posted review into an error.
+     * How many property reviews this account has now, so the flow knows whether
+     * to offer another one. Asking here rather than letting the form find out
+     * at the cap means a student is never invited to write a review that the
+     * POST above would reject. Dorm reviews are uncapped and not counted.
      */
-    if (reviewerEmail) {
-      try {
-        const { data: reviewed } = await supabase
-          .from("listings")
-          .select("title, address")
-          .eq("id", resolvedListingId)
-          .maybeSingle();
-        await sendReviewLiveEmail({
-          email: reviewerEmail,
-          name: reviewerDisplayName,
-          baseUrl: getBaseUrl(req),
-          placeName: listingPlaceName(reviewed || { address: addressText }),
-        });
-      } catch (mailErr) {
-        console.error("[reviewReferral] review-live email failed:", mailErr?.message);
-      }
-    }
-
-    /*
-     * Welcome + finish-your-profile, for an account this submission just
-     * created. Best-effort: a failed email must never fail a posted review,
-     * they still get the profile step inline on the page.
-     */
-    if (setupToken && reviewerEmail) {
-      try {
-        const { data: reviewedListing } = await supabase
-          .from("listings")
-          .select("address")
-          .eq("id", resolvedListingId)
-          .maybeSingle();
-        await sendReviewWelcomeEmail({
-          email: reviewerEmail,
-          name: reviewerDisplayName,
-          token: setupToken,
-          baseUrl: getBaseUrl(req),
-          place: reviewedListing?.address || addressText,
-        });
-      } catch (mailErr) {
-        console.error("[reviewReferral] welcome email failed:", mailErr?.message);
-      }
-    }
+    const reviewCount = await countUserReviews(reviewerUserId);
 
     return NextResponse.json({
       success: true,
       review,
       setupToken,
       existingAccount,
+      reviewCount,
+      reviewLimit: REVIEW_LIMIT,
       // What the profile step should open pre-filled with, so the student never
       // retypes what they just told us.
       prefill: setupToken

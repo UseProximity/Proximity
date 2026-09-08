@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { resolveDashboardUserId } from "@/lib/users/viewAs";
 
 // GET /api/landlord/metrics?range=7d|30d|6m&listingIds=id1,id2,...
 export async function GET(req) {
@@ -27,8 +28,7 @@ export async function GET(req) {
       ? null
       : new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-  const viewAsId = searchParams.get("viewAs");
-  const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
+  const targetUserId = resolveDashboardUserId(session, searchParams);
 
   // Fetch all listing IDs for this landlord via listing_landlords
   const { data: ll, error: llError } = await supabase

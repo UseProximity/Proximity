@@ -51,6 +51,15 @@ export default function ReviewSubmitForm({
   callbackUrl = "/review",
   source = null,
   onSubmitted,
+  initialContact = null,
+  /*
+   * Set when they arrived from an emailed invite. inviteToken is what the server
+   * checks; lockedEmail is only so the form can show the address it will post
+   * under. The server never believes the email in the payload when a token is
+   * present, so a tampered field changes nothing.
+   */
+  inviteToken = null,
+  lockedEmail = null,
 }) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
@@ -107,7 +116,7 @@ export default function ReviewSubmitForm({
   const [noContact, setNoContact] = useState(false);
 
   // Who's reviewing (signed-out only) + how it's shown
-  const [contact, setContact] = useState(EMPTY_CONTACT);
+  const [contact, setContact] = useState(initialContact || EMPTY_CONTACT);
   const [anonymous, setAnonymous] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -125,10 +134,19 @@ export default function ReviewSubmitForm({
     (noContact || landlordEmailOk || landlordPhoneOk);
 
   // A signed-out reviewer's school comes from the address they typed in.
-  const contactSchool = schoolForEmail(contact.email);
+  const contactSchool = schoolForEmail(lockedEmail || contact.email);
   const contactSchoolMismatch =
-    requireContact && EMAIL_RE.test(contact.email.trim()) && !contactSchool;
-  const identityReady = contactReady(contact, { requireContact }) && !contactSchoolMismatch;
+    requireContact &&
+    !lockedEmail &&
+    EMAIL_RE.test(contact.email.trim()) &&
+    !contactSchool;
+  const identityReady =
+    contactReady(
+      // The invited address stands in for the one they would have typed, so the
+      // submit button is not held hostage to a field they cannot edit.
+      lockedEmail ? { ...contact, email: lockedEmail } : contact,
+      { requireContact }
+    ) && !contactSchoolMismatch;
 
   // 'Whole' means the lease covered the entire property, so it carries no number.
   const wholeProperty = unitDesignator === "Whole";
@@ -219,9 +237,10 @@ export default function ReviewSubmitForm({
             firstName: contact.firstName.trim(),
             lastName: contact.lastName.trim(),
             classYear: contact.classYear,
-            email: contact.email.trim(),
+            email: lockedEmail || contact.email.trim(),
           }
         : null,
+      inviteToken,
     };
 
     setSubmitting(true);
@@ -491,6 +510,7 @@ export default function ReviewSubmitForm({
           requireContact={requireContact}
           schoolMismatch={contactSchoolMismatch}
           postingAs={loggedIn ? session?.user?.name || accountEmail : null}
+          lockedEmail={lockedEmail}
         />
 
         <button

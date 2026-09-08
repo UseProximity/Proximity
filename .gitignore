@@ -107,6 +107,10 @@ ci-out/
 # Firecrawl scrape output (research artifacts, not source)
 .firecrawl/
 
+# Imported class rosters: names + emails for ~6.6k real students who have no
+# Proximity account. Bulk PII, never committed.
+class_db/
+
 # ── SEO engine (must stay at end of file: re-includes must follow excludes) ──
 # Validator + benchmark allowlist are shared tooling; the seo-draft skill and
 # content-draft docs travel with the repo. Weekly review sheets stay local.

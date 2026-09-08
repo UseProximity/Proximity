@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { getOwnedListings } from "@/lib/listings/ownership";
+import { resolveDashboardUserId } from "@/lib/users/viewAs";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
   if (!session?.user?.id) return null;
-  if (!["landlord", "super"].includes(session.user.role)) return null;
+  if (!["landlord", "super", "admin"].includes(session.user.role)) return null;
   return session;
 }
 
@@ -17,8 +18,7 @@ export async function GET(req) {
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
-  const viewAsId = searchParams.get("viewAs");
-  const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
+  const targetUserId = resolveDashboardUserId(session, searchParams);
 
   /*
    * Includes properties the landlord only holds a LEASE at, not just ones they

@@ -1108,6 +1108,53 @@
           "position:numeric",
           "created_at:timestamptz"
         ]
+      },
+      {
+        "table": "student_roster",
+        "description": "Imported class rosters (email, name, class year) used to recognize a real student and to prefill an emailed review invite. Bulk PII for people with no Proximity account: RLS on with NO policies, service-role only.",
+        "columns": [
+          "id:uuid",
+          "email:text",
+          "first_name:text",
+          "last_name:text",
+          "class_year:smallint",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "review_invites",
+        "description": "One row per tokenized review invite. token_hash is the SHA-256 of the emailed token, never the token, and is minted at send time so an unsent token never exists. Opening the link proves control of invited_email, which is then used for the review instead of anything the browser posts. A ledger rather than a status column on student_roster, so re-imports cannot clobber campaign state and one person can be invited more than once. review_id/review_kind are polymorphic (listing_reviews or dorm_reviews) and deliberately carry no FK. RLS on with NO policies, service-role only.",
+        "columns": [
+          "id:uuid",
+          "token_hash:text",
+          "invited_email:text",
+          "roster_id:uuid",
+          "listing_id:uuid",
+          "invited_by:uuid",
+          "sent_at:timestamptz",
+          "expires_at:timestamptz",
+          "used_at:timestamptz",
+          "review_id:uuid",
+          "review_kind:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "student_roster_invite_status (view)",
+        "description": "Read-only view: student_roster left-joined to each student's MOST RECENT review_invites row. Adds has_first_name (blank and NULL both count as missing), invited, last_invited_at, review_written_at, invite_expires_at. Backs the admin bulk-send picker so \"already asked\" is derived from the ledger rather than stored on the roster, where a re-import would reset it. Created WITH (security_invoker = true) so it inherits the base tables' RLS instead of bypassing it, and anon/authenticated are revoked: service-role only.",
+        "columns": [
+          "id:uuid",
+          "email:text",
+          "first_name:text",
+          "last_name:text",
+          "class_year:smallint",
+          "has_first_name:boolean",
+          "invited:boolean",
+          "last_invited_at:timestamptz",
+          "review_written_at:timestamptz",
+          "invite_expires_at:timestamptz"
+        ]
       }
     ]
   }

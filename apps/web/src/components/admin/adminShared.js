@@ -86,6 +86,63 @@ export function termLabel(months) {
   return `${months}-month`;
 }
 
+// ─── Sorting ──────────────────────────────────────────────────────────────────
+//
+// Newest first is the default wherever this is used. An admin opening a table
+// is nearly always asking what has just come in, and the tables that grew past
+// a screenful (users, reviews) buried exactly that under whatever order the
+// query happened to return.
+
+export const SORT_NEWEST = "newest";
+export const SORT_OLDEST = "oldest";
+
+/**
+ * Rows newest or oldest first, by `field`. Returns a new array, because callers
+ * render straight from the result, so sorting in place would mutate the
+ * fetched data and make the order depend on how many times it rendered.
+ *
+ * A row with no date sorts last in both directions. It is not old, it is
+ * unknown, and floating it to the top of "oldest" would read as a real answer.
+ */
+export function sortByDate(rows, direction = SORT_NEWEST, field = "created_at") {
+  const time = (r) => {
+    const t = new Date(r?.[field] ?? NaN).getTime();
+    return Number.isNaN(t) ? null : t;
+  };
+  return [...(rows || [])].sort((a, b) => {
+    const ta = time(a);
+    const tb = time(b);
+    if (ta === null) return tb === null ? 0 : 1;
+    if (tb === null) return -1;
+    return direction === SORT_OLDEST ? ta - tb : tb - ta;
+  });
+}
+
+export function SortToggle({ value, onChange, label = "Sort" }) {
+  return (
+    <div className="inline-flex items-center gap-1">
+      <span className="text-[11px] text-gray-400">{label}</span>
+      {[
+        { key: SORT_NEWEST, text: "Newest" },
+        { key: SORT_OLDEST, text: "Oldest" },
+      ].map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={`px-2 py-0.5 text-[11px] rounded-full border ${
+            value === o.key
+              ? "bg-gray-800 border-gray-800 text-white"
+              : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+          }`}
+        >
+          {o.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Stars({ rating }) {
   const r = Number(rating) || 0;
   return (

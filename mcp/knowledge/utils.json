@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-03T05:02:21.425Z",
-  "count": 70,
+  "_generated": "2026-09-03T21:38:47.678Z",
+  "count": 74,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -200,6 +200,14 @@
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
     },
     {
+      "file": "src/lib/reviews/confirmation.js",
+      "description": "Batched \"your review is live\" confirmations."
+    },
+    {
+      "file": "src/lib/reviews/invites.js",
+      "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
       "file": "src/lib/reviews/onboarding.js",
       "description": "Accounts born from a signed-out review (the QR flow)."
     },
@@ -246,6 +254,14 @@
     {
       "file": "src/lib/userRole.js",
       "description": "Resolve a user's authoritative role straight from the database."
+    },
+    {
+      "file": "src/lib/users/dashboardUser.js",
+      "description": "The dashboard payload, built once for whoever is being looked at."
+    },
+    {
+      "file": "src/lib/users/viewAs.js",
+      "description": "Who a dashboard request is actually ABOUT."
     },
     {
       "file": "src/lib/washuPages.js",
