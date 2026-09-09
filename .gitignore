@@ -1,126 +1,100 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+#
+# Rules here are deliberately TARGETED rather than broad. An earlier version of this
+# file ignored `scripts`, `docs/` and `.claude/` wholesale and then re-admitted a few
+# paths from a block at the very end, which meant the meaning of a rule depended on
+# its line number. It also silently swallowed real work: six working scripts, the
+# matchmaking test harnesses among them, never showed up in `git status` at all.
+# Keep new rules narrow, and keep any negation directly beneath the rule it undoes.
 
-# Migration artifacts — DO NOT COMMIT
+# ── Secrets. Never commit. ────────────────────────────────────────────────────
+# Covers .env, .env.local, .env.production, .env.migration and friends at any depth.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.mobileprovision
+# Agent tooling writes credentials straight into these.
+*.local.json
+claude-flow.config.json
+
+# ── Sensitive data ────────────────────────────────────────────────────────────
+# Imported class rosters: names + emails for ~6.6k real students who have no
+# Proximity account. Bulk PII, never committed.
+class_db/
+# Database migration artifacts and dumps.
 backups/
-.env.migration
 *.dump
-backup_pre_v4_*
 backup_*.sql
-
-# Supabase CLI — local state, may contain project refs / connection info
+backup_pre_v4_*
+# Supabase CLI local state, may contain project refs / connection info.
 supabase/.temp/
 supabase/.branches/
 
-# dependencies (match at any depth for monorepo)
+# ── Dependencies (any depth, for the monorepo) ────────────────────────────────
 node_modules/
 .pnp
 .pnp.js
 .yarn/install-state.gz
 
-# testing
-coverage/
-
-# next.js (match at any depth for monorepo)
+# ── Build output ──────────────────────────────────────────────────────────────
 .next/
-out/
-# build dir for the local content-recording mode (`npm run dev:demo`)
+# Build dir for the local content-recording mode (`npm run dev:demo`).
 .next-demo/
-
-# production
+out/
 build/
-
-# Expo / React Native
-.expo/
 dist/
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-*.orig.*
-android/
-ios/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
 
-# misc
+# ── Expo / React Native (apps/mobile) ─────────────────────────────────────────
+.expo/
+apps/mobile/android/
+apps/mobile/ios/
+
+# ── OS, editor and debug junk ─────────────────────────────────────────────────
 .DS_Store
-*.pem
-
-# debug
+*.orig.*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
-.env.migration
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-TODO.md
-
-# data scripts
-
-public/listing-pics
-.swarm/memory.db
-.swarm
-.agents
-CLAUDE.md
-sync-scripts
-scripts
-today.md
-
-# Claude Code local state (worktrees, memory, logs)
-.claude/
+# ── Local agent + tool state ──────────────────────────────────────────────────
+# .claude/skills/ IS committed so the team shares slash commands. Only per-machine
+# state is ignored, named file by file so a new skill can never be swallowed.
+.claude/settings.local.json
+.claude/worktrees/
 .claude-flow/
-# Agent tooling writes credentials straight into these — never commit them
-claude-flow.config.json
-*.local.json
-
-# Codex local state
 .codex
-
-# MCP server dependencies
-mcp/node_modules/
-# MCP knowledge base (mcp/knowledge/) is COMMITTED so every machine and coding
+.swarm
+.swarm/memory.db
+.agents
+# The MCP knowledge base (mcp/knowledge/) is COMMITTED so every machine and coding
 # agent shares the same repo knowledge. Regenerate with
 # `node mcp/scripts/generate-knowledge.mjs` and commit alongside code changes;
-# CI (update-knowledge.yml) auto-commits any drift on staging/main.
+# CI (update-knowledge.yml) opens a sync PR for any drift on staging/main.
 # Only the local agent-swarm runtime log stays machine-local:
 mcp/knowledge/agent-sessions.json
-# Allow mcp/scripts/ even though root-level `scripts` is ignored
-!mcp/scripts/
-!mcp/scripts/**
-
 # .mcp.json is committed so the team shares MCP server setup. It contains no
-# secrets — the Supabase access token is env-interpolated (${SUPABASE_ACCESS_TOKEN}).
+# secrets: the Supabase access token is env-interpolated (${SUPABASE_ACCESS_TOKEN}).
 
-# Local documentation — not version controlled
-docs/
-# CI impact-check artifacts (generated)
-ci-out/
-
-# Firecrawl scrape output (research artifacts, not source)
-.firecrawl/
-
-# Imported class rosters: names + emails for ~6.6k real students who have no
-# Proximity account. Bulk PII, never committed.
-class_db/
-
-# ── SEO engine (must stay at end of file: re-includes must follow excludes) ──
-# Validator + benchmark allowlist are shared tooling; the seo-draft skill and
-# content-draft docs travel with the repo. Weekly review sheets stay local.
-!scripts/
-scripts/*
-!scripts/seo-engine/
+# ── Generated reports and research artifacts ──────────────────────────────────
+# scripts/ itself is TRACKED. Only generated output under it is ignored.
+scripts/matchmaking-reports/
 scripts/seo-engine/reports/*.md
-!.claude/
-.claude/*
-!.claude/skills/
-!docs/
-docs/*
-!docs/content-drafts/
+# CI impact-check artifacts.
+ci-out/
+# Firecrawl scrape output (research artifacts, not source).
+.firecrawl/
+# Local image dump, not served from git.
+public/listing-pics
+
+# ── Personal scratch notes (deliberate, not accidental) ───────────────────────
+TODO.md
+today.md
