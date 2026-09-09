@@ -85,7 +85,7 @@ public/                         # Static assets — logos, dorm photos, map icon
 ### Installation
 
 ```bash
-git clone https://github.com/simaoribeiroo/proximity.git
+git clone https://github.com/UseProximity/Proximity.git
 cd proximity
 npm install
 ```
