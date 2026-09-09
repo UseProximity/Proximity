@@ -279,7 +279,7 @@ export async function PUT(req) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId, unitId = null, db, urls } = await req.json();
+    const { listingId, unitId = null, db, urls, attach = true } = await req.json();
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -304,7 +304,7 @@ export async function PUT(req) {
     }
 
     // Stored, but deliberately not filed in the gallery — the caller is putting
-    // it somewhere else (see `attach` above).
+    // it somewhere else (a floor plan, which belongs on the unit record instead).
     if (!attach) {
       return Response.json({ urls, url: urls[0] });
     }

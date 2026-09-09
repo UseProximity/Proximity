@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-03T21:38:47.678Z",
-  "count": 74,
+  "_generated": "2026-09-09T00:29:41.439Z",
+  "count": 76,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -276,6 +276,10 @@
       "description": "How an offering's start date reads to a person."
     },
     {
+      "file": "src/utils/compressImage.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/utils/drivePlaces.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -290,6 +294,10 @@
     {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/uploadImagesToR2.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/walkTimes.js",
