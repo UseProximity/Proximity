@@ -17,6 +17,8 @@ import { useState } from "react";
 import { Lock, Plus, Trash2, LayoutGrid } from "lucide-react";
 import toast from "react-hot-toast";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import { compressImage } from "@/utils/compressImage";
+import { uploadImagesToR2 } from "@/utils/uploadImagesToR2";
 
 const BUSY_LABEL = {
   upload: "Uploading…",
@@ -36,16 +38,15 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
     if (!files?.length) return;
     setBusy("upload");
     try {
-      const form = new FormData();
-      form.append("listingId", listingId);
-      if (unitId) form.append("unitId", unitId);
-      for (const f of files) form.append("files", f);
-      const res = await fetch("/api/upload", { method: "PATCH", body: form });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Those photos couldn't be added.");
+      // Downscale the same way the add-listing flow does, then send files
+      // straight to R2 via presigned URLs — same flow as AddListingWizard and
+      // ImageManagerPanel, which bypasses Vercel's serverless body limit
+      // entirely rather than working around it.
+      const compressed = await Promise.all(files.map(compressImage));
+      await uploadImagesToR2({ listingId, unitId, files: compressed });
       await onChanged();
-    } catch {
-      toast.error("Network error.");
+    } catch (err) {
+      toast.error(err.message || "Those photos couldn't be added.");
     } finally {
       setBusy(null);
     }
@@ -177,21 +178,19 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
     if (!file) return;
     setBusy(true);
     try {
-      const form = new FormData();
-      form.append("listingId", listingId);
-      form.append("unitId", unit.id);
-      form.append("files", file);
-      // Store it, but keep it out of the unit's photo gallery — it belongs in
-      // the floor plan slot alone, not in both places.
-      form.append("attach", "false");
-      const res = await fetch("/api/upload", { method: "PATCH", body: form });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Upload failed.");
-      // /api/upload returns the stored URLs; the first is this file.
-      const uploaded = data.url || data.urls?.[0];
-      if (uploaded) await set(uploaded);
-    } catch {
-      toast.error("Network error.");
+      // Same presigned R2 flow as the photo rows above. `attach: false` keeps
+      // it out of the unit's photo gallery — it belongs in the floor plan slot
+      // alone, not in both places. PDFs pass through untouched: only the
+      // transport changed, not what's accepted.
+      const { urls } = await uploadImagesToR2({
+        listingId,
+        unitId: unit.id,
+        files: [file],
+        attach: false,
+      });
+      if (urls[0]) await set(urls[0]);
+    } catch (err) {
+      toast.error(err.message || "Upload failed.");
     } finally {
       setBusy(false);
     }

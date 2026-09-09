@@ -11,6 +11,7 @@ import StepPerks from "@/components/listings/wizard/StepPerks";
 import StepPhotos from "@/components/listings/wizard/StepPhotos";
 import StepDescription from "@/components/listings/wizard/StepDescription";
 import StepReview from "@/components/listings/wizard/StepReview";
+import { compressImage } from "@/utils/compressImage";
 
 /*
  * Step-by-step Add Listing flow. One themed question set per screen, a labeled
@@ -248,50 +249,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setCustomAmenities((prev) => prev.filter((a) => a !== val));
 
   // ------------------------------------------------------------------- photos
-  const compressImage = (file) =>
-    new Promise((resolve) => {
-      if (file.size < 1 * 1024 * 1024) {
-        resolve(file);
-        return;
-      }
-      const img = new window.Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const MAX = 1920;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || blob.size >= file.size) {
-              resolve(file);
-              return;
-            }
-            resolve(
-              new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
-                type: "image/jpeg",
-              })
-            );
-          },
-          "image/jpeg",
-          0.85
-        );
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve(file);
-      };
-      img.src = url;
-    });
-
   const handleImageFiles = async (files) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (!imgs.length) return;
