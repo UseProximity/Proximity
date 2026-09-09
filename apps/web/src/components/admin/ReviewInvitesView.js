@@ -16,6 +16,17 @@
  * function stops at 300s. So the selection is walked in batches of 50, which
  * also turns an opaque spinner into a real progress bar and means one failed
  * chunk costs 50 emails rather than the whole campaign.
+ *
+ * EXPORT IS THE SAME CAMPAIGN, MAILED BY A PERSON. It walks the identical
+ * selection through the identical endpoint and gets links back instead of
+ * sending them, so a batch can go out of an admin's own inbox. A review request
+ * from a classmate's address outperforms one from info@, and the roster is
+ * students who have never heard of us. The composer above is skipped in this
+ * mode: the message that matters is the one written in Outlook.
+ *
+ * The downloaded file holds working links. Anyone who opens one can post a
+ * review as that student, which is exactly the trust an invited review sells,
+ * so the UI says to delete the file once the merge has gone out.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -52,6 +63,55 @@ function chunk(list, size) {
   const out = [];
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
   return out;
+}
+
+/*
+ * The anti-forwarding notice. sendReviewInviteEmail appends this to every email
+ * it sends, because it is a property of the link and not of whatever the admin
+ * chose to write above it. An exported batch leaves through a mail merge that
+ * knows nothing about that, so the copy is surfaced here to be pasted in. A
+ * forwarded link is the one behaviour that breaks the guarantee an invited
+ * review makes, and this sentence is the only thing that warns anyone.
+ */
+const MERGE_FOOTER =
+  "This link is personal to you and posts your review under your own email " +
+  "address, so please don't forward it. It works for the next 30 days.";
+
+/*
+ * Quote anything that would otherwise break the row apart. Names are the reason
+ * this is needed rather than a plain join: a roster first name can legitimately
+ * contain a comma, and Excel is the thing reading the file.
+ */
+function csvCell(value) {
+  const s = String(value ?? "");
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function toCsv(rows) {
+  const header = ["first_name", "email", "link", "expires_at"];
+  return [
+    header,
+    ...rows.map((r) => [r.firstName, r.email, r.link, r.expiresAt]),
+  ]
+    .map((cols) => cols.map(csvCell).join(","))
+    .join("\r\n");
+}
+
+/*
+ * A BOM because Excel assumes the local codepage without one and mangles any
+ * name outside ASCII, which on this roster is a lot of them.
+ */
+function downloadCsv(text, filename) {
+  const url = URL.createObjectURL(
+    new Blob(["\uFEFF" + text], { type: "text/csv;charset=utf-8" })
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function ReviewInvitesView({ search = "" }) {
@@ -197,6 +257,82 @@ export default function ReviewInvitesView({ search = "" }) {
       setError(`${err.message} (stopped after ${sent} sent)`);
     } finally {
       setSending(false);
+    }
+  }
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(null); // { count, filename }
+
+  /*
+   * Export takes the whole selection, not sendableRows. The first-name filter
+   * exists to stop the composer greeting someone "Hi ,", and the composer is not
+   * what sends an export. Dropping people here would silently shrink a batch
+   * because of wording in a message that never leaves the browser.
+   */
+  const totalToExport = selectedRows.length + pastedEmails.length;
+
+  async function handleExport() {
+    if (!totalToExport || exporting || sending) return;
+    if (
+      !confirm(
+        `Create ${totalToExport} invite link${totalToExport === 1 ? "" : "s"} and download them as a CSV?\n\n` +
+          "No email is sent. These count as invited, so the dashboard will not " +
+          "email them again while the links are live.\n\n" +
+          "The file contains working links. Delete it once your merge has gone out."
+      )
+    )
+      return;
+
+    setExporting(true);
+    setError(null);
+    setFailures([]);
+    setExported(null);
+
+    const batches = [
+      ...chunk(selectedRows.map((r) => r.id), CHUNK).map((ids) => ({ rosterIds: ids })),
+      ...chunk(pastedEmails, CHUNK).map((emails) => ({ emails })),
+    ];
+
+    const rows = [];
+    const collected = [];
+    setProgress({ done: 0, total: totalToExport, sent: 0, failed: 0 });
+
+    try {
+      for (let i = 0; i < batches.length; i++) {
+        const size = batches[i].rosterIds?.length ?? batches[i].emails?.length ?? 0;
+        const data = await postChunk({ ...batches[i], mode: "export" });
+        rows.push(...(data.results || []).filter((r) => r.ok));
+        collected.push(...(data.results || []).filter((r) => !r.ok));
+        setProgress((p) => ({
+          done: (p?.done || 0) + size,
+          total: totalToExport,
+          sent: rows.length,
+          failed: collected.length,
+        }));
+      }
+
+      setFailures(collected);
+      if (!rows.length) {
+        setError("Nothing to export. Everyone selected already has a live invite.");
+        return;
+      }
+
+      const filename = `review-invite-links-${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadCsv(toCsv(rows), filename);
+      setExported({ count: rows.length, filename });
+      clearSelection();
+      setPasted("");
+      loadInvites();
+    } catch (err) {
+      /*
+       * Whatever already downloaded is not what failed, but the tokens minted in
+       * the chunk that threw are gone: the response never arrived, so nobody
+       * holds those links and the rows sit unusable until they expire.
+       */
+      setError(`${err.message} (stopped after ${rows.length} link${rows.length === 1 ? "" : "s"})`);
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -355,6 +491,65 @@ export default function ReviewInvitesView({ search = "" }) {
                 </div>
               )}
             </div>
+
+            <div className="mt-4 p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-2">
+              <h4 className="text-xs font-semibold text-gray-700">
+                Or send it yourself
+              </h4>
+              <p className="text-[11px] text-gray-600 leading-relaxed">
+                Downloads a CSV of personal links for everyone selected, without
+                emailing anyone. Mail merge it from your own address when the
+                message should come from a person rather than from Proximity. The
+                message above is not used.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting || sending || !totalToExport}
+                className="w-full px-3 py-2 text-xs font-semibold bg-gray-800 hover:bg-gray-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exporting
+                  ? "Creating links…"
+                  : `Export ${totalToExport} link${totalToExport === 1 ? "" : "s"} as CSV`}
+              </button>
+
+              {missingFirstName.length > 0 && totalToExport > 0 && (
+                <p className="text-[11px] text-amber-800">
+                  {missingFirstName.length} of these have no first name on file, so
+                  their first_name column will be blank. Handle that in your merge
+                  or your greeting reads &quot;Hi ,&quot;.
+                </p>
+              )}
+
+              {exported && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] text-green-700 font-medium">
+                    {exported.count} link{exported.count === 1 ? "" : "s"} saved to{" "}
+                    {exported.filename}. These are now marked invited.
+                  </p>
+                  <p className="text-[11px] text-red-700">
+                    That file contains working review links. Delete it once the
+                    merge has gone out.
+                  </p>
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-700 mb-1">
+                      Put this at the bottom of your email:
+                    </p>
+                    <p className="p-2 rounded border border-gray-300 bg-white text-[11px] text-gray-600 leading-relaxed">
+                      {MERGE_FOOTER}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(MERGE_FOOTER)}
+                      className="mt-1 px-2 py-1 text-[11px] font-semibold bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -409,6 +604,16 @@ export default function ReviewInvitesView({ search = "" }) {
                       </td>
                       <td className="px-3 py-2 text-gray-600">
                         {i.sentAt ? fmtDate(i.sentAt) : "-"}
+                        {/*
+                          An exported link was handed to an admin's mail merge, so
+                          "sent" here means we lost sight of it, not that we
+                          delivered it. A bounce lives in their outbox.
+                        */}
+                        {i.sentVia === "export" && (
+                          <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-100 text-purple-700 border border-purple-200">
+                            exported
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-gray-600">
                         {i.usedAt

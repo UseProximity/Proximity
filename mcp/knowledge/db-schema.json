@@ -1124,7 +1124,7 @@
       },
       {
         "table": "review_invites",
-        "description": "One row per tokenized review invite. token_hash is the SHA-256 of the emailed token, never the token, and is minted at send time so an unsent token never exists. Opening the link proves control of invited_email, which is then used for the review instead of anything the browser posts. A ledger rather than a status column on student_roster, so re-imports cannot clobber campaign state and one person can be invited more than once. review_id/review_kind are polymorphic (listing_reviews or dorm_reviews) and deliberately carry no FK. RLS on with NO policies, service-role only.",
+        "description": "One row per tokenized review invite. token_hash is the SHA-256 of the emailed token, never the token, and is minted at send time so an unsent token never exists. Opening the link proves control of invited_email, which is then used for the review instead of anything the browser posts. A ledger rather than a status column on student_roster, so re-imports cannot clobber campaign state and one person can be invited more than once. review_id/review_kind are polymorphic (listing_reviews or dorm_reviews) and deliberately carry no FK. sent_via ('app' | 'export') records how the link left us: 'app' means this system mailed it and saw the SMTP result, 'export' means the link was downloaded as a CSV and mailed by an admin from their own address, so sent_at is when we lost sight of it rather than a delivery we can vouch for. RLS on with NO policies, service-role only.",
         "columns": [
           "id:uuid",
           "token_hash:text",
@@ -1133,6 +1133,7 @@
           "listing_id:uuid",
           "invited_by:uuid",
           "sent_at:timestamptz",
+          "sent_via:text",
           "expires_at:timestamptz",
           "used_at:timestamptz",
           "review_id:uuid",

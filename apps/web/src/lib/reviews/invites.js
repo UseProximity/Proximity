@@ -98,11 +98,19 @@ export async function mintInvite({
   return { inviteId: data.id, token, email: emailNorm };
 }
 
-/** Stamp an invite as sent. Separate from minting so a send failure leaves it unsent. */
-export async function markInviteSent(inviteId) {
+/**
+ * Stamp an invite as sent. Separate from minting so a send failure leaves it unsent.
+ *
+ * `via` records which way the link left us. 'app' means this system mailed it and
+ * saw the SMTP result. 'export' means the link was handed to an admin's own
+ * mailbox as a CSV, so the stamp is the moment we lost sight of it rather than a
+ * delivery we can vouch for. See the sent_via migration for why that distinction
+ * has to survive into the ledger.
+ */
+export async function markInviteSent(inviteId, { via = "app" } = {}) {
   const { error } = await supabase
     .from("review_invites")
-    .update({ sent_at: new Date().toISOString() })
+    .update({ sent_at: new Date().toISOString(), sent_via: via })
     .eq("id", inviteId);
   if (error) console.error("[reviewInvites] mark sent failed:", error.message);
 }
