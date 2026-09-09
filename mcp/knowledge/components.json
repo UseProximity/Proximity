@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-03T20:53:25.405Z",
-  "count": 102,
+  "_generated": "2026-09-03T22:03:10.964Z",
+  "count": 105,
   "components": [
     {
       "name": "DormsView",
@@ -29,6 +29,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "ReviewInvitesView",
+      "file": "src/components/admin/ReviewInvitesView.js",
+      "description": "Admin view for review invites: pick students, write one templated message, send it in chunks, and browse the invite ledger"
+    },
+    {
       "name": "ReviewsView",
       "file": "src/components/admin/ReviewsView.js",
       "description": "No description — run generate after adding a description above."
@@ -47,6 +52,16 @@
       "name": "adminShared",
       "file": "src/components/admin/adminShared.js",
       "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "InviteComposer",
+      "file": "src/components/admin/reviewInvites/InviteComposer.js",
+      "description": "Subject and message editor for bulk review invites, with {first_name} / {link} placeholders and a live preview"
+    },
+    {
+      "name": "RosterPicker",
+      "file": "src/components/admin/reviewInvites/RosterPicker.js",
+      "description": "Student roster picker for review invites: search, filter by contacted status, flag missing first names, and draw N at random"
     },
     {
       "name": "AuthCard",

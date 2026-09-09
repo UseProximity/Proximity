@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-03T19:57:20.696Z",
-  "count": 72,
+  "_generated": "2026-09-09T00:07:58.160Z",
+  "count": 76,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -200,6 +200,14 @@
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
     },
     {
+      "file": "src/lib/reviews/confirmation.js",
+      "description": "Batched \"your review is live\" confirmations."
+    },
+    {
+      "file": "src/lib/reviews/invites.js",
+      "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
       "file": "src/lib/reviews/onboarding.js",
       "description": "Accounts born from a signed-out review (the QR flow)."
     },
@@ -268,6 +276,10 @@
       "description": "How an offering's start date reads to a person."
     },
     {
+      "file": "src/utils/compressImage.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/utils/drivePlaces.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -282,6 +294,10 @@
     {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/uploadImagesToR2.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/walkTimes.js",
