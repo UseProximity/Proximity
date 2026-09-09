@@ -248,3 +248,122 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
     `,
   });
 }
+
+const escapeHtml = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+
+/*
+ * The placeholders an admin may use in a bulk invite message. Exported so the
+ * composer's help text, its validation and this renderer cannot drift apart.
+ */
+export const INVITE_PLACEHOLDERS = ["{first_name}", "{link}"];
+
+/**
+ * Turn an admin's plain-text message into the body of one person's email.
+ *
+ * Escape first, THEN substitute. Doing it the other way round would escape the
+ * anchor we just built and mail people a visible <a href=...>. The braces in the
+ * placeholders survive escaping untouched, which is what makes that order safe.
+ *
+ * The admin's text is trusted enough to send but not trusted as markup: they are
+ * writing a message, not HTML, and a stray < in "rent < $900" should read as a
+ * less-than sign rather than eat the rest of the paragraph.
+ */
+export function renderInviteMessage(message, { firstName, inviteUrl }) {
+  const name = firstName ? String(firstName).split(" ")[0] : "";
+  const link =
+    `<a href="${inviteUrl}" style="color:#dc2626;font-weight:600">Write my review</a>`;
+
+  return escapeHtml(message)
+    .split(/\n{2,}/)
+    .map((para) => {
+      const html = para
+        .split("\n")
+        .join("<br>")
+        .split("{first_name}")
+        .join(escapeHtml(name))
+        .split("{link}")
+        .join(link);
+      return `<p style="font-size:15px;line-height:1.6;color:#333">${html}</p>`;
+    })
+    .join("");
+}
+
+/*
+ * The review invite: a link that only works from one inbox.
+ *
+ * Everything the review flow normally takes on trust (who you are, that the
+ * school email you typed is yours) is instead carried by the token in this URL.
+ * So the footer has to make the personal nature of the link obvious, because the
+ * one behaviour that breaks the guarantee is forwarding it to a friend: whoever
+ * opens it posts under THIS address. That footer is appended to every invite,
+ * custom message or not, because it is a property of the link rather than of
+ * whatever the admin chose to say above it.
+ *
+ * `message` is an admin-written template (see renderInviteMessage). Without one
+ * the default copy below is used, which is what a one-off invite sends.
+ *
+ * `firstName` comes from the roster when we have it. It is escaped rather than
+ * trusted: roster rows are bulk-imported from a file, not typed by us.
+ */
+export async function sendReviewInviteEmail({
+  email,
+  firstName,
+  token,
+  baseUrl,
+  expiresAt,
+  subject,
+  message,
+}) {
+  const inviteUrl = `${baseUrl}/review-invite/t/${encodeURIComponent(token)}`;
+  const name = firstName ? escapeHtml(String(firstName).split(" ")[0]) : "";
+  const expiryNote = expiresAt
+    ? `This link works until ${new Date(expiresAt).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+      })}.`
+    : "";
+
+  const defaultBody = `
+        <h2 style="color:#111;font-size:20px;margin:0 0 16px">
+          ${name ? `${name}, what` : "What"} was your place actually like?
+        </h2>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          Proximity is where WashU students find off-campus housing. The part that
+          makes it useful is the reviews, and the only people who can write them are
+          the students who lived there.
+        </p>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          It takes about two minutes and there is no account to create first.
+        </p>
+        <a href="${inviteUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Write my review
+        </a>`;
+
+  const body = message
+    ? renderInviteMessage(message, { firstName, inviteUrl })
+    : defaultBody;
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    replyTo: "info@useproximity.org",
+    subject: subject?.trim() || "Where did you live this year?",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        ${body}
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${inviteUrl}</p>
+        <p style="color:#999;font-size:12px;line-height:1.5">
+          This link is personal to ${escapeHtml(email)} and posts your review under
+          that address, so please don&#39;t forward it. ${expiryNote}
+        </p>
+        <p style="color:#999;font-size:12px">
+          Not interested? Just ignore this and we won&#39;t email you again.
+        </p>
+      </div>
+    `,
+  });
+}

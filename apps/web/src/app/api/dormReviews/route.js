@@ -23,7 +23,12 @@ import supabase from "@/lib/supabase";
 import { schoolForEmail } from "@/lib/schools";
 import { normalizeReviewSource } from "@/lib/reviews/source";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
-import { ensureReviewerAccount, normalizeClassYear } from "@/lib/reviews/onboarding";
+import {
+  ensureReviewerAccount,
+  markEmailVerifiedFromLink,
+  normalizeClassYear,
+} from "@/lib/reviews/onboarding";
+import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 
 export const dynamic = "force-dynamic";
 
@@ -154,11 +159,27 @@ export async function POST(req) {
       anonymous,
       source,
       reviewer,
+      inviteToken,
     } = body;
 
     const session = await auth();
     const sessionUserId = session?.user?.id || null;
     const signedOutReviewer = !sessionUserId && reviewer ? reviewer : null;
+
+    /*
+     * An emailed invite, resolved exactly as in /api/reviewReferral: the token
+     * was mailed to one address, so opening it proves that inbox. A present but
+     * unresolvable token is rejected rather than ignored, for the reason spelled
+     * out there: a silent fallback posts an unverified review under a claimed
+     * address while the caller thinks it was vouched for.
+     */
+    const invite = inviteToken ? await resolveInvite(inviteToken) : null;
+    if (inviteToken && !invite) {
+      return NextResponse.json(
+        { error: "This invite link has expired or has already been used." },
+        { status: 410 }
+      );
+    }
 
     // ── Shared validation ───────────────────────────────────────────────────
     // Half-star scale, same as listing reviews: 0.5 to 5 in 0.5 increments.
@@ -205,14 +226,21 @@ export async function POST(req) {
     // Signed-out reviewer whose email already belongs to a real account.
     let existingAccount = false;
     if (signedOutReviewer) {
-      const email = String(signedOutReviewer.email || "").trim().toLowerCase();
+      // With an invite the address comes from the invite row, never from the
+      // request body. See /api/reviewReferral for why that is the whole point.
+      const email = invite
+        ? invite.email
+        : String(signedOutReviewer.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email) || !schoolForEmail(email)) {
         return NextResponse.json(
           { error: "Use your school email address so we can verify your review." },
           { status: 400 }
         );
       }
-      if (anonReviewRateLimited(anonReviewRateKey(req, email))) {
+      // Exempt for an invite: the single-use, admin-issued token is a far
+      // tighter bound on one person than an IP heuristic, and the limit would
+      // otherwise punish a dorm opening its invites from one campus network.
+      if (!invite && anonReviewRateLimited(anonReviewRateKey(req, email))) {
         return NextResponse.json(
           { error: "That's a lot of reviews at once. Please try again later." },
           { status: 429 }
@@ -234,6 +262,10 @@ export async function POST(req) {
       setupToken = account.setupToken;
       setupEmail = email;
       existingAccount = !!account.existingAccount;
+
+      // The invite link was opened, which is the proof email verification asks
+      // for, arriving before the review instead of after it.
+      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
     } else if (!sessionUserId) {
       // Legacy Campus Hub path: a first name and nothing else.
       if (!name?.trim()) {
@@ -275,6 +307,21 @@ export async function POST(req) {
     }
 
     if (review?.id) await attachDormTags(review.id, tags);
+
+    /*
+     * Spent only now that a review exists, so a failure earlier in this handler
+     * never costs the student their one link, and only when the review actually
+     * landed on the invited address: a visitor already signed in as someone else
+     * took the session branch, and burning their invite would cost a student a
+     * link they never used. setupEmail is set only on the signed-out path, which
+     * is the same path the invite governs.
+     */
+    if (invite && setupEmail === invite.email) {
+      await consumeInvite(invite.inviteId, {
+        reviewId: review?.id ?? null,
+        reviewKind: "dorm",
+      });
+    }
 
     return NextResponse.json(
       {

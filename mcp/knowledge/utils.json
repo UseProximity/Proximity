@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-09T00:07:58.160Z",
+  "_generated": "2026-09-09T00:29:41.439Z",
   "count": 76,
   "utils": [
     {

@@ -27,7 +27,14 @@ import ReviewerContactFields, {
   contactReady,
 } from "./ReviewerContactFields";
 
-export default function DormReviewForm({ source = null, onSubmitted, initialContact = null }) {
+export default function DormReviewForm({
+  source = null,
+  onSubmitted,
+  initialContact = null,
+  // See ReviewSubmitForm: the token is the proof, lockedEmail is only the label.
+  inviteToken = null,
+  lockedEmail = null,
+}) {
   const { data: session, status } = useSession();
   const loggedIn = !!session?.user?.id;
   const requireContact = status !== "loading" && !loggedIn;
@@ -69,12 +76,17 @@ export default function DormReviewForm({ source = null, onSubmitted, initialCont
   const ratingReady = rating >= 0.5;
   const contentReady = content.trim().length >= 10;
 
-  const contactSchool = schoolForEmail(contact.email);
+  const contactSchool = schoolForEmail(lockedEmail || contact.email);
   const contactSchoolMismatch =
-    requireContact && EMAIL_RE.test(contact.email.trim()) && !contactSchool;
+    requireContact &&
+    !lockedEmail &&
+    EMAIL_RE.test(contact.email.trim()) &&
+    !contactSchool;
   const identityReady =
-    contactReady(contact, { requireContact, requireClassYear: true }) &&
-    !contactSchoolMismatch;
+    contactReady(lockedEmail ? { ...contact, email: lockedEmail } : contact, {
+      requireContact,
+      requireClassYear: true,
+    }) && !contactSchoolMismatch;
 
   function toggleTag(tag) {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
@@ -116,9 +128,10 @@ export default function DormReviewForm({ source = null, onSubmitted, initialCont
                 firstName: contact.firstName.trim(),
                 lastName: contact.lastName.trim(),
                 classYear: contact.classYear,
-                email: contact.email.trim(),
+                email: lockedEmail || contact.email.trim(),
               }
             : null,
+          inviteToken,
         }),
       });
       const data = await res.json();
@@ -211,6 +224,7 @@ export default function DormReviewForm({ source = null, onSubmitted, initialCont
           requireClassYear
           schoolMismatch={contactSchoolMismatch}
           postingAs={postingAs}
+          lockedEmail={lockedEmail}
         />
 
         <button

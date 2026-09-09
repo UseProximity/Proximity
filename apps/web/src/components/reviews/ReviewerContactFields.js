@@ -56,6 +56,13 @@ export default function ReviewerContactFields({
   requireClassYear = false,
   schoolMismatch = false,
   postingAs = null,
+  /*
+   * Set when they arrived from an emailed invite. The token in that link is the
+   * only evidence we have that this address is theirs, so the field is shown
+   * but not editable: letting them retype it would throw away the one thing
+   * that separates an invited review from an anonymous one.
+   */
+  lockedEmail = null,
 }) {
   const set = (key) => (e) => onContactChange({ ...contact, [key]: e.target.value });
 
@@ -140,22 +147,33 @@ export default function ReviewerContactFields({
             </div>
             <div>
               <label htmlFor="reviewer-email" className="block text-sm text-gray-600 mb-1.5">
-                School email <span className="text-red-500">*</span>
+                School email {!lockedEmail && <span className="text-red-500">*</span>}
               </label>
               <input
                 id="reviewer-email"
                 type="email"
                 autoComplete="email"
                 inputMode="email"
-                value={contact.email}
+                value={lockedEmail || contact.email}
                 onChange={set("email")}
+                readOnly={!!lockedEmail}
+                aria-readonly={!!lockedEmail}
                 placeholder="you@wustl.edu"
-                className={INPUT_CLASS}
+                className={
+                  lockedEmail
+                    ? `${INPUT_CLASS} bg-gray-50 text-gray-500 cursor-not-allowed`
+                    : INPUT_CLASS
+                }
               />
             </div>
           </div>
 
-          {schoolMismatch ? (
+          {lockedEmail ? (
+            <p className="text-xs text-gray-500">
+              We sent your invite to this address, so your review posts under it.
+              Your email is never shown on the listing.
+            </p>
+          ) : schoolMismatch ? (
             <p className="text-sm text-red-600">
               Use your school email so we can confirm you actually lived there:{" "}
               {SCHOOLS.map((s) => `@${s.domains[0]}`).join(", ")}.

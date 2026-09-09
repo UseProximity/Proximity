@@ -12,6 +12,7 @@ import ReviewsView from "@/components/admin/ReviewsView";
 import DormsView from "@/components/admin/DormsView";
 import TestimonialsView from "@/components/admin/TestimonialsView";
 import ReferenceView from "@/components/admin/ReferenceView";
+import ReviewInvitesView from "@/components/admin/ReviewInvitesView";
 
 const VIEWS = [
   { key: "listings", label: "Listings" },
@@ -20,6 +21,7 @@ const VIEWS = [
   { key: "dorms", label: "Dorms" },
   { key: "testimonials", label: "Testimonials" },
   { key: "reference", label: "Reference data" },
+  { key: "invites", label: "Review invites" },
 ];
 
 // ─── Tools popover (walk times, View As, export) ──────────────────────────────
@@ -307,6 +309,9 @@ export default function AdminDashboard() {
   }, [dbTarget]);
 
   const load = useCallback(async (silent = false) => {
+    // Review invites are outreach, not a table of rows to browse: that view
+    // fetches its own data from an endpoint that ignores the dev/prod switch.
+    if (view === "invites") { setLoading(false); setError(null); return; }
     if (!silent) { setLoading(true); setData(null); }
     setError(null);
     try {
@@ -431,7 +436,9 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {loading ? (
+        {view === "invites" ? (
+          <ReviewInvitesView search={search} />
+        ) : loading ? (
           <div className="py-20 text-center text-sm text-gray-400">Loading {view}…</div>
         ) : data ? (
           <>
