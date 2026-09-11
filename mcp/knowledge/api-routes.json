@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-03T22:03:10.959Z",
-  "count": 92,
+  "_generated": "2026-09-11T16:37:01.911Z",
+  "count": 89,
   "routes": [
     {
       "path": "/api/addListing",
@@ -251,30 +251,6 @@
         "users"
       ],
       "file": "src/app/api/auth/forgot-password/route.js"
-    },
-    {
-      "path": "/api/auth/mobile/google",
-      "methods": [],
-      "auth": "public",
-      "methodAuth": {},
-      "tables": [],
-      "file": "src/app/api/auth/mobile/google/route.js"
-    },
-    {
-      "path": "/api/auth/mobile/login",
-      "methods": [],
-      "auth": "public",
-      "methodAuth": {},
-      "tables": [],
-      "file": "src/app/api/auth/mobile/login/route.js"
-    },
-    {
-      "path": "/api/auth/mobile/refresh",
-      "methods": [],
-      "auth": "public",
-      "methodAuth": {},
-      "tables": [],
-      "file": "src/app/api/auth/mobile/refresh/route.js"
     },
     {
       "path": "/api/auth/resend-verification",

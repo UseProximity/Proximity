@@ -1,15 +1,11 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-09T00:29:41.439Z",
-  "count": 76,
+  "_generated": "2026-09-11T16:37:01.922Z",
+  "count": 75,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
-    },
-    {
-      "file": "src/lib/authMobile.js",
-      "description": "Mobile bearer-token auth — the planned counterpart to `auth()` for a native client."
     },
     {
       "file": "src/lib/autoUnavailable.js",
