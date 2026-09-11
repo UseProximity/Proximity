@@ -14,7 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 const Logo = "/logo.svg";
 import { Search, X, Menu, ChevronDown } from "lucide-react";
-import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import AddressSearchInput from "@/components/listings/browse/AddressSearchInput";
 import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { recordPageVisit } from "@/utils/analytics";

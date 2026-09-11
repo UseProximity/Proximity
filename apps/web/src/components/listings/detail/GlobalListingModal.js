@@ -13,8 +13,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { MapPin } from "lucide-react";
-import ModalListing from "@/components/listings/ModalListing";
-import ListingModalInfo from "@/components/listings/ListingModalInfo";
+import ModalListing from "@/components/listings/detail/ModalListing";
+import ListingModalInfo from "@/components/listings/detail/ListingModalInfo";
 
 function GlobalListingModalInner() {
   const searchParams = useSearchParams();

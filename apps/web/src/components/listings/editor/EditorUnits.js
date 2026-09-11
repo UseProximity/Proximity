@@ -19,7 +19,7 @@ import { Plus } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
 import { UnitPhotoRow } from "./EditorImageRows";
-import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
+import LeaseTermPicker from "@/components/listings/form/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 
 const DESIGNATORS = ["Apt", "Unit", "Suite", "Floor", "Room", "Whole"];

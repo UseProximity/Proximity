@@ -15,8 +15,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import AvailableListings from "@/components/listings/AvailableListings";
-import TopFilterBar from "@/components/listings/TopFilterBar";
+import AvailableListings from "@/components/listings/browse/AvailableListings";
+import TopFilterBar from "@/components/listings/browse/TopFilterBar";
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
 import {

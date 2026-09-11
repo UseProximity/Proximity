@@ -17,7 +17,7 @@ import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
 import { appEnv, indexingEnabled } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
-import GlobalListingModal from "@/components/listings/GlobalListingModal";
+import GlobalListingModal from "@/components/listings/detail/GlobalListingModal";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import Providers from "@/components/layout/Providers";
 import { serializeJsonLd } from "@/lib/jsonLd";

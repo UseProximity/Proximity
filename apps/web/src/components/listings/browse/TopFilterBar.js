@@ -12,7 +12,7 @@ import {
   BATH_STEPS,
   DIST_STEPS,
   SHTT_STEPS,
-} from "@/components/listings/FilterComponents";
+} from "@/components/listings/browse/FilterComponents";
 
 // FilterSection, DualRangeSlider, StepSlider, DualStepSlider, and step constants
 // are imported from FilterComponents.js above.

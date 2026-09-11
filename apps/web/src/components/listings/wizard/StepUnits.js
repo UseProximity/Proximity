@@ -6,7 +6,7 @@ import {
   LEASE_TERM_PRESETS,
   UNIT_DESIGNATORS,
   parseUnitNumbers,
-} from "@/components/listings/listingFormOptions";
+} from "@/components/listings/form/listingFormOptions";
 import {
   StepFrame,
   Chip,

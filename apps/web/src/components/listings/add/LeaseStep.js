@@ -11,7 +11,7 @@
  */
 
 import { Users } from "lucide-react";
-import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
+import LeaseTermPicker from "@/components/listings/form/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 
 export default function LeaseStep({ unit, existingLeases = [], value, onChange, invalid = null }) {

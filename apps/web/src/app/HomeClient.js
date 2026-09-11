@@ -14,13 +14,13 @@ import {
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
-import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import AddressSearchInput from "@/components/listings/browse/AddressSearchInput";
 import UniversityLogosCarousel from "@/components/ui/UniversityLogosCarousel";
 import Footer from "@/components/layout/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
-import MapPopupCard from "@/components/listings/MapPopupCard";
+import MapPopupCard from "@/components/listings/map/MapPopupCard";
 
-const MapView = dynamic(() => import("@/components/listings/MapView"), {
+const MapView = dynamic(() => import("@/components/listings/map/MapView"), {
   ssr: false,
 });
 

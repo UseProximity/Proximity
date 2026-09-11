@@ -19,8 +19,8 @@ import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import StarRatingInput from "@/components/ui/StarRatingInput";
-import ListingMap from "@/components/listings/ListingMap";
-import LeaseOptions from "@/components/listings/LeaseOptions";
+import ListingMap from "@/components/listings/map/ListingMap";
+import LeaseOptions from "@/components/listings/form/LeaseOptions";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import SubleaseFormPanel from "@/components/listings/form/SubleaseFormPanel";
 
 // Full-page "Add Sublease" flow for students (and super). The shared
 // SubleaseFormPanel renders inline (asPage) instead of as a modal; on success we

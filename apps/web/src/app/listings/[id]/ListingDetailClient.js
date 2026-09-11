@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import ListingModalInfo from "@/components/listings/ListingModalInfo";
+import ListingModalInfo from "@/components/listings/detail/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
 
 export default function ListingDetailClient({

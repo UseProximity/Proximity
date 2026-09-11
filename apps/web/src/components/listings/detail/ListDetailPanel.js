@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import ListingModalInfo from "@/components/listings/ListingModalInfo";
+import ListingModalInfo from "@/components/listings/detail/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
 
 export default function ListDetailPanel({

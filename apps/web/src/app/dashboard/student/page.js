@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
-import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import SubleaseFormPanel from "@/components/listings/form/SubleaseFormPanel";
 
 function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();

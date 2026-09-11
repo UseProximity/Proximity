@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import BrowseContent from "@/components/listings/BrowseContent";
+import BrowseContent from "@/components/listings/browse/BrowseContent";
 import { auth } from "@/auth";
 import { getCachedListings } from "@/lib/listings/queryListings";
 

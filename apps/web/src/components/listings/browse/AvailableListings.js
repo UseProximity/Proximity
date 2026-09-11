@@ -8,8 +8,8 @@ import dynamic from "next/dynamic";
 import MapPopupCard, {
   ListingCard,
   MobileMapPopup,
-} from "@/components/listings/MapPopupCard";
-import ListDetailPanel from "@/components/listings/ListDetailPanel";
+} from "@/components/listings/map/MapPopupCard";
+import ListDetailPanel from "@/components/listings/detail/ListDetailPanel";
 import {
   SLIDER_CSS,
   FilterSection,
@@ -20,11 +20,11 @@ import {
   BATH_STEPS,
   DIST_STEPS,
   SHTT_STEPS,
-} from "@/components/listings/FilterComponents";
+} from "@/components/listings/browse/FilterComponents";
 
 import { setListingSource } from "@/utils/analytics";
 
-const MapView = dynamic(() => import("@/components/listings/MapView"), {
+const MapView = dynamic(() => import("@/components/listings/map/MapView"), {
   ssr: false,
 });
 

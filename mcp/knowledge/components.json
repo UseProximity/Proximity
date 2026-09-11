@@ -1,6 +1,6 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-11T16:37:01.914Z",
+  "_generated": "2026-09-11T16:46:27.542Z",
   "count": 97,
   "components": [
     {
@@ -174,106 +174,6 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "AddressSearchInput",
-      "file": "src/components/listings/AddressSearchInput.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "AvailableListings",
-      "file": "src/components/listings/AvailableListings.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "BrowseContent",
-      "file": "src/components/listings/BrowseContent.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "FilterComponents",
-      "file": "src/components/listings/FilterComponents.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "GlobalListingModal",
-      "file": "src/components/listings/GlobalListingModal.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "LeaseOptions",
-      "file": "src/components/listings/LeaseOptions.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "LeaseTermPicker",
-      "file": "src/components/listings/LeaseTermPicker.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListDetailPanel",
-      "file": "src/components/listings/ListDetailPanel.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListingDraftImport",
-      "file": "src/components/listings/ListingDraftImport.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListingMap",
-      "file": "src/components/listings/ListingMap.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListingModalInfo",
-      "file": "src/components/listings/ListingModalInfo.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "MapPopupCard",
-      "file": "src/components/listings/MapPopupCard.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "MapView",
-      "file": "src/components/listings/MapView.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ModalDorms",
-      "file": "src/components/listings/ModalDorms.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ModalListing",
-      "file": "src/components/listings/ModalListing.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "PropertyUnitPicker",
-      "file": "src/components/listings/PropertyUnitPicker.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ReviewReplySection",
-      "file": "src/components/listings/ReviewReplySection.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ReviewsSection",
-      "file": "src/components/listings/ReviewsSection.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "SubleaseFormPanel",
-      "file": "src/components/listings/SubleaseFormPanel.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "TopFilterBar",
-      "file": "src/components/listings/TopFilterBar.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
       "name": "AddListingFlow",
       "file": "src/components/listings/add/AddListingFlow.js",
       "description": "No description — run generate after adding a description above."
@@ -294,6 +194,66 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "AddressSearchInput",
+      "file": "src/components/listings/browse/AddressSearchInput.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AvailableListings",
+      "file": "src/components/listings/browse/AvailableListings.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "BrowseContent",
+      "file": "src/components/listings/browse/BrowseContent.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "FilterComponents",
+      "file": "src/components/listings/browse/FilterComponents.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "TopFilterBar",
+      "file": "src/components/listings/browse/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "GlobalListingModal",
+      "file": "src/components/listings/detail/GlobalListingModal.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListDetailPanel",
+      "file": "src/components/listings/detail/ListDetailPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingModalInfo",
+      "file": "src/components/listings/detail/ListingModalInfo.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ModalDorms",
+      "file": "src/components/listings/detail/ModalDorms.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ModalListing",
+      "file": "src/components/listings/detail/ModalListing.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewReplySection",
+      "file": "src/components/listings/detail/ReviewReplySection.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewsSection",
+      "file": "src/components/listings/detail/ReviewsSection.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "EditorImageRows",
       "file": "src/components/listings/editor/EditorImageRows.js",
       "description": "No description — run generate after adding a description above."
@@ -309,8 +269,48 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "LeaseOptions",
+      "file": "src/components/listings/form/LeaseOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseTermPicker",
+      "file": "src/components/listings/form/LeaseTermPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingDraftImport",
+      "file": "src/components/listings/form/ListingDraftImport.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PropertyUnitPicker",
+      "file": "src/components/listings/form/PropertyUnitPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "SubleaseFormPanel",
+      "file": "src/components/listings/form/SubleaseFormPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "listingFormOptions",
-      "file": "src/components/listings/listingFormOptions.js",
+      "file": "src/components/listings/form/listingFormOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ListingMap",
+      "file": "src/components/listings/map/ListingMap.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "MapPopupCard",
+      "file": "src/components/listings/map/MapPopupCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "MapView",
+      "file": "src/components/listings/map/MapView.js",
       "description": "No description — run generate after adding a description above."
     },
     {

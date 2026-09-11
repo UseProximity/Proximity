@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Copy, Star, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { StarRating } from "@/components/ui/StarRating";
-import ReviewReplySection from "@/components/listings/ReviewReplySection";
+import ReviewReplySection from "@/components/listings/detail/ReviewReplySection";
 
 function InviteLinkCard({ userId }) {
   const [origin, setOrigin] = useState("");

@@ -2,7 +2,7 @@ import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import ReviewsSection from "@/components/listings/ReviewsSection";
+import ReviewsSection from "@/components/listings/detail/ReviewsSection";
 import {
   getAreaRangeLabel,
   getRentRangeLabel,

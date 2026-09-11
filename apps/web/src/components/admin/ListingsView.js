@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import AddressSearchInput from "@/components/listings/browse/AddressSearchInput";
 import { clampCount } from "@/utils/unitCounts";
 import {
   adminFetch, insertRow, deleteRow, prodConfirm,

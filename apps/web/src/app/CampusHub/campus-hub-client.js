@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { DORM_FORM_TAGS } from "@/components/reviews/dormReviewOptions";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import Image from "next/image";
-import ModalDorms from "../../components/listings/ModalDorms";
+import ModalDorms from "@/components/listings/detail/ModalDorms";
 import { AiFillStar } from "react-icons/ai";
 
 const allDorms = [

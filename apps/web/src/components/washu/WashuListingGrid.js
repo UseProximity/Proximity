@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ListingCard } from "@/components/listings/MapPopupCard";
+import { ListingCard } from "@/components/listings/map/MapPopupCard";
 
 /*
  * Server wrapper for the listing grid on /washu landing pages. ListingCard is

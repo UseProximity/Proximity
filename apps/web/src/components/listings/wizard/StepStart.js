@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Globe, PencilLine, RefreshCw } from "lucide-react";
-import ListingDraftImport from "@/components/listings/ListingDraftImport";
+import ListingDraftImport from "@/components/listings/form/ListingDraftImport";
 
 const PMS_LOGOS = [
   { label: "Buildium", logo: "/pms-logos/buildium.png" },

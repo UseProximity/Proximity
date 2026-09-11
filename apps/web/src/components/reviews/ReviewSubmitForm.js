@@ -27,10 +27,10 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
-import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import AddressSearchInput from "@/components/listings/browse/AddressSearchInput";
 import AuthCard from "@/components/auth/AuthCard";
 import StarRatingInput from "@/components/ui/StarRatingInput";
-import { UNIT_DESIGNATORS } from "@/components/listings/listingFormOptions";
+import { UNIT_DESIGNATORS } from "@/components/listings/form/listingFormOptions";
 import {
   SCHOOLS,
   schoolForEmail,

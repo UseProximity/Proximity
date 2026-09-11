@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { StepFrame, inputCls, importedInputCls } from "@/components/listings/wizard/wizardShared";
-import PropertyUnitPicker from "@/components/listings/PropertyUnitPicker";
+import PropertyUnitPicker from "@/components/listings/form/PropertyUnitPicker";
 
 /*
  * Screen 1: just the address. Picking a Mapbox suggestion captures coordinates

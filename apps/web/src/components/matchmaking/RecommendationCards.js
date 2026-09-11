@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ListingCard } from "@/components/listings/MapPopupCard";
+import { ListingCard } from "@/components/listings/map/MapPopupCard";
 import { trackEvent, setListingSource } from "@/utils/analytics";
 
 // Placeholder shown while a card's data/image is still on its way.
