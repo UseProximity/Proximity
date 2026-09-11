@@ -170,7 +170,7 @@ It also exposes `analyze-impact` (maps a diff to the pages and endpoints downstr
 - `CLAUDE.md`: conventions and the working agreement, for humans and coding agents alike.
 - `lib/pms/README.md`: the property-management-system integration layer.
 - `apps/web/evals/*/README.md`: how to run the AI evals.
-- `PMS_APPFOLIO_BRIEF.md`: background on the AppFolio integration.
+- `docs/PMS_APPFOLIO_BRIEF.md`: background on the AppFolio integration.
 
 ---
 
