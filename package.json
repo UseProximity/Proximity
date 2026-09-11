@@ -1,10 +1,12 @@
 {
   "name": "proximity-monorepo",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": ["apps/web"],
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "scripts": {
     "dev:web":    "npm run dev   --workspace=apps/web",
-    "dev:mobile": "npm run start --workspace=apps/mobile",
     "build:web":  "npm run build --workspace=apps/web",
     "lint":       "npm run lint  --workspaces --if-present"
   }
