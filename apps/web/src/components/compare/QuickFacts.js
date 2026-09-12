@@ -2,20 +2,13 @@
 
 import { motion } from "framer-motion";
 import { money } from "@/lib/compare/model";
-import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
-
-function campus(listing) {
-  const vals = Object.entries(listing?.placeWalkMinutes || {})
-    .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
-    .map(([, v]) => v)
-    .filter(Number.isFinite);
-  return vals.length ? Math.min(...vals) : null;
-}
+import { campusWalkFor, campusLabel } from "@/lib/compare/fields";
 
 function bedBath(unit) {
   if (!unit) return null;
-  const beds = unit.bedrooms == null ? null : unit.bedrooms === 0 ? "Studio" : `${unit.bedrooms} bd`;
-  const baths = unit.bathrooms == null ? null : `${unit.bathrooms} ba`;
+  const ok = (n) => Number.isFinite(n) && n >= 0;
+  const beds = !ok(unit.bedrooms) ? null : unit.bedrooms === 0 ? "Studio" : `${unit.bedrooms} bd`;
+  const baths = !ok(unit.bathrooms) ? null : `${unit.bathrooms} ba`;
   return [beds, baths].filter(Boolean).join(" · ") || null;
 }
 
@@ -23,16 +16,18 @@ function bedBath(unit) {
  * The raised panel between the two photos: five facts, each side's value
  * under a shared label, the objectively better number in green.
  */
-export default function QuickFacts({ sides, basis, delay = 0 }) {
+export default function QuickFacts({ sides, basis, campus = "danforth", delay = 0 }) {
   const rents = sides.map((s) => (s?.rentBasis ? (basis === "unit" ? s.rentBasis.unitRent : s.rentBasis.perPerson) : null));
-  const walks = sides.map((s) => (s ? campus(s.listing) : null));
+  const walks = sides.map((s) => (s ? campusWalkFor(s.listing, campus) : null));
+  const shuttles = sides.map((s) => s?.listing.shuttleWalkMinutes ?? null);
   const areas = sides.map((s) => s?.unit?.area ?? null);
   const lower = (v) => (v.every((x) => x != null) && v[0] !== v[1] ? (v[0] < v[1] ? 0 : 1) : null);
   const higher = (v) => (v.every((x) => x != null) && v[0] !== v[1] ? (v[0] > v[1] ? 0 : 1) : null);
 
   const rows = [
     { label: basis === "unit" ? "Rent / apt" : "Rent / person", values: rents.map(money), best: lower(rents) },
-    { label: "Walk to campus", values: walks.map((w) => (w == null ? null : `${w} min`)), best: lower(walks) },
+    { label: `Walk to ${campusLabel(campus)}`, values: walks.map((w) => (w == null ? null : `${w} min`)), best: lower(walks) },
+    { label: "Shuttle stop", values: shuttles.map((w) => (w == null ? null : `${w} min`)), best: lower(shuttles) },
     { label: "Bed · bath", values: sides.map((s) => (s ? bedBath(s.unit) : null)), best: null },
     { label: "Size", values: areas.map((a) => (a == null ? null : `${Number(a).toLocaleString("en-US")} sq ft`)), best: higher(areas) },
     {

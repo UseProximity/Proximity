@@ -68,7 +68,7 @@ function Value({ row, index }) {
   );
 }
 
-export default function DetailsList({ sections, names, both, basis }) {
+export default function DetailsList({ sections, names, both, basis, campus = "danforth" }) {
   const [differences, setDifferences] = useState(false);
   const [active, setActive] = useState(sections[0]?.id ?? null);
   const chipRefs = useRef({});
@@ -201,7 +201,7 @@ export default function DetailsList({ sections, names, both, basis }) {
       <p className="mt-10 text-center text-xs leading-relaxed text-gray-400">
         Not listed means we don&apos;t have that detail yet. It never means no.
         <br />
-        Rent is {basis === "unit" ? "for the whole apartment" : "per person"} before utilities and fees. Walk times all go to the same campus spot.
+        Rent is {basis === "unit" ? "for the whole apartment" : "per person"} before utilities and fees. Campus walks go to {campus === "med" ? "the Med Campus" : "the Danforth campus"}.
       </p>
     </motion.section>
   );

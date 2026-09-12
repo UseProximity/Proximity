@@ -14,8 +14,8 @@ import { Suspense } from "react";
 import { getListing } from "@/lib/listings/getListing";
 import { getCachedListings } from "@/lib/listings/queryListings";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
-import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { UUID_RE, displayName } from "@/lib/compare/model";
+import { campusWalkFor } from "@/lib/compare/fields";
 import CompareClient from "@/components/compare/CompareClient";
 
 export const metadata = {
@@ -36,13 +36,20 @@ async function load(id) {
   return listing;
 }
 
-function campusMinutes(listing) {
-  const pwm = listing.placeWalkMinutes || {};
-  const vals = Object.entries(pwm)
-    .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
-    .map(([, v]) => v)
-    .filter(Number.isFinite);
-  return vals.length ? Math.min(...vals) : null;
+// "2 bd · 1 ba", or a range when the property has several unit sizes.
+function bedBathLabel(listing) {
+  const units = (listing.unitTypes ?? []).filter((u) => u.available !== false);
+  // A few old rows carry negative counts from a spinner bug; those are unknown, not real.
+  const beds = units.map((u) => u.bedrooms).filter((n) => Number.isFinite(n) && n >= 0);
+  const baths = units.map((u) => u.bathrooms).filter((n) => Number.isFinite(n) && n >= 0);
+  const range = (xs, unit) => {
+    if (!xs.length) return null;
+    const lo = Math.min(...xs);
+    const hi = Math.max(...xs);
+    const show = (n) => (unit === "bd" && n === 0 ? "Studio" : `${n}`);
+    return lo === hi ? `${show(lo)}${unit === "bd" && lo === 0 ? "" : ` ${unit}`}` : `${show(lo)}–${hi} ${unit}`;
+  };
+  return [range(beds, "bd"), range(baths, "ba")].filter(Boolean).join(" · ") || null;
 }
 
 // Everything the picker needs to list a property, and nothing more.
@@ -55,7 +62,10 @@ function pickerIndex(listings) {
       address: l.address,
       image: l.images?.[0] ?? null,
       rent: getRentRangeLabel(l.unitTypes),
-      walk: campusMinutes(l),
+      bedBath: bedBathLabel(l),
+      walk: campusWalkFor(l, "danforth"),
+      walkMed: campusWalkFor(l, "med"),
+      shuttle: l.shuttleWalkMinutes ?? null,
       rating: l.numReviews > 0 ? l.rating : null,
       reviews: l.numReviews ?? 0,
     }))
@@ -89,6 +99,7 @@ export default async function ComparePage({ searchParams }) {
           bu: params.bu ?? null,
           bl: params.bl ?? null,
           basis: params.basis === "unit" ? "unit" : "person",
+          campus: params.campus === "med" ? "med" : null,
         }}
       />
     </Suspense>

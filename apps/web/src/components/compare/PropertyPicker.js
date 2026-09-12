@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { Search, X, Star, Footprints } from "lucide-react";
+import { Search, X, Star, Footprints, Bus, BedDouble } from "lucide-react";
+import { campusLabel } from "@/lib/compare/fields";
 
 /* Searchable list of every available property, in a native dialog so focus,
  * Escape and scroll locking come for free. */
-export default function PropertyPicker({ open, slot, items, currentId, otherId, onChoose, onClose }) {
+export default function PropertyPicker({ open, slot, items, campus = "danforth", currentId, otherId, onChoose, onClose }) {
   const ref = useRef(null);
   const inputRef = useRef(null);
   const [query, setQuery] = useState("");
@@ -25,9 +26,11 @@ export default function PropertyPicker({ open, slot, items, currentId, otherId, 
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((it) => `${it.name} ${it.address}`.toLowerCase().includes(q));
-  }, [items, query]);
+    const walkOf = (it) => (campus === "med" ? it.walkMed : it.walk) ?? Infinity;
+    const sorted = [...items].sort((a, b) => walkOf(a) - walkOf(b) || a.name.localeCompare(b.name));
+    if (!q) return sorted;
+    return sorted.filter((it) => `${it.name} ${it.address}`.toLowerCase().includes(q));
+  }, [items, query, campus]);
 
   return (
     <dialog
@@ -42,7 +45,7 @@ export default function PropertyPicker({ open, slot, items, currentId, otherId, 
             <h2 className="text-lg font-bold tracking-tight text-gray-900">
               {slot === 0 ? "Pick your first option" : "Pick the other option"}
             </h2>
-            <p className="text-xs text-gray-500">{items.length} apartments available right now.</p>
+            <p className="text-xs text-gray-500">{items.length} apartments. Walks go to {campusLabel(campus)}.</p>
           </div>
           <button
             type="button"
@@ -88,12 +91,24 @@ export default function PropertyPicker({ open, slot, items, currentId, otherId, 
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-gray-900">{it.name}</span>
                     <span className="block truncate text-xs text-gray-500">{it.address}</span>
-                    <span className="mt-0.5 flex items-center gap-3 text-xs text-gray-600">
-                      <span className="font-medium">{it.rent}{it.rent !== "Contact for Pricing" ? "/mo" : ""}</span>
-                      {it.walk != null && (
+                    <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-600">
+                      <span className="font-semibold text-gray-900">{it.rent}{it.rent !== "Contact for Pricing" ? "/mo" : ""}</span>
+                      {it.bedBath && (
+                        <span className="inline-flex items-center gap-1 text-gray-600">
+                          <BedDouble className="h-3 w-3" />
+                          {it.bedBath}
+                        </span>
+                      )}
+                      {(campus === "med" ? it.walkMed : it.walk) != null && (
                         <span className="inline-flex items-center gap-1 text-gray-500">
                           <Footprints className="h-3 w-3" />
-                          {it.walk} min
+                          {campus === "med" ? it.walkMed : it.walk} min
+                        </span>
+                      )}
+                      {it.shuttle != null && (
+                        <span className="inline-flex items-center gap-1 text-gray-500">
+                          <Bus className="h-3 w-3" />
+                          {it.shuttle} min
                         </span>
                       )}
                       {it.rating != null && (

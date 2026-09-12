@@ -30,6 +30,22 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
   const [landed] = useState(() => ids.map(Boolean));
 
   const [basis, setBasis] = useState(initial.basis);
+  // Which campus the walk figures point at. The URL wins (shared links), then
+  // the choice remembered for this session, then Danforth.
+  const [campus, setCampusState] = useState(initial.campus ?? "danforth");
+  useEffect(() => {
+    if (initial.campus) return;
+    try {
+      if (sessionStorage.getItem("prx_compare_campus") === "med") setCampusState("med");
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const setCampus = (next) => {
+    setCampusState(next);
+    trackEvent("Compare Campus Set", { campus: next });
+    try {
+      sessionStorage.setItem("prx_compare_campus", next);
+    } catch {}
+  };
   const [choice, setChoice] = useState({
     0: { unit: initial.au, lease: initial.al },
     1: { unit: initial.bu, lease: initial.bl },
@@ -57,25 +73,25 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
   // Unit, offer and basis live in the URL too, so a copied link shows the same
   // thing. replaceState keeps it out of the history stack and off the server.
   useEffect(() => {
-    const extra = { basis: basis === "unit" ? "unit" : null, add: addCandidate?._id ?? null };
+    const extra = { basis: basis === "unit" ? "unit" : null, campus: campus === "med" ? "med" : null, add: addCandidate?._id ?? null };
     resolved.forEach((side, i) => {
       if (!side) return;
       extra[SIDE_KEYS[i].unit] = side.unit?.id ?? null;
       extra[SIDE_KEYS[i].lease] = side.lease?.id ?? null;
     });
     window.history.replaceState(window.history.state, "", compareHref(ids, extra));
-  }, [resolved, basis, ids[0], ids[1]]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resolved, basis, campus, ids[0], ids[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const names = resolved.map((s) => (s ? displayName(s.listing) : null));
-  const sections = useMemo(() => buildRows(resolved, basis), [resolved, basis]);
-  const deltas = useMemo(() => headlineDeltas(resolved, basis), [resolved, basis]);
+  const sections = useMemo(() => buildRows(resolved, basis, campus), [resolved, basis, campus]);
+  const deltas = useMemo(() => headlineDeltas(resolved, basis, campus), [resolved, basis, campus]);
   const both = resolved.every(Boolean);
 
   // Slot changes go through the server (new listing data), which remounts this
   // component, so the basis and the untouched side's unit/offer ride along in
   // the URL and come back through `initial`.
   const navigate = (nextIds, extra = {}) => {
-    const carried = { basis: basis === "unit" ? "unit" : null, ...extra };
+    const carried = { basis: basis === "unit" ? "unit" : null, campus: campus === "med" ? "med" : null, ...extra };
     nextIds.forEach((id, i) => {
       const prev = ids.indexOf(id);
       if (id && prev >= 0 && resolved[prev]) {
@@ -147,26 +163,25 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
 
         <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Side by side.</h1>
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs font-medium text-gray-500">Show rent</span>
-            <div role="group" aria-label="Show rent" className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-0.5">
-              {[
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Segmented
+              label="Show rent"
+              value={basis}
+              onChange={setBasis}
+              options={[
                 ["person", "Per person"],
                 ["unit", "Whole apartment"],
-              ].map(([key, text]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setBasis(key)}
-                  aria-pressed={basis === key}
-                  className={`h-7 rounded-full px-3 text-xs font-medium transition-colors ${
-                    basis === key ? "bg-white text-gray-900 shadow-sm ring-1 ring-black/5" : "text-gray-500 hover:text-gray-900"
-                  }`}
-                >
-                  {text}
-                </button>
-              ))}
-            </div>
+              ]}
+            />
+            <Segmented
+              label="I go to"
+              value={campus}
+              onChange={setCampus}
+              options={[
+                ["danforth", "Danforth"],
+                ["med", "Med Campus"],
+              ]}
+            />
           </div>
         </div>
 
@@ -192,7 +207,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
               </AnimatePresence>
             </div>
           ))}
-          <QuickFacts sides={resolved} basis={basis} delay={0.75} />
+          <QuickFacts sides={resolved} basis={basis} campus={campus} delay={0.75} />
         </div>
 
         {/* The two tradeoffs that decide most searches */}
@@ -213,13 +228,14 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
           </p>
         )}
 
-        <DetailsList sections={sections} names={names} both={both} basis={basis} />
+        <DetailsList sections={sections} names={names} both={both} basis={basis} campus={campus} />
       </main>
 
       <PropertyPicker
         open={pickerFor !== null}
         slot={pickerFor}
         items={picker}
+        campus={campus}
         currentId={pickerFor !== null ? ids[pickerFor] : null}
         otherId={pickerFor !== null ? ids[1 - pickerFor] : null}
         onChoose={(listingId) => choose(pickerFor, listingId)}
@@ -235,6 +251,29 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
         />
       )}
     </MotionConfig>
+  );
+}
+
+function Segmented({ label, value, onChange, options }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-medium text-gray-500">{label}</span>
+      <div role="group" aria-label={label} className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-0.5">
+        {options.map(([key, text]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            aria-pressed={value === key}
+            className={`h-7 rounded-full px-3 text-xs font-medium transition-colors ${
+              value === key ? "bg-white text-gray-900 shadow-sm ring-1 ring-black/5" : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

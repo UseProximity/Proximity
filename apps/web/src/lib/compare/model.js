@@ -6,7 +6,7 @@
 
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
 import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
-import { SECTIONS } from "./fields";
+import { SECTIONS, campusWalkFor, campusLabel } from "./fields";
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,8 +38,9 @@ export function selectableUnits(listing) {
 
 export function unitLabel(unit) {
   if (!unit) return "";
-  const beds = unit.bedrooms == null ? null : unit.bedrooms === 0 ? "Studio" : `${unit.bedrooms} bed`;
-  const baths = unit.bathrooms == null ? null : `${unit.bathrooms} bath`;
+  const ok = (n) => Number.isFinite(n) && n >= 0;
+  const beds = !ok(unit.bedrooms) ? null : unit.bedrooms === 0 ? "Studio" : `${unit.bedrooms} bed`;
+  const baths = !ok(unit.bathrooms) ? null : `${unit.bathrooms} bath`;
   const specs = [beds, baths].filter(Boolean).join(" · ");
   const name = unit.identityLabel ?? unit.title ?? null;
   if (name && specs) return `${name} · ${specs}`;
@@ -131,8 +132,8 @@ export function formatValue(field, value, ctx) {
  * side then reads "Not listed", which is itself worth seeing: one landlord
  * told us, the other did not.
  */
-export function buildRows(sides, basis) {
-  const ctxs = sides.map((s) => (s ? { ...s, basis } : null));
+export function buildRows(sides, basis, campus = "danforth") {
+  const ctxs = sides.map((s) => (s ? { ...s, basis, campus } : null));
   return SECTIONS.map((section) => {
     const rows = section.fields
       .map((field) => {
@@ -179,7 +180,7 @@ function sameValue(a, b) {
  * The two headline tradeoffs shown between the cards and the table. Each is a
  * single plain sentence, or null when the sides don't differ on it.
  */
-export function headlineDeltas(sides, basis) {
+export function headlineDeltas(sides, basis, campus = "danforth") {
   if (!sides[0] || !sides[1]) return { rent: null, walk: null };
   const names = sides.map((s) => displayName(s.listing));
   const rents = sides.map((s) =>
@@ -196,23 +197,17 @@ export function headlineDeltas(sides, basis) {
             sub: basis === "unit" ? "per apartment per month" : "per person per month",
           };
   }
-  const walks = sides.map((s) => {
-    const pwm = s.listing.placeWalkMinutes || {};
-    const vals = Object.entries(pwm)
-      .filter(([k]) => k !== "Schnucks (Grocery)" && k !== "Med Campus")
-      .map(([, v]) => v)
-      .filter(Number.isFinite);
-    return vals.length ? Math.min(...vals) : null;
-  });
+  const walks = sides.map((s) => campusWalkFor(s.listing, campus));
+  const where = campusLabel(campus);
   let walk = null;
   if (walks.every((w) => w != null)) {
     const diff = Math.abs(walks[0] - walks[1]);
     walk =
       diff === 0
-        ? { text: "Same walk to campus", sub: `${walks[0]} minutes each` }
+        ? { text: `Same walk to ${where}`, sub: `${walks[0]} minutes each` }
         : {
             text: `${names[walks[0] < walks[1] ? 0 : 1]} is ${diff} min closer`,
-            sub: "walking to campus",
+            sub: `walking to ${where}`,
           };
   }
   return { rent, walk };

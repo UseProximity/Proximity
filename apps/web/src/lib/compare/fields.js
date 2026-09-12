@@ -26,16 +26,28 @@ const walk = (name) => (ctx) => ctx.listing.placeWalkMinutes?.[name] ?? null;
 const amenity = (key) => (ctx) => ctx.listing.amenities?.includes(key) || null;
 const utility = (key) => (ctx) => ctx.listing.utilitiesIncluded?.includes(key) || null;
 
-// Closest campus point, matching the browse card's "campus" walk figure.
-function campusWalk(ctx) {
-  const pwm = ctx.listing.placeWalkMinutes;
+/*
+ * Walk to the campus the student actually commutes to. Danforth is the
+ * closest main-campus point (the browse card's figure); the Med Campus is its
+ * own destination two miles east, so a student there gets that number instead.
+ */
+export function campusWalkFor(listing, campus) {
+  const pwm = listing?.placeWalkMinutes;
   if (!pwm) return null;
+  if (campus === "med") return pwm["Med Campus"] ?? null;
   const vals = Object.entries(pwm)
     .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
     .map(([, v]) => v)
     .filter(Number.isFinite);
   return vals.length ? Math.min(...vals) : null;
 }
+
+export const campusLabel = (campus) => (campus === "med" ? "Med Campus" : "Danforth");
+
+const campusWalk = (ctx) => campusWalkFor(ctx.listing, ctx.campus);
+
+// Room counts below zero came from a spinner bug on old rows; read them as unknown.
+const count = (n) => (Number.isFinite(n) && n >= 0 ? n : null);
 
 export const SECTIONS = [
   {
@@ -55,10 +67,17 @@ export const SECTIONS = [
             : null,
         suffix: (ctx) => (ctx.basis === "unit" ? "/ apartment" : "/ person"),
       },
-      { id: "campusWalk", label: "Walk to campus", type: "minutes", better: "lower", get: campusWalk },
-      { id: "bedrooms", label: "Bedrooms", type: "count", get: (ctx) => ctx.unit?.bedrooms ?? null,
+      { id: "campusWalk", label: (ctx) => `Walk to ${campusLabel(ctx?.campus)}`, type: "minutes", better: "lower", get: campusWalk },
+      {
+        id: "shuttleWalkTop",
+        label: "Walk to nearest shuttle stop",
+        type: "minutes",
+        better: "lower",
+        get: (ctx) => ctx.listing.shuttleWalkMinutes ?? null,
+      },
+      { id: "bedrooms", label: "Bedrooms", type: "count", get: (ctx) => count(ctx.unit?.bedrooms),
         format: (v) => (v === 0 ? "Studio" : String(v)) },
-      { id: "bathrooms", label: "Bathrooms", type: "count", get: (ctx) => ctx.unit?.bathrooms ?? null },
+      { id: "bathrooms", label: "Bathrooms", type: "count", get: (ctx) => count(ctx.unit?.bathrooms) },
       { id: "area", label: "Size", type: "area", better: "higher", get: (ctx) => ctx.unit?.area ?? null },
       {
         id: "furnished",
@@ -153,13 +172,6 @@ export const SECTIONS = [
       { id: "villageWalk", label: "Village House", type: "minutes", better: "lower", get: walk("Village House") },
       { id: "medWalk", label: "Med Campus", type: "minutes", better: "lower", get: walk("Med Campus") },
       { id: "groceryWalk", label: "Schnucks", type: "minutes", better: "lower", get: walk("Schnucks (Grocery)") },
-      {
-        id: "shuttleWalk",
-        label: "Nearest WashU shuttle",
-        type: "minutes",
-        better: "lower",
-        get: (ctx) => ctx.listing.shuttleWalkMinutes ?? null,
-      },
       {
         id: "loopDrive",
         label: "Drive to the Delmar Loop",
