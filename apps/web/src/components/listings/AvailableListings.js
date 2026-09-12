@@ -363,7 +363,7 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto transition-[width] duration-300 ${
+        className={`hidden md:block shrink-0 overflow-y-auto scrollbar-hidden transition-[width] duration-300 ${
           expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
@@ -555,7 +555,7 @@ export default function AvailableListings({
 
           {/* LISTINGS VIEW */}
           {mobileView === "listings" && (
-            <div className="h-full overflow-y-auto bg-gray-50">
+            <div className="h-full overflow-y-auto scrollbar-hidden bg-gray-50">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold text-gray-500">
                   {visibleListings.length}{" "}

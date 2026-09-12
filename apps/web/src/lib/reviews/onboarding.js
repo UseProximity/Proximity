@@ -86,12 +86,30 @@ export async function ensureReviewerAccount({
   firstName,
   lastName,
   email,
+  phone = null,
   classYear,
   source = null,
+  /*
+   * How the account reads in the admin Users view. Defaults to the QR/review
+   * labelling, which is wrong for anything that isn't a review: a waitlist lead
+   * tagged "qr:" sends whoever reads that column looking for a flyer that never
+   * existed. Callers outside the review flow pass their own label.
+   */
+  referralSource = null,
+  /*
+   * Reviews are only meaningful from a student, so the review paths keep
+   * demanding a recognised school domain. The waitlist does not: a parent or an
+   * out-of-school roommate joining a building's waitlist is a real lead, and
+   * turning them away would cost a signup to enforce a rule reviews need and
+   * waitlists don't. Such an account simply carries no school_id.
+   */
+  requireSchoolEmail = true,
 }) {
   const emailNorm = String(email || "").trim().toLowerCase();
   const school = schoolForEmail(emailNorm);
-  if (!school) return { error: "A school email address is required." };
+  if (!school && requireSchoolEmail) {
+    return { error: "A school email address is required." };
+  }
 
   const displayName =
     [String(firstName || "").trim(), String(lastName || "").trim()]
@@ -101,12 +119,12 @@ export async function ensureReviewerAccount({
 
   const { data: existing } = await supabase
     .from("users")
-    .select("id, name, password_hash, google_account, apple_account, profile_complete, is_system, graduation_year, school_id")
+    .select("id, name, password_hash, google_account, apple_account, profile_complete, is_system, graduation_year, school_id, phone")
     .eq("email", emailNorm)
     .is("deleted_at", null)
     .maybeSingle();
 
-  const schoolId = await resolveSchoolId(school.shortName);
+  const schoolId = school ? await resolveSchoolId(school.shortName) : null;
 
   if (existing) {
     // A shared/system account (e.g. the Proximity placeholder landlord) is never
@@ -130,6 +148,10 @@ export async function ensureReviewerAccount({
       backfill.graduation_month = COMMENCEMENT_MONTH;
     }
     if (claimable && !existing.name) backfill.name = displayName;
+    const phoneNorm = String(phone || "").trim();
+    if (claimable && phoneNorm && (!existing.phone || existing.phone === "N/A")) {
+      backfill.phone = phoneNorm;
+    }
     if (Object.keys(backfill).length) {
       const { error } = await supabase.from("users").update(backfill).eq("id", existing.id);
       if (error) console.error("[reviewOnboarding] backfill failed:", error.message);
@@ -177,9 +199,11 @@ export async function ensureReviewerAccount({
       graduation_year: gradYear,
       graduation_month: gradYear ? COMMENCEMENT_MONTH : null,
       gender: "unspecified",
-      phone: "N/A",
+      // "N/A" is the placeholder the signup form writes when a path can't ask;
+      // the waitlist does ask, so a real number lands here instead.
+      phone: String(phone || "").trim() || "N/A",
       description: "",
-      referral_source: referralSourceLabel(source),
+      referral_source: referralSource || referralSourceLabel(source),
     })
     .select("id")
     .maybeSingle();

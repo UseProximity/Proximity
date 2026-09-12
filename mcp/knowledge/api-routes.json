@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-11T16:37:01.911Z",
-  "count": 89,
+  "_generated": "2026-09-12T00:07:29.777Z",
+  "count": 91,
   "routes": [
     {
       "path": "/api/addListing",
@@ -457,6 +457,18 @@
         "seo_query_metrics"
       ],
       "file": "src/app/api/cron/seo-report/route.js"
+    },
+    {
+      "path": "/api/cron/waitlist-nudge",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/waitlist-nudge/route.js"
     },
     {
       "path": "/api/dev/matchmaking-edgecases",
@@ -1327,6 +1339,24 @@
         "users"
       ],
       "file": "src/app/api/uploadProfilePhoto/route.js"
+    },
+    {
+      "path": "/api/waitlist/[listingId]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [
+        "listings",
+        "waitlist_clicks",
+        "users"
+      ],
+      "file": "src/app/api/waitlist/[listingId]/route.js"
     },
     {
       "path": "/api/webhooks/new-listing",

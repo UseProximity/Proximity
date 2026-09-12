@@ -29,6 +29,8 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+import { waitlistFor } from "@/lib/waitlists";
+import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 
@@ -1319,6 +1321,28 @@ export default function ListingModalInfo({
     ? selectedUnitLeases.some((l) => !l.furnished)
     : !listing.furnished;
 
+  /*
+   * A property that takes interest through its own off-site waitlist rather
+   * than through our contact form. Null for nearly every listing.
+   */
+  const waitlist = waitlistFor(listing.propertyKey);
+
+  /*
+   * Signed-out students are asked for a name first, so the click has to open a
+   * dialog rather than navigate. Signed-in ones are already known and go
+   * straight out through the API route, which prefills from their profile.
+   */
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const waitlistName = listing.title || "this property";
+  const waitlistButtonClass =
+    "my-2 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
+  const trackWaitlistClick = () =>
+    trackEvent("Waitlist Clicked", {
+      listingId: listing._id,
+      source: getListingSource(listing._id) ?? "direct",
+      signedIn: !!session,
+    });
+
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);
     /*
@@ -1779,7 +1803,7 @@ export default function ListingModalInfo({
             {/* ── Unit Selector ── */}
             {sortedUnits.length > 0 && (
               <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div ref={unitTrackRef} className="flex w-full overflow-x-auto">
+                <div ref={unitTrackRef} className="flex w-full overflow-x-auto scrollbar-hidden">
                   {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
                     <button
                       key={origIdx}
@@ -1864,7 +1888,7 @@ export default function ListingModalInfo({
               <nav className="flex items-stretch max-w-7xl mx-auto">
                 <div className="flex-1" aria-hidden="true" />
 
-                <div className="flex overflow-x-auto">
+                <div className="flex overflow-x-auto scrollbar-hidden">
                   {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
                     (tab) => (
                       <button
@@ -1889,7 +1913,40 @@ export default function ListingModalInfo({
                     asks whether any live offering on the open unit is
                     unfurnished, falling back to listings.furnished when none has
                     loaded. */}
-                <div className="flex flex-1 items-stretch justify-end">
+                {/* Opaque and padded so that when the tab strip scrolls under it
+                    on a narrow screen, the last tab is clipped cleanly instead of
+                    appearing to run into the button. */}
+                <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
+                  {/* Joining this property's waitlist happens on the landlord's
+                      own form, so the link hops through our API first: that
+                      redirect is the only place a click can still be recorded
+                      before the browser leaves for a domain we can't see into. */}
+                  {waitlist &&
+                    (session ? (
+                      <a
+                        href={`/api/waitlist/${listing._id}`}
+                        target="_blank"
+                        /* No "noreferrer": the first hop is our own API route,
+                           and stripping the header there blinds the click log to
+                           which page the student was on. */
+                        rel="noopener nofollow"
+                        onClick={() => trackWaitlistClick()}
+                        className={waitlistButtonClass}
+                      >
+                        {waitlist.label}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          trackWaitlistClick();
+                          setWaitlistOpen(true);
+                        }}
+                        className={waitlistButtonClass}
+                      >
+                        {waitlist.label}
+                      </button>
+                    ))}
                   {showFurnishCta && (
                     <a
                       href="https://cort.sjv.io/zzb9y0"
@@ -1967,6 +2024,16 @@ export default function ListingModalInfo({
           </motion.div>
         </div>
       </div>
+
+      {/* ── Waitlist capture (signed-out only) ── */}
+      {waitlist && !session && (
+        <WaitlistDialog
+          isOpen={waitlistOpen}
+          onClose={() => setWaitlistOpen(false)}
+          listingId={listing._id}
+          propertyName={waitlistName}
+        />
+      )}
 
       {/* ── Floor plan ── */}
       {floorPlanOpen && selectedUnit?.floorPlanImageUrl && (
