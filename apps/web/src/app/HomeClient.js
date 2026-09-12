@@ -158,6 +158,10 @@ function HeroMapSection({ initialListings = null }) {
               listings={previewListings}
               heroMode={true}
               onListingSelect={setSelectedListing}
+              // Lights up the clicked pin and zooms to it, the same as browse.
+              // Without this the hero popped its card while the map sat still
+              // and every pin stayed unselected.
+              selectedListingId={selectedListing?._id}
             />
           </div>
 

@@ -609,9 +609,13 @@ export default function MapView({
    * a second after a ?panel= deep link was enough to do it, as was toggling
    * shuttle stops. Re-running on a rebuild is cheap; re-running the flyTo
    * below would not be, since it would yank the camera back on every rebuild.
+   *
+   * Runs in hero mode too. The homepage map shows the same pins and pops the
+   * same card on a click, so a click there should read the same way it does on
+   * browse: the pin you picked is the one lit up.
    */
   useEffect(() => {
-    if (!isActive || heroMode) return;
+    if (!isActive) return;
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
@@ -644,9 +648,11 @@ export default function MapView({
 
   // Fly to the listing when the SELECTION changes. Skips flyTo when the panel
   // is mid-transition: the panelExpanded effect above fires it once the map has
-  // settled at its final size.
+  // settled at its final size. Runs in hero mode too, so clicking a pin on the
+  // homepage zooms to it the way it does on browse; deselecting flies back to
+  // the zoom the reader was at before, via preSelectZoomRef.
   useEffect(() => {
-    if (!isActive || heroMode) return;
+    if (!isActive) return;
     const map = mapRef.current;
     if (!map?.markers) return;
 
