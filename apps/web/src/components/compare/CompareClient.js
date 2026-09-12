@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { ArrowLeft, ArrowLeftRight, Link2, Check, Footprints, CircleDollarSign } from "lucide-react";
 import toast from "react-hot-toast";
-import { useCompare } from "@/context/CompareContext";
+import { useCompare, compareItem } from "@/context/CompareContext";
 import { buildRows, compareHref, displayName, headlineDeltas, resolveSide } from "@/lib/compare/model";
 import { trackEvent } from "@/utils/analytics";
 import PropertyCard from "./PropertyCard";
@@ -23,8 +23,11 @@ const SIDE_KEYS = [
 export default function CompareClient({ sides, addCandidate, picker, requested, initial }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const { setIds } = useCompare();
+  const { setItems } = useCompare();
   const ids = sides.map((s) => s?._id ?? null);
+  // Which slots were filled when the page opened: those animate in together on
+  // landing; anything added later animates in on its own.
+  const [landed] = useState(() => ids.map(Boolean));
 
   const [basis, setBasis] = useState(initial.basis);
   const [choice, setChoice] = useState({
@@ -36,7 +39,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
 
   // Keep the Compare pills elsewhere in the app in step with this page.
   useEffect(() => {
-    setIds(ids.filter(Boolean));
+    setItems(sides.filter(Boolean).map(compareItem));
   }, [ids[0], ids[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A requested id that did not resolve was hidden, removed or malformed.
@@ -78,7 +81,6 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
         carried[SIDE_KEYS[i].lease] = resolved[prev].lease?.id ?? null;
       }
     });
-    setIds(nextIds.filter(Boolean));
     startTransition(() => router.push(compareHref(nextIds, carried)));
   };
 
@@ -166,18 +168,19 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
 
         {/* Cards with the quick-facts spine between them */}
         <div
-          className={`mt-6 grid grid-cols-2 items-stretch gap-3 md:grid-cols-[1fr_180px_1fr] md:gap-0 lg:grid-cols-[1fr_220px_1fr] ${
+          className={`mt-6 grid grid-cols-2 items-stretch gap-3 md:grid-cols-[1fr_220px_1fr] md:gap-0 lg:grid-cols-[1fr_280px_1fr] xl:grid-cols-[1fr_320px_1fr] ${
             pending ? "opacity-70 transition-opacity" : ""
           }`}
         >
           {[0, 1].map((slot) => (
             <div key={slot} className={slot === 1 ? "col-start-2 min-w-0 md:col-start-3" : "min-w-0"}>
-              <AnimatePresence mode="wait" initial={false}>
+              <AnimatePresence mode="wait">
                 <PropertyCard
                   key={ids[slot] ?? `empty-${slot}`}
                   side={resolved[slot]}
                   slot={slot}
                   basis={basis}
+                  delay={landed[slot] || !ids[slot] ? slot * 0.22 : 0}
                   onPick={() => setPickerFor(slot)}
                   onRemove={() => remove(slot)}
                   onUnit={(unitId) => setChoice((c) => ({ ...c, [slot]: { unit: unitId, lease: null } }))}
@@ -186,7 +189,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
               </AnimatePresence>
             </div>
           ))}
-          <QuickFacts sides={resolved} basis={basis} onSwap={swap} canSwap={ids.some(Boolean)} />
+          <QuickFacts sides={resolved} basis={basis} onSwap={swap} canSwap={ids.some(Boolean)} delay={0.45} />
         </div>
 
         <div className="mt-3 flex justify-center md:hidden">
@@ -205,9 +208,9 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
         {both ? (
           <motion.div
             key={`${ids[0]}-${ids[1]}-${basis}`}
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: landed.every(Boolean) ? 0.6 : 0.1 }}
             className="mt-8 grid gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-6 sm:grid-cols-2 sm:gap-8"
           >
             <Tradeoff icon={CircleDollarSign} delta={deltas.rent} fallback="Add rent to compare cost." />

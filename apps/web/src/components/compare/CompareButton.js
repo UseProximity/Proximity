@@ -1,46 +1,73 @@
 "use client";
 
 /*
- * The "Compare" pill that lives on listing cards and listing headers.
+ * The "Compare" pill.
  *
- * Behaviour, in order:
- *   - already in the comparison  -> open it
- *   - a slot is free             -> take it and open the comparison
- *   - both slots taken           -> open the comparison and ask which to replace
- * Nothing is ever dropped silently.
+ * Two behaviours, because the two places it lives mean different things:
+ *
+ *   chip (listing cards on Browse): a pick toggle. First tap adds the listing
+ *   to the shortlist and the tray at the bottom says "pick one more"; the
+ *   second tap on another card opens the comparison with both. Tapping a
+ *   picked card again un-picks it. A third pick opens the comparison and
+ *   asks which one to replace, so nothing is dropped silently.
+ *
+ *   outline (a listing's own page or panel): the student is already looking
+ *   at one place, so this opens the comparison straight away with that
+ *   listing on the left.
  */
 
 import { useRouter } from "next/navigation";
 import { Columns2, Check } from "lucide-react";
-import { useCompare } from "@/context/CompareContext";
+import { useCompare, compareItem } from "@/context/CompareContext";
 import { compareHref } from "@/lib/compare/model";
 import { trackEvent } from "@/utils/analytics";
 
-export default function CompareButton({ listingId, variant = "chip", className = "" }) {
+export default function CompareButton({ listing, variant = "chip", className = "" }) {
   const router = useRouter();
-  const { ids, setIds } = useCompare();
-  const id = String(listingId);
-  const active = ids.includes(id);
+  const { items, ids, add, remove, setItems } = useCompare();
+  const item = compareItem(listing);
+  const active = ids.includes(item.id);
+
+  const open = (nextIds, extra) => {
+    // Full slots and a third pick: the page shows the replace prompt.
+    router.push(compareHref(nextIds, extra));
+  };
 
   const handleClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (variant === "outline") {
+      if (active) return open(ids);
+      if (ids.length < 2) {
+        setItems(ids.length === 0 ? [item] : [items[0], item]);
+        trackEvent("Compare Opened", { listingId: item.id, from: "listing" });
+        return open([...ids, item.id]);
+      }
+      trackEvent("Compare Replace Prompted", { listingId: item.id });
+      return open(ids, { add: item.id });
+    }
+
     if (active) {
-      router.push(compareHref(ids));
+      remove(item.id);
+      trackEvent("Compare Unpicked", { listingId: item.id });
       return;
     }
-    if (ids.length < 2) {
-      const next = ids.length === 0 ? [id] : [ids[0], id];
-      setIds(next);
-      trackEvent("Compare Added", { listingId: id, slot: next.length });
-      router.push(compareHref(next));
+    if (ids.length === 0) {
+      add(item);
+      trackEvent("Compare Picked", { listingId: item.id, slot: 1 });
       return;
     }
-    trackEvent("Compare Replace Prompted", { listingId: id });
-    router.push(compareHref(ids, { add: id }));
+    if (ids.length === 1) {
+      add(item);
+      trackEvent("Compare Picked", { listingId: item.id, slot: 2 });
+      return open([ids[0], item.id]);
+    }
+    trackEvent("Compare Replace Prompted", { listingId: item.id });
+    open(ids, { add: item.id });
   };
 
-  const label = active ? "Comparing" : "Compare";
+  const label = active ? (variant === "outline" ? "Comparing" : "Picked") : "Compare";
   const Icon = active ? Check : Columns2;
 
   if (variant === "outline") {
@@ -66,7 +93,7 @@ export default function CompareButton({ listingId, variant = "chip", className =
       type="button"
       onClick={handleClick}
       aria-pressed={active}
-      aria-label={active ? "Open comparison" : "Add to comparison"}
+      aria-label={active ? "Remove from comparison" : "Pick for comparison"}
       className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold shadow-md backdrop-blur-md transition-colors ${
         active
           ? "bg-red-600 text-white hover:bg-red-700"

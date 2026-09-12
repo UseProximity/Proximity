@@ -11,12 +11,16 @@
 import { SessionProvider } from "next-auth/react";
 import { FavoritesProvider } from "@/context/FavoritesContext";
 import { CompareProvider } from "@/context/CompareContext";
+import CompareTray from "@/components/compare/CompareTray";
 
 export default function Providers({ children, session }) {
   return (
     <SessionProvider session={session} refetchOnWindowFocus={false}>
       <FavoritesProvider>
-        <CompareProvider>{children}</CompareProvider>
+        <CompareProvider>
+          {children}
+          <CompareTray />
+        </CompareProvider>
       </FavoritesProvider>
     </SessionProvider>
   );

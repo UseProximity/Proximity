@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { Check, Minus, ArrowDown, ArrowUp } from "lucide-react";
 
 // The site header is 83px tall on phones and 104px from md up.
@@ -87,8 +88,15 @@ export default function DetailsList({ sections, names, both, basis }) {
     return () => observer.disconnect();
   }, [visible.map((s) => s.id).join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the active chip in view by scrolling the chip strip only. Never the
+  // page: scrollIntoView would drag the whole document to the bar on load.
+  const navRef = useRef(null);
   useEffect(() => {
-    chipRefs.current[active]?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    const nav = navRef.current;
+    const chip = chipRefs.current[active];
+    if (!nav || !chip) return;
+    const target = chip.offsetLeft - nav.clientWidth / 2 + chip.clientWidth / 2;
+    nav.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
   }, [active]);
 
   const jump = (id) => {
@@ -101,7 +109,13 @@ export default function DetailsList({ sections, names, both, basis }) {
   if (!sections.length) return null;
 
   return (
-    <section className="mt-12" aria-label="Full comparison">
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.5 }}
+      className="mt-12"
+      aria-label="Full comparison"
+    >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-gray-900">The details</h2>
@@ -130,7 +144,7 @@ export default function DetailsList({ sections, names, both, basis }) {
       <div className={`sticky ${STICKY} z-30 -mx-4 border-y border-gray-100 bg-white/95 px-4 backdrop-blur-lg sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8`}>
         <div className="grid grid-cols-2 items-center gap-2 py-2.5 text-sm font-semibold text-gray-900 md:grid-cols-[1fr_auto_1fr]">
           <span className="truncate pr-2 text-center md:text-left">{names[0] ?? "Option 1"}</span>
-          <nav aria-label="Sections" className="col-span-2 order-last -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-hidden md:order-none md:col-span-1 md:max-w-[52vw] md:pb-0">
+          <nav ref={navRef} aria-label="Sections" className="col-span-2 order-last -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-hidden md:order-none md:col-span-1 md:max-w-[52vw] md:pb-0">
             {visible.map((s) => (
               <button
                 key={s.id}
@@ -194,6 +208,6 @@ export default function DetailsList({ sections, names, both, basis }) {
         <br />
         Rent is {basis === "unit" ? "for the whole apartment" : "per person"} before utilities and fees. Walk times all go to the same campus spot.
       </p>
-    </section>
+    </motion.section>
   );
 }

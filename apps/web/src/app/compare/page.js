@@ -79,7 +79,6 @@ export default async function ComparePage({ searchParams }) {
   return (
     <Suspense fallback={null}>
       <CompareClient
-        key={`${a?._id ?? "-"}:${b?._id ?? "-"}`}
         sides={[a, b]}
         addCandidate={add}
         picker={pickerIndex(all)}

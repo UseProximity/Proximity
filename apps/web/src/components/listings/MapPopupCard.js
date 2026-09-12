@@ -172,7 +172,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         )}
         {!compact && (
           <div className="absolute bottom-3 left-3 z-[2]">
-            <CompareButton listingId={listing._id} />
+            <CompareButton listing={listing} />
           </div>
         )}
         {imageCount > 1 && !listing.unavailable && (
