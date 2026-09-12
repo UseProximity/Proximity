@@ -9,37 +9,30 @@
  *
  * `get(ctx)` returns the raw value (or null when unknown). `ctx` is the
  * adapter's view of one side of the comparison: { listing, unit, lease, basis,
- * rentBasis, reviewStats }. See model.js for how it is built.
+ * campus, rentBasis, reviewStats }. See model.js for how it is built.
  *
  * `better` says which direction is objectively preferable when both sides are
  * known: "lower" (rent, walk minutes), "higher" (area, rating). Rows with no
  * direction are preference facts and never get a highlight.
+ *
+ * Kept deliberately short (Wyatt, 2026-09-12): one campus point rather than
+ * every building, amenities and utilities as lists rather than a row each.
  */
 
 import { availabilityLabel } from "@/utils/availability";
 import { durationLabel } from "@/components/listings/LeaseOptions";
-import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 
 export const CAMPUS_DESTINATION = "Danforth University Center";
 
-const walk = (name) => (ctx) => ctx.listing.placeWalkMinutes?.[name] ?? null;
-const amenity = (key) => (ctx) => ctx.listing.amenities?.includes(key) || null;
-const utility = (key) => (ctx) => ctx.listing.utilitiesIncluded?.includes(key) || null;
-
 /*
- * Walk to the campus the student actually commutes to. Danforth is the
- * closest main-campus point (the browse card's figure); the Med Campus is its
- * own destination two miles east, so a student there gets that number instead.
+ * Walk to the campus the student actually commutes to. One point per campus:
+ * the Danforth University Center for the main campus, the Med Campus for the
+ * medical school. Every walk on the page goes to the same place.
  */
 export function campusWalkFor(listing, campus) {
   const pwm = listing?.placeWalkMinutes;
   if (!pwm) return null;
-  if (campus === "med") return pwm["Med Campus"] ?? null;
-  const vals = Object.entries(pwm)
-    .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
-    .map(([, v]) => v)
-    .filter(Number.isFinite);
-  return vals.length ? Math.min(...vals) : null;
+  return (campus === "med" ? pwm["Med Campus"] : pwm[CAMPUS_DESTINATION]) ?? null;
 }
 
 export const campusLabel = (campus) => (campus === "med" ? "Med Campus" : "Danforth");
@@ -48,6 +41,42 @@ const campusWalk = (ctx) => campusWalkFor(ctx.listing, ctx.campus);
 
 // Room counts below zero came from a spinner bug on old rows; read them as unknown.
 const count = (n) => (Number.isFinite(n) && n >= 0 ? n : null);
+
+const AMENITY_LABELS = {
+  air_conditioning: "Air conditioning",
+  dishwasher: "Dishwasher",
+  gym: "Gym",
+  laundry: "Laundry",
+  mailroom: "Mailroom",
+  microwave: "Microwave",
+  oven: "Oven",
+  parking: "Parking",
+  pets_allowed: "Pets allowed",
+  pool: "Pool",
+  refrigerator: "Refrigerator",
+  rooftop: "Rooftop",
+  storage: "Storage",
+  stove: "Stove",
+  study_room: "Study room",
+};
+const BUILDING_AMENITIES = ["gym", "study_room", "pool", "rooftop", "parking", "pets_allowed", "mailroom", "storage"];
+const UNIT_AMENITIES = ["air_conditioning", "laundry", "dishwasher", "microwave", "oven", "stove", "refrigerator"];
+const UTILITY_LABELS = {
+  electric: "Electric",
+  water: "Water",
+  internet: "Internet",
+  gas: "Gas",
+  heat: "Heat",
+  cooling: "Cooling",
+  trash: "Trash",
+  sewer: "Sewer",
+  cable: "Cable",
+};
+
+const amenityList = (keys) => (ctx) => {
+  const have = keys.filter((k) => ctx.listing.amenities?.includes(k)).map((k) => AMENITY_LABELS[k]);
+  return have.length ? have : null;
+};
 
 export const SECTIONS = [
   {
@@ -65,19 +94,20 @@ export const SECTIONS = [
               ? ctx.rentBasis.unitRent
               : ctx.rentBasis.perPerson
             : null,
-        suffix: (ctx) => (ctx.basis === "unit" ? "/ apartment" : "/ person"),
+        suffix: (ctx) => (ctx.basis === "unit" ? "/ apt" : "/ person"),
       },
       { id: "campusWalk", label: (ctx) => `Walk to ${campusLabel(ctx?.campus)}`, type: "minutes", better: "lower", get: campusWalk },
       {
-        id: "shuttleWalkTop",
-        label: "Walk to nearest shuttle stop",
-        type: "minutes",
-        better: "lower",
-        get: (ctx) => ctx.listing.shuttleWalkMinutes ?? null,
+        id: "bedBath",
+        label: "Bed / bath",
+        type: "text",
+        get: (ctx) => {
+          const b = count(ctx.unit?.bedrooms);
+          const ba = count(ctx.unit?.bathrooms);
+          if (b == null && ba == null) return null;
+          return [b == null ? null : b === 0 ? "Studio" : `${b} bed`, ba == null ? null : `${ba} bath`].filter(Boolean).join(" · ");
+        },
       },
-      { id: "bedrooms", label: "Bedrooms", type: "count", get: (ctx) => count(ctx.unit?.bedrooms),
-        format: (v) => (v === 0 ? "Studio" : String(v)) },
-      { id: "bathrooms", label: "Bathrooms", type: "count", get: (ctx) => count(ctx.unit?.bathrooms) },
       { id: "area", label: "Size", type: "area", better: "higher", get: (ctx) => ctx.unit?.area ?? null },
       {
         id: "furnished",
@@ -103,7 +133,7 @@ export const SECTIONS = [
         type: "rating",
         better: "higher",
         get: (ctx) => (ctx.listing.numReviews > 0 ? ctx.listing.rating : null),
-        format: (v, ctx) => `${v.toFixed(1)} · ${ctx.listing.numReviews} review${ctx.listing.numReviews === 1 ? "" : "s"}`,
+        format: (v, ctx) => `${v.toFixed(1)} (${ctx.listing.numReviews})`,
       },
     ],
   },
@@ -122,10 +152,11 @@ export const SECTIONS = [
               ? ctx.rentBasis.perPerson
               : ctx.rentBasis.unitRent
             : null,
-        note: (ctx) =>
-          ctx.rentBasis?.basis === "person" && ctx.rentBasis.beds > 1 && ctx.basis !== "unit"
-            ? `${ctx.rentBasis.beds} people`
-            : null,
+        note: (ctx) => {
+          const stated = ctx.lease?.rentIsPerPerson;
+          if (stated == null && ctx.rentBasis && ctx.rentBasis.beds > 1) return "estimated";
+          return null;
+        },
       },
       {
         id: "termTotal",
@@ -142,18 +173,6 @@ export const SECTIONS = [
         },
         note: (ctx) => (ctx.lease?.leaseTermMonths?.length === 1 ? `${ctx.lease.leaseTermMonths[0]} months` : null),
       },
-      {
-        id: "rentEstimated",
-        label: "Rent basis",
-        type: "text",
-        get: (ctx) => {
-          if (!ctx.rentBasis) return null;
-          const stated = ctx.lease?.rentIsPerPerson;
-          if (stated === true) return "Per person, stated by landlord";
-          if (stated === false) return "Whole apartment, stated by landlord";
-          return ctx.rentBasis.basis === "person" ? "Per person (our estimate)" : "Whole apartment (our estimate)";
-        },
-      },
       // Not collected yet. They appear the day the columns exist.
       { id: "deposit", label: "Security deposit", type: "money", get: () => null },
       { id: "applicationFee", label: "Application fee", type: "money", get: () => null },
@@ -165,33 +184,27 @@ export const SECTIONS = [
     id: "commute",
     label: "Getting around",
     fields: [
-      { id: "ducWalk", label: CAMPUS_DESTINATION, type: "minutes", better: "lower", get: walk(CAMPUS_DESTINATION) },
-      { id: "olinWalk", label: "Olin Library", type: "minutes", better: "lower", get: walk("Olin Library") },
-      { id: "seigleWalk", label: "Seigle Hall", type: "minutes", better: "lower", get: walk("Seigle Hall") },
-      { id: "recWalk", label: "Sumers Rec Center", type: "minutes", better: "lower", get: walk("Sumers Rec Center") },
-      { id: "villageWalk", label: "Village House", type: "minutes", better: "lower", get: walk("Village House") },
-      { id: "medWalk", label: "Med Campus", type: "minutes", better: "lower", get: walk("Med Campus") },
-      { id: "groceryWalk", label: "Schnucks", type: "minutes", better: "lower", get: walk("Schnucks (Grocery)") },
+      {
+        id: "shuttleWalk",
+        label: "Walk to nearest shuttle stop",
+        type: "minutes",
+        better: "lower",
+        get: (ctx) => ctx.listing.shuttleWalkMinutes ?? null,
+      },
+      {
+        id: "otherCampusWalk",
+        label: (ctx) => (ctx?.campus === "med" ? "Walk to Danforth" : "Walk to Med Campus"),
+        type: "minutes",
+        better: "lower",
+        get: (ctx) => campusWalkFor(ctx.listing, ctx.campus === "med" ? "danforth" : "med"),
+      },
+      { id: "groceryWalk", label: "Walk to Schnucks", type: "minutes", better: "lower", get: (ctx) => ctx.listing.placeWalkMinutes?.["Schnucks (Grocery)"] ?? null },
       {
         id: "loopDrive",
         label: "Drive to the Delmar Loop",
         type: "minutes",
         better: "lower",
         get: (ctx) => ctx.listing.placeDriveMinutes?.["Delmar Loop"] ?? null,
-      },
-      {
-        id: "forestParkDrive",
-        label: "Drive to Forest Park",
-        type: "minutes",
-        better: "lower",
-        get: (ctx) => ctx.listing.placeDriveMinutes?.["Forest Park (Skinker Entrance)"] ?? null,
-      },
-      {
-        id: "groceryDrive",
-        label: "Drive to the nearest Schnucks",
-        type: "minutes",
-        better: "lower",
-        get: (ctx) => ctx.listing.placeDriveMinutes?.schnucks_nearest ?? null,
       },
       {
         id: "airportDrive",
@@ -204,7 +217,7 @@ export const SECTIONS = [
   },
   {
     id: "space",
-    label: "Your space",
+    label: "The apartment",
     fields: [
       {
         id: "unitName",
@@ -220,14 +233,11 @@ export const SECTIONS = [
         better: "higher",
         get: (ctx) => {
           const area = ctx.unit?.area;
-          const beds = ctx.unit?.bedrooms;
+          const beds = count(ctx.unit?.bedrooms);
           if (area == null || beds == null) return null;
           return Math.round(area / Math.max(beds, 1));
         },
       },
-      { id: "airConditioning", label: "Air conditioning", type: "boolean", get: amenity("air_conditioning") },
-      { id: "laundry", label: "Laundry", type: "boolean", get: amenity("laundry") },
-      { id: "storage", label: "Extra storage", type: "boolean", get: amenity("storage") },
       {
         id: "floorPlan",
         label: "Floor plan",
@@ -235,12 +245,30 @@ export const SECTIONS = [
         get: (ctx) => ctx.unit?.floorPlanImageUrl ?? null,
         format: () => "View floor plan",
       },
+      { id: "unitAmenities", label: "In the apartment", type: "list", get: amenityList(UNIT_AMENITIES) },
+    ],
+  },
+  {
+    id: "building",
+    label: "Building",
+    fields: [
+      { id: "buildingAmenities", label: "Amenities", type: "list", get: amenityList(BUILDING_AMENITIES) },
       {
-        id: "unitPhotos",
-        label: "Photos of this unit",
-        type: "count",
-        get: (ctx) => (ctx.unit?.images?.length ? ctx.unit.images.length : null),
+        id: "customAmenities",
+        label: "Also listed",
+        type: "list",
+        get: (ctx) => (ctx.listing.customAmenities?.length ? ctx.listing.customAmenities : null),
       },
+      {
+        id: "utilities",
+        label: "Utilities included",
+        type: "list",
+        get: (ctx) => {
+          const have = Object.keys(UTILITY_LABELS).filter((k) => ctx.listing.utilitiesIncluded?.includes(k)).map((k) => UTILITY_LABELS[k]);
+          return have.length ? have : null;
+        },
+      },
+      { id: "photos", label: "Photos", type: "count", get: (ctx) => ctx.listing.allImages?.length || ctx.listing.images?.length || null },
     ],
   },
   {
@@ -283,56 +311,18 @@ export const SECTIONS = [
         get: (ctx) => ctx.listing.verifiedLive || null,
       },
       {
+        id: "verifiedAt",
+        label: "Last verified",
+        type: "date",
+        get: (ctx) => ctx.listing.verifiedAt ?? null,
+      },
+      {
         id: "landlord",
         label: "Who you'd be talking to",
         type: "text",
         get: (ctx) => ctx.lease?.landlordName ?? ctx.listing.contactName ?? ctx.listing.owner?.name ?? null,
       },
-      {
-        id: "offerCount",
-        label: "Offers on this unit",
-        type: "count",
-        get: (ctx) => (ctx.unit?.leases?.length > 1 ? ctx.unit.leases.length : null),
-      },
-    ],
-  },
-  {
-    id: "amenities",
-    label: "Amenities",
-    fields: [
-      { id: "gym", label: "Gym", type: "boolean", get: amenity("gym") },
-      { id: "studyRoom", label: "Study room", type: "boolean", get: amenity("study_room") },
-      { id: "pool", label: "Pool", type: "boolean", get: amenity("pool") },
-      { id: "rooftop", label: "Rooftop", type: "boolean", get: amenity("rooftop") },
-      { id: "parking", label: "Parking", type: "boolean", get: amenity("parking") },
-      { id: "petsAllowed", label: "Pets allowed", type: "boolean", get: amenity("pets_allowed") },
-      { id: "mailroom", label: "Mailroom", type: "boolean", get: amenity("mailroom") },
-      { id: "dishwasher", label: "Dishwasher", type: "boolean", get: amenity("dishwasher") },
-      { id: "microwave", label: "Microwave", type: "boolean", get: amenity("microwave") },
-      { id: "oven", label: "Oven", type: "boolean", get: amenity("oven") },
-      { id: "stove", label: "Stove", type: "boolean", get: amenity("stove") },
-      { id: "refrigerator", label: "Refrigerator", type: "boolean", get: amenity("refrigerator") },
-      {
-        id: "customAmenities",
-        label: "Also listed",
-        type: "list",
-        get: (ctx) => (ctx.listing.customAmenities?.length ? ctx.listing.customAmenities : null),
-      },
-    ],
-  },
-  {
-    id: "utilities",
-    label: "Utilities included",
-    fields: [
-      { id: "electric", label: "Electric", type: "boolean", get: utility("electric") },
-      { id: "water", label: "Water", type: "boolean", get: utility("water") },
-      { id: "internet", label: "Internet", type: "boolean", get: utility("internet") },
-      { id: "gas", label: "Gas", type: "boolean", get: utility("gas") },
-      { id: "heat", label: "Heat", type: "boolean", get: utility("heat") },
-      { id: "cooling", label: "Cooling", type: "boolean", get: utility("cooling") },
-      { id: "trash", label: "Trash", type: "boolean", get: utility("trash") },
-      { id: "sewer", label: "Sewer", type: "boolean", get: utility("sewer") },
-      { id: "cable", label: "Cable", type: "boolean", get: utility("cable") },
+      { id: "address", label: "Address", type: "text", get: (ctx) => ctx.listing.address ?? null },
     ],
   },
   {
@@ -342,28 +332,12 @@ export const SECTIONS = [
       { id: "communication", label: "Landlord communication", type: "rating", better: "higher", get: (ctx) => ctx.reviewStats.communication },
       { id: "location", label: "Location", type: "rating", better: "higher", get: (ctx) => ctx.reviewStats.location },
       { id: "value", label: "Value for money", type: "rating", better: "higher", get: (ctx) => ctx.reviewStats.value },
-      { id: "latestReview", label: "Most recent review", type: "text", get: (ctx) => ctx.reviewStats.latest },
       {
         id: "quote",
         label: "What a student said",
         type: "quote",
         get: (ctx) => ctx.reviewStats.quote,
       },
-    ],
-  },
-  {
-    id: "practical",
-    label: "Practical details",
-    fields: [
-      { id: "photos", label: "Photos", type: "count", get: (ctx) => ctx.listing.allImages?.length || ctx.listing.images?.length || null },
-      {
-        id: "verifiedAt",
-        label: "Last verified",
-        type: "date",
-        get: (ctx) => ctx.listing.verifiedAt ?? null,
-      },
-      { id: "listedSince", label: "On Proximity since", type: "date", get: (ctx) => ctx.listing.createdAt ?? null },
-      { id: "address", label: "Address", type: "text", get: (ctx) => ctx.listing.address ?? null },
     ],
   },
 ];

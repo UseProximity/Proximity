@@ -112,6 +112,7 @@ export function Header({ session }) {
     { href: addHref, label: addLabel },
   ];
   const moreLinks = [
+    { href: "/compare", label: "Compare Apartments" },
     { href: "/about", label: "Meet the Founder" },
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/review", label: "Add a Review" },

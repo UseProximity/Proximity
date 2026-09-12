@@ -33,7 +33,7 @@ export default function ListDetailPanel({
           <span className="text-sm font-semibold">Back to listings</span>
         </button>
         <div className="flex items-center gap-3 text-gray-600">
-          <CompareButton listing={listing} variant="outline" />
+          <CompareButton listing={listing} />
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold">Save this listing</span>
             <HeartIcon listingId={listing._id} />

@@ -161,8 +161,11 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
           </button>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Side by side.</h1>
+        <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">Compare apartments</h1>
+            <p className="mt-1 text-sm text-gray-500">Pick one for each side. Every number comes from the listing itself.</p>
+          </div>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <Segmented
               label="Show rent"
@@ -187,8 +190,8 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
 
         {/* Cards with the quick-facts spine between them */}
         <div
-          className={`mt-8 grid grid-cols-2 items-stretch gap-3 md:grid-cols-[1fr_230px_1fr] md:gap-0 lg:grid-cols-[1fr_280px_1fr] xl:grid-cols-[1fr_320px_1fr] ${
-            pending ? "opacity-70 transition-opacity" : ""
+          className={`mt-6 grid grid-cols-2 items-stretch gap-3 md:grid-cols-[1fr_230px_1fr] md:gap-0 lg:grid-cols-[1fr_280px_1fr] xl:grid-cols-[1fr_320px_1fr] ${
+            pending ? "pointer-events-none opacity-60 transition-opacity" : ""
           }`}
         >
           {[0, 1].map((slot) => (
@@ -199,33 +202,33 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
                   side={resolved[slot]}
                   slot={slot}
                   basis={basis}
-                  delay={landed[slot] || !ids[slot] ? slot * 0.35 : 0}
+                  campus={campus}
+                  picker={picker}
+                  otherId={ids[1 - slot]}
+                  delay={landed[slot] ? slot * 0.08 : 0}
                   onPick={() => setPickerFor(slot)}
+                  onChoose={(listingId) => choose(slot, listingId)}
                   onUnit={(unitId) => setChoice((c) => ({ ...c, [slot]: { unit: unitId, lease: null } }))}
                   onLease={(leaseId) => setChoice((c) => ({ ...c, [slot]: { ...c[slot], lease: leaseId } }))}
                 />
               </AnimatePresence>
             </div>
           ))}
-          <QuickFacts sides={resolved} basis={basis} campus={campus} delay={0.75} />
+          <QuickFacts sides={resolved} basis={basis} campus={campus} delay={0.15} />
         </div>
 
         {/* The two tradeoffs that decide most searches */}
-        {both ? (
+        {both && (
           <motion.div
-            key={`${ids[0]}-${ids[1]}-${basis}`}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: landed.every(Boolean) ? 1.0 : 0.1 }}
-            className="mt-10 grid gap-6 rounded-2xl bg-white p-6 shadow-[0_18px_48px_-24px_rgba(15,23,42,0.3)] ring-1 ring-black/5 sm:grid-cols-2 sm:gap-8 sm:p-7"
+            key={`${ids[0]}-${ids[1]}-${basis}-${campus}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="mt-4 grid divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0"
           >
-            <Tradeoff icon={CircleDollarSign} delta={deltas.rent} fallback="Add rent to compare cost." />
+            <Tradeoff icon={CircleDollarSign} delta={deltas.rent} fallback="Add rent on both sides to compare cost." />
             <Tradeoff icon={Footprints} delta={deltas.walk} fallback="Walk times aren't available for both." />
           </motion.div>
-        ) : (
-          <p className="mt-10 rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-500">
-            Add a second apartment to see the tradeoffs.
-          </p>
         )}
 
         <DetailsList sections={sections} names={names} both={both} basis={basis} campus={campus} />
@@ -279,14 +282,13 @@ function Segmented({ label, value, onChange, options }) {
 
 function Tradeoff({ icon: Icon, delta, fallback }) {
   return (
-    <div className="flex flex-col items-center text-center">
-      <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-50 ring-1 ring-red-100">
-        <Icon className="h-5 w-5 text-red-600" strokeWidth={2} />
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50">
+        <Icon className="h-4 w-4 text-red-600" strokeWidth={2} />
       </span>
       {delta ? (
         <>
-          <p className="text-base font-semibold text-gray-900">{delta.text}</p>
-          <p className="mt-0.5 text-sm text-gray-500">{delta.sub}</p>
+          <p className="text-sm text-gray-900"><span className="font-semibold">{delta.text}</span> <span className="text-gray-500">{delta.sub}</span></p>
         </>
       ) : (
         <p className="text-sm text-gray-500">{fallback}</p>

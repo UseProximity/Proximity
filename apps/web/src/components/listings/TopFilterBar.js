@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   SLIDER_CSS,
   FilterSection,
@@ -319,6 +320,18 @@ export default function TopFilterBar({
           </svg>
           <span>Clear All</span>
         </button>
+
+        {/* Compare two apartments side by side */}
+        <Link
+          href="/compare"
+          className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium transition-colors rounded-full whitespace-nowrap text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path strokeLinecap="round" d="M12 4v16" />
+          </svg>
+          <span>Compare</span>
+        </Link>
       </div>
 
       {/* ── Bedroom dropdown ── */}

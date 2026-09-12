@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
-import CompareButton from "@/components/compare/CompareButton";
 import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
@@ -168,11 +167,6 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
                 {formatAvailableFrom(listing.availableFrom)}
               </div>
             )}
-          </div>
-        )}
-        {!compact && (
-          <div className="absolute bottom-3 left-3 z-[2]">
-            <CompareButton listing={listing} />
           </div>
         )}
         {imageCount > 1 && !listing.unavailable && (

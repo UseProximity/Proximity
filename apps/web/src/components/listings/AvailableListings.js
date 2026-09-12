@@ -674,6 +674,12 @@ export default function AvailableListings({
                       </svg>
                       Saved
                     </button>
+                    <a
+                      href="/compare"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-medium text-gray-700 shadow-sm active:bg-gray-50"
+                    >
+                      Compare
+                    </a>
                     <button
                       onClick={() => setMobileSearchOpen(true)}
                       className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm active:bg-gray-50"
