@@ -24,13 +24,29 @@ import { trackEvent } from "@/utils/analytics";
 
 export default function CompareButton({ listing, variant = "chip", className = "" }) {
   const router = useRouter();
-  const { items, ids, add, remove, setItems } = useCompare();
+  const { items, ids, add, remove, setItems, setOpening } = useCompare();
   const item = compareItem(listing);
   const active = ids.includes(item.id);
 
   const open = (nextIds, extra) => {
     // Full slots and a third pick: the page shows the replace prompt.
+    setOpening(true);
     router.push(compareHref(nextIds, extra));
+  };
+
+  /*
+   * Get the comparison page ready before it is asked for, so the second pick
+   * opens without a pause. router.prefetch covers production; the fetch is
+   * what makes the dev server compile the route ahead of the click.
+   */
+  const warm = (firstId) => {
+    const href = compareHref([firstId]);
+    try {
+      router.prefetch(href);
+    } catch {}
+    if (process.env.NODE_ENV === "development") {
+      fetch(href, { cache: "no-store" }).catch(() => {});
+    }
   };
 
   const handleClick = (e) => {
@@ -55,6 +71,7 @@ export default function CompareButton({ listing, variant = "chip", className = "
     }
     if (ids.length === 0) {
       add(item);
+      warm(item.id);
       trackEvent("Compare Picked", { listingId: item.id, slot: 1 });
       return;
     }

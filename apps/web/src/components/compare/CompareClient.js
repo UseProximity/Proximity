@@ -23,7 +23,7 @@ const SIDE_KEYS = [
 export default function CompareClient({ sides, addCandidate, picker, requested, initial }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const { setItems } = useCompare();
+  const { setItems, setOpening } = useCompare();
   const ids = sides.map((s) => s?._id ?? null);
   // Which slots were filled when the page opened: those animate in together on
   // landing; anything added later animates in on its own.
@@ -40,6 +40,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
   // Keep the Compare pills elsewhere in the app in step with this page.
   useEffect(() => {
     setItems(sides.filter(Boolean).map(compareItem));
+    setOpening(false);
   }, [ids[0], ids[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A requested id that did not resolve was hidden, removed or malformed.
@@ -183,7 +184,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
                   side={resolved[slot]}
                   slot={slot}
                   basis={basis}
-                  delay={landed[slot] || !ids[slot] ? slot * 0.22 : 0}
+                  delay={landed[slot] || !ids[slot] ? slot * 0.35 : 0}
                   onPick={() => setPickerFor(slot)}
                   onUnit={(unitId) => setChoice((c) => ({ ...c, [slot]: { unit: unitId, lease: null } }))}
                   onLease={(leaseId) => setChoice((c) => ({ ...c, [slot]: { ...c[slot], lease: leaseId } }))}
@@ -191,7 +192,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
               </AnimatePresence>
             </div>
           ))}
-          <QuickFacts sides={resolved} basis={basis} delay={0.45} />
+          <QuickFacts sides={resolved} basis={basis} delay={0.75} />
         </div>
 
         {/* The two tradeoffs that decide most searches */}
@@ -200,7 +201,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
             key={`${ids[0]}-${ids[1]}-${basis}`}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: landed.every(Boolean) ? 0.6 : 0.1 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: landed.every(Boolean) ? 1.0 : 0.1 }}
             className="mt-10 grid gap-6 rounded-2xl bg-white p-6 shadow-[0_18px_48px_-24px_rgba(15,23,42,0.3)] ring-1 ring-black/5 sm:grid-cols-2 sm:gap-8 sm:p-7"
           >
             <Tradeoff icon={CircleDollarSign} delta={deltas.rent} fallback="Add rent to compare cost." />

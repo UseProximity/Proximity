@@ -16,10 +16,10 @@ const EASE = [0.22, 1, 0.36, 1];
  */
 export default function PropertyCard({ side, slot, basis, delay = 0, onPick, onUnit, onLease }) {
   const enter = {
-    initial: { opacity: 0, y: 28, scale: 0.965 },
+    initial: { opacity: 0, y: 56, scale: 0.92 },
     animate: { opacity: 1, y: 0, scale: 1 },
     exit: { opacity: 0, scale: 0.985, transition: { duration: 0.16 } },
-    transition: { duration: 0.7, ease: EASE, delay },
+    transition: { duration: 1.0, ease: EASE, delay },
   };
 
   if (!side) {
@@ -52,9 +52,9 @@ export default function PropertyCard({ side, slot, basis, delay = 0, onPick, onU
         {image ? (
           <motion.div
             className="absolute inset-0"
-            initial={{ scale: 1.08 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 1.4, ease: EASE, delay }}
+            initial={{ scale: 1.18, filter: "blur(10px)" }}
+            animate={{ scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 1.7, ease: EASE, delay }}
           >
             <Image
               src={image}

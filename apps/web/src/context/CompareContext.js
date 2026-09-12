@@ -18,6 +18,8 @@ const KEY = "prx_compare";
 const CompareContext = createContext({
   items: [],
   ids: [],
+  opening: false,
+  setOpening: () => {},
   add: () => {},
   remove: () => {},
   clear: () => {},
@@ -36,6 +38,8 @@ function read() {
 
 export function CompareProvider({ children }) {
   const [items, setItemsState] = useState([]);
+  // True from the moment a pick opens the comparison until the page mounts.
+  const [opening, setOpening] = useState(false);
 
   useEffect(() => {
     setItemsState(read());
@@ -57,8 +61,8 @@ export function CompareProvider({ children }) {
   const clear = useCallback(() => setItems([]), [setItems]);
 
   const value = useMemo(
-    () => ({ items, ids: items.map((x) => x.id), add, remove, clear, setItems }),
-    [items, add, remove, clear, setItems]
+    () => ({ items, ids: items.map((x) => x.id), opening, setOpening, add, remove, clear, setItems }),
+    [items, opening, add, remove, clear, setItems]
   );
 
   return <CompareContext.Provider value={value}>{children}</CompareContext.Provider>;

@@ -115,7 +115,7 @@ export default function DetailsList({ sections, names, both, basis }) {
     <motion.section
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.5 }}
+      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.9 }}
       className="mt-14"
       aria-label="Full comparison"
     >

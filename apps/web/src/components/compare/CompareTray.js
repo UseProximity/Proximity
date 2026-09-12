@@ -6,7 +6,7 @@
  * on the /compare page itself, where the cards already show the same state.
  */
 
-import { useState } from "react";
+import { useEffect } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -15,10 +15,9 @@ import { useCompare } from "@/context/CompareContext";
 import { compareHref } from "@/lib/compare/model";
 
 export default function CompareTray() {
-  const { items, ids, clear } = useCompare();
+  const { items, ids, clear, opening, setOpening } = useCompare();
   const pathname = usePathname();
   const router = useRouter();
-  const [opening, setOpening] = useState(false);
 
   const show = items.length > 0 && pathname !== "/compare";
   const ready = items.length === 2;
@@ -28,8 +27,14 @@ export default function CompareTray() {
   const openCompare = () => {
     setOpening(true);
     router.push(compareHref(ids));
-    setTimeout(() => setOpening(false), 4000);
   };
+
+  // Whatever happens, the spinner never outlives a stalled navigation.
+  useEffect(() => {
+    if (!opening) return;
+    const t = setTimeout(() => setOpening(false), 8000);
+    return () => clearTimeout(t);
+  }, [opening, setOpening]);
 
   return (
     <AnimatePresence>
