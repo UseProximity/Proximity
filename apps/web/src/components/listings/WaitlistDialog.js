@@ -8,10 +8,6 @@
  * also means we can inject them into the landlord's form, so the student types
  * them once rather than twice.
  *
- * The copy says what we do with the answers. An account appears either way, and
- * a "finish your account" prompt plus an email half an hour later reads as spam
- * if the first time anyone hears about it is after the fact.
- *
  * Signed-in students never see this: the listing links them straight at the API
  * route, which already knows them.
  */
@@ -153,10 +149,6 @@ export default function WaitlistDialog({ isOpen, onClose, listingId, propertyNam
               <h2 className="text-lg font-bold text-gray-900">
                 Join the {propertyName} waitlist
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
-                We&apos;ll fill these into {propertyName}&apos;s form for you and save
-                them to a Proximity account so you can track your applications.
-              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
