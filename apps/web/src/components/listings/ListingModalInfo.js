@@ -471,6 +471,8 @@ function SignInPrompt({ message }) {
 
 function ReviewsTab({
   legitimateReviews,
+  reviewsLoaded,
+  reviewCount,
   overallAvg,
   starCounts,
   commAvg,
@@ -520,7 +522,6 @@ function ReviewsTab({
   const userId = session?.user?.id;
   const isLandlord =
     listing?.owner?._id === userId || listing?.owner?.id === userId;
-  console.log("Listing:\n", listing);
 
   return (
     <div>
@@ -582,7 +583,16 @@ function ReviewsTab({
       </div>
 
       {/* Review cards */}
-      {legitimateReviews.length === 0 ? (
+      {!reviewsLoaded && reviewCount > 0 ? (
+        /*
+         * The aggregates say this property has reviews but their bodies never
+         * arrived (the detail fetch failed). Saying "no reviews yet" here would
+         * be a lie about a building students have written about.
+         */
+        <div className="text-center py-10 text-gray-400 italic text-sm">
+          Reviews couldn&apos;t be loaded. Refresh to try again.
+        </div>
+      ) : legitimateReviews.length === 0 ? (
         <div className="text-center py-10 text-gray-400 italic text-sm">
           No verified reviews yet. Be the first to share your experience!
         </div>
@@ -1080,6 +1090,119 @@ function FloorPlanViewer({ url, unitName, onClose }) {
   );
 }
 
+// ─── Loading skeleton ────────────────────────────────────────────────────────
+/*
+ * Shown while the detail fetch is still in flight. The browse feed carries
+ * enough to paint a panel immediately, but not enough to paint a CORRECT one:
+ * it has no leases, no review bodies and no reviewer identities, so the panel
+ * used to render real-looking cards full of fallbacks ("Anonymous", blank
+ * comment) and then rewrite itself a second later. A skeleton says "still
+ * arriving" instead of stating something false, and it holds the same boxes in
+ * the same places so the swap to real content doesn't move the page around.
+ */
+function Bar({ className = "" }) {
+  return <div className={`rounded bg-gray-200 ${className}`} />;
+}
+
+function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
+  const tabCount = TABS.filter((t) => !excludeTabs.includes(t.id)).length;
+
+  return (
+    <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`} aria-busy="true">
+      <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
+        <div className="animate-pulse">
+          {/* Photo grid: one hero plus the two stacked side tiles */}
+          <div
+            className={`flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+              compact ? "md:h-[300px]" : "md:h-[520px]"
+            }`}
+          >
+            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%] rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl" />
+            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
+              <div className="flex-1 bg-gray-200 rounded-tr-xl" />
+              <div className="flex-1 bg-gray-200 rounded-br-xl" />
+            </div>
+          </div>
+
+          {/* Header card: address on the left, rating on the right */}
+          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+            <div className="w-full md:w-auto">
+              <Bar className="h-6 w-56 max-w-full" />
+              <Bar className="h-4 w-40 max-w-full mt-2" />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Bar className="h-8 w-8 rounded-full" />
+              <Bar className="h-6 w-16" />
+            </div>
+          </div>
+
+          {/* Unit selector: tab strip, unit identity, then the lease rows */}
+          <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
+            <div className="flex w-full">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex-1 px-3 py-2.5 border-b-2 border-gray-100">
+                  <Bar className="h-4 w-full" />
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-100 px-4 pt-3 pb-1">
+              <Bar className="h-4 w-32" />
+              <Bar className="h-3 w-48 max-w-full mt-1.5" />
+            </div>
+            <div className="divide-y divide-gray-100">
+              {[0, 1].map((i) => (
+                <div key={i} className="flex items-center justify-between gap-4 px-4 py-4">
+                  <div className="flex-1">
+                    <Bar className="h-4 w-28" />
+                    <Bar className="h-3 w-40 max-w-full mt-2" />
+                  </div>
+                  <Bar className="h-8 w-24 rounded-lg shrink-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tab strip */}
+          <div
+            className={`bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+              compact ? "" : "px-4"
+            }`}
+          >
+            <nav className="flex max-w-7xl mx-auto justify-center">
+              {Array.from({ length: tabCount }).map((_, i) => (
+                <div key={i} className="px-5 py-3">
+                  <Bar className="h-4 w-16" />
+                </div>
+              ))}
+            </nav>
+          </div>
+
+          {/* Tab body */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow p-6 space-y-3">
+              <Bar className="h-5 w-40" />
+              <Bar className="h-3 w-full" />
+              <Bar className="h-3 w-full" />
+              <Bar className="h-3 w-2/3" />
+            </div>
+            <div className="bg-white rounded-xl shadow p-6">
+              <Bar className="h-5 w-32 mb-4" />
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Bar className="h-5 w-5 rounded-full shrink-0" />
+                    <Bar className="h-3 flex-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ListingModalInfo({
   session,
   listing,
@@ -1089,6 +1212,14 @@ export default function ListingModalInfo({
   // The unit that satisfied the browse filters, if the renter arrived from a
   // filtered search. See lib/listings/filterListings.js.
   initialUnitId = null,
+  /*
+   * True while the caller is still fetching the full listing. The browse panel
+   * opens from feed data that has no leases and no review bodies, so rendering
+   * it would show fallbacks that get rewritten seconds later. The caller flips
+   * this to false on BOTH success and failure, so a failed fetch falls back to
+   * feed data rather than leaving the skeleton up forever.
+   */
+  detailLoading = false,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -1469,16 +1600,33 @@ export default function ListingModalInfo({
       ? listing.address
       : parsedCityStateZip;
 
-  // Reviews
+  /*
+   * Reviews. Same "absent key means not loaded" rule the leases use: the browse
+   * feed sends only the numReviews/rating aggregates, never the review bodies,
+   * so an ABSENT `reviews` key means the detail fetch hasn't landed (or failed)
+   * while an empty array means this property genuinely has none. getListing
+   * always sets one.
+   */
+  const reviewsLoaded = Array.isArray(listing.reviews);
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
     .filter((r) => r.legitimacy);
+  /*
+   * Star average and count come from the feed aggregates when the bodies aren't
+   * here, so a panel falling back to feed data still states the rating it knows
+   * rather than claiming "No reviews yet" about a well-reviewed building.
+   */
+  const feedReviewCount = Number(listing.numReviews) || 0;
+  const feedRating = Number(listing.rating);
+  const reviewCount = reviewsLoaded ? legitimateReviews.length : feedReviewCount;
   const overallAvg = legitimateReviews.length
     ? (
         legitimateReviews.reduce((s, r) => s + r.rating, 0) /
         legitimateReviews.length
       ).toFixed(1)
-    : null;
+    : !reviewsLoaded && feedReviewCount > 0 && Number.isFinite(feedRating) && feedRating > 0
+      ? feedRating.toFixed(1)
+      : null;
   const starCounts = [5, 4, 3, 2, 1].map((star) => ({
     star,
     count: legitimateReviews.filter((r) => Math.round(r.rating) === star)
@@ -1593,6 +1741,16 @@ export default function ListingModalInfo({
       setContactLoading(false);
     }
   };
+
+  /*
+   * After every hook, never before. An early return above them would change
+   * the hook order between the loading and loaded renders.
+   */
+  if (detailLoading) {
+    return (
+      <ListingDetailSkeleton compact={compact} excludeTabs={excludeTabs} />
+    );
+  }
 
   return (
     <>
@@ -1790,7 +1948,7 @@ export default function ListingModalInfo({
                       {overallAvg}
                     </span>
                     <span className="text-md text-gray-500">
-                      ({legitimateReviews.length})
+                      ({reviewCount})
                     </span>
                   </span>
                 ) : (
@@ -1983,6 +2141,8 @@ export default function ListingModalInfo({
               {activeTab === "reviews" && session && (
                 <ReviewsTab
                   legitimateReviews={legitimateReviews}
+                  reviewsLoaded={reviewsLoaded}
+                  reviewCount={reviewCount}
                   overallAvg={overallAvg}
                   starCounts={starCounts}
                   commAvg={commAvg}
