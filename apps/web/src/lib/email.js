@@ -249,6 +249,57 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
   });
 }
 
+/*
+ * The nudge for a waitlist lead who never finished their account.
+ *
+ * They gave us a name to reach a landlord's waitlist and an account was created
+ * from it. Half an hour later, if they still have no way to sign in, this is the
+ * one message that tells them the account exists at all.
+ *
+ * Deliberately says nothing about which waitlist. Naming the building would tell
+ * whoever opens this inbox what the person typed into a form somewhere, and the
+ * address is unverified: it may not be theirs. The account is the only thing
+ * this email is actually about, so it is the only thing it mentions.
+ *
+ * Sent at most once per person (waitlist_clicks.nudge_sent_at), and never to
+ * someone who already has credentials.
+ */
+export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+
+  const firstName = name ? esc(String(name).split(" ")[0]) : "";
+  const ctaUrl = `${baseUrl}/review/finish?token=${setupToken}`;
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `Finish setting up your Proximity account`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111;font-size:20px;margin:0 0 16px">
+          ${firstName ? `${firstName}, your` : "Your"} Proximity account is almost ready.
+        </h2>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          We started an account for you. It just needs a password before you can sign in
+          and use it to track places, save listings and message landlords.
+        </p>
+        <a href="${ctaUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Finish my account
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${ctaUrl}</p>
+        <p style="color:#999;font-size:12px">
+          This link works for 7 days. If you weren&#39;t expecting this, you can ignore this
+          email and the account will stay unusable.
+        </p>
+      </div>
+    `,
+  });
+}
+
 const escapeHtml = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])

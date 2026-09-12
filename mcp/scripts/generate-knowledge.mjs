@@ -406,6 +406,8 @@ function generateDomain() {
       errorShape: "{ error: 'message string' } with appropriate HTTP status code",
       dbColumnNaming: "Supabase columns use snake_case (e.g. lease_type). JS layer converts to camelCase (e.g. leaseType) in buildListing().",
       prose: "No em dashes anywhere written into this repo: code comments, UI copy, commit messages, PR descriptions, docs. Use a full stop, a comma, a colon or brackets instead (Wyatt, 2026-09-03).",
+      handoff: "After finishing a change, restart the local dev server on port 3000 and tell Wyatt to test there. A server left running from an earlier worktree serves that worktree's code on whatever port it claimed, so a stale 3001 (or a timed-out 3000) shows the change missing and reads as a bug in the work (Wyatt, 2026-09-11).",
+      devBuildCollision: "Never run `npm run build` while a dev server is running on the same worktree: both write to the same .next, the production build overwrites the dev chunks, and the running site then serves pages with no CSS. It presents as a broken stylesheet rather than a build collision. Stop dev, build, then rm -rf apps/web/.next and restart dev (2026-09-11).",
       envVars: {
         GOOGLE_ID: "Google OAuth client ID",
         GOOGLE_SECRET: "Google OAuth client secret",
