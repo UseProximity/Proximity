@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -103,7 +103,8 @@ export default function AvailableListings({
     const src = params.get("src");
     const srcPanelId = params.get("panel");
     if (!src) return;
-    if (src === "matchmaking" && srcPanelId) setListingSource(srcPanelId, "matchmaking");
+    if (src === "matchmaking" && srcPanelId)
+      setListingSource(srcPanelId, "matchmaking");
     params.delete("src");
     const qs = params.toString();
     window.history.replaceState(null, "", `/browse${qs ? `?${qs}` : ""}`);
@@ -113,12 +114,62 @@ export default function AvailableListings({
   const panelId = searchParams.get("panel");
   const [expandedListing, setExpandedListing] = useState(null);
   const panelRef = useRef(null);
-  const listingsInitialized = useRef(false);
+  // The filter question as it stood on the last run of the reset effect below.
+  const lastQuery = useRef({ filters, search });
+  /*
+   * True between opening a panel and its /api/listing/[id] response. The feed
+   * object the panel opens with has no leases and no review bodies, so the
+   * panel shows a skeleton rather than painting fallbacks it has to rewrite.
+   * Cleared on failure as well as success, so a failed fetch degrades to the
+   * feed data instead of leaving the skeleton up forever.
+   */
+  const [detailLoading, setDetailLoading] = useState(false);
+  /*
+   * The listing the in-flight detail fetch is for. Both fetches below used to
+   * write their result unconditionally, so a response that arrived after the
+   * reader had closed the panel or opened a different one would reopen or
+   * overwrite it, putting the rendered panel out of step with ?panel= in the
+   * URL, which is the only thing that decides what is open. Every write is now
+   * gated on the response still being the one currently wanted.
+   */
+  const detailRequestId = useRef(null);
+
+  /*
+   * Close the panel. Always go through this rather than calling
+   * setExpandedListing(null) directly: dropping the in-flight request id is
+   * what stops a detail response that is already on the wire from landing
+   * afterwards and re-opening a panel the URL no longer claims is open.
+   */
+  const clearPanel = () => {
+    detailRequestId.current = null;
+    setDetailLoading(false);
+    setExpandedListing(null);
+  };
+
+  /*
+   * Fetch the full listing (unit leases for rent, review bodies, review ids for
+   * voting) for the panel. Late responses are discarded (see detailRequestId).
+   */
+  const loadDetail = (id) => {
+    detailRequestId.current = id;
+    setDetailLoading(true);
+    fetch(`/api/listing/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (detailRequestId.current !== id) return;
+        if (data) setExpandedListing(data);
+        setDetailLoading(false);
+      })
+      .catch(() => {
+        if (detailRequestId.current !== id) return;
+        setDetailLoading(false);
+      });
+  };
 
   // Sync local state from URL — handles direct links, back/forward, and page reload
   useEffect(() => {
     if (!panelId) {
-      setExpandedListing(null);
+      clearPanel();
       return;
     }
     // Already showing this listing — don't re-fetch
@@ -126,12 +177,7 @@ export default function AvailableListings({
     // Try listings array first for instant render, then always fetch full detail
     const match = listings.find((l) => String(l._id) === panelId);
     if (match) setExpandedListing(match);
-    fetch(`/api/listing/${panelId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setExpandedListing(data);
-      })
-      .catch(() => {});
+    loadDetail(panelId);
   }, [panelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The expanded panel above is desktop-only (hidden md:block), so on a phone a
@@ -164,17 +210,12 @@ export default function AvailableListings({
     if (listing.matchedUnitId) params.set("unit", listing.matchedUnitId);
     else params.delete("unit");
     router.push(`/browse?${params.toString()}`);
-    // Fetch full detail (unit_leases for rent, review IDs for voting)
-    fetch(`/api/listing/${listing._id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setExpandedListing(data);
-      })
-      .catch(() => {});
+    // Fetch full detail (unit_leases for rent, review bodies, IDs for voting)
+    loadDetail(String(listing._id));
   };
 
   const closePanel = () => {
-    setExpandedListing(null); // immediate UI
+    clearPanel(); // immediate UI
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
     params.delete("unit");
@@ -182,12 +223,18 @@ export default function AvailableListings({
     router.push(`/browse${qs ? `?${qs}` : ""}`);
   };
 
-  // Scroll panel to top whenever a listing is expanded
+  /*
+   * Scroll the panel to top when a listing is expanded, keyed on the listing's
+   * id, not on the object. The detail fetch replaces the feed object with a
+   * fresh one for the SAME listing, and watching the object meant that second
+   * arrival yanked the reader back to the top a couple of seconds after they
+   * started reading.
+   */
   useEffect(() => {
     if (expandedListing && panelRef.current) {
       panelRef.current.scrollTop = 0;
     }
-  }, [expandedListing]);
+  }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll panel to the selected listing card when a pin is clicked (centered)
   useEffect(() => {
@@ -276,24 +323,48 @@ export default function AvailableListings({
     if (mobileFiltersOpen) setMobileDraft(filters);
   }, [mobileFiltersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear map overlay card and panel when listings data changes (filter/search).
-  // Skips until the initial data load has settled (empty → real data) so that
-  // direct ?panel= links are not wiped on first render.
+  /*
+   * Clear the map overlay card and the expanded panel when the RENTER changes
+   * what they are looking for.
+   *
+   * This used to watch the `listings` array instead, which is wrong on both
+   * sides. /browse is server-seeded (initialListings), so AvailableListings
+   * mounts with real data and then BrowseContent's freshness refetch of
+   * /api/listings hands down a brand-new array about a second later, which it read as
+   * "the filters changed", which closed any panel opened on that first second
+   * and stripped ?panel= from the URL. That is what made "View on map" from the
+   * homepage open the panel and immediately bounce out of it. The array
+   * identity also changes when savedIds moves (hearting a listing re-runs
+   * filterListings), which closed the panel out from under a save.
+   *
+   * The filter state and the search string ARE the question being asked, so
+   * watch those directly, and only act when they actually move: so a direct
+   * ?panel= deep link survives first render.
+   */
   useEffect(() => {
-    if (!listingsInitialized.current) {
-      // Wait until we see actual data, then mark initialized on the NEXT change
-      if (listings.length > 0) listingsInitialized.current = true;
+    /*
+     * Compare against the last values rather than flagging "first run": React
+     * StrictMode double-invokes effects in development, and a first-run flag
+     * lets the SECOND invocation through, which closed every deep-linked panel
+     * the moment it opened. Comparing values is idempotent, so re-running the
+     * effect without a real change is a no-op.
+     */
+    if (
+      lastQuery.current.filters === filters &&
+      lastQuery.current.search === search
+    ) {
       return;
     }
+    lastQuery.current = { filters, search };
     setSelectedListing(null);
-    setExpandedListing(null);
+    clearPanel();
     if (panelId) {
       const params = new URLSearchParams(searchParams.toString());
       params.delete("panel");
       const qs = params.toString();
       router.replace(`/browse${qs ? `?${qs}` : ""}`);
     }
-  }, [listings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePinClose = () => {
     setSelectedListing(null);
@@ -368,67 +439,80 @@ export default function AvailableListings({
         }`}
         style={{ height: "100%", minHeight: 0 }}
       >
-        <AnimatePresence initial={false} mode="wait">
-          {expandedListing ? (
-            <motion.div
-              key={`detail-${expandedListing._id}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <ListDetailPanel
-                listing={expandedListing}
-                initialUnitId={searchParams.get("unit")}
-                onBack={() => {
-                  setSelectedListing(null);
-                  closePanel();
-                }}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="grid"
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <div className="flex items-center gap-2 px-1 mb-4">
-                <p className="text-sm font-semibold text-gray-500">
-                  {visibleListings.length}{" "}
-                  {viewportBounds ? "listings in this area" : "Listings Found"}
-                </p>
-                {viewportBounds && (
-                  <button
-                    onClick={() => setViewportBounds(null)}
-                    className="text-xs text-red-600 hover:text-red-700 font-medium"
-                  >
-                    Show all
-                  </button>
-                )}
-              </div>
-
-              {visibleListings.length === 0 ? (
-                emptyState
-              ) : (
-                <div className="grid grid-cols-2 gap-6">
-                  {visibleListings.map((listing) => (
-                    <div key={listing._id} data-listing-id={listing._id}>
-                      <ListingCard
-                        listing={listing}
-                        session={session}
-                        isSelected={selectedListing?._id === listing._id}
-                        onCardClick={() => {
-                          setSelectedListing(listing);
-                          openPanel(listing);
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
+        {/*
+         * No AnimatePresence here, deliberately. Swapping the grid and the
+         * detail panel through it meant every swap waited on framer's exit
+         * lifecycle, and that lifecycle does not complete in this container.
+         * Under mode="wait" the incoming child was never let in at all on the
+         * deep-link path (?panel= on first load, where an effect drives the
+         * swap during mount): the column widened to 65vw while still showing
+         * the listing grid, so the URL claimed a panel was open and none was.
+         * Without mode="wait" the entry worked but the outgoing child was
+         * never unmounted, leaving an invisible opacity-0 copy of the panel
+         * behind on every swap, still mounted and still reachable by keyboard.
+         * Only the ENTERING side is animated now, keyed so each listing fades
+         * in on open, and there is no exit handshake left to hang on.
+         */}
+        {expandedListing ? (
+          <motion.div
+            key={`detail-${expandedListing._id}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.18 }}
+          >
+            <ListDetailPanel
+              listing={expandedListing}
+              detailLoading={detailLoading}
+              initialUnitId={searchParams.get("unit")}
+              onBack={() => {
+                setSelectedListing(null);
+                closePanel();
+              }}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="grid"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.18 }}
+          >
+            <div className="flex items-center gap-2 px-1 mb-4">
+              <p className="text-sm font-semibold text-gray-500">
+                {visibleListings.length}{" "}
+                {viewportBounds ? "listings in this area" : "Listings Found"}
+              </p>
+              {viewportBounds && (
+                <button
+                  onClick={() => setViewportBounds(null)}
+                  className="text-xs text-red-600 hover:text-red-700 font-medium"
+                >
+                  Show all
+                </button>
               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+
+            {visibleListings.length === 0 ? (
+              emptyState
+            ) : (
+              <div className="grid grid-cols-2 gap-6">
+                {visibleListings.map((listing) => (
+                  <div key={listing._id} data-listing-id={listing._id}>
+                    <ListingCard
+                      listing={listing}
+                      session={session}
+                      isSelected={selectedListing?._id === listing._id}
+                      onCardClick={() => {
+                        setSelectedListing(listing);
+                        openPanel(listing);
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
       </div>
 
       {/* ── Desktop map ── */}
