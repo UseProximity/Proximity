@@ -49,8 +49,14 @@ export default function WaitlistDialog({ isOpen, onClose, listingId, propertyNam
      * opened after an await has lost the user gesture that authorizes it and
      * browsers block it silently, which would strand the student on our modal
      * having already given us their details.
+     *
+     * Deliberately NO "noopener" in the features string: it makes window.open
+     * return null, which would leave a real but unreachable about:blank tab
+     * sitting there while this code decided the popup had been blocked. The
+     * opener is severed after navigating instead, which gets the same
+     * protection without giving up the handle we need to navigate.
      */
-    const tab = window.open("", "_blank", "noopener");
+    const tab = window.open("", "_blank");
     setLoading(true);
 
     try {
@@ -67,7 +73,15 @@ export default function WaitlistDialog({ isOpen, onClose, listingId, propertyNam
         return;
       }
 
-      if (tab) tab.location = data.url;
+      if (tab) {
+        tab.location = data.url;
+        // The landlord's form has no business holding a handle on this window.
+        try {
+          tab.opener = null;
+        } catch {
+          /* cross-origin by the time it navigates; nothing to sever */
+        }
+      }
       setDone({ url: data.url, setupToken: data.setupToken, blocked: !tab });
     } catch {
       tab?.close();
