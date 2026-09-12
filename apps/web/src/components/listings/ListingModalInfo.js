@@ -1089,10 +1089,24 @@ export default function ListingModalInfo({
   // The unit that satisfied the browse filters, if the renter arrived from a
   // filtered search. See lib/listings/filterListings.js.
   initialUnitId = null,
+  // Tab to open on first render, e.g. "contact" when a renter arrives from
+  // the compare page's Contact button. Ignored when it is not a visible tab.
+  initialTab = null,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
-  const [activeTab, setActiveTab] = useState("amenities");
+  const [activeTab, setActiveTab] = useState(() =>
+    TABS.some((t) => t.id === initialTab) && !excludeTabs.includes(initialTab) ? initialTab : "amenities"
+  );
+
+  // Arriving on a requested tab (the compare page's Contact button) should
+  // land the renter on it, not on the gallery above it.
+  useEffect(() => {
+    if (!initialTab || activeTab !== initialTab) return;
+    const t = setTimeout(() => scrollIntoContainer(document.getElementById("listing-tabs")), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {

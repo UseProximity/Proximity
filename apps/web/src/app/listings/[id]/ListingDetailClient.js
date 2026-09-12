@@ -21,6 +21,7 @@ export default function ListingDetailClient({
   const [notFound, setNotFound] = useState(false);
 
   const from = searchParams.get("from");
+  const initialTab = searchParams.get("tab");
 
   useEffect(() => {
     fetch(`/api/listing/${listingId}`)
@@ -103,7 +104,7 @@ export default function ListingDetailClient({
 
       {/* Detail content */}
       <div className="flex-1">
-        <ListingModalInfo session={session} listing={listing} />
+        <ListingModalInfo session={session} listing={listing} initialTab={initialTab} />
       </div>
     </div>
   );

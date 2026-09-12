@@ -94,13 +94,13 @@ export default function CompareButton({ listing, variant = "chip", className = "
       onClick={handleClick}
       aria-pressed={active}
       aria-label={active ? "Remove from comparison" : "Pick for comparison"}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold shadow-md backdrop-blur-md transition-colors ${
+      className={`inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold shadow-md backdrop-blur-md transition-colors ${
         active
           ? "bg-red-600 text-white hover:bg-red-700"
           : "border border-white/60 bg-white/90 text-gray-800 hover:bg-white"
       } ${className}`}
     >
-      <Icon className="h-3.5 w-3.5" strokeWidth={2.4} />
+      <Icon className="h-3 w-3" strokeWidth={2.4} />
       {label}
     </button>
   );

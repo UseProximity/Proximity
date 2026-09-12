@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Minus, ArrowDown, ArrowUp } from "lucide-react";
+import { Check, ArrowDown, ArrowUp } from "lucide-react";
 
 // The site header is 83px tall on phones and 104px from md up.
 const STICKY = "top-[83px] md:top-[104px]";
@@ -23,41 +23,45 @@ function Value({ row, index }) {
   const isWinner = row.winner === index;
 
   if (v == null) {
-    return <span className="text-sm text-gray-300">Not listed</span>;
+    return <span className="text-[13px] text-gray-300">Not listed</span>;
   }
   if (row.type === "boolean") {
     return v ? (
-      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900">
-        <Check className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />
+      <span className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-gray-900">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+          <Check className="h-3 w-3" strokeWidth={3} />
+        </span>
         Yes
       </span>
     ) : (
-      <span className="inline-flex items-center gap-1.5 text-sm text-gray-400">
-        <Minus className="h-4 w-4" />
-        No
-      </span>
+      <span className="text-[15px] font-medium text-gray-400">No</span>
     );
   }
   if (row.type === "link") {
     return (
-      <a href={v} target="_blank" rel="noreferrer" className="text-sm font-medium text-red-600 underline underline-offset-4">
+      <a href={v} target="_blank" rel="noreferrer" className="text-[15px] font-semibold text-red-600 underline decoration-red-200 underline-offset-4 hover:decoration-red-600">
         {text}
       </a>
     );
   }
   if (row.type === "quote") {
-    return <q className="line-clamp-4 text-sm italic leading-relaxed text-gray-600">{v}</q>;
+    return <q className="line-clamp-4 text-[14px] leading-relaxed text-gray-600">{v}</q>;
   }
   return (
     <span className="inline-flex flex-col items-center">
       <span
-        className={`inline-flex items-center gap-1 text-sm font-semibold tabular-nums ${
-          isWinner ? "text-emerald-700" : "text-gray-900"
+        className={`inline-flex items-center gap-1 text-[15px] font-semibold tracking-tight tabular-nums ${
+          isWinner ? "text-emerald-600" : "text-gray-900"
         }`}
       >
-        {isWinner && (row.type === "money" || row.type === "minutes" ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />)}
+        {isWinner &&
+          (row.type === "money" || row.type === "minutes" ? (
+            <ArrowDown className="h-3.5 w-3.5" strokeWidth={2.5} />
+          ) : (
+            <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
+          ))}
         {text}
-        {row.suffix && <span className="font-normal text-gray-400"> {row.suffix}</span>}
+        {row.suffix && <span className="ml-0.5 text-[13px] font-normal text-gray-400">{row.suffix}</span>}
       </span>
       {note && <span className="mt-0.5 text-[11px] text-gray-400">{note}</span>}
     </span>
@@ -68,6 +72,7 @@ export default function DetailsList({ sections, names, both, basis }) {
   const [differences, setDifferences] = useState(false);
   const [active, setActive] = useState(sections[0]?.id ?? null);
   const chipRefs = useRef({});
+  const navRef = useRef(null);
 
   const visible = sections
     .map((s) => ({ ...s, rows: both && differences ? s.rows.filter((r) => r.differs) : s.rows }))
@@ -90,7 +95,6 @@ export default function DetailsList({ sections, names, both, basis }) {
 
   // Keep the active chip in view by scrolling the chip strip only. Never the
   // page: scrollIntoView would drag the whole document to the bar on load.
-  const navRef = useRef(null);
   useEffect(() => {
     const nav = navRef.current;
     const chip = chipRefs.current[active];
@@ -103,7 +107,6 @@ export default function DetailsList({ sections, names, both, basis }) {
     document.getElementById(`section-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const total = sections.reduce((n, s) => n + s.rows.length, 0);
   const diffCount = sections.reduce((n, s) => n + s.rows.filter((r) => r.differs).length, 0);
 
   if (!sections.length) return null;
@@ -113,22 +116,17 @@ export default function DetailsList({ sections, names, both, basis }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.5 }}
-      className="mt-12"
+      className="mt-14"
       aria-label="Full comparison"
     >
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-gray-900">The details</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            {both && differences ? `${diffCount} of ${total} rows differ.` : `${total} rows. Jump to any section above the list.`}
-          </p>
-        </div>
+      <div className="mb-3 flex items-center justify-end gap-3">
+        {both && differences && <span className="text-xs text-gray-400">{diffCount} differences</span>}
         <button
           type="button"
           onClick={() => setDifferences((v) => !v)}
           disabled={!both}
           aria-pressed={both && differences}
-          className="inline-flex min-h-10 items-center gap-2.5 rounded-full border border-gray-200 px-4 text-sm font-medium text-gray-700 disabled:opacity-40"
+          className="inline-flex h-8 items-center gap-2 rounded-full border border-gray-200 bg-white pl-3 pr-1.5 text-xs font-medium text-gray-700 disabled:opacity-40"
         >
           Differences only
           <span
@@ -141,10 +139,10 @@ export default function DetailsList({ sections, names, both, basis }) {
       </div>
 
       {/* Pinned: names on the outside, section chips in the middle */}
-      <div className={`sticky ${STICKY} z-30 -mx-4 border-y border-gray-100 bg-white/95 px-4 backdrop-blur-lg sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8`}>
-        <div className="grid grid-cols-2 items-center gap-2 py-2.5 text-sm font-semibold text-gray-900 md:grid-cols-[1fr_auto_1fr]">
-          <span className="truncate pr-2 text-center md:text-left">{names[0] ?? "Option 1"}</span>
-          <nav ref={navRef} aria-label="Sections" className="col-span-2 order-last -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-hidden md:order-none md:col-span-1 md:max-w-[52vw] md:pb-0">
+      <div className={`sticky ${STICKY} z-30 -mx-4 border-b border-gray-100 bg-white/90 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8`}>
+        <div className="grid grid-cols-2 items-center gap-2 py-2.5 md:grid-cols-[1fr_auto_1fr]">
+          <span className="truncate pr-2 text-center text-[13px] font-semibold tracking-tight text-gray-900 md:text-left">{names[0] ?? "Option 1"}</span>
+          <nav ref={navRef} aria-label="Sections" className="col-span-2 order-last -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 scrollbar-hidden md:order-none md:col-span-1 md:max-w-[52vw] md:pb-0">
             {visible.map((s) => (
               <button
                 key={s.id}
@@ -152,49 +150,46 @@ export default function DetailsList({ sections, names, both, basis }) {
                 type="button"
                 onClick={() => jump(s.id)}
                 aria-current={active === s.id ? "location" : undefined}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  active === s.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                  active === s.id ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                 }`}
               >
                 {s.label}
               </button>
             ))}
           </nav>
-          <span className="truncate pl-2 text-center md:text-right">{names[1] ?? "Option 2"}</span>
+          <span className="truncate pl-2 text-center text-[13px] font-semibold tracking-tight text-gray-900 md:text-right">{names[1] ?? "Option 2"}</span>
         </div>
       </div>
 
       {visible.map((section) => (
-        <div key={section.id} className="pt-8">
+        <div key={section.id} className="pt-10">
           <h3
             id={`section-${section.id}`}
             data-section={section.id}
-            className={`mb-2 flex items-baseline gap-3 text-lg font-bold tracking-tight text-gray-900 ${SCROLL_MARGIN}`}
+            className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400 ${SCROLL_MARGIN}`}
           >
             {section.label}
-            <span className="text-xs font-normal text-gray-400">{section.rows.length}</span>
           </h3>
-          <div role="table" aria-label={section.label} className="overflow-hidden rounded-2xl border border-gray-100">
+          <div role="table" aria-label={section.label} className="divide-y divide-gray-100">
             <div role="row" className="sr-only">
               <span role="columnheader">{names[0] ?? "Option 1"}</span>
               <span role="columnheader">Detail</span>
               <span role="columnheader">{names[1] ?? "Option 2"}</span>
             </div>
-            {section.rows.map((row, i) => (
+            {section.rows.map((row) => (
               <div
                 key={row.id}
                 role="row"
-                className={`grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-3.5 md:grid-cols-[1fr_180px_1fr] md:gap-0 md:px-4 lg:grid-cols-[1fr_220px_1fr] ${
-                  i % 2 === 1 ? "bg-gray-50/70" : "bg-white"
-                }`}
+                className="grid grid-cols-2 gap-x-3 gap-y-1.5 py-4 md:grid-cols-[1fr_230px_1fr] md:gap-0 lg:grid-cols-[1fr_280px_1fr] xl:grid-cols-[1fr_320px_1fr]"
               >
-                <div role="rowheader" className="col-span-2 text-center text-xs text-gray-500 md:order-2 md:col-span-1 md:self-center md:text-[13px]">
+                <div role="rowheader" className="col-span-2 text-center text-[12px] font-medium text-gray-500 md:order-2 md:col-span-1 md:self-center md:text-[13px]">
                   {row.label}
                 </div>
-                <div role="cell" className="flex items-center justify-center text-center md:order-1">
+                <div role="cell" className="flex items-center justify-center px-2 text-center md:order-1">
                   <Value row={row} index={0} />
                 </div>
-                <div role="cell" className="flex items-center justify-center text-center md:order-3">
+                <div role="cell" className="flex items-center justify-center px-2 text-center md:order-3">
                   <Value row={row} index={1} />
                 </div>
               </div>
@@ -203,7 +198,7 @@ export default function DetailsList({ sections, names, both, basis }) {
         </div>
       ))}
 
-      <p className="mt-8 text-center text-xs leading-relaxed text-gray-400">
+      <p className="mt-10 text-center text-xs leading-relaxed text-gray-400">
         Not listed means we don&apos;t have that detail yet. It never means no.
         <br />
         Rent is {basis === "unit" ? "for the whole apartment" : "per person"} before utilities and fees. Walk times all go to the same campus spot.

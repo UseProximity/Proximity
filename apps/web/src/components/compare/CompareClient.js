@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ArrowLeft, ArrowLeftRight, Link2, Check, Footprints, CircleDollarSign } from "lucide-react";
+import { ArrowLeft, Share2, Check, Footprints, CircleDollarSign } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCompare, compareItem } from "@/context/CompareContext";
 import { buildRows, compareHref, displayName, headlineDeltas, resolveSide } from "@/lib/compare/model";
@@ -65,6 +65,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
     window.history.replaceState(window.history.state, "", compareHref(ids, extra));
   }, [resolved, basis, ids[0], ids[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const names = resolved.map((s) => (s ? displayName(s.listing) : null));
   const sections = useMemo(() => buildRows(resolved, basis), [resolved, basis]);
   const deltas = useMemo(() => headlineDeltas(resolved, basis), [resolved, basis]);
   const both = resolved.every(Boolean);
@@ -93,30 +94,33 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
     navigate(next);
   };
 
-  const remove = (slot) => {
-    const next = [...ids];
-    next[slot] = null;
-    // Keep the remaining property on the left so the empty slot is always on the right.
-    navigate(next[0] ? next : [next[1], null]);
-  };
-
-  const swap = () => {
-    setChoice((c) => ({ 0: c[1], 1: c[0] }));
-    navigate([ids[1], ids[0]]);
-  };
-
+  /*
+   * Share = send this exact comparison to a roommate. The URL carries both
+   * listings, the chosen units and the rent basis, so they open the same view.
+   * Phones get the native share sheet (Messages, WhatsApp...); desktops copy
+   * the link.
+   */
   const share = async () => {
+    const url = window.location.href;
+    const title = names.every(Boolean) ? `${names[0]} vs ${names[1]}` : "Apartment comparison";
+    trackEvent("Compare Shared", { listings: ids.filter(Boolean) });
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: `${title} on Proximity`, url });
+        return;
+      } catch {
+        // dismissed the sheet; fall through to copying
+      }
+    }
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(url);
       setCopied(true);
-      trackEvent("Compare Shared", { listings: ids.filter(Boolean) });
+      toast.success("Link copied. Send it to a roommate.");
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast("Copy the address bar to share this comparison.");
     }
   };
-
-  const names = resolved.map((s) => (s ? displayName(s.listing) : null));
 
   return (
     <MotionConfig reducedMotion="user">
@@ -135,40 +139,39 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
             disabled={!ids[0]}
             className="inline-flex min-h-10 items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 disabled:opacity-40"
           >
-            {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Link2 className="h-4 w-4" />}
-            {copied ? "Link copied" : "Share"}
+            {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Share2 className="h-4 w-4" />}
+            {copied ? "Link copied" : "Share with a roommate"}
           </button>
         </div>
 
         <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Side by side.</h1>
-          <div
-            role="group"
-            aria-label="Rent shown"
-            className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1"
-          >
-            {[
-              ["person", "Per person"],
-              ["unit", "Whole apartment"],
-            ].map(([key, text]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setBasis(key)}
-                aria-pressed={basis === key}
-                className={`min-h-9 rounded-full px-3.5 text-sm font-medium transition-colors ${
-                  basis === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
-                }`}
-              >
-                {text}
-              </button>
-            ))}
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-medium text-gray-500">Show rent</span>
+            <div role="group" aria-label="Show rent" className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-0.5">
+              {[
+                ["person", "Per person"],
+                ["unit", "Whole apartment"],
+              ].map(([key, text]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setBasis(key)}
+                  aria-pressed={basis === key}
+                  className={`h-7 rounded-full px-3 text-xs font-medium transition-colors ${
+                    basis === key ? "bg-white text-gray-900 shadow-sm ring-1 ring-black/5" : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Cards with the quick-facts spine between them */}
         <div
-          className={`mt-6 grid grid-cols-2 items-stretch gap-3 md:grid-cols-[1fr_220px_1fr] md:gap-0 lg:grid-cols-[1fr_280px_1fr] xl:grid-cols-[1fr_320px_1fr] ${
+          className={`mt-8 grid grid-cols-2 items-stretch gap-3 md:grid-cols-[1fr_230px_1fr] md:gap-0 lg:grid-cols-[1fr_280px_1fr] xl:grid-cols-[1fr_320px_1fr] ${
             pending ? "opacity-70 transition-opacity" : ""
           }`}
         >
@@ -182,26 +185,13 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
                   basis={basis}
                   delay={landed[slot] || !ids[slot] ? slot * 0.22 : 0}
                   onPick={() => setPickerFor(slot)}
-                  onRemove={() => remove(slot)}
                   onUnit={(unitId) => setChoice((c) => ({ ...c, [slot]: { unit: unitId, lease: null } }))}
                   onLease={(leaseId) => setChoice((c) => ({ ...c, [slot]: { ...c[slot], lease: leaseId } }))}
                 />
               </AnimatePresence>
             </div>
           ))}
-          <QuickFacts sides={resolved} basis={basis} onSwap={swap} canSwap={ids.some(Boolean)} delay={0.45} />
-        </div>
-
-        <div className="mt-3 flex justify-center md:hidden">
-          <button
-            type="button"
-            onClick={swap}
-            disabled={!ids.some(Boolean)}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-gray-200 px-4 text-sm font-medium text-gray-700 disabled:opacity-40"
-          >
-            <ArrowLeftRight className="h-4 w-4" />
-            Swap sides
-          </button>
+          <QuickFacts sides={resolved} basis={basis} delay={0.45} />
         </div>
 
         {/* The two tradeoffs that decide most searches */}
@@ -211,13 +201,13 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: landed.every(Boolean) ? 0.6 : 0.1 }}
-            className="mt-8 grid gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-6 sm:grid-cols-2 sm:gap-8"
+            className="mt-10 grid gap-6 rounded-2xl bg-white p-6 shadow-[0_18px_48px_-24px_rgba(15,23,42,0.3)] ring-1 ring-black/5 sm:grid-cols-2 sm:gap-8 sm:p-7"
           >
             <Tradeoff icon={CircleDollarSign} delta={deltas.rent} fallback="Add rent to compare cost." />
             <Tradeoff icon={Footprints} delta={deltas.walk} fallback="Walk times aren't available for both." />
           </motion.div>
         ) : (
-          <p className="mt-8 rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+          <p className="mt-10 rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-500">
             Add a second apartment to see the tradeoffs.
           </p>
         )}
@@ -250,7 +240,7 @@ export default function CompareClient({ sides, addCandidate, picker, requested, 
 function Tradeoff({ icon: Icon, delta, fallback }) {
   return (
     <div className="flex flex-col items-center text-center">
-      <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-100">
+      <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-50 ring-1 ring-red-100">
         <Icon className="h-5 w-5 text-red-600" strokeWidth={2} />
       </span>
       {delta ? (
