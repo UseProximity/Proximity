@@ -42,7 +42,7 @@ export default function ModalListing({ isOpen, onClose, children }) {
         >
           ×
         </button>
-        <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain flex-1" onScroll={(e) => e.stopPropagation()}>
+        <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-11T16:37:01.922Z",
-  "count": 75,
+  "_generated": "2026-09-12T00:07:29.792Z",
+  "count": 77,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -258,6 +258,14 @@
     {
       "file": "src/lib/users/viewAs.js",
       "description": "Who a dashboard request is actually ABOUT."
+    },
+    {
+      "file": "src/lib/waitlistNudge.js",
+      "description": "The half-hour follow-up for a waitlist lead who never finished their account."
+    },
+    {
+      "file": "src/lib/waitlists.js",
+      "description": "Properties that run their own waitlist off-site."
     },
     {
       "file": "src/lib/washuPages.js",

@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-11T16:37:01.914Z",
-  "count": 97,
+  "_generated": "2026-09-12T00:07:29.779Z",
+  "count": 98,
   "components": [
     {
       "name": "DormsView",
@@ -271,6 +271,11 @@
     {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WaitlistDialog",
+      "file": "src/components/listings/WaitlistDialog.js",
       "description": "No description — run generate after adding a description above."
     },
     {
