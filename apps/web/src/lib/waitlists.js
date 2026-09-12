@@ -25,15 +25,15 @@ const WAITLISTS = {
   "6650 delmar boulevard|63130": {
     label: "Waitlist",
     /*
-     * A getter, not a string, so the env var is read on the server at request
-     * time. This module is imported by the listing UI too, where only `label`
-     * is used: the browser never needs the destination because it only ever
-     * links to our own route, which is what makes the click countable.
+     * A getter, not a string, so the env var is read at request time.
+     *
+     * No hardcoded fallback on purpose. The only sensible default would be the
+     * landlord's live form, and an environment that forgot to set this would
+     * then quietly send real students into their real sheet from a place we
+     * never meant to. Unset is treated as "no waitlist here", which hides the
+     * button rather than pointing it somewhere we did not choose.
      */
-    getUrl: () =>
-      process.env.LOCAL_DELMAR_WAITLIST_URL ||
-      "https://docs.google.com/forms/d/e/1FAIpQLSfdmisbRQWfVHi2E-W_N9u5ihp4GjQPdYoPtVtkGlMXUBu9Gg/viewform" +
-        "?entry.514226213={name}&entry.920932702={phone}&entry.13401612={email}",
+    getUrl: () => process.env.LOCAL_DELMAR_WAITLIST_URL || null,
   },
 };
 

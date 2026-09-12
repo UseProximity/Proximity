@@ -29,7 +29,6 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
-import { waitlistFor } from "@/lib/waitlists";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
@@ -1323,9 +1322,11 @@ export default function ListingModalInfo({
 
   /*
    * A property that takes interest through its own off-site waitlist rather
-   * than through our contact form. Null for nearly every listing.
+   * than through our contact form. Null for nearly every listing, and also null
+   * when the destination isn't configured in this environment, which the server
+   * decides for us (see getListing).
    */
-  const waitlist = waitlistFor(listing.propertyKey);
+  const waitlist = listing.waitlistLabel ? { label: listing.waitlistLabel } : null;
 
   /*
    * Signed-out students are asked for a name first, so the click has to open a
