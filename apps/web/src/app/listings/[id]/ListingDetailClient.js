@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
+import CompareButton from "@/components/compare/CompareButton";
 
 export default function ListingDetailClient({
   listingId,
@@ -94,6 +95,7 @@ export default function ListingDetailClient({
         <span className="flex-1 font-semibold text-gray-900 text-sm truncate">
           {listing.title || listing.address?.split(",")[0]}
         </span>
+        <CompareButton listingId={listing._id} variant="outline" className="flex-shrink-0" />
         <div className="bg-white/90 backdrop-blur-md rounded-full p-1.5 shadow border border-gray-100 flex-shrink-0">
           <HeartIcon listingId={listing._id} />
         </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import CompareButton from "@/components/compare/CompareButton";
 import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
@@ -169,6 +170,11 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
             )}
           </div>
         )}
+        {!compact && (
+          <div className="absolute bottom-3 left-3 z-[2]">
+            <CompareButton listingId={listing._id} />
+          </div>
+        )}
         {imageCount > 1 && !listing.unavailable && (
           // In the compact (matchmaking row) variant, hide on desktop where the card is small.
           <div className={`absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full ${compact ? "md:hidden" : ""}`}>
@@ -230,9 +236,11 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
-          <HeartIcon listingId={listing._id} />
-        </div>
+        <>
+          <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
+            <HeartIcon listingId={listing._id} />
+          </div>
+        </>
       )}
     </div>
   );

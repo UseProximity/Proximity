@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
+import CompareButton from "@/components/compare/CompareButton";
 
 export default function ListDetailPanel({
   listing,
@@ -31,9 +32,12 @@ export default function ListDetailPanel({
           </svg>
           <span className="text-sm font-semibold">Back to listings</span>
         </button>
-        <div className="flex items-center gap-2 text-gray-600">
-          <span className="text-sm font-semibold">Save this listing</span>
-          <HeartIcon listingId={listing._id} />
+        <div className="flex items-center gap-3 text-gray-600">
+          <CompareButton listingId={listing._id} variant="outline" />
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold">Save this listing</span>
+            <HeartIcon listingId={listing._id} />
+          </div>
         </div>
       </div>
       <ListingModalInfo

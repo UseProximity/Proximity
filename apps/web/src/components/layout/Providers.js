@@ -10,12 +10,13 @@
 "use client";
 import { SessionProvider } from "next-auth/react";
 import { FavoritesProvider } from "@/context/FavoritesContext";
+import { CompareProvider } from "@/context/CompareContext";
 
 export default function Providers({ children, session }) {
   return (
     <SessionProvider session={session} refetchOnWindowFocus={false}>
       <FavoritesProvider>
-        {children}
+        <CompareProvider>{children}</CompareProvider>
       </FavoritesProvider>
     </SessionProvider>
   );
