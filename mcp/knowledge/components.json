@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-12T00:07:29.779Z",
-  "count": 98,
+  "_generated": "2026-09-12T21:00:02.318Z",
+  "count": 106,
   "components": [
     {
       "name": "DormsView",
@@ -76,6 +76,46 @@
     {
       "name": "profileFields",
       "file": "src/components/auth/profileFields.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "CompareButton",
+      "file": "src/components/compare/CompareButton.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "CompareClient",
+      "file": "src/components/compare/CompareClient.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "DetailsList",
+      "file": "src/components/compare/DetailsList.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PickerList",
+      "file": "src/components/compare/PickerList.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PropertyCard",
+      "file": "src/components/compare/PropertyCard.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "PropertyPicker",
+      "file": "src/components/compare/PropertyPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "QuickFacts",
+      "file": "src/components/compare/QuickFacts.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReplaceChooser",
+      "file": "src/components/compare/ReplaceChooser.js",
       "description": "No description — run generate after adding a description above."
     },
     {

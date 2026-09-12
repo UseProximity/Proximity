@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-09-03T21:38:47.675Z",
-  "count": 35,
+  "_generated": "2026-09-12T21:00:02.324Z",
+  "count": 36,
   "pages": [
     {
       "path": "/",
@@ -34,6 +34,10 @@
     {
       "path": "/CampusHub",
       "file": "src/app/CampusHub/page.js"
+    },
+    {
+      "path": "/compare",
+      "file": "src/app/compare/page.js"
     },
     {
       "path": "/dashboard",

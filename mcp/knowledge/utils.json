@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-12T00:07:29.792Z",
-  "count": 77,
+  "_generated": "2026-09-12T21:00:02.337Z",
+  "count": 79,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -14,6 +14,14 @@
     {
       "file": "src/lib/availabilityCheck.js",
       "description": "One-click \"still available?\" landlord email."
+    },
+    {
+      "file": "src/lib/compare/fields.js",
+      "description": "The comparison field registry."
+    },
+    {
+      "file": "src/lib/compare/model.js",
+      "description": "Pure helpers for the /compare page. No React, no fetching: take two built"
     },
     {
       "file": "src/lib/contactTracking.js",
