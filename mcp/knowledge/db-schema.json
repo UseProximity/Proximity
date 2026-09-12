@@ -1156,6 +1156,22 @@
           "review_written_at:timestamptz",
           "invite_expires_at:timestamptz"
         ]
+      },
+      {
+        "table": "waitlist_clicks",
+        "description": "One row per click on a property's external waitlist button (LOCAL on Delmar's is a Google Form). We are paid commission on students who arrive from here, so this is our own record of who we sent. It CANNOT prove a signup: the form is on Google's domain, so a row means \"this person left for the waitlist\", never \"this person joined it\". Reconcile against the landlord's own response sheet before invoicing. name/email/phone are denormalized copies of what we actually sent (from the profile for a signed-in click, from the interstitial for a signed-out one) so the table reads standalone and a later profile edit cannot rewrite history. visitor_id is the prx_vid cookie, collapsing repeat clicks from one signed-out browser. nudge_sent_at is stamped on every row for a user once the \"finish your account\" email has been considered, so each person is mailed at most once. No unique constraint: a ledger of clicks, not of people. RLS enabled with NO policies: service-role only, since it joins a named user to an off-site action.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "user_id:uuid",
+          "visitor_id:text",
+          "name:text",
+          "email:text",
+          "phone:text",
+          "referrer:text",
+          "nudge_sent_at:timestamptz",
+          "created_at:timestamptz"
+        ]
       }
     ]
   }

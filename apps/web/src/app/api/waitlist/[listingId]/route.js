@@ -149,10 +149,22 @@ export async function GET(req, { params }) {
     const existingVisitorId = req.cookies.get(VISITOR_COOKIE)?.value ?? null;
     const visitorId = existingVisitorId || randomUUID();
 
+    /*
+     * The contact details are copied onto the row even though user_id already
+     * points at them. It is denormalized on purpose: this table is read directly
+     * in the DB when reconciling our leads against the landlord's response
+     * sheet, and joining out to users for every row makes that job harder than
+     * it needs to be. It also freezes what we actually sent, which a later
+     * profile edit would otherwise quietly rewrite.
+     */
     await logClick({
       listing_id: listing.id,
       user_id: userId,
       visitor_id: visitorId,
+      name: profile?.name || null,
+      email: profile?.email || null,
+      // Already normalized above: the signup placeholder is not a phone number.
+      phone: phone || null,
       referrer: req.headers.get("referer"),
     });
 
