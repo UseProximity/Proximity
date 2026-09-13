@@ -14,6 +14,7 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingDescription } from "@/lib/contentRules";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -192,6 +193,17 @@ export async function POST(req) {
           { error: "A contact email is required so students can reach you." },
           { status: 400 }
         );
+      }
+
+      /*
+       * No names, links or self-promotion in what a person writes. Deliberately
+       * NOT applied to the importer above: that path is a trusted seeding script
+       * copying whatever a source site published, with no author on the other
+       * end to rewrite it, so enforcing here would only fail the import.
+       */
+      for (const text of [description, body.leaseDescription]) {
+        const problem = checkListingDescription(text);
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       }
     }
 

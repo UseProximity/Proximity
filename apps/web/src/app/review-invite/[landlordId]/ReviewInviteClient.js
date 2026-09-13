@@ -22,6 +22,7 @@ import toast from "react-hot-toast";
 import AuthCard from "@/components/auth/AuthCard";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import { isReviewEligibleEmail } from "@/lib/schools";
+import { checkReviewText } from "@/lib/contentRules";
 
 // Matches inputs across the rest of the site (see SubleaseFormPanel).
 const INPUT_CLASS =
@@ -66,6 +67,8 @@ export default function ReviewInviteClient({ landlord, listings }) {
   // thank-you screen can deep-link to it (the form's listingId may be reset
   // separately later if we ever add that back).
   const [submittedListingId, setSubmittedListingId] = useState(null);
+  // Reviews may not name people. Shown as they type, blocked on submit.
+  const commentProblem = checkReviewText(comment);
 
   const submittedListing = listings.find((l) => l.id === submittedListingId);
   const submittedListingLabel =
@@ -80,6 +83,7 @@ export default function ReviewInviteClient({ landlord, listings }) {
       return toast.error("Pick an overall rating.");
     if (comment.trim().length < 5)
       return toast.error("Write at least 5 characters in your review.");
+    if (commentProblem) return toast.error(commentProblem);
 
     const payload = {
       listingId,
@@ -238,7 +242,11 @@ export default function ReviewInviteClient({ landlord, listings }) {
                   maxLength={1000}
                   placeholder="What was it like living here? Landlord, location, value… (min. 5 characters)"
                   className={INPUT_CLASS}
+                  aria-invalid={commentProblem ? true : undefined}
                 />
+                {commentProblem && (
+                  <p className="mt-2 text-sm text-red-600">{commentProblem}</p>
+                )}
               </div>
             </div>
           </div>
@@ -264,7 +272,7 @@ export default function ReviewInviteClient({ landlord, listings }) {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || !!commentProblem}
             className="w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Posting…" : "Post review"}

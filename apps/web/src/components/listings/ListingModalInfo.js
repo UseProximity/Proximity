@@ -32,6 +32,7 @@ import { trackEvent, getListingSource } from "@/utils/analytics";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
+import { checkReviewText } from "@/lib/contentRules";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -496,6 +497,9 @@ function ReviewsTab({
   handleReviewSubmit,
 }) {
   const maxCount = Math.max(...starCounts.map((d) => d.count), 1);
+  // Reviews may not name people. Shown as they type; the submit handler and the
+  // API both block it too.
+  const reviewProblem = checkReviewText(reviewText);
   const displayed = showAllReviews
     ? legitimateReviews
     : legitimateReviews.slice(0, 4);
@@ -746,8 +750,12 @@ function ReviewsTab({
                 placeholder="Leave a review..."
                 rows={4}
                 maxLength={1000}
+                aria-invalid={reviewProblem ? true : undefined}
                 className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
               />
+              {reviewProblem && (
+                <p className="text-sm text-red-600">{reviewProblem}</p>
+              )}
               <div className="flex justify-end">
                 <button
                   type="submit"
@@ -755,7 +763,8 @@ function ReviewsTab({
                     reviewLoading ||
                     !reviewText.trim() ||
                     reviewText.trim().length < 5 ||
-                    rating === 0
+                    rating === 0 ||
+                    !!reviewProblem
                   }
                   className="bg-red-600 text-white text-sm font-medium px-6 py-2 rounded-full shadow hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -1659,6 +1668,11 @@ export default function ListingModalInfo({
     }
     if (reviewText.trim().length < 5 || rating < 0.5 || rating > 5) {
       toast.error("Please write a valid review and select an overall rating.");
+      return;
+    }
+    const reviewProblem = checkReviewText(reviewText);
+    if (reviewProblem) {
+      toast.error(reviewProblem);
       return;
     }
 

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
+import { checkListingDescription } from "@/lib/contentRules";
 
 /*
  * Edit the PROPERTY record and nothing else.
@@ -89,6 +90,12 @@ export async function PATCH(req, { params }) {
   const patch = {};
   for (const [key, column] of Object.entries(BODY_TO_COLUMN)) {
     if (key in body) patch[column] = EDITABLE[column](body[key]);
+  }
+
+  // Same no-names / no-self-promotion rule the listing had to pass to be created.
+  if (patch.description) {
+    const problem = checkListingDescription(patch.description);
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   }
 
   // home_type arrives as a label and is stored as an FK.
