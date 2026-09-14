@@ -13,6 +13,10 @@
  *     incomplete account (lib/reviews/onboarding.js) which the review is attributed to,
  *     and the response carries a profile-setup token so the caller can offer to finish it.
  *     Soft per-client rate limit stands in for the login that isn't there.
+ *   - Signed out WITH an `inviteToken` (/review-invite/t/<token>): the same path, except
+ *     the reviewer's email is read off the invite row instead of the request body, so it
+ *     cannot be forged. The token was mailed to that one address, which makes the account
+ *     email-verified on creation and makes the rate limit unnecessary.
  * Either way reviews auto-publish (legitimacy=true).
  *
  * School: never self-declared. It is proved by an email domain in both paths (the
@@ -55,9 +59,11 @@ import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimi
 import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
 import {
   ensureReviewerAccount,
+  markEmailVerifiedFromLink,
   normalizeClassYear,
   resolveSchoolId,
 } from "@/lib/reviews/onboarding";
+import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 
 export const dynamic = "force-dynamic";
 
@@ -360,6 +366,7 @@ export async function POST(req) {
       anonymous,
       source,
       reviewer,
+      inviteToken,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
@@ -437,6 +444,27 @@ export async function POST(req) {
     const session = await auth();
     const signedOutReviewer = !session?.user?.id && reviewer ? reviewer : null;
 
+    /*
+     * An emailed invite. The token is the only thing here that proves anything:
+     * it was mailed to exactly one address, so opening it demonstrates control
+     * of that inbox.
+     *
+     * A token that is present but does not resolve (unknown, expired, already
+     * spent) is REJECTED rather than ignored. Falling back to the ordinary
+     * signed-out path would look harmless, since that path is what /review uses
+     * anyway, but it quietly posts the review under whatever email the body
+     * claims while the caller still believes the address was verified. Refusing
+     * outright keeps "this review was invited" a property that cannot be half
+     * true. Anyone holding a dead link can still use /review like everyone else.
+     */
+    const invite = inviteToken ? await resolveInvite(inviteToken) : null;
+    if (inviteToken && !invite) {
+      return NextResponse.json(
+        { error: "This invite link has expired or has already been used." },
+        { status: 410 }
+      );
+    }
+
     let reviewerUserId = null;
     let reviewerEmail = null;
     let reviewerDisplayName = null;
@@ -463,7 +491,15 @@ export async function POST(req) {
       reviewerEmail = session.user.email;
       reviewerDisplayName = session.user.name || null;
     } else if (signedOutReviewer) {
-      const email = String(signedOutReviewer.email || "").trim().toLowerCase();
+      /*
+       * With an invite, the address comes from the invite row and NEVER from the
+       * request body. This is the whole point of the feature: the browser can
+       * post any email it likes, and on this path it is ignored, so a tampered
+       * field cannot put a review under someone else's address.
+       */
+      const email = invite
+        ? invite.email
+        : String(signedOutReviewer.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) {
         return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
       }
@@ -488,8 +524,14 @@ export async function POST(req) {
        * The signed-in path costs a verified school login and is capped per
        * account. This path has neither, so a soft per-client limit is the only
        * thing between one person and a hundred reviews.
+       *
+       * An invite is exempt: the token IS the scarce credential (one per address,
+       * single-use, admin-issued), so it already bounds what one person can do
+       * far more tightly than an IP heuristic. Leaving the limit on would also
+       * punish a whole dorm behind one campus NAT for opening their invites on
+       * the same afternoon, which is exactly the burst we are hoping for.
        */
-      if (anonReviewRateLimited(anonReviewRateKey(req, email))) {
+      if (!invite && anonReviewRateLimited(anonReviewRateKey(req, email))) {
         return NextResponse.json(
           { error: "That's a lot of reviews at once. Please try again later." },
           { status: 429 }
@@ -511,6 +553,14 @@ export async function POST(req) {
       reviewerDisplayName = account.displayName;
       setupToken = account.setupToken;
       existingAccount = !!account.existingAccount;
+
+      /*
+       * The invite link was opened, which is the same proof the profile-setup
+       * link carries, only earlier. So the account is verified before the
+       * review is even written, and the student never gets a second email
+       * asking them to confirm an address we already watched them use.
+       */
+      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
     } else {
       return NextResponse.json(
         { error: "Add your name and school email, or sign in, to leave a review." },
@@ -669,6 +719,25 @@ export async function POST(req) {
     if (error) {
       console.error("reviewReferral: insert failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+
+    /*
+     * Spend the invite only now that a review actually exists. Burning it any
+     * earlier would mean a validation failure or a crash costs the student
+     * their one link, with no way to get back in.
+     *
+     * And only when the review really did land on the invited address. Someone
+     * already signed in as a different account who opens an invite link takes
+     * the session branch above, so their review is theirs and has nothing to do
+     * with this invite. Consuming it there would burn a link belonging to a
+     * student who has not used it yet, and would point review_id at a review the
+     * invited address never wrote.
+     */
+    if (invite && reviewerEmail === invite.email) {
+      await consumeInvite(invite.inviteId, {
+        reviewId: review?.id ?? null,
+        reviewKind: "listing",
+      });
     }
 
     // ── Notify the landlord + flag email mismatches (best-effort) ───────────

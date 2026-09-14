@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Plus, X } from "lucide-react";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { clampCount } from "@/utils/unitCounts";
+import { compressImage } from "@/utils/compressImage";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -205,37 +206,6 @@ export default function SubleaseFormPanel({
     setAddressSuggestions([]);
     setAddressDropdownOpen(false);
   };
-
-  const compressImage = (file) =>
-    new Promise((resolve) => {
-      if (file.size < 1 * 1024 * 1024) { resolve(file); return; }
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const MAX = 1920;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || blob.size >= file.size) { resolve(file); return; }
-            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
-          },
-          "image/jpeg",
-          0.85
-        );
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-      img.src = url;
-    });
 
   const handleImageFiles = async (files) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith("image/"));

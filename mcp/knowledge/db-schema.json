@@ -1108,6 +1108,70 @@
           "position:numeric",
           "created_at:timestamptz"
         ]
+      },
+      {
+        "table": "student_roster",
+        "description": "Imported class rosters (email, name, class year) used to recognize a real student and to prefill an emailed review invite. Bulk PII for people with no Proximity account: RLS on with NO policies, service-role only.",
+        "columns": [
+          "id:uuid",
+          "email:text",
+          "first_name:text",
+          "last_name:text",
+          "class_year:smallint",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "review_invites",
+        "description": "One row per tokenized review invite. token_hash is the SHA-256 of the emailed token, never the token, and is minted at send time so an unsent token never exists. Opening the link proves control of invited_email, which is then used for the review instead of anything the browser posts. A ledger rather than a status column on student_roster, so re-imports cannot clobber campaign state and one person can be invited more than once. review_id/review_kind are polymorphic (listing_reviews or dorm_reviews) and deliberately carry no FK. sent_via ('app' | 'export') records how the link left us: 'app' means this system mailed it and saw the SMTP result, 'export' means the link was downloaded as a CSV and mailed by an admin from their own address, so sent_at is when we lost sight of it rather than a delivery we can vouch for. RLS on with NO policies, service-role only.",
+        "columns": [
+          "id:uuid",
+          "token_hash:text",
+          "invited_email:text",
+          "roster_id:uuid",
+          "listing_id:uuid",
+          "invited_by:uuid",
+          "sent_at:timestamptz",
+          "sent_via:text",
+          "expires_at:timestamptz",
+          "used_at:timestamptz",
+          "review_id:uuid",
+          "review_kind:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "student_roster_invite_status (view)",
+        "description": "Read-only view: student_roster left-joined to each student's MOST RECENT review_invites row. Adds has_first_name (blank and NULL both count as missing), invited, last_invited_at, review_written_at, invite_expires_at. Backs the admin bulk-send picker so \"already asked\" is derived from the ledger rather than stored on the roster, where a re-import would reset it. Created WITH (security_invoker = true) so it inherits the base tables' RLS instead of bypassing it, and anon/authenticated are revoked: service-role only.",
+        "columns": [
+          "id:uuid",
+          "email:text",
+          "first_name:text",
+          "last_name:text",
+          "class_year:smallint",
+          "has_first_name:boolean",
+          "invited:boolean",
+          "last_invited_at:timestamptz",
+          "review_written_at:timestamptz",
+          "invite_expires_at:timestamptz"
+        ]
+      },
+      {
+        "table": "waitlist_clicks",
+        "description": "One row per click on a property's external waitlist button (LOCAL on Delmar's is a Google Form). We are paid commission on students who arrive from here, so this is our own record of who we sent. It CANNOT prove a signup: the form is on Google's domain, so a row means \"this person left for the waitlist\", never \"this person joined it\". Reconcile against the landlord's own response sheet before invoicing. name/email/phone are denormalized copies of what we actually sent (from the profile for a signed-in click, from the interstitial for a signed-out one) so the table reads standalone and a later profile edit cannot rewrite history. visitor_id is the prx_vid cookie, collapsing repeat clicks from one signed-out browser. nudge_sent_at is stamped on every row for a user once the \"finish your account\" email has been considered, so each person is mailed at most once. No unique constraint: a ledger of clicks, not of people. RLS enabled with NO policies: service-role only, since it joins a named user to an off-site action.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "user_id:uuid",
+          "visitor_id:text",
+          "name:text",
+          "email:text",
+          "phone:text",
+          "referrer:text",
+          "nudge_sent_at:timestamptz",
+          "created_at:timestamptz"
+        ]
       }
     ]
   }

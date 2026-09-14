@@ -15,7 +15,7 @@
 import { redirect } from "next/navigation";
 import {
   loadProfileSetupUser,
-  markEmailVerifiedFromSetupLink,
+  markEmailVerifiedFromLink,
 } from "@/lib/reviews/onboarding";
 import FinishProfileClient from "./FinishProfileClient";
 
@@ -36,7 +36,7 @@ export default async function FinishProfilePage({ searchParams }) {
    */
   if (!found) redirect("/?profileSetup=expired");
 
-  await markEmailVerifiedFromSetupLink(found.userId);
+  await markEmailVerifiedFromLink(found.userId);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10 pb-32 sm:pb-40">

@@ -192,7 +192,16 @@ export function buildListing(row, owner = null) {
             (legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length) * 10
           ) / 10
         : 0,
-    reviews: legitReviews,
+    /*
+     * Deliberately no `reviews` array. This feed only ever carried
+     * {rating, legitimacy, deleted_at} rows (no reviewer, no comment, no date),
+     * because that is all the card aggregates need. The panel paints from
+     * this feed while its detail fetch is in flight, and those stub rows were
+     * enough to render real-looking review cards reading "Anonymous" with an
+     * empty body until the real ones arrived. Omitting the key makes
+     * `listing.reviews === undefined` an honest "not loaded yet" signal (the
+     * same rule unit leases follow) and trims the payload for every listing.
+     */
     placeWalkMinutes: walkTimesToMap(walkTimes),
     placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,

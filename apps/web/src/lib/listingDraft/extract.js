@@ -1,7 +1,7 @@
 /*
  * Claude extraction for the paste-your-website listing draft. Takes the stripped
  * text of the landlord's page(s) plus image/link candidates and returns a draft
- * shaped like ListingFormPanel's state. Same SDK pattern as Lease Check
+ * shaped like the add-listing wizard's state. Same SDK pattern as Lease Check
  * (analyzeLease.js): claude-sonnet-5 structured outputs via messages.parse.
  *
  * Note for future edits: temperature/top_p/top_k and thinking:{type:"enabled"}
@@ -20,7 +20,7 @@ function getClient() {
 }
 
 // Exact boolean column names on listing_amenities / listing_utilities — must
-// stay in sync with ListingFormPanel and /api/addListing.
+// stay in sync with the add-listing wizard and /api/addListing.
 const AMENITY_VALUES = [
   "air_conditioning", "dishwasher", "gym", "laundry", "mailroom",
   "microwave", "oven", "parking", "pets_allowed", "pool",

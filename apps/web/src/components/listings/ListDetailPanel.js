@@ -8,6 +8,9 @@ export default function ListDetailPanel({
   listing,
   onBack,
   initialUnitId = null,
+  // True while /api/listing/[id] is still in flight. The panel opens on browse
+  // feed data, which has no leases and no review bodies. See ListingModalInfo.
+  detailLoading = false,
 }) {
   const { data: session } = useSession();
 
@@ -42,6 +45,7 @@ export default function ListDetailPanel({
         excludeTabs={["map"]}
         compact={true}
         initialUnitId={initialUnitId}
+        detailLoading={detailLoading}
       />
     </div>
   );

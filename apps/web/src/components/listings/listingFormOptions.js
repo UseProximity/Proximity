@@ -1,6 +1,6 @@
 /*
- * Shared option lists for the add-listing wizard and the edit form
- * (ListingFormPanel). Amenity/utility values are the exact boolean column
+ * Shared option lists for the add-listing flows (add/, wizard/) and the
+ * property editor (editor/). Amenity/utility values are the exact boolean column
  * names on `listing_amenities` / `listing_utilities` — the API writes
  * `row[name] = true` for each, so anything not listed here is dropped.
  */

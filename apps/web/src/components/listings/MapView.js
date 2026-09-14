@@ -82,6 +82,12 @@ export default function MapView({
   const [showExplore, setShowExplore] = useState(false);
   const [showBrowseButton, setShowBrowseButton] = useState(false);
   const [showShuttleStops, setShowShuttleStops] = useState(false);
+  /*
+   * Bumped every time the marker set is rebuilt, so the effect that paints the
+   * selected pin knows to run again. Without it a rebuild leaves the map with
+   * no pin selected even though a panel is open.
+   */
+  const [markersVersion, setMarkersVersion] = useState(0);
   const [activeRouteId, setActiveRouteId] = useState(null);
 
   // Function to calculate distance between two points using Haversine formula
@@ -421,6 +427,9 @@ export default function MapView({
       map.markers.push(marker);
     });
 
+    // Tell the selection effect to repaint: these pins were all built unselected.
+    setMarkersVersion((v) => v + 1);
+
     // Zoom to fit all visible listings whenever the listings set changes
     if (listings.length > 0) {
       const valid = listings.filter((l) => l.longitude && l.latitude);
@@ -589,11 +598,24 @@ export default function MapView({
     };
   }, [panelExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync active marker icon + fly to listing when selectedListingId changes.
-  // Skips flyTo when the panel is mid-transition — the panelExpanded effect
-  // above will fire it once the map has settled at its final size.
+  /*
+   * Paint the selected pin, and lift it above its neighbours.
+   *
+   * Kept separate from the camera effect below, and re-run on markersVersion,
+   * because the marker set is rebuilt from scratch whenever `listings` or the
+   * shuttle-stop toggle changes and every pin is rebuilt UNSELECTED. Selection
+   * lives in React state, not on the marker, so a rebuild silently dropped the
+   * highlight while a panel was still open: the browse feed refetch that lands
+   * a second after a ?panel= deep link was enough to do it, as was toggling
+   * shuttle stops. Re-running on a rebuild is cheap; re-running the flyTo
+   * below would not be, since it would yank the camera back on every rebuild.
+   *
+   * Runs in hero mode too. The homepage map shows the same pins and pops the
+   * same card on a click, so a click there should read the same way it does on
+   * browse: the pin you picked is the one lit up.
+   */
   useEffect(() => {
-    if (!isActive || heroMode) return;
+    if (!isActive) return;
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
@@ -622,6 +644,17 @@ export default function MapView({
       const el = activeMarker?.getElement();
       if (el?.parentNode) el.parentNode.appendChild(el);
     }
+  }, [isActive, selectedListingId, markersVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fly to the listing when the SELECTION changes. Skips flyTo when the panel
+  // is mid-transition: the panelExpanded effect above fires it once the map has
+  // settled at its final size. Runs in hero mode too, so clicking a pin on the
+  // homepage zooms to it the way it does on browse; deselecting flies back to
+  // the zoom the reader was at before, via preSelectZoomRef.
+  useEffect(() => {
+    if (!isActive) return;
+    const map = mapRef.current;
+    if (!map?.markers) return;
 
     if (selectedListingId) {
       // panelExpanded effect set this flag synchronously before we ran —

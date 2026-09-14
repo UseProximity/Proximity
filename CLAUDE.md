@@ -46,6 +46,10 @@ npm run build    # production build (/sitemap.xml is a dynamic route: src/app/si
 npm run lint     # ESLint
 ```
 
+**When a change is done, restart the dev server on port 3000 and point Wyatt at it.** A dev server left running from another worktree keeps serving that worktree's code on whatever port it grabbed, so a stale `localhost:3001` (or a timed-out 3000) shows the new work missing and looks like a bug in the change (Wyatt, 2026-09-11).
+
+**Never run `npm run build` while a dev server is running on the same worktree.** Both write to the same `.next`, so the production build overwrites the dev server's chunks and the running site starts serving pages with no CSS at all. It looks like a broken stylesheet, not a build collision. Stop the dev server, build, then `rm -rf apps/web/.next` and restart dev.
+
 Run `npm run build` (and `npm run lint`) before opening a PR. There is no unit-test suite; verify changes by running the app and/or querying the DB via the Supabase MCP.
 
 ## The Proximity MCP (`mcp/`)

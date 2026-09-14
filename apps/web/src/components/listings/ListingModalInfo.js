@@ -29,6 +29,7 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 
@@ -470,6 +471,8 @@ function SignInPrompt({ message }) {
 
 function ReviewsTab({
   legitimateReviews,
+  reviewsLoaded,
+  reviewCount,
   overallAvg,
   starCounts,
   commAvg,
@@ -519,7 +522,6 @@ function ReviewsTab({
   const userId = session?.user?.id;
   const isLandlord =
     listing?.owner?._id === userId || listing?.owner?.id === userId;
-  console.log("Listing:\n", listing);
 
   return (
     <div>
@@ -581,7 +583,16 @@ function ReviewsTab({
       </div>
 
       {/* Review cards */}
-      {legitimateReviews.length === 0 ? (
+      {!reviewsLoaded && reviewCount > 0 ? (
+        /*
+         * The aggregates say this property has reviews but their bodies never
+         * arrived (the detail fetch failed). Saying "no reviews yet" here would
+         * be a lie about a building students have written about.
+         */
+        <div className="text-center py-10 text-gray-400 italic text-sm">
+          Reviews couldn&apos;t be loaded. Refresh to try again.
+        </div>
+      ) : legitimateReviews.length === 0 ? (
         <div className="text-center py-10 text-gray-400 italic text-sm">
           No verified reviews yet. Be the first to share your experience!
         </div>
@@ -1079,6 +1090,119 @@ function FloorPlanViewer({ url, unitName, onClose }) {
   );
 }
 
+// ─── Loading skeleton ────────────────────────────────────────────────────────
+/*
+ * Shown while the detail fetch is still in flight. The browse feed carries
+ * enough to paint a panel immediately, but not enough to paint a CORRECT one:
+ * it has no leases, no review bodies and no reviewer identities, so the panel
+ * used to render real-looking cards full of fallbacks ("Anonymous", blank
+ * comment) and then rewrite itself a second later. A skeleton says "still
+ * arriving" instead of stating something false, and it holds the same boxes in
+ * the same places so the swap to real content doesn't move the page around.
+ */
+function Bar({ className = "" }) {
+  return <div className={`rounded bg-gray-200 ${className}`} />;
+}
+
+function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
+  const tabCount = TABS.filter((t) => !excludeTabs.includes(t.id)).length;
+
+  return (
+    <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`} aria-busy="true">
+      <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
+        <div className="animate-pulse">
+          {/* Photo grid: one hero plus the two stacked side tiles */}
+          <div
+            className={`flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+              compact ? "md:h-[300px]" : "md:h-[520px]"
+            }`}
+          >
+            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%] rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl" />
+            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
+              <div className="flex-1 bg-gray-200 rounded-tr-xl" />
+              <div className="flex-1 bg-gray-200 rounded-br-xl" />
+            </div>
+          </div>
+
+          {/* Header card: address on the left, rating on the right */}
+          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+            <div className="w-full md:w-auto">
+              <Bar className="h-6 w-56 max-w-full" />
+              <Bar className="h-4 w-40 max-w-full mt-2" />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Bar className="h-8 w-8 rounded-full" />
+              <Bar className="h-6 w-16" />
+            </div>
+          </div>
+
+          {/* Unit selector: tab strip, unit identity, then the lease rows */}
+          <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
+            <div className="flex w-full">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex-1 px-3 py-2.5 border-b-2 border-gray-100">
+                  <Bar className="h-4 w-full" />
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-100 px-4 pt-3 pb-1">
+              <Bar className="h-4 w-32" />
+              <Bar className="h-3 w-48 max-w-full mt-1.5" />
+            </div>
+            <div className="divide-y divide-gray-100">
+              {[0, 1].map((i) => (
+                <div key={i} className="flex items-center justify-between gap-4 px-4 py-4">
+                  <div className="flex-1">
+                    <Bar className="h-4 w-28" />
+                    <Bar className="h-3 w-40 max-w-full mt-2" />
+                  </div>
+                  <Bar className="h-8 w-24 rounded-lg shrink-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tab strip */}
+          <div
+            className={`bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+              compact ? "" : "px-4"
+            }`}
+          >
+            <nav className="flex max-w-7xl mx-auto justify-center">
+              {Array.from({ length: tabCount }).map((_, i) => (
+                <div key={i} className="px-5 py-3">
+                  <Bar className="h-4 w-16" />
+                </div>
+              ))}
+            </nav>
+          </div>
+
+          {/* Tab body */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow p-6 space-y-3">
+              <Bar className="h-5 w-40" />
+              <Bar className="h-3 w-full" />
+              <Bar className="h-3 w-full" />
+              <Bar className="h-3 w-2/3" />
+            </div>
+            <div className="bg-white rounded-xl shadow p-6">
+              <Bar className="h-5 w-32 mb-4" />
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Bar className="h-5 w-5 rounded-full shrink-0" />
+                    <Bar className="h-3 flex-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ListingModalInfo({
   session,
   listing,
@@ -1088,6 +1212,14 @@ export default function ListingModalInfo({
   // The unit that satisfied the browse filters, if the renter arrived from a
   // filtered search. See lib/listings/filterListings.js.
   initialUnitId = null,
+  /*
+   * True while the caller is still fetching the full listing. The browse panel
+   * opens from feed data that has no leases and no review bodies, so rendering
+   * it would show fallbacks that get rewritten seconds later. The caller flips
+   * this to false on BOTH success and failure, so a failed fetch falls back to
+   * feed data rather than leaving the skeleton up forever.
+   */
+  detailLoading = false,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -1319,6 +1451,30 @@ export default function ListingModalInfo({
     ? selectedUnitLeases.some((l) => !l.furnished)
     : !listing.furnished;
 
+  /*
+   * A property that takes interest through its own off-site waitlist rather
+   * than through our contact form. Null for nearly every listing, and also null
+   * when the destination isn't configured in this environment, which the server
+   * decides for us (see getListing).
+   */
+  const waitlist = listing.waitlistLabel ? { label: listing.waitlistLabel } : null;
+
+  /*
+   * Signed-out students are asked for a name first, so the click has to open a
+   * dialog rather than navigate. Signed-in ones are already known and go
+   * straight out through the API route, which prefills from their profile.
+   */
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const waitlistName = listing.title || "this property";
+  const waitlistButtonClass =
+    "my-2 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
+  const trackWaitlistClick = () =>
+    trackEvent("Waitlist Clicked", {
+      listingId: listing._id,
+      source: getListingSource(listing._id) ?? "direct",
+      signedIn: !!session,
+    });
+
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);
     /*
@@ -1444,16 +1600,33 @@ export default function ListingModalInfo({
       ? listing.address
       : parsedCityStateZip;
 
-  // Reviews
+  /*
+   * Reviews. Same "absent key means not loaded" rule the leases use: the browse
+   * feed sends only the numReviews/rating aggregates, never the review bodies,
+   * so an ABSENT `reviews` key means the detail fetch hasn't landed (or failed)
+   * while an empty array means this property genuinely has none. getListing
+   * always sets one.
+   */
+  const reviewsLoaded = Array.isArray(listing.reviews);
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
     .filter((r) => r.legitimacy);
+  /*
+   * Star average and count come from the feed aggregates when the bodies aren't
+   * here, so a panel falling back to feed data still states the rating it knows
+   * rather than claiming "No reviews yet" about a well-reviewed building.
+   */
+  const feedReviewCount = Number(listing.numReviews) || 0;
+  const feedRating = Number(listing.rating);
+  const reviewCount = reviewsLoaded ? legitimateReviews.length : feedReviewCount;
   const overallAvg = legitimateReviews.length
     ? (
         legitimateReviews.reduce((s, r) => s + r.rating, 0) /
         legitimateReviews.length
       ).toFixed(1)
-    : null;
+    : !reviewsLoaded && feedReviewCount > 0 && Number.isFinite(feedRating) && feedRating > 0
+      ? feedRating.toFixed(1)
+      : null;
   const starCounts = [5, 4, 3, 2, 1].map((star) => ({
     star,
     count: legitimateReviews.filter((r) => Math.round(r.rating) === star)
@@ -1568,6 +1741,16 @@ export default function ListingModalInfo({
       setContactLoading(false);
     }
   };
+
+  /*
+   * After every hook, never before. An early return above them would change
+   * the hook order between the loading and loaded renders.
+   */
+  if (detailLoading) {
+    return (
+      <ListingDetailSkeleton compact={compact} excludeTabs={excludeTabs} />
+    );
+  }
 
   return (
     <>
@@ -1765,7 +1948,7 @@ export default function ListingModalInfo({
                       {overallAvg}
                     </span>
                     <span className="text-md text-gray-500">
-                      ({legitimateReviews.length})
+                      ({reviewCount})
                     </span>
                   </span>
                 ) : (
@@ -1779,7 +1962,7 @@ export default function ListingModalInfo({
             {/* ── Unit Selector ── */}
             {sortedUnits.length > 0 && (
               <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div ref={unitTrackRef} className="flex w-full overflow-x-auto">
+                <div ref={unitTrackRef} className="flex w-full overflow-x-auto scrollbar-hidden">
                   {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
                     <button
                       key={origIdx}
@@ -1864,7 +2047,7 @@ export default function ListingModalInfo({
               <nav className="flex items-stretch max-w-7xl mx-auto">
                 <div className="flex-1" aria-hidden="true" />
 
-                <div className="flex overflow-x-auto">
+                <div className="flex overflow-x-auto scrollbar-hidden">
                   {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
                     (tab) => (
                       <button
@@ -1889,7 +2072,40 @@ export default function ListingModalInfo({
                     asks whether any live offering on the open unit is
                     unfurnished, falling back to listings.furnished when none has
                     loaded. */}
-                <div className="flex flex-1 items-stretch justify-end">
+                {/* Opaque and padded so that when the tab strip scrolls under it
+                    on a narrow screen, the last tab is clipped cleanly instead of
+                    appearing to run into the button. */}
+                <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
+                  {/* Joining this property's waitlist happens on the landlord's
+                      own form, so the link hops through our API first: that
+                      redirect is the only place a click can still be recorded
+                      before the browser leaves for a domain we can't see into. */}
+                  {waitlist &&
+                    (session ? (
+                      <a
+                        href={`/api/waitlist/${listing._id}`}
+                        target="_blank"
+                        /* No "noreferrer": the first hop is our own API route,
+                           and stripping the header there blinds the click log to
+                           which page the student was on. */
+                        rel="noopener nofollow"
+                        onClick={() => trackWaitlistClick()}
+                        className={waitlistButtonClass}
+                      >
+                        {waitlist.label}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          trackWaitlistClick();
+                          setWaitlistOpen(true);
+                        }}
+                        className={waitlistButtonClass}
+                      >
+                        {waitlist.label}
+                      </button>
+                    ))}
                   {showFurnishCta && (
                     <a
                       href="https://cort.sjv.io/zzb9y0"
@@ -1925,6 +2141,8 @@ export default function ListingModalInfo({
               {activeTab === "reviews" && session && (
                 <ReviewsTab
                   legitimateReviews={legitimateReviews}
+                  reviewsLoaded={reviewsLoaded}
+                  reviewCount={reviewCount}
                   overallAvg={overallAvg}
                   starCounts={starCounts}
                   commAvg={commAvg}
@@ -1967,6 +2185,16 @@ export default function ListingModalInfo({
           </motion.div>
         </div>
       </div>
+
+      {/* ── Waitlist capture (signed-out only) ── */}
+      {waitlist && !session && (
+        <WaitlistDialog
+          isOpen={waitlistOpen}
+          onClose={() => setWaitlistOpen(false)}
+          listingId={listing._id}
+          propertyName={waitlistName}
+        />
+      )}
 
       {/* ── Floor plan ── */}
       {floorPlanOpen && selectedUnit?.floorPlanImageUrl && (

@@ -14,6 +14,7 @@
 import { cache } from "react";
 import supabase from "@/lib/supabase";
 import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -169,6 +170,20 @@ function buildListing(row, owner = null, reviews = []) {
     _id: row.id,
     title: row.title ?? null,
     address: row.address,
+    // Identifies the property across databases, so listing-level config keyed by
+    // address (e.g. the off-site waitlists) doesn't ride on a UUID.
+    propertyKey: row.property_key ?? null,
+    /*
+     * The label for this property's off-site waitlist button, or null when it
+     * has none. Resolved HERE rather than in the browser because whether a
+     * waitlist exists depends on a server-only env var: the client cannot see
+     * it, so a client-side check would render a button that 404s the moment an
+     * environment forgot to configure the destination.
+     */
+    waitlistLabel: (() => {
+      const waitlist = waitlistFor(row.property_key);
+      return waitlist && resolveWaitlistUrl(waitlist) ? waitlist.label : null;
+    })(),
     longitude: row.longitude != null ? Number(row.longitude) : null,
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
@@ -317,7 +332,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       lease_type, contact_email, contact_phone, contact_name,
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
-      city, state, zipcode, created_at,
+      city, state, zipcode, created_at, property_key,
       pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
