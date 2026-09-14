@@ -14,10 +14,13 @@ perform.
 ```bash
 git clone git@github.com:UseProximity/Proximity.git
 cd Proximity
-npm install                       # installs all workspaces
+npm install                       # installs apps/web workspace
+npm ci --prefix mcp               # the MCP knowledge server
 
 # ask a maintainer for .env.local (put it in the REPO ROOT)
-# (apps/web/.env.local is a symlink to it; the app and the scripts share one file)
+# (apps/web/.env.local is a symlink to it; the app and the scripts share one file; if
+# not symlinked run:)
+ln -s ../../.env.local apps/web/.env.local
 
 npm run dev:web -- -p 3000        # http://localhost:3000
 ```
