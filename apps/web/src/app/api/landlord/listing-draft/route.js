@@ -98,10 +98,17 @@ function inventoryGroups(links, properties, pageUrl) {
     )
     .slice(0, 2)
     .map((l) => ({
-      name: l.text || "All properties",
+      // The site's own link text ("Search Apartments") means nothing to a
+      // landlord looking at a picker, so say what the folder actually holds.
+      name: "All properties on your website",
       address: "",
       url: l.url,
       kind: "group",
+      // Marks this as ours rather than the model's. The client only offers it
+      // at the top level: a company's full inventory is the right thing to
+      // reach from the front page and a baffling thing to find inside a folder
+      // for one city, where it leads to every other city as well.
+      source: "inventory",
     }));
 }
 

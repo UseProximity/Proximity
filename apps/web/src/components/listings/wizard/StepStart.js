@@ -21,7 +21,7 @@ export default function StepStart({ w, initialImportUrl = "" }) {
         Add your listings
       </h2>
       <p className="mt-1 text-sm text-gray-500">
-        Paste your website and we do the typing. You review everything first.
+        Paste your website and we will fill what we can. You review everything first.
       </p>
 
       <div className="mt-5">

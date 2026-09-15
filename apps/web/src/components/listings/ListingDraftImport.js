@@ -36,8 +36,8 @@ const FILTER_THRESHOLD = 12;
  * company's list is mostly noise to them: Mac Properties has 124 buildings, 13
  * of them in St. Louis. Nothing is hidden (a landlord with an edge-case address
  * must still be able to find their building), but the ones we can place near
- * campus are listed first and start ticked, and everything else is tucked into
- * one folder they can open.
+ * campus are listed first and start ticked, and the rest sit behind a "show
+ * more" line on the same level.
  */
 const NEAR_CAMPUS_RE =
   /\b(st\.?\s*louis|saint\s*louis|stl|clayton|university\s*city|u\.?\s*city|richmond\s*heights|maplewood|brentwood|webster\s*groves|frontenac|ladue|shrewsbury|rock\s*hill|olivette|overland|creve\s*coeur|kirkwood|dogtown|central\s*west\s*end|delmar\s*loop|demun|skinker)\b|\b63(10[0-9]|11[0-9]|12[0-9]|13[0-9]|14[0-9])\b/i;
@@ -94,6 +94,9 @@ const makeNode = (p, parentUrl) => ({
   address: p.address ?? "",
   url: p.url || null,
   kind: p.kind === "group" ? "folder" : "property",
+  // "inventory" marks the folder the server synthesised from the site's own
+  // "all properties" link. Only ever shown at the top level.
+  source: p.source ?? null,
   // The page this was listed on. The import re-reads that page rather than the
   // pasted homepage, so a building found three levels down is read from the
   // page that actually describes it.
@@ -106,10 +109,14 @@ const makeNode = (p, parentUrl) => ({
 });
 
 /*
- * Turn one API level into rows. Near-campus buildings sit at the top, then the
- * site's own folders, then everything else inside a single folder of its own,
- * so a landlord with 124 buildings sees thirteen and one tidy pile rather than
- * a wall of Chicago addresses.
+ * Turn one API level into rows: the buildings we can place near campus, then
+ * the site's own areas, then everything further out flagged `far`.
+ *
+ * `far` used to be wrapped in a folder called "Everywhere else". That nested
+ * badly — opening the inventory folder produced a second "Everywhere else"
+ * inside the first, and neither was a real place on the landlord's site. It is
+ * now a plain "show more" line per level, which cannot nest and does not
+ * pretend to be a folder.
  */
 function buildLevel(items, levelUrl) {
   const capped = (items ?? []).slice(0, MAX_PER_LEVEL);
@@ -119,24 +126,13 @@ function buildLevel(items, levelUrl) {
     .map((p) => (stampNear ? { ...p, nearLevel: true } : p));
   const folders = capped.filter((p) => p.kind === "group");
 
-  const near = props.filter(nearCampus);
-  const rest = props.filter((p) => !nearCampus(p));
-
-  const rows = [
-    ...near.map((p) => makeNode(p, levelUrl)),
+  return [
+    ...props.filter(nearCampus).map((p) => makeNode(p, levelUrl)),
     ...folders.map((f) => makeNode(f, levelUrl)),
+    ...props
+      .filter((p) => !nearCampus(p))
+      .map((p) => ({ ...makeNode(p, levelUrl), far: true })),
   ];
-
-  if (near.length && rest.length) {
-    rows.push({
-      ...makeNode({ name: `Everywhere else (${rest.length})`, kind: "group" }, levelUrl),
-      kind: "bucket",
-      children: rest.map((p) => makeNode(p, levelUrl)),
-    });
-  } else {
-    rows.push(...rest.map((p) => makeNode(p, levelUrl)));
-  }
-  return rows;
 }
 
 // Depth-first walk over everything currently loaded.
@@ -191,12 +187,17 @@ export default function ListingDraftImport({
   const [tree, setTree] = useState([]);
   const [selected, setSelected] = useState(() => new Set()); // identity strings
   const [filter, setFilter] = useState("");
+  // Level keys whose further-from-campus rows are expanded.
+  const [showFar, setShowFar] = useState(() => new Set());
   const [stepIdx, setStepIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const timers = useRef({});
   const pastedRef = useRef("");
   const skipPmsRef = useRef(false); // landlord chose "read my website instead"
   const autoRan = useRef(false);
+  // Mirrors `tree` so folder loads can dedupe against what is already on screen
+  // without closing over a stale copy of it.
+  const treeRef = useRef([]);
 
   useEffect(
     () => () => {
@@ -205,6 +206,10 @@ export default function ListingDraftImport({
     },
     []
   );
+
+  useEffect(() => {
+    treeRef.current = tree;
+  }, [tree]);
 
   const startLoading = () => {
     setError(null);
@@ -287,9 +292,21 @@ export default function ListingDraftImport({
         return;
       }
       setTree(rows);
+      treeRef.current = rows;
       setSelected(new Set(defaultChecked(rows)));
       setFilter("");
+      setShowFar(new Set());
       setPhase("picker");
+      /*
+       * Open the areas that look like ours straight away. A landlord pasting a
+       * three-city company's site wants the St. Louis folder open and ticked,
+       * not a closed folder they have to guess at.
+       */
+      for (const n of rows) {
+        if (n.kind === "folder" && n.source !== "inventory" && nearCampus(n)) {
+          toggleFolder(n);
+        }
+      }
     } catch {
       stopLoading();
       setPhase("idle");
@@ -307,8 +324,7 @@ export default function ListingDraftImport({
 
   // ------------------------------------------------------------ folder opening
   const toggleFolder = async (node) => {
-    // A bucket is grouped on this side; its contents are already here.
-    if (node.kind === "bucket" || node.children) {
+    if (node.children) {
       setTree((t) => patchNode(t, node.uid, { open: !node.open }));
       return;
     }
@@ -337,7 +353,20 @@ export default function ListingDraftImport({
             },
           ]
         : data.properties;
-      const children = buildLevel(items, node.url);
+      /*
+       * A building can be listed on more than one page of the same site, so
+       * opening Mac's St. Louis folder showed One Hundred Above the Park and
+       * Dorchester a second time, under rows already ticked at the top. Keep
+       * the copy we already have (it is the one with a link and an address)
+       * and drop the repeat.
+       */
+      const known = new Set();
+      walkTree(treeRef.current, (n) => {
+        if (n.kind === "property") known.add(n.id);
+      });
+      const children = buildLevel(items, node.url).filter(
+        (c) => c.kind !== "property" || !known.has(c.id)
+      );
       setTree((t) => patchNode(t, node.uid, { loading: false, children, error: null }));
       // Anything near campus inside a folder starts ticked, same rule as the
       // top level, so opening "St. Louis" does the obvious thing.
@@ -474,115 +503,164 @@ export default function ListingDraftImport({
     return hit;
   };
 
-  const renderRows = (nodes, depth = 0) =>
-    (nodes ?? []).filter(branchMatches).map((n) =>
-      n.kind === "property" ? (
-        <label
-          key={n.uid}
-          style={{ paddingLeft: `${12 + depth * 18}px` }}
-          className={`flex cursor-pointer items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
-            selected.has(n.id)
-              ? "border-red-500 bg-red-50"
-              : "border-gray-200 bg-white hover:border-red-300"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={selected.has(n.id)}
-            onChange={() => toggleOne(n)}
-            className="h-4 w-4 shrink-0 accent-red-600"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium text-gray-900">{n.name}</span>
-            {n.address &&
-              n.address.toLowerCase().replace(/[.\s]+$/, "") !==
-                n.name.toLowerCase().replace(/[.\s]+$/, "") && (
-                <span className="block truncate text-xs text-gray-500">{n.address}</span>
-              )}
+  const propertyRow = (n, depth) => (
+    <label
+      key={n.uid}
+      style={{ paddingLeft: `${12 + depth * 18}px` }}
+      className={`flex cursor-pointer items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
+        selected.has(n.id)
+          ? "border-red-500 bg-red-50"
+          : "border-gray-200 bg-white hover:border-red-300"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={selected.has(n.id)}
+        onChange={() => toggleOne(n)}
+        className="h-4 w-4 shrink-0 accent-red-600"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-gray-900">{n.name}</span>
+        {n.address &&
+          n.address.toLowerCase().replace(/[.\s]+$/, "") !==
+            n.name.toLowerCase().replace(/[.\s]+$/, "") && (
+            <span className="block truncate text-xs text-gray-500">{n.address}</span>
+          )}
+      </span>
+      {nearCampus(n) && (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+          <MapPin className="h-3 w-3" /> Near WashU
+        </span>
+      )}
+    </label>
+  );
+
+  const folderRow = (n, depth) => (
+    <div key={n.uid}>
+      <button
+        type="button"
+        onClick={() => toggleFolder(n)}
+        style={{ paddingLeft: `${12 + depth * 18}px` }}
+        className="flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 py-2 pr-3 text-left text-sm transition-colors hover:border-red-300 hover:bg-red-50/40"
+      >
+        {n.open ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+        )}
+        {n.open ? (
+          <FolderOpen className="h-4 w-4 shrink-0 text-gray-500" />
+        ) : (
+          <Folder className="h-4 w-4 shrink-0 text-gray-500" />
+        )}
+        <span className="min-w-0 flex-1 truncate font-medium text-gray-900">{n.name}</span>
+        {n.loading ? (
+          <span className="flex shrink-0 items-center gap-1 text-xs text-gray-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" /> Opening…
           </span>
-          {nearCampus(n) && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-              <MapPin className="h-3 w-3" /> Near WashU
-            </span>
-          )}
-        </label>
-      ) : (
-        <div key={n.uid}>
-          <button
-            type="button"
-            onClick={() => toggleFolder(n)}
-            style={{ paddingLeft: `${12 + depth * 18}px` }}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 py-2 pr-3 text-left text-sm transition-colors hover:border-red-300 hover:bg-red-50/40"
+        ) : (
+          <span className="shrink-0 text-xs text-gray-500">
+            {n.children
+              ? `${n.children.filter((c) => c.kind === "property").length} inside`
+              : "Click to open"}
+          </span>
+        )}
+      </button>
+
+      {n.open && n.error && (
+        <p
+          style={{ paddingLeft: `${34 + depth * 18}px` }}
+          className="py-1.5 text-xs text-red-600"
+        >
+          {n.error}
+        </p>
+      )}
+
+      {n.open && n.children?.length > 0 && (
+        <div className="mt-1 space-y-1">
+          <div
+            style={{ paddingLeft: `${34 + depth * 18}px` }}
+            className="flex items-center gap-3 pb-0.5 text-xs"
           >
-            {n.open ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
-            )}
-            {n.open ? (
-              <FolderOpen className="h-4 w-4 shrink-0 text-gray-500" />
-            ) : (
-              <Folder className="h-4 w-4 shrink-0 text-gray-500" />
-            )}
-            <span className="min-w-0 flex-1 truncate font-medium text-gray-900">
-              {n.name}
-            </span>
-            {n.loading ? (
-              <span className="flex shrink-0 items-center gap-1 text-xs text-gray-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" /> Opening…
-              </span>
-            ) : (
-              <span className="shrink-0 text-xs text-gray-500">
-                {n.children ? `${n.children.length} inside` : "Click to open"}
-              </span>
-            )}
-          </button>
-
-          {n.open && n.error && (
-            <p
-              style={{ paddingLeft: `${34 + depth * 18}px` }}
-              className="py-1.5 text-xs text-red-600"
+            <button
+              type="button"
+              onClick={() => setBranch(n, true)}
+              className="font-medium text-red-600 hover:underline"
             >
-              {n.error}
-            </p>
-          )}
-
-          {n.open && n.children?.length > 0 && (
-            <div className="mt-1 space-y-1">
-              <div
-                style={{ paddingLeft: `${34 + depth * 18}px` }}
-                className="flex items-center gap-3 pb-0.5 text-xs"
-              >
-                <button
-                  type="button"
-                  onClick={() => setBranch(n, true)}
-                  className="font-medium text-red-600 hover:underline"
-                >
-                  Tick all in here
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBranch(n, false)}
-                  className="text-gray-500 hover:text-gray-700 hover:underline"
-                >
-                  Untick all
-                </button>
-              </div>
-              {renderRows(n.children, depth + 1)}
-            </div>
-          )}
-
-          {n.open && n.children?.length === 0 && !n.error && (
-            <p
-              style={{ paddingLeft: `${34 + depth * 18}px` }}
-              className="py-1.5 text-xs text-gray-500"
+              Tick all in here
+            </button>
+            <button
+              type="button"
+              onClick={() => setBranch(n, false)}
+              className="text-gray-500 hover:text-gray-700 hover:underline"
             >
-              Nothing to list in here.
-            </p>
-          )}
+              Untick all
+            </button>
+          </div>
+          {renderLevel(n.children, depth + 1, n.uid)}
         </div>
-      )
+      )}
+
+      {n.open && n.children?.length === 0 && !n.error && (
+        <p
+          style={{ paddingLeft: `${34 + depth * 18}px` }}
+          className="py-1.5 text-xs text-gray-500"
+        >
+          Nothing left to add from here.
+        </p>
+      )}
+    </div>
+  );
+
+  /*
+   * One level of the tree. Near-campus buildings, then the site's own areas,
+   * then a single "show more" line for everything further out. That last group
+   * used to be a folder called "Everywhere else", which nested inside itself
+   * and looked like a place on the landlord's website. It is a disclosure now.
+   */
+  const renderLevel = (nodes, depth, levelKey) => {
+    const list = (nodes ?? []).filter(branchMatches);
+    const near = list.filter((n) => n.kind === "property" && !n.far);
+    const folders = list.filter(
+      // The synthesised "all properties" folder belongs at the top level only:
+      // inside a folder for one city it leads back out to every other city.
+      (n) => n.kind === "folder" && (depth === 0 || n.source !== "inventory")
     );
+    const far = list.filter((n) => n.kind === "property" && n.far);
+    const farOpen = showFar.has(levelKey) || !!q; // searching reveals everything
+
+    return (
+      <>
+        {near.map((n) => propertyRow(n, depth))}
+        {folders.map((n) => folderRow(n, depth))}
+        {far.length > 0 && (
+          <div key={`${levelKey}-far`}>
+            <button
+              type="button"
+              onClick={() =>
+                setShowFar((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(levelKey)) next.delete(levelKey);
+                  else next.add(levelKey);
+                  return next;
+                })
+              }
+              style={{ paddingLeft: `${12 + depth * 18}px` }}
+              className="flex w-full items-center gap-2 py-1.5 text-left text-xs font-medium text-gray-600 hover:text-red-600"
+            >
+              {farOpen ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+              {farOpen ? "Hide" : "Show"} {far.length} further from campus
+            </button>
+            {farOpen && <div className="space-y-1">{far.map((n) => propertyRow(n, depth))}</div>}
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div
@@ -688,7 +766,7 @@ export default function ListingDraftImport({
               </div>
 
               <div className="mt-2 max-h-[55vh] space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                {renderRows(tree)}
+                {renderLevel(tree, 0, "root")}
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-3">
