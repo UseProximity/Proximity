@@ -381,11 +381,18 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     }
   };
 
-  const requestQueuedDraft = (target) =>
+  const requestQueuedDraft = ({ levelUrl, ...target }) =>
     fetch("/api/landlord/listing-draft", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: importPastedUrl.current, targetProperty: target }),
+      // Re-read the page this property was listed on, not the pasted homepage.
+      // For a single-site landlord they are the same page; for a company whose
+      // buildings sit behind an area folder, the homepage never mentioned this
+      // property at all.
+      body: JSON.stringify({
+        url: levelUrl || importPastedUrl.current,
+        targetProperty: target,
+      }),
     }).then(async (res) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.listing) {

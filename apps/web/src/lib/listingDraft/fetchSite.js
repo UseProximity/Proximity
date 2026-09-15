@@ -337,7 +337,17 @@ async function renderPageViaFirecrawl(rawUrl) {
     const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ url: rawUrl, formats: ["html"], timeout: 30000 }),
+      // onlyMainContent defaults to true, which strips header/nav/footer. That
+      // is where a management company keeps the link to its actual inventory
+      // ("Search Apartments", the per-city pages), so a corporate site came
+      // back as its homepage teaser with no way to reach the other 116
+      // properties. We need the whole document, chrome included.
+      body: JSON.stringify({
+        url: rawUrl,
+        formats: ["html"],
+        onlyMainContent: false,
+        timeout: 30000,
+      }),
       signal: AbortSignal.timeout(45000),
     });
     if (!res.ok) return null;
@@ -406,6 +416,25 @@ async function renderPageViaTavily(rawUrl) {
 
 const RENDER_FALLBACKS = [renderPageViaFirecrawl, renderPageViaJina, renderPageViaTavily];
 
+/*
+ * The render chain is scored on stripped-text length, which quietly punishes
+ * the sources that preserve structure. Tavily returns raw markdown wrapped in a
+ * single <div>: on macapartments.com that scored 4,703 characters against
+ * Firecrawl's 1,638, so the markdown blob won and extractLinks() came back with
+ * ZERO links, leaving the model no site navigation to offer as area folders.
+ *
+ * So the winner still supplies the text, but whichever candidate actually
+ * carried anchors supplies the links and images. When they are the same
+ * response (the normal case) nothing changes.
+ */
+const anchorCount = (html) => (html ? (html.match(/<a\b[^>]*\bhref=/gi) ?? []).length : 0);
+
+function withLinkHtml(page, structured) {
+  if (!page || !structured || structured === page) return page;
+  if (anchorCount(structured.html) <= anchorCount(page.html)) return page;
+  return { ...page, linkHtml: structured.html };
+}
+
 // Run the render chain directly (SSRF-checked first) and return the best
 // result, or null. Used when a page passed the thin check but its listings
 // clearly live in a JS widget (PMS portal detected, little real content).
@@ -423,16 +452,18 @@ export async function tryRenderPage(rawUrl) {
   }
   let best = null;
   let bestLen = 0;
+  let structured = null;
   for (const render of RENDER_FALLBACKS) {
     const rendered = await render(rawUrl);
     const len = rendered ? htmlToText(rendered.html).length : 0;
+    if (anchorCount(rendered?.html) > anchorCount(structured?.html)) structured = rendered;
     if (len > bestLen) {
       best = rendered;
       bestLen = len;
     }
     if (bestLen >= 3000) break;
   }
-  return best;
+  return withLinkHtml(best, structured);
 }
 
 // Codes where a render service can't help (or must not be asked to try).
@@ -472,10 +503,12 @@ export async function fetchPageSmart(rawUrl) {
   }
 
   let bestLen = page ? htmlToText(page.html).length : 0;
+  let structured = anchorCount(page?.html) ? page : null;
   if (bestLen < 800) {
     for (const render of RENDER_FALLBACKS) {
       const rendered = await render(rawUrl);
       const len = rendered ? htmlToText(rendered.html).length : 0;
+      if (anchorCount(rendered?.html) > anchorCount(structured?.html)) structured = rendered;
       if (len > bestLen) {
         page = rendered;
         bestLen = len;
@@ -484,6 +517,7 @@ export async function fetchPageSmart(rawUrl) {
     }
   }
   if (!page) throw fetchErr ?? new DraftFetchError("unreachable");
+  page = withLinkHtml(page, structured);
   cachePut(rawUrl, page);
   return page;
 }
@@ -519,28 +553,76 @@ export function sameSite(a, b) {
   }
 }
 
-// Same-site links: [{ url, text }] for the model to name property subpages.
-export function extractLinks(html, baseUrl, cap = 40) {
+/*
+ * Analytics/click-tracking parameters, dropped so the same destination doesn't
+ * appear as several links. Everything else in the query string is KEPT: on a
+ * RentCafe or Entrata corporate site the area filter IS a query parameter
+ * (/searchlisting?citystate=st.%20louis,mo), so chopping at "?" collapsed every
+ * city down to one undifferentiated search page and made area folders
+ * impossible for exactly the big multi-city companies that need them.
+ */
+const TRACKING_PARAMS =
+  /^(utm_|rcstdid$|gclid$|fbclid$|msclkid$|mkt_tok$|_ga$|_gl$|ref$|source$|yclid$|igshid$)/i;
+
+// Canonical form for comparing two links: tracking params dropped, fragment
+// dropped, trailing slash and default port normalized, host lowercased.
+export function normalizeLinkUrl(raw, baseUrl) {
+  let u;
+  try {
+    u = new URL(decodeEntities(raw), baseUrl);
+  } catch {
+    return null;
+  }
+  if (!["http:", "https:"].includes(u.protocol)) return null;
+  u.hash = "";
+  for (const key of [...u.searchParams.keys()]) {
+    if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
+  }
+  u.hostname = u.hostname.toLowerCase();
+  if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+    u.pathname = u.pathname.replace(/\/+$/, "");
+  }
+  return u.toString();
+}
+
+const LINK_ASSET_RE = /\.(css|js|xml|pdf|jpe?g|png|webp|gif|svg|ico|zip|docx?)(\?|$)/i;
+
+// Destinations that are never a property page. Worth dropping explicitly: every
+// property card on a RentCafe site carries a "get directions" link, so these
+// otherwise took half the candidate-link budget and taught the model nothing.
+const LINK_NOISE_RE =
+  /^https?:\/\/([a-z0-9-]+\.)*(maps\.google\.[a-z.]+|google\.[a-z.]+\/maps|facebook\.com|twitter\.com|x\.com|instagram\.com|linkedin\.com|youtube\.com|youtu\.be|tiktok\.com|pinterest\.com|yelp\.com)\//i;
+
+/*
+ * Every link on the page: [{ url, text, internal }], deduped and asset-filtered.
+ * Cross-site links are kept here (a management company routinely gives each
+ * building its own domain) — callers that only want same-site links filter on
+ * `internal`.
+ */
+export function extractAllLinks(html, baseUrl, cap = 120) {
   const seen = new Set();
   const out = [];
-  const re = /<a\b[^>]*href="([^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const re = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const base = normalizeLinkUrl(baseUrl, baseUrl);
   let m;
   while ((m = re.exec(html)) && out.length < cap) {
-    let abs;
-    try {
-      abs = new URL(decodeEntities(m[1]), baseUrl).toString();
-    } catch {
-      continue;
-    }
-    if (!abs.startsWith("http") || !sameSite(abs, baseUrl)) continue;
-    if (/\.(css|js|xml|pdf|jpg|jpeg|png|webp|ico)(\?|$)/i.test(abs)) continue;
-    abs = abs.split("?")[0];
+    const abs = normalizeLinkUrl(m[1], baseUrl);
+    if (!abs || abs === base) continue; // in-page anchors resolve to the page
+    if (LINK_ASSET_RE.test(abs) || LINK_NOISE_RE.test(abs)) continue;
     if (seen.has(abs)) continue;
     seen.add(abs);
     const text = htmlToText(m[2]).replace(/\n/g, " ").slice(0, 80).trim();
-    out.push({ url: abs, text });
+    out.push({ url: abs, text, internal: sameSite(abs, baseUrl) });
   }
   return out;
+}
+
+// Same-site links: [{ url, text }] for the model to name property subpages.
+export function extractLinks(html, baseUrl, cap = 40) {
+  return extractAllLinks(html, baseUrl, cap * 4)
+    .filter((l) => l.internal)
+    .slice(0, cap)
+    .map(({ url, text }) => ({ url, text }));
 }
 
 /*

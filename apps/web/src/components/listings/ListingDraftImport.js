@@ -14,6 +14,83 @@ const LOADING_STEPS = [
 
 const COMBINED = "__combined__";
 
+// The picker caps out here. A management company's inventory page can list well
+// over a hundred buildings and Proximity would rather show them all, sorted,
+// than silently drop the ones that matter.
+const MAX_CHOICES = 150;
+
+/*
+ * Proximity only serves students around WashU, and a three-city management
+ * company's list is mostly noise to them: Mac Properties has 124 buildings, 13
+ * of them in St. Louis. Nothing is hidden (a landlord with an edge-case address
+ * must still be able to find their building), but the ones we can place near
+ * campus sort to the top and start checked, so the common case is one click.
+ */
+const NEAR_CAMPUS_RE =
+  /\b(st\.?\s*louis|saint\s*louis|stl|clayton|university\s*city|u\.?\s*city|richmond\s*heights|maplewood|brentwood|webster\s*groves|frontenac|ladue|shrewsbury|rock\s*hill|olivette|overland|creve\s*coeur|kirkwood|dogtown|central\s*west\s*end|delmar\s*loop|demun|skinker)\b|\b63(10[0-9]|11[0-9]|12[0-9]|13[0-9]|14[0-9])\b/i;
+
+/*
+ * The URL counts as evidence here, and only here. The extraction itself is
+ * forbidden from reading a city out of a slug (sites mislabel them, and a wrong
+ * address on a published listing is a real harm), but this only decides sort
+ * order and which boxes start ticked, both of which the landlord sees and can
+ * change. It matters: on Mac's inventory page all 13 St. Louis buildings came
+ * back with a name and a /apartments/mo/st.-louis/ URL and no address at all,
+ * so an address-only test found one of them.
+ */
+const flatten = (s) => {
+  let v = s ?? "";
+  try {
+    v = decodeURIComponent(v);
+  } catch {
+    /* a stray % in the URL is not worth failing over */
+  }
+  return v.replace(/[-_/+.]+/g, " ");
+};
+
+const nearCampus = (p) =>
+  // nearLevel is stamped on when the page this came from was itself a
+  // near-campus folder, so the fact survives into the combined list that
+  // "gather areas" builds out of several folders at once.
+  p.nearLevel === true ||
+  NEAR_CAMPUS_RE.test(flatten(`${p.name ?? ""} ${p.address ?? ""} ${p.url ?? ""}`));
+
+/*
+ * A level the landlord reached by opening a St. Louis folder is itself
+ * evidence: everything on Mac's St. Louis page is a St. Louis building, even
+ * the nine it names in prose with no address and no link of their own. Without
+ * this, opening that folder ticked one box out of nine.
+ */
+const levelIsNearCampus = (levelUrl) => !!levelUrl && nearCampus({ url: levelUrl });
+
+// Folders sit between the near-campus properties and everything else: they are
+// how the landlord reaches the rest, so they must not be buried at the bottom
+// of a 124-row list.
+const rank = (p, near) => (p.kind === "group" ? 1 : near ? 0 : 2);
+
+const orderChoices = (list, levelUrl) => {
+  const stamped = levelIsNearCampus(levelUrl)
+    ? list.map((p) => (p.kind === "group" ? p : { ...p, nearLevel: true }))
+    : list;
+  return stamped
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => rank(a.p, nearCampus(a.p)) - rank(b.p, nearCampus(b.p)) || a.i - b.i)
+    .map(({ p }) => p);
+};
+
+/*
+ * What starts checked. When we can place at least one property near campus,
+ * only those do, so a landlord importing 124 buildings is not one stray click
+ * from queueing all of them. When we can place none (the ordinary single-city
+ * landlord, or a site that never states a city), everything starts checked
+ * exactly as before.
+ */
+const defaultChecked = (list) => {
+  const props = list.filter((p) => p.kind !== "group");
+  const near = props.filter(nearCampus);
+  return near.length ? near : props;
+};
+
 /*
  * "Paste your website" box for the add-listing flow. Calls
  * POST /api/landlord/listing-draft. Multi-property sites get a picker where
@@ -120,7 +197,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
         return;
       }
 
-      const list = (data.properties ?? []).slice(0, 40);
+      const list = orderChoices((data.properties ?? []).slice(0, MAX_CHOICES), fetchUrl);
       if (list.length > 0) {
         // A target that turned out to be another list acts like a drill-in.
         if (targetProperty) {
@@ -130,10 +207,11 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
           ]);
         }
         levelCache.current.set(fetchUrl, list);
-        // First sight of a level: everything real starts checked.
+        // First sight of a level: the properties worth defaulting to start
+        // checked (see defaultChecked).
         setSelected((prev) => {
           const next = new Set(prev);
-          list.forEach((p) => next.add(keyOf(p)));
+          defaultChecked(list).forEach((p) => next.add(keyOf(p)));
           return next;
         });
         setChoices(list);
@@ -170,7 +248,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
         },
       ];
     } else {
-      list = (data.properties ?? []).slice(0, 40);
+      list = orderChoices((data.properties ?? []).slice(0, MAX_CHOICES), levelUrl);
     }
     levelCache.current.set(levelUrl, list);
     return list;
@@ -217,7 +295,17 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
         const isGroup = p.kind === "group";
         if ((kind === "group") === isGroup && selected.has(k) && !seen.has(k)) {
           seen.add(k);
-          picks.push({ name: p.name, address: p.address ?? "", url: p.url || null, kind: p.kind });
+          picks.push({
+            name: p.name,
+            address: p.address ?? "",
+            url: p.url || null,
+            kind: p.kind,
+            // Which page this property was listed on. The queue re-reads that
+            // page rather than the pasted homepage, so a building found three
+            // levels deep is extracted from the page that actually describes
+            // it — and its own domain can be cleared against that page's links.
+            levelUrl,
+          });
         }
       }
     }
@@ -261,10 +349,11 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
       setError("We couldn't find rentable properties in those areas.");
       return;
     }
-    levelCache.current.set(COMBINED, merged);
+    const ordered = orderChoices(merged);
+    levelCache.current.set(COMBINED, ordered);
     setCrumbs([{ label: "Your selection", url: COMBINED }]);
-    setSelected(new Set(merged.map(keyOf)));
-    setChoices(merged);
+    setSelected(new Set(defaultChecked(ordered).map(keyOf)));
+    setChoices(ordered);
     setPhase("picker");
   };
 
@@ -281,10 +370,15 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
     }
     pendingRef.current = props
       .slice(1)
-      .map((p) => ({ name: p.name, address: p.address || "", url: p.url }));
+      .map((p) => ({
+        name: p.name,
+        address: p.address || "",
+        url: p.url,
+        levelUrl: p.levelUrl,
+      }));
     requestDraft(
       { name: props[0].name, address: props[0].address || "", url: props[0].url },
-      url.trim()
+      props[0].levelUrl || url.trim()
     );
   };
 

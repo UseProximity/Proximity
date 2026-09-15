@@ -86,7 +86,7 @@ Rules, in order of importance:
 2. Every field is nullable: when the pages don't state a fact, return null (or omit from arrays). Do not pad, estimate, or average.
 2b. ADDRESS: return the most complete address the pages state. A street-only address like "718 Limit" or "723 Interdrive" IS worth returning — the landlord confirms the full address from a dropdown afterwards. Never invent a city, state, or zip the pages don't show.
 3. RENT: Proximity stores rent for the WHOLE unit per month. If the site gives a price per person / per bed / per room, or you cannot tell which convention it uses, set rent to null, set rentBasis accordingly ("per_person" or "unknown"), and add a sourceNote quoting the price you saw. Only set a rent number when you are confident it is the whole-unit monthly price (then rentBasis "total"). Prices like "$TBD" or "call for pricing" are null.
-4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its same-site URL from CANDIDATE LINKS if one clearly matches; use an empty string "" for an unknown address or url, never invent one) and set "listing" to null. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
+4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its URL from CANDIDATE LINKS if one clearly matches; use an empty string "" for an unknown address or url, never invent one). A URL from CANDIDATE LINKS counts whether it sits on this site or on a building's own dedicated website, which large management companies routinely give each property (a link whose text or surrounding card names that building). Only ever use a URL exactly as it appears in CANDIDATE LINKS. and set "listing" to null. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
 4c. RENTALS ONLY, RESIDENTIAL ONLY: Proximity lists residential rentals. Exclude commercial, office, retail, industrial, land, and self-storage properties, AND anything offered FOR SALE (homes for sale, "buy" sections) — from "properties" (including group entries: never list a for-sale or commercial section as a group) and from any listing, even when the site mixes them with rentals. When you genuinely can't tell, include it.
 4b. GROUPS vs PROPERTIES: each entry gets a "kind". A neighborhood, area, city, or category page (e.g. "Central West End", "Clayton", "Our Communities") is kind "group", never a property; the landlord will open it to see the actual buildings inside. So is a site section that leads to the residential rentals, but ONLY when the buildings themselves aren't on the current page (e.g. "Apartments for Rent", "Available Rentals", "Our Properties" from CANDIDATE LINKS). When the individual properties ARE already listed here, never also return a nav/section link ("Find Your Home", "Our Properties") as a group — it would duplicate them. An individual building or complex with its own name or street address is kind "property". When the page shows both (areas AND some buildings), list both with correct kinds. Never return an empty properties list when the site clearly has a rentals section you can point to as a group. Never invent a listing from a group page's teaser text.
 5. UNITS are floor-plan types (e.g. "2 bed / 1 bath"), not physical apartments. Collapse repeats. When the page lists one bathrooms value alongside several bedroom options (e.g. "Bedrooms: 1/2/3, Bathrooms: 1"), apply that bathroom count to each floor plan rather than leaving it null (add a sourceNote); reserve null for when the page gives no bathroom information at all. "title" is the floor plan's marketing name if the site uses one (e.g. "The Loft"). STUDIOS: record a studio as bedrooms 0, and put "Studio" in the unit's title (unless the site gives it a specific name). AVAILABILITY: when the site states when a unit is available, set availableFrom: "now" for "available now/immediately", or the date as YYYY-MM-DD (infer the year sensibly for month-day dates: the next occurrence). Null when not stated.
@@ -120,6 +120,54 @@ function logCost(tag, usage) {
     `[listing-draft] extraction ${tag} cost $${cost.toFixed(4)} ` +
       `(in:${input} out:${output} cacheRead:${cacheRead} cacheWrite:${cacheWrite})`
   );
+}
+
+/*
+ * Rescue what we can from an output that stopped mid-JSON. Walks the
+ * "properties" array collecting only brace-balanced objects, so the half
+ * property the model was writing when it ran out of room is dropped and every
+ * complete one before it survives. Returns null when there is nothing to save
+ * (a truncated single-listing extraction is not worth half-filling a form
+ * with, so this deliberately only rescues the property picker).
+ */
+function salvageDraft(raw) {
+  const start = raw.indexOf('"properties"');
+  if (start === -1) return null;
+  const open = raw.indexOf("[", start);
+  if (open === -1) return null;
+
+  const properties = [];
+  let depth = 0;
+  let objStart = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = open + 1; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try {
+          properties.push(PropertySchema.parse(JSON.parse(raw.slice(objStart, i + 1))));
+        } catch {
+          /* a malformed entry is skipped, not fatal */
+        }
+        objStart = -1;
+      }
+    } else if (ch === "]" && depth === 0) break;
+  }
+
+  return properties.length ? { properties, listing: null } : null;
 }
 
 // Same belt-and-suspenders as Lease Check: no em dash ever reaches the form.
@@ -175,20 +223,49 @@ export async function extractListingDraft({ pages, images, links, targetProperty
     );
   }
 
-  const response = await client.messages.parse({
-    model: DRAFT_MODEL,
-    max_tokens: 16000,
-    output_config: { format: zodOutputFormat(DraftSchema) },
-    messages: [{ role: "user", content: sections.join("\n\n---\n\n") }],
-    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-  });
+  /*
+   * Streamed, and parsed by hand rather than through messages.parse().
+   *
+   * messages.parse() THROWS an AnthropicError the moment the JSON doesn't
+   * parse, and a management company's full inventory page overruns the output
+   * cap: macapartments.com/searchlisting (124 properties) came back cut off
+   * mid-string at character 14,652, the helper threw, and the route's outer
+   * catch turned it into a blanket 500 "Something went wrong reading that
+   * website." A landlord with a big site got a hard failure and no clue why.
+   *
+   * So: stream (required at this max_tokens to stay under the HTTP timeout),
+   * read stop_reason, and salvage the properties we did receive when the model
+   * ran out of room. A partial list the landlord can pick from beats an error.
+   */
+  const response = await client.messages
+    .stream({
+      model: DRAFT_MODEL,
+      max_tokens: 32000,
+      output_config: { format: zodOutputFormat(DraftSchema) },
+      messages: [{ role: "user", content: sections.join("\n\n---\n\n") }],
+      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    })
+    .finalMessage();
 
   logCost(targetProperty ? "target" : "initial", response.usage);
 
-  // parsed_output is null when schema parsing failed — callers must treat that
-  // as "couldn't read it", never as an empty success.
-  if (!response.parsed_output) return null;
-  const draft = stripEmDashes(response.parsed_output);
+  const raw = response.content.find((b) => b.type === "text")?.text ?? "";
+  let parsed = null;
+  try {
+    parsed = DraftSchema.parse(JSON.parse(raw));
+  } catch {
+    parsed = salvageDraft(raw);
+    if (parsed) {
+      console.warn(
+        `[listing-draft] output truncated (stop_reason: ${response.stop_reason}) — ` +
+          `salvaged ${parsed.properties.length} properties`
+      );
+    }
+  }
+  // Callers must treat a failed parse as "couldn't read it", never as an empty
+  // success — an empty properties list is how the picker decides to give up.
+  if (!parsed) return null;
+  const draft = stripEmDashes(parsed);
 
   // Code-level backstop for the company-name ban: sites often open with
   // "<Brand>'s newest property" and the copy-faithfully instinct sometimes

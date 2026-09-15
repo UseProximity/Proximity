@@ -11,6 +11,8 @@ import {
   htmlToText,
   extractImageCandidates,
   extractLinks,
+  extractAllLinks,
+  normalizeLinkUrl,
   extractJsonLd,
   extractSiteBrand,
   detectPmsPortal,
@@ -59,6 +61,63 @@ function fetchErrorResponse(err) {
 const LISTINGS_LINK_RE = /listing|apartment|rent|avail|propert|floor|unit|home|residen/i;
 const THIN_TEXT_CHARS = 800;
 
+/*
+ * A management company's homepage shows a handful of featured buildings and
+ * keeps the rest behind one "see everything" link. macapartments.com is the
+ * case that surfaced this: the homepage carousel is 8 properties, the other 116
+ * live behind "Search Apartments". The model is told (rule 4b) not to offer a
+ * nav link as a folder when the buildings are already on the page, which is
+ * right for a small landlord and wrong here, because what is on the page is a
+ * teaser. So we add the site's own inventory link to the picker as a folder,
+ * and the landlord can open it.
+ */
+const INVENTORY_LINK_RE =
+  /search\s*(listing|apartment|rental|propert|home)|\b(all|our|available|browse)\s+(propert|listing|rental|apartment|communit|home)|find\s+(a\s+|your\s+)?(home|apartment|rental)|\bvacanc/i;
+
+// How many links the model is shown. Raised from the old same-site 40: a
+// company inventory page carries well over a hundred building links and the
+// first forty were alphabetical, so every St. Louis property fell off the end.
+const LINK_CAP = 140;
+
+// At most two synthesized folders, so a site with a chatty nav can't bury the
+// real properties under a pile of sections.
+function inventoryGroups(links, properties, pageUrl) {
+  // Offered even when the model already named folders. On macapartments.com it
+  // returns the three city links, which look like areas but are marketing pages
+  // with no buildings on them; the link that actually reaches the inventory is
+  // the one it was told to leave out. Anything it already returned is deduped
+  // by URL, so this only ever adds something new.
+  const taken = new Set(properties.map((p) => p.url).filter(Boolean));
+  return links
+    .filter(
+      (l) =>
+        l.internal &&
+        l.url !== pageUrl &&
+        !taken.has(l.url) &&
+        INVENTORY_LINK_RE.test(`${l.text} ${l.url}`)
+    )
+    .slice(0, 2)
+    .map((l) => ({
+      name: l.text || "All properties",
+      address: "",
+      url: l.url,
+      kind: "group",
+    }));
+}
+
+// A picked property's URL is fetched, so it has to be one the landlord's own
+// site actually points at. Same-site passes outright; a building's own domain
+// (5252apartments.com, liveat100.com) passes only when the page we just read
+// links to it. Without the second rule, every property a large company hosts on
+// its own domain silently lost its URL and got re-read from the corporate
+// homepage, which is the wrong page for it.
+function resolveTargetUrl(rawUrl, pastedUrl, pageUrl, pageLinks) {
+  const url = normalizeLinkUrl(rawUrl, pageUrl);
+  if (!url) return null;
+  if (sameSite(url, pastedUrl)) return url;
+  return pageLinks.some((l) => l.url === url) ? url : null;
+}
+
 export async function POST(req) {
   try {
     const session = await auth();
@@ -77,6 +136,10 @@ export async function POST(req) {
     // Be forgiving about a missing scheme — landlords paste "mysite.com".
     const pastedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
 
+    // url is resolved once the page is in hand (see resolveTargetUrl) — a
+    // building's own domain can only be cleared against the links we read.
+    const rawTargetUrl =
+      typeof body.targetProperty?.url === "string" ? body.targetProperty.url : null;
     const targetProperty =
       body.targetProperty && typeof body.targetProperty.name === "string"
         ? {
@@ -85,11 +148,7 @@ export async function POST(req) {
               typeof body.targetProperty.address === "string"
                 ? body.targetProperty.address.slice(0, 200)
                 : null,
-            url:
-              typeof body.targetProperty.url === "string" &&
-              sameSite(body.targetProperty.url, pastedUrl)
-                ? body.targetProperty.url
-                : null,
+            url: null,
           }
         : null;
 
@@ -128,6 +187,10 @@ export async function POST(req) {
     // url -> { alt, pages:Set } — which page(s) each image candidate appeared
     // on is the model's best signal for "this property's photo" vs site chrome.
     const imageMap = new Map();
+    // Links and images come from whichever render preserved page structure
+    // (see withLinkHtml in fetchSite): the winning render is picked on text
+    // length, which a markdown-only reader can win while carrying no <a> tags.
+    const structureOf = (fetched) => fetched.linkHtml ?? fetched.html;
     const addImages = (html, finalUrl, pageNum) => {
       for (const im of extractImageCandidates(html, finalUrl)) {
         const cur = imageMap.get(im.url);
@@ -139,7 +202,7 @@ export async function POST(req) {
         }
       }
     };
-    addImages(main.html, main.finalUrl, 1);
+    addImages(structureOf(main), main.finalUrl, 1);
     const linkedPortal = detectPmsPortal(main.finalUrl, main.html);
 
     // A non-syncable PMS widget with little surrounding content means the
@@ -155,11 +218,26 @@ export async function POST(req) {
         main = rendered;
         pages[0] = pageEntry(main);
         imageMap.clear();
-        addImages(main.html, main.finalUrl, 1);
+        addImages(structureOf(main), main.finalUrl, 1);
       }
     }
 
-    const links = extractLinks(main.html, main.finalUrl);
+    // All links, internal and external. A large company gives each building
+    // its own domain, so restricting the model to same-site links left it
+    // unable to attach a URL to any of them.
+    let links = extractAllLinks(structureOf(main), main.finalUrl, LINK_CAP);
+    const mergeLinks = (fetched) => {
+      const seen = new Set(links.map((l) => l.url));
+      links = [
+        ...links,
+        ...extractAllLinks(structureOf(fetched), fetched.finalUrl, LINK_CAP).filter(
+          (l) => !seen.has(l.url)
+        ),
+      ].slice(0, LINK_CAP * 2);
+    };
+    if (targetProperty && rawTargetUrl) {
+      targetProperty.url = resolveTargetUrl(rawTargetUrl, pastedUrl, main.finalUrl, links);
+    }
 
     // Secondary same-site pages, all landlord-initiated: the property they
     // picked (plus its gallery/floor-plan pages), or obvious listings links
@@ -168,7 +246,7 @@ export async function POST(req) {
       try {
         const sub = await fetchPageSmart(u);
         pages.push(pageEntry(sub));
-        addImages(sub.html, sub.finalUrl, pages.length);
+        addImages(structureOf(sub), sub.finalUrl, pages.length);
         return sub;
       } catch {
         return null; // the pasted page alone still works
@@ -177,7 +255,7 @@ export async function POST(req) {
     if (targetProperty?.url && targetProperty.url !== main.finalUrl) {
       const propPage = await followBestEffort(targetProperty.url);
       if (propPage) {
-        const galleryish = extractLinks(propPage.html, propPage.finalUrl)
+        const galleryish = extractLinks(structureOf(propPage), propPage.finalUrl)
           .filter(
             (l) =>
               /gallery|photo|amenit|floor|feature|tour/i.test(`${l.url} ${l.text}`) &&
@@ -253,19 +331,46 @@ export async function POST(req) {
         main = rendered;
         pages[0] = pageEntry(main);
         imageMap.clear();
-        addImages(main.html, main.finalUrl, 1);
+        addImages(structureOf(main), main.finalUrl, 1);
         const rImages = [...imageMap.entries()]
           .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
           .slice(0, 60);
         draft = await extractListingDraft({
           pages,
           images: rImages,
-          links: extractLinks(main.html, main.finalUrl),
+          links: extractAllLinks(structureOf(main), main.finalUrl, LINK_CAP),
           targetProperty,
           brandName: extractSiteBrand(main.html) ?? brandName,
         });
       }
     }
+    /*
+     * Still nothing, but the page points at the site's listings. This is the
+     * area folder that turns out to be a marketing page: Mac's "St. Louis" nav
+     * link goes to a HubSpot page of photographs and a "View Available
+     * Apartments" button, with not one building on it. Opening that folder used
+     * to dead-end on "we couldn't find rentable properties in those areas", so
+     * follow the button once and extract from where it actually leads.
+     */
+    if (draftEmpty(draft) && !targetProperty) {
+      const onward = inventoryGroups(links, [], main.finalUrl)[0];
+      const onwardPage = onward ? await followBestEffort(onward.url) : null;
+      if (onwardPage) {
+        // The buildings are on THAT page, so its links are the ones that let
+        // the model attach a URL to each of them.
+        mergeLinks(onwardPage);
+        draft = await extractListingDraft({
+          pages,
+          images: [...imageMap.entries()]
+            .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
+            .slice(0, 60),
+          links,
+          targetProperty,
+          brandName,
+        });
+      }
+    }
+
     if (!draft) {
       return NextResponse.json(
         { error: "We couldn't read that page. You can still fill out the form manually." },
@@ -284,9 +389,19 @@ export async function POST(req) {
       if (pr) return pr;
     }
 
+    // A folder with no URL cannot be opened or gathered, so it is a checkbox
+    // that does nothing. Sites that name their neighbourhoods in prose produce
+    // a handful of these; drop them rather than show dead rows.
+    const properties = (draft.properties ?? []).filter(
+      (p) => p.kind !== "group" || p.url
+    );
     return NextResponse.json({
       sourceUrl: main.finalUrl,
-      properties: draft.properties ?? [],
+      // The inventory folder is only useful on a picker. On a single-property
+      // import the landlord is already where they wanted to be.
+      properties: draft.listing
+        ? properties
+        : [...properties, ...inventoryGroups(links, properties, main.finalUrl)],
       listing: draft.listing,
     });
   } catch (e) {
