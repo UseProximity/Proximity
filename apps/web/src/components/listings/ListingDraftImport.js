@@ -1,8 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Folder, Globe, Loader2, Sparkles } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  Globe,
+  Loader2,
+  MapPin,
+  Search,
+  Sparkles,
+} from "lucide-react";
 
 // Cycled while the server fetches + extracts so the wait feels alive.
 const LOADING_STEPS = [
@@ -12,19 +22,22 @@ const LOADING_STEPS = [
   "Filling in the form…",
 ];
 
-const COMBINED = "__combined__";
+// Per level. A management company's inventory page can list well over a hundred
+// buildings and Proximity would rather show them all than silently drop the
+// ones that matter.
+const MAX_PER_LEVEL = 200;
 
-// The picker caps out here. A management company's inventory page can list well
-// over a hundred buildings and Proximity would rather show them all, sorted,
-// than silently drop the ones that matter.
-const MAX_CHOICES = 150;
+// Above this many rows, offer the filter box. Below it, a filter is just
+// another control to ignore.
+const FILTER_THRESHOLD = 12;
 
 /*
  * Proximity only serves students around WashU, and a three-city management
  * company's list is mostly noise to them: Mac Properties has 124 buildings, 13
  * of them in St. Louis. Nothing is hidden (a landlord with an edge-case address
  * must still be able to find their building), but the ones we can place near
- * campus sort to the top and start checked, so the common case is one click.
+ * campus are listed first and start ticked, and everything else is tucked into
+ * one folder they can open.
  */
 const NEAR_CAMPUS_RE =
   /\b(st\.?\s*louis|saint\s*louis|stl|clayton|university\s*city|u\.?\s*city|richmond\s*heights|maplewood|brentwood|webster\s*groves|frontenac|ladue|shrewsbury|rock\s*hill|olivette|overland|creve\s*coeur|kirkwood|dogtown|central\s*west\s*end|delmar\s*loop|demun|skinker)\b|\b63(10[0-9]|11[0-9]|12[0-9]|13[0-9]|14[0-9])\b/i;
@@ -50,71 +63,140 @@ const flatten = (s) => {
 
 const nearCampus = (p) =>
   // nearLevel is stamped on when the page this came from was itself a
-  // near-campus folder, so the fact survives into the combined list that
-  // "gather areas" builds out of several folders at once.
+  // near-campus folder, so a building listed there counts even when the site
+  // gave it neither an address nor a link of its own.
   p.nearLevel === true ||
   NEAR_CAMPUS_RE.test(flatten(`${p.name ?? ""} ${p.address ?? ""} ${p.url ?? ""}`));
 
-/*
- * A level the landlord reached by opening a St. Louis folder is itself
- * evidence: everything on Mac's St. Louis page is a St. Louis building, even
- * the nine it names in prose with no address and no link of their own. Without
- * this, opening that folder ticked one box out of nine.
- */
 const levelIsNearCampus = (levelUrl) => !!levelUrl && nearCampus({ url: levelUrl });
 
-// Folders sit between the near-campus properties and everything else: they are
-// how the landlord reaches the rest, so they must not be buried at the bottom
-// of a 124-row list.
-const rank = (p, near) => (p.kind === "group" ? 1 : near ? 0 : 2);
+/*
+ * One building, one identity, wherever it turns up.
+ *
+ * A property can appear at more than one level of the same site: Mac lists One
+ * Hundred Above the Park on its homepage (linked to liveat100.com) and again
+ * inside its St. Louis page (named in prose, with no link at all). Keying
+ * selection on the URL made those two different rows, so ticking nine buildings
+ * inside a folder reported eleven selected and queued two of them twice. The
+ * name is the only field both copies always carry, so the name is the identity.
+ */
+const identityOf = (p) =>
+  (p.name || p.url || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 
-const orderChoices = (list, levelUrl) => {
-  const stamped = levelIsNearCampus(levelUrl)
-    ? list.map((p) => (p.kind === "group" ? p : { ...p, nearLevel: true }))
-    : list;
-  return stamped
-    .map((p, i) => ({ p, i }))
-    .sort((a, b) => rank(a.p, nearCampus(a.p)) - rank(b.p, nearCampus(b.p)) || a.i - b.i)
-    .map(({ p }) => p);
-};
+let _uid = 0;
+const makeNode = (p, parentUrl) => ({
+  uid: `n${++_uid}`,
+  id: identityOf(p),
+  name: p.name,
+  address: p.address ?? "",
+  url: p.url || null,
+  kind: p.kind === "group" ? "folder" : "property",
+  // The page this was listed on. The import re-reads that page rather than the
+  // pasted homepage, so a building found three levels down is read from the
+  // page that actually describes it.
+  levelUrl: parentUrl,
+  nearLevel: p.nearLevel === true,
+  children: null, // null = not opened yet
+  open: false,
+  loading: false,
+  error: null,
+});
 
 /*
- * What starts checked. When we can place at least one property near campus,
- * only those do, so a landlord importing 124 buildings is not one stray click
- * from queueing all of them. When we can place none (the ordinary single-city
- * landlord, or a site that never states a city), everything starts checked
- * exactly as before.
+ * Turn one API level into rows. Near-campus buildings sit at the top, then the
+ * site's own folders, then everything else inside a single folder of its own,
+ * so a landlord with 124 buildings sees thirteen and one tidy pile rather than
+ * a wall of Chicago addresses.
  */
-const defaultChecked = (list) => {
-  const props = list.filter((p) => p.kind !== "group");
+function buildLevel(items, levelUrl) {
+  const capped = (items ?? []).slice(0, MAX_PER_LEVEL);
+  const stampNear = levelIsNearCampus(levelUrl);
+  const props = capped
+    .filter((p) => p.kind !== "group")
+    .map((p) => (stampNear ? { ...p, nearLevel: true } : p));
+  const folders = capped.filter((p) => p.kind === "group");
+
   const near = props.filter(nearCampus);
-  return near.length ? near : props;
-};
+  const rest = props.filter((p) => !nearCampus(p));
+
+  const rows = [
+    ...near.map((p) => makeNode(p, levelUrl)),
+    ...folders.map((f) => makeNode(f, levelUrl)),
+  ];
+
+  if (near.length && rest.length) {
+    rows.push({
+      ...makeNode({ name: `Everywhere else (${rest.length})`, kind: "group" }, levelUrl),
+      kind: "bucket",
+      children: rest.map((p) => makeNode(p, levelUrl)),
+    });
+  } else {
+    rows.push(...rest.map((p) => makeNode(p, levelUrl)));
+  }
+  return rows;
+}
+
+// Depth-first walk over everything currently loaded.
+function walkTree(nodes, fn, depth = 0) {
+  for (const n of nodes ?? []) {
+    fn(n, depth);
+    if (n.children) walkTree(n.children, fn, depth + 1);
+  }
+}
+
+// What starts ticked at a level: the near-campus buildings, or all of them when
+// we cannot place any (the ordinary single-city landlord).
+function defaultChecked(rows) {
+  const props = [];
+  walkTree(rows, (n) => {
+    if (n.kind === "property") props.push(n);
+  });
+  const near = props.filter(nearCampus);
+  return (near.length ? near : props).map((p) => p.id);
+}
+
+// Immutably replace one node, found by uid.
+function patchNode(nodes, uid, patch) {
+  return nodes.map((n) => {
+    if (n.uid === uid) return { ...n, ...patch };
+    if (n.children) return { ...n, children: patchNode(n.children, uid, patch) };
+    return n;
+  });
+}
 
 /*
  * "Paste your website" box for the add-listing flow. Calls
- * POST /api/landlord/listing-draft. Multi-property sites get a picker where
- * BOTH properties and area folders are checkable: checked folders are read in
- * parallel and resolve into one combined, deduped property list (everything
- * pre-checked) before importing. Folders can still be opened with the chevron
- * to browse. The first pick prefills the form now and the rest queue up via
- * onApply(listing, { sourceUrl, pastedUrl, queue }).
+ * POST /api/landlord/listing-draft.
+ *
+ * A multi-property site becomes a browsable tree: near-campus buildings ticked
+ * at the top, the site's own areas as folders that open in place underneath
+ * themselves. Opening a folder never hides its siblings, because a landlord
+ * whose building we filed under the wrong area still has to be able to find it.
+ * Ticked buildings import in one run: the first prefills the form now, the rest
+ * queue up via onApply(listing, { sourceUrl, pastedUrl, queue }).
  */
-export default function ListingDraftImport({ onApply, disabled, embedded = false }) {
-  const [url, setUrl] = useState("");
-  const [phase, setPhase] = useState("idle"); // idle | loading | picker | groups | pms | done
+export default function ListingDraftImport({
+  onApply,
+  disabled,
+  embedded = false,
+  initialUrl = "",
+}) {
+  const [url, setUrl] = useState(initialUrl);
+  const [phase, setPhase] = useState("idle"); // idle | loading | picker | pms | done
   const [pmsName, setPmsName] = useState("");
   const [error, setError] = useState(null);
-  const [choices, setChoices] = useState([]); // current level: [{name,address,url,kind}]
-  const [crumbs, setCrumbs] = useState([]); // [{label, url}] drill path
-  const [selected, setSelected] = useState(() => new Set()); // keys: choice url|name
+  const [tree, setTree] = useState([]);
+  const [selected, setSelected] = useState(() => new Set()); // identity strings
+  const [filter, setFilter] = useState("");
   const [stepIdx, setStepIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [groupProgress, setGroupProgress] = useState({ done: 0, total: 0 });
   const timers = useRef({});
-  const levelCache = useRef(new Map()); // levelUrl -> choices
-  const pendingRef = useRef([]); // multi-select picks still waiting after the first
+  const pastedRef = useRef("");
   const skipPmsRef = useRef(false); // landlord chose "read my website instead"
+  const autoRan = useRef(false);
 
   useEffect(
     () => () => {
@@ -123,8 +205,6 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
     },
     []
   );
-
-  const keyOf = (p) => p.url || p.name;
 
   const startLoading = () => {
     setError(null);
@@ -158,234 +238,351 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
     return { ok: res.ok, data };
   };
 
-  // One API call driving the UI (paste, drill-browse, or final target import).
-  const requestDraft = async (targetProperty, levelUrl) => {
-    const fetchUrl = levelUrl ?? crumbs.at(-1)?.url ?? url.trim();
-    if (!fetchUrl || fetchUrl === COMBINED) {
+  // ---------------------------------------------------------------- first read
+  const readSite = async (override) => {
+    const pasted = (typeof override === "string" ? override : url).trim();
+    if (!pasted) {
       setError("Paste your website address first.");
       return;
     }
+    pastedRef.current = pasted;
     startLoading();
     try {
-      const { ok, data } = await apiCall(fetchUrl, targetProperty);
+      const { ok, data } = await apiCall(pasted, null);
       stopLoading();
 
       if (data.pms) {
         setPmsName(
-          { appfolio: "AppFolio", buildium: "Buildium", rentecdirect: "Rentec Direct", doorloop: "DoorLoop" }[
-            data.pms
-          ] ?? "your property-management system"
+          {
+            appfolio: "AppFolio",
+            buildium: "Buildium",
+            rentecdirect: "Rentec Direct",
+            doorloop: "DoorLoop",
+          }[data.pms] ?? "your property manager"
         );
         setPhase("pms");
         return;
       }
       if (!ok) {
-        setPhase(choices.length ? "picker" : "idle");
+        setPhase("idle");
         setError(data.error || "Something went wrong. Please try again.");
         return;
       }
-
+      // A one-property site skips the picker entirely.
       if (data.listing) {
         setPhase("done");
-        const queue = pendingRef.current;
-        pendingRef.current = [];
         onApply(data.listing, {
           sourceUrl: data.sourceUrl,
-          pastedUrl: url.trim() || fetchUrl,
-          queue,
+          pastedUrl: pasted,
+          queue: [],
         });
         return;
       }
-
-      const list = orderChoices((data.properties ?? []).slice(0, MAX_CHOICES), fetchUrl);
-      if (list.length > 0) {
-        // A target that turned out to be another list acts like a drill-in.
-        if (targetProperty) {
-          setCrumbs((c) => [
-            ...c,
-            { label: targetProperty.name, url: targetProperty.url ?? fetchUrl },
-          ]);
-        }
-        levelCache.current.set(fetchUrl, list);
-        // First sight of a level: the properties worth defaulting to start
-        // checked (see defaultChecked).
-        setSelected((prev) => {
-          const next = new Set(prev);
-          defaultChecked(list).forEach((p) => next.add(keyOf(p)));
-          return next;
-        });
-        setChoices(list);
-        setPhase("picker");
+      const rows = buildLevel(data.properties, pasted);
+      if (!rows.length) {
+        setPhase("idle");
+        setError(
+          "We couldn't pick out a property from that page. Try pasting the page for one specific property."
+        );
         return;
       }
-
-      setPhase("idle");
-      setError(
-        "We couldn't pick out a property from that page. Try pasting the page for one specific property."
-      );
+      setTree(rows);
+      setSelected(new Set(defaultChecked(rows)));
+      setFilter("");
+      setPhase("picker");
     } catch {
       stopLoading();
-      setPhase(choices.length ? "picker" : "idle");
+      setPhase("idle");
       setError("Network error. Please try again.");
     }
   };
 
-  // Silent level fetch used when resolving checked folders. Returns properties.
-  const fetchLevel = async (levelUrl) => {
-    const cached = levelCache.current.get(levelUrl);
-    if (cached) return cached;
-    const { ok, data } = await apiCall(levelUrl, null);
-    if (!ok || data.pms) throw new Error(data.error || "area failed");
-    let list;
-    if (data.listing) {
-      // The folder page was itself a single property.
-      list = [
-        {
-          name: data.listing.title || data.listing.address || levelUrl,
-          address: data.listing.address ?? "",
-          url: levelUrl,
-          kind: "property",
-        },
-      ];
-    } else {
-      list = orderChoices((data.properties ?? []).slice(0, MAX_CHOICES), levelUrl);
-    }
-    levelCache.current.set(levelUrl, list);
-    return list;
-  };
+  // Auto-run when the address came in from the start screen.
+  useEffect(() => {
+    if (autoRan.current || !initialUrl) return;
+    autoRan.current = true;
+    readSite(initialUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUrl]);
 
-  const drillInto = (group) => {
-    if (!group.url) return;
-    const cached = levelCache.current.get(group.url);
-    setCrumbs((c) => [...c, { label: group.name, url: group.url }]);
-    if (cached) {
-      setChoices(cached);
+  // ------------------------------------------------------------ folder opening
+  const toggleFolder = async (node) => {
+    // A bucket is grouped on this side; its contents are already here.
+    if (node.kind === "bucket" || node.children) {
+      setTree((t) => patchNode(t, node.uid, { open: !node.open }));
       return;
     }
-    requestDraft(null, group.url);
+    if (!node.url) return;
+    setTree((t) => patchNode(t, node.uid, { open: true, loading: true, error: null }));
+    try {
+      const { ok, data } = await apiCall(node.url, null);
+      if (!ok || data.pms) {
+        setTree((t) =>
+          patchNode(t, node.uid, {
+            loading: false,
+            children: [],
+            error: data.error || "We couldn't read that page.",
+          })
+        );
+        return;
+      }
+      // The folder turned out to be one property's own page.
+      const items = data.listing
+        ? [
+            {
+              name: data.listing.title || data.listing.address || node.name,
+              address: data.listing.address ?? "",
+              url: node.url,
+              kind: "property",
+            },
+          ]
+        : data.properties;
+      const children = buildLevel(items, node.url);
+      setTree((t) => patchNode(t, node.uid, { loading: false, children, error: null }));
+      // Anything near campus inside a folder starts ticked, same rule as the
+      // top level, so opening "St. Louis" does the obvious thing.
+      const auto = [];
+      walkTree(children, (c) => {
+        if (c.kind === "property" && nearCampus(c)) auto.push(c.id);
+      });
+      if (auto.length) setSelected((s) => new Set([...s, ...auto]));
+    } catch {
+      setTree((t) =>
+        patchNode(t, node.uid, {
+          loading: false,
+          children: [],
+          error: "Network error. Try opening it again.",
+        })
+      );
+    }
   };
 
-  const goToCrumb = (idx) => {
-    // idx -1 = the pasted site's top level
-    const nextCrumbs = idx < 0 ? [] : crumbs.slice(0, idx + 1);
-    const levelUrl = idx < 0 ? url.trim() : nextCrumbs.at(-1).url;
-    setCrumbs(nextCrumbs);
-    const cached = levelCache.current.get(levelUrl);
-    if (cached) setChoices(cached);
-    else requestDraft(null, levelUrl);
-  };
-
-  const toggleSelected = (p) =>
+  // ---------------------------------------------------------------- selection
+  const toggleOne = (node) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      const k = keyOf(p);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
+      if (next.has(node.id)) next.delete(node.id);
+      else next.add(node.id);
       return next;
     });
 
-  // Every checked entry of a kind, across all seen levels, in cache order.
-  const allSelected = (kind) => {
-    const picks = [];
-    const seen = new Set();
-    for (const [levelUrl, list] of levelCache.current.entries()) {
-      if (levelUrl === COMBINED) continue;
-      for (const p of list) {
-        const k = keyOf(p);
-        const isGroup = p.kind === "group";
-        if ((kind === "group") === isGroup && selected.has(k) && !seen.has(k)) {
-          seen.add(k);
-          picks.push({
-            name: p.name,
-            address: p.address ?? "",
-            url: p.url || null,
-            kind: p.kind,
-            // Which page this property was listed on. The queue re-reads that
-            // page rather than the pasted homepage, so a building found three
-            // levels deep is extracted from the page that actually describes
-            // it — and its own domain can be cleared against that page's links.
-            levelUrl,
-          });
-        }
-      }
-    }
-    return picks;
+  // Every loaded property in the tree, deduped by identity, richest copy kept.
+  const allProperties = useMemo(() => {
+    const byId = new Map();
+    const score = (p) => (p.url ? 2 : 0) + (p.address ? 1 : 0);
+    walkTree(tree, (n) => {
+      if (n.kind !== "property") return;
+      const prev = byId.get(n.id);
+      if (!prev || score(n) > score(prev)) byId.set(n.id, n);
+    });
+    return [...byId.values()];
+  }, [tree]);
+
+  const selectedProps = useMemo(
+    () => allProperties.filter((p) => selected.has(p.id)),
+    [allProperties, selected]
+  );
+
+  const setAll = (on) => {
+    const ids = [];
+    walkTree(tree, (n) => {
+      if (n.kind === "property") ids.push(n.id);
+    });
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => (on ? next.add(id) : next.delete(id)));
+      return next;
+    });
   };
 
-  // Checked folders resolve (in parallel) into one combined property list.
-  const resolveGroups = async (groups, looseProps) => {
-    setPhase("groups");
-    setError(null);
-    setGroupProgress({ done: 0, total: groups.length });
-    const collected = [];
-    let cursor = 0;
-    const worker = async () => {
-      for (;;) {
-        const g = groups[cursor++];
-        if (!g) return;
-        try {
-          const list = await fetchLevel(g.url);
-          collected.push(...list.filter((p) => p.kind !== "group"));
-        } catch {
-          /* unreadable area: skip it */
-        } finally {
-          setGroupProgress((p) => ({ ...p, done: p.done + 1 }));
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(3, groups.length) }, worker));
+  const setBranch = (node, on) => {
+    const ids = [];
+    walkTree(node.children, (n) => {
+      if (n.kind === "property") ids.push(n.id);
+    });
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => (on ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  };
 
-    const merged = [];
-    const seen = new Set();
-    for (const p of [...collected, ...looseProps]) {
-      const k = keyOf(p).toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        merged.push(p);
-      }
+  // ------------------------------------------------------------------- import
+  const importSelected = async () => {
+    if (!selectedProps.length) {
+      setError("Tick at least one property first.");
+      return;
     }
-    if (!merged.length) {
+    const [first, ...rest] = selectedProps;
+    const payload = (p) => ({
+      name: p.name,
+      address: p.address || "",
+      url: p.url,
+      levelUrl: p.levelUrl,
+    });
+    startLoading();
+    try {
+      const { ok, data } = await apiCall(first.levelUrl || pastedRef.current, {
+        name: first.name,
+        address: first.address || "",
+        url: first.url,
+      });
+      stopLoading();
+      if (!ok || !data.listing) {
+        setPhase("picker");
+        setError(
+          data.error ||
+            `We couldn't read ${first.name}. Untick it and import the rest, or fill that one in by hand.`
+        );
+        return;
+      }
+      setPhase("done");
+      onApply(data.listing, {
+        sourceUrl: data.sourceUrl,
+        pastedUrl: pastedRef.current,
+        queue: rest.map(payload),
+      });
+    } catch {
+      stopLoading();
       setPhase("picker");
-      setError("We couldn't find rentable properties in those areas.");
-      return;
+      setError("Network error. Please try again.");
     }
-    const ordered = orderChoices(merged);
-    levelCache.current.set(COMBINED, ordered);
-    setCrumbs([{ label: "Your selection", url: COMBINED }]);
-    setSelected(new Set(defaultChecked(ordered).map(keyOf)));
-    setChoices(ordered);
-    setPhase("picker");
   };
 
-  const importSelected = () => {
-    const groups = allSelected("group").filter((g) => g.url);
-    const props = allSelected("property");
-    if (groups.length) {
-      resolveGroups(groups, props);
-      return;
-    }
-    if (!props.length) {
-      setError("Check at least one property first.");
-      return;
-    }
-    pendingRef.current = props
-      .slice(1)
-      .map((p) => ({
-        name: p.name,
-        address: p.address || "",
-        url: p.url,
-        levelUrl: p.levelUrl,
-      }));
-    requestDraft(
-      { name: props[0].name, address: props[0].address || "", url: props[0].url },
-      props[0].levelUrl || url.trim()
-    );
+  const reset = () => {
+    setPhase("idle");
+    setTree([]);
+    setSelected(new Set());
+    setFilter("");
+    setError(null);
   };
 
   if (phase === "done") return null; // parent shows the import summary banner
 
-  const groupCount = allSelected("group").filter((g) => g.url).length;
-  const propCount = allSelected("property").length;
+  // --------------------------------------------------------------- rendering
+  const totalRows = allProperties.length;
+  const q = filter.trim().toLowerCase();
+  const matches = (n) => !q || `${n.name} ${n.address}`.toLowerCase().includes(q);
+  // A folder stays visible while filtering if it, or anything already loaded
+  // inside it, matches.
+  const branchMatches = (n) => {
+    if (matches(n)) return true;
+    let hit = false;
+    walkTree(n.children, (c) => {
+      if (matches(c)) hit = true;
+    });
+    return hit;
+  };
+
+  const renderRows = (nodes, depth = 0) =>
+    (nodes ?? []).filter(branchMatches).map((n) =>
+      n.kind === "property" ? (
+        <label
+          key={n.uid}
+          style={{ paddingLeft: `${12 + depth * 18}px` }}
+          className={`flex cursor-pointer items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
+            selected.has(n.id)
+              ? "border-red-500 bg-red-50"
+              : "border-gray-200 bg-white hover:border-red-300"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={selected.has(n.id)}
+            onChange={() => toggleOne(n)}
+            className="h-4 w-4 shrink-0 accent-red-600"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium text-gray-900">{n.name}</span>
+            {n.address &&
+              n.address.toLowerCase().replace(/[.\s]+$/, "") !==
+                n.name.toLowerCase().replace(/[.\s]+$/, "") && (
+                <span className="block truncate text-xs text-gray-500">{n.address}</span>
+              )}
+          </span>
+          {nearCampus(n) && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+              <MapPin className="h-3 w-3" /> Near WashU
+            </span>
+          )}
+        </label>
+      ) : (
+        <div key={n.uid}>
+          <button
+            type="button"
+            onClick={() => toggleFolder(n)}
+            style={{ paddingLeft: `${12 + depth * 18}px` }}
+            className="flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 py-2 pr-3 text-left text-sm transition-colors hover:border-red-300 hover:bg-red-50/40"
+          >
+            {n.open ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+            )}
+            {n.open ? (
+              <FolderOpen className="h-4 w-4 shrink-0 text-gray-500" />
+            ) : (
+              <Folder className="h-4 w-4 shrink-0 text-gray-500" />
+            )}
+            <span className="min-w-0 flex-1 truncate font-medium text-gray-900">
+              {n.name}
+            </span>
+            {n.loading ? (
+              <span className="flex shrink-0 items-center gap-1 text-xs text-gray-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" /> Opening…
+              </span>
+            ) : (
+              <span className="shrink-0 text-xs text-gray-500">
+                {n.children ? `${n.children.length} inside` : "Click to open"}
+              </span>
+            )}
+          </button>
+
+          {n.open && n.error && (
+            <p
+              style={{ paddingLeft: `${34 + depth * 18}px` }}
+              className="py-1.5 text-xs text-red-600"
+            >
+              {n.error}
+            </p>
+          )}
+
+          {n.open && n.children?.length > 0 && (
+            <div className="mt-1 space-y-1">
+              <div
+                style={{ paddingLeft: `${34 + depth * 18}px` }}
+                className="flex items-center gap-3 pb-0.5 text-xs"
+              >
+                <button
+                  type="button"
+                  onClick={() => setBranch(n, true)}
+                  className="font-medium text-red-600 hover:underline"
+                >
+                  Tick all in here
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBranch(n, false)}
+                  className="text-gray-500 hover:text-gray-700 hover:underline"
+                >
+                  Untick all
+                </button>
+              </div>
+              {renderRows(n.children, depth + 1)}
+            </div>
+          )}
+
+          {n.open && n.children?.length === 0 && !n.error && (
+            <p
+              style={{ paddingLeft: `${34 + depth * 18}px` }}
+              className="py-1.5 text-xs text-gray-500"
+            >
+              Nothing to list in here.
+            </p>
+          )}
+        </div>
+      )
+    );
 
   return (
     <div
@@ -396,7 +593,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
       }
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100 pt-0">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
           <Globe className="h-4 w-4 text-red-600" />
         </div>
         <div className="min-w-0 flex-1">
@@ -413,19 +610,15 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
               {LOADING_STEPS[stepIdx]}
               <span className="text-xs text-gray-400">{elapsed}s</span>
             </div>
-          ) : phase === "groups" ? (
-            <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
-              <Loader2 className="h-4 w-4 animate-spin text-red-600" />
-              Reading your areas… {groupProgress.done} of {groupProgress.total}
-            </div>
           ) : phase === "pms" ? (
             <div className="mt-3 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700">
-              Looks like your listings run on <span className="font-semibold">{pmsName}</span>.
-              Instead of a one-time import, you can connect it once and your listings
-              will create and update themselves.
+              Looks like your listings run on{" "}
+              <span className="font-semibold">{pmsName}</span>. Instead of a one-time
+              import, you can connect it once and your listings will create and update
+              themselves.
               <p className="mt-1.5 text-xs text-gray-500">
-                Heads up: syncing needs a {pmsName} plan that includes API access.
-                Not sure yours does? Import from your website instead.
+                Heads up: syncing needs a {pmsName} plan that includes API access. Not
+                sure yours does? Import from your website instead.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
                 <Link
@@ -438,7 +631,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
                   type="button"
                   onClick={() => {
                     skipPmsRef.current = true;
-                    requestDraft(null);
+                    readSite();
                   }}
                   className="font-medium text-gray-700 hover:text-red-600 hover:underline"
                 >
@@ -447,7 +640,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
               </div>
               <button
                 type="button"
-                onClick={() => setPhase("idle")}
+                onClick={reset}
                 className="mt-1.5 text-xs text-gray-500 hover:text-gray-700"
               >
                 Try a different address instead
@@ -455,137 +648,72 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
             </div>
           ) : phase === "picker" ? (
             <div className="mt-3">
-              {/* Breadcrumbs when drilled into an area */}
-              {crumbs.length > 0 && (
-                <div className="mb-2 flex flex-wrap items-center gap-1 text-xs text-gray-500">
-                  <button
-                    type="button"
-                    onClick={() => goToCrumb(-1)}
-                    className="font-medium text-red-600 hover:underline"
-                  >
-                    All properties
-                  </button>
-                  {crumbs.map((c, i) => (
-                    <span key={i} className="flex items-center gap-1">
-                      <ChevronRight className="h-3 w-3" />
-                      {i === crumbs.length - 1 ? (
-                        <span className="text-gray-700">{c.label}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => goToCrumb(i)}
-                          className="font-medium text-red-600 hover:underline"
-                        >
-                          {c.label}
-                        </button>
-                      )}
-                    </span>
-                  ))}
+              <p className="text-sm font-medium text-gray-800">
+                We found {totalRows} propert{totalRows === 1 ? "y" : "ies"} on your
+                website. Tick the ones you want on Proximity.
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Anything we could place near WashU is ticked already. Open a folder to
+                see what is inside it.
+              </p>
+
+              {totalRows > FILTER_THRESHOLD && (
+                <div className="relative mt-2.5">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder="Search by name or address"
+                    className="w-full rounded-lg border border-gray-300 py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
                 </div>
               )}
 
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-gray-800">
-                  Check everything you want to list. Folders are whole areas; we
-                  gather the properties inside the ones you check.
-                </p>
-                {choices.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelected((prev) => {
-                        const next = new Set(prev);
-                        const allOn = choices.every((p) => next.has(keyOf(p)));
-                        choices.forEach((p) =>
-                          allOn ? next.delete(keyOf(p)) : next.add(keyOf(p))
-                        );
-                        return next;
-                      })
-                    }
-                    className="shrink-0 text-xs font-medium text-red-600 hover:underline"
-                  >
-                    {choices.every((p) => selected.has(keyOf(p))) ? "Clear all" : "Select all"}
-                  </button>
-                )}
-              </div>
-
-              <div className="mt-2 grid max-h-64 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
-                {choices.map((p, i) => (
-                  <label
-                    key={i}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border bg-white px-3 py-2 text-left text-sm transition-colors ${
-                      selected.has(keyOf(p))
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300 hover:border-red-400"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(keyOf(p))}
-                      onChange={() => toggleSelected(p)}
-                      className="accent-red-600"
-                    />
-                    {p.kind === "group" && (
-                      <Folder className="h-4 w-4 shrink-0 text-gray-400" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-gray-800">
-                        {p.name}
-                      </span>
-                      {p.address &&
-                        p.address.toLowerCase().replace(/[.\s]+$/, "") !==
-                          p.name.toLowerCase().replace(/[.\s]+$/, "") && (
-                          <span className="block truncate text-xs text-gray-500">
-                            {p.address}
-                          </span>
-                        )}
-                    </span>
-                    {p.kind === "group" && p.url && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          drillInto(p);
-                        }}
-                        title="Open this area"
-                        className="shrink-0 rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-red-500"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    )}
-                  </label>
-                ))}
-              </div>
-
-              <div className="mt-2 flex items-center gap-3">
-                {(groupCount > 0 || propCount > 0) && (
-                  <button
-                    type="button"
-                    onClick={importSelected}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {groupCount > 0
-                      ? `Gather properties (${groupCount} area${groupCount > 1 ? "s" : ""}${
-                          propCount ? ` + ${propCount}` : ""
-                        })`
-                      : `Import ${propCount > 1 ? `${propCount} properties` : "selected"}`}
-                  </button>
-                )}
+              <div className="mt-2 flex items-center gap-3 text-xs">
                 <button
                   type="button"
-                  onClick={() => {
-                    setPhase("idle");
-                    setChoices([]);
-                    setCrumbs([]);
-                    setSelected(new Set());
-                    levelCache.current = new Map();
-                  }}
+                  onClick={() => setAll(true)}
+                  className="font-medium text-red-600 hover:underline"
+                >
+                  Tick everything
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAll(false)}
+                  className="text-gray-500 hover:text-gray-700 hover:underline"
+                >
+                  Untick everything
+                </button>
+              </div>
+
+              <div className="mt-2 max-h-[55vh] space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                {renderRows(tree)}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={importSelected}
+                  disabled={!selectedProps.length}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {selectedProps.length === 1
+                    ? "Import 1 property"
+                    : `Import ${selectedProps.length} properties`}
+                </button>
+                <button
+                  type="button"
+                  onClick={reset}
                   className="text-xs text-gray-500 hover:text-gray-700"
                 >
                   ← Different website
                 </button>
               </div>
+              <p className="mt-1.5 text-xs text-gray-500">
+                You review and publish each one yourself. Nothing goes live from here.
+              </p>
             </div>
           ) : (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -597,7 +725,7 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    requestDraft(null);
+                    readSite();
                   }
                 }}
                 placeholder="yourproperty.com"
@@ -606,16 +734,16 @@ export default function ListingDraftImport({ onApply, disabled, embedded = false
               />
               <button
                 type="button"
-                onClick={() => requestDraft(null)}
+                onClick={() => readSite()}
                 disabled={disabled}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
               >
-                <Sparkles className="h-4 w-4" /> Build my listing
+                <Sparkles className="h-4 w-4" /> Find my properties
               </button>
             </div>
           )}
 
-          {error && phase !== "loading" && phase !== "groups" && (
+          {error && phase !== "loading" && (
             <p className="mt-2 text-xs text-red-600">{error}</p>
           )}
         </div>

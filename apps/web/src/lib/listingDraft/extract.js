@@ -38,6 +38,18 @@ const UnitSchema = z.object({
   rentBasis: z.enum(["total", "per_person", "unknown"]),
   area: z.number().nullable(),
   title: z.string().nullable(),
+  /*
+   * The site's own identifiers for the physical units on this floor plan:
+   * "2W", "3E", "101", or a name like "Madrid". An ARRAY on purpose — the
+   * schema is at its 16 nullable/union field ceiling (see availableFrom), and
+   * arrays don't count against it.
+   *
+   * These map to listing_units.unit_designator + unit_number. Before this
+   * existed the model had nowhere to put a unit id, so it filed them under
+   * `title`, and importing One Hundred Above the Park wrote "100N101a" into
+   * the floor-plan name box.
+   */
+  unitNames: z.array(z.string()),
   floorPlanImageUrl: z.string().nullable(),
   // "now", "YYYY-MM-DD", or null when the site doesn't say. NOTE: the API caps
   // structured-output schemas at 16 nullable/union fields and this is #16 —
@@ -86,10 +98,10 @@ Rules, in order of importance:
 2. Every field is nullable: when the pages don't state a fact, return null (or omit from arrays). Do not pad, estimate, or average.
 2b. ADDRESS: return the most complete address the pages state. A street-only address like "718 Limit" or "723 Interdrive" IS worth returning — the landlord confirms the full address from a dropdown afterwards. Never invent a city, state, or zip the pages don't show.
 3. RENT: Proximity stores rent for the WHOLE unit per month. If the site gives a price per person / per bed / per room, or you cannot tell which convention it uses, set rent to null, set rentBasis accordingly ("per_person" or "unknown"), and add a sourceNote quoting the price you saw. Only set a rent number when you are confident it is the whole-unit monthly price (then rentBasis "total"). Prices like "$TBD" or "call for pricing" are null.
-4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its URL from CANDIDATE LINKS if one clearly matches; use an empty string "" for an unknown address or url, never invent one). A URL from CANDIDATE LINKS counts whether it sits on this site or on a building's own dedicated website, which large management companies routinely give each property (a link whose text or surrounding card names that building). Only ever use a URL exactly as it appears in CANDIDATE LINKS. and set "listing" to null. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
+4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its URL from CANDIDATE LINKS if one clearly matches; use an empty string "" for an unknown address or url, never invent one), and set "listing" to null. A URL from CANDIDATE LINKS counts whether it sits on this site or on a building's own dedicated website, which large management companies routinely give each property (a link whose text or surrounding card names that building). Only ever use a URL exactly as it appears in CANDIDATE LINKS. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
 4c. RENTALS ONLY, RESIDENTIAL ONLY: Proximity lists residential rentals. Exclude commercial, office, retail, industrial, land, and self-storage properties, AND anything offered FOR SALE (homes for sale, "buy" sections) — from "properties" (including group entries: never list a for-sale or commercial section as a group) and from any listing, even when the site mixes them with rentals. When you genuinely can't tell, include it.
 4b. GROUPS vs PROPERTIES: each entry gets a "kind". A neighborhood, area, city, or category page (e.g. "Central West End", "Clayton", "Our Communities") is kind "group", never a property; the landlord will open it to see the actual buildings inside. So is a site section that leads to the residential rentals, but ONLY when the buildings themselves aren't on the current page (e.g. "Apartments for Rent", "Available Rentals", "Our Properties" from CANDIDATE LINKS). When the individual properties ARE already listed here, never also return a nav/section link ("Find Your Home", "Our Properties") as a group — it would duplicate them. An individual building or complex with its own name or street address is kind "property". When the page shows both (areas AND some buildings), list both with correct kinds. Never return an empty properties list when the site clearly has a rentals section you can point to as a group. Never invent a listing from a group page's teaser text.
-5. UNITS are floor-plan types (e.g. "2 bed / 1 bath"), not physical apartments. Collapse repeats. When the page lists one bathrooms value alongside several bedroom options (e.g. "Bedrooms: 1/2/3, Bathrooms: 1"), apply that bathroom count to each floor plan rather than leaving it null (add a sourceNote); reserve null for when the page gives no bathroom information at all. "title" is the floor plan's marketing name if the site uses one (e.g. "The Loft"). STUDIOS: record a studio as bedrooms 0, and put "Studio" in the unit's title (unless the site gives it a specific name). AVAILABILITY: when the site states when a unit is available, set availableFrom: "now" for "available now/immediately", or the date as YYYY-MM-DD (infer the year sensibly for month-day dates: the next occurrence). Null when not stated.
+5. UNITS are floor-plan types (e.g. "2 bed / 1 bath"), not physical apartments. Collapse repeats. When the page lists one bathrooms value alongside several bedroom options (e.g. "Bedrooms: 1/2/3, Bathrooms: 1"), apply that bathroom count to each floor plan rather than leaving it null (add a sourceNote); reserve null for when the page gives no bathroom information at all. "title" is the floor plan's marketing NAME if the site markets one (e.g. "The Loft", "Garden Two Bed") and nothing else: never put a unit or apartment identifier there, and never invent a name out of the bed/bath count. When the site instead identifies the individual apartments on this floor plan (e.g. "2W", "3E", "Unit 101", "100N101a", or a name the building uses like "Madrid"), list those identifiers in "unitNames" and leave "title" null unless a separate marketing name really exists. Return unitNames as an empty array when the site names no individual units. STUDIOS: record a studio as bedrooms 0, and put "Studio" in the unit's title (unless the site gives it a specific name). AVAILABILITY: when the site states when a unit is available, set availableFrom: "now" for "available now/immediately", or the date as YYYY-MM-DD (infer the year sensibly for month-day dates: the next occurrence). Null when not stated.
 6. AMENITIES: map what the site states onto the allowed enum values; anything real that doesn't fit (e.g. "EV charging", "rooftop pool" beyond "pool"/"rooftop") goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
 7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
 7b. FLOOR PLANS: a floor-plan diagram that clearly belongs to one specific unit type goes in that unit's floorPlanImageUrl (exact candidate URL) and NOT in imageUrls. Floor plans you can't match to a specific unit go at the END of imageUrls — students want them either way. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
@@ -169,6 +181,20 @@ function salvageDraft(raw) {
 
   return properties.length ? { properties, listing: null } : null;
 }
+
+/*
+ * A floor-plan name is prose ("The Loft", "Garden Two Bed"). A unit identifier
+ * is a short code with a digit in it ("2W", "101", "100N101a"). The model is
+ * told the difference, but it filed unit codes under `title` often enough to be
+ * worth a backstop: anything that reads like a code moves to unitNames, where
+ * the form turns it into a real listing_units row instead of a floor-plan name
+ * no student would recognise.
+ */
+const looksLikeUnitCode = (s) => {
+  const t = (s ?? "").trim();
+  if (!t || t.length > 12 || /\s/.test(t)) return false;
+  return /\d/.test(t) && /^[A-Za-z0-9][A-Za-z0-9./-]*$/.test(t);
+};
 
 // Same belt-and-suspenders as Lease Check: no em dash ever reaches the form.
 function stripEmDashes(value) {
@@ -295,10 +321,21 @@ export async function extractListingDraft({ pages, images, links, targetProperty
       .slice(0, 12);
     // A rent the model wasn't sure is whole-unit must never prefill the form,
     // and unit floor plans must also come from the offered candidates.
-    draft.listing.units = (draft.listing.units ?? []).map((u) => ({
+    draft.listing.units = (draft.listing.units ?? []).map((u) => {
+      // A unit code in the name box helps nobody; move it where it belongs.
+      const names = [...(u.unitNames ?? [])];
+      let title = u.title;
+      if (looksLikeUnitCode(title)) {
+        if (!names.some((n) => n.toLowerCase() === title.trim().toLowerCase())) {
+          names.push(title.trim());
+        }
+        title = null;
+      }
+      return {
       ...u,
+      unitNames: names.filter((n) => typeof n === "string" && n.trim()).slice(0, 60),
       // Studios import as 0-bed, titled "Studio" so the type stays visible.
-      title: u.bedrooms === 0 ? u.title || "Studio" : u.title,
+      title: u.bedrooms === 0 ? title || "Studio" : title,
       rent: u.rentBasis === "total" ? u.rent : null,
       availableFrom:
         u.availableFrom === "now" || /^\d{4}-\d{2}-\d{2}$/.test(u.availableFrom ?? "")
@@ -308,7 +345,8 @@ export async function extractListingDraft({ pages, images, links, targetProperty
         u.floorPlanImageUrl && offered.has(u.floorPlanImageUrl)
           ? u.floorPlanImageUrl
           : null,
-    }));
+      };
+    });
   }
   return draft;
 }

@@ -116,7 +116,18 @@ export function parseUnitNumbers(designator, raw) {
         continue;
       }
     }
-    out.push(token.toUpperCase());
+    out.push(normalizeUnitToken(token));
   }
   return Array.from(new Set(out));
+}
+
+/*
+ * "2w" is a code and reads better as "2W". "Madrid" is a name and reading it
+ * back as "MADRID" looks like shouting — buildings that name their apartments
+ * after cities (Clocktower does) had every one of them upper-cased. Uppercase
+ * the codes, leave real words as the landlord typed them.
+ */
+function normalizeUnitToken(token) {
+  const isCode = /\d/.test(token) || token.length <= 2;
+  return isCode ? token.toUpperCase() : token;
 }

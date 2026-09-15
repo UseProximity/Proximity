@@ -3,14 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
-import { PencilLine, Globe } from "lucide-react";
+import Image from "next/image";
+import { PencilLine, Globe, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
 
 /*
  * Full-page "Add Listing" for landlords (and super).
  *
- * Two paths now. Typing a listing in by hand goes through AddListingFlow, which
+ * Two paths. Typing a listing in by hand goes through AddListingFlow, which
  * asks the address first and only asks for what that answer doesn't already
  * tell us — so adding one apartment to a building already on the site skips
  * re-describing the building.
@@ -30,10 +31,13 @@ export default function AddListingPage() {
   /*
    * Which path they picked lives in the URL rather than in state, so Back from
    * the flow lands on the fork instead of leaving the page entirely.
-   * "manual" is the new flow, "assisted" the old wizard.
+   * "manual" is the new flow, "assisted" the old wizard. `site` carries the
+   * address typed on the fork so the import starts on arrival rather than
+   * making them type it again.
    */
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
+  const site = searchParams.get("site") ?? "";
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
   useEffect(() => {
@@ -55,6 +59,7 @@ export default function AddListingPage() {
       ) : mode === "assisted" ? (
         <AddListingWizard
           user={user}
+          initialImportUrl={site}
           onClose={() => setMode(null)}
           onSuccess={() => {
             toast.success("Listing published!");
@@ -62,43 +67,134 @@ export default function AddListingPage() {
           }}
         />
       ) : (
-        <StartChoice onPick={setMode} />
+        <StartChoice
+          onManual={() => setMode("manual")}
+          onImport={(address) =>
+            router.push(
+              `/add-listing?mode=assisted${
+                address ? `&site=${encodeURIComponent(address)}` : ""
+              }`
+            )
+          }
+        />
       )}
     </div>
   );
 }
 
+const PMS_LOGOS = [
+  { label: "Buildium", logo: "/pms-logos/buildium.png" },
+  { label: "AppFolio", logo: "/pms-logos/appfolio.png" },
+  { label: "DoorLoop", logo: "/pms-logos/doorloop.png" },
+  { label: "Rentec Direct", logo: "/pms-logos/rentecdirect.png" },
+];
+
 /*
- * The fork, lifted out of the wizard's own first step so the manual path never
- * mounts the wizard at all.
+ * All three ways in, on the first screen, with the website box ready to type
+ * into. It used to take three clicks to reach that box: pick "import" here,
+ * pick "import" again inside the wizard, then open the box. A landlord who came
+ * to paste their website address should be able to paste it.
  */
-function StartChoice({ onPick }) {
+function StartChoice({ onManual, onImport }) {
+  const [address, setAddress] = useState("");
   const card =
-    "group flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:border-red-400 hover:bg-red-50/50";
+    "flex w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left";
+  const clickable =
+    "group transition hover:border-red-400 hover:bg-red-50/50 cursor-pointer";
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="text-2xl font-bold text-gray-900">List your place</h1>
-      <p className="mb-6 mt-1 text-sm text-gray-500">How would you like to start?</p>
+      <p className="mb-6 mt-1 text-sm text-gray-500">
+        Pick whichever is easiest. You review everything before it goes live.
+      </p>
+
       <div className="space-y-3">
-        <button type="button" className={card} onClick={() => onPick("manual")}>
+        {/* 1. The fast path, with the box right here. */}
+        <div className={`${card} border-red-200 bg-white`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+            <Globe className="h-5 w-5 text-red-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
+              Import from your website
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                Fastest
+              </span>
+            </p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Paste your address below and we pull in your photos, units and details.
+              You pick which properties to list.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                inputMode="url"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (address.trim()) onImport(address.trim());
+                  }
+                }}
+                placeholder="yourproperty.com"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+              <button
+                type="button"
+                onClick={() => onImport(address.trim())}
+                disabled={!address.trim()}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4" /> Find my properties
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. PMS sync. */}
+        <button
+          type="button"
+          onClick={() => onImport("")}
+          className={`${card} ${clickable}`}
+        >
+          <div className="flex shrink-0 -space-x-2 pt-0.5">
+            {PMS_LOGOS.map((p) => (
+              <Image
+                key={p.label}
+                src={p.logo}
+                alt={p.label}
+                title={p.label}
+                width={56}
+                height={56}
+                className="h-8 w-8 rounded-full border border-gray-200 bg-white object-contain p-1 shadow-sm"
+              />
+            ))}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
+              I use Buildium, AppFolio, DoorLoop or Rentec
+              <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                Beta
+              </span>
+            </p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Connect once. Your listings create and update themselves.
+            </p>
+          </div>
+          <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 group-hover:text-red-500" />
+        </button>
+
+        {/* 3. By hand. */}
+        <button type="button" onClick={onManual} className={`${card} ${clickable}`}>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100">
             <PencilLine className="h-5 w-5 text-gray-600" />
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900">Type it in</p>
-            <p className="text-xs text-gray-500">
-              Enter property/lease information manually.
-            </p>
-          </div>
-        </button>
-        <button type="button" className={card} onClick={() => onPick("assisted")}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100">
-            <Globe className="h-5 w-5 text-gray-600" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900">Import from a website or your PMS</p>
-            <p className="text-xs text-gray-500">
-              We&apos;ll pull the details in and you review them.
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900">Type it in myself</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              A few quick questions. About 4 minutes.
             </p>
           </div>
         </button>

@@ -52,7 +52,7 @@ const blankForm = (user) => ({
   lease_availability: [],
 });
 
-export default function AddListingWizard({ user, onClose, onSuccess }) {
+export default function AddListingWizard({ user, onClose, onSuccess, initialImportUrl = "" }) {
   const [stepId, setStepId] = useState("start"); // "start" | STEPS ids
   const [form, setForm] = useState(() => blankForm(user));
   const [units, setUnits] = useState([emptyUnit()]);
@@ -513,6 +513,14 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
         }
         if (u.floorPlanImageUrl) floorPlanImports.push({ index: i, url: u.floorPlanImageUrl });
+        /*
+         * The site's own unit identifiers ("2W", "101", "Madrid") fill in the
+         * "which units have this floor plan?" boxes, so each one becomes its
+         * own listing_units row with its own lease. They used to have nowhere
+         * to go and were landing in the floor-plan name box instead.
+         */
+        const names = (u.unitNames ?? []).filter((n) => typeof n === "string" && n.trim());
+        if (names.length) marked.add(`u${i}:unitNumbers`);
         return {
           bedrooms: u.bedrooms ?? "",
           bathrooms: u.bathrooms ?? "",
@@ -522,6 +530,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           title: u.title ?? "",
           floorPlanImageUrl: "",
           leaseTermMonths: [],
+          designator: names.length ? "Unit" : "",
+          unitNumbers: names.join(", "),
         };
       });
     }
@@ -1023,7 +1033,14 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const renderStep = () => {
     switch (stepId) {
       case "start":
-        return <StepStart w={w} onBegin={() => goTo("address")} showScratch={false} />;
+        return (
+          <StepStart
+            w={w}
+            onBegin={() => goTo("address")}
+            showScratch={false}
+            initialImportUrl={initialImportUrl}
+          />
+        );
       case "address":
         return <StepAddress w={w} />;
       case "basics":

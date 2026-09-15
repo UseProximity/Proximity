@@ -169,59 +169,85 @@ export default function StepUnits({ w }) {
                 w.attachingToExistingUnit ? " hidden" : ""
               }`}
             >
-              <p className="mb-1.5 text-xs font-medium text-gray-600">
-                Which units have this floor plan?
+              <p className="text-xs font-medium text-gray-700">
+                Which apartments have this floor plan?
               </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={unit.designator ?? ""}
-                  onChange={(e) => {
-                    w.updateUnit(i, "designator", e.target.value);
-                    if (e.target.value === "Whole") w.updateUnit(i, "unitNumbers", "");
-                  }}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                >
-                  <option value="">Type…</option>
-                  {UNIT_DESIGNATORS.map((d) => (
-                    <option key={d} value={d}>
-                      {d === "Whole" ? "Whole property" : d}
-                    </option>
-                  ))}
-                </select>
+              <p className="mb-2 text-[11px] text-gray-500">
+                List them however you refer to them. Each one becomes its own
+                unit with its own lease, so students can enquire about a
+                specific apartment.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-gray-500">
+                    Word in front
+                  </span>
+                  <select
+                    value={unit.designator ?? ""}
+                    onChange={(e) => {
+                      w.updateUnit(i, "designator", e.target.value);
+                      if (e.target.value === "Whole") w.updateUnit(i, "unitNumbers", "");
+                    }}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    <option value="">Choose…</option>
+                    {UNIT_DESIGNATORS.map((d) => (
+                      <option key={d} value={d}>
+                        {d === "Whole" ? "Whole property (no unit numbers)" : d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 {unit.designator !== "Whole" && (
-                  <input
-                    type="text"
-                    value={unit.unitNumbers ?? ""}
-                    onChange={(e) => w.updateUnit(i, "unitNumbers", e.target.value)}
-                    disabled={!unit.designator}
-                    placeholder="2W, 2E, 3W, 3E — or 1-4"
-                    className={`${inputCls} w-64 disabled:bg-gray-100`}
-                  />
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-gray-500">
+                      Their numbers or names
+                    </span>
+                    <input
+                      type="text"
+                      value={unit.unitNumbers ?? ""}
+                      onChange={(e) => w.updateUnit(i, "unitNumbers", e.target.value)}
+                      disabled={!unit.designator}
+                      placeholder="2W, 3E, 4W — or Madrid, Lisbon — or 1-4"
+                      className={`${inputCls} w-72 disabled:bg-gray-100`}
+                    />
+                  </label>
                 )}
               </div>
 
               <p className="mt-1.5 text-[11px] text-gray-500">
                 {unit.designator === "Whole"
-                  ? "One unit covering the whole property."
+                  ? "One unit covering the whole property. Right for a single-family house."
                   : parsedCounts[i] > 0
                   ? `Creates ${parsedCounts[i]} ${
                       parsedCounts[i] === 1 ? "unit" : "units"
                     }, each with its own lease: ${parsedUnitLists[i]}`
-                  : "Separate with commas. Pick “Whole property” for a single-family house."}
+                  : unit.designator
+                  ? "Separate with commas. Numbers, letters or names all work. A range like 1-4 fills itself in."
+                  : "The word in front is only what students see before the number, like “Apt 2W”. Pick “Whole property” for a house."}
               </p>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-              <input
-                type="text"
-                value={unit.title ?? ""}
-                onChange={(e) => w.updateUnit(i, "title", e.target.value)}
-                placeholder='Floor plan name (optional), e.g. "The Loft"'
-                className={`w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
-                  w.importedFields.has(`u${i}:title`) ? importedInputCls : ""
-                }`}
-              />
+            <div className="mt-4">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-700">
+                  Floor plan name (optional)
+                </span>
+                <input
+                  type="text"
+                  value={unit.title ?? ""}
+                  onChange={(e) => w.updateUnit(i, "title", e.target.value)}
+                  placeholder='e.g. "The Loft"'
+                  className={`w-72 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
+                    w.importedFields.has(`u${i}:title`) ? importedInputCls : ""
+                  }`}
+                />
+              </label>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Only if you market this layout under a name. Individual apartment
+                numbers go in the box above, not here.
+              </p>
             </div>
           </div>
         ))}
