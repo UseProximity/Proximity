@@ -32,6 +32,14 @@ const MAX_PER_LEVEL = 200;
 const FILTER_THRESHOLD = 12;
 
 /*
+ * A site with no more properties than this shows all of them, flat, with no
+ * "further from campus" line to open. Folding four buildings into a disclosure
+ * is worse than just listing them: the ordinary landlord with a handful of
+ * houses should see a handful of houses.
+ */
+const SMALL_SITE = 12;
+
+/*
  * Proximity only serves students around WashU, and a three-city management
  * company's list is mostly noise to them: Mac Properties has 124 buildings, 13
  * of them in St. Louis. Nothing is hidden (a landlord with an edge-case address
@@ -71,25 +79,117 @@ const nearCampus = (p) =>
 const levelIsNearCampus = (levelUrl) => !!levelUrl && nearCampus({ url: levelUrl });
 
 /*
- * One building, one identity, wherever it turns up.
+ * Positively somewhere else. Not the opposite of nearCampus: most of the time
+ * we simply cannot tell, and "cannot tell" must not mean "hide it".
  *
- * A property can appear at more than one level of the same site: Mac lists One
- * Hundred Above the Park on its homepage (linked to liveat100.com) and again
- * inside its St. Louis page (named in prose, with no link at all). Keying
- * selection on the URL made those two different rows, so ticking nine buildings
- * inside a folder reported eleven selected and queued two of them twice. The
- * name is the only field both copies always carry, so the name is the identity.
+ * Byron Company is the case that proved it. Every building they own is in St.
+ * Louis, but the extraction does not always return a city with the address, and
+ * on a run where it returned none the picker decided fourteen of their sixteen
+ * buildings were "further from campus" and folded them away. A local landlord
+ * should never have to go looking for their own houses.
+ *
+ * So a property is only set aside when the page actually places it somewhere
+ * else: a mailing address with a non-63xxx zip, or a city we can name. Anything
+ * unplaced is treated as ours and ticked, which is right far more often than it
+ * is wrong, and is one untick when it is wrong.
  */
-const identityOf = (p) =>
-  (p.name || p.url || "")
+const ZIP_ELSEWHERE_RE = /,\s*[A-Z]{2}\.?\s*(?!63\d{3})\d{5}\b/;
+const CITY_ELSEWHERE_RE =
+  /\b(chicago|kansas\s*city|springfield|columbia|indianapolis|nashville|memphis|louisville|cincinnati|cleveland|columbus|detroit|milwaukee|madison|minneapolis|st\.?\s*paul|des\s*moines|omaha|lincoln|wichita|topeka|tulsa|oklahoma\s*city|little\s*rock|fayetteville|dallas|houston|austin|denver|phoenix|atlanta|charlotte|raleigh|new\s*york|brooklyn|boston|philadelphia|baltimore|miami|orlando|tampa|seattle|portland|san\s*francisco|los\s*angeles|san\s*diego|las\s*vegas|salt\s*lake|boise|hyde\s*park)\b/i;
+
+const placedElsewhere = (p) =>
+  ZIP_ELSEWHERE_RE.test(p.address ?? "") ||
+  CITY_ELSEWHERE_RE.test(flatten(`${p.address ?? ""} ${p.url ?? ""}`));
+
+// Set aside only when we can place it somewhere that is not ours.
+const farAway = (p) => !nearCampus(p) && placedElsewhere(p);
+
+/*
+ * One building, one identity, wherever it turns up — without merging buildings
+ * that merely share a name.
+ *
+ * Two forces pull against each other here. Mac lists One Hundred Above the Park
+ * on its homepage (linked to liveat100.com) and again inside its St. Louis page
+ * (named in prose, no link at all); keying on the URL made those two rows, so
+ * ticking nine buildings reported eleven and queued two of them twice. But
+ * Altus Properties labels NINE different buildings "Pearl Street" on one page,
+ * each with its own link, so keying on the name alone collapses nine buildings
+ * into one.
+ *
+ * So: same link means the same building. Same name means the same building
+ * unless both links sit on the SAME host, which is the one case where a site is
+ * genuinely distinguishing two things it chose to give one label. Mac's
+ * Dorchester is dorchesterapartments.com in one place and a macapartments.com
+ * path in another — different hosts, one building. Altus's nine Pearl Streets
+ * are nine paths on altusproperties.com — same host, nine buildings.
+ */
+const nameKeyOf = (p) =>
+  (p.name || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+const urlKeyOf = (p) => {
+  if (!p.url) return null;
+  try {
+    const u = new URL(p.url);
+    return `${u.hostname.replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "")}`.toLowerCase();
+  } catch {
+    return p.url.toLowerCase();
+  }
+};
+
+const hostOf = (p) => {
+  if (!p.url) return null;
+  try {
+    return new URL(p.url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
+/*
+ * Give every property a stable id, reusing the id of a building already seen.
+ * `registry` is carried across levels, so a folder opened later resolves
+ * against what is already on screen. Returns the rows worth keeping: a repeat
+ * of something already listed is dropped rather than shown twice.
+ */
+function adopt(rows, registry) {
+  const kept = [];
+  for (const n of rows) {
+    if (n.kind !== "property") {
+      /*
+       * Folders need de-duplicating too. The inventory page carries the same
+       * city links as the front page, and dissolving it lifted them up beside
+       * the originals: Chicago, St. Louis and Kansas City each appeared twice.
+       */
+      const fkey = `folder:${urlKeyOf(n) ?? nameKeyOf(n)}`;
+      if (registry.some((e) => e.id === fkey)) continue;
+      registry.push({ nameKey: null, urlKey: null, host: null, id: fkey });
+      kept.push(n);
+      continue;
+    }
+    const nameKey = nameKeyOf(n);
+    const urlKey = urlKeyOf(n);
+    const host = hostOf(n);
+    const match = registry.find(
+      (e) =>
+        (urlKey && e.urlKey && e.urlKey === urlKey) ||
+        (!!nameKey && e.nameKey === nameKey && (!host || !e.host || e.host !== host))
+    );
+    if (match) continue; // already on screen; keep the copy we have
+    let id = urlKey || nameKey || `row-${registry.length}`;
+    while (registry.some((e) => e.id === id)) id = `${id}~${registry.length}`;
+    registry.push({ nameKey, urlKey, host, id });
+    kept.push({ ...n, id });
+  }
+  return kept;
+}
+
 let _uid = 0;
 const makeNode = (p, parentUrl) => ({
   uid: `n${++_uid}`,
-  id: identityOf(p),
+  id: nameKeyOf(p), // replaced by adopt() once the level is merged in
   name: p.name,
   address: p.address ?? "",
   url: p.url || null,
@@ -127,11 +227,9 @@ function buildLevel(items, levelUrl) {
   const folders = capped.filter((p) => p.kind === "group");
 
   return [
-    ...props.filter(nearCampus).map((p) => makeNode(p, levelUrl)),
+    ...props.filter((p) => !farAway(p)).map((p) => makeNode(p, levelUrl)),
     ...folders.map((f) => makeNode(f, levelUrl)),
-    ...props
-      .filter((p) => !nearCampus(p))
-      .map((p) => ({ ...makeNode(p, levelUrl), far: true })),
+    ...props.filter(farAway).map((p) => ({ ...makeNode(p, levelUrl), far: true })),
   ];
 }
 
@@ -146,12 +244,11 @@ function walkTree(nodes, fn, depth = 0) {
 // What starts ticked at a level: the near-campus buildings, or all of them when
 // we cannot place any (the ordinary single-city landlord).
 function defaultChecked(rows) {
-  const props = [];
+  const ids = [];
   walkTree(rows, (n) => {
-    if (n.kind === "property") props.push(n);
+    if (n.kind === "property" && !n.far) ids.push(n.id);
   });
-  const near = props.filter(nearCampus);
-  return (near.length ? near : props).map((p) => p.id);
+  return ids;
 }
 
 // Immutably replace one node, found by uid.
@@ -198,6 +295,9 @@ export default function ListingDraftImport({
   // Mirrors `tree` so folder loads can dedupe against what is already on screen
   // without closing over a stale copy of it.
   const treeRef = useRef([]);
+  // Every building seen so far, so a level opened later resolves against what
+  // is already on screen rather than repeating it. See adopt().
+  const registryRef = useRef([]);
 
   useEffect(
     () => () => {
@@ -283,7 +383,8 @@ export default function ListingDraftImport({
         });
         return;
       }
-      const rows = buildLevel(data.properties, pasted);
+      registryRef.current = [];
+      const rows = adopt(buildLevel(data.properties, pasted), registryRef.current);
       if (!rows.length) {
         setPhase("idle");
         setError(
@@ -367,53 +468,70 @@ export default function ListingDraftImport({
       })
     );
 
+    /*
+     * Merged outside setTree on purpose. This used to build its result by
+     * pushing into an array from inside the state updater, and React calls
+     * updaters twice in development to catch exactly that: every hoisted row
+     * was added twice, so the picker offered 216 rows for a 124-property site
+     * and React warned about duplicate keys. treeRef holds the same state
+     * without the trap.
+     */
+    const prev = treeRef.current;
     const hoisted = [];
-    setTree((prev) => {
-      const known = new Set();
-      walkTree(prev, (n) => {
-        if (n.kind === "property") known.add(n.id);
-      });
-
-      const leftovers = new Map(); // area uid -> what stays inside it
-      for (const { area, rows: children } of loaded) {
-        if (!children) {
-          leftovers.set(area.uid, null); // unreadable: leave the folder as it was
-          continue;
-        }
-        const keep = [];
-        for (const c of children) {
-          // The server offers its "all properties" folder on every level; it is
-          // only shown at the top, so it must not be the one thing keeping an
-          // emptied area folder alive.
-          if (c.kind === "folder" && c.source === "inventory") continue;
-          const isNearProperty = c.kind === "property" && !c.far;
-          if (isNearProperty && !known.has(c.id)) {
-            known.add(c.id);
-            hoisted.push(c);
-          } else if (c.kind !== "property" || !known.has(c.id)) {
-            keep.push(c); // further-out buildings and sub-areas stay put
-          }
-        }
-        leftovers.set(area.uid, keep);
+    const leftovers = new Map(); // area uid -> what stays inside it
+    for (const { area, rows: children } of loaded) {
+      if (!children) {
+        leftovers.set(area.uid, null); // unreadable: leave the folder as it was
+        continue;
       }
-
-      const next = [];
-      for (const n of prev) {
-        const keep = leftovers.has(n.uid) ? leftovers.get(n.uid) : undefined;
-        if (keep === undefined) {
-          next.push(n);
-        } else if (keep === null) {
-          next.push({ ...n, loading: false }); // could not read it
-        } else if (keep.length) {
-          next.push({ ...n, loading: false, children: keep, open: false });
+      /*
+       * The inventory folder is dissolved rather than kept. It held the whole
+       * site, so leaving it on screen produced a folder called "All properties
+       * on your website" sitting next to the properties, and a second "show N
+       * further from campus" line inside it beside the one outside it.
+       * Everything it held belongs on the level it came from.
+       */
+      const dissolve = area.source === "inventory";
+      const keep = [];
+      // adopt() drops anything already listed and hands back stable ids.
+      for (const c of adopt(children, registryRef.current)) {
+        // The server offers its "all properties" folder on every level; it is
+        // only shown at the top, so it must not be the one thing keeping an
+        // emptied area folder alive.
+        if (c.kind === "folder" && c.source === "inventory") continue;
+        if (c.kind === "property" && (!c.far || dissolve)) {
+          hoisted.push(c); // `far` survives, so it lands in the one list
+        } else if (dissolve) {
+          hoisted.push(c);
+        } else {
+          keep.push(c); // further-out buildings and sub-areas stay put
         }
-        // an area with nothing left in it is dropped: it is all on screen now
       }
-      return [...next, ...hoisted];
-    });
+      leftovers.set(area.uid, dissolve ? [] : keep);
+    }
 
-    if (hoisted.length) {
-      setSelected((sel) => new Set([...sel, ...hoisted.map((h) => h.id)]));
+    const next = [];
+    for (const n of prev) {
+      const keep = leftovers.has(n.uid) ? leftovers.get(n.uid) : undefined;
+      if (keep === undefined) next.push(n);
+      else if (keep === null) next.push({ ...n, loading: false }); // could not read it
+      else if (keep.some((c) => c.kind === "property")) {
+        next.push({ ...n, loading: false, children: keep, open: false });
+      }
+      /*
+       * An area with no buildings left in it is dropped: either everything it
+       * held is now on screen, or all it had was the site's own navigation
+       * repeated back at us. Those showed up as folders reading "0 inside",
+       * which is a row that costs a click and gives nothing.
+       */
+    }
+    const merged = [...next, ...hoisted];
+    treeRef.current = merged;
+    setTree(merged);
+
+    const toTick = hoisted.filter((h) => h.kind === "property" && !h.far);
+    if (toTick.length) {
+      setSelected((sel) => new Set([...sel, ...toTick.map((h) => h.id)]));
     }
   };
 
@@ -455,19 +573,13 @@ export default function ListingDraftImport({
        * the copy we already have (it is the one with a link and an address)
        * and drop the repeat.
        */
-      const known = new Set();
-      walkTree(treeRef.current, (n) => {
-        if (n.kind === "property") known.add(n.id);
-      });
-      const children = buildLevel(items, node.url).filter(
-        (c) => c.kind !== "property" || !known.has(c.id)
-      );
+      const children = adopt(buildLevel(items, node.url), registryRef.current);
       setTree((t) => patchNode(t, node.uid, { loading: false, children, error: null }));
       // Anything near campus inside a folder starts ticked, same rule as the
       // top level, so opening "St. Louis" does the obvious thing.
       const auto = [];
       walkTree(children, (c) => {
-        if (c.kind === "property" && nearCampus(c)) auto.push(c.id);
+        if (c.kind === "property" && !c.far) auto.push(c.id);
       });
       if (auto.length) setSelected((s) => new Set([...s, ...auto]));
     } catch {
@@ -585,6 +697,7 @@ export default function ListingDraftImport({
 
   // --------------------------------------------------------------- rendering
   const totalRows = allProperties.length;
+  const nearCount = allProperties.filter((p) => !p.far).length;
   const q = filter.trim().toLowerCase();
   const matches = (n) => !q || `${n.name} ${n.address}`.toLowerCase().includes(q);
   // A folder stays visible while filtering if it, or anything already loaded
@@ -598,7 +711,7 @@ export default function ListingDraftImport({
     return hit;
   };
 
-  const propertyRow = (n, depth) => (
+  const propertyRow = (n, depth, showBadge = false) => (
     <label
       key={n.uid}
       style={{ paddingLeft: `${12 + depth * 18}px` }}
@@ -622,7 +735,9 @@ export default function ListingDraftImport({
             <span className="block truncate text-xs text-gray-500">{n.address}</span>
           )}
       </span>
-      {nearCampus(n) && (
+      {/* Only worth showing when rows further out are on screen to contrast
+          with. A column of identical badges is decoration. */}
+      {showBadge && nearCampus(n) && (
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
           <MapPin className="h-3 w-3" /> Near WashU
         </span>
@@ -722,14 +837,18 @@ export default function ListingDraftImport({
       (n) => n.kind === "folder" && (depth === 0 || n.source !== "inventory")
     );
     const far = list.filter((n) => n.kind === "property" && n.far);
-    const farOpen = showFar.has(levelKey) || !!q; // searching reveals everything
+    // A short list is just a list. The disclosure only earns its place when
+    // hiding rows actually saves the landlord something.
+    const small = near.length + far.length <= SMALL_SITE;
+    const farOpen = small || showFar.has(levelKey) || !!q; // searching reveals all
 
     return (
       <>
-        {near.map((n) => propertyRow(n, depth))}
+        {near.map((n) => propertyRow(n, depth, farOpen && far.length > 0))}
         {folders.map((n) => folderRow(n, depth))}
         {far.length > 0 && (
           <div key={`${levelKey}-far`}>
+            {!small && (
             <button
               type="button"
               onClick={() =>
@@ -750,7 +869,10 @@ export default function ListingDraftImport({
               )}
               {farOpen ? "Hide" : "Show"} {far.length} further from campus
             </button>
-            {farOpen && <div className="space-y-1">{far.map((n) => propertyRow(n, depth))}</div>}
+            )}
+            {farOpen && (
+              <div className="space-y-1">{far.map((n) => propertyRow(n, depth))}</div>
+            )}
           </div>
         )}
       </>
@@ -821,13 +943,23 @@ export default function ListingDraftImport({
             </div>
           ) : phase === "picker" ? (
             <div className="mt-3">
+              {/* Lead with the number that matters. "We found 124 properties"
+                  is true and alarming when twelve of them are the point. */}
               <p className="text-sm font-medium text-gray-800">
-                We found {totalRows} propert{totalRows === 1 ? "y" : "ies"} on your
-                website. Tick the ones you want on Proximity.
+                {nearCount > 0 && nearCount < totalRows
+                  ? `${nearCount} propert${
+                      nearCount === 1 ? "y" : "ies"
+                    } near WashU ${nearCount === 1 ? "is" : "are"} ticked and ready.`
+                  : `We found ${totalRows} propert${
+                      totalRows === 1 ? "y" : "ies"
+                    } on your website.`}
               </p>
               <p className="mt-0.5 text-xs text-gray-500">
-                Anything we could place near WashU is ticked already. Open a folder to
-                see what is inside it.
+                {nearCount > 0 && nearCount < totalRows
+                  ? `Untick anything you don't want. Your website has ${
+                      totalRows - nearCount
+                    } more further from campus, and any folders below are yours to open.`
+                  : "Tick the ones you want on Proximity. Nothing goes live until you publish it."}
               </p>
 
               {totalRows > FILTER_THRESHOLD && (
@@ -849,7 +981,7 @@ export default function ListingDraftImport({
                   onClick={() => setAll(true)}
                   className="font-medium text-red-600 hover:underline"
                 >
-                  Tick everything
+                  Tick all {totalRows}
                 </button>
                 <button
                   type="button"
