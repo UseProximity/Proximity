@@ -297,16 +297,9 @@ export default function ListingDraftImport({
       setFilter("");
       setShowFar(new Set());
       setPhase("picker");
-      /*
-       * Open the areas that look like ours straight away. A landlord pasting a
-       * three-city company's site wants the St. Louis folder open and ticked,
-       * not a closed folder they have to guess at.
-       */
-      for (const n of rows) {
-        if (n.kind === "folder" && n.source !== "inventory" && nearCampus(n)) {
-          toggleFolder(n);
-        }
-      }
+      // Everything around WashU comes out of its area folder and onto the
+      // first screen, ticked (see absorbNearAreas).
+      absorbNearAreas(rows);
     } catch {
       stopLoading();
       setPhase("idle");
@@ -321,6 +314,98 @@ export default function ListingDraftImport({
     readSite(initialUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUrl]);
+
+  /*
+   * Pull the areas around WashU up onto the first screen.
+   *
+   * A three-city company files our buildings under a city folder, so the thing
+   * the landlord actually came to list started one click down and unticked.
+   * On the first read we open any area that reads as near campus, lift the
+   * buildings inside it up to the top level, tick them, and drop the folder
+   * when nothing is left in it. Areas that are not ours (Chicago, Kansas City)
+   * stay closed folders, so nothing is hidden and nothing is presumed.
+   */
+  const absorbNearAreas = async (rows) => {
+    const areas = rows.filter(
+      (n) => n.kind === "folder" && n.source !== "inventory" && n.url && nearCampus(n)
+    );
+    if (!areas.length) return;
+
+    setTree((t) =>
+      t.map((n) => (areas.some((a) => a.uid === n.uid) ? { ...n, loading: true } : n))
+    );
+
+    const loaded = await Promise.all(
+      areas.map(async (area) => {
+        try {
+          const { ok, data } = await apiCall(area.url, null);
+          if (!ok || data.pms) return { area, rows: null };
+          const items = data.listing
+            ? [
+                {
+                  name: data.listing.title || data.listing.address || area.name,
+                  address: data.listing.address ?? "",
+                  url: area.url,
+                  kind: "property",
+                },
+              ]
+            : data.properties;
+          return { area, rows: buildLevel(items, area.url) };
+        } catch {
+          return { area, rows: null };
+        }
+      })
+    );
+
+    const hoisted = [];
+    setTree((prev) => {
+      const known = new Set();
+      walkTree(prev, (n) => {
+        if (n.kind === "property") known.add(n.id);
+      });
+
+      const leftovers = new Map(); // area uid -> what stays inside it
+      for (const { area, rows: children } of loaded) {
+        if (!children) {
+          leftovers.set(area.uid, null); // unreadable: leave the folder as it was
+          continue;
+        }
+        const keep = [];
+        for (const c of children) {
+          // The server offers its "all properties" folder on every level; it is
+          // only shown at the top, so it must not be the one thing keeping an
+          // emptied area folder alive.
+          if (c.kind === "folder" && c.source === "inventory") continue;
+          const isNearProperty = c.kind === "property" && !c.far;
+          if (isNearProperty && !known.has(c.id)) {
+            known.add(c.id);
+            hoisted.push(c);
+          } else if (c.kind !== "property" || !known.has(c.id)) {
+            keep.push(c); // further-out buildings and sub-areas stay put
+          }
+        }
+        leftovers.set(area.uid, keep);
+      }
+
+      const next = [];
+      for (const n of prev) {
+        const keep = leftovers.has(n.uid) ? leftovers.get(n.uid) : undefined;
+        if (keep === undefined) {
+          next.push(n);
+        } else if (keep === null) {
+          next.push({ ...n, loading: false }); // could not read it
+        } else if (keep.length) {
+          next.push({ ...n, loading: false, children: keep, open: false });
+        }
+        // an area with nothing left in it is dropped: it is all on screen now
+      }
+      return [...next, ...hoisted];
+    });
+
+    if (hoisted.length) {
+      setSelected((sel) => new Set([...sel, ...hoisted.map((h) => h.id)]));
+    }
+  };
 
   // ------------------------------------------------------------ folder opening
   const toggleFolder = async (node) => {
