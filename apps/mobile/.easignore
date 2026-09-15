@@ -1,0 +1,3 @@
+# Keep the plugin resolution script in EAS builds
+!scripts/
+!scripts/**
