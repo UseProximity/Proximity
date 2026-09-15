@@ -1034,12 +1034,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     switch (stepId) {
       case "start":
         return (
-          <StepStart
-            w={w}
-            onBegin={() => goTo("address")}
-            showScratch={false}
-            initialImportUrl={initialImportUrl}
-          />
+          <StepStart w={w} initialImportUrl={initialImportUrl} />
         );
       case "address":
         return <StepAddress w={w} />;
