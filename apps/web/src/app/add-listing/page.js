@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Image from "next/image";
+import Link from "next/link";
 import { PencilLine, Globe, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
@@ -153,10 +154,22 @@ function StartChoice({ onManual, onImport }) {
           </div>
         </div>
 
-        {/* 2. PMS sync. */}
-        <button
-          type="button"
-          onClick={() => onImport("")}
+        {/* 2. By hand. */}
+        <button type="button" onClick={onManual} className={`${card} ${clickable}`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100">
+            <PencilLine className="h-5 w-5 text-gray-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900">Type it in myself</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              A few quick questions. About 4 minutes.
+            </p>
+          </div>
+        </button>
+
+        {/* 3. PMS sync — straight to the integrations page, not via the wizard. */}
+        <Link
+          href="/dashboard/landlord?tab=integrations"
           className={`${card} ${clickable}`}
         >
           <div className="flex shrink-0 -space-x-2 pt-0.5">
@@ -184,20 +197,8 @@ function StartChoice({ onManual, onImport }) {
             </p>
           </div>
           <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 group-hover:text-red-500" />
-        </button>
+        </Link>
 
-        {/* 3. By hand. */}
-        <button type="button" onClick={onManual} className={`${card} ${clickable}`}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100">
-            <PencilLine className="h-5 w-5 text-gray-600" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-900">Type it in myself</p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              A few quick questions. About 4 minutes.
-            </p>
-          </div>
-        </button>
       </div>
     </div>
   );
