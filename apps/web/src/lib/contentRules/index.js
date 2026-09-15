@@ -267,9 +267,15 @@ const TLD = "com|net|org|io|co|us|info|biz|site|app|xyz|me|online|live|realty|re
 
 const PROMO_PATTERNS = [
   {
+    /*
+     * Listed before the obfuscated form so a plain address is matched as a
+     * plain address. "Reach out to me at ada@example.com" otherwise matches
+     * the " at " spelling first, and the landlord is told to remove
+     * "me at ada", which is not the thing they have to remove.
+     */
     type: "email",
     label: "an email address",
-    re: /[a-z0-9._%+-]+\s*(?:@|\(at\)|\[at\]|\sat\s)\s*[a-z0-9.-]+\.[a-z]{2,}/i,
+    re: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i,
   },
   {
     type: "link",
@@ -281,6 +287,19 @@ const PROMO_PATTERNS = [
     type: "link",
     label: "a link",
     re: new RegExp(`\\b[a-z0-9-]{2,}\\s*[\\[(]?\\s*dot\\s*[\\])]?\\s*(?:${TLD})\\b`, "i"),
+  },
+  {
+    /*
+     * "ada (at) example.com", "ada at example.com" - written to dodge a filter.
+     * Listed after the link patterns because " at " also sits in front of an
+     * ordinary URL ("more info at www.example.com"), and reading that as an
+     * email quotes "info at www.example.com" back at the landlord instead of
+     * the address they actually have to remove.
+     */
+    type: "email",
+    label: "an email address",
+    re: /([a-z0-9._%+-]+\s*(?:\(at\)|\[at\]|\sat\s)\s*[a-z0-9.-]+\.[a-z]{2,})/i,
+    group: 1,
   },
   {
     type: "phone",
@@ -302,17 +321,17 @@ const PROMO_PATTERNS = [
   {
     type: "promo",
     label: "a pitch to contact you somewhere else",
-    re: /\b(?:visit|check ?out|go to|head to|see|find|browse|view|learn more (?:at|on)|more info(?:rmation)? (?:at|on)|see more (?:at|on))\s+(?:us\s+)?(?:our|my|the)\s+(?:web\s?site|site|page|portal|listing page|online listings?)\b/i,
+    /*
+     * "our"/"my" only, never "the". In a housing listing "the site" is at
+     * least as often the physical property as a website: "visit the site
+     * during our open house" is honest copy and must save.
+     */
+    re: /\b(?:visit|check ?out|go to|head to|see|find|browse|view|learn more (?:at|on)|more info(?:rmation)? (?:at|on)|see more (?:at|on))\s+(?:us\s+)?(?:our|my)\s+(?:web\s?site|site|page|portal|listing page|online listings?)\b/i,
   },
   {
     type: "promo",
     label: "a pitch to contact you somewhere else",
     re: /\b(?:contact|reach|email|call|text|message|dm|apply|book|schedule|tour)\s+(?:out\s+to\s+)?(?:us|me|our office|our team)\b/i,
-  },
-  {
-    type: "promo",
-    label: "a pitch to contact you somewhere else",
-    re: /\b(?:apply|book|schedule|inquire|register|sign up|tour)\s+(?:online|through|via|on)\s+(?:our|my|the)\b/i,
   },
   {
     type: "promo",
