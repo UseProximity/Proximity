@@ -324,11 +324,21 @@ export default function ListingDraftImport({
    * buildings inside it up to the top level, tick them, and drop the folder
    * when nothing is left in it. Areas that are not ours (Chicago, Kansas City)
    * stay closed folders, so nothing is hidden and nothing is presumed.
+   *
+   * When the site has an inventory page, that page wins and the marketing area
+   * pages are left alone. A company's city page is copy, not a list: Mac's St.
+   * Louis page names nine buildings where their searchable inventory holds
+   * thirteen, so reading only the city page lost four. Merging the two was
+   * worse still, because that page's prose also yielded a "Terrace" that
+   * appears nowhere in their inventory and is, on the evidence, a private
+   * terrace rather than a building. So the authoritative list decides what
+   * gets ticked, and the area folders stay open to browse.
    */
   const absorbNearAreas = async (rows) => {
-    const areas = rows.filter(
-      (n) => n.kind === "folder" && n.source !== "inventory" && n.url && nearCampus(n)
-    );
+    const inventory = rows.filter((n) => n.kind === "folder" && n.url && n.source === "inventory");
+    const areas = inventory.length
+      ? inventory
+      : rows.filter((n) => n.kind === "folder" && n.url && nearCampus(n));
     if (!areas.length) return;
 
     setTree((t) =>
