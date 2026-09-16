@@ -139,7 +139,16 @@ export async function fetchSightmapInventory(embedToken) {
       // already under application, say) and that used to leave the whole floor
       // plan with no lease terms at all.
       for (const u of list.slice(0, 2)) {
-        const t = await getJson(u.priceUrl);
+        /*
+         * The matrix is quoted against a move-in date, and defaults to today.
+         * Ask about a unit that does not free up until October and you get an
+         * empty list, which is how Pershing came back with no lease terms while
+         * the site's own availability panel showed nine. Quote it against the
+         * date the unit actually frees up.
+         */
+        const t = await getJson(
+          u.availableOn ? `${u.priceUrl}&date=${encodeURIComponent(u.availableOn)}` : u.priceUrl
+        );
         const options = (t?.data?.options ?? [])
           .map((o) => ({
             months: Number(o.lease_term),
