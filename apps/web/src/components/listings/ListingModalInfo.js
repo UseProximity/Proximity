@@ -33,6 +33,7 @@ import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
+import { ChevronLeft, ChevronRight} from "lucide-react";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -1231,28 +1232,30 @@ export default function ListingModalInfo({
   detailLoading = false,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
 
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {
     if (!isGalleryOpen) return;
     const handler = (e) => {
-      if (e.key === "Escape" && !lightboxSrc) setIsGalleryOpen(false);
+      if (e.key === "Escape" && lightboxIndex === null) setIsGalleryOpen(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isGalleryOpen, lightboxSrc]);
+  }, [isGalleryOpen, lightboxIndex]);
 
-  // Esc closes lightbox
+  // Esc closes lightbox; arrows step through the photos
   useEffect(() => {
-    if (!lightboxSrc) return;
+    if (lightboxIndex === null) return;
     const handler = (e) => {
-      if (e.key === "Escape") setLightboxSrc(null);
+      if (e.key === "Escape") setLightboxIndex(null);
+      if (e.key === "ArrowLeft") showPrevPhoto();
+      if (e.key === "ArrowRight") showNextPhoto();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [lightboxSrc]);
+  }, [lightboxIndex]);
 
   // Review form state
   const [reviewText, setReviewText] = useState("");
@@ -1569,7 +1572,12 @@ export default function ListingModalInfo({
       : []),
   ];
   const galleryCount = gallerySections.reduce((n, sec) => n + sec.photos.length, 0);
-
+  const allGalleryPhotos = gallerySections.flatMap((section) => section.photos);
+  const lightboxSrc = lightboxIndex !== null ? allGalleryPhotos[lightboxIndex] : null;
+  const showPrevPhoto = () =>
+      setLightboxIndex((i) => (i - 1 + allGalleryPhotos.length) % allGalleryPhotos.length);
+  const showNextPhoto = () =>
+      setLightboxIndex((i) => (i + 1) % allGalleryPhotos.length);
   const coverImage = images[0] || unitImages[0];
   /*
    * Whether anything renders beside the cover. Keyed on the tiles themselves
@@ -2242,52 +2250,83 @@ export default function ListingModalInfo({
                 ×
               </button>
             </div>
-            {gallerySections.map((section, sectionIdx) => (
-              <div key={section.key} className={sectionIdx ? "mt-10" : ""}>
-                {/* Only worth a heading when there is more than one section —
-                    a single group needs no label to tell it apart from. */}
-                {gallerySections.length > 1 && (
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">
-                    {section.label}
-                    <span className="ml-2 font-normal normal-case tracking-normal text-white/40">
-                      {section.photos.length}{" "}
-                      {section.photos.length === 1 ? "photo" : "photos"}
-                    </span>
-                  </h3>
-                )}
-                <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-                  {section.photos.map((src, i) => (
-                    <GalleryImage
-                      key={`${section.key}-${src}`}
-                      src={src}
-                      index={i}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLightboxSrc(src);
-                      }}
-                    />
-                  ))}
+            {gallerySections.map((section, sectionIdx) => {
+              const offset = gallerySections
+                  .slice(0, sectionIdx)
+                  .reduce((n, s) => n + s.photos.length, 0);
+              return (
+                <div key={section.key} className={sectionIdx ? "mt-10" : ""}>
+                  {/* Only worth a heading when there is more than one section —
+                  a single group needs no label to tell it apart from. */}
+                  {gallerySections.length > 1 && (
+                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">
+                        {section.label}
+                        <span className="ml-2 font-normal normal-case tracking-normal text-white/40">
+                    {section.photos.length}{" "}
+                          {section.photos.length === 1 ? "photo" : "photos"}
+                  </span>
+                      </h3>
+                  )}
+                  <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
+                    {section.photos.map((src, i) => (
+                        <GalleryImage
+                            key={`${section.key}-${src}`}
+                            src={src}
+                            index={i}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLightboxIndex(offset + i);
+                            }}
+                        />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            )}
           </div>
         </div>
       )}
 
       {/* ── Lightbox (fullscreen single image) ── */}
-      {lightboxSrc && (
+      {lightboxIndex !== null && (
         <div
           className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
-          onClick={() => setLightboxSrc(null)}
+          onClick={() => setLightboxIndex(null)}
         >
           <button
             type="button"
             className="absolute top-4 right-4 text-white/80 hover:text-white text-4xl leading-none z-10"
-            onClick={() => setLightboxSrc(null)}
+            onClick={() => setLightboxIndex(null)}
             aria-label="Close fullscreen image"
           >
             ×
           </button>
+          {allGalleryPhotos.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showPrevPhoto();
+                }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white z-10"
+                aria-label="Previous photo"
+              >
+                <ChevronLeft size={40} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showNextPhoto();
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white z-10"
+                aria-label="Next photo"
+              >
+                <ChevronRight size={40} />
+              </button>
+            </>
+          )}
           <div
             className="relative max-w-[90vw] max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
