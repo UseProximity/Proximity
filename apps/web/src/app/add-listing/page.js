@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Image from "next/image";
 import Link from "next/link";
-import { PencilLine, Globe, RefreshCw, Sparkles } from "lucide-react";
+import { PencilLine, Globe, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
 
@@ -98,6 +98,16 @@ const PMS_LOGOS = [
  */
 function StartChoice({ onManual, onImport }) {
   const [address, setAddress] = useState("");
+  // The click navigates to the wizard, which has to compile and mount before it
+  // can show its own progress. On a cold dev server that gap is seconds of a
+  // button that looks like it did nothing.
+  const [going, setGoing] = useState(false);
+  const go = () => {
+    const a = address.trim();
+    if (!a || going) return;
+    setGoing(true);
+    onImport(a);
+  };
   const card =
     "flex w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left";
   const clickable =
@@ -136,7 +146,7 @@ function StartChoice({ onManual, onImport }) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (address.trim()) onImport(address.trim());
+                    go();
                   }
                 }}
                 placeholder="yourproperty.com"
@@ -144,11 +154,19 @@ function StartChoice({ onManual, onImport }) {
               />
               <button
                 type="button"
-                onClick={() => onImport(address.trim())}
-                disabled={!address.trim()}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={go}
+                disabled={!address.trim() || going}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Sparkles className="h-4 w-4" /> Find my properties
+                {going ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" /> Find my properties
+                  </>
+                )}
               </button>
             </div>
           </div>

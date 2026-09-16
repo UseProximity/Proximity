@@ -239,6 +239,25 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       })
     );
 
+  /*
+   * Lease terms are nearly always the same on every floor plan in a building,
+   * so making a landlord tick "12-Month" on each of five cards is five times
+   * the work for one fact. `mirrorTerms` writes one card's terms onto every
+   * card; the step decides when that is safe (see StepUnits) and always offers
+   * an undo, because a bulk edit nobody asked for is worse than the typing.
+   */
+  const mirrorTerms = (months) =>
+    setUnits((u) => u.map((unit) => ({ ...unit, leaseTermMonths: [...months] })));
+
+  // Undo for the above: one atomic write, so it cannot half-apply the way a
+  // loop of per-term toggles did.
+  const clearTermsExcept = (keepIndex) =>
+    setUnits((u) =>
+      u.map((unit, idx) =>
+        idx === keepIndex ? unit : { ...unit, leaseTermMonths: [] }
+      )
+    );
+
   const addCustomAmenity = (v) => {
     const val = v.trim();
     if (!val) return;
@@ -991,6 +1010,8 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     removeUnit,
     updateUnit,
     toggleUnitTerm,
+    mirrorTerms,
+    clearTermsExcept,
     customAmenities,
     addCustomAmenity,
     removeCustomAmenity,

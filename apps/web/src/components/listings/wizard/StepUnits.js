@@ -26,6 +26,62 @@ export default function StepUnits({ w }) {
   // Preview of what each floor-plan card will expand into, so the landlord sees
   // the unit count before publishing rather than after.
   const parsedPerCard = w.units.map((u) => parseUnitNumbers(u.designator, u.unitNumbers));
+
+  /*
+   * Lease terms, set once.
+   *
+   * Nearly every building offers the same terms on every floor plan, so ticking
+   * "12-Month" on each of five cards is five times the work for one fact. Two
+   * ways to avoid it, and deliberately not a silent one:
+   *
+   *  - While no card has terms of its own, the first card you set mirrors onto
+   *    the rest, and says so with an Undo. Keep editing that card and the rest
+   *    keep following. Touch any other card and mirroring stops for good, so
+   *    your own per-plan choices are never overwritten.
+   *  - "Apply to all floor plans" on any card, any time, for the case where the
+   *    terms genuinely differ and you want to reset them to match.
+   *
+   * The pattern is the one bulk actions use elsewhere: do the obvious thing,
+   * show that you did it, make it one click to take back.
+   */
+  const [mirrorSrc, setMirrorSrc] = useState(null);
+  const [mirrorNote, setMirrorNote] = useState(null); // {count} after a mirror
+
+  const termsOf = (u) => (Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths : []);
+  const othersUntouched = (i) =>
+    w.units.length > 1 && w.units.every((u, idx) => idx === i || termsOf(u).length === 0);
+
+  const nextTerms = (cur, months) =>
+    cur.includes(months)
+      ? cur.filter((m) => m !== months)
+      : [...cur, months].sort((a, b) => a - b);
+
+  const changeTerm = (i, months) => {
+    const after = nextTerms(termsOf(w.units[i]), months);
+    const mirroring = mirrorSrc === i || (mirrorSrc === null && othersUntouched(i));
+    if (!mirroring) {
+      // A card edited on its own ends mirroring: their choices win.
+      if (mirrorSrc !== null && mirrorSrc !== i) setMirrorSrc(null);
+      setMirrorNote(null);
+      w.toggleUnitTerm(i, months);
+      return;
+    }
+    w.mirrorTerms(after);
+    setMirrorSrc(i);
+    setMirrorNote(after.length ? { count: w.units.length - 1 } : null);
+  };
+
+  const applyToAll = (i) => {
+    w.mirrorTerms(termsOf(w.units[i]));
+    setMirrorSrc(i);
+    setMirrorNote({ count: w.units.length - 1 });
+  };
+
+  const undoMirror = () => {
+    w.clearTermsExcept(mirrorSrc);
+    setMirrorSrc(null);
+    setMirrorNote(null);
+  };
   const parsedCounts = parsedPerCard.map((list) => list.length);
   const parsedUnitLists = parsedPerCard.map((list) =>
     list
@@ -118,7 +174,7 @@ export default function StepUnits({ w }) {
                   <Chip
                     key={p.label}
                     on={(unit.leaseTermMonths || []).includes(p.months)}
-                    onClick={() => w.toggleUnitTerm(i, p.months)}
+                    onClick={() => changeTerm(i, p.months)}
                   >
                     {p.label}
                   </Chip>
@@ -126,7 +182,7 @@ export default function StepUnits({ w }) {
                 {(unit.leaseTermMonths || [])
                   .filter((m) => !LEASE_TERM_PRESETS.some((p) => p.months === m))
                   .map((m) => (
-                    <Chip key={m} on onClick={() => w.toggleUnitTerm(i, m)}>
+                    <Chip key={m} on onClick={() => changeTerm(i, m)}>
                       {m}-Month ×
                     </Chip>
                   ))}
@@ -158,6 +214,32 @@ export default function StepUnits({ w }) {
                   </span>
                 )}
               </div>
+
+              {/* Said out loud, and undoable. A bulk change nobody saw happen is
+                  the thing that makes people distrust a form. */}
+              {mirrorSrc === i && mirrorNote && (
+                <p className="mt-1.5 text-[11px] text-gray-600">
+                  Also applied to your other {mirrorNote.count} floor plan
+                  {mirrorNote.count === 1 ? "" : "s"}.{" "}
+                  <button
+                    type="button"
+                    onClick={undoMirror}
+                    className="font-medium text-red-600 hover:underline"
+                  >
+                    Undo
+                  </button>
+                </p>
+              )}
+
+              {w.units.length > 1 && mirrorSrc !== i && termsOf(unit).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => applyToAll(i)}
+                  className="mt-1.5 text-[11px] font-medium text-red-600 hover:underline"
+                >
+                  Apply these terms to all {w.units.length} floor plans
+                </button>
+              )}
             </div>
 
             {/* Which physical units share this floor plan. Each number becomes

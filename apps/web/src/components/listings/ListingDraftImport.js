@@ -47,8 +47,34 @@ const SMALL_SITE = 12;
  * campus are listed first and start ticked, and the rest sit behind a "show
  * more" line on the same level.
  */
-const NEAR_CAMPUS_RE =
-  /\b(st\.?\s*louis|saint\s*louis|stl|clayton|university\s*city|u\.?\s*city|richmond\s*heights|maplewood|brentwood|webster\s*groves|frontenac|ladue|shrewsbury|rock\s*hill|olivette|overland|creve\s*coeur|kirkwood|dogtown|central\s*west\s*end|delmar\s*loop|demun|skinker)\b|\b63(10[0-9]|11[0-9]|12[0-9]|13[0-9]|14[0-9])\b/i;
+const NEAR_CAMPUS_RE = new RegExp(
+  [
+    // Any eastern-Missouri postcode. Chicago is 606xx and Kansas City 641xx,
+    // so this stays quiet on the cities we actually want to set aside.
+    String.raw`\b63\d{3}\b`,
+    String.raw`\b(` +
+      [
+        "st\\.?\\s*louis", "saint\\s*louis", "stl",
+        // Inner-ring municipalities, all a short drive from campus.
+        "clayton", "university\\s*city", "u\\.?\\s*city", "richmond\\s*heights",
+        "maplewood", "brentwood", "webster\\s*groves", "frontenac", "ladue",
+        "shrewsbury", "rock\\s*hill", "olivette", "overland", "creve\\s*coeur",
+        "kirkwood", "glendale", "warson\\s*woods", "des\\s*peres", "town\\s*and\\s*country",
+        "affton", "brentwood", "bel[-\\s]?nor", "pagedale", "wellston", "normandy",
+        // Neighbourhoods students actually name.
+        "central\\s*west\\s*end", "\\bcwe\\b", "delmar\\s*loop", "the\\s*loop",
+        "demun", "de\\s*mun", "skinker", "debaliviere", "de\\s*baliviere",
+        "parkview", "ames\\s*place", "kingsbury", "hi[-\\s]?pointe", "dogtown",
+        "forest\\s*park\\s*south\\s*east", "forest\\s*park\\s*s\\.?\\s*e", "the\\s*grove",
+        "botanical\\s*heights", "shaw", "tower\\s*grove", "the\\s*hill",
+        "soulard", "lafayette\\s*square", "benton\\s*park", "midtown", "grand\\s*center",
+        "cheltenham", "clifton\\s*heights", "ellendale", "franz\\s*park",
+        "west\\s*end", "visitation\\s*park", "wydown", "clayton[-\\s]tamm",
+      ].join("|") +
+      String.raw`)\b`,
+  ].join("|"),
+  "i"
+);
 
 /*
  * The URL counts as evidence here, and only here. The extraction itself is
@@ -286,9 +312,18 @@ export default function ListingDraftImport({
   const [filter, setFilter] = useState("");
   // Level keys whose further-from-campus rows are expanded.
   const [showFar, setShowFar] = useState(() => new Set());
+  /*
+   * True while the second pass is still reading the site's inventory page.
+   *
+   * That read takes around two minutes on a company the size of Mac, and the
+   * picker is already on screen showing whatever the front page gave us. With
+   * no signal, a landlord sees two buildings and a working Import button and
+   * reasonably concludes that is the answer. It is not: thirteen arrive a
+   * minute later.
+   */
+  const [stillSearching, setStillSearching] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const timers = useRef({});
   const pastedRef = useRef("");
   const skipPmsRef = useRef(false); // landlord chose "read my website instead"
   const autoRan = useRef(false);
@@ -299,13 +334,27 @@ export default function ListingDraftImport({
   // is already on screen rather than repeating it. See adopt().
   const registryRef = useRef([]);
 
-  useEffect(
-    () => () => {
-      clearInterval(timers.current.step);
-      clearInterval(timers.current.clock);
-    },
-    []
-  );
+  /*
+   * The clock runs off `phase`, not off a timer started inside startLoading().
+   *
+   * It used to be imperative, and in development React's double-invoked effects
+   * tore it down a beat after it was created: the mount effect's cleanup ran
+   * after the auto-start had already set its intervals, cleared them, and the
+   * guard meant nothing restarted them. The counter sat on "0s" for the whole
+   * two-minute read, which reads as frozen. Tied to phase it cannot desync.
+   */
+  useEffect(() => {
+    if (phase !== "loading" && phase !== "picker") return undefined;
+    const step = setInterval(
+      () => setStepIdx((i) => Math.min(i + 1, LOADING_STEPS.length - 1)),
+      7000
+    );
+    const clock = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => {
+      clearInterval(step);
+      clearInterval(clock);
+    };
+  }, [phase]);
 
   useEffect(() => {
     treeRef.current = tree;
@@ -316,18 +365,8 @@ export default function ListingDraftImport({
     setPhase("loading");
     setStepIdx(0);
     setElapsed(0);
-    clearInterval(timers.current.step);
-    clearInterval(timers.current.clock);
-    timers.current.step = setInterval(
-      () => setStepIdx((i) => Math.min(i + 1, LOADING_STEPS.length - 1)),
-      7000
-    );
-    timers.current.clock = setInterval(() => setElapsed((s) => s + 1), 1000);
   };
-  const stopLoading = () => {
-    clearInterval(timers.current.step);
-    clearInterval(timers.current.clock);
-  };
+  const stopLoading = () => {};
 
   const apiCall = async (fetchUrl, targetProperty) => {
     const res = await fetch("/api/landlord/listing-draft", {
@@ -441,6 +480,7 @@ export default function ListingDraftImport({
       ? inventory
       : rows.filter((n) => n.kind === "folder" && n.url && nearCampus(n));
     if (!areas.length) return;
+    setStillSearching(true);
 
     setTree((t) =>
       t.map((n) => (areas.some((a) => a.uid === n.uid) ? { ...n, loading: true } : n))
@@ -533,6 +573,7 @@ export default function ListingDraftImport({
     if (toTick.length) {
       setSelected((sel) => new Set([...sel, ...toTick.map((h) => h.id)]));
     }
+    setStillSearching(false);
   };
 
   // ------------------------------------------------------------ folder opening
@@ -686,6 +727,7 @@ export default function ListingDraftImport({
   };
 
   const reset = () => {
+    setStillSearching(false);
     setPhase("idle");
     setTree([]);
     setSelected(new Set());
@@ -992,6 +1034,18 @@ export default function ListingDraftImport({
                 </button>
               </div>
 
+              {stillSearching && (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+                  <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-amber-600" />
+                  <span>
+                    <span className="font-semibold">Still reading the rest of your website.</span>{" "}
+                    Large websites take a minute or two. More properties will appear here
+                    as we find them, so give it a moment before you import.
+                    <span className="ml-1 text-amber-700">{elapsed}s</span>
+                  </span>
+                </div>
+              )}
+
               <div className="mt-2 max-h-[55vh] space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
                 {renderLevel(tree, 0, "root")}
               </div>
@@ -1000,11 +1054,13 @@ export default function ListingDraftImport({
                 <button
                   type="button"
                   onClick={importSelected}
-                  disabled={!selectedProps.length}
+                  disabled={!selectedProps.length || stillSearching}
                   className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
-                  {selectedProps.length === 1
+                  {stillSearching
+                    ? "Still searching…"
+                    : selectedProps.length === 1
                     ? "Import 1 property"
                     : `Import ${selectedProps.length} properties`}
                 </button>
