@@ -482,8 +482,15 @@ export default function ListingDraftImport({
     if (!areas.length) return;
     setStillSearching(true);
 
+    /*
+     * Hidden, not spinning. These folders are about to be read and folded into
+     * the list, and most of them will not exist a minute from now: showing "All
+     * properties on your website · Opening…" invites a landlord to click a
+     * folder that is midway through dissolving. The banner above the list is
+     * what says work is still happening.
+     */
     setTree((t) =>
-      t.map((n) => (areas.some((a) => a.uid === n.uid) ? { ...n, loading: true } : n))
+      t.map((n) => (areas.some((a) => a.uid === n.uid) ? { ...n, absorbing: true } : n))
     );
 
     const loaded = await Promise.all(
@@ -554,9 +561,9 @@ export default function ListingDraftImport({
     for (const n of prev) {
       const keep = leftovers.has(n.uid) ? leftovers.get(n.uid) : undefined;
       if (keep === undefined) next.push(n);
-      else if (keep === null) next.push({ ...n, loading: false }); // could not read it
+      else if (keep === null) next.push({ ...n, absorbing: false }); // could not read it
       else if (keep.some((c) => c.kind === "property")) {
-        next.push({ ...n, loading: false, children: keep, open: false });
+        next.push({ ...n, absorbing: false, children: keep, open: false });
       }
       /*
        * An area with no buildings left in it is dropped: either everything it
@@ -874,9 +881,13 @@ export default function ListingDraftImport({
     const list = (nodes ?? []).filter(branchMatches);
     const near = list.filter((n) => n.kind === "property" && !n.far);
     const folders = list.filter(
-      // The synthesised "all properties" folder belongs at the top level only:
-      // inside a folder for one city it leads back out to every other city.
-      (n) => n.kind === "folder" && (depth === 0 || n.source !== "inventory")
+      (n) =>
+        n.kind === "folder" &&
+        // The synthesised "all properties" folder belongs at the top level
+        // only: inside a folder for one city it leads back out to every other
+        // city. And a folder being absorbed right now is not offered at all.
+        !n.absorbing &&
+        (depth === 0 || n.source !== "inventory")
     );
     const far = list.filter((n) => n.kind === "property" && n.far);
     // A short list is just a list. The disclosure only earns its place when

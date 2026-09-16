@@ -269,6 +269,7 @@ export async function POST(req) {
     // Every page we end up reading, so the availability-widget check below can
     // look at the floor-plans page rather than only the one that was pasted.
     const fetchedPages = [main];
+    let triedFloorPlans = false;
 
     // Secondary same-site pages, all landlord-initiated: the property they
     // picked (plus its gallery/floor-plan pages), or obvious listings links
@@ -307,7 +308,10 @@ export async function POST(req) {
         (l) => l.internal && l.url !== main.finalUrl && FLOORPLAN_LINK_RE.test(`${l.text} ${l.url}`)
       );
       const fpPage = fp ? await followBestEffort(fp.url) : null;
-      if (fpPage) mergeLinks(fpPage);
+      if (fpPage) {
+        mergeLinks(fpPage);
+        triedFloorPlans = true;
+      }
     }
     if (!targetProperty && pages.length === 1 && pages[0].text.length < THIN_TEXT_CHARS) {
       const followUrls = [];
@@ -461,6 +465,43 @@ export async function POST(req) {
           links,
           targetProperty,
           brandName,
+        });
+      }
+    }
+
+    /*
+     * A listing with no units is a listing nobody can rent.
+     *
+     * This is the general form of the bug that made metroflatsstl.com import
+     * as a name and an address: the pasted page was a brochure, the units were
+     * a click away, and nothing checked whether we had actually come back with
+     * any. Rather than teach the importer about one more platform, ask the only
+     * question that matters at the end of a single-property read, and if the
+     * answer is no, spend one more page on the most likely place to find them.
+     * That catches sites nobody has ever tested, which is the point.
+     */
+    const noUnits = (d) =>
+      d?.listing && (d.listing.units ?? []).length === 0 && !(d.listing.address && d.listing.rent);
+    if (noUnits(draft) && !triedFloorPlans) {
+      const fp = links.find(
+        (l) =>
+          l.internal &&
+          !fetchedPages.some((f) => f.finalUrl === l.url) &&
+          FLOORPLAN_LINK_RE.test(`${l.text} ${l.url}`)
+      );
+      const page = fp ? await followBestEffort(fp.url) : null;
+      if (page) {
+        mergeLinks(page);
+        console.log("[listing-draft] no units on first pass, retried via", fp.url);
+        draft = await extractListingDraft({
+          pages,
+          images: [...imageMap.entries()]
+            .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
+            .slice(0, 60),
+          links,
+          targetProperty,
+          brandName,
+          liveInventory,
         });
       }
     }
