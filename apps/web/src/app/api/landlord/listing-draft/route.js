@@ -8,6 +8,7 @@ import { auth } from "@/auth";
 import {
   fetchPageSmart,
   tryRenderPage,
+  renderPageWaited,
   htmlToText,
   extractImageCandidates,
   extractLinks,
@@ -31,6 +32,12 @@ const PMS_DISPLAY = {
   rentecdirect: "Rentec Direct",
   doorloop: "DoorLoop",
 };
+import {
+  SIGHTMAP_HINT_RE,
+  findSightmapEmbed,
+  fetchSightmapInventory,
+  describeSightmapInventory,
+} from "@/lib/listingDraft/sightmap";
 import { extractListingDraft } from "@/lib/listingDraft/extract";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
 
@@ -325,8 +332,47 @@ export async function POST(req) {
       );
     }
 
+    /*
+     * Live availability from the property's own widget.
+     *
+     * RealPage sites render their units into a canvas and fetch the numbers
+     * afterwards, so the page itself carries almost nothing: Metropolitan
+     * Flats' fully rendered floor-plans page shows four prices for
+     * twenty-three available apartments. Their SightMap feed has every unit,
+     * every price and every lease term, so when a page looks like one of these
+     * we go and get it. Costs one extra rendered page-load, only on sites that
+     * look like this, and only when we are extracting a single property.
+     */
+    let liveInventory = null;
+    if (SIGHTMAP_HINT_RE.test(main.html)) {
+      let token = findSightmapEmbed(main.html);
+      if (!token) {
+        const waited = await renderPageWaited(main.finalUrl);
+        token = waited ? findSightmapEmbed(waited.html) : null;
+        if (waited && token) {
+          // The waited render is the better page in every way; keep it.
+          main = waited;
+          pages[0] = pageEntry(main);
+        }
+      }
+      if (token) {
+        const inv = await fetchSightmapInventory(token);
+        liveInventory = describeSightmapInventory(inv);
+        if (liveInventory) {
+          console.log(`[listing-draft] sightmap feed: ${inv.units.length} units`);
+        }
+      }
+    }
+
     const brandName = extractSiteBrand(main.html);
-    let draft = await extractListingDraft({ pages, images, links, targetProperty, brandName });
+    let draft = await extractListingDraft({
+      pages,
+      images,
+      links,
+      targetProperty,
+      brandName,
+      liveInventory,
+    });
 
     // Totally empty result on an un-rendered page usually means the content
     // only exists after JS runs — spend one render credit and try once more.

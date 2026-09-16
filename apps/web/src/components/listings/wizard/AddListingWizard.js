@@ -540,6 +540,12 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
          */
         const names = (u.unitNames ?? []).filter((n) => typeof n === "string" && n.trim());
         if (names.length) marked.add(`u${i}:unitNumbers`);
+        // Lease lengths the site offers on this floor plan, straight onto the
+        // chips. RealPage properties publish these per floor plan in their
+        // availability feed, which is the only place they exist.
+        const terms = [...new Set((u.leaseTermMonths ?? []).filter((m) => Number.isFinite(m) && m > 0))]
+          .sort((a, b) => a - b);
+        if (terms.length) marked.add(`u${i}:leaseTermMonths`);
         return {
           bedrooms: u.bedrooms ?? "",
           bathrooms: u.bathrooms ?? "",
@@ -548,7 +554,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           available: true,
           title: u.title ?? "",
           floorPlanImageUrl: "",
-          leaseTermMonths: [],
+          leaseTermMonths: terms,
           designator: names.length ? "Unit" : "",
           unitNumbers: names.join(", "),
         };

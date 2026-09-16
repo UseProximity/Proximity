@@ -330,7 +330,7 @@ export function extractJsonLd(html, cap = 6000) {
  * Order: Firecrawl (best anti-bot) -> Jina Reader -> Tavily Extract
  * (renewing monthly free tier, returns text + images, wrapped as pseudo-HTML).
  */
-async function renderPageViaFirecrawl(rawUrl) {
+async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
   try {
@@ -346,9 +346,10 @@ async function renderPageViaFirecrawl(rawUrl) {
         url: rawUrl,
         formats: ["html"],
         onlyMainContent: false,
-        timeout: 30000,
+        ...(waitMs ? { waitFor: waitMs } : {}),
+        timeout: waitMs ? 45000 : 30000,
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(waitMs ? 70000 : 45000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -433,6 +434,26 @@ function withLinkHtml(page, structured) {
   if (!page || !structured || structured === page) return page;
   if (anchorCount(structured.html) <= anchorCount(page.html)) return page;
   return { ...page, linkHtml: structured.html };
+}
+
+/*
+ * One render that deliberately waits for the page's own scripts to finish.
+ *
+ * Used for widget-driven availability (SightMap on RealPage sites): the plain
+ * render of metroflatsstl.com's floor-plans page is 32KB and never mentions the
+ * widget, while the same page given nine seconds is 722KB and carries the embed
+ * token we need. Far too slow to do on every import, so the route only reaches
+ * for it when the page looks like one of those.
+ */
+export async function renderPageWaited(rawUrl, waitMs = 9000) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+    await assertSafeUrl(url);
+  } catch {
+    return null;
+  }
+  return renderPageViaFirecrawl(rawUrl, waitMs);
 }
 
 // Run the render chain directly (SSRF-checked first) and return the best
