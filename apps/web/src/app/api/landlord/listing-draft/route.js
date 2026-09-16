@@ -69,6 +69,19 @@ const LISTINGS_LINK_RE = /listing|apartment|rent|avail|propert|floor|unit|home|r
 const THIN_TEXT_CHARS = 800;
 
 /*
+ * The page a single building keeps its actual units on.
+ *
+ * An apartment community's front page is a brochure: metroflatsstl.com's is
+ * 191KB of markup carrying 2,576 characters of text, no prices, no unit types,
+ * and no sign of the availability widget. Everything a landlord came here to
+ * import is one click away behind "Floor Plans". We used to follow that link
+ * only when the pasted page was nearly empty, and a brochure is not empty, so
+ * pasting the front page of a building returned a listing with no units at all.
+ */
+const FLOORPLAN_LINK_RE =
+  /floor\s*plans?|floorplans?|availabilit|available\s+(units|apartments)|rates\s*(and|&)?\s*floor|pricing\s*(and|&)?\s*floor/i;
+
+/*
  * A management company's homepage shows a handful of featured buildings and
  * keeps the rest behind one "see everything" link. macapartments.com is the
  * case that surfaced this: the homepage carousel is 8 properties, the other 116
@@ -253,6 +266,10 @@ export async function POST(req) {
       targetProperty.url = resolveTargetUrl(rawTargetUrl, pastedUrl, main.finalUrl, links);
     }
 
+    // Every page we end up reading, so the availability-widget check below can
+    // look at the floor-plans page rather than only the one that was pasted.
+    const fetchedPages = [main];
+
     // Secondary same-site pages, all landlord-initiated: the property they
     // picked (plus its gallery/floor-plan pages), or obvious listings links
     // when the pasted page is a thin marketing shell.
@@ -260,6 +277,7 @@ export async function POST(req) {
       try {
         const sub = await fetchPageSmart(u);
         pages.push(pageEntry(sub));
+        fetchedPages.push(sub);
         addImages(structureOf(sub), sub.finalUrl, pages.length);
         return sub;
       } catch {
@@ -279,7 +297,19 @@ export async function POST(req) {
           .slice(0, 2);
         for (const l of galleryish) await followBestEffort(l.url);
       }
-    } else if (pages[0].text.length < THIN_TEXT_CHARS) {
+    } else if (!targetProperty) {
+      /*
+       * One building, brochure front page: go and get the floor plans. Cheap
+       * (one same-site fetch, cached) and it is where the units live on every
+       * apartment-community site, not just the widget-driven ones.
+       */
+      const fp = links.find(
+        (l) => l.internal && l.url !== main.finalUrl && FLOORPLAN_LINK_RE.test(`${l.text} ${l.url}`)
+      );
+      const fpPage = fp ? await followBestEffort(fp.url) : null;
+      if (fpPage) mergeLinks(fpPage);
+    }
+    if (!targetProperty && pages.length === 1 && pages[0].text.length < THIN_TEXT_CHARS) {
       const followUrls = [];
       for (const l of links) {
         if (followUrls.length >= 2) break;
@@ -344,15 +374,26 @@ export async function POST(req) {
      * look like this, and only when we are extracting a single property.
      */
     let liveInventory = null;
-    if (SIGHTMAP_HINT_RE.test(main.html)) {
-      let token = findSightmapEmbed(main.html);
+    {
+      // The widget lives on whichever page shows the floor plans, which is
+      // usually not the one that was pasted.
+      let token = null;
+      for (const fetched of fetchedPages) {
+        token = findSightmapEmbed(fetched.html);
+        if (token) break;
+      }
       if (!token) {
-        const waited = await renderPageWaited(main.finalUrl);
-        token = waited ? findSightmapEmbed(waited.html) : null;
-        if (waited && token) {
-          // The waited render is the better page in every way; keep it.
-          main = waited;
-          pages[0] = pageEntry(main);
+        const candidate = fetchedPages.find((f) => SIGHTMAP_HINT_RE.test(f.html));
+        if (candidate) {
+          const waited = await renderPageWaited(candidate.finalUrl);
+          token = waited ? findSightmapEmbed(waited.html) : null;
+          if (waited && token) {
+            // The waited render is the better page in every way; keep it.
+            const idx = fetchedPages.indexOf(candidate);
+            fetchedPages[idx] = waited;
+            if (idx >= 0 && idx < pages.length) pages[idx] = pageEntry(waited);
+            if (candidate === main) main = waited;
+          }
         }
       }
       if (token) {

@@ -126,23 +126,31 @@ export async function fetchSightmapInventory(embedToken) {
 
   // One term lookup per floor plan: the offered lengths are a property of the
   // building, not of the apartment.
-  const seen = new Set();
-  const reps = units.filter((u) => {
-    if (!u.priceUrl || seen.has(u.planId)) return false;
-    seen.add(u.planId);
-    return true;
-  });
+  const byPlan = new Map();
+  for (const u of units) {
+    if (!u.priceUrl) continue;
+    if (!byPlan.has(u.planId)) byPlan.set(u.planId, []);
+    byPlan.get(u.planId).push(u);
+  }
   const termsByPlan = new Map();
   await Promise.all(
-    reps.slice(0, MAX_TERM_LOOKUPS).map(async (u) => {
-      const t = await getJson(u.priceUrl);
-      const options = (t?.data?.options ?? [])
-        .map((o) => ({
-          months: Number(o.lease_term),
-          price: typeof o.price === "number" ? o.price : null,
-        }))
-        .filter((o) => Number.isFinite(o.months) && o.months > 0);
-      if (options.length) termsByPlan.set(u.planId, options);
+    [...byPlan.entries()].slice(0, MAX_TERM_LOOKUPS).map(async ([planId, list]) => {
+      // Two attempts per plan: one unit's matrix can come back empty (a unit
+      // already under application, say) and that used to leave the whole floor
+      // plan with no lease terms at all.
+      for (const u of list.slice(0, 2)) {
+        const t = await getJson(u.priceUrl);
+        const options = (t?.data?.options ?? [])
+          .map((o) => ({
+            months: Number(o.lease_term),
+            price: typeof o.price === "number" ? o.price : null,
+          }))
+          .filter((o) => Number.isFinite(o.months) && o.months > 0);
+        if (options.length) {
+          termsByPlan.set(planId, options);
+          return;
+        }
+      }
     })
   );
 
@@ -177,7 +185,12 @@ export function describeSightmapInventory(inv) {
     ]
       .filter(Boolean)
       .join(", ");
+    const cheapest = Math.min(...list.map((u) => u.price));
     lines.push(`FLOOR PLAN ${head}`);
+    lines.push(
+      `  asking rent for this floor plan: $${cheapest} per month for the whole unit` +
+        ` (the lowest currently available; use this as the floor plan's rent)`
+    );
     if (f.termPricing?.length) {
       lines.push(
         `  lease terms offered: ${f.termPricing
