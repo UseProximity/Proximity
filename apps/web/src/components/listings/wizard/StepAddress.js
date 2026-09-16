@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { StepFrame, inputCls, importedInputCls } from "@/components/listings/wizard/wizardShared";
+import PropertyUnitPicker from "@/components/listings/PropertyUnitPicker";
 
 /*
  * Screen 1: just the address. Picking a Mapbox suggestion captures coordinates
@@ -75,6 +76,8 @@ export default function StepAddress({ w }) {
       w.setCoords({ lat, lng });
       w.fetchStreetViewPreview(s.label, lat, lng);
     }
+    // The address is settled enough to ask whether a property already exists.
+    w.lookupProperty(s.label);
   };
 
   return (
@@ -126,8 +129,22 @@ export default function StepAddress({ w }) {
           </ul>
         )}
       </div>
-      {confirmed && !open && (
+      {confirmed && !open && !w.existingProperty && !w.lookupLoading && (
         <p className="mt-2 text-xs text-green-700">✓ On the map. Walk times will be calculated automatically.</p>
+      )}
+
+      {/* A listing already exists here — attach to one of its units instead of
+          creating a duplicate property. */}
+      {(w.lookupLoading || w.existingProperty) && (
+        <div className="mt-4">
+          <PropertyUnitPicker
+            loading={w.lookupLoading}
+            property={w.existingProperty}
+            leaseType={w.form.lease_type}
+            selection={w.unitSelection}
+            onSelectionChange={w.setUnitSelection}
+          />
+        </div>
       )}
     </StepFrame>
   );

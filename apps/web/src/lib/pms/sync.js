@@ -25,6 +25,7 @@
  * new connection is live within seconds of setup, not "tonight".
  */
 import supabase from "@/lib/supabase";
+import { isLiveLease } from "@/lib/listings/unitAvailability";
 import { getConnector } from "./index.js";
 import { ingestPmsProperty } from "./ingest.js";
 import {
@@ -171,7 +172,6 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms ?? 1,
           area: unit.area,
-          available: unit.available !== false,
         },
       });
       unitTypeId = created?.id ?? null;
@@ -323,7 +323,7 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
 
     const { data: typeRows } = await supabase
       .from("listing_units")
-      .select("id, available, unit_leases(id, rent, available_from, is_active)")
+      .select("id, unit_leases(id, rent, available_from, is_active, unavailable, owner_id)")
       .eq("listing_id", listingId)
       .is("deleted_at", null);
     const typeById = new Map((typeRows ?? []).map((t) => [t.id, t]));
@@ -333,12 +333,43 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
     for (const [typeId, group] of byType) {
       const current = typeById.get(typeId);
       if (!current) continue;
-      const nextAvailable = rollUpAvailability(group);
-      if (nextAvailable != null && nextAvailable !== current.available) {
-        unitUpdates.push({ id: typeId, available: nextAvailable });
-      }
+      // The lease this connection may actually write to (see rpc_pms_apply's
+      // p_owner_id scope) — comparing against another landlord's price would
+      // trigger phantom "price changed" updates on every sync.
+      const ownerId = connection.user_id ?? null;
+      const mine = (current.unit_leases ?? []).filter(
+        (le) => le.is_active && (le.owner_id == null || ownerId == null || le.owner_id === ownerId)
+      );
 
-      const activeLease = (current.unit_leases ?? []).find((le) => le.is_active);
+      /*
+       * Occupancy from the PMS lands on THIS landlord's offerings, not on the
+       * unit: units no longer carry availability of their own. Scoping to
+       * `mine` matters more here than it does for price — a sync must never
+       * withdraw a competitor's offering on a unit it happens to share.
+       *
+       * A type with no offering of ours has nothing to flip. It shows as
+       * available-with-unknown-terms either way, so there is no silent hide.
+       */
+      const nextAvailable = rollUpAvailability(group);
+      if (nextAvailable != null && mine.length) {
+        const currentlyAvailable = mine.some(isLiveLease);
+        if (nextAvailable !== currentlyAvailable) {
+          unitUpdates.push({
+            id: typeId,
+            available: nextAvailable,
+            lease_ids: (nextAvailable
+              ? mine.filter((le) => le.unavailable)
+              : mine.filter(isLiveLease)
+            ).map((le) => le.id),
+          });
+        }
+      }
+      const activeLease = (current.unit_leases ?? []).find(
+        (le) =>
+          le.is_active &&
+          !le.unavailable &&
+          (le.owner_id == null || ownerId == null || le.owner_id === ownerId)
+      );
       const nextRent = rollUpRent(group.filter((o) => o.unit));
       const nextFrom = rollUpAvailableFrom(group.filter((o) => o.unit));
       const currentRent = activeLease?.rent != null ? Number(activeLease.rent) : null;
@@ -439,6 +470,10 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
           p_listing_updates: Object.keys(listingUpdates).length ? listingUpdates : null,
           p_unit_updates: unitUpdates.length ? unitUpdates : null,
           p_lease_updates: leaseUpdates.length ? leaseUpdates : null,
+          // Scope lease writes to THIS landlord's offerings. Several landlords
+          // can now offer the same unit, and without this the sync repriced
+          // whichever of them happened to be active — including a competitor's.
+          p_owner_id: connection.user_id ?? null,
         });
         if (error) {
           events.push({ connection_id: connection.id, listing_id: listingId, applied: false, result: "error", detail: { error: error.message } });

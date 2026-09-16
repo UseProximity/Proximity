@@ -25,6 +25,19 @@ export function leaseRentBasis(lease, isRoomShare) {
   const rent = Number(lease?.rent);
   if (!Number.isFinite(rent) || rent <= 0) return null;
   const beds = Number(lease?.bedrooms) || 0;
+
+  /*
+   * When the landlord told us, believe them. unit_leases.rent_is_per_person is
+   * null on everything predating the field, and only then does the split test
+   * below have to guess.
+   */
+  const stated = lease?.rentIsPerPerson ?? lease?.rent_is_per_person ?? null;
+  if (stated === true) {
+    return { perPerson: rent, unitRent: rent * Math.max(beds, 1), beds, basis: "person" };
+  }
+  if (stated === false) {
+    return { perPerson: beds > 1 ? rent / beds : rent, unitRent: rent, beds, basis: "unit" };
+  }
   const asPerson = {
     perPerson: rent,
     unitRent: rent * Math.max(beds, 1),

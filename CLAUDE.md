@@ -20,6 +20,7 @@ This file mirrors the authoritative project knowledge served by the local **`pro
 - **Local dev runs on `localhost:3000`** (`npm run dev -- -p 3000`): `NEXTAUTH_URL` in `.env.local` must match the served origin or login silently bounces, and the dev R2 bucket's CORS policy allows browser photo uploads from `http://localhost:3000` only — any Cloudflare R2 testing must happen on 3000 (Wyatt, 2026-08-12).
 - Plain JavaScript everywhere (no TypeScript except `middleware.ts`); Tailwind CSS only — no CSS modules, no inline styles.
 - Use the `@/` path alias (`@/components/...`, `@/lib/...`, `@/utils/...`). Keep components reasonably small; extract sub-components when they grow.
+- **No em dashes.** Not in code comments, UI copy, commit messages, PR descriptions or docs (Wyatt, 2026-09-03). Use a full stop, a comma, a colon or brackets instead. This applies to anything written into this repo.
 - API/auth/DB conventions live in `.claude/rules/api.md` (auto-loads when working under `src/`). One rule worth repeating: **schema migrations always go to BOTH dev and prod.**
 
 ## Environments (`src/lib/appEnv.js`)
@@ -44,6 +45,10 @@ npm run dev      # local dev server
 npm run build    # production build (/sitemap.xml is a dynamic route: src/app/sitemap.js)
 npm run lint     # ESLint
 ```
+
+**When a change is done, restart the dev server on port 3000 and point Wyatt at it.** A dev server left running from another worktree keeps serving that worktree's code on whatever port it grabbed, so a stale `localhost:3001` (or a timed-out 3000) shows the new work missing and looks like a bug in the change (Wyatt, 2026-09-11).
+
+**Never run `npm run build` while a dev server is running on the same worktree.** Both write to the same `.next`, so the production build overwrites the dev server's chunks and the running site starts serving pages with no CSS at all. It looks like a broken stylesheet, not a build collision. Stop the dev server, build, then `rm -rf apps/web/.next` and restart dev.
 
 Run `npm run build` (and `npm run lint`) before opening a PR. There is no unit-test suite; verify changes by running the app and/or querying the DB via the Supabase MCP.
 

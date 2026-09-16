@@ -10,8 +10,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
 
-  const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
   const [coOwnersModal, setCoOwnersModal] = useState(null); // null | listing
+  const [leaseModal, setLeaseModal] = useState(null); // null | { property, lease }
   const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // null | { name?, email?, phone? }
   const [updatingProfile, setUpdatingProfile] = useState(false);
 
@@ -170,8 +170,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleAddListing = () => router.push("/add-listing");
-  const handleEditListing = (listing) =>
-    setListingModal({ mode: "edit", listing });
   const handleManageCoOwners = (listing) => setCoOwnersModal(listing);
   const handleDeleteListing = async (property) => {
     if (
@@ -202,32 +200,84 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     }
   };
 
-  const handleListingModalSuccess = async (
-    updatedUnits = null,
-    profileDiff = null
-  ) => {
-    if (updatedUnits && listingModal?.listing) {
-      const listingId = listingModal.listing._id || listingModal.listing.id;
-      setUser((prev) => ({
-        ...prev,
-        listings: prev.listings.map((l) =>
-          l._id === listingId || l.id === listingId
-            ? {
-                ...l,
-                unitTypes: updatedUnits.map((u) => ({
-                  bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
-                  bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-                  area: u.area != null ? Number(u.area) : null,
-                  rent: u.rent != null ? Number(u.rent) : null,
-                })),
-              }
-            : l
-        ),
-      }));
+  /*
+   * Lease-level controls, for a landlord whose stake here is an OFFERING rather
+   * than the property record. These hit /api/leases/[leaseId], which is scoped
+   * to the caller's own lease — unlike the property routes above, which replace
+   * the whole unit set and would (rightly) 403 them.
+   */
+  const handleEditLease = (property) => {
+    const lease = (property.myLeases ?? []).find((x) => x.isActive) ?? property.myLeases?.[0];
+    if (!lease) {
+      alert("We couldn't find your listing at this property. Try reloading.");
+      return;
     }
-    await fetchUser();
-    setListingModal(null);
-    if (profileDiff) setProfileUpdatePrompt(profileDiff);
+    setLeaseModal({ property, lease });
+  };
+
+  const handleWithdrawLease = async (property) => {
+    /*
+     * The lease that is actually ON the market — not merely is_active, which a
+     * withdrawn lease can still be. Picking by is_active alone found a withdrawn
+     * lease, fell through to myLeases[0] when it found none, and re-withdrew the
+     * same offering: a write that changed nothing, on a card that looked the
+     * same afterwards. A landlord reported it as the button doing nothing, and
+     * pressed it twice more.
+     */
+    const lease = (property.myLeases ?? []).find((x) => x.isLive);
+    if (!lease) {
+      alert("That listing is already withdrawn.");
+      return;
+    }
+    const where = lease.unitLabel ? `your listing for ${lease.unitLabel}` : "your listing";
+    if (
+      !confirm(
+        `Withdraw ${where} at ${property.title || property.address}? Students stop seeing your price, terms and contact details, and can no longer enquire. The building stays on the site as unavailable, and your unit and photos are kept — you can publish it again whenever you like.`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+      if (res.ok) {
+        // Withdrawn, not deleted — the lease row survives as the ownership
+        // record, so the property stays on their dashboard, now with no live
+        // offering. Refetch rather than guess at the new shape.
+        await fetchUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not withdraw your listing. Please try again.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
+  /*
+   * Put a withdrawn offering back on the market — the inverse of the above, and
+   * the reason withdrawing is safe to do. Without it the only way back was the
+   * lease editor, which does not say that withdrawal is what it is undoing.
+   */
+  const handleRepublishLease = async (property) => {
+    const lease = (property.myLeases ?? []).find((x) => !x.isLive);
+    if (!lease) {
+      alert("We couldn't find a withdrawn listing at this property. Try reloading.");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      if (res.ok) {
+        await fetchUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not publish your listing. Please try again.");
+      }
+    } catch {
+      alert("Network error.");
+    }
   };
 
   const handleProfileUpdate = async (shouldUpdate) => {
@@ -316,10 +366,10 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     setSidebarOpen,
     user,
     setUser,
-    listingModal,
-    setListingModal,
     coOwnersModal,
     setCoOwnersModal,
+    leaseModal,
+    setLeaseModal,
     profileUpdatePrompt,
     updatingProfile,
     isEditing,
@@ -334,10 +384,12 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     cancelEdit,
     saveProfile,
     handleAddListing,
-    handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
-    handleListingModalSuccess,
+    handleEditLease,
+    handleWithdrawLease,
+    handleRepublishLease,
+    fetchUser,
     handleProfileUpdate,
     handleNavigation,
     handlePropertySelect,

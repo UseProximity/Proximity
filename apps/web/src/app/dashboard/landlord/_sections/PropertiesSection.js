@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Home,
   Plus,
@@ -13,6 +12,7 @@ import {
   Pencil,
   Users,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -23,40 +23,36 @@ import {
   getRentRangeLabel,
 } from "@/utils/listingFormatters";
 
+/**
+ * Rent across the landlord's OWN offerings at a property — the dashboard
+ * equivalent of getRentRangeLabel, but scoped to what is actually theirs.
+ */
+function myLeaseRentLabel(myLeases = []) {
+  // Nothing on the market is not a price on request. It is no offer at all,
+  // and "Contact for Pricing" invites an enquiry students cannot make.
+  if (myLeases.length && !myLeases.some((l) => l.isLive)) return "Not listed";
+  const rents = myLeases
+    .filter((l) => l.isLive && l.rent != null)
+    .map((l) => Number(l.rent))
+    .filter(Number.isFinite);
+  if (!rents.length) return "Contact for Pricing";
+  const lo = Math.min(...rents);
+  const hi = Math.max(...rents);
+  const fmt = (n) => `$${n.toLocaleString("en-US")}`;
+  return lo === hi ? fmt(lo) : `${fmt(lo)}-${fmt(hi)}`;
+}
+
 export default function PropertiesSection({
   user,
-  setUser,
   handlePropertySelect,
   router,
   onAddListing,
-  onEditListing,
   onDeleteListing,
+  onEditLease,
+  onWithdrawLease,
+  onRepublishLease,
   onManageCoOwners,
 }) {
-  const [togglingId, setTogglingId] = useState(null);
-
-  async function handleToggleUnavailable(e, property) {
-    e.stopPropagation();
-    setTogglingId(property._id);
-    try {
-      const res = await fetch(`/api/listing/${property._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unavailable: !property.unavailable }),
-      });
-      if (res.ok) {
-        const { unavailable } = await res.json();
-        setUser((prev) => ({
-          ...prev,
-          listings: prev.listings.map((l) =>
-            l._id === property._id ? { ...l, unavailable } : l
-          ),
-        }));
-      }
-    } finally {
-      setTogglingId(null);
-    }
-  }
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -158,18 +154,16 @@ export default function PropertiesSection({
               >
                 {property.unavailable ? "Unavailable" : "Available"}
               </Badge>
-              <button
-                onClick={(e) => handleToggleUnavailable(e, property)}
-                disabled={togglingId === property._id}
-                className="absolute bottom-3 left-3 bg-white/90 hover:bg-white text-xs font-semibold px-2.5 py-1 rounded-full shadow transition disabled:opacity-50"
-              >
-                {togglingId === property._id
-                  ? "Saving…"
-                  : property.unavailable
-                  ? "Mark Available"
-                  : "Mark Unavailable"}
-              </button>
             </div>
+            {/* Availability is not a switch anyone flips here. It is the sum of
+                the offerings on this property, so when the badge reads grey the
+                useful thing to say is which offerings would turn it green. */}
+            {property.unavailable && (
+              <p className="px-4 pt-3 text-xs text-amber-700">
+                Students can&apos;t see this: no unit here has a live offering.
+                Publish a listing on a unit to put it back on the market.
+              </p>
+            )}
 
             <CardHeader className="pb-2">
               <CardTitle className="text-lg group-hover:text-red-600 transition-colors">
@@ -183,6 +177,31 @@ export default function PropertiesSection({
             </CardHeader>
 
             <CardContent className="space-y-3">
+              {property.ownership === "lease" && property.myLeases?.length > 0 && (
+                <>
+                  <p className="text-xs text-gray-500">
+                    Your {property.myLeases.length === 1 ? "listing" : "listings"}:{" "}
+                    {property.myLeases
+                      .map(
+                        (x) =>
+                          `${x.unitLabel ?? `${x.bedrooms ?? "?"} bed`}${
+                            x.isLive ? "" : " (withdrawn)"
+                          }`
+                      )
+                      .join(", ")}
+                  </p>
+                  {/* The withdrawal itself always worked; only the card never
+                      admitted it, so the button read as broken and got pressed
+                      again. Say the state, and offer the way back. */}
+                  {!property.myLeases.some((x) => x.isLive) && (
+                    <p className="text-xs text-amber-700">
+                      Withdrawn. Students can&apos;t see your price or contact
+                      details. Publish it again when you&apos;re ready.
+                    </p>
+                  )}
+                </>
+              )}
+
               <div className="flex items-center justify-between text-xs text-gray-600">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">
@@ -206,8 +225,15 @@ export default function PropertiesSection({
                 </div>
               </div>
 
+              {/*
+                * At a property someone else owns, the building's rent range is
+                * mostly OTHER landlords' prices — quoting it back as "your"
+                * listing is simply wrong. Show their own offering instead.
+                */}
               <div className="text-xl font-bold text-gray-900">
-                {getRentRangeLabel(property.unitTypes)}
+                {property.ownership === "lease"
+                  ? myLeaseRentLabel(property.myLeases)
+                  : getRentRangeLabel(property.unitTypes)}
                 <span className="text-sm font-normal text-gray-500">
                   /month
                 </span>
@@ -232,37 +258,96 @@ export default function PropertiesSection({
                 </div>
               )}
 
+              {/*
+                * Edit / Co-owners / Delete all act on the shared PROPERTY record,
+                * so they belong to whoever owns that record. A landlord who owns
+                * only an offering here (ownership: "lease") gets their own
+                * controls instead — the property is not theirs to change, and
+                * showing them buttons that 403 is worse than showing none.
+                */}
               <div className="flex gap-2 pt-2 border-t border-gray-100">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditListing(property);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onManageCoOwners(property);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-purple-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-purple-50 transition-colors"
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  Co-owners
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteListing(property);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </button>
+                {property.ownership === "lease" ? (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditLease(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit my listing
+                    </button>
+                    {property.myLeases?.some((x) => x.isLive) ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onWithdrawLease(property);
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Withdraw
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRepublishLease(property);
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-green-700 font-medium px-2.5 py-1.5 rounded-md hover:bg-green-50 transition-colors"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Publish again
+                      </button>
+                    )}
+                    <span className="ml-auto self-center text-[11px] text-gray-400">
+                      Listed at another owner&apos;s property
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {/*
+                      * Opens the property itself, where the building, each unit
+                      * and each offering are edited in place through their own
+                      * endpoints. It used to open a flat form that posted the
+                      * whole listing back at once, which overwrote the rent and
+                      * sublease flag of whichever offering on each unit happened
+                      * to be oldest — someone else's, at a shared property — and
+                      * deleted every photo the form had not loaded.
+                      */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePropertySelect(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onManageCoOwners(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-purple-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-purple-50 transition-colors"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      Co-owners
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteListing(property);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>

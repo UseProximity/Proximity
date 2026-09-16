@@ -3,8 +3,9 @@
  * Changes from previous version:
  *   - Removed FK hint `!` syntax from all select() calls; plain table names only
  *     (each pair of tables has at most one FK, so Supabase resolves without hints)
- *   - listing_units: unit_leases NOT nested here (browse page doesn't need per-unit rent;
- *     unitTypes[].rent is null — acceptable per spec)
+ *   - listing_units: unit_leases ARE nested here as of 2026-08-22 — browse filters
+ *     per unit/lease (see lib/listings/filterListings.js), so unitTypes[].leases
+ *     carries every live offering in the same shape the detail fetch produces
  *   - listing_amenities / listing_utilities: PK is listing_id → Supabase returns single object,
  *     not array; amenitiesRowToArray / utilitiesRowToArray handle the object shape
  *   - listing_walk_times(minutes, locations(name)): shuttle_nearest handled separately
@@ -19,6 +20,8 @@
  */
 
 import supabase from "@/lib/supabase";
+import { shapeLeases } from "@/lib/listings/getListing";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,6 +96,25 @@ function driveTimesToMap(driveTimes) {
 // ---------------------------------------------------------------------------
 
 export function buildListing(row, owner = null) {
+  /*
+   * Retired units must not reach the UI. PostgREST cannot filter an embedded
+   * resource from the select string, so it is done here — and it has to be done
+   * at all now that merging duplicate properties soft-deletes the units it
+   * collapses. Before that nothing had ever set listing_units.deleted_at, so
+   * nothing filtered on it.
+   */
+  row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
+
+  /*
+   * Card imagery is the PROPERTY's, falling back to a unit photo only when the
+   * building has none of its own. Otherwise whichever landlord uploaded first
+   * would pick the cover shot for a building they may not even own.
+   */
+  const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const sorted = (row.listing_images ?? []).slice().sort(bySort);
+  const propertyImages = sorted.filter((img) => !img.unit_id);
+  const coverPool = propertyImages.length ? propertyImages : sorted;
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find((wt) => wt.locations?.name === "shuttle_nearest");
@@ -108,19 +130,46 @@ export function buildListing(row, owner = null) {
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      /*
+       * Same shape as the detail fetch (shapeLeases), so browse filtering and
+       * the panel agree on what a unit is offering. They used to disagree: this
+       * feed took the first is_active lease while the panel required
+       * is_active && !unavailable, and 79 leases sit in that gap — enough for a
+       * card to advertise a price the panel then refused to list.
+       */
+      const leases = shapeLeases(u.unit_leases, row);
       const nextAvailable =
-        (u.unit_leases ?? [])
-          .filter((l) => l.available_from)
-          .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
-          ?.available_from ?? null;
+        leases
+          .filter((l) => l.availableFrom)
+          .sort((a, b) => new Date(a.availableFrom) - new Date(b.availableFrom))[0]
+          ?.availableFrom ?? null;
+      // Cheapest live offering — the number the card shows. shapeLeases sorts
+      // cheapest-first with unpriced sunk, so this is just the head of the list.
+      const pricedHead = leases.find((l) => l.rent != null) ?? null;
       return {
-        rent: activeRent != null ? Number(activeRent) : null,
+        id: u.id,
+        rent: pricedHead?.rent ?? null,
+        /*
+         * Carried from the SAME offering that supplied `rent`, because the two
+         * are only meaningful together: $1,069 means one thing per person and
+         * another for a 3-bed apartment.
+         *
+         * shapeLeases already put this on unitTypes[].leases[], but the flattened
+         * unit summary dropped it — and the summary is what minPerPersonRent()
+         * reads. So a landlord who had stated their basis was still having it
+         * guessed at, on exactly the surface the guess feeds: the /washu price
+         * pages. LOCAL on Delmar is the case in hand — its unnamed rows quote
+         * per bed and its named units quote the apartment, and only the stated
+         * flag can tell those apart with certainty.
+         */
+        rentIsPerPerson: pricedHead?.rentIsPerPerson ?? null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-        available: u.available ?? true,
+        // Derived from the offerings above, not stored — see unitAvailability.js.
+        available: unitIsAvailable(u),
         availableFrom: nextAvailable,
+        leases,
       };
     }),
     leaseType: (() => {
@@ -130,19 +179,12 @@ export function buildListing(row, owner = null) {
       // Decide the listing's label from its AVAILABLE units when it has any, so an
       // available sublease surfaces as "Sublease" even alongside an unavailable
       // standard lease (and an unavailable sublease no longer forces the badge).
-      const availablePool = activeLeases(units.filter((u) => u.available !== false));
+      const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
-    images: (row.listing_images ?? [])
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((img) => img.url),
-    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
-    imageFromStreetView:
-      (row.listing_images ?? [])
-        .slice()
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
-      "street_view",
+    images: coverPool.map((img) => img.url),
+    imageFromStreetView: coverPool[0]?.source === "street_view",
     numReviews: legitReviews.length,
     rating:
       legitReviews.length
@@ -150,7 +192,16 @@ export function buildListing(row, owner = null) {
             (legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length) * 10
           ) / 10
         : 0,
-    reviews: legitReviews,
+    /*
+     * Deliberately no `reviews` array. This feed only ever carried
+     * {rating, legitimacy, deleted_at} rows (no reviewer, no comment, no date),
+     * because that is all the card aggregates need. The panel paints from
+     * this feed while its detail fetch is in flight, and those stub rows were
+     * enough to render real-looking review cards reading "Anonymous" with an
+     * empty body until the real ones arrived. Omitting the key makes
+     * `listing.reviews === undefined` an honest "not loaded yet" signal (the
+     * same rule unit leases follow) and trims the payload for every listing.
+     */
     placeWalkMinutes: walkTimesToMap(walkTimes),
     placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
@@ -165,19 +216,13 @@ export function buildListing(row, owner = null) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: (() => {
-      if (row.unavailable) return true;
-      const units = row.listing_units ?? [];
-      // Treat the listing as unavailable if it has units and none of them are available.
-      // Empty unit lists do NOT flip the listing — that's a separate data issue.
-      return units.length > 0 && units.every((u) => u.available === false);
-    })(),
+    unavailable: listingIsUnavailable(row),
     // Earliest future move-in across available units; null = available now.
     // Non-null means every open unit is pre-leased until that date, so the UI
     // shows "Available Aug 1" instead of hiding the listing.
     availableFrom: (() => {
       const today = new Date().toISOString().slice(0, 10);
-      const units = (row.listing_units ?? []).filter((u) => u.available !== false);
+      const units = (row.listing_units ?? []).filter(unitIsAvailable);
       if (!units.length) return null;
       const nexts = units.map(
         (u) =>
@@ -245,7 +290,10 @@ export async function fetchListings(listingIds = null) {
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease, available_from)),
+      listing_units(id, bedrooms, bathrooms, area, deleted_at,
+        unit_leases(id, rent, rent_is_per_person, is_active, unavailable, sublease,
+                    available_from, lease_term_months, furnished,
+                    contact_name, contact_email, contact_phone)),
       listing_landlords(user_id, is_primary),
       listing_amenities(
         air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
@@ -255,7 +303,7 @@ export async function fetchListings(listingIds = null) {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
-      listing_images(url, sort_order, source),
+      listing_images(url, sort_order, source, unit_id),
       listing_reviews(rating, legitimacy, deleted_at),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))

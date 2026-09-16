@@ -62,6 +62,30 @@ export async function GET(req, { params }) {
       return Response.json(data.map(stripSensitive));
     }
 
+    /*
+     * Every property review, newest first.
+     *
+     * Reviews were reachable only by expanding the listing or the person who
+     * wrote one, which answers "what has this property got?" but never "what
+     * came in today?", the question moderation actually starts from. The
+     * reviewer and the listing are joined here so the table can name both
+     * without a second round trip per row.
+     *
+     * Soft-deleted rows are included rather than filtered. This is the admin
+     * surface: a review removed by mistake has to be findable to be restored,
+     * and the view badges them instead of hiding them.
+     */
+    if (view === "reviews") {
+      const { data, error } = await supabase
+        .from("listing_reviews")
+        .select(`*,
+          reviewer:users!user_id(id, name, email),
+          listings!listing_id(id, title, address)`)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return Response.json(data);
+    }
+
     if (view === "dorms") {
       const { data, error } = await supabase
         .from("dorms")

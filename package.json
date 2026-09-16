@@ -5,6 +5,9 @@
   "overrides": {
     "react-native-css-interop": "0.2.6"
   },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "devDependencies": {
     "react-native": "0.85.3"
   },

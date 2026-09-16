@@ -88,6 +88,7 @@ function GlobalListingModalInner() {
         <ListingModalInfo
           session={session}
           listing={modalData}
+          initialUnitId={searchParams.get("unit")}
           tabBarAction={
             showViewOnMap ? (
               <button

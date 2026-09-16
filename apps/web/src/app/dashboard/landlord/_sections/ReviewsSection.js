@@ -30,8 +30,7 @@ function InviteLinkCard({ userId }) {
           </h3>
           <p className="mt-1.5 text-sm text-gray-600 leading-relaxed">
           Students rely on reviews when deciding who to contact. Share this link with past 
-          tenants who are verified WashU students — they pick which property to 
-          review and submit in under a minute.
+          tenants to get reviewed.
           </p>
         </div>
         <div className="flex gap-2">

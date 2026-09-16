@@ -26,6 +26,29 @@ import { AUTH_ERRORS } from "@proximity/auth-core";
 // tab / by an admin) without requiring a sign-out.
 const ROLE_REFRESH_MS = 60_000;
 
+/*
+ * Run a Supabase query without letting a network failure escape.
+ *
+ * supabase-js returns { data, error } for anything Postgres says no to, but a
+ * transport failure — the "TypeError: fetch failed" this project sees against
+ * Supabase — REJECTS instead. Unhandled inside the jwt callback, that rejection
+ * takes the whole callback down, and next-auth answers /api/auth/session with
+ * nothing: the browser concludes it is signed out and the UI starts asking a
+ * logged-in landlord to sign in.
+ *
+ * A blip must not end a session. The caller decides what a failed read means;
+ * here it simply becomes an error result like any other, and the token keeps
+ * the identity it was already carrying.
+ */
+async function safeQuery(run) {
+  try {
+    return await run();
+  } catch (err) {
+    console.error("[auth] Supabase query failed, keeping cached token:", err?.message);
+    return { data: null, error: err };
+  }
+}
+
 const config = {
   providers: [
     Google({
@@ -150,11 +173,13 @@ const config = {
       // the check it would re-resolve the row by email on the very next request
       // and resurrect the signed-out session.
       if (!token.userId && token.email) {
-        const { data: sbUser } = await supabase
-          .from("users")
-          .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
-          .eq("email", token.email)
-          .single();
+        const { data: sbUser } = await safeQuery(() =>
+          supabase
+            .from("users")
+            .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
+            .eq("email", token.email)
+            .single()
+        );
         if (sbUser && !sbUser.deleted_at) {
           token.userId = sbUser.id;
           token.role = sbUser.roles?.name ?? "student";
@@ -185,11 +210,13 @@ const config = {
         (!token.roleCheckedAt ||
           Date.now() - token.roleCheckedAt > ROLE_REFRESH_MS)
       ) {
-        const { data: fresh, error: refreshErr } = await supabase
-          .from("users")
-          .select("profile_complete, deleted_at, roles!role_id(name)")
-          .eq("id", token.userId)
-          .single();
+        const { data: fresh, error: refreshErr } = await safeQuery(() =>
+          supabase
+            .from("users")
+            .select("profile_complete, deleted_at, roles!role_id(name)")
+            .eq("id", token.userId)
+            .single()
+        );
         // Account deleted, or the row is definitively gone (PGRST116 = no rows
         // matched): strip the identity off the token so the session callback
         // below yields no user.id and every downstream guard treats this as
@@ -213,8 +240,13 @@ const config = {
           token.role = fresh.roles?.name ?? token.role ?? "student";
           token.profileComplete =
             fresh.profile_complete ?? token.profileComplete ?? false;
+          token.roleCheckedAt = Date.now();
         }
-        token.roleCheckedAt = Date.now();
+        /*
+         * On failure the timestamp is deliberately NOT advanced: the refresh
+         * did not happen, so the next call should try again rather than wait
+         * out another interval on stale data it never actually checked.
+         */
       }
 
       return token;

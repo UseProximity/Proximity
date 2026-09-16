@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
-import { emptyUnit } from "@proximity/shared";
+import { emptyUnit, parseUnitNumbers } from "@proximity/shared";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";
@@ -11,13 +11,15 @@ import StepPerks from "@/components/listings/wizard/StepPerks";
 import StepPhotos from "@/components/listings/wizard/StepPhotos";
 import StepDescription from "@/components/listings/wizard/StepDescription";
 import StepReview from "@/components/listings/wizard/StepReview";
+import { compressImage } from "@/utils/compressImage";
 
 /*
  * Step-by-step Add Listing flow. One themed question set per screen, a labeled
  * progress bar that never lies, autosave to localStorage, and a review screen
  * before publishing. A website import fills what it can, then the wizard jumps
- * straight to the gaps. Editing an existing listing keeps the classic full
- * form (ListingFormPanel) — random access beats steps once data exists.
+ * straight to the gaps. Editing an existing listing goes through the property
+ * editor (components/listings/editor/) instead — random access beats steps once
+ * data exists.
  */
 
 export const STEPS = [
@@ -56,6 +58,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const [units, setUnits] = useState([emptyUnit()]);
   const [customAmenities, setCustomAmenities] = useState([]);
   const [error, setError] = useState(null);
+  /*
+   * A rejection that belongs to one input — currently only a taken property
+   * name. Kept separate from `error` because the wizard shows `error` on the
+   * step the landlord is standing on, and the name lives back on the
+   * Description step; publish happens from Review.
+   */
+  const [fieldError, setFieldError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [visited, setVisited] = useState(() => new Set());
   // "now" | "date" — the required one-tap availability ask on the basics step.
@@ -64,6 +73,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   // Photos staged in the browser; uploaded to R2 after the listing is created.
   const [stagedFiles, setStagedFiles] = useState([]);
   const [stagedPreviews, setStagedPreviews] = useState([]);
+
+  // Property lookup — does a listing already exist at this address? Picking a
+  // known address attaches the lease to that property instead of creating a
+  // duplicate. See /api/properties/lookup.
+  const [propertyLookup, setPropertyLookup] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [unitSelection, setUnitSelection] = useState({ mode: "new", unitId: null });
 
   // Street View default cover (fetched when an address suggestion is picked).
   const [coords, setCoords] = useState({ lat: null, lng: null });
@@ -190,6 +206,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   const setField = (name, value) => {
     clearImported(name);
+    // Editing the field the server rejected retires the rejection.
+    setFieldError((fe) => (fe?.field === name ? null : fe));
     setForm((f) => ({ ...f, [name]: value }));
   };
 
@@ -232,50 +250,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setCustomAmenities((prev) => prev.filter((a) => a !== val));
 
   // ------------------------------------------------------------------- photos
-  const compressImage = (file) =>
-    new Promise((resolve) => {
-      if (file.size < 1 * 1024 * 1024) {
-        resolve(file);
-        return;
-      }
-      const img = new window.Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const MAX = 1920;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || blob.size >= file.size) {
-              resolve(file);
-              return;
-            }
-            resolve(
-              new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
-                type: "image/jpeg",
-              })
-            );
-          },
-          "image/jpeg",
-          0.85
-        );
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve(file);
-      };
-      img.src = url;
-    });
-
   const handleImageFiles = async (files) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (!imgs.length) return;
@@ -611,8 +585,34 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   // --------------------------------------------------------------- navigation
   const stepIndex = STEPS.findIndex((s) => s.id === stepId);
 
+  const existingProperty = propertyLookup?.property ?? null;
+  const attachingToExistingUnit =
+    unitSelection.mode === "existing" && !!unitSelection.unitId;
+
+  const lookupProperty = useCallback(async (address) => {
+    if (!address?.trim()) return;
+    setLookupLoading(true);
+    try {
+      const res = await fetch(
+        `/api/properties/lookup?address=${encodeURIComponent(address)}`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setPropertyLookup(data);
+      setUnitSelection({ mode: data?.property ? "existing" : "new", unitId: null });
+    } catch (err) {
+      console.error("Property lookup error:", err);
+    } finally {
+      setLookupLoading(false);
+    }
+  }, []);
+
   const validateStep = (id) => {
-    if (id === "address" && !form.address.trim()) return "Enter the property address to continue.";
+    if (id === "address") {
+      if (!form.address.trim()) return "Enter the property address to continue.";
+      if (existingProperty && unitSelection.mode === "existing" && !unitSelection.unitId)
+        return "Pick which unit this lease is for, or choose to add a new unit.";
+    }
     if (id === "basics" && availabilityMode === "date" && !form.move_in_date)
       return "Pick the date it becomes available, or tap Available now.";
     if (id === "units") {
@@ -627,6 +627,33 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         )
       )
         return "Pick at least one lease term for each available unit.";
+      /*
+       * Attaching to an existing unit creates ONE offering on that one unit, so
+       * only the first card is submitted. Say so rather than accepting extra
+       * cards and dropping them silently.
+       */
+      if (attachingToExistingUnit && units.length > 1) {
+        return "You're adding your listing to one existing unit, so keep a single unit here. Choose “add a new unit” to list several.";
+      }
+      // Attaching to an existing unit reuses that unit's identity, so the
+      // floor-plan cards aren't creating anything that needs identifying.
+      if (!attachingToExistingUnit) {
+        if (units.some((u) => !u.designator))
+          return "Pick a unit type for each floor plan (or “Whole property” for a house).";
+        if (units.some((u) => parseUnitNumbers(u.designator, u.unitNumbers).length === 0))
+          return "List the unit numbers for each floor plan, e.g. 2W, 2E.";
+        // Two cards claiming the same unit would create duplicate units at the
+        // property — exactly the collision this model exists to prevent.
+        const seen = new Set();
+        for (const u of units) {
+          for (const n of parseUnitNumbers(u.designator, u.unitNumbers)) {
+            const key = `${u.designator}|${n ?? ""}`;
+            if (seen.has(key))
+              return `Unit ${u.designator} ${n ?? ""} is listed on more than one floor plan.`;
+            seen.add(key);
+          }
+        }
+      }
     }
     if (id === "description" && !form.description.trim())
       return "A short description is required.";
@@ -659,6 +686,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
   // ------------------------------------------------------------------ publish
   const publish = async () => {
+    setFieldError(null);
     for (const s of STEPS) {
       const problem = validateStep(s.id);
       if (problem) {
@@ -670,26 +698,58 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setSubmitting(true);
     setError(null);
     try {
-      const unitPayload = units.map((u) => ({
-        bedrooms: Number(u.bedrooms),
-        bathrooms: Number(u.bathrooms),
-        rent: u.rent !== "" ? Number(u.rent) : null,
-        area: u.area !== "" ? Number(u.area) : null,
-        available: u.available !== false,
-        title: (u.title ?? "").trim() || null,
-        floorPlanImageUrl: u.floorPlanImageUrl || null,
-        leaseTermMonths: Array.isArray(u.leaseTermMonths)
-          ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
-          : [],
-      }));
+      // A card is a FLOOR PLAN; expand it into one payload row per physical unit
+      // sharing it, so each gets its own identity and its own lease.
+      const unitPayload = units.flatMap((u) =>
+        parseUnitNumbers(u.designator, u.unitNumbers).map((number) => ({
+          bedrooms: Number(u.bedrooms),
+          bathrooms: Number(u.bathrooms),
+          rent: u.rent !== "" ? Number(u.rent) : null,
+          area: u.area !== "" ? Number(u.area) : null,
+          available: u.available !== false,
+          title: (u.title ?? "").trim() || null,
+          floorPlanImageUrl: u.floorPlanImageUrl || null,
+          leaseTermMonths: Array.isArray(u.leaseTermMonths)
+            ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+            : [],
+          designator: u.designator || null,
+          number,
+        }))
+      );
 
-      const res = await fetch("/api/addListing", {
+      // The property and unit both already exist — only the caller's own lease
+      // is created. The sublease guard is enforced by the database.
+      const res = attachingToExistingUnit
+        ? await fetch("/api/leases", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              unitId: unitSelection.unitId,
+              rent: units[0]?.rent !== "" ? Number(units[0]?.rent) : null,
+              leaseTermMonths: Array.isArray(units[0]?.leaseTermMonths)
+                ? units[0].leaseTermMonths
+                    .map(Number)
+                    .filter((m) => Number.isFinite(m) && m > 0)
+                : [],
+              sublease: String(form.lease_type).toLowerCase() === "sublease",
+              available: units[0]?.available !== false,
+              description: form.description,
+              furnished: form.furnished,
+              contactEmail: form.contact_email || null,
+              contactPhone: form.contact_phone || null,
+              contactName: form.contact_name || null,
+            }),
+          })
+        : await fetch("/api/addListing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
           unitTypes: unitPayload,
           customAmenities,
+          // A property exists at this address and the user chose to add a new
+          // unit to it — attach rather than create a second property row.
+          ...(existingProperty ? { attachToListingId: existingProperty.id } : {}),
           // /api/addListing reads camelCase moveInDate; the snake_case
           // move_in_date in ...form was silently dropped (long-standing
           // create-path bug — edit always saved it).
@@ -705,7 +765,27 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Something went wrong.");
+        /*
+         * A `field` rejection is fixable at exactly one input, and that input is
+         * on an earlier step. Send the landlord back to it rather than printing
+         * a message on Review beside a control that cannot resolve it.
+         */
+        if (data.field === "title") {
+          setFieldError({
+            field: "title",
+            message: data.error || "That value is already in use.",
+            conflict: data.conflict ?? null,
+          });
+          goTo("description");
+        } else if (data.field) {
+          setFieldError({
+            field: data.field,
+            message: data.error || "That value is already in use.",
+            conflict: data.conflict ?? null,
+          });
+        } else {
+          setError(data.error || "Something went wrong.");
+        }
         return;
       }
 
@@ -714,13 +794,29 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       // not hold the remaining properties hostage: toast it and keep going.
       let uploadError = null;
       if (stagedFiles.length > 0) {
-        const listingId = data.listing?.id;
+        /*
+         * The two submit paths return different shapes: /api/addListing gives
+         * back `listing`, /api/leases gives back `lease: { id, listingId }`.
+         * Reading only `data.listing.id` meant every photo added while
+         * attaching an offering to an existing unit was dropped on the floor —
+         * the block below was skipped entirely, with no upload and no error.
+         */
+        const listingId = data.listing?.id ?? data.lease?.listingId ?? null;
+        /*
+         * Attaching an offering to an existing unit means these photos are of
+         * that APARTMENT, not of a building the uploader may not even own. They
+         * are filed against the unit, which is also the only scope they are
+         * allowed to write to — /api/upload reserves property photos for the
+         * property owner, so sending these unscoped would now be rejected.
+         */
+        const photoUnitId = attachingToExistingUnit ? unitSelection.unitId : null;
         if (listingId) {
           const presignRes = await fetch("/api/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               listingId,
+              unitId: photoUnitId,
               files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
             }),
           });
@@ -751,6 +847,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   listingId,
+                  unitId: photoUnitId,
                   urls: presigned.map((p) => p.publicUrl),
                 }),
               });
@@ -762,6 +859,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
               }
             }
           }
+        } else {
+          uploadError =
+            "Saved, but your photos could not be attached. You can add them from your dashboard.";
         }
       }
       // The listing exists either way — staying on the form would invite a
@@ -892,6 +992,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setStreetViewDeleted,
     streetViewLoading,
     fetchStreetViewPreview,
+    propertyLookup,
+    lookupLoading,
+    lookupProperty,
+    existingProperty,
+    unitSelection,
+    setUnitSelection,
+    attachingToExistingUnit,
     importedFields,
     clearImported,
     importInfo,
@@ -901,6 +1008,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     goTo,
     startFresh,
     error,
+    fieldError,
     submitting,
     publish,
   };
@@ -908,7 +1016,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const renderStep = () => {
     switch (stepId) {
       case "start":
-        return <StepStart w={w} onBegin={() => goTo("address")} />;
+        return <StepStart w={w} onBegin={() => goTo("address")} showScratch={false} />;
       case "address":
         return <StepAddress w={w} />;
       case "basics":

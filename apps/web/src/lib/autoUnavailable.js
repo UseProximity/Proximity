@@ -7,8 +7,11 @@
  *
  * HARD GUARANTEES — do not weaken any of these:
  *   * NEVER deletes a listing. The only writes are reversible availability
- *     flips (listings.unavailable / listing_units.available) through the
- *     audited rpc_pms_apply function.
+ *     flips (listings.unavailable, or withdrawing/restoring specific
+ *     unit_leases) through the audited rpc_pms_apply function. Units carry no
+ *     availability of their own — a bedroom type is hidden by withdrawing the
+ *     offerings on it, and the ids of exactly those offerings are recorded in
+ *     the action's scope so Undo restores that set and nothing else.
  *   * NEVER writes the check-in system's columns (checkin_response_choice,
  *     last_verified_at/by/source, unit_type_status, leased_elsewhere_detail,
  *     pending_owner_review, checkin_count, last_checkin_sent_at,
@@ -104,8 +107,10 @@ export function undoUrl(actionId, baseUrl) {
  * loudly, never swallow it.
  *
  * scope: {"listing": true} → the listing must show unavailable (or be absent).
- * scope: {"units": [{bedrooms}]} → every unitType with those bedroom counts
- * must show available: false (a fully-unavailable listing also passes).
+ * scope: {"units": [{bedrooms, leaseIds}]} → every unitType with those bedroom
+ * counts must show available: false (a fully-unavailable listing also passes).
+ * The API's `available` is itself derived from live offerings, so this checks
+ * the same fact a student's browser would.
  */
 export async function verifyHidden(listingId, scope, baseUrl) {
   const res = await fetch(`${baseUrl}/api/listings`, { cache: "no-store" });
