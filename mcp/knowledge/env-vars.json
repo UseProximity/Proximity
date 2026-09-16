@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-08-16T13:46:00.963Z",
-  "count": 58,
+  "_generated": "2026-09-16T16:49:19.636Z",
+  "count": 59,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -121,6 +121,10 @@
     },
     {
       "name": "LISTING_DRAFT_KEY",
+      "public": false
+    },
+    {
+      "name": "LOCAL_DELMAR_WAITLIST_URL",
       "public": false
     },
     {

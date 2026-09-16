@@ -1,8 +1,13 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-08-16T15:22:12.247Z",
-  "count": 82,
+  "_generated": "2026-09-16T16:49:19.618Z",
+  "count": 99,
   "components": [
+    {
+      "name": "DeleteAccountButton",
+      "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description — run generate after adding a description above."
+    },
     {
       "name": "DormsView",
       "file": "src/components/admin/DormsView.js",
@@ -29,6 +34,16 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "ReviewInvitesView",
+      "file": "src/components/admin/ReviewInvitesView.js",
+      "description": "Admin view for review invites: pick students, write one templated message, send it in chunks, and browse the invite ledger"
+    },
+    {
+      "name": "ReviewsView",
+      "file": "src/components/admin/ReviewsView.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "TestimonialsView",
       "file": "src/components/admin/TestimonialsView.js",
       "description": "No description — run generate after adding a description above."
@@ -44,13 +59,18 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "AuthCard",
-      "file": "src/components/auth/AuthCard.js",
-      "description": "No description — run generate after adding a description above."
+      "name": "InviteComposer",
+      "file": "src/components/admin/reviewInvites/InviteComposer.js",
+      "description": "Subject and message editor for bulk review invites, with {first_name} / {link} placeholders and a live preview"
     },
     {
-      "name": "ButtonAuth",
-      "file": "src/components/auth/ButtonAuth.js",
+      "name": "RosterPicker",
+      "file": "src/components/admin/reviewInvites/RosterPicker.js",
+      "description": "Student roster picker for review invites: search, filter by contacted status, flag missing first names, and draw N at random"
+    },
+    {
+      "name": "AuthCard",
+      "file": "src/components/auth/AuthCard.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -59,23 +79,13 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "ChatWidget",
-      "file": "src/components/chat/ChatWidget.js",
-      "description": "Floating chat widget UI using @chatscope/chat-ui-kit-react"
+      "name": "profileFields",
+      "file": "src/components/auth/profileFields.js",
+      "description": "No description — run generate after adding a description above."
     },
     {
       "name": "leasing-funnel",
       "file": "src/components/dashboard/leasing-funnel.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "market-comparisons",
-      "file": "src/components/dashboard/market-comparisons.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "trend-indicators",
-      "file": "src/components/dashboard/trend-indicators.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -194,13 +204,13 @@
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "HeroMapPreview",
-      "file": "src/components/listings/HeroMapPreview.js",
+      "name": "LeaseOptions",
+      "file": "src/components/listings/LeaseOptions.js",
       "description": "No description — run generate after adding a description above."
     },
     {
-      "name": "HeroSection",
-      "file": "src/components/listings/HeroSection.js",
+      "name": "LeaseTermPicker",
+      "file": "src/components/listings/LeaseTermPicker.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -211,11 +221,6 @@
     {
       "name": "ListingDraftImport",
       "file": "src/components/listings/ListingDraftImport.js",
-      "description": "No description — run generate after adding a description above."
-    },
-    {
-      "name": "ListingFilters",
-      "file": "src/components/listings/ListingFilters.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -254,6 +259,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "PropertyUnitPicker",
+      "file": "src/components/listings/PropertyUnitPicker.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ReviewReplySection",
       "file": "src/components/listings/ReviewReplySection.js",
       "description": "No description — run generate after adding a description above."
@@ -271,6 +281,46 @@
     {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WaitlistDialog",
+      "file": "src/components/listings/WaitlistDialog.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddListingFlow",
+      "file": "src/components/listings/add/AddListingFlow.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AddressStep",
+      "file": "src/components/listings/add/AddressStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LeaseStep",
+      "file": "src/components/listings/add/LeaseStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "UnitStep",
+      "file": "src/components/listings/add/UnitStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "EditorImageRows",
+      "file": "src/components/listings/editor/EditorImageRows.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "EditorOverview",
+      "file": "src/components/listings/editor/EditorOverview.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "EditorUnits",
+      "file": "src/components/listings/editor/EditorUnits.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -354,8 +404,43 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "DormReviewForm",
+      "file": "src/components/reviews/DormReviewForm.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ProfileCompletionStep",
+      "file": "src/components/reviews/ProfileCompletionStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewAccountStep",
+      "file": "src/components/reviews/ReviewAccountStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewFlow",
+      "file": "src/components/reviews/ReviewFlow.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "ReviewSubmitForm",
       "file": "src/components/reviews/ReviewSubmitForm.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ReviewerContactFields",
+      "file": "src/components/reviews/ReviewerContactFields.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "dormReviewOptions",
+      "file": "src/components/reviews/dormReviewOptions.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "reviewFormUi",
+      "file": "src/components/reviews/reviewFormUi.js",
       "description": "No description — run generate after adding a description above."
     },
     {
