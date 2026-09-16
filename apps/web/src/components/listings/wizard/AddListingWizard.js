@@ -546,6 +546,18 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
         const terms = [...new Set((u.leaseTermMonths ?? []).filter((m) => Number.isFinite(m) && m > 0))]
           .sort((a, b) => a - b);
         if (terms.length) marked.add(`u${i}:leaseTermMonths`);
+        /*
+         * Dates the site gave for individual apartments, keyed by unit number.
+         * Only taken when there is one date per named unit: a partly filled
+         * list would silently put the wrong apartment on the wrong date.
+         */
+        const dates = u.unitAvailability ?? [];
+        const perUnit =
+          dates.length === names.length
+            ? Object.fromEntries(
+                names.map((n, k) => [n, dates[k]]).filter(([, d]) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
+              )
+            : {};
         return {
           bedrooms: u.bedrooms ?? "",
           bathrooms: u.bathrooms ?? "",
@@ -557,6 +569,9 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           leaseTermMonths: terms,
           designator: names.length ? "Unit" : "",
           unitNumbers: names.join(", "),
+          availableFrom:
+            u.availableFrom && u.availableFrom !== "now" ? u.availableFrom : "",
+          unitAvailability: perUnit,
         };
       });
     }
@@ -756,6 +771,14 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
             : [],
           designator: u.designator || null,
           number,
+          /*
+           * unit_leases.available_from, per apartment. The API has always taken
+           * this and fallen back to the property-wide date; the import wizard
+           * simply never sent it, so a building where one apartment frees up in
+           * October and another in November published as if they were the same.
+           */
+          leaseAvailability:
+            (number != null ? u.unitAvailability?.[number] : null) || u.availableFrom || null,
         }))
       );
 

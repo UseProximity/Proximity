@@ -176,6 +176,27 @@ export async function fetchSightmapInventory(embedToken) {
  * the point is that these numbers came from the property's own availability
  * feed and should beat anything the marketing copy says.
  */
+/*
+ * The feed's own floor-plan diagrams, as image candidates. They live on
+ * sightmap's CDN and never appear in the page markup, so the extraction had no
+ * way to offer them; each one is already matched to a named plan, which is
+ * exactly what listing_units.floor_plan_image_url wants.
+ */
+export function sightmapImageCandidates(inv) {
+  const seen = new Set();
+  const out = [];
+  for (const u of inv?.units ?? []) {
+    if (!u.floorPlanImageUrl || seen.has(u.floorPlanImageUrl)) continue;
+    seen.add(u.floorPlanImageUrl);
+    out.push({
+      url: u.floorPlanImageUrl,
+      alt: `${u.planName ?? "floor plan"} floor plan diagram`,
+      pages: [1],
+    });
+  }
+  return out;
+}
+
 export function describeSightmapInventory(inv) {
   if (!inv?.units?.length) return null;
   const byPlan = new Map();

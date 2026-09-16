@@ -309,6 +309,54 @@ export default function StepUnits({ w }) {
                   ? "Separate with commas. Numbers, letters or names all work. A range like 1-4 fills itself in."
                   : "The word in front is only what students see before the number, like “Apt 2W”. Pick “Whole property” for a house."}
               </p>
+
+              {/* When this floor plan frees up. Buildings release apartment by
+                  apartment, so a single date for the whole property was losing
+                  the difference between one free in October and one in November. */}
+              <div className="mt-3 border-t border-gray-200 pt-3">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-gray-600">
+                    Available from
+                  </span>
+                  <input
+                    type="date"
+                    value={unit.availableFrom ?? ""}
+                    onChange={(e) => w.updateUnit(i, "availableFrom", e.target.value)}
+                    className={`rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
+                      w.importedFields.has(`u${i}:availableFrom`) ? importedInputCls : ""
+                    }`}
+                  />
+                </label>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Leave blank if it is available now. Set a date per apartment
+                  below when they free up at different times.
+                </p>
+
+                {parsedPerCard[i].filter(Boolean).length > 0 && (
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                    {parsedPerCard[i].filter(Boolean).map((number) => (
+                      <label key={number} className="flex items-center gap-2 text-[11px]">
+                        <span className="w-20 shrink-0 truncate text-gray-600">
+                          {unit.designator && unit.designator !== "Whole"
+                            ? `${unit.designator} ${number}`
+                            : number}
+                        </span>
+                        <input
+                          type="date"
+                          value={unit.unitAvailability?.[number] ?? ""}
+                          onChange={(e) =>
+                            w.updateUnit(i, "unitAvailability", {
+                              ...(unit.unitAvailability ?? {}),
+                              [number]: e.target.value,
+                            })
+                          }
+                          className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mt-4">

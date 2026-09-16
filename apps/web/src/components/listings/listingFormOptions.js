@@ -89,6 +89,10 @@ export const emptyUnit = () => ({
   // which is what lets a second landlord attach to the right unit later.
   designator: "",
   unitNumbers: "",
+  // When this floor plan becomes available. `unitAvailability` overrides it for
+  // named apartments that free up on their own date (unit number -> YYYY-MM-DD).
+  availableFrom: "",
+  unitAvailability: {},
 });
 
 // Unit designators, matching listing_units_designator_check.

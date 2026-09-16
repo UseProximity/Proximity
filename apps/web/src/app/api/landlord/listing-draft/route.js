@@ -37,6 +37,7 @@ import {
   findSightmapEmbed,
   fetchSightmapInventory,
   describeSightmapInventory,
+  sightmapImageCandidates,
 } from "@/lib/listingDraft/sightmap";
 import { extractListingDraft } from "@/lib/listingDraft/extract";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
@@ -404,15 +405,23 @@ export async function POST(req) {
         const inv = await fetchSightmapInventory(token);
         liveInventory = describeSightmapInventory(inv);
         if (liveInventory) {
+          // The feed's floor-plan diagrams are on a CDN the page never links,
+          // so offer them alongside the page's own images.
+          for (const im of sightmapImageCandidates(inv)) {
+            if (!imageMap.has(im.url)) imageMap.set(im.url, { alt: im.alt, pages: new Set([1]) });
+          }
           console.log(`[listing-draft] sightmap feed: ${inv.units.length} units`);
         }
       }
     }
 
     const brandName = extractSiteBrand(main.html);
+    const imagesWithFeed = [...imageMap.entries()]
+      .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
+      .slice(0, 60);
     let draft = await extractListingDraft({
       pages,
-      images,
+      images: imagesWithFeed,
       links,
       targetProperty,
       brandName,
