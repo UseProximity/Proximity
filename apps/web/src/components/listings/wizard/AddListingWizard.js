@@ -95,6 +95,15 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
   const prefetchRef = useRef(null);
   const importBatch = useRef({ done: 0, total: 0 });
   const [resumed, setResumed] = useState(false);
+  /*
+   * The address the import box starts with, and a key that remounts it.
+   * "Start over" used to drop the landlord back on the import box with the same
+   * address already in it, which immediately read the same site again — so a
+   * typo could not be corrected without leaving the page. Starting over now
+   * clears the address and gives them the empty box back.
+   */
+  const [importSeed, setImportSeed] = useState(initialImportUrl);
+  const [importBoxKey, setImportBoxKey] = useState(0);
 
   /*
    * Imported photos and floor plans download in the background (assets get a
@@ -192,6 +201,9 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setResumed(false);
     setError(null);
     setVisited(new Set());
+    importPastedUrl.current = null;
+    setImportSeed("");
+    setImportBoxKey((k) => k + 1);
     setStepId("start");
   };
 
@@ -1189,7 +1201,11 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     switch (stepId) {
       case "start":
         return (
-          <StepStart w={w} initialImportUrl={initialImportUrl} />
+          <StepStart
+            key={importBoxKey}
+            w={w}
+            initialImportUrl={importSeed}
+          />
         );
       case "address":
         return <StepAddress w={w} />;

@@ -1,7 +1,14 @@
 export const dynamic = "force-dynamic";
 // Fetching the landlord's site + a Claude extraction pass can take a while —
 // same synchronous-route pattern as /api/lease-check.
-export const maxDuration = 120;
+/*
+ * 120 seconds was not enough and would have failed in production while working
+ * locally. Reading One Hundred Above the Park takes ~197s: the pasted page, the
+ * building's page, its floor-plans index, then twelve floor-plan pages for the
+ * apartments behind each plan. Localhost is not the slow part — the time is
+ * Firecrawl renders plus the Claude call, which cost the same in production.
+ */
+export const maxDuration = 300;
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -296,6 +303,28 @@ export async function POST(req) {
     if (targetProperty?.url && targetProperty.url !== main.finalUrl) {
       const propPage = await followBestEffort(targetProperty.url);
       if (propPage) {
+        mergeLinks(propPage);
+        /*
+         * The picked property's own floor-plans page.
+         *
+         * This used to only happen when the landlord pasted a building's URL
+         * directly, so reaching One Hundred Above the Park the way a landlord
+         * actually does — paste macapartments.com, pick the building — skipped
+         * the whole drill-down. It published twelve units numbered by FLOOR
+         * PLAN (100N101A) instead of thirty-six numbered by apartment, with no
+         * lease terms and one price each.
+         */
+        const propFp = extractAllLinks(structureOf(propPage), propPage.finalUrl, LINK_CAP).find(
+          (l) =>
+            l.internal &&
+            l.url !== propPage.finalUrl &&
+            FLOORPLAN_LINK_RE.test(`${l.text} ${l.url}`)
+        );
+        const propFpPage = propFp ? await followBestEffort(propFp.url) : null;
+        if (propFpPage) {
+          mergeLinks(propFpPage);
+          floorPlanIndex = propFpPage;
+        }
         const galleryish = extractLinks(structureOf(propPage), propPage.finalUrl)
           .filter(
             (l) =>
@@ -387,6 +416,7 @@ export async function POST(req) {
      * look like this, and only when we are extracting a single property.
      */
     let liveInventory = null;
+    let floorPlanData = null;
     {
       // The widget lives on whichever page shows the floor plans, which is
       // usually not the one that was pasted.
@@ -435,16 +465,18 @@ export async function POST(req) {
      * Only for a single property, only off a real floor-plans index, and capped:
      * these pages are usually bot-blocked, so each one costs a render.
      */
-    if (!liveInventory && floorPlanIndex && !targetProperty) {
+    if (!liveInventory && floorPlanIndex) {
       const planUrls = findFloorPlanPages(structureOf(floorPlanIndex), floorPlanIndex.finalUrl);
       if (planUrls.length) {
-        const plans = await fetchFloorPlanUnits(planUrls);
-        const described = describeFloorPlanUnits(plans);
+        const result = await fetchFloorPlanUnits(planUrls);
+        const described = describeFloorPlanUnits(result);
         if (described) {
           liveInventory = described;
+          floorPlanData = result;
           console.log(
-            `[listing-draft] floor plans: ${plans.length} plans, ` +
-              `${plans.reduce((n, p) => n + p.apartments.length, 0)} apartments`
+            `[listing-draft] floor plans: ${result.plans.length} plans, ` +
+              `${result.plans.reduce((n, p) => n + p.apartments.length, 0)} apartments` +
+              (result.termRange ? `, terms ${result.termRange.min}-${result.termRange.max}mo` : "")
           );
         }
       }
@@ -466,6 +498,7 @@ export async function POST(req) {
       brandName,
       liveInventory,
       portalPage,
+      unitsHandledElsewhere: !!floorPlanData?.plans?.length,
     });
 
     // Totally empty result on an un-rendered page usually means the content
@@ -552,6 +585,48 @@ export async function POST(req) {
           brandName,
           liveInventory,
         });
+      }
+    }
+
+    /*
+     * Units come from the parse, not from the model.
+     *
+     * We read the apartments off the floor-plan pages exactly, then asked the
+     * model to write all of them back out: 36 apartments cost 17,000 output
+     * tokens and pushed one import to 308 seconds, past what the platform will
+     * allow. Restating data we already hold precisely is the most expensive and
+     * least reliable thing in the request, so the model is asked for the prose
+     * and the numbers are filled in here.
+     */
+    if (draft?.listing && floorPlanData?.plans?.length) {
+      draft.listing.units = floorPlanData.plans.map((plan) => {
+        const rents = plan.apartments.map((a) => a.rent).filter((r) => r != null);
+        return {
+          bedrooms: plan.bedrooms,
+          bathrooms: plan.bathrooms,
+          area: plan.area,
+          rent: rents.length ? Math.min(...rents) : null,
+          rentBasis: rents.length ? "total" : "unknown",
+          title: plan.name ?? null,
+          floorPlanImageUrl: null,
+          availableFrom: plan.apartments.some((a) => a.availableOn === "now") ? "now" : null,
+          unitNames: plan.apartments.map((a) => a.number),
+          unitRents: plan.apartments.map((a) => a.rent ?? 0),
+          unitAvailability: plan.apartments.map((a) =>
+            a.availableOn && a.availableOn !== "now" ? a.availableOn : ""
+          ),
+          leaseTermMonths: floorPlanData.termRange?.reflects
+            ? [Number(floorPlanData.termRange.reflects)]
+            : [],
+          leaseTermPrices: [],
+        };
+      });
+      if (floorPlanData.termRange) {
+        const { min, max } = floorPlanData.termRange;
+        draft.listing.sourceNotes = [
+          `This building offers lease terms from ${min} to ${max} months. Only one rate is published per apartment, so check which term it assumes before you publish.`,
+          ...(draft.listing.sourceNotes ?? []),
+        ];
       }
     }
 

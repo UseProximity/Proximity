@@ -28,7 +28,7 @@
 import { fetchPageSmart, htmlToText, extractAllLinks, sameSite } from "@/lib/listingDraft/fetchSite";
 
 const MAX_PLANS = 12;
-const CONCURRENCY = 3;
+const CONCURRENCY = 5;
 
 /*
  * Pages one level below the floor-plans index on the same site.
@@ -113,7 +113,18 @@ export function parseFloorPlanPage(text, url) {
   const beds = text.match(/(\d+)\s*(?:Bed|BR|Bedroom)/i)?.[1];
   const baths = text.match(/(\d+(?:\.\d)?)\s*(?:Bath|BA|Bathroom)/i)?.[1];
   const area = text.match(/(?:Up to\s*)?([\d,]{3,6})\s*Sq\.?\s*Ft/i)?.[1]?.replace(/,/g, "");
+  /*
+   * Concessions sit on these pages and are worth as much as the rent: Dorchester
+   * runs "1 MONTH FREE RENT. Must sign lease on/before September 30th, 2026.
+   * Lease term must be 10+ months." That is a price, a deadline and a minimum
+   * term in one sentence, and a student comparing rents cannot see any of it.
+   */
+  const specials =
+    text.match(/([^\n]*\b(?:MONTH|WEEKS?)\s+FREE\b[^\n]*)/i)?.[1]?.trim() ??
+    text.match(/([^\n]*\b(?:special|concession|look and lease|waived)\b[^\n]*)/i)?.[1]?.trim() ??
+    null;
   return {
+    specials: specials && specials.length < 300 ? specials : null,
     url,
     name,
     bedrooms: beds != null ? Number(beds) : null,
@@ -125,8 +136,42 @@ export function parseFloorPlanPage(text, url) {
 
 // Reads up to MAX_PLANS floor-plan pages. Failures are skipped, never fatal:
 // a plan we cannot read costs that plan's detail, not the whole import.
+/*
+ * The lease-term range, which lives only on the leasing application page.
+ *
+ * Dorchester's floor plans publish one rent and no terms; the apply page says
+ * "we offer flexible lease terms ranging from 3 to 24 months" and that the rate
+ * shown is for a qualifying term. That is a range they will discuss, not a
+ * price list, so it is recorded as a note rather than turned into per-term
+ * prices we would be inventing. Fetched once per property, not per apartment.
+ */
+async function fetchLeaseTermRange(applyUrl) {
+  if (!applyUrl) return null;
+  try {
+    const page = await fetchPageSmart(applyUrl);
+    const text = htmlToText(page.html);
+    const m = text.match(
+      /lease terms?[^.]{0,60}?ranging from\s*(\d{1,2})\s*(?:to|-|–)\s*(\d{1,2})\s*months/i
+    );
+    if (!m) return null;
+    /*
+     * The page states the term its quoted rent assumes, in as many words:
+     * "Lease Term 12 months / Rent $2,395.00". That is the number the rent
+     * belongs on; the 3-to-24 range is only what they will discuss.
+     */
+    const reflects =
+      /Lease\s+Term\s+(\d{1,2})\s*months?/i.exec(text)?.[1] ??
+      /displayed[^.]*?(\d{1,2})[- ]month/i.exec(text)?.[1] ??
+      null;
+    return { min: Number(m[1]), max: Number(m[2]), reflects };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchFloorPlanUnits(urls) {
   const plans = [];
+  let applyUrl = null;
   let cursor = 0;
   const worker = async () => {
     for (;;) {
@@ -134,7 +179,19 @@ export async function fetchFloorPlanUnits(urls) {
       if (!url) return;
       try {
         const page = await fetchPageSmart(url);
-        const plan = parseFloorPlanPage(htmlToText(page.html), page.finalUrl);
+        const text = htmlToText(page.html);
+        const plan = parseFloorPlanPage(text, page.finalUrl);
+        if (!applyUrl) {
+          applyUrl =
+            /*
+             * The leasing application, not the resident portal. Matching
+             * "securecafe" loosely picked up .../residentservices/userlogin,
+             * which is a sign-in wall with no lease information on it at all.
+             */
+            extractAllLinks(page.html, page.finalUrl, 200).find(
+              (l) => /oleapplication/i.test(l.url) && !/residentservices/i.test(l.url)
+            )?.url ?? null;
+        }
         if (plan.apartments.length) plans.push(plan);
       } catch {
         /* skip this plan */
@@ -144,7 +201,8 @@ export async function fetchFloorPlanUnits(urls) {
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker)
   );
-  return plans;
+  const termRange = plans.length ? await fetchLeaseTermRange(applyUrl) : null;
+  return { plans, termRange };
 }
 
 /*
@@ -152,7 +210,9 @@ export async function fetchFloorPlanUnits(urls) {
  * SightMap feed: read off the property's own pages, so it outranks anything in
  * the marketing copy.
  */
-export function describeFloorPlanUnits(plans) {
+export function describeFloorPlanUnits(result) {
+  const plans = Array.isArray(result) ? result : result?.plans;
+  const termRange = Array.isArray(result) ? null : result?.termRange;
   if (!plans?.length) return null;
   const lines = [];
   for (const p of plans) {
@@ -173,6 +233,7 @@ export function describeFloorPlanUnits(plans) {
         )} per month for the whole unit (the lowest of its available apartments; use this as the floor plan's rent)`
       );
     }
+    if (p.specials) lines.push(`  special offer: ${p.specials}`);
     for (const a of p.apartments) {
       lines.push(
         `  apartment ${a.number}: ` +
@@ -184,6 +245,15 @@ export function describeFloorPlanUnits(plans) {
             : "")
       );
     }
+  }
+  if (termRange) {
+    lines.push(
+      `LEASE TERMS: this property offers terms from ${termRange.min} to ${termRange.max} months, and the rents above are the rate for a qualifying term` +
+        (termRange.reflects ? `, normally ${termRange.reflects} months` : "") +
+        `. That is a range they will discuss, NOT a price per term: put the rent on ${
+          termRange.reflects ?? 12
+        } months, leave leaseTermPrices empty, and add a sourceNote saying terms run ${termRange.min} to ${termRange.max} months and only the displayed rate is published.`
+    );
   }
   return `AVAILABLE APARTMENTS (read from this property's own floor-plan pages — these apartment numbers, rents and dates are authoritative; list every apartment number under its floor plan in unitNames, with its date in unitAvailability, and never contradict them):\n${lines.join(
     "\n"

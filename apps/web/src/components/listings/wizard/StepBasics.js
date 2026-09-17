@@ -7,6 +7,16 @@ import { StepFrame, Chip, FieldLabel, inputCls, importedInputCls } from "@/compo
 // costs one tap ("Available now" is pre-selected) but is a conscious choice,
 // because matchmaking needs a move-in signal on every listing.
 export default function StepBasics({ w }) {
+  // Does every apartment already carry its own availability date?
+  const unitDateState = (w.units ?? []).map((u) => {
+    const numbers = String(u.unitNumbers ?? "")
+      .split(/[,\s]+/)
+      .filter(Boolean);
+    if (!numbers.length) return !!u.availableFrom;
+    return numbers.every((n) => u.unitAvailability?.[n] || u.availableFrom);
+  });
+  const datedPerUnit = unitDateState.length > 0 && unitDateState.every(Boolean);
+  const anyUnitDated = unitDateState.some(Boolean);
   return (
     <StepFrame
       title="What kind of place is it?"
@@ -48,37 +58,62 @@ export default function StepBasics({ w }) {
         </div>
       </div>
 
-      <div className="mt-6">
-        <FieldLabel>When is it available?</FieldLabel>
-        <div className="flex flex-wrap items-center gap-2">
-          <Chip
-            on={w.availabilityMode === "now"}
-            onClick={() => {
-              w.setAvailabilityMode("now");
-              w.setField("move_in_date", "");
-            }}
-          >
-            Available now
-          </Chip>
-          <Chip
-            on={w.availabilityMode === "date"}
-            onClick={() => w.setAvailabilityMode("date")}
-          >
-            From a date
-          </Chip>
-          {w.availabilityMode === "date" && (
-            <input
-              type="date"
-              value={w.form.move_in_date}
-              onChange={(e) => w.setField("move_in_date", e.target.value)}
-              autoFocus
-              className={`${inputCls} w-44${
-                w.importedFields.has("move_in_date") ? importedInputCls : ""
-              }`}
-            />
+      {/*
+        Availability belongs to the lease, not the building. The units step
+        collects a date per apartment, so once every apartment has one this
+        question is not just redundant, it invites a landlord to contradict
+        themselves on a building where apartments free up on different days.
+        It stays for the ordinary case (a house, or apartments that are all
+        available together) and as the fallback the API applies to any
+        apartment without its own date.
+      */}
+      {datedPerUnit ? (
+        <div className="mt-6 rounded-lg bg-gray-50 p-3">
+          <p className="text-xs font-medium text-gray-700">Availability</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            Set per apartment on the Units and rent step, which is where your
+            website listed it. Nothing to answer here.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6">
+          <FieldLabel>When is it available?</FieldLabel>
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip
+              on={w.availabilityMode === "now"}
+              onClick={() => {
+                w.setAvailabilityMode("now");
+                w.setField("move_in_date", "");
+              }}
+            >
+              Available now
+            </Chip>
+            <Chip
+              on={w.availabilityMode === "date"}
+              onClick={() => w.setAvailabilityMode("date")}
+            >
+              From a date
+            </Chip>
+            {w.availabilityMode === "date" && (
+              <input
+                type="date"
+                value={w.form.move_in_date}
+                onChange={(e) => w.setField("move_in_date", e.target.value)}
+                autoFocus
+                className={`${inputCls} w-44${
+                  w.importedFields.has("move_in_date") ? importedInputCls : ""
+                }`}
+              />
+            )}
+          </div>
+          {anyUnitDated && (
+            <p className="mt-1.5 text-[11px] text-gray-500">
+              Some apartments already have their own date on the Units step.
+              This one covers the rest.
+            </p>
           )}
         </div>
-      </div>
+      )}
     </StepFrame>
   );
 }
