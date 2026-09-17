@@ -328,8 +328,8 @@ export default function StepUnits({ w }) {
                   />
                 </label>
                 <p className="mt-1 text-[11px] text-gray-500">
-                  Leave blank if it is available now. Set a date per apartment
-                  below when they free up at different times.
+                  Leave blank if it is available now. Set a date, or a different
+                  rent, per apartment below when they are not all the same.
                 </p>
 
                 {parsedPerCard[i].filter(Boolean).length > 0 && (
@@ -350,13 +350,93 @@ export default function StepUnits({ w }) {
                               [number]: e.target.value,
                             })
                           }
-                          className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-red-500"
+                          className="min-w-0 flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                        {/* Only for apartments priced away from the card. Two
+                            apartments on one floor plan often differ by floor
+                            or view, so the rent does too. */}
+                        <input
+                          type="number"
+                          min="0"
+                          value={unit.unitRents?.[number] ?? ""}
+                          onChange={(e) =>
+                            w.updateUnit(i, "unitRents", {
+                              ...(unit.unitRents ?? {}),
+                              [number]: e.target.value,
+                            })
+                          }
+                          placeholder="same rent"
+                          className="w-24 shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
                       </label>
                     ))}
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* A second price for a different lease length. Most landlords
+                have one price and never open this; a revenue-managed building
+                quotes nine. Each row becomes its own offering on the listing. */}
+            <div className="mt-3">
+              {(unit.extraLeases ?? []).map((extra, k) => (
+                <div
+                  key={k}
+                  className="mt-2 flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2.5"
+                >
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-gray-600">
+                      Also offered at ($/mo)
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={extra.rent ?? ""}
+                      onChange={(e) => w.updateExtraLease(i, k, { rent: e.target.value })}
+                      placeholder="e.g. 1725"
+                      className="w-28 rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </label>
+                  <div className="min-w-0 flex-1">
+                    <span className="mb-1 block text-[11px] font-medium text-gray-600">
+                      For these lease lengths
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {LEASE_TERM_PRESETS.map((pr) => (
+                        <Chip
+                          key={pr.label}
+                          on={(extra.leaseTermMonths ?? []).includes(pr.months)}
+                          onClick={() => w.toggleExtraLeaseTerm(i, k, pr.months)}
+                        >
+                          {pr.label}
+                        </Chip>
+                      ))}
+                      {(extra.leaseTermMonths ?? [])
+                        .filter((m) => !LEASE_TERM_PRESETS.some((pr) => pr.months === m))
+                        .map((m) => (
+                          <Chip key={m} on onClick={() => w.toggleExtraLeaseTerm(i, k, m)}>
+                            {m}-Month ×
+                          </Chip>
+                        ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => w.removeExtraLease(i, k)}
+                    className="shrink-0 rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-red-600"
+                    aria-label="Remove this price"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => w.addExtraLease(i)}
+                className="mt-2 text-[11px] font-medium text-red-600 hover:underline"
+              >
+                + Add another price for a different lease length
+              </button>
             </div>
 
             <div className="mt-4">

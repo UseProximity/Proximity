@@ -246,6 +246,45 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
    * card; the step decides when that is safe (see StepUnits) and always offers
    * an undo, because a bulk edit nobody asked for is worse than the typing.
    */
+  // ---- extra priced offerings on one floor plan --------------------------
+  const patchUnit = (i, fn) =>
+    setUnits((u) => u.map((unit, idx) => (idx === i ? fn(unit) : unit)));
+
+  const addExtraLease = (i) =>
+    patchUnit(i, (unit) => ({
+      ...unit,
+      extraLeases: [...(unit.extraLeases ?? []), { rent: "", leaseTermMonths: [] }],
+    }));
+
+  const removeExtraLease = (i, k) =>
+    patchUnit(i, (unit) => ({
+      ...unit,
+      extraLeases: (unit.extraLeases ?? []).filter((_, idx) => idx !== k),
+    }));
+
+  const updateExtraLease = (i, k, patch) =>
+    patchUnit(i, (unit) => ({
+      ...unit,
+      extraLeases: (unit.extraLeases ?? []).map((l, idx) =>
+        idx === k ? { ...l, ...patch } : l
+      ),
+    }));
+
+  const toggleExtraLeaseTerm = (i, k, months) =>
+    patchUnit(i, (unit) => ({
+      ...unit,
+      extraLeases: (unit.extraLeases ?? []).map((l, idx) => {
+        if (idx !== k) return l;
+        const cur = Array.isArray(l.leaseTermMonths) ? l.leaseTermMonths : [];
+        return {
+          ...l,
+          leaseTermMonths: cur.includes(months)
+            ? cur.filter((m) => m !== months)
+            : [...cur, months].sort((a, b) => a - b),
+        };
+      }),
+    }));
+
   const mirrorTerms = (months) =>
     setUnits((u) => u.map((unit) => ({ ...unit, leaseTermMonths: [...months] })));
 
@@ -558,20 +597,49 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
                 names.map((n, k) => [n, dates[k]]).filter(([, d]) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
               )
             : {};
+        // Same alignment rule as the dates: all or nothing, so an apartment
+        // never inherits the price of the one listed next to it.
+        const rentList = u.unitRents ?? [];
+        const perUnitRent =
+          rentList.length === names.length
+            ? Object.fromEntries(
+                names.map((n, k) => [n, rentList[k]]).filter(([, r]) => Number.isFinite(r) && r > 0)
+              )
+            : {};
+        /*
+         * A price curve becomes one offering per distinct price, with the terms
+         * that share it grouped together: 9 and 10 months both at $2,019 is one
+         * offering on [9,10], not two identical rows.
+         */
+        const prices = u.leaseTermPrices ?? [];
+        const curve =
+          prices.length === terms.length && terms.length
+            ? [...prices.reduce((map, price, k) => {
+                if (!Number.isFinite(price) || price <= 0) return map;
+                const key = Math.round(price);
+                map.set(key, [...(map.get(key) ?? []), terms[k]]);
+                return map;
+              }, new Map())].map(([rent, months]) => ({ rent, leaseTermMonths: months }))
+            : [];
+        if (curve.length > 1) marked.add(`u${i}:extraLeases`);
+        const cheapest = curve.length ? curve.reduce((a, b) => (a.rent <= b.rent ? a : b)) : null;
         return {
           bedrooms: u.bedrooms ?? "",
           bathrooms: u.bathrooms ?? "",
-          rent: u.rent ?? "",
+          rent: cheapest ? cheapest.rent : u.rent ?? "",
           area: u.area ?? "",
           available: true,
           title: u.title ?? "",
           floorPlanImageUrl: "",
-          leaseTermMonths: terms,
+          leaseTermMonths: cheapest ? cheapest.leaseTermMonths : terms,
           designator: names.length ? "Unit" : "",
           unitNumbers: names.join(", "),
           availableFrom:
             u.availableFrom && u.availableFrom !== "now" ? u.availableFrom : "",
           unitAvailability: perUnit,
+          unitRents: perUnitRent,
+          // The card itself carries the cheapest offering; the rest hang off it.
+          extraLeases: cheapest ? curve.filter((c) => c !== cheapest) : [],
         };
       });
     }
@@ -761,7 +829,12 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
         parseUnitNumbers(u.designator, u.unitNumbers).map((number) => ({
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
-          rent: u.rent !== "" ? Number(u.rent) : null,
+          rent:
+            number != null && u.unitRents?.[number] != null
+              ? Number(u.unitRents[number])
+              : u.rent !== ""
+              ? Number(u.rent)
+              : null,
           area: u.area !== "" ? Number(u.area) : null,
           available: u.available !== false,
           title: (u.title ?? "").trim() || null,
@@ -769,6 +842,34 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           leaseTermMonths: Array.isArray(u.leaseTermMonths)
             ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
             : [],
+          /*
+           * Every price this apartment is offered at, as its own unit_leases
+           * row. The card's own rent and terms are the first; extraLeases are
+           * the other lengths a revenue-managed building quotes. A per-apartment
+           * rent overrides the card's, which is how two apartments on one floor
+           * plan end up at $3,080 and $3,095.
+           */
+          leases: [
+            {
+              rent:
+                (number != null && u.unitRents?.[number] != null
+                  ? Number(u.unitRents[number])
+                  : u.rent !== ""
+                  ? Number(u.rent)
+                  : null),
+              leaseTermMonths: Array.isArray(u.leaseTermMonths)
+                ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+                : [],
+            },
+            ...(u.extraLeases ?? [])
+              .filter((l) => l && l.rent !== "" && l.rent != null)
+              .map((l) => ({
+                rent: Number(l.rent),
+                leaseTermMonths: (l.leaseTermMonths ?? [])
+                  .map(Number)
+                  .filter((m) => Number.isFinite(m) && m > 0),
+              })),
+          ],
           designator: u.designator || null,
           number,
           /*
@@ -1041,6 +1142,10 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     toggleUnitTerm,
     mirrorTerms,
     clearTermsExcept,
+    addExtraLease,
+    removeExtraLease,
+    updateExtraLease,
+    toggleExtraLeaseTerm,
     customAmenities,
     addCustomAmenity,
     removeCustomAmenity,

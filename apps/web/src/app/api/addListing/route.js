@@ -74,6 +74,10 @@ const UTILITY_COLS = new Set([
   "trash", "cable", "sewer", "cooling",
 ]);
 
+// A revenue-managed building quotes nine or ten lease lengths; past that it is
+// almost certainly a parsing accident rather than a real price list.
+const MAX_LEASES_PER_UNIT = 12;
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -324,6 +328,20 @@ export async function POST(req) {
       rent: unit.rent ?? null,
       title: unit.title ?? null,
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
+      /*
+       * Several priced offerings on one unit, cheapest-first on the listing
+       * page. Each entry is { rent, leaseTermMonths }.
+       */
+      leases: Array.isArray(unit.leases)
+        ? unit.leases
+            .filter((l) => l && (l.rent != null || Array.isArray(l.leaseTermMonths)))
+            .map((l) => ({
+              rent: l.rent != null && l.rent !== "" ? Number(l.rent) : null,
+              leaseTermMonths: Array.isArray(l.leaseTermMonths)
+                ? l.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+                : [],
+            }))
+        : null,
       // A unit can be offered for several lease durations (months).
       leaseTermMonths: Array.isArray(unit.leaseTermMonths)
         ? unit.leaseTermMonths
@@ -493,25 +511,48 @@ export async function POST(req) {
 
       createdUnitIds.push(insertedUnit.id);
 
-      const { error: leaseError } = await supabase.from("unit_leases").insert({
-        unit_id: insertedUnit.id,
-        owner_id: ownerId,
-        rent: unit.rent,
-        // Which number `rent` is. Dropped here until now, so an offering
-        // published as per-person came back out as whole-unit rent and was
-        // divided by the bedroom count a second time.
-        rent_is_per_person: unit.rentIsPerPerson,
-        lease_term_months: unit.leaseTermMonths,
-        available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
-        sublease: unit.sublease,
-        is_active: true,
-        unavailable: !unit.available,
-        description: leaseBlurb,
-        furnished: furnished ?? null,
-        contact_email: contactEmail ?? null,
-        contact_phone: contactPhone ?? null,
-        contact_name: contactName ?? null,
-      });
+      /*
+       * One row per price, not one row per unit.
+       *
+       * A unit can be offered at more than one price: a revenue-managed
+       * building quotes a different rent for each lease length (Metropolitan
+       * Flats asks $1,915 for seven months and $1,725 for fifteen on the same
+       * apartment). unit_leases has always allowed several rows per unit, each
+       * with its own rent and its own set of durations, and the listing page
+       * already renders one panel per offering. Nothing but this insert was
+       * stopping it, so a caller can now send `leases: [...]` and an importer
+       * can reproduce a whole price curve. Callers that send a single rent are
+       * unchanged: they become an array of one.
+       */
+      const leaseRows = (
+        Array.isArray(unit.leases) && unit.leases.length
+          ? unit.leases
+          : [{ rent: unit.rent, leaseTermMonths: unit.leaseTermMonths }]
+      )
+        .slice(0, MAX_LEASES_PER_UNIT)
+        .map((lease) => ({
+          unit_id: insertedUnit.id,
+          owner_id: ownerId,
+          rent: lease.rent ?? null,
+          // Which number `rent` is. Dropped here until now, so an offering
+          // published as per-person came back out as whole-unit rent and was
+          // divided by the bedroom count a second time.
+          rent_is_per_person: unit.rentIsPerPerson,
+          lease_term_months: Array.isArray(lease.leaseTermMonths)
+            ? lease.leaseTermMonths
+            : unit.leaseTermMonths,
+          available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+          sublease: unit.sublease,
+          is_active: true,
+          unavailable: !unit.available,
+          description: leaseBlurb,
+          furnished: furnished ?? null,
+          contact_email: contactEmail ?? null,
+          contact_phone: contactPhone ?? null,
+          contact_name: contactName ?? null,
+        }));
+
+      const { error: leaseError } = await supabase.from("unit_leases").insert(leaseRows);
 
       if (leaseError) {
         // Raised by unit_leases_sublease_guard when a sublease is posted onto a

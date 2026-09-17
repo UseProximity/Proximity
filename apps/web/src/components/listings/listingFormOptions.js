@@ -93,6 +93,15 @@ export const emptyUnit = () => ({
   // named apartments that free up on their own date (unit number -> YYYY-MM-DD).
   availableFrom: "",
   unitAvailability: {},
+  // Rent for individual apartments that differ from the card's rent
+  // (unit number -> dollars). Same shape as unitAvailability.
+  unitRents: {},
+  /*
+   * Extra priced offerings on this floor plan, beyond the card's own rent and
+   * terms. Each is { rent, leaseTermMonths } and becomes its own unit_leases
+   * row, which is how a building that charges by lease length is represented.
+   */
+  extraLeases: [],
 });
 
 // Unit designators, matching listing_units_designator_check.
