@@ -428,8 +428,28 @@ export async function extractListingDraft({
         }
         title = null;
       }
+      /*
+       * A bed or bath count that cannot be true is dropped, not published.
+       *
+       * One floor plan came back as a 1108-bedroom apartment. 1108 is not on
+       * that page anywhere: the plan reads "1 Bedroom" and 734 Sq.Ft., so the
+       * number was invented somewhere between the page and here, and it reached
+       * the landlord's form because nothing was checking. Blank is recoverable
+       * and a landlord fills it in; a listing published as 1108 bedrooms is
+       * wrong in the database and wrong in search. Anything outside what a home
+       * can actually have becomes blank.
+       */
+      const sane = (value, max) => {
+        // Number(null) and Number("") are both 0, and 0 bedrooms means studio,
+        // so "we don't know" has to be caught before the conversion.
+        if (value === null || value === undefined || value === "") return null;
+        const n = Number(value);
+        return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+      };
       return {
       ...u,
+      bedrooms: sane(u.bedrooms, 20),
+      bathrooms: sane(u.bathrooms, 20),
       unitNames: names.filter((n) => typeof n === "string" && n.trim()).slice(0, 60),
       // Studios import as 0-bed, titled "Studio" so the type stays visible.
       title: u.bedrooms === 0 ? title || "Studio" : title,

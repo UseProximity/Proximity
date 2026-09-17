@@ -10,6 +10,25 @@ Branch: `fix/listing-draft-multi-property`
 
 ## Open
 
+### C. A floor plan imported as a 1108-bedroom apartment
+Ben, on the plan holding apartments 1508 and 2708 (100N108A).
+
+Flagged and guarded, cause not fully pinned down. The plan page itself is clean:
+fetched and parsed it returns bedrooms 1, bathrooms 1, area 734 Sq.Ft., and the
+string "1108" does not appear anywhere on it. So the number was not read off the
+site. It comes from the model's own list, and it can only reach the form when
+the page parse returns no bed count, because the parsed number wins whenever
+there is one. Renders of the same URL do vary (the same page has come back at
+2,040 and 7,271 characters), which would explain an occasional miss.
+
+Guarded rather than left to chance: a bed or bath count outside what a home can
+have is now dropped to blank instead of published, in both the model's units and
+the parsed ones. Blank is recoverable and the landlord fills it in; 1108
+bedrooms is wrong in the database and wrong in search.
+
+- [ ] Watch for a blank bed count on a re-import, which is the same fault
+      wearing its new face, and would confirm the parse is the miss
+
 ### B. Only the one-bedrooms imported (being verified)
 Ben, testing One Hundred Above the Park: "it only logged the 1 beds, not the
 studios or 2 or 3 beds."
@@ -118,6 +137,10 @@ the rent assumes a particular lease length.
       long as the drill. Opening a page is what costs a Firecrawl render, so
       that stays capped at 16, but the budget is spread evenly across the list
       instead of taken off the front.
+- [x] **"Available now" shows on a single-date floor plan too.** The pill was
+      only beside the per-apartment rows, so a plan with one date got an empty
+      box and no pill and read as the one thing still to fill in. Blank is an
+      answer there too, and now it says so.
 - [x] **A big building is readable.** Thirty-six cards at ~800px each made the
       units step 27,804px tall. Above five floor plans each one is a single row
       saying what it is — name, size, rent, apartments, term — and opens when

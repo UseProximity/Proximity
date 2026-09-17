@@ -517,31 +517,47 @@ export default function StepUnits({ w }) {
                     </div>
                   </>
                 ) : (
-                  <label className="block">
+                  <div>
                     <span className="mb-1 block text-[11px] font-medium text-gray-700">
                       Available from
                     </span>
-                    <input
-                      type="date"
-                      value={unit.availableFrom ?? ""}
-                      onChange={(e) => w.updateUnit(i, "availableFrom", e.target.value)}
-                      className={`w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
-                        w.importedFields.has(`u${i}:availableFrom`) ? importedInputCls : ""
-                      }`}
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="date"
+                        aria-label="Available from"
+                        value={unit.availableFrom ?? ""}
+                        onChange={(e) => w.updateUnit(i, "availableFrom", e.target.value)}
+                        className={`w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
+                          w.importedFields.has(`u${i}:availableFrom`) ? importedInputCls : ""
+                        }`}
+                      />
+                      {/*
+                        The same green pill the apartment rows get. An empty box
+                        reads as work still to do, and a floor plan with a single
+                        apartment was the one case that got the empty box with no
+                        pill beside it, so it looked like the one date the
+                        landlord still had to fill in. Blank is an answer here
+                        too, and it says so.
+                      */}
+                      {unit.availableFrom ? (
+                        <button
+                          type="button"
+                          onClick={() => w.updateUnit(i, "availableFrom", "")}
+                          title="This one is available now"
+                          className="shrink-0 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-medium text-gray-600 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-green-800"
+                        >
+                          Available now instead
+                        </button>
+                      ) : (
+                        <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
+                          Available now
+                        </span>
+                      )}
+                    </div>
                     <span className="mt-1 block text-[11px] text-gray-500">
                       Leave blank if it is available now.
                     </span>
-                  </label>
-                )}
-                {apartments.length === 0 && unit.availableFrom && (
-                  <button
-                    type="button"
-                    onClick={() => w.updateUnit(i, "availableFrom", "")}
-                    className="mt-1.5 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-medium text-gray-600 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-green-800"
-                  >
-                    Available now instead
-                  </button>
+                  </div>
                 )}
               </div>
             </div>

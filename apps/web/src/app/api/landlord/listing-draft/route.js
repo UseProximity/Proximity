@@ -612,6 +612,13 @@ export async function POST(req) {
        * boxes. Matched on the plan's name first, then its square footage.
        */
       const fromModel = draft.listing.units ?? [];
+      const sane = (value, max) => {
+        // Number(null) and Number("") are both 0, and 0 bedrooms means studio,
+        // so "we don't know" has to be caught before the conversion.
+        if (value === null || value === undefined || value === "") return null;
+        const n = Number(value);
+        return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+      };
       const norm = (s) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
       const sameplan = (unit, plan) =>
         (plan.name && unit.title && norm(unit.title) === norm(plan.name)) ||
@@ -632,8 +639,10 @@ export async function POST(req) {
         const rents = plan.apartments.map((a) => a.rent).filter((r) => r != null);
         return {
           ...unit,
-          bedrooms: plan.bedrooms ?? unit?.bedrooms ?? null,
-          bathrooms: plan.bathrooms ?? unit?.bathrooms ?? null,
+          // Same guard as the model's own units: a count a home cannot have is
+          // no better for coming off a floor-plan page.
+          bedrooms: sane(plan.bedrooms ?? unit?.bedrooms, 20),
+          bathrooms: sane(plan.bathrooms ?? unit?.bathrooms, 20),
           area: plan.area ?? unit?.area ?? null,
           rent: rents.length ? Math.min(...rents) : (unit?.rent ?? null),
           rentBasis: rents.length ? "total" : (unit?.rentBasis ?? "unknown"),
