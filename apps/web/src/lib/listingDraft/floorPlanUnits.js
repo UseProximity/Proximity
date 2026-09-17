@@ -25,7 +25,13 @@
  * with a 403), so each one costs a render. That is why this is capped and only
  * runs for a single property the landlord has already committed to.
  */
-import { fetchPageSmart, htmlToText, extractAllLinks, sameSite } from "@/lib/listingDraft/fetchSite";
+import {
+  fetchPageSmart,
+  htmlToText,
+  extractAllLinks,
+  extractImageCandidates,
+  sameSite,
+} from "@/lib/listingDraft/fetchSite";
 
 /*
  * How many plan pages we open. Not how many floor plans exist.
@@ -193,6 +199,53 @@ function stripMarkdown(text) {
  * application, which we already open for the lease terms, so reading it there
  * costs nothing.
  */
+/*
+ * The floor plan's own diagram, off the floor plan's own page.
+ *
+ * These pages were being opened for their apartments and their images thrown
+ * away, so every import published with no floor plans at all — the model can
+ * only choose from candidates it is shown, and it was never shown these. No
+ * guessing is needed here: the page IS the plan, and RentCafe labels the image
+ * "Floor Plan 100N108a". Failing that, the file is named after the plan.
+ *
+ * It goes on the unit's own floor-plan slot, never into the photo gallery.
+ *
+ * Read off the render that kept its HTML, not whichever render won on text
+ * length. The markdown one loses the alt that says which image this is, and the
+ * first attempt picked a kitchen photo off a plan page because of it — the same
+ * trap that hid the lease terms. `linkHtml` is the HTML render fetchSite keeps
+ * for exactly this.
+ */
+function findPlanImage(html, finalUrl, name) {
+  let images;
+  try {
+    images = extractImageCandidates(html, finalUrl);
+  } catch {
+    return null;
+  }
+  const slug = String(name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const saysFloorPlan = (im) => /floor\s*plan/i.test(im.alt ?? "");
+  const namesThisPlan = (im) =>
+    !!slug && im.url.toLowerCase().replace(/[^a-z0-9]/g, "").includes(slug);
+  // Labelled a floor plan AND named after this plan is the one we want. A
+  // building that labels every carousel thumbnail "floor plan" makes the label
+  // alone worth little, which is why the pair comes first.
+  /*
+   * Renders vary and some arrive with no alt text at all, which left eleven of
+   * sixteen plans with no diagram. The file itself is the second witness:
+   * these assets are named for the plan and marked as floor plans ("_fp.jpg",
+   * "floorplan"), so a file that is both is this plan's diagram whether or not
+   * the render kept the label.
+   */
+  const fileLooksLikeAPlan = (im) => /[._-]fp[._-]|floor[-_]?plan/i.test(im.url);
+  return (
+    images.find((im) => saysFloorPlan(im) && namesThisPlan(im))?.url ??
+    images.find((im) => fileLooksLikeAPlan(im) && namesThisPlan(im))?.url ??
+    images.find(saysFloorPlan)?.url ??
+    null
+  );
+}
+
 function findSpecial(text) {
   const hit =
     text.match(/([^\n]*\b(?:MONTH|WEEKS?)\s+FREE\b[^\n]*)/i)?.[1]?.trim() ??
@@ -271,6 +324,7 @@ export async function fetchFloorPlanUnits(urls) {
         const page = await fetchPageSmart(url);
         const text = stripMarkdown(htmlToText(page.html));
         const plan = parseFloorPlanPage(text, page.finalUrl);
+        plan.image = findPlanImage(page.linkHtml ?? page.html, page.finalUrl, plan.name);
         if (!applyUrl) {
           applyUrl =
             /*

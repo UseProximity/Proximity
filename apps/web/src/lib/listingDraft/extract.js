@@ -413,9 +413,20 @@ export async function extractListingDraft({
   if (draft.listing) {
     // Photos must be candidate URLs we actually offered — drop anything else.
     const offered = new Set(images.map((im) => im.url));
+    const askedFor = (draft.listing.imageUrls ?? []).length;
     draft.listing.imageUrls = (draft.listing.imageUrls ?? [])
       .filter((u) => offered.has(u))
       .slice(0, 12);
+    /*
+     * Photos go quiet in two different ways and they need telling apart: the
+     * model naming none, and the model naming ones we never offered it (which
+     * the filter then drops to nothing). Both end as an empty gallery.
+     */
+    console.log(
+      `[listing-draft] photos: offered ${images.length}, model picked ${askedFor}, ` +
+        `kept ${draft.listing.imageUrls.length}, ` +
+        `floor plans on units ${(draft.listing.units ?? []).filter((u) => u.floorPlanImageUrl).length}`
+    );
     // A rent the model wasn't sure is whole-unit must never prefill the form,
     // and unit floor plans must also come from the offered candidates.
     draft.listing.units = (draft.listing.units ?? []).map((u) => {

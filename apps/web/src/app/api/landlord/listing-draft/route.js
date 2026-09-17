@@ -647,6 +647,9 @@ export async function POST(req) {
           rent: rents.length ? Math.min(...rents) : (unit?.rent ?? null),
           rentBasis: rents.length ? "total" : (unit?.rentBasis ?? "unknown"),
           title: plan.name ?? unit?.title ?? null,
+          // The diagram off this plan's own page beats anything the model
+          // picked out of a pile of candidate images.
+          floorPlanImageUrl: plan.image ?? unit?.floorPlanImageUrl ?? null,
           availableFrom: plan.apartments.some((a) => a.availableOn === "now")
             ? "now"
             : (unit?.availableFrom ?? null),

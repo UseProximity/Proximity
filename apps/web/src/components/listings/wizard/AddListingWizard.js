@@ -126,6 +126,18 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
   };
 
   // ------------------------------------------------------------------ autosave
+  /*
+   * The photo URLs an import brought in, kept so a reload can fetch them again.
+   *
+   * Staged photos are File objects living in memory, and the autosave is
+   * localStorage, which cannot hold a file. So a refresh restored the address,
+   * the units and the rent, and silently dropped every photo, with nothing on
+   * screen to say they had ever been there. Ben lost eight of them that way and
+   * reasonably concluded the import had stopped pulling photos at all. The URLs
+   * are a few hundred bytes of text, they save happily, and fetching them again
+   * costs nothing.
+   */
+  const [importedPhotoUrls, setImportedPhotoUrls] = useState([]);
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
@@ -147,6 +159,18 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       setCoords(saved.coords ?? { lat: null, lng: null });
       if (saved.stepId && saved.stepId !== "start") setStepId(saved.stepId);
       setVisited(new Set(saved.visited ?? []));
+      // The photos themselves could not be saved, so go and get them again.
+      const savedPhotos = Array.isArray(saved.importedPhotoUrls) ? saved.importedPhotoUrls : [];
+      if (savedPhotos.length) {
+        setImportedPhotoUrls(savedPhotos);
+        setImportInfo((prev) => ({
+          ...(prev ?? {}),
+          photoCount: 0,
+          photosTotal: savedPhotos.length,
+          photosLoading: true,
+        }));
+        importPhotos(savedPhotos);
+      }
       setResumed(true);
     } catch {
       /* corrupt draft — start clean */
@@ -166,13 +190,14 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           coords,
           stepId,
           visited: [...visited],
+          importedPhotoUrls,
           savedAt: Date.now(),
         })
       );
     } catch {
       /* storage full/blocked — autosave is best-effort */
     }
-  }, [form, units, customAmenities, coords, stepId, visited, user?.id]);
+  }, [form, units, customAmenities, coords, stepId, visited, importedPhotoUrls, user?.id]);
 
   const clearAutosave = () => {
     try {
@@ -191,6 +216,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setConcessions([]);
     stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
     setStagedFiles([]);
+    stagedPhotoUrls.current = new Set();
     setStagedPreviews([]);
     setCoords({ lat: null, lng: null });
     setStreetView({ available: false, url: null });
@@ -370,7 +396,21 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
   };
 
   // ------------------------------------------------------- website import
-  const importPhotos = async (urls) => {
+  /*
+   * Photos already staged, so the same one is never staged twice.
+   *
+   * A reload fetches the imported photos again, and anything that runs that
+   * twice (a double-invoked effect in development, a landlord clicking back
+   * into the flow) staged a second copy of every photo: three photos came back
+   * as six thumbnails. Keyed on the source URL, which is what we were given and
+   * is stable across a reload.
+   */
+  const stagedPhotoUrls = useRef(new Set());
+
+  const importPhotos = async (rawUrls) => {
+    const urls = rawUrls.filter((u) => !stagedPhotoUrls.current.has(u));
+    urls.forEach((u) => stagedPhotoUrls.current.add(u));
+    if (!urls.length) return;
     const epoch = importEpoch.current;
     const aborter = new AbortController();
     importAborters.current.add(aborter);
@@ -722,6 +762,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       batchTotal: importBatch.current.total,
       nextName: queue[0]?.name ?? null,
     });
+    setImportedPhotoUrls(photoUrls);
     if (photoUrls.length) importPhotos(photoUrls);
 
     // Jump to the first gap. Steps the import satisfied count as visited so
@@ -1147,6 +1188,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setConcessions([]);
     stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
     setStagedFiles([]);
+    stagedPhotoUrls.current = new Set();
     setStagedPreviews([]);
     setStreetView({ available: false, url: null });
     setStreetViewDeleted(false);

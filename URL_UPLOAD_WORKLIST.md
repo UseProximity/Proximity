@@ -10,6 +10,25 @@ Branch: `fix/listing-draft-multi-property`
 
 ## Open
 
+### D. Floor plan diagrams: better, not complete
+Ben asked whether floor plans were being pulled into the unit-level photos. They
+were not — nothing was. The plan pages were being opened for their apartments
+and their images thrown away, so the model was never shown a diagram it could
+put on a unit, and every import published with none.
+
+They are read off each plan's own page now, which needs no guessing: the page IS
+the plan. Preferred signal is the label ("Floor Plan 100N101a") together with the
+plan code in the file path; where a render arrives without alt text, the file
+name is the second witness (these assets end "_fp.jpg"). Measured: 0 of 16
+before, 5 of 16 with the label alone, and the four plans tested individually
+after adding the file-name signal all resolve one.
+
+They go on the unit's own floor-plan slot, never into the photo gallery, which
+was the other half of Ben's question.
+
+- [ ] Count them again on a full import; anything short of 16 of 16 means a
+      third signal is needed
+
 ### C. A floor plan imported as a 1108-bedroom apartment
 Ben, on the plan holding apartments 1508 and 2708 (100N108A).
 
@@ -131,6 +150,16 @@ the rent assumes a particular lease length.
 
 ## Done and verified against live sites
 
+- [x] **Photos survive a reload.** Ben: "why didnt it pull any of the photos".
+      It did — nine of them, and every one downloads cleanly through the proxy.
+      They were lost to the refresh. Staged photos are File objects in memory
+      and the autosave is localStorage, which cannot hold a file, so a reload
+      restored the address, units and rent and silently dropped every photo with
+      nothing on screen to say they had been there. The URLs are a few hundred
+      bytes of text, so they are saved now and fetched again on restore, which
+      costs no credits. Staging is keyed on the source URL so the same photo is
+      never staged twice: the first version of this put three photos on screen
+      as six.
 - [x] **Every floor plan imports, not just the ones we opened.** The model's
       list from the index is now the spine and the pages we open fill in
       apartments; it used to be the reverse, so the list could only ever be as
