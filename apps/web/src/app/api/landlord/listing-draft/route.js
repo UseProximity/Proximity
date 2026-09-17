@@ -621,6 +621,38 @@ export async function POST(req) {
           leaseTermPrices: [],
         };
       });
+      /*
+       * The specials we read off the floor-plan pages, merged with whatever the
+       * model found in a banner or popup. Same wording from two sources is one
+       * concession, so they are de-duplicated on the text itself.
+       */
+      const scraped = floorPlanData.plans
+        .map((plan) => plan.specials)
+        .filter(Boolean)
+        .map((text) => text);
+      if (scraped.length) {
+        /*
+         * The same offer reaches us twice in different words: the model reads
+         * the banner ("1 month free rent, must sign on or before September 30
+         * 2026") and the parser lifts the floor-plan line ("1 MONTH FREE RENT.
+         * Must sign lease on/before September 30th,2026."). Comparing the exact
+         * text keeps both. Stripping everything but letters and digits, and the
+         * ordinal suffixes, makes them the same offer again.
+         */
+        const fingerprint = (text) =>
+          String(text)
+            .toLowerCase()
+            .replace(/(\d+)(st|nd|rd|th)\b/g, "$1")
+            .replace(/[^a-z0-9]/g, "")
+            .slice(0, 40);
+        const seen = new Set((draft.listing.concessions ?? []).map(fingerprint));
+        for (const c of scraped) {
+          const key = fingerprint(c);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          draft.listing.concessions = [...(draft.listing.concessions ?? []), c];
+        }
+      }
       if (floorPlanData.termRange) {
         const { min, max } = floorPlanData.termRange;
         draft.listing.sourceNotes = [

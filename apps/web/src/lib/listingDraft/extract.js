@@ -93,6 +93,15 @@ const PropertySchema = z.object({
   kind: z.enum(["property", "group"]),
 });
 
+/*
+ * Rent specials, one sentence each, in the site's own words.
+ *
+ * Deliberately flat strings. A nested object here (description, amount,
+ * conditions, validUntil) pushed the structured-output schema past the API's
+ * grammar size limit and every extraction started failing with "the compiled
+ * grammar is too large" — a 500 on every import, from one nested field. The
+ * deadline is pulled out of the sentence on our side, where it costs nothing.
+ */
 const ListingSchema = z.object({
   address: z.string().nullable(),
   title: z.string().nullable(),
@@ -107,6 +116,7 @@ const ListingSchema = z.object({
   utilities_included: z.array(z.enum(UTILITY_VALUES)),
   units: z.array(UnitSchema),
   imageUrls: z.array(z.string()),
+  concessions: z.array(z.string()),
   sourceNotes: z.array(z.string()),
   confidence: z.number(),
 });
@@ -132,6 +142,7 @@ Rules, in order of importance:
 7b. FLOOR PLANS: a floor-plan diagram that clearly belongs to one specific unit type goes in that unit's floorPlanImageUrl (exact candidate URL) and NOT in imageUrls. Floor plans you can't match to a specific unit go at the END of imageUrls — students want them either way. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
 8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. NEVER name the landlord, management company, or their website/brand in the description (students contact through Proximity; e.g. write "the landlord" instead of "Mosaic Living"). title: the property's name as students would know the building (often the street address); never append the management company's brand to it.
 9. contact_*: only contact details shown on the pages for THIS landlord/property (leasing office email/phone). Never fabricate.
+9b. CONCESSIONS / SPECIALS: capture any rent special the pages advertise, wherever it appears, into "concessions". These live in the places designed to catch the eye and not in the body copy: a banner across the top of the page, a popup that opens on arrival, a coloured strip above the floor plans, a "Specials" or "Offers" heading, or a line on a floor plan. Give each as ONE sentence in the site's own words, including what the renter has to do to get it and any deadline, e.g. "1 month free rent, must sign on or before September 30 2026, lease term must be 10+ months". Return an empty array when the pages advertise nothing. Never invent a special, never turn an ordinary amenity or a fee into one, and never restate a special you already captured.
 10. sourceNotes: short plain-English notes for the landlord about anything ambiguous or worth double-checking ("Rent shown as $800/person for the 4-bed — enter the whole-unit price", "Availability dates weren't listed"). confidence: 0-1 overall.`;
 
 // claude-sonnet-5 pricing, USD per token (standard rates) — mirrors Lease Check.
@@ -329,7 +340,42 @@ export async function extractListingDraft({
   const raw = response.content.find((b) => b.type === "text")?.text ?? "";
   let parsed = null;
   try {
-    parsed = DraftSchema.parse(JSON.parse(raw));
+    /*
+     * Fill in array fields the model left out before validating.
+     *
+     * Every array here is required by the schema, so one omission threw the
+     * whole parse and the request fell through to the salvage path, which
+     * returns properties and a NULL listing. Adding `concessions` did exactly
+     * that: the building extracted fine and came back as nothing at all. A
+     * missing list means "none", not "unreadable".
+     */
+    const obj = JSON.parse(raw);
+    if (obj?.listing && typeof obj.listing === "object") {
+      for (const key of [
+        "concessions",
+        "amenities",
+        "customAmenities",
+        "utilities_included",
+        "units",
+        "imageUrls",
+        "sourceNotes",
+      ]) {
+        if (!Array.isArray(obj.listing[key])) obj.listing[key] = [];
+      }
+      for (const u of obj.listing.units) {
+        for (const key of [
+          "unitNames",
+          "unitAvailability",
+          "unitRents",
+          "leaseTermMonths",
+          "leaseTermPrices",
+        ]) {
+          if (!Array.isArray(u?.[key])) u[key] = [];
+        }
+      }
+    }
+    if (!Array.isArray(obj?.properties)) obj.properties = [];
+    parsed = DraftSchema.parse(obj);
   } catch {
     parsed = salvageDraft(raw);
     if (parsed) {

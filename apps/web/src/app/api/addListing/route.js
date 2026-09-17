@@ -321,6 +321,80 @@ export async function POST(req) {
       ? description?.trim() || null
       : shortDescription(body.leaseDescription ?? description);
 
+    /*
+     * Rent specials. listing_concessions has existed unused since the schema
+     * was written, and a special is the single biggest thing a student cannot
+     * see when comparing two rents: "1 month free on a 10+ month lease, sign by
+     * September 30" is worth more than the gap between most listings.
+     *
+     * Attached to the listing rather than to a lease: the table's lease foreign
+     * key points at listing_leases, which is the retired table, and a banner
+     * special is property-wide anyway.
+     */
+    const concessionRows = (Array.isArray(body.concessions) ? body.concessions : [])
+      .map((c) => (typeof c === "string" ? c : c?.description))
+      .filter((c) => typeof c === "string" && c.trim())
+      .slice(0, 6)
+      .map((text) => {
+        /*
+         * The deadline, pulled out of the sentence here rather than asked of
+         * the model, so the extraction schema stays flat. "on or before
+         * September 30th, 2026" and "9/30/2026" both land as a date; anything
+         * we cannot read stays in the sentence, which is the part a renter
+         * reads anyway.
+         */
+        const t = text.trim().slice(0, 300);
+        const iso = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+        const slash = t.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+        const written = t.match(
+          /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/i
+        );
+        let validUntil = null;
+        if (iso) validUntil = iso[0];
+        else if (slash) {
+          validUntil = `${slash[3]}-${String(slash[1]).padStart(2, "0")}-${String(slash[2]).padStart(2, "0")}`;
+        } else if (written) {
+          const month =
+            [
+              "january", "february", "march", "april", "may", "june",
+              "july", "august", "september", "october", "november", "december",
+            ].indexOf(written[1].toLowerCase()) + 1;
+          validUntil = `${written[3]}-${String(month).padStart(2, "0")}-${String(written[2]).padStart(2, "0")}`;
+        }
+        /*
+         * amount_type is constrained to flat | percentage | months_free, so it
+         * is only set when the sentence actually says which kind of offer this
+         * is, with the number alongside it. Left null otherwise: the sentence
+         * already says what the renter gets, and inventing a category to
+         * satisfy a column would put a wrong number on a listing.
+         */
+        const monthsFree = t.match(/(\d+(?:\.\d+)?)\s*(?:month|mo)s?\s+free/i);
+        const percentOff = t.match(/(\d+(?:\.\d+)?)\s*%\s*(?:off|discount)/i);
+        const flatOff = t.match(/\$\s*([\d,]+(?:\.\d{2})?)\s*(?:off|credit|discount)/i);
+        let amount = null;
+        let amountType = null;
+        if (monthsFree) {
+          amount = Number(monthsFree[1]);
+          amountType = "months_free";
+        } else if (percentOff) {
+          amount = Number(percentOff[1]);
+          amountType = "percentage";
+        } else if (flatOff) {
+          amount = Number(flatOff[1].replace(/,/g, ""));
+          amountType = "flat";
+        }
+        return {
+          description: t,
+          amount,
+          amount_type: amountType,
+          conditions: null,
+          valid_until: validUntil,
+          active: true,
+          last_verified_source: "import",
+          last_verified_at: new Date().toISOString(),
+        };
+      });
+
     const unitData = unitTypes.map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
@@ -582,6 +656,17 @@ export async function POST(req) {
       listingId,
       sublease: isSublease,
     });
+
+    if (concessionRows.length && listingId) {
+      const { error: concessionError } = await supabase
+        .from("listing_concessions")
+        .insert(concessionRows.map((c) => ({ ...c, listing_id: listingId })));
+      if (concessionError) {
+        // A special is worth having but never worth failing a publish over.
+        console.error("[addListing] Concession insert failed:", concessionError.message);
+      }
+    }
+
 
     // Persist driving times (best-effort; never blocks listing creation). Written
     // after the create RPC rather than inside it — the service-role client bypasses

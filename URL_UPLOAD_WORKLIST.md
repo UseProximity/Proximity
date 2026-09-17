@@ -36,18 +36,20 @@ reflects), `leaseTermPrices` stays empty, and a source note records that terms
 run 3 to 24 months and only one rate is published. Never spread one price
 across a range, and never invent a price for a term the page does not price.
 
-### B. Concessions are captured but have nowhere to live
-The floor-plan pages carry real money. Dorchester runs *"1 MONTH FREE RENT. Must
-sign lease on/before September 30th, 2026. Lease term must be 10+ months."* That
-is a price, a deadline and a minimum term in one sentence, and a student
-comparing rents cannot see any of it. It currently reaches a source note only.
-`listing_concessions` exists in the schema and this flow does not write it.
-
-- [ ] Decide whether the importer should write `listing_concessions`
-
 ---
 
 ## Done and verified against live sites
+
+- [x] **Rent specials, end to end.** `listing_concessions` had zero rows and
+      zero code touching it. The importer now reads specials wherever a site
+      puts them, including a header banner or an arrival popup, writes them on
+      publish with the amount, type and deadline parsed out, and the listing
+      shows them directly above the prices they change. Verified on dev: "1
+      month free rent, must sign on or before September 30 2026" stored as
+      months_free / 1 / 2026-09-30, and "$500 off first month, ends 11/15/2026"
+      as flat / 500 / 2026-11-15.
+- [x] **Lease-term range** now reaches the route: Dorchester reports terms
+      3 to 24 months with the displayed rate being the 12-month rate.
 
 - [x] **Drill-down runs when a property is picked from a list.** This was the
       big one: the gate was `!targetProperty`, so reaching a building through

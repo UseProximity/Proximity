@@ -91,6 +91,8 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
   const [importInfo, setImportInfo] = useState(null);
   const [importedFields, setImportedFields] = useState(() => new Set());
   const [importQueue, setImportQueue] = useState([]);
+  // Rent specials read off the landlord's site, published with the listing.
+  const [concessions, setConcessions] = useState([]);
   const importPastedUrl = useRef(null);
   const prefetchRef = useRef(null);
   const importBatch = useRef({ done: 0, total: 0 });
@@ -186,6 +188,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setForm(blankForm(user));
     setUnits([emptyUnit()]);
     setCustomAmenities([]);
+    setConcessions([]);
     stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
     setStagedFiles([]);
     setStagedPreviews([]);
@@ -671,6 +674,11 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     } catch {
       /* keep fallback */
     }
+    setConcessions(
+      (Array.isArray(listing.concessions) ? listing.concessions : [])
+        .filter((c) => c && typeof c.description === "string" && c.description.trim())
+        .slice(0, 6)
+    );
     const photoUrls = Array.isArray(listing.imageUrls) ? listing.imageUrls : [];
     setImportInfo({
       host,
@@ -925,6 +933,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           ...form,
           unitTypes: unitPayload,
           customAmenities,
+          concessions,
           // A property exists at this address and the user chose to add a new
           // unit to it — attach rather than create a second property row.
           ...(existingProperty ? { attachToListingId: existingProperty.id } : {}),
@@ -1081,6 +1090,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setForm(blankForm(user));
     setUnits([emptyUnit()]);
     setCustomAmenities([]);
+    setConcessions([]);
     stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
     setStagedFiles([]);
     setStagedPreviews([]);
