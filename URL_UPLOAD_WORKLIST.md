@@ -151,6 +151,15 @@ the rent assumes a particular lease length.
       both ways on dev: the two-unit shape publishes 201 with one unnumbered
       unit and one numbered, and a deliberately bad unit 500s with no listing
       left over. Test rows deleted.
+
+      Fixing this at import was not enough and it failed again. A card picks up
+      a word in front several ways — an import from before this was understood
+      and still sitting in the autosaved draft, which a refresh restores, or the
+      landlord choosing one from the dropdown and leaving the numbers empty — so
+      the shape is now settled where the payload is built AND normalised again
+      in the API, which turns a 500 nobody can act on into a correct row. Lesson
+      worth keeping: a fix applied only on the way in does nothing for the
+      drafts already saved.
 - [x] **"Available now" shows on a single-date floor plan too.** The pill was
       only beside the per-apartment rows, so a plan with one date got an empty
       box and no pill and read as the one thing still to fill in. Blank is an

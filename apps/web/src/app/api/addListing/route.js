@@ -432,7 +432,19 @@ export async function POST(req) {
       sublease: isSublease,
       // Unit identity. 'Whole' covers the entire property and carries no number
       // (enforced by listing_units_number_check).
-      designator: unit.designator ?? null,
+      /*
+       * listing_units allows a word in front only alongside a number ("Unit
+       * 1508"), or "Whole" with no number, or neither. A word with no number is
+       * refused outright, and the landlord gets "could not save a unit", which
+       * tells them nothing they can act on and, before the listing was rolled
+       * back, blocked the retry as a duplicate address. A unit with nothing to
+       * call it is a real thing — a floor plan whose apartments the site never
+       * published — so drop the word rather than the unit.
+       */
+      designator:
+        unit.designator === "Whole" || String(unit.number ?? "").trim()
+          ? unit.designator ?? null
+          : null,
       number: unit.designator === "Whole" ? null : unit.number ?? null,
     }));
 

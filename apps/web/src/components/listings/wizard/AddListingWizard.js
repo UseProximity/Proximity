@@ -884,8 +884,23 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       // sharing it, so each gets its own identity and its own lease.
       const unitPayload = units.flatMap((u) => {
         const numbers = parseUnitNumbers(u.designator, u.unitNumbers);
-        // A floor plan whose apartments the site never named is still one unit.
-        return (numbers.length ? numbers : [null]).map((number) => ({
+        /*
+         * A floor plan whose apartments were never named is still one unit, and
+         * it goes in with no word in front, because the database allows a word
+         * only alongside a number ("Unit 1508"), or "Whole" with no number, or
+         * neither. "Whole" still arrives here as a single null number, so it
+         * keeps its word.
+         *
+         * This is decided here rather than at import because a card can pick up
+         * a word in front any number of ways: an import from before this was
+         * understood and still sitting in the autosaved draft, or the landlord
+         * choosing one from the dropdown and leaving the numbers empty. Fixing
+         * it only at import left both of those publishing a shape the database
+         * throws out, and the error a landlord sees for it is "could not save a
+         * unit", which tells them nothing they can act on.
+         */
+        const unnamed = numbers.length === 0;
+        return (unnamed ? [null] : numbers).map((number) => ({
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
           rent:
@@ -929,7 +944,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
                   .filter((m) => Number.isFinite(m) && m > 0),
               })),
           ],
-          designator: u.designator || null,
+          designator: unnamed ? null : u.designator || null,
           number,
           /*
            * unit_leases.available_from, per apartment. The API has always taken
