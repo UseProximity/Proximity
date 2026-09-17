@@ -32,9 +32,13 @@ quietly.
 - [ ] Verify terms arrive through the picker route
 
 When it works: the rent goes on **12 months** (the term the page says its rate
-reflects), `leaseTermPrices` stays empty, and a source note records that terms
-run 3 to 24 months and only one rate is published. Never spread one price
-across a range, and never invent a price for a term the page does not price.
+reflects) and `leaseTermPrices` stays empty. Never spread one price across a
+range, and never invent a price for a term the page does not price.
+
+The range itself now goes on the **listing description**, which the lease panel
+renders, not into a source note. Source notes are shown once during import
+review and thrown away on publish, so a student would never have learned that
+the rent assumes a particular lease length.
 
 ---
 
@@ -94,6 +98,11 @@ across a range, and never invent a price for a term the page does not price.
   main bug.
 - The importer is capped at 20 per hour per landlord and the counter is in
   memory, so a long session needs the dev server restarted between batches.
+- **Firecrawl is the hard constraint, not the rate limiter.** The plan is 1,000
+  credits a month on a 28th-to-28th cycle, with `maxConcurrency` of 2. One
+  import of a building the size of One Hundred Above the Park costs roughly
+  fifteen credits, because every floor-plan page is a separate render. Check
+  `GET https://api.firecrawl.dev/v2/team/credit-usage` before a test round.
 - Delete any listing published against dev while testing.
 - The UI has to stay legible to a landlord who is not technical. One price and
   one date is the common case and must not get buried under the controls that

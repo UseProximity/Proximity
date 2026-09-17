@@ -654,9 +654,25 @@ export async function POST(req) {
         }
       }
       if (floorPlanData.termRange) {
-        const { min, max } = floorPlanData.termRange;
+        /*
+         * Said on the listing, not in a source note.
+         *
+         * A source note is shown once during the import review and thrown away
+         * on publish, so putting this there meant a student never learned that
+         * the rent they are looking at assumes a particular lease length. The
+         * lease row already carries the term the price belongs to; this is the
+         * sentence that explains the other lengths exist, and it rides along on
+         * the description, which the lease panel renders.
+         */
+        const { min, max, reflects } = floorPlanData.termRange;
+        const term = reflects ? `${reflects}-month` : "standard";
+        const sentence = `Lease terms from ${min} to ${max} months are available. The rent shown is the rate for a ${term} lease; other lengths are priced differently.`;
+        const existing = (draft.listing.description ?? "").trim();
+        if (!/lease terms from/i.test(existing)) {
+          draft.listing.description = existing ? `${existing}\n\n${sentence}` : sentence;
+        }
         draft.listing.sourceNotes = [
-          `This building offers lease terms from ${min} to ${max} months. Only one rate is published per apartment, so check which term it assumes before you publish.`,
+          `This building quotes lease terms from ${min} to ${max} months and publishes one rate per apartment. Check the term before you publish.`,
           ...(draft.listing.sourceNotes ?? []),
         ];
       }

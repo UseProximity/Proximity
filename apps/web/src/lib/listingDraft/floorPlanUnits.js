@@ -28,7 +28,13 @@
 import { fetchPageSmart, htmlToText, extractAllLinks, sameSite } from "@/lib/listingDraft/fetchSite";
 
 const MAX_PLANS = 12;
-const CONCURRENCY = 5;
+/*
+ * Matched to the Firecrawl plan's maxConcurrency of 2. Asking for more does not
+ * go faster — the extra requests queue on their side — and under a burst they
+ * come back as failures, which is what made apartments.com look blocked during
+ * the 34-site audit.
+ */
+const CONCURRENCY = 2;
 
 /*
  * Pages one level below the floor-plans index on the same site.
