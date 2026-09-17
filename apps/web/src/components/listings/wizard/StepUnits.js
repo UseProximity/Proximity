@@ -355,9 +355,29 @@ export default function StepUnits({ w }) {
                               }
                               className="w-40 shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
                             />
-                            {/* Blank is a real answer here, so it says so out
-                                loud rather than leaving an empty box to read. */}
-                            {!when && (
+                            {/*
+                              Blank is a real answer, so it says so out loud
+                              rather than leaving an empty box to read. Once a
+                              date is set, the same slot becomes the way back:
+                              clearing a native date input means finding a tiny
+                              cross inside it, which is not a thing to ask of
+                              someone who mistyped a year.
+                            */}
+                            {when ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  w.updateUnit(i, "unitAvailability", {
+                                    ...(unit.unitAvailability ?? {}),
+                                    [number]: "",
+                                  })
+                                }
+                                title="This apartment is available now"
+                                className="shrink-0 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-medium text-gray-600 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-green-800"
+                              >
+                                Available now instead
+                              </button>
+                            ) : (
                               <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
                                 Available now
                               </span>
@@ -380,22 +400,6 @@ export default function StepUnits({ w }) {
                         );
                       })}
                     </div>
-                    {apartments.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const first = unit.unitAvailability?.[apartments[0]] ?? "";
-                          w.updateUnit(
-                            i,
-                            "unitAvailability",
-                            Object.fromEntries(apartments.map((n) => [n, first]))
-                          );
-                        }}
-                        className="mt-2 text-[11px] font-medium text-red-600 hover:underline"
-                      >
-                        Use the first date for all {apartments.length}
-                      </button>
-                    )}
                   </>
                 ) : (
                   <label className="block">
@@ -414,6 +418,15 @@ export default function StepUnits({ w }) {
                       Leave blank if it is available now.
                     </span>
                   </label>
+                )}
+                {apartments.length === 0 && unit.availableFrom && (
+                  <button
+                    type="button"
+                    onClick={() => w.updateUnit(i, "availableFrom", "")}
+                    className="mt-1.5 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-medium text-gray-600 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-green-800"
+                  >
+                    Available now instead
+                  </button>
                 )}
               </div>
             </div>
