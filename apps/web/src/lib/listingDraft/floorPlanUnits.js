@@ -27,7 +27,17 @@
  */
 import { fetchPageSmart, htmlToText, extractAllLinks, sameSite } from "@/lib/listingDraft/fetchSite";
 
-const MAX_PLANS = 12;
+/*
+ * How many plan pages we open. Not how many floor plans exist.
+ *
+ * One Hundred Above the Park has THIRTY-SIX floor plans, and a cap of twelve
+ * took the first twelve in page order, which are all its one-bedrooms: the
+ * studios sit at the end of the list and the two- and three-beds in the middle,
+ * so the building imported as a one-bedroom building. The plans we do not open
+ * still become units from the index page; this only limits how many get their
+ * individual apartments read.
+ */
+const MAX_PLANS = 16;
 /*
  * Matched to the Firecrawl plan's maxConcurrency of 2. Asking for more does not
  * go faster — the extra requests queue on their side — and under a burst they
@@ -40,7 +50,7 @@ const CONCURRENCY = 2;
  * Pages one level below the floor-plans index on the same site.
  * /floorplans -> /floorplans/100n101a, and nothing shallower or sideways.
  */
-export function findFloorPlanPages(html, indexUrl, cap = MAX_PLANS) {
+export function findFloorPlanPages(html, indexUrl, cap = Infinity) {
   let basePath;
   try {
     basePath = new URL(indexUrl).pathname.replace(/\/+$/, "");
@@ -135,12 +145,9 @@ export function parseFloorPlanPage(text, url) {
    * Lease term must be 10+ months." That is a price, a deadline and a minimum
    * term in one sentence, and a student comparing rents cannot see any of it.
    */
-  const specials =
-    text.match(/([^\n]*\b(?:MONTH|WEEKS?)\s+FREE\b[^\n]*)/i)?.[1]?.trim() ??
-    text.match(/([^\n]*\b(?:special|concession|look and lease|waived)\b[^\n]*)/i)?.[1]?.trim() ??
-    null;
+  const specials = findSpecial(text);
   return {
-    specials: specials && specials.length < 300 ? specials : null,
+    specials,
     url,
     name,
     bedrooms: beds != null ? Number(beds) : null,
@@ -161,28 +168,95 @@ export function parseFloorPlanPage(text, url) {
  * price list, so it is recorded as a note rather than turned into per-term
  * prices we would be inventing. Fetched once per property, not per apartment.
  */
+/*
+ * The same page reaches us in two different formats, and the parsers only ever
+ * saw one of them.
+ *
+ * A page we can fetch directly arrives as HTML and comes out of htmlToText as
+ * plain prose. The same page fetched through Firecrawl arrives as MARKDOWN, so
+ * the numbers we are looking for are wrapped in emphasis: "lease terms ranging
+ * from **6 to 24 months.**" Every regex here expected a digit where the render
+ * put an asterisk, which is why the lease terms parsed perfectly in a direct
+ * test and came back empty through the importer every time. Emphasis becomes a
+ * space before anything is matched, so both renders read the same.
+ */
+function stripMarkdown(text) {
+  return text
+    .replace(/\*\*|__|~~/g, " ")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/[ \t]{2,}/g, " ");
+}
+
+/*
+ * A rent special, wherever the sentence lands. One Hundred Above the Park does
+ * not print its offer on the floor-plan pages at all; it appears on the leasing
+ * application, which we already open for the lease terms, so reading it there
+ * costs nothing.
+ */
+function findSpecial(text) {
+  const hit =
+    text.match(/([^\n]*\b(?:MONTH|WEEKS?)\s+FREE\b[^\n]*)/i)?.[1]?.trim() ??
+    text.match(/([^\n]*\b(?:special|concession|look and lease|waived)\b[^\n]*)/i)?.[1]?.trim() ??
+    null;
+  return hit && hit.length < 300 ? hit : null;
+}
+
 async function fetchLeaseTermRange(applyUrl) {
-  if (!applyUrl) return null;
+  if (!applyUrl) {
+    console.log("[listing-draft] lease terms: no application link on any floor-plan page");
+    return null;
+  }
   try {
     const page = await fetchPageSmart(applyUrl);
-    const text = htmlToText(page.html);
+    const text = stripMarkdown(htmlToText(page.html));
+    const special = findSpecial(text);
+    /*
+     * The term the quoted rent belongs to, which the page states outright:
+     * "Lease Term 12 months / Rent $3,095.00". Worth having on its own even
+     * when the property publishes no range, because it is the number that
+     * fills the lease-length chips.
+     */
+    const reflects =
+      /Lease\s+Term\s*:?\s*(\d{1,2})\s*months?/i.exec(text)?.[1] ??
+      /displayed[^.]*?(\d{1,2})[- ]month/i.exec(text)?.[1] ??
+      null;
     const m = text.match(
-      /lease terms?[^.]{0,60}?ranging from\s*(\d{1,2})\s*(?:to|-|–)\s*(\d{1,2})\s*months/i
+      /lease terms?[^.]{0,60}?rang\w*\s+from\s*(\d{1,2})\s*(?:to|-|–|through|and)\s*(\d{1,2})\s*months/i
     );
-    if (!m) return null;
+    if (!m) {
+      console.log(
+        `[listing-draft] lease terms: read ${text.length} chars from ${applyUrl.slice(0, 120)} ` +
+          `but found no range${/lease\s*term/i.test(text) ? ' (the page does mention a lease term)' : ''}`
+      );
+      return reflects || special ? { reflects, special } : null;
+    }
     /*
      * The page states the term its quoted rent assumes, in as many words:
      * "Lease Term 12 months / Rent $2,395.00". That is the number the rent
      * belongs on; the 3-to-24 range is only what they will discuss.
      */
-    const reflects =
-      /Lease\s+Term\s+(\d{1,2})\s*months?/i.exec(text)?.[1] ??
-      /displayed[^.]*?(\d{1,2})[- ]month/i.exec(text)?.[1] ??
-      null;
-    return { min: Number(m[1]), max: Number(m[2]), reflects };
-  } catch {
+    console.log(`[listing-draft] lease terms: ${m[1]}-${m[2]} months, rate reflects ${reflects ?? "?"}`);
+    return { min: Number(m[1]), max: Number(m[2]), reflects, special };
+  } catch (err) {
+    console.log(`[listing-draft] lease terms: ${applyUrl.slice(0, 120)} failed — ${err.message}`);
     return null;
   }
+}
+
+/*
+ * Spread the budget across the list instead of taking the first N.
+ *
+ * The plans are in page order, which groups them by bedroom count, so the first
+ * sixteen of thirty-six are all one-bedrooms. Taking an even spread means every
+ * size gets some of its apartments read, and the plans in between still appear
+ * from the index.
+ */
+export function chooseFloorPlansToRead(urls, budget = MAX_PLANS) {
+  if (urls.length <= budget) return urls;
+  const step = urls.length / budget;
+  const picked = [];
+  for (let i = 0; i < budget; i++) picked.push(urls[Math.floor(i * step)]);
+  return [...new Set(picked)];
 }
 
 export async function fetchFloorPlanUnits(urls) {
@@ -195,7 +269,7 @@ export async function fetchFloorPlanUnits(urls) {
       if (!url) return;
       try {
         const page = await fetchPageSmart(url);
-        const text = htmlToText(page.html);
+        const text = stripMarkdown(htmlToText(page.html));
         const plan = parseFloorPlanPage(text, page.finalUrl);
         if (!applyUrl) {
           applyUrl =

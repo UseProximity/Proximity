@@ -49,6 +49,7 @@ import {
 } from "@/lib/listingDraft/sightmap";
 import {
   findFloorPlanPages,
+  chooseFloorPlansToRead,
   fetchFloorPlanUnits,
   describeFloorPlanUnits,
 } from "@/lib/listingDraft/floorPlanUnits";
@@ -468,7 +469,11 @@ export async function POST(req) {
     if (!liveInventory && floorPlanIndex) {
       const planUrls = findFloorPlanPages(structureOf(floorPlanIndex), floorPlanIndex.finalUrl);
       if (planUrls.length) {
-        const result = await fetchFloorPlanUnits(planUrls);
+        const toRead = chooseFloorPlansToRead(planUrls);
+        console.log(
+          `[listing-draft] ${planUrls.length} floor plans on the index, reading ${toRead.length}`
+        );
+        const result = await fetchFloorPlanUnits(toRead);
         const described = describeFloorPlanUnits(result);
         if (described) {
           liveInventory = described;
@@ -607,47 +612,81 @@ export async function POST(req) {
        * boxes. Matched on the plan's name first, then its square footage.
        */
       const fromModel = draft.listing.units ?? [];
-      const matchPlan = (plan) =>
-        fromModel.find(
-          (u) =>
-            (plan.name &&
-              u.title &&
-              u.title.replace(/\s+/g, "").toLowerCase() ===
-                plan.name.replace(/\s+/g, "").toLowerCase()) ||
-            (plan.area && u.area && Math.abs(Number(u.area) - plan.area) <= 2)
-        ) ?? null;
-      draft.listing.units = floorPlanData.plans.map((plan) => {
-        const guess = matchPlan(plan);
+      const norm = (s) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
+      const sameplan = (unit, plan) =>
+        (plan.name && unit.title && norm(unit.title) === norm(plan.name)) ||
+        (plan.area && unit.area && Math.abs(Number(unit.area) - plan.area) <= 2);
+
+      /*
+       * The model's list is the spine; the pages we opened fill it in.
+       *
+       * It used to be the other way round, and a building imported as only the
+       * plans we happened to open. One Hundred Above the Park has thirty-six
+       * floor plans listed in bedroom order, so opening the first twelve gave
+       * twelve one-bedrooms and lost every studio, two-bed and three-bed in the
+       * building. Whatever the model read off the index stays in the list even
+       * when we never opened its page; it just carries a starting price instead
+       * of its own apartments.
+       */
+      const applyPlan = (unit, plan) => {
         const rents = plan.apartments.map((a) => a.rent).filter((r) => r != null);
         return {
-          bedrooms: plan.bedrooms ?? guess?.bedrooms ?? null,
-          bathrooms: plan.bathrooms ?? guess?.bathrooms ?? null,
-          area: plan.area ?? guess?.area ?? null,
-          rent: rents.length ? Math.min(...rents) : null,
-          rentBasis: rents.length ? "total" : "unknown",
-          title: plan.name ?? guess?.title ?? null,
-          floorPlanImageUrl: guess?.floorPlanImageUrl ?? null,
-          availableFrom: plan.apartments.some((a) => a.availableOn === "now") ? "now" : null,
+          ...unit,
+          bedrooms: plan.bedrooms ?? unit?.bedrooms ?? null,
+          bathrooms: plan.bathrooms ?? unit?.bathrooms ?? null,
+          area: plan.area ?? unit?.area ?? null,
+          rent: rents.length ? Math.min(...rents) : (unit?.rent ?? null),
+          rentBasis: rents.length ? "total" : (unit?.rentBasis ?? "unknown"),
+          title: plan.name ?? unit?.title ?? null,
+          availableFrom: plan.apartments.some((a) => a.availableOn === "now")
+            ? "now"
+            : (unit?.availableFrom ?? null),
           unitNames: plan.apartments.map((a) => a.number),
           unitRents: plan.apartments.map((a) => a.rent ?? 0),
           unitAvailability: plan.apartments.map((a) =>
             a.availableOn && a.availableOn !== "now" ? a.availableOn : ""
           ),
-          leaseTermMonths: floorPlanData.termRange?.reflects
-            ? [Number(floorPlanData.termRange.reflects)]
-            : [],
+          leaseTermMonths: unit?.leaseTermMonths ?? [],
           leaseTermPrices: [],
         };
+      };
+
+      const used = new Set();
+      const merged = fromModel.map((unit) => {
+        const i = floorPlanData.plans.findIndex((p, n) => !used.has(n) && sameplan(unit, p));
+        if (i < 0) return unit;
+        used.add(i);
+        return applyPlan(unit, floorPlanData.plans[i]);
       });
+      floorPlanData.plans.forEach((plan, n) => {
+        if (!used.has(n)) merged.push(applyPlan(null, plan));
+      });
+      /*
+       * The lease lengths belong to the building, not to the floor plan we
+       * happened to open. A property that says its rate is a twelve-month rate
+       * says that about every apartment in it, so the term goes on all of them,
+       * including the plans whose own page we never opened. Only where the
+       * model found nothing better: a floor plan that publishes its own terms
+       * keeps them.
+       */
+      const houseTerm = Number(floorPlanData.termRange?.reflects) || null;
+      draft.listing.units = houseTerm
+        ? merged.map((u) =>
+            (u.leaseTermMonths ?? []).length ? u : { ...u, leaseTermMonths: [houseTerm] }
+          )
+        : merged;
+      console.log(
+        `[listing-draft] units: ${merged.length} (${used.size} with apartments read off their own page)`
+      );
       /*
        * The specials we read off the floor-plan pages, merged with whatever the
        * model found in a banner or popup. Same wording from two sources is one
        * concession, so they are de-duplicated on the text itself.
        */
-      const scraped = floorPlanData.plans
-        .map((plan) => plan.specials)
-        .filter(Boolean)
-        .map((text) => text);
+      const scraped = [
+        ...floorPlanData.plans.map((plan) => plan.specials),
+        floorPlanData.termRange?.special,
+      ].filter(Boolean);
       if (scraped.length) {
         /*
          * The same offer reaches us twice in different words: the model reads
@@ -657,12 +696,49 @@ export async function POST(req) {
          * text keeps both. Stripping everything but letters and digits, and the
          * ordinal suffixes, makes them the same offer again.
          */
-        const fingerprint = (text) =>
-          String(text)
-            .toLowerCase()
-            .replace(/(\d+)(st|nd|rd|th)\b/g, "$1")
-            .replace(/[^a-z0-9]/g, "")
-            .slice(0, 40);
+        const MONTHS = "january february march april may june july august september october november december".split(" ");
+        /*
+         * What the offer actually is, rather than how it was written.
+         *
+         * The same special reaches us twice in two voices: the model reads the
+         * banner ("6 weeks free rent on select floor plans, must sign lease on
+         * or before September 30, 2026") and the parser lifts the application
+         * page's line ("6 WEEKS FREE RENT. Must sign lease on/before September
+         * 30th,2026."). Comparing the words, however hard they are scrubbed,
+         * keeps both, and the listing then shows a student the same discount
+         * twice. What makes them one offer is the size of the discount and the
+         * date it ends, so that is what gets compared. Anything we cannot read
+         * that way falls back to comparing the text.
+         */
+        const fingerprint = (raw) => {
+          const text = String(raw).toLowerCase();
+          const free = text.match(/(\d+(?:\.\d+)?)\s*(week|month)s?\s+free/);
+          const pct = text.match(/(\d+)\s*%\s*off/);
+          const dollars = text.match(/\$\s?([\d,]+)\s*(?:off|free|credit)/);
+          const size = free
+            ? `${free[1]}${free[2]}`
+            : pct
+            ? `${pct[1]}pct`
+            : dollars
+            ? `$${dollars[1].replace(/,/g, "")}`
+            : null;
+          if (!size) {
+            return text
+              .replace(/(\d+)(st|nd|rd|th)\b/g, "$1")
+              .replace(/[^a-z0-9]/g, "")
+              .slice(0, 40);
+          }
+          const named = text.match(
+            new RegExp(`(${MONTHS.join("|")})\\w*\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*,?\\s*(\\d{4})?`)
+          );
+          const slashed = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
+          const deadline = named
+            ? `${MONTHS.indexOf(named[1]) + 1}-${named[2]}`
+            : slashed
+            ? `${Number(slashed[1])}-${Number(slashed[2])}`
+            : "";
+          return `${size}@${deadline}`;
+        };
         const seen = new Set((draft.listing.concessions ?? []).map(fingerprint));
         for (const c of scraped) {
           const key = fingerprint(c);
@@ -671,7 +747,7 @@ export async function POST(req) {
           draft.listing.concessions = [...(draft.listing.concessions ?? []), c];
         }
       }
-      if (floorPlanData.termRange) {
+      if (floorPlanData.termRange?.min) {
         /*
          * Said on the listing, not in a source note.
          *

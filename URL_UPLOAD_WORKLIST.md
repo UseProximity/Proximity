@@ -10,7 +10,44 @@ Branch: `fix/listing-draft-multi-property`
 
 ## Open
 
-### A. Lease terms still come back empty on RentCafe buildings
+### B. Only the one-bedrooms imported (being verified)
+Ben, testing One Hundred Above the Park: "it only logged the 1 beds, not the
+studios or 2 or 3 beds."
+
+The building publishes **thirty-six** floor plans. Two separate caps of twelve
+were cutting that down, and both cut in page order, which on this site groups
+the plans by size: the one-bedrooms (`100n1xx`) come first, the two- and
+three-beds in the middle, and the studios (`100n002a/b/h`) last. So the cap did
+not take a random twelve, it took every one-bedroom and nothing else.
+
+- `MAX_PLANS` in `floorPlanUnits.js` decided how many plans existed at all.
+- `listing.units.slice(0, 12)` in `AddListingWizard.js` cut the list again on
+  the way into the form, so even a complete list would have arrived truncated.
+
+Fixed by separating two things that were one number:
+
+- **Every** plan on the index becomes a unit. The model reads the index and
+  lists them; nothing is dropped for being late in the page.
+- Opening a plan's own page is what costs a Firecrawl render, so that stays
+  capped (16), but the budget is now spread evenly across the list instead of
+  taken off the front, so every size gets some of its apartments read.
+- The merge reversed direction: the model's list is the spine and the pages we
+  opened fill in apartments, prices and dates. It used to be the other way
+  round, which is why the list could only ever be as long as the drill.
+
+- [x] Verified against the live site: One Hundred Above the Park now imports
+      **36 floor plans — 3 studios, 18 one-beds, 13 two-beds, 2 three-beds** —
+      in 116 seconds, with 16 of them carrying their own apartments, prices and
+      dates. It used to import twelve one-bedrooms.
+
+A floor plan the site lists without naming any apartment (twenty of the
+thirty-six) becomes one unnamed unit rather than a card demanding apartment
+numbers nobody published. Without that the import stopped dead at "list the unit
+numbers for each floor plan" with twenty cards to open to find the blanks. A
+card typed by hand never carries that flag, so the prompt still does its job in
+the manual flow.
+
+### A. Lease terms — fixed
 The only item from Ben's last round that is not fixed.
 
 The data exists and is readable. The leasing application page for a Dorchester
@@ -28,8 +65,39 @@ information on it. Tightening the match to `oleapplication` did not fix it, so
 either the link is missing from the render we keep, or the second fetch fails
 quietly.
 
-- [ ] Log which URL is chosen and what the fetch returns, rather than guessing
-- [ ] Verify terms arrive through the picker route
+- [x] Log which URL is chosen and what the fetch returns, rather than guessing.
+      It now logs the link it picked, how much it read and whether a range was
+      found, so this stops being a guessing game.
+- [x] Verified through the picker route: all 36 floor plans arrive with the
+      12-month term filled in, and the listing description carries "Lease terms
+      from 6 to 24 months are available."
+
+**The cause was markdown.** The same page reaches us in two formats. Fetched
+directly it arrives as HTML and reads as plain prose. Fetched through Firecrawl
+it arrives as *markdown*, so the sentence reads
+
+    lease terms ranging from **6 to 24 months.**
+
+and every regex here expected a digit where the render had put an asterisk. That
+is exactly why this looked impossible to pin down: asked directly for a single
+page it parsed perfectly every time, and through the importer it came back empty
+every time, because those two paths do not fetch the same way. Emphasis is now
+stripped before anything is matched, so both renders read the same. Worth
+remembering for any future parser in this file.
+
+The library call was never the problem. Asked directly for one plan page, it
+returns `{min: 6, max: 24, reflects: "12"}` for One Hundred Above the Park, and
+the apply link it picks is the right one (`oleapplication.aspx`, not the
+resident portal). Two real faults found while checking:
+
+- The range regex demanded the exact wording "ranging from", and this property
+  writes "lease terms ranging from 6 to 24 months" while others write "range
+  from". Loosened, and "through"/"and" accepted between the numbers.
+- The property's rent special is not on the floor-plan pages at all. It is on
+  the leasing application page, which we already open for the terms, so it is
+  read there now: "6 WEEKS FREE RENT. Must sign lease on/before September 30th,
+  2026. Lease term must be 10+ months." That page is also fetched when there is
+  no range, so the special is not lost either way.
 
 When it works: the rent goes on **12 months** (the term the page says its rate
 reflects) and `leaseTermPrices` stays empty. Never spread one price across a
@@ -44,6 +112,19 @@ the rent assumes a particular lease length.
 
 ## Done and verified against live sites
 
+- [x] **Every floor plan imports, not just the ones we opened.** The model's
+      list from the index is now the spine and the pages we open fill in
+      apartments; it used to be the reverse, so the list could only ever be as
+      long as the drill. Opening a page is what costs a Firecrawl render, so
+      that stays capped at 16, but the budget is spread evenly across the list
+      instead of taken off the front.
+- [x] **A big building is readable.** Thirty-six cards at ~800px each made the
+      units step 27,804px tall. Above five floor plans each one is a single row
+      saying what it is — name, size, rent, apartments, term — and opens when
+      you want to change it. 2,900px. Anything still needing a decision says so
+      on the closed row, so nothing that blocks publishing hides behind a
+      chevron. A five-plan building is untouched, so a hand-typed listing never
+      meets this.
 - [x] **Rent specials, end to end.** `listing_concessions` had zero rows and
       zero code touching it. The importer now reads specials wherever a site
       puts them, including a header banner or an arrival popup, writes them on
@@ -51,7 +132,13 @@ the rent assumes a particular lease length.
       shows them directly above the prices they change. Verified on dev: "1
       month free rent, must sign on or before September 30 2026" stored as
       months_free / 1 / 2026-09-30, and "$500 off first month, ends 11/15/2026"
-      as flat / 500 / 2026-11-15.
+      as flat / 500 / 2026-11-15. Specials are also read off the leasing
+      application page now, which is where One Hundred Above the Park puts its
+      "6 WEEKS FREE RENT" offer and where we already go for the lease terms.
+      The same offer arriving from a banner and from that page is now recognised
+      as one offer by its size and deadline rather than by its wording, which
+      was letting the same discount onto a listing twice. That comparison is
+      covered by a unit test over the real strings, not by a live import.
 - [x] **Lease-term range** now reaches the route: Dorchester reports terms
       3 to 24 months with the displayed rate being the 12-month rate.
 

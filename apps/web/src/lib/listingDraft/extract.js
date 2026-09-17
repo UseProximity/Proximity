@@ -295,7 +295,7 @@ export async function extractListingDraft({
   if (liveInventory) sections.push(liveInventory);
   if (unitsHandledElsewhere) {
     sections.push(
-      `UNITS ARE ALREADY CAPTURED: the individual apartments above were read exactly off the property's own pages, so do NOT list them. Still return one "units" entry per floor plan with ONLY bedrooms, bathrooms, area and title filled in (the floor plan's name as given above), and leave unitNames, unitRents, unitAvailability, leaseTermMonths, leaseTermPrices and rent empty or null. Those few facts are the ones the apartment pages sometimes omit, and they are cheap for you to give.`
+      `UNITS: return one "units" entry for EVERY floor plan the pages show, including the ones the AVAILABLE APARTMENTS block does not mention — that block covers only some of them, and a building's studios and larger plans are usually the ones it misses. For each, fill bedrooms, bathrooms, area, title (the floor plan's name or code as the site writes it) and rent. Do NOT list individual apartments: leave unitNames, unitRents, unitAvailability, leaseTermMonths and leaseTermPrices empty, because the apartments are supplied separately and will be merged in.`
     );
   }
   if (targetProperty) {

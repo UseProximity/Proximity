@@ -581,7 +581,23 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     let nextUnits = [emptyUnit()];
     const floorPlanImports = [];
     if (Array.isArray(listing.units) && listing.units.length) {
-      nextUnits = listing.units.slice(0, 12).map((u, i) => {
+      /*
+       * Enough for a real building. Twelve looked generous until One Hundred
+       * Above the Park came in with thirty-six floor plans and the landlord was
+       * shown twelve of them, all one-bedrooms, with no sign the rest existed.
+       * A card the landlord does not want is one click to remove; a floor plan
+       * that never arrived is invisible.
+       */
+      /*
+       * Once any floor plan in the import names its apartments, this is a
+       * building rather than a house, and the plans whose apartments the site
+       * did not publish are units too. Without this they came in with the unit
+       * type blank, and a thirty-six plan import stopped at "pick a unit type
+       * for each floor plan" with twenty cards to open to find the empty ones.
+       * A house, where no plan names an apartment, still asks the question.
+       */
+      const namesApartments = listing.units.some((u) => (u.unitNames ?? []).length);
+      nextUnits = listing.units.slice(0, 40).map((u, i) => {
         for (const fld of ["bedrooms", "bathrooms", "rent", "area", "title"]) {
           if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
         }
@@ -647,7 +663,17 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           title: u.title ?? "",
           floorPlanImageUrl: "",
           leaseTermMonths: cheapest ? cheapest.leaseTermMonths : terms,
-          designator: names.length ? "Unit" : "",
+          designator: names.length || namesApartments ? "Unit" : "",
+          /*
+           * The site lists this layout but does not say which apartments have
+           * it, which is normal for a plan with nothing free right now. It is
+           * still a real floor plan and the landlord should see it, so it
+           * becomes one unnamed unit rather than a card demanding apartment
+           * numbers nobody published. A card the landlord types themselves
+           * never carries this, so the "list the unit numbers" prompt still
+           * does its job everywhere else.
+           */
+          numbersUnknown: namesApartments && names.length === 0,
           unitNumbers: names.join(", "),
           availableFrom:
             u.availableFrom && u.availableFrom !== "now" ? u.availableFrom : "",
@@ -785,7 +811,13 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       if (!attachingToExistingUnit) {
         if (units.some((u) => !u.designator))
           return "Pick a unit type for each floor plan (or “Whole property” for a house).";
-        if (units.some((u) => parseUnitNumbers(u.designator, u.unitNumbers).length === 0))
+        if (
+          units.some(
+            (u) =>
+              !u.numbersUnknown &&
+              parseUnitNumbers(u.designator, u.unitNumbers).length === 0
+          )
+        )
           return "List the unit numbers for each floor plan, e.g. 2W, 2E.";
         // Two cards claiming the same unit would create duplicate units at the
         // property — exactly the collision this model exists to prevent.
@@ -845,8 +877,10 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     try {
       // A card is a FLOOR PLAN; expand it into one payload row per physical unit
       // sharing it, so each gets its own identity and its own lease.
-      const unitPayload = units.flatMap((u) =>
-        parseUnitNumbers(u.designator, u.unitNumbers).map((number) => ({
+      const unitPayload = units.flatMap((u) => {
+        const numbers = parseUnitNumbers(u.designator, u.unitNumbers);
+        // A floor plan whose apartments the site never named is still one unit.
+        return (numbers.length ? numbers : [null]).map((number) => ({
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
           rent:
@@ -900,8 +934,8 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
            */
           leaseAvailability:
             (number != null ? u.unitAvailability?.[number] : null) || u.availableFrom || null,
-        }))
-      );
+        }));
+      });
 
       // The property and unit both already exist — only the caller's own lease
       // is created. The sublease guard is enforced by the database.

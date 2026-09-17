@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ChevronRight, Plus, X } from "lucide-react";
 import {
   LEASE_TERM_PRESETS,
   UNIT_DESIGNATORS,
@@ -22,6 +22,33 @@ import {
  */
 export default function StepUnits({ w }) {
   const [customTerm, setCustomTerm] = useState({});
+
+  /*
+   * A big building arrives folded up.
+   *
+   * One card per floor plan is right for the common case, and One Hundred Above
+   * the Park is not it: thirty-six plans came in at roughly eight hundred pixels
+   * a card, which is most of a morning's scrolling before you reach the button
+   * at the bottom. Above a handful, each plan shows as one line saying what it
+   * is, and opens when the landlord wants to change something. Nothing is
+   * hidden and nothing is dropped; a five-plan building still looks exactly as
+   * it did, so a hand-typed listing never meets this at all.
+   */
+  const manyPlans = w.units.length > 5;
+  const [opened, setOpened] = useState(() => new Set());
+  const isOpen = (i) => !manyPlans || opened.has(i);
+  const allOpen = manyPlans && opened.size === w.units.length;
+  const toggleOpen = (i) =>
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const planLabel = (u) => {
+    const beds = Number(u.bedrooms) === 0 ? "Studio" : `${u.bedrooms || "?"} bed`;
+    return u.bathrooms ? `${beds} · ${u.bathrooms} bath` : beds;
+  };
 
   // Preview of what each floor-plan card will expand into, so the landlord sees
   // the unit count before publishing rather than after.
@@ -101,13 +128,101 @@ export default function StepUnits({ w }) {
   return (
     <StepFrame
       title="Units and rent"
-      subtitle="One card per floor plan. A 12-unit building is usually just 2 or 3 of these."
+      subtitle={
+        manyPlans
+          ? "One row per floor plan, closed to keep the list short. Open any one to change it."
+          : "One card per floor plan. A 12-unit building is usually just 2 or 3 of these."
+      }
     >
       <div className="space-y-4">
+        {manyPlans && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 px-4 py-3">
+            <p className="text-sm text-gray-600">
+              {w.units.length} floor plans came in from your website. Open any one
+              to check it or change it.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setOpened(allOpen ? new Set() : new Set(w.units.map((_, i) => i)))
+              }
+              className="text-sm font-medium text-red-600 hover:text-red-700"
+            >
+              {allOpen ? "Collapse all" : "Open all"}
+            </button>
+          </div>
+        )}
         {w.units.map((unit, i) => {
           const apartments = parsedPerCard[i].filter(Boolean);
+          if (!isOpen(i)) {
+            const terms = termsOf(unit);
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleOpen(i)}
+                  className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-left"
+                >
+                  <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-900">
+                    {unit.title || `Floor plan ${i + 1}`}
+                  </span>
+                  <span className="text-sm text-gray-500">{planLabel(unit)}</span>
+                  {unit.rent ? (
+                    <span className="text-sm text-gray-500">${unit.rent}/mo</span>
+                  ) : null}
+                  {apartments.length ? (
+                    <span className="text-sm text-gray-500">
+                      {apartments.length}{" "}
+                      {apartments.length === 1 ? "apartment" : "apartments"}
+                    </span>
+                  ) : null}
+                  {terms.length ? (
+                    <span className="text-xs text-gray-400">
+                      {terms.map((m) => `${m} mo`).join(", ")}
+                    </span>
+                  ) : null}
+                  {/* Whatever still needs a decision says so on the closed row,
+                      so nothing that blocks publishing hides behind a chevron. */}
+                  {[
+                    terms.length ? null : "needs a lease length",
+                    unit.designator ? null : "needs a unit type",
+                    unit.rent ? null : "needs a rent",
+                  ]
+                    .filter(Boolean)
+                    .map((what) => (
+                      <span key={what} className="text-xs font-medium text-red-600">
+                        {what}
+                      </span>
+                    ))}
+                </button>
+                {w.units.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => w.removeUnit(i)}
+                    aria-label="Remove floor plan"
+                    className="shrink-0 text-gray-300 hover:text-red-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            );
+          }
           return (
           <div key={i} className="relative rounded-xl border border-gray-200 p-4">
+            {manyPlans && (
+              <button
+                type="button"
+                onClick={() => toggleOpen(i)}
+                className="absolute right-10 top-3 text-xs font-medium text-gray-400 hover:text-gray-700"
+              >
+                Collapse
+              </button>
+            )}
             {w.units.length > 1 && (
               <button
                 type="button"
