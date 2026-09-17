@@ -458,7 +458,10 @@ export async function POST(req) {
     let draft = await extractListingDraft({
       pages,
       images: imagesWithFeed,
-      links,
+      // A portal page's links are its own navigation and its competitors'
+      // listings. Offering them invites the model to treat the page as a
+      // directory, which is how a single listing came back as forty buildings.
+      links: portalPage ? [] : links,
       targetProperty,
       brandName,
       liveInventory,
@@ -568,6 +571,28 @@ export async function POST(req) {
     if (empty && (draft.properties ?? []).length <= 1) {
       const pr = portalResponse();
       if (pr) return pr;
+    }
+
+    /*
+     * A portal page with nothing on it is a listing that has been taken down.
+     * Apartments.com answers a dead listing with "Sorry, we no longer have this
+     * property online" and a city search full of other people's buildings, so
+     * saying nothing leaves the landlord staring at an empty picker wondering
+     * what they did wrong.
+     */
+    if (portalPage && !draft.listing) {
+      let site = "that listing site";
+      try {
+        site = new URL(main.finalUrl).hostname.replace(/^www\./, "");
+      } catch {
+        /* keep the generic wording */
+      }
+      return NextResponse.json(
+        {
+          error: `That listing is no longer live on ${site}. Paste the address of your own website instead, or the listing page that is currently up.`,
+        },
+        { status: 422 }
+      );
     }
 
     // A folder with no URL cannot be opened or gathered, so it is a checkbox

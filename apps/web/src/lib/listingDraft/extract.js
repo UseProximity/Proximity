@@ -259,7 +259,7 @@ export async function extractListingDraft({
   );
   if (portalPage) {
     sections.push(
-      `LISTING PORTAL: this page is on a rental portal and describes exactly ONE property. Everything else on it that looks like a property is the portal's own "similar" or "nearby" rail and belongs to other landlords. Fill "listing" for the one property this page is about and return an EMPTY properties array.`
+      `LISTING PORTAL — THIS OVERRIDES RULE 4. This page is on a rental portal (Apartments.com, Zillow, ForRent and the like) and describes exactly ONE property: the one named in the page title and address. Every other property on the page is the portal's own "similar listings" or "nearby" rail and belongs to other landlords. Rule 4 does NOT apply here: however many properties you can see, this page is a single property. You MUST fill "listing" for the property this page is about, and you MUST return an empty "properties" array. Never return listing: null for this page.`
     );
   }
   if (liveInventory) sections.push(liveInventory);
