@@ -189,7 +189,7 @@ export default function StepUnits({ w }) {
                       so nothing that blocks publishing hides behind a chevron. */}
                   {[
                     terms.length ? null : "needs a lease length",
-                    unit.designator ? null : "needs a unit type",
+                    unit.designator || unit.numbersUnknown ? null : "needs a unit type",
                     unit.rent ? null : "needs a rent",
                   ]
                     .filter(Boolean)

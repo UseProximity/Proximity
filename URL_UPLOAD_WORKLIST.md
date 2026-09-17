@@ -137,6 +137,20 @@ the rent assumes a particular lease length.
       long as the drill. Opening a page is what costs a Firecrawl render, so
       that stays capped at 16, but the budget is spread evenly across the list
       instead of taken off the front.
+- [x] **Publishing a big building works.** Two faults, both mine, and the
+      second hid the first. A floor plan with no published apartment numbers was
+      being sent with a word in front and no number ("Unit", null), which is the
+      one shape `listing_units_number_check` refuses: a unit may have a word and
+      a number, or be "Whole" with no number, or have neither. It now has
+      neither. And the listing row is written before its units, so the rejected
+      insert left the listing behind — the retry was then told a listing already
+      exists at that address, which was true and was the wreckage of the attempt
+      that just failed. Renaming could not help, because that guard is on the
+      address. A unit or lease insert that fails now takes the listing back out
+      (everything cascades), so a failed publish leaves nothing behind. Verified
+      both ways on dev: the two-unit shape publishes 201 with one unnumbered
+      unit and one numbered, and a deliberately bad unit 500s with no listing
+      left over. Test rows deleted.
 - [x] **"Available now" shows on a single-date floor plan too.** The pill was
       only beside the per-apartment rows, so a plan with one date got an empty
       box and no pill and read as the one thing still to fill in. Blank is an

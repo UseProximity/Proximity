@@ -444,6 +444,7 @@ export async function POST(req) {
     // payload row it came from — every row in one transaction shares a created_at,
     // so identity and lease ownership could not be attributed afterwards.
     let listingId = attachToListingId ?? null;
+    let createdListingHere = false;
 
     if (listingId) {
       // Attaching to an existing property: the property row, its amenities and
@@ -550,7 +551,28 @@ export async function POST(req) {
         return NextResponse.json({ error: listingError.message }, { status: 500 });
       }
       listingId = newListingId;
+      createdListingHere = true;
     }
+
+    /*
+     * Take a half-built listing back out when a later insert fails.
+     *
+     * The property row is written first and its units after, so a unit the
+     * database refused used to leave the listing behind with whichever units
+     * had already gone in. The landlord sees "could not save a unit", tries
+     * again, and is told they already have a listing at this address — which is
+     * true, and is the wreckage of the attempt that just failed. Renaming does
+     * not help, because that guard is on the address. Everything hanging off a
+     * listing cascades, so one delete clears it.
+     *
+     * Only ever the listing this request created: attaching to a property that
+     * already exists must never delete it.
+     */
+    const abandonListing = async () => {
+      if (!createdListingHere || !listingId) return;
+      const { error } = await supabase.from("listings").delete().eq("id", listingId);
+      if (error) console.error("[addListing] Could not undo the listing:", error.message);
+    };
 
     /*
      * ── Units + leases ──────────────────────────────────────────────────────
@@ -580,6 +602,7 @@ export async function POST(req) {
 
       if (unitError) {
         console.error("[addListing] Unit insert failed:", unitError.message);
+        await abandonListing();
         return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
       }
 
@@ -641,6 +664,7 @@ export async function POST(req) {
           );
         }
         console.error("[addListing] Lease insert failed:", leaseError.message);
+        await abandonListing();
         return NextResponse.json({ error: "Could not save a lease." }, { status: 500 });
       }
     }

@@ -663,16 +663,21 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           title: u.title ?? "",
           floorPlanImageUrl: "",
           leaseTermMonths: cheapest ? cheapest.leaseTermMonths : terms,
-          designator: names.length || namesApartments ? "Unit" : "",
           /*
-           * The site lists this layout but does not say which apartments have
-           * it, which is normal for a plan with nothing free right now. It is
-           * still a real floor plan and the landlord should see it, so it
-           * becomes one unnamed unit rather than a card demanding apartment
-           * numbers nobody published. A card the landlord types themselves
-           * never carries this, so the "list the unit numbers" prompt still
-           * does its job everywhere else.
+           * A plan the site lists without naming any apartment stays unlabelled
+           * on purpose. The database says so outright: a unit may carry a word
+           * in front only if it also carries a number ("Unit 1508"), or be
+           * "Whole" with no number, or have neither. Giving these a "Unit" with
+           * no number to get them past the form's own question is the one shape
+           * it refuses, and it took the publish down with a constraint error
+           * after the listing row had already been written.
+           *
+           * So: no word in front, no number, one unnamed unit for the plan. The
+           * landlord still sees the floor plan and can name its apartments when
+           * one comes free. A card typed by hand never carries this flag, so
+           * the form still insists on a unit type everywhere else.
            */
+          designator: names.length ? "Unit" : "",
           numbersUnknown: namesApartments && names.length === 0,
           unitNumbers: names.join(", "),
           availableFrom:
@@ -809,7 +814,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       // Attaching to an existing unit reuses that unit's identity, so the
       // floor-plan cards aren't creating anything that needs identifying.
       if (!attachingToExistingUnit) {
-        if (units.some((u) => !u.designator))
+        if (units.some((u) => !u.numbersUnknown && !u.designator))
           return "Pick a unit type for each floor plan (or “Whole property” for a house).";
         if (
           units.some(
