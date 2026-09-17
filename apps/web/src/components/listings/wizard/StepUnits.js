@@ -104,7 +104,9 @@ export default function StepUnits({ w }) {
       subtitle="One card per floor plan. A 12-unit building is usually just 2 or 3 of these."
     >
       <div className="space-y-4">
-        {w.units.map((unit, i) => (
+        {w.units.map((unit, i) => {
+          const apartments = parsedPerCard[i].filter(Boolean);
+          return (
           <div key={i} className="relative rounded-xl border border-gray-200 p-4">
             {w.units.length > 1 && (
               <button
@@ -310,67 +312,108 @@ export default function StepUnits({ w }) {
                   : "The word in front is only what students see before the number, like “Apt 2W”. Pick “Whole property” for a house."}
               </p>
 
-              {/* When this floor plan frees up. Buildings release apartment by
-                  apartment, so a single date for the whole property was losing
-                  the difference between one free in October and one in November. */}
-              <div className="mt-3 border-t border-gray-200 pt-3">
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-medium text-gray-600">
-                    Available from
-                  </span>
-                  <input
-                    type="date"
-                    value={unit.availableFrom ?? ""}
-                    onChange={(e) => w.updateUnit(i, "availableFrom", e.target.value)}
-                    className={`rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
-                      w.importedFields.has(`u${i}:availableFrom`) ? importedInputCls : ""
-                    }`}
-                  />
-                </label>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Leave blank if it is available now. Set a date, or a different
-                  rent, per apartment below when they are not all the same.
-                </p>
+              {/*
+                One place for dates, not two.
 
-                {parsedPerCard[i].filter(Boolean).length > 0 && (
-                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                    {parsedPerCard[i].filter(Boolean).map((number) => (
-                      <label key={number} className="flex items-center gap-2 text-[11px]">
-                        <span className="w-20 shrink-0 truncate text-gray-600">
-                          {unit.designator && unit.designator !== "Whole"
-                            ? `${unit.designator} ${number}`
-                            : number}
-                        </span>
-                        <input
-                          type="date"
-                          value={unit.unitAvailability?.[number] ?? ""}
-                          onChange={(e) =>
-                            w.updateUnit(i, "unitAvailability", {
-                              ...(unit.unitAvailability ?? {}),
-                              [number]: e.target.value,
-                            })
-                          }
-                          className="min-w-0 flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-red-500"
-                        />
-                        {/* Only for apartments priced away from the card. Two
-                            apartments on one floor plan often differ by floor
-                            or view, so the rent does too. */}
-                        <input
-                          type="number"
-                          min="0"
-                          value={unit.unitRents?.[number] ?? ""}
-                          onChange={(e) =>
-                            w.updateUnit(i, "unitRents", {
-                              ...(unit.unitRents ?? {}),
-                              [number]: e.target.value,
-                            })
-                          }
-                          placeholder="same rent"
-                          className="w-24 shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-red-500"
-                        />
-                      </label>
-                    ))}
-                  </div>
+                This used to show a date for the whole floor plan AND a date
+                beside each apartment, so a plan with a single apartment asked
+                the same question twice in two different sizes. The per-apartment
+                row is the truthful one, because a building releases apartment by
+                apartment, so it is the only one shown once apartments are named.
+                A floor plan with no apartment numbers (a house, "whole
+                property") still gets the single date.
+              */}
+              <div className="mt-3 border-t border-gray-200 pt-3">
+                {apartments.length > 0 ? (
+                  <>
+                    <p className="text-[11px] font-medium text-gray-700">
+                      When is each apartment available, and what does it rent for?
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                      Leave a date blank if it is available now. Leave a rent blank
+                      to use the rent above.
+                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      {apartments.map((number) => {
+                        const when = unit.unitAvailability?.[number] ?? "";
+                        return (
+                          <div key={number} className="flex flex-wrap items-center gap-2">
+                            <span className="w-24 shrink-0 truncate text-xs font-medium text-gray-700">
+                              {unit.designator && unit.designator !== "Whole"
+                                ? `${unit.designator} ${number}`
+                                : number}
+                            </span>
+                            <input
+                              type="date"
+                              aria-label={`Available from for ${number}`}
+                              value={when}
+                              onChange={(e) =>
+                                w.updateUnit(i, "unitAvailability", {
+                                  ...(unit.unitAvailability ?? {}),
+                                  [number]: e.target.value,
+                                })
+                              }
+                              className="w-40 shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
+                            />
+                            {/* Blank is a real answer here, so it says so out
+                                loud rather than leaving an empty box to read. */}
+                            {!when && (
+                              <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
+                                Available now
+                              </span>
+                            )}
+                            <input
+                              type="number"
+                              min="0"
+                              aria-label={`Rent for ${number}`}
+                              value={unit.unitRents?.[number] ?? ""}
+                              onChange={(e) =>
+                                w.updateUnit(i, "unitRents", {
+                                  ...(unit.unitRents ?? {}),
+                                  [number]: e.target.value,
+                                })
+                              }
+                              placeholder="same rent"
+                              className="w-28 shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {apartments.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const first = unit.unitAvailability?.[apartments[0]] ?? "";
+                          w.updateUnit(
+                            i,
+                            "unitAvailability",
+                            Object.fromEntries(apartments.map((n) => [n, first]))
+                          );
+                        }}
+                        className="mt-2 text-[11px] font-medium text-red-600 hover:underline"
+                      >
+                        Use the first date for all {apartments.length}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-gray-700">
+                      Available from
+                    </span>
+                    <input
+                      type="date"
+                      value={unit.availableFrom ?? ""}
+                      onChange={(e) => w.updateUnit(i, "availableFrom", e.target.value)}
+                      className={`w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
+                        w.importedFields.has(`u${i}:availableFrom`) ? importedInputCls : ""
+                      }`}
+                    />
+                    <span className="mt-1 block text-[11px] text-gray-500">
+                      Leave blank if it is available now.
+                    </span>
+                  </label>
                 )}
               </div>
             </div>
@@ -460,7 +503,8 @@ export default function StepUnits({ w }) {
               </p>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">

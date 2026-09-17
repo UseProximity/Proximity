@@ -599,16 +599,34 @@ export async function POST(req) {
      * and the numbers are filled in here.
      */
     if (draft?.listing && floorPlanData?.plans?.length) {
+      /*
+       * The parse owns the apartments; the model fills what the apartment pages
+       * did not say. Bedroom and bathroom counts are the usual gap: a plan page
+       * may print "1 Bed" in a place the parse reads and the next plan may not
+       * print it at all, which published a floor plan with blank bed and bath
+       * boxes. Matched on the plan's name first, then its square footage.
+       */
+      const fromModel = draft.listing.units ?? [];
+      const matchPlan = (plan) =>
+        fromModel.find(
+          (u) =>
+            (plan.name &&
+              u.title &&
+              u.title.replace(/\s+/g, "").toLowerCase() ===
+                plan.name.replace(/\s+/g, "").toLowerCase()) ||
+            (plan.area && u.area && Math.abs(Number(u.area) - plan.area) <= 2)
+        ) ?? null;
       draft.listing.units = floorPlanData.plans.map((plan) => {
+        const guess = matchPlan(plan);
         const rents = plan.apartments.map((a) => a.rent).filter((r) => r != null);
         return {
-          bedrooms: plan.bedrooms,
-          bathrooms: plan.bathrooms,
-          area: plan.area,
+          bedrooms: plan.bedrooms ?? guess?.bedrooms ?? null,
+          bathrooms: plan.bathrooms ?? guess?.bathrooms ?? null,
+          area: plan.area ?? guess?.area ?? null,
           rent: rents.length ? Math.min(...rents) : null,
           rentBasis: rents.length ? "total" : "unknown",
-          title: plan.name ?? null,
-          floorPlanImageUrl: null,
+          title: plan.name ?? guess?.title ?? null,
+          floorPlanImageUrl: guess?.floorPlanImageUrl ?? null,
           availableFrom: plan.apartments.some((a) => a.availableOn === "now") ? "now" : null,
           unitNames: plan.apartments.map((a) => a.number),
           unitRents: plan.apartments.map((a) => a.rent ?? 0),

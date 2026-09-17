@@ -116,8 +116,18 @@ export function parseFloorPlanPage(text, url) {
    */
   const slug = decodeURIComponent((url.split("?")[0].split("/").filter(Boolean).pop() ?? ""));
   const name = /[a-z]/i.test(slug) ? slug.toUpperCase().replace(/-/g, " ") : null;
-  const beds = text.match(/(\d+)\s*(?:Bed|BR|Bedroom)/i)?.[1];
-  const baths = text.match(/(\d+(?:\.\d)?)\s*(?:Bath|BA|Bathroom)/i)?.[1];
+  /*
+   * Bed and bath counts are written half a dozen ways across these pages
+   * ("1 Bed", "1 bd", "1 Bedroom", "1 BR", "Studio", "1 Bed / 1 Bath"), and a
+   * plan whose page used a spelling the old pattern missed published with the
+   * bedroom and bathroom boxes blank.
+   */
+  const beds = /\bstudio\b/i.test(text)
+    ? "0"
+    : text.match(/(\d+)\s*(?:-|\s)?\s*(?:bed(?:room)?s?|bd|br)\b/i)?.[1];
+  const baths = text.match(
+    /(\d+(?:\.\d)?)\s*(?:-|\s)?\s*(?:bath(?:room)?s?|ba)\b/i
+  )?.[1];
   const area = text.match(/(?:Up to\s*)?([\d,]{3,6})\s*Sq\.?\s*Ft/i)?.[1]?.replace(/,/g, "");
   /*
    * Concessions sit on these pages and are worth as much as the rent: Dorchester

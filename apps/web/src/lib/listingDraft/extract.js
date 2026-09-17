@@ -295,7 +295,7 @@ export async function extractListingDraft({
   if (liveInventory) sections.push(liveInventory);
   if (unitsHandledElsewhere) {
     sections.push(
-      `UNITS ARE ALREADY CAPTURED: the apartments above were read exactly off the property's own pages and are filled in for you. Return an EMPTY "units" array and spend your effort on the address, title, description, amenities, utilities, photos and source notes.`
+      `UNITS ARE ALREADY CAPTURED: the individual apartments above were read exactly off the property's own pages, so do NOT list them. Still return one "units" entry per floor plan with ONLY bedrooms, bathrooms, area and title filled in (the floor plan's name as given above), and leave unitNames, unitRents, unitAvailability, leaseTermMonths, leaseTermPrices and rent empty or null. Those few facts are the ones the apartment pages sometimes omit, and they are cheap for you to give.`
     );
   }
   if (targetProperty) {
