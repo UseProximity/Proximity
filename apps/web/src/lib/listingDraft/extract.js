@@ -233,6 +233,7 @@ export async function extractListingDraft({
   targetProperty,
   brandName,
   liveInventory = null,
+  portalPage = false,
 }) {
   const client = getClient();
 
@@ -256,6 +257,11 @@ export async function extractListingDraft({
       links.map((l) => `${l.url} | ${l.text || "(no text)"}`).join("\n") || "(none)"
     }`
   );
+  if (portalPage) {
+    sections.push(
+      `LISTING PORTAL: this page is on a rental portal and describes exactly ONE property. Everything else on it that looks like a property is the portal's own "similar" or "nearby" rail and belongs to other landlords. Fill "listing" for the one property this page is about and return an EMPTY properties array.`
+    );
+  }
   if (liveInventory) sections.push(liveInventory);
   if (targetProperty) {
     sections.push(

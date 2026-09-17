@@ -17,6 +17,7 @@ import {
   extractJsonLd,
   extractSiteBrand,
   detectPmsPortal,
+  isListingPortal,
   SYNCABLE_PMS,
   sameSite,
   DraftFetchError,
@@ -39,6 +40,11 @@ import {
   describeSightmapInventory,
   sightmapImageCandidates,
 } from "@/lib/listingDraft/sightmap";
+import {
+  findFloorPlanPages,
+  fetchFloorPlanUnits,
+  describeFloorPlanUnits,
+} from "@/lib/listingDraft/floorPlanUnits";
 import { extractListingDraft } from "@/lib/listingDraft/extract";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
 
@@ -271,6 +277,7 @@ export async function POST(req) {
     // look at the floor-plans page rather than only the one that was pasted.
     const fetchedPages = [main];
     let triedFloorPlans = false;
+    let floorPlanIndex = null;
 
     // Secondary same-site pages, all landlord-initiated: the property they
     // picked (plus its gallery/floor-plan pages), or obvious listings links
@@ -312,6 +319,7 @@ export async function POST(req) {
       if (fpPage) {
         mergeLinks(fpPage);
         triedFloorPlans = true;
+        floorPlanIndex = fpPage;
       }
     }
     if (!targetProperty && pages.length === 1 && pages[0].text.length < THIN_TEXT_CHARS) {
@@ -415,6 +423,34 @@ export async function POST(req) {
       }
     }
 
+    /*
+     * Each floor plan's own page, for the apartments behind it.
+     *
+     * A floor plan is not an apartment: One Hundred Above the Park lists plan
+     * 100N101A with #1501 at $3,080 and #2701 at $3,095, and 100N101C with one
+     * apartment free in November and another not until January. The index page
+     * shows a plan name and one "starting at" figure, which is the wrong unit of
+     * information for a marketplace that syncs availability on a timer.
+     *
+     * Only for a single property, only off a real floor-plans index, and capped:
+     * these pages are usually bot-blocked, so each one costs a render.
+     */
+    if (!liveInventory && floorPlanIndex && !targetProperty) {
+      const planUrls = findFloorPlanPages(structureOf(floorPlanIndex), floorPlanIndex.finalUrl);
+      if (planUrls.length) {
+        const plans = await fetchFloorPlanUnits(planUrls);
+        const described = describeFloorPlanUnits(plans);
+        if (described) {
+          liveInventory = described;
+          console.log(
+            `[listing-draft] floor plans: ${plans.length} plans, ` +
+              `${plans.reduce((n, p) => n + p.apartments.length, 0)} apartments`
+          );
+        }
+      }
+    }
+
+    const portalPage = isListingPortal(main.finalUrl);
     const brandName = extractSiteBrand(main.html);
     const imagesWithFeed = [...imageMap.entries()]
       .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
@@ -426,6 +462,7 @@ export async function POST(req) {
       targetProperty,
       brandName,
       liveInventory,
+      portalPage,
     });
 
     // Totally empty result on an un-rendered page usually means the content
@@ -536,9 +573,13 @@ export async function POST(req) {
     // A folder with no URL cannot be opened or gathered, so it is a checkbox
     // that does nothing. Sites that name their neighbourhoods in prose produce
     // a handful of these; drop them rather than show dead rows.
-    const properties = (draft.properties ?? []).filter(
-      (p) => p.kind !== "group" || p.url
-    );
+    /*
+     * On a listing portal the page is one property and the rest of the page is
+     * the portal's competitors. Never hand those back as things to import.
+     */
+    const properties = isListingPortal(main.finalUrl)
+      ? []
+      : (draft.properties ?? []).filter((p) => p.kind !== "group" || p.url);
     return NextResponse.json({
       sourceUrl: main.finalUrl,
       // The inventory folder is only useful on a picker. On a single-property

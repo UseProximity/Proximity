@@ -537,6 +537,29 @@ export async function fetchPageSmart(rawUrl) {
       if (bestLen >= 800) break; // good enough — stop spending credits
     }
   }
+  /*
+   * One retry before giving up.
+   *
+   * A transient timeout, or a render service rate-limiting under a burst,
+   * surfaced to the landlord as "we couldn't reach that page", which reads as
+   * permanent and is where they stop. Both sites that failed this way in the
+   * 34-site audit (apartments.com under a batch, a Wix page mid-run) succeeded
+   * on the very next attempt.
+   */
+  if (!page && fetchErr && !NO_RENDER_CODES.has(fetchErr.code)) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      page = await fetchPage(rawUrl);
+    } catch {
+      for (const render of RENDER_FALLBACKS) {
+        const rendered = await render(rawUrl);
+        if (rendered && htmlToText(rendered.html).length > 200) {
+          page = rendered;
+          break;
+        }
+      }
+    }
+  }
   if (!page) throw fetchErr ?? new DraftFetchError("unreachable");
   page = withLinkHtml(page, structured);
   cachePut(rawUrl, page);
@@ -661,6 +684,28 @@ const PMS_PORTALS = [
   { name: "showmojo", host: /(^|\.)showmojo\.com$/i, scan: /https?:\/\/showmojo\.com/i },
   { name: "rentcafe", host: /(^|\.)(rentcafe|securecafe)\.com$/i, scan: /https?:\/\/[a-z0-9.-]*(rentcafe|securecafe)\.com/i },
 ];
+
+/*
+ * Listing portals. A page on one of these describes exactly ONE property, and
+ * every other property-looking link on it is a competitor from the portal's own
+ * "nearby listings" rail.
+ *
+ * Pasting apartments.com/5316-pershing-ave returned a picker of FORTY buildings
+ * (Avenir, SoHo, Clayton on the Park, Coronado Place and Towers), each with a
+ * working apartments.com URL, so a landlord importing their own listing could
+ * publish a competitor's building on Proximity. On these hosts we take the one
+ * listing and never offer a picker.
+ */
+const LISTING_PORTALS =
+  /(^|\.)(apartments\.com|zillow\.com|trulia\.com|hotpads\.com|forrent\.com|forrentuniversity\.com|rent\.com|apartmentlist\.com|padmapper\.com|zumper\.com|realtor\.com|showmetherent\.com|apartmentfinder\.com|apartmentguide\.com)$|(^|\.)wustl\.edu$/i;
+
+export function isListingPortal(url) {
+  try {
+    return LISTING_PORTALS.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 // Systems the existing PMS sync supports — worth steering to instead.
 export const SYNCABLE_PMS = new Set(["appfolio", "buildium", "rentecdirect", "doorloop"]);
