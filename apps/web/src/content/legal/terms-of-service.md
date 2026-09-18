@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
-**Effective date:** August 26, 2026
-**Last updated:** August 26, 2026
+**Effective date:** September 18, 2026
+**Last updated:** September 18, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -290,21 +290,66 @@ who handle personal information.
 
 ## 17. Suspension, termination, and deleting your account
 
-**You can leave at any time.** Account deletion is self-service: on the website from your
-dashboard, and in the mobile apps from the Profile tab. When you confirm, your account stops
-working immediately, listings you owned alone are withdrawn from the marketplace, listings
-you co-owned stay live under the co-owner, and your personal data is permanently erased
-after 30 days. There is no undo. Privacy Policy §8 sets out exactly what is erased, what is
-anonymized, and what is kept.
+**You can leave at any time.** Account deletion is self-service on the website, from your
+dashboard. When you confirm, your account stops working immediately, listings you owned
+alone are withdrawn from the marketplace, listings you co-owned stay live under the
+co-owner, and your personal data is permanently erased after 30 days. There is no undo.
+Privacy Policy §8 sets out exactly what is erased, what is anonymized, and what is kept.
 
 **We can suspend or terminate.** We may suspend or terminate your account, remove your
 content, or withdraw a listing if we believe you have breached these Terms, if it is
 necessary to protect other users or Proximity, or if required by law. Where it is reasonable
-to do so, we will tell you why.
+to do so, we will tell you why. If we terminate your account, the same erasure timetable
+applies as if you had deleted it yourself, except where Section 17A permits us to keep
+something for longer.
+
+**Inactive accounts.** We do not currently close an account for inactivity, and an account
+you stop using is kept until you delete it. If we introduce a dormancy period, we will give
+you notice by email before it takes effect and a chance to keep the account open.
 
 **What survives.** Sections 8 (reviews staying published in anonymized form), 13 (the
-licence, to the extent content remains published), 15, 18, 19, 20, and 22 survive the end of
-your account.
+licence, to the extent content remains published), 15, 17A, 18, 19, 20, and 22 survive the
+end of your account.
+
+## 17A. Data, retention, and deletion
+
+**Retention.** How long we keep each kind of information, and what happens to it when you
+leave, are set out in Privacy Policy §§8 and 9. We may change those periods; where a change
+materially shortens or lengthens how long we hold your personal data, we will update the
+Privacy Policy and, for material changes, notify registered users as §12 of that policy
+requires.
+
+**When we may keep something longer.** Despite the erasure timetable, we may retain what we
+reasonably need to: resolve or defend a dispute involving you; investigate or prevent fraud,
+abuse, or a security incident; enforce these Terms; or comply with a legal obligation,
+court order, or lawful request. We keep only what is necessary for that purpose, for only as
+long as the purpose lasts, and we do not use it for anything else. When it ends, the data is
+erased.
+
+**Backups.** We take encrypted backups so we can recover from a failure. A backup is a
+snapshot, so information you delete can remain in one until that backup expires. We do not
+restore a backup in order to bring back deleted data.
+
+**Aggregated and de-identified information.** We may create aggregated or de-identified
+information from activity on the Services, such as how many people viewed a listing or how
+prices move across a neighborhood, and we may keep and use it indefinitely, including after
+your account is gone. This information does not identify you and we do not attempt to
+re-identify it.
+
+**Withdrawn listings.** A listing that is withdrawn stops being published but is retained as
+marketplace history. When a listing is withdrawn because its only owner deleted their
+account, that owner's name, email address, and phone number are removed from it.
+
+**People without an account.** We hold limited information about some people who never
+signed up, described in Privacy Policy §1.8, and they can have it deleted on request even
+though these Terms do not apply to them.
+
+**Copies of your data.** You can ask for a copy of the personal information we hold about
+you at any time. Privacy Policy §10 explains how.
+
+**Our service providers.** Privacy Policy §6.3 lists the providers who process personal
+information for us. We remain responsible for their handling of it, and we will update that
+list when it changes.
 
 ## 18. Disclaimers
 
