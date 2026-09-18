@@ -96,8 +96,8 @@ export function Header({ session }) {
   };
 
   // Adaptive "Add" CTA: landlords/super post full listings, everyone else posts
-  // subleases. Logged-out users go to /add-listing, whose layout bounces them
-  // through login and then to the right form for their role.
+  // subleases. Logged-out users go to /add-listing, which lets them fill the whole
+  // form and asks for an account only when they publish.
   const isLandlordType =
     session?.user?.role === "landlord" || session?.user?.role === "super";
   const addHref =
