@@ -1,12 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-<<<<<<< HEAD
-  "_generated": "2026-09-14T18:27:33.737Z",
-  "count": 78,
-=======
   "_generated": "2026-09-13T18:56:07.858Z",
   "count": 79,
->>>>>>> origin/staging
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -63,10 +58,6 @@
     {
       "file": "src/lib/leaseCheck/rateLimit.js",
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
-    },
-    {
-      "file": "src/lib/legal.js",
-      "description": "Loader for the published legal documents (/privacy, /terms)."
     },
     {
       "file": "src/lib/listingDraft/extract.js",
