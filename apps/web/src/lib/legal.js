@@ -1,10 +1,10 @@
 /*
  * Loader for the published legal documents (/privacy, /terms).
  *
- * The markdown in src/content/legal/ is the SINGLE SOURCE OF TRUTH: the same
- * files that were drafted and reviewed in docs/legal/. Nothing here rewrites the
- * text; the page renders exactly what the document says, so a wording change is
- * an edit to the .md file and nothing else.
+ * The markdown in src/content/legal/ is the SINGLE SOURCE OF TRUTH for the
+ * published policy text. Nothing here rewrites the text; the page renders exactly
+ * what the document says, so a wording change is an edit to the .md file and
+ * nothing else.
  *
  * Read with fs rather than a static import because there is no markdown loader
  * configured (and adding one would mean the .md files stop being plain files the
