@@ -29,24 +29,36 @@ was the other half of Ben's question.
 - [ ] Count them again on a full import; anything short of 16 of 16 means a
       third signal is needed
 
-### C. A floor plan imported as a 1108-bedroom apartment
+### C. A floor plan imported as a 1108-bedroom apartment — SOURCE FOUND
 Ben, on the plan holding apartments 1508 and 2708 (100N108A).
 
-Flagged and guarded, cause not fully pinned down. The plan page itself is clean:
-fetched and parsed it returns bedrooms 1, bathrooms 1, area 734 Sq.Ft., and the
-string "1108" does not appear anywhere on it. So the number was not read off the
-site. It comes from the model's own list, and it can only reach the form when
-the page parse returns no bed count, because the parsed number wins whenever
-there is one. Renders of the same URL do vary (the same page has come back at
-2,040 and 7,271 characters), which would explain an occasional miss.
+**Correction to what is written below.** I first said "1108 does not appear
+anywhere on that page". It does. I had searched the page's TEXT and never
+searched the image URLs, which we hand the model as candidates. The floor-plan
+image for that very plan is:
 
-Guarded rather than left to chance: a bed or bath count outside what a home can
-have is now dropped to blank instead of published, in both the model's units and
-the parsed ones. Blank is recoverable and the landlord fills it in; 1108
-bedrooms is wrong in the database and wrong in search.
+    p2245715_new_100n108a_one-hundred-100n_1b08a-1108-kitchen-thumbnail_2_fp.jpg
 
-- [ ] Watch for a blank bed count on a re-import, which is the same fault
-      wearing its new face, and would confirm the parse is the miss
+`1b08a-1108-kitchen`. The model took the bed count out of an image file name.
+
+The full chain, and every link is now covered:
+
+1. The page render sometimes does not yield a bed count to the parser. Parsed
+   directly it returns 1 every time; in one import it came back empty. Same
+   render variance as the lease terms.
+2. With the parse empty, the model's number is used, and the model read 1108 out
+   of the image file name. The prompt now says outright that image URLs are for
+   choosing pictures and nothing else, with this exact failure as the example.
+3. The parser only accepted the count BEFORE the word ("1 Bedroom") and not
+   after it ("Bedrooms: 1"), which is one plausible reason a render slips past
+   it. Both spellings read now, for beds and baths.
+4. A count outside what a home can have is still dropped to blank rather than
+   published.
+
+So the blank Ben saw was step 4 catching step 2. Step 3 makes the parse less
+likely to need step 2 at all.
+
+- [ ] Confirm 100N108A comes back as 1 bed on a full import
 
 ### B. Only the one-bedrooms imported (being verified)
 Ben, testing One Hundred Above the Park: "it only logged the 1 beds, not the

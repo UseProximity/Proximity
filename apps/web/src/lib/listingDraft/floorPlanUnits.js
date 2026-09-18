@@ -138,12 +138,21 @@ export function parseFloorPlanPage(text, url) {
    * plan whose page used a spelling the old pattern missed published with the
    * bedroom and bathroom boxes blank.
    */
+  /*
+   * Both spellings: the count before the word ("1 Bedroom") and after it
+   * ("Bedrooms: 1"). Only the first was read, and a plan whose render used the
+   * other came back with no bed count — which was then filled in by the model,
+   * and the model has been caught taking the number out of an image file name.
+   * Whatever this reads off the page beats a guess, so it is worth being
+   * generous about the wording.
+   */
   const beds = /\bstudio\b/i.test(text)
     ? "0"
-    : text.match(/(\d+)\s*(?:-|\s)?\s*(?:bed(?:room)?s?|bd|br)\b/i)?.[1];
+    : text.match(/(\d+)\s*(?:-|\s)?\s*(?:bed(?:room)?s?|bd|br)\b/i)?.[1] ??
+      text.match(/\bbed(?:room)?s?\s*[:\-]?\s*(\d+)\b/i)?.[1];
   const baths = text.match(
     /(\d+(?:\.\d)?)\s*(?:-|\s)?\s*(?:bath(?:room)?s?|ba)\b/i
-  )?.[1];
+  )?.[1] ?? text.match(/\bbath(?:room)?s?\s*[:\-]?\s*(\d+(?:\.\d)?)\b/i)?.[1];
   const area = text.match(/(?:Up to\s*)?([\d,]{3,6})\s*Sq\.?\s*Ft/i)?.[1]?.replace(/,/g, "");
   /*
    * Concessions sit on these pages and are worth as much as the rent: Dorchester
