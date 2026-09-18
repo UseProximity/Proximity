@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 // Roles a user is allowed to self-assign at signup. Privileged roles (super,
 // admin, …) can never be granted here — only via an admin-side role change.
@@ -9,7 +10,7 @@ const SIGNUP_ROLES = new Set(["student", "landlord"]);
 
 export async function POST(req) {
   try {
-    const { name, email, password, role } = await req.json();
+    const { name, email, password, role, callbackUrl } = await req.json();
 
     if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 });
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -78,7 +79,13 @@ export async function POST(req) {
       .update({ email_verification_token: token, email_verification_expires_at: expires })
       .eq("id", newUser.id);
 
-    await sendVerificationEmail({ email, name: name.trim(), token, baseUrl: getBaseUrl(req) });
+    await sendVerificationEmail({
+      email,
+      name: name.trim(),
+      token,
+      baseUrl: getBaseUrl(req),
+      next: sanitizeCallbackUrl(callbackUrl, null),
+    });
 
     return NextResponse.json({ email });
   } catch (err) {
