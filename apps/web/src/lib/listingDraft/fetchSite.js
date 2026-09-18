@@ -364,12 +364,23 @@ async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   }
 }
 
+/*
+ * Jina is a paid account that can simply run out, and when it does it fails the
+ * same way on every page for the rest of time. Ours is out right now: the key
+ * authenticates fine and every call comes back 402 InsufficientBalanceError.
+ * Silently returning null meant a dead service still cost a round trip on every
+ * page we fell back on, and nothing in the logs ever said why. Once it tells us
+ * the account is empty we believe it and stop asking until the process
+ * restarts.
+ */
+let jinaUnavailable = null;
+
 async function renderPageViaJina(rawUrl) {
   // JINA_API_KEY is the name people reach for (and the one the PR notes gave
   // out); accept it too so a mis-set key degrades to "wrong name, still works"
   // rather than a render fallback that silently never runs.
   const key = process.env.JINA_READER_KEY || process.env.JINA_API_KEY;
-  if (!key) return null;
+  if (!key || jinaUnavailable) return null;
   try {
     const res = await fetch(`https://r.jina.ai/${rawUrl}`, {
       headers: {
@@ -379,6 +390,14 @@ async function renderPageViaJina(rawUrl) {
       },
       signal: AbortSignal.timeout(60000),
     });
+    if (res.status === 402 || res.status === 401 || res.status === 403) {
+      jinaUnavailable = res.status;
+      console.log(
+        `[listing-draft] Jina reader is not usable (HTTP ${res.status}) — skipping it for the rest of this process. ` +
+          `402 means the account is out of balance, not that the key is wrong.`
+      );
+      return null;
+    }
     if (!res.ok) return null;
     const html = await res.text();
     if (!html) return null;

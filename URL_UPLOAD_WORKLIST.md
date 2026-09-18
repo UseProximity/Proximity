@@ -10,6 +10,30 @@ Branch: `fix/listing-draft-multi-property`
 
 ## Open
 
+### G. Firecrawl is nearly out: 37 credits of 1,500, resets 28 September
+This is now the binding constraint, not the code. One import of a 36-plan
+building costs about 18 credits, so there are roughly two big imports left
+before the reset. Check before any test round:
+
+    curl -H "Authorization: Bearer $FIRECRAWL_API_KEY" \
+      https://api.firecrawl.dev/v2/team/credit-usage
+
+### F2. Jina: the key is fine, the ACCOUNT is empty
+Not broken, not misconfigured. The key authenticates and every call returns
+
+    402 InsufficientBalanceError: "Account balance not enough to run this
+    query, please recharge." (uid 98a53313-22a4-4815-bb42-61015df1f8af)
+
+Fix: sign in at jina.ai with the account that owns that uid and buy tokens, or
+make a new account for its free allowance and swap the key. It is the THIRD
+reader in the chain, behind the plain fetch and Firecrawl, so nothing is broken
+without it — it is a spare wheel. Given Firecrawl is the expensive one, a funded
+Jina would take load off it.
+
+Until then the importer notices a 402 and stops calling Jina for the rest of the
+process, and says so in the log once, instead of paying a round trip per page to
+a service that cannot answer.
+
 ### E. BLOCKED: the Anthropic API balance ran out
     [listing-draft] error: 400 "Your credit balance is too low to access the
     Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."
@@ -20,8 +44,10 @@ The reading itself still worked in that run — 36 plans found, 16 read, lease
 terms parsed — and it failed at the model call, which is why it returned
 "Something went wrong reading that website" after 18 seconds.
 
-- [ ] Ben: top up the Anthropic account. Nothing can be tested until this is
-      done, including the last verification below.
+- [ ] Ben: top up the Anthropic account. It was empty at 18:00 on 17 September
+      and working again by 23:00, so this may already be resolved — but a run
+      that dies here returns the same "something went wrong" a parsing bug does,
+      so check the server log before chasing it as a bug.
 - [ ] Re-run One Hundred Above the Park and confirm 100N307F reads 3 bedrooms
       (the fix is in, the verifying run is the part that was blocked)
 
