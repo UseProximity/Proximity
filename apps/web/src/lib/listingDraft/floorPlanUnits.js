@@ -45,10 +45,22 @@ import {
  */
 const MAX_PLANS = 16;
 /*
- * Matched to the Firecrawl plan's maxConcurrency of 2. Asking for more does not
- * go faster — the extra requests queue on their side — and under a burst they
- * come back as failures, which is what made apartments.com look blocked during
- * the 34-site audit.
+ * How many plan pages we read at once.
+ *
+ * Two, and MEASURED at two rather than assumed.
+ *
+ * Six at a time all come back 200 on the current plan, so the obvious move is
+ * to open six plan pages at once. It does not work. Tried across the whole
+ * acceptance suite, six made the largest building SLOWER — One Hundred Above
+ * the Park went from 119 seconds to 250, which is close enough to the
+ * platform's 300-second limit to fail in production — while saving twenty or
+ * thirty seconds on the smaller ones. The extra requests do not run in
+ * parallel so much as queue on their side, and a queue behind a slow page
+ * costs more than it saves.
+ *
+ * So the drill is not the thing to tune for speed. If this is raised again,
+ * raise it against the acceptance suite and read the times, not against a
+ * burst of scrapes that all return 200.
  */
 const CONCURRENCY = 2;
 

@@ -45,6 +45,13 @@ export default function StepUnits({ w }) {
       else next.add(i);
       return next;
     });
+  // Said in the header rather than repeated down the page as a red warning on
+  // every row: a column of identical alarms is not information.
+  const waitlistCount = (w.units ?? []).filter((u) => u.available === false).length;
+  const needTerms = (w.units ?? []).filter(
+    (u) => u.available !== false && !(u.leaseTermMonths ?? []).length
+  ).length;
+
   const planLabel = (u) => {
     const beds = Number(u.bedrooms) === 0 ? "Studio" : `${u.bedrooms || "?"} bed`;
     return u.bathrooms ? `${beds} · ${u.bathrooms} bath` : beds;
@@ -136,20 +143,69 @@ export default function StepUnits({ w }) {
     >
       <div className="space-y-4">
         {manyPlans && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 px-4 py-3">
-            <p className="text-sm text-gray-600">
-              {w.units.length} floor plans came in from your website. Open any one
-              to check it or change it.
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                setOpened(allOpen ? new Set() : new Set(w.units.map((_, i) => i)))
-              }
-              className="text-sm font-medium text-red-600 hover:text-red-700"
-            >
-              {allOpen ? "Collapse all" : "Open all"}
-            </button>
+          /*
+           * What came in, what it means, and the one thing left to do.
+           *
+           * A thirty-four plan building arrived with twenty-three rows reading
+           * "needs a lease length" in red and nothing saying why: the site
+           * publishes its lease lengths behind a login, so there was nothing to
+           * read, and the landlord was left with a column of warnings and no
+           * way to answer them without opening twenty-three cards. The waitlist
+           * rows needed saying out loud too — a badge tells you what a plan IS,
+           * not what is about to happen to it.
+           */
+          <div className="space-y-3 rounded-lg bg-gray-50 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-gray-600">
+                {w.units.length} floor plans came in from your website. Open any
+                one to check it or change it.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setOpened(allOpen ? new Set() : new Set(w.units.map((_, i) => i)))
+                }
+                className="shrink-0 text-sm font-medium text-red-600 hover:text-red-700"
+              >
+                {allOpen ? "Collapse all" : "Open all"}
+              </button>
+            </div>
+
+            {waitlistCount > 0 && (
+              <p className="text-xs text-gray-600">
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">
+                  {waitlistCount} waitlist only
+                </span>{" "}
+                — your website shows these with no price, so they are saved with
+                your listing but not offered to students. Remove one with the ×
+                if you would rather not keep it.
+              </p>
+            )}
+
+            {needTerms > 1 && (
+              <div className="border-t border-gray-200 pt-2.5">
+                <p className="text-xs text-gray-700">
+                  {needTerms === w.units.length
+                    ? "Your website doesn't publish its lease lengths, so pick them here."
+                    : `${needTerms} floor plans still need a lease length.`}{" "}
+                  <span className="text-gray-500">
+                    Picking one sets it on every floor plan; you can change any of
+                    them afterwards.
+                  </span>
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {LEASE_TERM_PRESETS.map((p) => (
+                    <Chip
+                      key={p.label}
+                      on={w.units.every((u) => (u.leaseTermMonths || []).includes(p.months))}
+                      onClick={() => w.mirrorTerms([p.months])}
+                    >
+                      {p.label}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {w.units.map((unit, i) => {
@@ -193,7 +249,9 @@ export default function StepUnits({ w }) {
                     </span>
                   )}
                   {[
-                    unit.available === false || terms.length ? null : "needs a lease length",
+                    unit.available === false || terms.length || needTerms > 1
+                      ? null
+                      : "needs a lease length",
                     unit.designator || unit.numbersUnknown ? null : "needs a unit type",
                     unit.available === false || unit.rent ? null : "needs a rent",
                   ]

@@ -7,13 +7,29 @@ import { StepFrame, Chip, FieldLabel, inputCls, importedInputCls } from "@/compo
 // costs one tap ("Available now" is pre-selected) but is a conscious choice,
 // because matchmaking needs a move-in signal on every listing.
 export default function StepBasics({ w }) {
-  // Does every apartment already carry its own availability date?
-  const unitDateState = (w.units ?? []).map((u) => {
+  /*
+   * Is availability already answered one floor down?
+   *
+   * This asks for the whole property, and the units step asks per apartment,
+   * so a landlord who meets both reasonably wonders which one counts. It used
+   * to hide only when every apartment carried a DATE — which meant a building
+   * whose apartments are all available now still got asked here, because "now"
+   * is stored as a blank date. Blank is an answer on that step (it shows a
+   * green "Available now" beside every apartment), so it is an answer for this
+   * one too.
+   *
+   * An apartment we read off the landlord's own website therefore counts as
+   * answered. A waitlisted floor plan is not offered at all, so it has no say.
+   * What is left asking is the case this question was written for: someone
+   * typing in one place by hand, with no apartment numbers and no date.
+   */
+  const offered = (w.units ?? []).filter((u) => u.available !== false);
+  const unitDateState = offered.map((u) => {
     const numbers = String(u.unitNumbers ?? "")
       .split(/[,\s]+/)
       .filter(Boolean);
     if (!numbers.length) return !!u.availableFrom;
-    return numbers.every((n) => u.unitAvailability?.[n] || u.availableFrom);
+    return true;
   });
   const datedPerUnit = unitDateState.length > 0 && unitDateState.every(Boolean);
   const anyUnitDated = unitDateState.some(Boolean);

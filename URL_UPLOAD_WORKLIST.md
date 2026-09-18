@@ -8,6 +8,28 @@ Branch: `fix/listing-draft-multi-property`
 
 ---
 
+## Speed: the drill is not the thing to tune
+
+Ben: "it took 160+ seconds... is that the fastest it can go?" without changing
+the quality of the output.
+
+Measured, not guessed. Six concurrent Firecrawl scrapes all return 200 on the
+new plan, so opening six plan pages at once looks like free speed. Run across
+the acceptance suite it is not: the biggest building went from 119 seconds to
+**250**, close enough to the platform's 300-second limit to fail in production,
+while saving twenty or thirty seconds on the small ones. The extra requests
+queue on their side rather than running in parallel, and a queue behind one slow
+page costs more than it saves. Left at 2.
+
+Where a big import's time actually goes: sixteen floor-plan pages, then one
+model call whose output is the units themselves. Both are the output. The one
+free win already in place is that Firecrawl caches, so a building imported twice
+is much faster the second time — which is why a test run flatters itself and a
+landlord's first import will not.
+
+If this is tuned again, tune it against the acceptance suite and read the times.
+A burst of scrapes that all return 200 proves nothing about the import.
+
 ## Waitlist floor plans, and lease lengths a site won't publish
 
 Ben, testing Vivienne (211 N. Meramec): "they are all missing lease lengths and
@@ -27,6 +49,22 @@ difference between a plan we dropped and a plan we never saw. The card is
 marked "Waitlist only", asks for nothing, and is one click to remove — and one
 click to switch on the day it frees up. A student is never shown a price we
 invented or an availability that is not real.
+
+**Said once at the top, not as a warning on every row.** Twenty-three of
+Vivienne's rows read "needs a lease length" in red, with nothing explaining why
+and no way to answer them without opening twenty-three cards. The step now says
+it once — what came in, how many are waitlist-only and what that means for them,
+and that this site does not publish lease lengths — and offers the four presets
+right there, applying to every floor plan at once. The per-row warning is kept
+only when a single plan is the exception.
+
+**The property-wide "when is it available?"** is gone from the Basics card for
+an import like this. It used to hide only when every apartment carried a DATE,
+so a building whose apartments are all available NOW still got asked, because
+"now" is stored as a blank date. Blank is an answer on the units step — it shows
+a green "Available now" beside every apartment — so it is an answer for this
+question too. What still gets asked is the case the question was written for:
+someone typing one place in by hand, with no apartment numbers and no date.
 
 **Lease lengths.** Vivienne publishes its terms only inside the application, one
 login deep (Ben found 1 to 13 months there), and there is no price against each
