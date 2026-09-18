@@ -64,6 +64,19 @@ export function findFloorPlanPages(html, indexUrl, cap = Infinity) {
     return [];
   }
   if (!basePath || basePath === "/") return [];
+  /*
+   * The plans are usually children of the index — /floorplans then
+   * /floorplans/100n101a — but not always. Vivienne lists its twenty-three
+   * plans at /floor-plan/eden while the index is /floor-plans, one letter
+   * apart, and insisting on the child path found none of them at all. So a
+   * sibling whose last segment is the same word singular or plural counts too.
+   */
+  const bases = new Set([basePath]);
+  const last = basePath.slice(basePath.lastIndexOf("/") + 1);
+  const stem = basePath.slice(0, basePath.lastIndexOf("/") + 1);
+  if (last.endsWith("s")) bases.add(`${stem}${last.slice(0, -1)}`);
+  else bases.add(`${stem}${last}s`);
+
   const out = [];
   const seen = new Set();
   for (const l of extractAllLinks(html, indexUrl, 300)) {
@@ -74,9 +87,10 @@ export function findFloorPlanPages(html, indexUrl, cap = Infinity) {
     } catch {
       continue;
     }
-    if (!path.startsWith(`${basePath}/`)) continue;
+    const base = [...bases].find((b) => path.startsWith(`${b}/`));
+    if (!base) continue;
     // exactly one segment deeper, and not an anchor back to the index
-    if (path.slice(basePath.length + 1).includes("/")) continue;
+    if (path.slice(base.length + 1).includes("/")) continue;
     if (seen.has(path)) continue;
     seen.add(path);
     out.push(l.url);
@@ -93,10 +107,26 @@ export function findFloorPlanPages(html, indexUrl, cap = Infinity) {
  * apartment and a date for the next, so each is matched independently within a
  * short window rather than as one rigid block.
  */
-const APARTMENT_RE = /Apartment:?\s*#?\s*([A-Za-z]?\d{1,5}[A-Za-z]?)\b/gi;
+/*
+ * "Apartment: #1508" is RentCafe's wording. Vivienne writes "Unit 311 Starting
+ * From $2,300 /month Available Now", and reading only the first spelling meant
+ * a building with six priced apartments on a plan imported with none of them. A
+ * match still has to be followed by a price or a date to count, which is what
+ * keeps this from picking up "Unit" in a sentence.
+ */
+const APARTMENT_RE =
+  /(?:Apartment|Unit|Apt|Suite|Home)\s*:?\s*#?\s*([A-Za-z]?\d{1,5}[A-Za-z]?)\b/gi;
 const AVAIL_NOW_RE = /\bAvailable\s+Now\b/i;
 const AVAIL_DATE_RE = /\b(?:Date\s+Available|Available)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i;
-const PRICE_RE = /(?:Starting\s+at|Rent|Price)\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)/i;
+const PRICE_RE =
+  /(?:Starting\s+(?:at|from)|Rent|Price|From)\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)/i;
+
+/*
+ * A plan you cannot rent today, however politely it says so. Vivienne's Aloe
+ * reads "Pricing Call For Details  Waitlist  Join Waitlist" and has no price
+ * and no apartments, which is not the same as a plan we failed to read.
+ */
+const WAITLIST_RE = /\bjoin\s+(?:the\s+)?wait\s?list\b|\bwait\s?list\b|\bcall\s+for\s+(?:details|pricing)\b/i;
 
 const toIsoDate = (mdy) => {
   const m = mdy?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
@@ -113,7 +143,7 @@ export function parseFloorPlanPage(text, url) {
     if (seen.has(number)) continue;
     // Everything up to the next apartment heading, capped, is this one's block.
     const rest = text.slice(m.index + m[0].length, m.index + m[0].length + 260);
-    const block = rest.split(/Apartment:?\s*#/i)[0];
+    const block = rest.split(/(?:Apartment|Unit|Apt|Suite|Home)\s*:?\s*#?\s*[A-Za-z]?\d/i)[0];
     const price = block.match(PRICE_RE)?.[1]?.replace(/,/g, "");
     const dated = block.match(AVAIL_DATE_RE)?.[1];
     const now = AVAIL_NOW_RE.test(block);
@@ -202,6 +232,9 @@ export function parseFloorPlanPage(text, url) {
   const specials = findSpecial(text);
   return {
     specials,
+    // No price and no apartments because they are not letting it yet, rather
+    // than because we could not read the page.
+    waitlist: apartments.length === 0 && WAITLIST_RE.test(text),
     url,
     name,
     bedrooms: beds != null ? Number(beds) : null,
@@ -384,7 +417,9 @@ export async function fetchFloorPlanUnits(urls) {
               (l) => /oleapplication/i.test(l.url) && !/residentservices/i.test(l.url)
             )?.url ?? null;
         }
-        if (plan.apartments.length) plans.push(plan);
+        // A waitlisted plan has no apartments BECAUSE it is waitlisted, which is
+        // worth keeping; a plan with neither is one we simply could not read.
+        if (plan.apartments.length || plan.waitlist) plans.push(plan);
       } catch {
         /* skip this plan */
       }

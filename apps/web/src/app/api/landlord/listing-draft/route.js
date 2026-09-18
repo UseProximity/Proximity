@@ -97,7 +97,7 @@ const THIN_TEXT_CHARS = 800;
  * pasting the front page of a building returned a listing with no units at all.
  */
 const FLOORPLAN_LINK_RE =
-  /floor\s*plans?|floorplans?|availabilit|available\s+(units|apartments)|rates\s*(and|&)?\s*floor|pricing\s*(and|&)?\s*floor/i;
+  /floor[\s_-]*plans?|availabilit|available\s+(units|apartments)|rates\s*(and|&)?\s*floor|pricing\s*(and|&)?\s*floor/i;
 
 /*
  * A management company's homepage shows a handful of featured buildings and
@@ -704,6 +704,14 @@ export async function POST(req) {
           availableFrom: plan.apartments.some((a) => a.availableOn === "now")
             ? "now"
             : (unit?.availableFrom ?? null),
+          /*
+           * A waitlisted plan is real but not rentable today, so it arrives
+           * switched off rather than as a card with an empty price. Publishing
+           * it as available would tell a student they can have something they
+           * cannot, and dropping it silently would hide a layout the landlord
+           * may want up the moment it frees. One click removes it.
+           */
+          available: !plan.waitlist,
           unitNames: plan.apartments.map((a) => a.number),
           unitRents: plan.apartments.map((a) => a.rent ?? 0),
           unitAvailability: plan.apartments.map((a) =>
@@ -743,6 +751,10 @@ export async function POST(req) {
        * entry, not something a student can rent. Anything that tells the
        * landlord something stays; a bare title goes.
        */
+      const waitlisted = floorPlanData.plans.filter((p) => p.waitlist).length;
+      if (waitlisted) {
+        console.log(`[listing-draft] ${waitlisted} floor plans are waitlist-only`);
+      }
       const informative = (u) =>
         u.bedrooms != null ||
         u.rent != null ||
@@ -832,6 +844,12 @@ export async function POST(req) {
           draft.listing.concessions = [...(draft.listing.concessions ?? []), c];
         }
       }
+      if (waitlisted) {
+        draft.listing.sourceNotes = [
+          `${waitlisted} floor plan${waitlisted === 1 ? " is" : "s are"} waitlist-only on the site, with no price. ${waitlisted === 1 ? "It is" : "They are"} switched off below rather than published as available.`,
+          ...(draft.listing.sourceNotes ?? []),
+        ];
+      }
       if (floorPlanData.termRange?.min) {
         /*
          * Said on the listing, not in a source note.
@@ -854,6 +872,34 @@ export async function POST(req) {
           `This building quotes lease terms from ${min} to ${max} months and publishes one rate per apartment. Check the term before you publish.`,
           ...(draft.listing.sourceNotes ?? []),
         ];
+      }
+    }
+
+    /*
+     * Two things a landlord should be told rather than left to infer from an
+     * empty box, whichever way the units were read — the floor-plan drill, a
+     * live availability feed, or the model alone.
+     *
+     * Vivienne publishes its lease lengths only behind a login, so there is
+     * nothing to read and every box is blank; and it lists eleven layouts as
+     * "Join Waitlist" with no price. Both look like the importer giving up.
+     */
+    if (draft?.listing) {
+      const units = draft.listing.units ?? [];
+      const notes = [];
+      const waiting = units.filter((u) => u.available === false).length;
+      if (waiting) {
+        notes.push(
+          `${waiting} floor plan${waiting === 1 ? "" : "s"} ${waiting === 1 ? "is" : "are"} waitlist-only with no price, so ${waiting === 1 ? "it is" : "they are"} switched off below rather than published as available.`
+        );
+      }
+      if (units.length && units.every((u) => !(u.leaseTermMonths ?? []).length)) {
+        notes.push(
+          "This site doesn't publish its lease lengths, so choose them below. Everything else came from the site."
+        );
+      }
+      if (notes.length) {
+        draft.listing.sourceNotes = [...notes, ...(draft.listing.sourceNotes ?? [])];
       }
     }
 

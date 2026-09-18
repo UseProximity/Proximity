@@ -89,6 +89,33 @@ const CASES = {
       leaseTermsRequired: false,
     },
   },
+  "keeley-vivienne": {
+    tier: "core",
+    credits: 20,
+    url: "https://keeleyproperties.com/find-a-home/",
+    target: {
+      name: "Vivienne",
+      address: "211 N. Meramec Ave., St. Louis, MO 63105",
+      url: "https://keeleyproperties.com/properties/vivienne",
+    },
+    /*
+     * A fourth shape again. Its plans live at /floor-plan/eden while the index
+     * is /floor-plans, one letter apart, which found nothing at all; it calls
+     * its apartments "Unit 311 Starting From $2,300" rather than
+     * "Apartment: #311"; and some plans are waitlist-only with no price.
+     *
+     * No lease lengths are expected: this building publishes its terms behind
+     * a login, so the landlord sets them. That is a fact about the site, not a
+     * fault, and the import says so in its notes.
+     */
+    expect: {
+      minUnits: 10,
+      minBedVariety: 2,
+      minUnitsWithApartments: 8,
+      minPhotos: 3,
+      leaseTermsRequired: false,
+    },
+  },
   "single-building": {
     tier: "breadth",
     credits: 6,
@@ -237,6 +264,15 @@ async function run(name, cookies) {
   }
   const u = data.listing?.units ?? [];
   const properties = data.properties ?? [];
+  // --dump <dir> keeps the whole draft, so a surprise can be read afterwards
+  // instead of costing another import to see.
+  const dumpDir = arg("--dump");
+  if (dumpDir) {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    mkdirSync(dumpDir, { recursive: true });
+    writeFileSync(`${dumpDir}/${name}.json`, JSON.stringify(data, null, 2));
+    console.log(`      (draft written to ${dumpDir}/${name}.json)`);
+  }
   const problems = check(name, data.listing, properties, c.expect, seconds);
   /*
    * The bed sizes themselves, not just how many there are: "4 bed sizes" reads

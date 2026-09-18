@@ -699,7 +699,8 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           bathrooms: u.bathrooms ?? "",
           rent: cheapest ? cheapest.rent : u.rent ?? "",
           area: u.area ?? "",
-          available: true,
+          // A waitlist-only plan comes in switched off; everything else is on.
+          available: u.available !== false,
           title: u.title ?? "",
           floorPlanImageUrl: "",
           leaseTermMonths: cheapest ? cheapest.leaseTermMonths : terms,

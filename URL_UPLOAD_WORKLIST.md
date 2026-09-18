@@ -8,18 +8,55 @@ Branch: `fix/listing-draft-multi-property`
 
 ---
 
+## Waitlist floor plans, and lease lengths a site won't publish
+
+Ben, testing Vivienne (211 N. Meramec): "they are all missing lease lengths and
+many pricing as well... its missing pricing for aloe and thats because on the
+website it says join the waitlist. how should we display those that ask for a
+waitlist? i imagine we shouldnty show them at all right"
+
+**Waitlist plans arrive switched off, not hidden.** Vivienne lists eleven
+layouts as "Pricing: Call For Details / Join Waitlist": Aloe, Bloom, Cleo,
+Zephyr, Celeste, Liora, Maris, Mente Townhome, Opaline, Vesper and Holos. They
+used to come through as ordinary units with an empty price, which reads as
+something we failed to read rather than something the building is not letting.
+
+Not hidden, because a silent omission is the fault Ben has already caught twice
+this week and it is worse than a visible one: the landlord cannot tell the
+difference between a plan we dropped and a plan we never saw. The card is
+marked "Waitlist only", asks for nothing, and is one click to remove — and one
+click to switch on the day it frees up. A student is never shown a price we
+invented or an availability that is not real.
+
+**Lease lengths.** Vivienne publishes its terms only inside the application, one
+login deep (Ben found 1 to 13 months there), and there is no price against each
+term. There is nothing on the public site to read, so the boxes are empty and
+the import now SAYS so instead of leaving a blank that looks like a bug:
+
+    This site doesn't publish its lease lengths, so choose them below.
+    Everything else came from the site.
+
+The landlord sets it once and "apply these terms to all N floor plans" does the
+rest. That is the right division: we do not guess a lease length, and we do not
+make them wonder why it is empty.
+
+Both notices are written wherever the units came from — the floor-plan drill, a
+live availability feed, or the model alone — because Vivienne reaches us by the
+SightMap feed and the first version of this only fired on the drill.
+
 ## The feature passes its own acceptance test
 
     node apps/web/scripts/listing-import-acceptance.mjs --all
 
-Six shapes of website, 18 September, all six green:
+Seven shapes of website, 18 September, all seven green:
 
-    mac-100          36 units, beds 0/1/2/3, 16 with apartments, 8 photos, 16 plans, 1 special, 130s
-    mac-dorchester   20 units, beds 0/1/2/3, 20 with apartments, 5 photos, 10 plans, 1 special, 79s
-    keeley-euclid     7 units, beds 1/2,      7 with apartments, 12 photos, 7 plans, 2 specials, 69s
-    single-building   5 units, beds 1/2,      5 with apartments, 12 photos, 5 plans, 97s
-    portal-listing    1 unit,  beds 2,        13s
-    many-houses      19 properties offered,  19s
+    mac-100          36 units, beds 0/1/2/3, 16 with apartments, 16 floor plans, 119s
+    mac-dorchester   20 units, beds 0/1/2/3, 20 with apartments, 10 floor plans, 98s
+    keeley-euclid     7 units, beds 1/2,      7 with apartments,  7 floor plans, 85s
+    keeley-vivienne  34 units, beds 1/2/3,   23 with apartments, 11 waitlist-only, 181s
+    single-building   5 units, beds 1/2,      5 with apartments,  5 floor plans, 74s
+    portal-listing    1 unit — one listing, not a picker of competitors, 12s
+    many-houses      14 properties offered, 14s
 
 About 60 Firecrawl credits and $2 of Anthropic for the set. Re-run it after any
 change to the importer; a case that fails names what it expected and what it

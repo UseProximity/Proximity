@@ -187,10 +187,15 @@ export default function StepUnits({ w }) {
                   ) : null}
                   {/* Whatever still needs a decision says so on the closed row,
                       so nothing that blocks publishing hides behind a chevron. */}
+                  {unit.available === false && (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                      Waitlist only
+                    </span>
+                  )}
                   {[
-                    terms.length ? null : "needs a lease length",
+                    unit.available === false || terms.length ? null : "needs a lease length",
                     unit.designator || unit.numbersUnknown ? null : "needs a unit type",
-                    unit.rent ? null : "needs a rent",
+                    unit.available === false || unit.rent ? null : "needs a rent",
                   ]
                     .filter(Boolean)
                     .map((what) => (
