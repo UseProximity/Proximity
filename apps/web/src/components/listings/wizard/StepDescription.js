@@ -11,6 +11,7 @@ import {
   inputCls,
   importedInputCls,
 } from "@/components/listings/wizard/wizardShared";
+import { checkListingDescription } from "@/lib/contentRules";
 
 /*
  * Screen 6: words + contact. Research says never show a blank textarea — so an
@@ -63,6 +64,10 @@ function draftDescription(form, units, customAmenities) {
 }
 
 export default function StepDescription({ w }) {
+  // Same rule the Next button enforces, surfaced while they write so the block
+  // is never a surprise. An imported description can arrive already in breach.
+  const descriptionProblem = checkListingDescription(w.form.description);
+
   // Draft once, only into an empty box, and remember we did — so a landlord
   // who deletes the draft on purpose doesn't get it forced back.
   const draftedRef = useRef(false);
@@ -89,7 +94,11 @@ export default function StepDescription({ w }) {
           w.importedFields.has("description") ? importedInputCls : ""
         }`}
         placeholder="What makes this place great for students?"
+        aria-invalid={descriptionProblem ? true : undefined}
       />
+      {descriptionProblem && (
+        <p className="mt-2 text-sm text-red-600">{descriptionProblem}</p>
+      )}
 
       <div className="mt-5 max-w-sm">
         <FieldLabel optional>Display name</FieldLabel>

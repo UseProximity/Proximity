@@ -44,6 +44,7 @@ import ReviewerContactFields, {
   EMPTY_CONTACT,
   contactReady,
 } from "./ReviewerContactFields";
+import { checkReviewText } from "@/lib/contentRules";
 
 export default function ReviewSubmitForm({
   referrerId = null,
@@ -129,6 +130,9 @@ export default function ReviewSubmitForm({
   const overallReady = rating >= 0.5;
   const categoriesReady = comm >= 0.5 && val >= 0.5 && loc >= 0.5;
   const commentReady = comment.trim().length >= 10;
+  // Naming a landlord or a staff member is the one thing a review may not do,
+  // so it is surfaced while they type rather than after a rejected submit.
+  const commentProblem = checkReviewText(comment);
   const landlordReady =
     landlordName.trim().length >= 2 &&
     (noContact || landlordEmailOk || landlordPhoneOk);
@@ -203,6 +207,7 @@ export default function ReviewSubmitForm({
       return toast.error("Please set all four star ratings.");
     if (comment.trim().length < 10)
       return toast.error("Please write at least 10 characters.");
+    if (commentProblem) return toast.error(commentProblem);
     if (landlordName.trim().length < 2)
       return toast.error("Please enter the landlord or company name.");
     if (!noContact && !landlordEmailOk && !landlordPhoneOk)
@@ -440,7 +445,11 @@ export default function ReviewSubmitForm({
           rows={4}
           placeholder="What was it like living here? Landlord, location, value… (min. 10 characters)"
           className={INPUT_CLASS}
+          aria-invalid={commentProblem ? true : undefined}
         />
+        {commentProblem && (
+          <p className="mt-2 text-sm text-red-600">{commentProblem}</p>
+        )}
       </Step>
 
       <Step show={commentReady} number={step()} title="Who was the landlord?">
@@ -515,7 +524,7 @@ export default function ReviewSubmitForm({
 
         <button
           type="submit"
-          disabled={submitting || !identityReady}
+          disabled={submitting || !identityReady || !!commentProblem}
           className="mt-4 w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? "Submitting…" : "Submit review"}

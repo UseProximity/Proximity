@@ -5,6 +5,7 @@ import { Camera, Plus, X } from "lucide-react";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { clampCount } from "@/utils/unitCounts";
 import { compressImage } from "@/utils/compressImage";
+import { checkListingDescription } from "@/lib/contentRules";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -119,6 +120,7 @@ export default function SubleaseFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const descriptionProblem = checkListingDescription(form.description);
 
   // Image upload
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -338,6 +340,9 @@ export default function SubleaseFormPanel({
     setError(null);
     if (!form.address.trim()) { setError("Address is required."); return; }
     if (!form.description.trim()) { setError("Description is required."); return; }
+    // No names, no links, no "message me" - the contact fields below are the
+    // channel students are meant to use.
+    if (descriptionProblem) { setError(descriptionProblem); return; }
     if (units.length === 0) { setError("At least one unit is required."); return; }
     if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
       setError("Each unit needs bedrooms and bathrooms.");
@@ -596,7 +601,11 @@ export default function SubleaseFormPanel({
                   name="description" value={form.description} onChange={handleChange} required rows={3}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Describe the property..."
+                  aria-invalid={descriptionProblem ? true : undefined}
                 />
+                {descriptionProblem && (
+                  <p className="mt-1 text-sm text-red-600">{descriptionProblem}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Home Type</label>

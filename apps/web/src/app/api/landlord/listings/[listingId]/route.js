@@ -8,6 +8,7 @@ import {
   findPropertyNameConflict,
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
+import { checkListingDescription } from "@/lib/contentRules";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -156,6 +157,12 @@ export async function PATCH(req, { params }) {
   const safeUpdates = {};
   for (const [k, v] of Object.entries(rest)) {
     if (LISTING_COLS.has(k)) safeUpdates[k] = v;
+  }
+
+  // Same no-names / no-self-promotion rule the listing had to pass to be created.
+  if (safeUpdates.description !== undefined) {
+    const problem = checkListingDescription(safeUpdates.description);
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   }
 
   /*
