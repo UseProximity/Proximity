@@ -8,12 +8,34 @@ Branch: `fix/listing-draft-multi-property`
 
 ---
 
+## The feature passes its own acceptance test
+
+    node apps/web/scripts/listing-import-acceptance.mjs --all
+
+Six shapes of website, 18 September, all six green:
+
+    mac-100          36 units, beds 0/1/2/3, 16 with apartments, 8 photos, 16 plans, 1 special, 130s
+    mac-dorchester   20 units, beds 0/1/2/3, 20 with apartments, 5 photos, 10 plans, 1 special, 79s
+    keeley-euclid     7 units, beds 1/2,      7 with apartments, 12 photos, 7 plans, 2 specials, 69s
+    single-building   5 units, beds 1/2,      5 with apartments, 12 photos, 5 plans, 97s
+    portal-listing    1 unit,  beds 2,        13s
+    many-houses      19 properties offered,  19s
+
+About 60 Firecrawl credits and $2 of Anthropic for the set. Re-run it after any
+change to the importer; a case that fails names what it expected and what it
+got.
+
+One caution it earned the hard way: the portal case failed for two days because
+the listing behind that URL had been taken down and apartments.com answers a
+dead listing with a redirect to its city search page. Reading nothing off a
+search page is the importer being right. Open a failing URL yourself before
+treating it as a regression.
+
 ## Open
 
-### G. Firecrawl is nearly out: 37 credits of 1,500, resets 28 September
-This is now the binding constraint, not the code. One import of a 36-plan
-building costs about 18 credits, so there are roughly two big imports left
-before the reset. Check before any test round:
+### G. Firecrawl: upgraded to 5,000 a month, 18 Sept to 18 Oct
+The full audit costs about 60 credits, so a round of testing is no longer
+something to ration. Check before a big session anyway:
 
     curl -H "Authorization: Bearer $FIRECRAWL_API_KEY" \
       https://api.firecrawl.dev/v2/team/credit-usage
@@ -77,12 +99,12 @@ The reading itself still worked in that run — 36 plans found, 16 read, lease
 terms parsed — and it failed at the model call, which is why it returned
 "Something went wrong reading that website" after 18 seconds.
 
-- [ ] Ben: top up the Anthropic account. It was empty at 18:00 on 17 September
-      and working again by 23:00, so this may already be resolved — but a run
-      that dies here returns the same "something went wrong" a parsing bug does,
-      so check the server log before chasing it as a bug.
-- [ ] Re-run One Hundred Above the Park and confirm 100N307F reads 3 bedrooms
-      (the fix is in, the verifying run is the part that was blocked)
+- [x] Resolved. The account was empty at 18:00 on 17 September and working
+      again by 23:00. Worth remembering that a run which dies here returns the
+      same "something went wrong" a parsing bug does, so read the server log
+      before chasing it as a bug.
+- [x] 100N307F reads 3 bedrooms. The whole building reports beds 0/1/2/3 with
+      nothing above, which the acceptance test now asserts.
 
 ### F. Keeley Properties: fixed, one thing left to confirm
 Ben: "it didnt pull anything fron the property level... theres a url to the
@@ -123,8 +145,8 @@ after adding the file-name signal all resolve one.
 They go on the unit's own floor-plan slot, never into the photo gallery, which
 was the other half of Ben's question.
 
-- [ ] Count them again on a full import; anything short of 16 of 16 means a
-      third signal is needed
+- [x] 16 of 16 on One Hundred Above the Park, 10 of 10 on Dorchester, 7 of 7 on
+      Lofts at Euclid, 5 of 5 on Metro Flats.
 
 ### C. A floor plan imported as a 1108-bedroom apartment — SOURCE FOUND
 Ben, on the plan holding apartments 1508 and 2708 (100N108A).
@@ -155,7 +177,8 @@ The full chain, and every link is now covered:
 So the blank Ben saw was step 4 catching step 2. Step 3 makes the parse less
 likely to need step 2 at all.
 
-- [ ] Confirm 100N108A comes back as 1 bed on a full import
+- [x] Confirmed: One Hundred Above the Park imports as beds 0/1/2/3 with no
+      blanks and nothing above 3 bedrooms.
 
 ### B. Only the one-bedrooms imported (being verified)
 Ben, testing One Hundred Above the Park: "it only logged the 1 beds, not the

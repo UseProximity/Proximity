@@ -43,6 +43,7 @@ const CASES = {
     expect: {
       minUnits: 30,
       minBedVariety: 4, // studio, 1, 2, 3 — the bug that started this
+      maxBedrooms: 3, // and nothing above it: 100N307F once published as a 4-bed
       minUnitsWithApartments: 10,
       minPhotos: 5,
       minFloorPlanImages: 10,
@@ -97,16 +98,17 @@ const CASES = {
   "portal-listing": {
     tier: "breadth",
     credits: 3,
-    url: "https://www.apartments.com/5316-pershing-ave-st-louis-mo/rycech0/",
+    url: "https://www.apartments.com/4721-mcpherson-ave-saint-louis-mo/m97nb7l/",
     /*
      * A portal page must come back as ONE listing, never as a picker of
      * whatever else the portal was advertising alongside it.
      *
-     * UNPROVEN EXPECTATION. On 18 September this returned a listing with no
-     * units and no photos. Apartments.com is Akamai-walled, and that listing
-     * may also simply be gone — both look the same from here. Treat a failure
-     * on this case as "go and look", not as a regression, until someone has
-     * confirmed the page is alive and what it should produce.
+     * A PORTAL LISTING CAN DIE, and this case has already caught one doing it:
+     * apartments.com answers a delisted property with a redirect to the city
+     * search page, and reading 0 units off a search page is the importer being
+     * right, not wrong. If this case fails, open the URL yourself before
+     * treating it as a regression — a dead URL and a broken importer look
+     * identical from here.
      */
     expect: { minUnits: 1, maxProperties: 0 },
   },
@@ -191,6 +193,8 @@ function check(name, listing, properties, expect, seconds) {
     want(!!listing, "no listing came back at all");
     want(units.length >= e.minUnits, `expected at least ${e.minUnits} units, got ${units.length}`);
   }
+  if (e.maxBedrooms != null) want(Math.max(...beds, 0) <= e.maxBedrooms,
+    `a ${Math.max(...beds, 0)}-bedroom came back and this building has nothing above ${e.maxBedrooms}`);
   if (e.minBedVariety) want(beds.size >= e.minBedVariety,
     `expected at least ${e.minBedVariety} different bedroom counts, got ${beds.size} (${[...beds].sort().join(", ")})`);
   if (e.minUnitsWithApartments) want(withApts >= e.minUnitsWithApartments,
@@ -231,21 +235,31 @@ async function run(name, cookies) {
     console.log(`      balance of zero and a real parsing bug look identical from out here.`);
     return false;
   }
-  const problems = check(name, data.listing, data.properties ?? [], c.expect, seconds);
   const u = data.listing?.units ?? [];
-  const summary =
-    `${u.length} units, ` +
-    `${new Set(u.map((x) => x.bedrooms).filter((b) => b != null)).size} bed sizes, ` +
-    `${u.filter((x) => (x.unitNames ?? []).length).length} with apartments, ` +
-    `${(data.listing?.imageUrls ?? []).length} photos, ` +
-    `${u.filter((x) => x.floorPlanImageUrl).length} plans, ` +
-    `${(data.listing?.concessions ?? []).length} specials, ${seconds}s`;
+  const properties = data.properties ?? [];
+  const problems = check(name, data.listing, properties, c.expect, seconds);
+  /*
+   * The bed sizes themselves, not just how many there are: "4 bed sizes" reads
+   * the same whether they are 0/1/2/3 or 0/1/2/4, and a four-bedroom that does
+   * not exist is the bug this case was written for. A picker case has no units
+   * to describe, so it reports what it is actually judged on.
+   */
+  const sizes = [...new Set(u.map((x) => x.bedrooms).filter((b) => b != null))].sort((a, b) => a - b);
+  const line = c.expect?.minProperties
+    ? `${properties.length} properties offered, ${seconds}s`
+    : `${u.length} units, ` +
+      `beds ${sizes.join("/") || "none"}, ` +
+      `${u.filter((x) => (x.unitNames ?? []).length).length} with apartments, ` +
+      `${(data.listing?.imageUrls ?? []).length} photos, ` +
+      `${u.filter((x) => x.floorPlanImageUrl).length} plans, ` +
+      `${(data.listing?.concessions ?? []).length} specials, ` +
+      `${properties.filter((p) => p.alreadyListed).length} already listed, ${seconds}s`;
   if (problems.length) {
-    console.log(`FAIL  ${name}: ${summary}`);
+    console.log(`FAIL  ${name}: ${line}`);
     for (const p of problems) console.log(`      - ${p}`);
     return false;
   }
-  console.log(`PASS  ${name}: ${summary}`);
+  console.log(`PASS  ${name}: ${line}`);
   return true;
 }
 
