@@ -1,11 +1,19 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-13T18:56:07.858Z",
-  "count": 79,
+  "_generated": "2026-09-18T22:12:35.048Z",
+  "count": 83,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
+    },
+    {
+      "file": "src/lib/auth/callbackUrl.js",
+      "description": "A return URL that arrives from outside (a query string, a request body, an"
+    },
+    {
+      "file": "src/lib/auth/landlordRole.js",
+      "description": "Turn the signed-in account into a landlord."
     },
     {
       "file": "src/lib/autoUnavailable.js",
@@ -88,8 +96,16 @@
       "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
     },
     {
+      "file": "src/lib/listings/lookupRateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out address lookups: 60 per minute per"
+    },
+    {
       "file": "src/lib/listings/ownership.js",
       "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
+    },
+    {
+      "file": "src/lib/listings/pendingDraft.js",
+      "description": "A listing someone has finished describing but not yet published."
     },
     {
       "file": "src/lib/listings/placeholderOwner.js",
