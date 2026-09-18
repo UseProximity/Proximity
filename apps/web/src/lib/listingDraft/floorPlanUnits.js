@@ -146,14 +146,53 @@ export function parseFloorPlanPage(text, url) {
    * Whatever this reads off the page beats a guess, so it is worth being
    * generous about the wording.
    */
-  const beds = /\bstudio\b/i.test(text)
+  /*
+   * The plan's own summary, found by its name.
+   *
+   * Lofts at Euclid puts a filter widget on every floor-plan page reading
+   * "Bedrooms  Bedroom options  Studio  1 Bedroom  2 Bedrooms  Clear Done", and
+   * it sits ABOVE the plan's own line. Reading the first bed-ish words on the
+   * page therefore described the filter, not the apartment: the word "studio"
+   * turned all seven plans into studios, and preferring the first number would
+   * have turned all seven into one-beds, which is just as wrong. The plan's own
+   * line names itself first — "Lindell II 2 Bedrooms | 2 Bathrooms" — so that
+   * is what we look for, and the beds and baths have to be part of the same
+   * line to count. The name and its numbers often sit on separate lines, so
+   * line breaks are allowed inside that window.
+   *
+   * Everything below stays as a fallback for pages that carry no such line.
+   */
+  const escaped = String(name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const summary = escaped
+    ? text.match(
+        new RegExp(
+          `${escaped}[\\s\\S]{0,60}?\\b(\\d+|studio)\\s*(?:-|\\s)?\\s*(?:bed(?:room)?s?|bd|br)\\b[\\s\\S]{0,60}?\\b(\\d+(?:\\.\\d)?)\\s*(?:-|\\s)?\\s*(?:bath(?:room)?s?|ba)\\b`,
+          "i"
+        )
+      )
+    : null;
+  const summaryBeds = summary ? (/studio/i.test(summary[1]) ? "0" : summary[1]) : null;
+
+  const beds = summaryBeds ?? (/\bstudio\b/i.test(text)
     ? "0"
     : text.match(/(\d+)\s*(?:-|\s)?\s*(?:bed(?:room)?s?|bd|br)\b/i)?.[1] ??
-      text.match(/\bbed(?:room)?s?\s*[:\-]?\s*(\d+)\b/i)?.[1];
-  const baths = text.match(
-    /(\d+(?:\.\d)?)\s*(?:-|\s)?\s*(?:bath(?:room)?s?|ba)\b/i
-  )?.[1] ?? text.match(/\bbath(?:room)?s?\s*[:\-]?\s*(\d+(?:\.\d)?)\b/i)?.[1];
-  const area = text.match(/(?:Up to\s*)?([\d,]{3,6})\s*Sq\.?\s*Ft/i)?.[1]?.replace(/,/g, "");
+      text.match(/\bbed(?:room)?s?\s*[:\-]?\s*(\d+)\b/i)?.[1]);
+  const baths =
+    summary?.[2] ??
+    text.match(/(\d+(?:\.\d)?)\s*(?:-|\s)?\s*(?:bath(?:room)?s?|ba)\b/i)?.[1] ??
+    text.match(/\bbath(?:room)?s?\s*[:\-]?\s*(\d+(?:\.\d)?)\b/i)?.[1];
+  /*
+   * Square footage, written either way round: "826 Sq.Ft." and "Sq. Ft.: 1,211"
+   * are both common. Reading only the first meant a page that labels its
+   * columns ("Apartment: #309  Sq. Ft.: 1,211") took the apartment NUMBER as
+   * the floor area, so a 1,211 square foot two-bedroom imported as 309 square
+   * feet. The labelled form is checked first because a page that uses it also
+   * contains the other shape, in the header of the same table.
+   */
+  const area = (
+    text.match(/sq\.?\s*(?:uare)?\s*(?:ft|feet)\.?\s*[:\-]\s*([\d,]{3,6})/i)?.[1] ??
+    text.match(/(?:Up to\s*)?([\d,]{3,6})\s*Sq\.?\s*Ft/i)?.[1]
+  )?.replace(/,/g, "");
   /*
    * Concessions sit on these pages and are worth as much as the rent: Dorchester
    * runs "1 MONTH FREE RENT. Must sign lease on/before September 30th, 2026.

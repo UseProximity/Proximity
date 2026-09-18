@@ -10,6 +10,44 @@ Branch: `fix/listing-draft-multi-property`
 
 ## Open
 
+### E. BLOCKED: the Anthropic API balance ran out
+    [listing-draft] error: 400 "Your credit balance is too low to access the
+    Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."
+
+Every import calls the model once or twice, and a building the size of One
+Hundred Above the Park costs about $0.30 to $0.42 per import in Anthropic usage.
+The reading itself still worked in that run — 36 plans found, 16 read, lease
+terms parsed — and it failed at the model call, which is why it returned
+"Something went wrong reading that website" after 18 seconds.
+
+- [ ] Ben: top up the Anthropic account. Nothing can be tested until this is
+      done, including the last verification below.
+- [ ] Re-run One Hundred Above the Park and confirm 100N307F reads 3 bedrooms
+      (the fix is in, the verifying run is the part that was blocked)
+
+### F. Keeley Properties: fixed, one thing left to confirm
+Ben: "it didnt pull anything fron the property level... theres a url to the
+webiste it should take you to that website the same way that it worked for mac".
+
+Right diagnosis. Mac gives each building its own domain and links straight to
+it, so picking a building already landed us on the building's site. Keeley links
+to its own summary page first, and the drill only looked for a floor-plans link
+on the SAME site, found none, and gave the landlord a property with nothing
+under it. Every property in their portfolio is built this way.
+
+The importer now follows the property's own website when the company's page is
+only about it. The host has to echo the property's name, which is what keeps it
+safe: those pages also link to sibling businesses, the web designer and a
+resident portal. Verified against all seven Keeley properties and the index
+page, which correctly follows nothing.
+
+Lofts at Euclid now imports 7 floor plans with the right beds, 12 photos, 7
+floor plan diagrams and both rent specials, in 86 seconds.
+
+- [ ] Lease terms are empty for it: that site publishes no application page, so
+      there is no range to read. The landlord sets them. Worth a second look at
+      whether the terms live somewhere else on RentCafe sites like this one.
+
 ### D. Floor plan diagrams: better, not complete
 Ben asked whether floor plans were being pulled into the unit-level photos. They
 were not — nothing was. The plan pages were being opened for their apartments
@@ -162,6 +200,25 @@ the rent assumes a particular lease length.
 
 ## Done and verified against live sites
 
+- [x] **Floor-plan pages read the plan's own line, not the page's filter.**
+      Lofts at Euclid puts "Bedrooms  Bedroom options  Studio  1 Bedroom  2
+      Bedrooms" on every plan page, above the plan's own line, so reading the
+      first bed-ish words on the page described the filter: all seven plans
+      imported as studios. Preferring the first number would have made all seven
+      one-beds, which is just as wrong. The plan names itself first ("Lindell II
+      2 Bedrooms | 2 Bathrooms"), so that is what is read now. Square footage had
+      the same shape of bug: written "Sq. Ft.: 1,211" it was taking the
+      apartment number from "Apartment: #309" beside it, so a 1,211 sq ft
+      two-bedroom imported as 309 sq ft.
+- [x] **Floor plans matched by name, not by size.** Matching on either name or
+      square footage let a unit claim a plan of a similar size, leaving the plan
+      that really belonged to it taken: 100N307F published as a FOUR-bedroom
+      although its page says "3 Bedrooms | 2 Bathrooms", because another unit
+      had claimed its plan on size. Two plans of the same size are common; a
+      floor plan code is exact, so the name wins.
+- [x] **A name with nothing behind it is not a floor plan.** Eleven of Lofts at
+      Euclid's eighteen units were names from a filter dropdown with no beds, no
+      rent, no size and no apartments. Now dropped.
 - [x] **Photos survive a reload.** Ben: "why didnt it pull any of the photos".
       It did — nine of them, and every one downloads cleanly through the proxy.
       They were lost to the refresh. Staged photos are File objects in memory

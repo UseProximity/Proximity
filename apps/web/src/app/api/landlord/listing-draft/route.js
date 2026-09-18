@@ -25,6 +25,8 @@ import {
   extractSiteBrand,
   detectPmsPortal,
   isListingPortal,
+  findPropertyOwnSite,
+  hostOf,
   SYNCABLE_PMS,
   sameSite,
   DraftFetchError,
@@ -302,9 +304,45 @@ export async function POST(req) {
       }
     };
     if (targetProperty?.url && targetProperty.url !== main.finalUrl) {
-      const propPage = await followBestEffort(targetProperty.url);
+      let propPage = await followBestEffort(targetProperty.url);
       if (propPage) {
         mergeLinks(propPage);
+        /*
+         * Hop to the property's own website when the company's page is only
+         * about it.
+         *
+         * Keeley's page for Lofts at Euclid is a blurb, a price range and a
+         * link to loftsateuclid.com, where the floor plans actually are. The
+         * floor-plan search below only looks at same-site links, so it found
+         * nothing and the landlord got a property with nothing under it. Every
+         * property in their portfolio is arranged this way.
+         *
+         * Only when the other site genuinely has more on it, and the company
+         * page is kept either way — its summary, its photos and its links are
+         * still good information.
+         */
+        const ownSite = findPropertyOwnSite(
+          structureOf(propPage),
+          propPage.finalUrl,
+          targetProperty.name
+        );
+        if (ownSite) {
+          const ownPage = await followBestEffort(ownSite);
+          /*
+           * Any real page will do. What we are after is not its words but the
+           * floor plans behind it, and a building's front page is often a
+           * near-empty splash with a picture and a menu — judging it on length
+           * against the company's blurb would refuse the hop precisely where it
+           * helps most. The company's page stays in the set either way.
+           */
+          if (ownPage && htmlToText(ownPage.html).length > 300) {
+            console.log(
+              `[listing-draft] ${targetProperty.name}: following its own site ${hostOf(ownPage.finalUrl)}`
+            );
+            propPage = ownPage;
+            mergeLinks(ownPage);
+          }
+        }
         /*
          * The picked property's own floor-plans page.
          *
@@ -620,9 +658,21 @@ export async function POST(req) {
         return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
       };
       const norm = (s) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
+      /*
+       * Names first, and size only when there is no name to go on.
+       *
+       * Matching on either meant a unit could claim a plan whose square footage
+       * happened to be close, and the plan that really belonged to it was then
+       * taken. 100N307F came back as a four-bedroom that way: its own page says
+       * "3 Bedrooms | 2 Bathrooms", but another unit had claimed that plan on
+       * size, so the real one was left with the model's guess. A floor plan
+       * code is an exact thing and two plans of the same size are common, so
+       * the name has to win.
+       */
       const sameplan = (unit, plan) =>
-        (plan.name && unit.title && norm(unit.title) === norm(plan.name)) ||
-        (plan.area && unit.area && Math.abs(Number(unit.area) - plan.area) <= 2);
+        plan.name && unit.title
+          ? norm(unit.title) === norm(plan.name)
+          : !!(plan.area && unit.area && Math.abs(Number(unit.area) - plan.area) <= 2);
 
       /*
        * The model's list is the spine; the pages we opened fill it in.
@@ -664,7 +714,7 @@ export async function POST(req) {
       };
 
       const used = new Set();
-      const merged = fromModel.map((unit) => {
+      let merged = fromModel.map((unit) => {
         const i = floorPlanData.plans.findIndex((p, n) => !used.has(n) && sameplan(unit, p));
         if (i < 0) return unit;
         used.add(i);
@@ -681,6 +731,28 @@ export async function POST(req) {
        * model found nothing better: a floor plan that publishes its own terms
        * keeps them.
        */
+      /*
+       * A name on its own is not a floor plan.
+       *
+       * Asking the model to list every plan is right for a building that
+       * publishes a plan with a price and no vacancy. It is wrong for Lofts at
+       * Euclid, whose pages carry a filter dropdown naming every layout the
+       * building has ever had: eleven of its eighteen units came back as a name
+       * with no beds, no rent, no size and no apartments, which is a menu
+       * entry, not something a student can rent. Anything that tells the
+       * landlord something stays; a bare title goes.
+       */
+      const informative = (u) =>
+        u.bedrooms != null ||
+        u.rent != null ||
+        u.area != null ||
+        (u.unitNames ?? []).length > 0;
+      const dropped = merged.length - merged.filter(informative).length;
+      if (dropped) {
+        console.log(`[listing-draft] dropped ${dropped} floor plans that were a name and nothing else`);
+      }
+      merged = merged.filter(informative);
+
       const houseTerm = Number(floorPlanData.termRange?.reflects) || null;
       draft.listing.units = houseTerm
         ? merged.map((u) =>

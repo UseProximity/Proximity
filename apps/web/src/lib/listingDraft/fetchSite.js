@@ -629,6 +629,77 @@ export function normalizeLinkUrl(raw, baseUrl) {
   return u.toString();
 }
 
+// The hostname, lowercased. Throws on anything that is not a URL, which every
+// caller here treats as "not a link we can use".
+export function hostOf(url) {
+  return new URL(url).hostname.toLowerCase();
+}
+
+/*
+ * The property's OWN website, linked from a management company's page about it.
+ *
+ * Mac gives each building its own domain and links straight to it, so picking a
+ * building from the list already landed us on the building's site. Keeley links
+ * to its own summary page first — "Lofts at Euclid" on keeleyproperties.com,
+ * three thousand characters of blurb, a price range, and no floor plans,
+ * because the floor plans are on loftsateuclid.com. The drill looked for a
+ * same-site floor-plans link, found none, and the landlord got a property with
+ * nothing under it. Every property in their portfolio is built this way.
+ *
+ * The host has to echo the property's name, which is what makes this safe:
+ * these pages also link to the company's sibling businesses, the web designer
+ * who built the site, and a resident login portal, and none of those are the
+ * property. "Lofts at Euclid" matches loftsateuclid.com, "The Koken" matches
+ * kokenliving.com, "Citizen Park" matches livecitizenpark.com. Words too short
+ * or too common to identify anything are not allowed to make the match.
+ */
+const OWN_SITE_NOISE_RE =
+  /facebook|instagram|linkedin|twitter|x\.com|youtube|tiktok|pinterest|yelp|google|maps|apple|goo\.gl|bit\.ly|securecafe|rentcafe|appfolio|buildium|entrata|realpage|yardi|resident|portal|payment|policy|privacy|terms|accessibility|wordpress|squarespace|wix|godaddy|brindle|design|agency|construction|restoration/i;
+
+const NAME_STOPWORDS = new Set([
+  "the", "at", "on", "of", "and", "a", "an", "in", "apartments", "apartment",
+  "residences", "residence", "living", "lofts", "loft", "place", "properties",
+  "property", "homes", "home", "house", "flats", "suites", "towers", "tower",
+  "llc", "inc", "co", "company", "group", "management", "realty",
+]);
+
+export function findPropertyOwnSite(html, pageUrl, propertyName) {
+  const name = String(propertyName ?? "").toLowerCase();
+  if (!name.trim()) return null;
+  let pageHost;
+  try {
+    pageHost = hostOf(pageUrl);
+  } catch {
+    return null;
+  }
+  const condensed = name.replace(/[^a-z0-9]/g, "");
+  const words = name
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 5 && !NAME_STOPWORDS.has(w));
+
+  for (const link of extractAllLinks(html, pageUrl, 300)) {
+    if (link.internal) continue;
+    if (OWN_SITE_NOISE_RE.test(link.url)) continue;
+    let host;
+    try {
+      host = hostOf(link.url);
+    } catch {
+      continue;
+    }
+    if (!host || host === pageHost) continue;
+    // Compare the bare name: no www, no dots, no top-level domain.
+    const bare = host.replace(/^www\./, "").replace(/\.[a-z.]+$/, "").replace(/[^a-z0-9]/g, "");
+    if (!bare) continue;
+    if (
+      (condensed.length >= 5 && (bare.includes(condensed) || condensed.includes(bare))) ||
+      words.some((w) => bare.includes(w))
+    ) {
+      return link.url;
+    }
+  }
+  return null;
+}
+
 const LINK_ASSET_RE = /\.(css|js|xml|pdf|jpe?g|png|webp|gif|svg|ico|zip|docx?)(\?|$)/i;
 
 // Destinations that are never a property page. Worth dropping explicitly: every
