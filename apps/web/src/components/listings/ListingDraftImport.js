@@ -272,7 +272,7 @@ function walkTree(nodes, fn, depth = 0) {
 function defaultChecked(rows) {
   const ids = [];
   walkTree(rows, (n) => {
-    if (n.kind === "property" && !n.far) ids.push(n.id);
+    if (n.kind === "property" && !n.far && !n.alreadyListed) ids.push(n.id);
   });
   return ids;
 }
@@ -642,13 +642,15 @@ export default function ListingDraftImport({
   };
 
   // ---------------------------------------------------------------- selection
-  const toggleOne = (node) =>
+  const toggleOne = (node) => {
+    if (node.alreadyListed) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(node.id)) next.delete(node.id);
       else next.add(node.id);
       return next;
     });
+  };
 
   // Every loaded property in the tree, deduped by identity, richest copy kept.
   const allProperties = useMemo(() => {
@@ -667,10 +669,12 @@ export default function ListingDraftImport({
     [allProperties, selected]
   );
 
+  // "Select all" means all the ones that can be added, not the ones already on
+  // Proximity, which the row disables and which the write would refuse anyway.
   const setAll = (on) => {
     const ids = [];
     walkTree(tree, (n) => {
-      if (n.kind === "property") ids.push(n.id);
+      if (n.kind === "property" && !n.alreadyListed) ids.push(n.id);
     });
     setSelected((prev) => {
       const next = new Set(prev);
@@ -682,7 +686,7 @@ export default function ListingDraftImport({
   const setBranch = (node, on) => {
     const ids = [];
     walkTree(node.children, (n) => {
-      if (n.kind === "property") ids.push(n.id);
+      if (n.kind === "property" && !n.alreadyListed) ids.push(n.id);
     });
     setSelected((prev) => {
       const next = new Set(prev);
@@ -761,23 +765,43 @@ export default function ListingDraftImport({
   };
 
   const propertyRow = (n, depth, showBadge = false) => (
+    /*
+     * A property already on Proximity is shown, greyed, and cannot be picked.
+     *
+     * Property names are unique, so importing one of these was always going to
+     * be refused — but the refusal used to arrive at the last step, after the
+     * landlord had checked every floor plan and waited for the photos, and it
+     * named the building rather than explaining it. A company adding the rest
+     * of its portfolio meets this constantly: Keeley already has four of theirs
+     * up. Left visible rather than hidden, so the landlord can see that we know
+     * about it and has not simply lost a building.
+     */
     <label
       key={n.uid}
       style={{ paddingLeft: `${12 + depth * 18}px` }}
-      className={`flex cursor-pointer items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
-        selected.has(n.id)
-          ? "border-red-500 bg-red-50"
-          : "border-gray-200 bg-white hover:border-red-300"
+      className={`flex items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
+        n.alreadyListed
+          ? "cursor-default border-gray-200 bg-gray-50"
+          : selected.has(n.id)
+          ? "cursor-pointer border-red-500 bg-red-50"
+          : "cursor-pointer border-gray-200 bg-white hover:border-red-300"
       }`}
     >
       <input
         type="checkbox"
-        checked={selected.has(n.id)}
+        checked={!n.alreadyListed && selected.has(n.id)}
+        disabled={!!n.alreadyListed}
         onChange={() => toggleOne(n)}
-        className="h-4 w-4 shrink-0 accent-red-600"
+        className="h-4 w-4 shrink-0 accent-red-600 disabled:opacity-40"
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-gray-900">{n.name}</span>
+        <span
+          className={`block truncate font-medium ${
+            n.alreadyListed ? "text-gray-500" : "text-gray-900"
+          }`}
+        >
+          {n.name}
+        </span>
         {n.address &&
           n.address.toLowerCase().replace(/[.\s]+$/, "") !==
             n.name.toLowerCase().replace(/[.\s]+$/, "") && (
@@ -786,7 +810,12 @@ export default function ListingDraftImport({
       </span>
       {/* Only worth showing when rows further out are on screen to contrast
           with. A column of identical badges is decoration. */}
-      {showBadge && nearCampus(n) && (
+      {n.alreadyListed && (
+        <span className="inline-flex shrink-0 items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+          Already listed
+        </span>
+      )}
+      {!n.alreadyListed && showBadge && nearCampus(n) && (
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
           <MapPin className="h-3 w-3" /> Near WashU
         </span>

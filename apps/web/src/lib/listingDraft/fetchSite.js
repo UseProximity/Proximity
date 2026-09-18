@@ -365,46 +365,72 @@ async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
 }
 
 /*
- * Jina is a paid account that can simply run out, and when it does it fails the
- * same way on every page for the rest of time. Ours is out right now: the key
- * authenticates fine and every call comes back 402 InsufficientBalanceError.
- * Silently returning null meant a dead service still cost a round trip on every
- * page we fell back on, and nothing in the logs ever said why. Once it tells us
- * the account is empty we believe it and stop asking until the process
- * restarts.
+ * Jina, with more than one way to stay alive.
+ *
+ * Three facts learned by testing it rather than reading about it:
+ *
+ *  - A key can run out. Ours has: it authenticates and then returns 402
+ *    InsufficientBalanceError on every call.
+ *  - WITHOUT a key the reader still answers, free, and it is not a toy: asked
+ *    for loftsateuclid.com/floorplans it returns eleven kilobytes of markdown
+ *    naming every floor plan.
+ *  - But browser rendering is the paid part. Ask a key-less call for
+ *    "X-Engine: browser" and it returns 401, which is what makes a key worth
+ *    having: the pages we fall back on are usually the ones that need JS.
+ *
+ * So: try each key we were given with the browser engine, drop a key that says
+ * it is empty and move to the next, and when none are left ask anyway without
+ * one. A cached snapshot of the page beats nothing, which is what this returned
+ * before. Set JINA_READER_KEY_2 to a second account's key and it is used when
+ * the first runs dry.
  */
-let jinaUnavailable = null;
+const spentJinaKeys = new Set();
+
+async function jinaFetch(rawUrl, key) {
+  const headers = { "X-Return-Format": "html" };
+  // The browser engine is the paid feature; asking for it without a key is a
+  // guaranteed 401, so a key-less call asks for the readable version instead.
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+    headers["X-Engine"] = "browser";
+  }
+  return fetch(`https://r.jina.ai/${rawUrl}`, {
+    headers,
+    signal: AbortSignal.timeout(60000),
+  });
+}
 
 async function renderPageViaJina(rawUrl) {
   // JINA_API_KEY is the name people reach for (and the one the PR notes gave
   // out); accept it too so a mis-set key degrades to "wrong name, still works"
   // rather than a render fallback that silently never runs.
-  const key = process.env.JINA_READER_KEY || process.env.JINA_API_KEY;
-  if (!key || jinaUnavailable) return null;
-  try {
-    const res = await fetch(`https://r.jina.ai/${rawUrl}`, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "X-Return-Format": "html",
-        "X-Engine": "browser",
-      },
-      signal: AbortSignal.timeout(60000),
-    });
-    if (res.status === 402 || res.status === 401 || res.status === 403) {
-      jinaUnavailable = res.status;
-      console.log(
-        `[listing-draft] Jina reader is not usable (HTTP ${res.status}) — skipping it for the rest of this process. ` +
-          `402 means the account is out of balance, not that the key is wrong.`
-      );
+  const keys = [
+    process.env.JINA_READER_KEY,
+    process.env.JINA_API_KEY,
+    process.env.JINA_READER_KEY_2,
+  ].filter((k) => k && !spentJinaKeys.has(k));
+
+  for (const key of [...keys, null]) {
+    try {
+      const res = await jinaFetch(rawUrl, key);
+      if (key && (res.status === 402 || res.status === 401 || res.status === 403)) {
+        spentJinaKeys.add(key);
+        console.log(
+          `[listing-draft] a Jina key is not usable (HTTP ${res.status}); ` +
+            `402 means that account is out of balance, not that the key is wrong. ` +
+            `Trying the next one, then the free key-less reader.`
+        );
+        continue;
+      }
+      if (!res.ok) return null;
+      const html = await res.text();
+      if (!html) return null;
+      return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
+    } catch {
       return null;
     }
-    if (!res.ok) return null;
-    const html = await res.text();
-    if (!html) return null;
-    return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
-  } catch {
-    return null;
   }
+  return null;
 }
 
 async function renderPageViaTavily(rawUrl) {

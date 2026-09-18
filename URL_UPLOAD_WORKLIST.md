@@ -18,21 +18,54 @@ before the reset. Check before any test round:
     curl -H "Authorization: Bearer $FIRECRAWL_API_KEY" \
       https://api.firecrawl.dev/v2/team/credit-usage
 
-### F2. Jina: the key is fine, the ACCOUNT is empty
+### H. Already-listed properties are marked in the picker
+Ben: "should we have it so when someone does the URL upload they cant add the
+exact same property thats already listed... for keely they already have the
+echo, lofts at euclid, delmonte, and terra".
+
+Property names are unique, so importing one of those was always going to be
+refused — but only at the END, after the landlord had checked every floor plan
+and waited for the photos, with a message naming the building rather than
+explaining it. Ashley would have hit it four times.
+
+The picker now says so up front: the row is greyed, shows "Already listed",
+cannot be ticked, and is left out of "select all". Shown rather than hidden, so
+a landlord can see we know about it instead of wondering where their building
+went.
+
+Matched on name OR address, because the two rarely agree. Verified against the
+real listings: Keeley's site says "Echo STL" and the listing is called "Echo
+Apartments" — caught on the address, which name matching alone would have
+missed. All four of Ben's are found, and Marlowe, Vivienne and The Koken stay
+addable.
+
+The address test is deliberately conservative: street number, postcode, and the
+street's name with its Avenue or Boulevard stripped, so "625 N. Euclid Ave" and
+"625 North Euclid Avenue, St. Louis, Missouri 63108, United States" agree. A
+false match would grey out a building the landlord is entitled to add, which is
+worse than missing one and letting the write refuse it.
+
+### F2. Jina: the key is fine, the ACCOUNT is empty, and the free tier still works
 Not broken, not misconfigured. The key authenticates and every call returns
 
     402 InsufficientBalanceError: "Account balance not enough to run this
     query, please recharge." (uid 98a53313-22a4-4815-bb42-61015df1f8af)
 
-Fix: sign in at jina.ai with the account that owns that uid and buy tokens, or
-make a new account for its free allowance and swap the key. It is the THIRD
-reader in the chain, behind the plain fetch and Firecrawl, so nothing is broken
-without it — it is a spare wheel. Given Firecrawl is the expensive one, a funded
-Jina would take load off it.
+Tested rather than assumed:
 
-Until then the importer notices a 402 and stops calling Jina for the rest of the
-process, and says so in the log once, instead of paying a round trip per page to
-a service that cannot answer.
+- With no key at all, r.jina.ai answers 200 and is not a toy: asked for
+  loftsateuclid.com/floorplans it returns 11 KB of markdown naming every floor
+  plan. So the free tier is real.
+- But BROWSER RENDERING is the paid part. A key-less call asking for
+  "X-Engine: browser" returns 401. That is what a key buys, and the pages we
+  fall back on are usually the ones that need JS.
+
+So the reader now tries each key it is given, drops one that says it is empty,
+moves to the next, and if none are left asks anyway without one. **Set
+`JINA_READER_KEY_2` to a second account's key and it is used when the first runs
+dry** — which answers "could I make another account on another email". It also
+says once in the log why a key was dropped, instead of paying a round trip per
+page to a service that cannot answer.
 
 ### E. BLOCKED: the Anthropic API balance ran out
     [listing-draft] error: 400 "Your credit balance is too low to access the

@@ -31,6 +31,7 @@ import {
   sameSite,
   DraftFetchError,
 } from "@/lib/listingDraft/fetchSite";
+import { findExistingProperties } from "@/lib/listings/propertyName";
 
 // Display names for PMS portals named in landlord-facing messages.
 const PMS_DISPLAY = {
@@ -906,13 +907,35 @@ export async function POST(req) {
     const properties = isListingPortal(main.finalUrl)
       ? []
       : (draft.properties ?? []).filter((p) => p.kind !== "group" || p.url);
+
+    /*
+     * Say which of these are already on Proximity, before the landlord works.
+     *
+     * A company adding the rest of its portfolio has usually listed some of it
+     * already: Keeley has four of theirs up. Property names are unique, so
+     * importing one of those was always going to be refused — but only at the
+     * very end, after every floor plan had been checked and the photos pulled
+     * in, and the message ("this property name is taken") arrives at the last
+     * step of the wrong building. Saying it on the picker costs one query.
+     */
+    const pickable = properties.filter((p) => p.kind !== "group");
+    const listed = await findExistingProperties(pickable);
+    const marked = properties.map((p) => {
+      const hit = listed.get(p);
+      return hit ? { ...p, alreadyListed: { address: hit.address ?? null } } : p;
+    });
+    const alreadyCount = marked.filter((p) => p.alreadyListed).length;
+    if (alreadyCount) {
+      console.log(`[listing-draft] ${alreadyCount} of ${properties.length} are already on Proximity`);
+    }
+
     return NextResponse.json({
       sourceUrl: main.finalUrl,
       // The inventory folder is only useful on a picker. On a single-property
       // import the landlord is already where they wanted to be.
       properties: draft.listing
-        ? properties
-        : [...properties, ...inventoryGroups(links, properties, main.finalUrl)],
+        ? marked
+        : [...marked, ...inventoryGroups(links, marked, main.finalUrl)],
       listing: draft.listing,
     });
   } catch (e) {
