@@ -17,6 +17,15 @@
  * (fn_handle_user_soft_delete), which would soft-delete EVERY listing the user
  * is attached to — including ones co-owned with another landlord who is not
  * leaving. Co-owned listings are transferred; only sole-owned ones go away.
+ *
+ * The transfer loop is not one transaction (PostgREST gives us no way to open
+ * one without an RPC), so it is written to be safely repeatable instead: a step
+ * that fails returns 500 BEFORE the account is soft-deleted, and a retry skips
+ * the listings already handled because their link is gone. The failure state is
+ * "some listings transferred, account still live", which the user resolves by
+ * pressing Delete again. The state we must never reach is "account deleted,
+ * co-owner's listing withdrawn with it", so every step that could cause it
+ * aborts the request.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -32,7 +41,7 @@ export async function DELETE() {
 
     const { data: me, error: meErr } = await supabase
       .from("users")
-      .select("id, email, is_system, deleted_at")
+      .select("id, email, name, phone, is_system, deleted_at")
       .eq("id", userId)
       .single();
 
@@ -52,20 +61,37 @@ export async function DELETE() {
     }
 
     // --- Listings: transfer co-owned, let sole-owned fall to the trigger ------
-    const { data: links } = await supabase
+    const { data: links, error: linkErr } = await supabase
       .from("listing_landlords")
       .select("listing_id, is_primary")
       .eq("user_id", userId);
+
+    if (linkErr) {
+      console.error("[account DELETE] could not read listing links:", linkErr);
+      return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+    }
 
     let transferred = 0;
     let removed = 0;
 
     for (const link of links ?? []) {
-      const { data: others } = await supabase
+      const { data: others, error: othersErr } = await supabase
         .from("listing_landlords")
         .select("user_id, is_primary")
         .eq("listing_id", link.listing_id)
-        .neq("user_id", userId);
+        .neq("user_id", userId)
+        // Deterministic successor: an existing primary first, then oldest link.
+        // Without an order the "winner" is whatever Postgres returns that day.
+        .order("is_primary", { ascending: false })
+        .order("user_id", { ascending: true });
+
+      if (othersErr) {
+        // Stop before the soft-delete below. Guessing wrong here means either
+        // orphaning a co-owner's listing or withdrawing it from under them, so
+        // a failed read has to abort the whole deletion rather than continue.
+        console.error("[account DELETE] could not read co-owners:", othersErr);
+        return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+      }
 
       if (!others?.length) {
         // Sole owner — leave the link in place so the users.deleted_at trigger
@@ -75,12 +101,19 @@ export async function DELETE() {
       }
 
       // Detach the departing owner. The listing survives under its co-owner(s),
-      // so it must NOT still be linked when the trigger fires.
-      await supabase
+      // so it must NOT still be linked when the trigger fires. A failure here
+      // is the one that actually withdraws a co-owner's live listing, so it
+      // aborts rather than falling through to the soft-delete.
+      const { error: detachErr } = await supabase
         .from("listing_landlords")
         .delete()
         .eq("listing_id", link.listing_id)
         .eq("user_id", userId);
+
+      if (detachErr) {
+        console.error("[account DELETE] could not detach co-owned listing:", detachErr);
+        return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+      }
 
       const successor = others[0];
       if (link.is_primary) {
@@ -93,14 +126,22 @@ export async function DELETE() {
 
       // The listing's public contact fields may still hold the departing user's
       // details — that's their personal data staying live on someone else's
-      // listing. Hand contact over to the successor when it was ours.
+      // listing. Hand contact over to the successor when it was ours. Any of
+      // the three fields matching is enough: a listing can publish a shared
+      // inbox but the leaver's own mobile number, and that number is just as
+      // much their data as the address is.
       const { data: listing } = await supabase
         .from("listings")
-        .select("contact_email")
+        .select("contact_email, contact_name, contact_phone")
         .eq("id", link.listing_id)
         .single();
 
-      if (listing?.contact_email && me.email && listing.contact_email === me.email) {
+      const isOurs =
+        (me.email && listing?.contact_email === me.email) ||
+        (me.phone && listing?.contact_phone === me.phone) ||
+        (me.name && listing?.contact_name === me.name);
+
+      if (isOurs) {
         const { data: successorUser } = await supabase
           .from("users")
           .select("name, email, phone")

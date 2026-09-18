@@ -13,12 +13,28 @@
  *   - reviews        anonymized, not deleted — they describe a property, not the
  *                    reviewer, and stay useful to other students. Note the
  *                    `anonymous` flag is display-only, so real anonymization
- *                    means clearing user_id/name, not setting that flag.
- *   - behavioral     user_listing_interactions, review_votes: deleted outright.
- *   - matchmaking    chat sessions hold verbatim conversation content: deleted.
+ *                    means clearing user_id/name/reviewer_email, not setting
+ *                    that flag. Landlord contact fields on a review describe a
+ *                    DIFFERENT person and are deliberately left in place.
+ *   - behavioral     user_listing_interactions, review_votes, waitlist_clicks:
+ *                    deleted outright.
+ *   - matchmaking    chat sessions hold verbatim conversation content, and
+ *                    matchmaking_preferences holds what was derived from them.
+ *                    Privacy Policy s8 promises both, so both are deleted.
  *   - lease_checks   AI summaries about the person's own lease: deleted.
+ *   - invites        review_invites carry the person's email address.
+ *   - devices        device_push_tokens, for when the mobile apps ship.
+ *   - listings       sole-owned listings are soft-deleted by the users trigger,
+ *                    but keep the owner's published contact details. Those are
+ *                    the departing person's data, so they are scrubbed too.
  *   - profile photo  every object under profiles/{userId}/ removed from R2.
  *   - action_log     PII payloads redacted, audit skeleton retained (see below).
+ *
+ * Every database step is checked and throws on failure. That matters more here
+ * than it looks: the run is made idempotent by the tombstone email, so a step
+ * that failed silently would leave real data behind on a user this job will
+ * never look at again. Throwing instead leaves the account un-tombstoned and
+ * the next run retries it from the top (every step below is safe to repeat).
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  */
@@ -31,6 +47,13 @@ import { isProdData } from "@/lib/appEnv";
 export const dynamic = "force-dynamic";
 
 const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Surface a failed step instead of letting it pass as a no-op. See the header:
+// a swallowed error plus the tombstone filter equals data that is never purged.
+async function must(label, query) {
+  const { error } = await query;
+  if (error) throw new Error(`${label}: ${error.message}`);
+}
 
 function bucket() {
   return isProdData()
@@ -61,24 +84,139 @@ async function deleteProfilePhotos(userId) {
   return deleted;
 }
 
+// Payload columns are nulled; the row, its timestamp and its event type stay so
+// the audit trail of *what happened* survives for security investigations.
+const REDACTED = { old_data: null, new_data: null, changed_fields: null };
+
+async function redactActionLog(userId, email) {
+  // Changes this person made, and changes made to their own users row.
+  await must(
+    "action_log by actor",
+    supabase.from("action_log").update(REDACTED).eq("changed_by_id", userId)
+  );
+  await must(
+    "action_log by record",
+    supabase.from("action_log").update(REDACTED).eq("record_id", userId)
+  );
+
+  // Entries on OTHER tables whose snapshot carries this person's data: a review
+  // edited by an admin, a preference row touched by a backfill. Those are keyed
+  // by the changed row's id and attributed to whoever made the change, so
+  // neither filter above reaches them. Match inside the payload instead.
+  for (const column of ["old_data", "new_data"]) {
+    await must(
+      `action_log ${column}.user_id`,
+      supabase.from("action_log").update(REDACTED).eq(`${column}->>user_id`, userId)
+    );
+    if (email) {
+      await must(
+        `action_log ${column}.reviewer_email`,
+        supabase.from("action_log").update(REDACTED).eq(`${column}->>reviewer_email`, email)
+      );
+    }
+  }
+}
+
+// Sole-owned listings are soft-deleted by the users trigger, but withdrawn is
+// not erased: the published contact block can still be the departing owner's
+// name, email and phone. Clear only the fields that are demonstrably theirs, so
+// a management company's shared inbox on the listing survives untouched.
+async function scrubListingContacts(user) {
+  const { data: links, error } = await supabase
+    .from("listing_landlords")
+    .select("listing_id")
+    .eq("user_id", user.id);
+  if (error) throw new Error(`listing links: ${error.message}`);
+
+  const ids = (links ?? []).map((l) => l.listing_id);
+  if (ids.length === 0) return 0;
+
+  const fields = [
+    ["contact_email", user.email],
+    ["contact_name", user.name],
+    ["contact_phone", user.phone],
+  ];
+  for (const [column, value] of fields) {
+    if (!value) continue;
+    await must(
+      `listing ${column}`,
+      supabase.from("listings").update({ [column]: null }).in("id", ids).eq(column, value)
+    );
+  }
+  return ids.length;
+}
+
 async function purgeUser(user) {
   const userId = user.id;
 
-  // Reviews: keep the content, sever the author.
-  await supabase
-    .from("listing_reviews")
-    .update({ user_id: null, name: null })
-    .eq("user_id", userId);
-  await supabase
-    .from("dorm_reviews")
-    .update({ user_id: null, reviewer_name: null })
-    .eq("user_id", userId);
+  // Reviews: keep the content, sever the author. reviewer_email is the author's
+  // own address captured by the referral flow, so it goes with the name.
+  await must(
+    "listing_reviews anonymize",
+    supabase
+      .from("listing_reviews")
+      .update({ user_id: null, name: null, reviewer_email: null })
+      .eq("user_id", userId)
+  );
+  await must(
+    "dorm_reviews anonymize",
+    supabase
+      .from("dorm_reviews")
+      .update({ user_id: null, reviewer_name: null })
+      .eq("user_id", userId)
+  );
+  // A referral review can carry the address without ever being linked to the
+  // account, so sever those by email too.
+  if (user.email) {
+    await must(
+      "listing_reviews by email",
+      supabase
+        .from("listing_reviews")
+        .update({ reviewer_email: null })
+        .eq("reviewer_email", user.email)
+    );
+  }
 
   // Behavioral history and conversation content: no reason to keep any of it.
-  await supabase.from("user_listing_interactions").delete().eq("user_id", userId);
-  await supabase.from("review_votes").delete().eq("user_id", userId);
-  await supabase.from("matchmaking_chat_sessions").delete().eq("user_id", userId);
-  await supabase.from("lease_checks").delete().eq("user_id", userId);
+  await must(
+    "user_listing_interactions",
+    supabase.from("user_listing_interactions").delete().eq("user_id", userId)
+  );
+  await must("review_votes", supabase.from("review_votes").delete().eq("user_id", userId));
+  await must(
+    "matchmaking_chat_sessions",
+    supabase.from("matchmaking_chat_sessions").delete().eq("user_id", userId)
+  );
+  // The preferences derived from those conversations are promised alongside
+  // them in Privacy Policy s8, and outlive the session rows otherwise.
+  await must(
+    "matchmaking_preferences",
+    supabase.from("matchmaking_preferences").delete().eq("user_id", userId)
+  );
+  await must("lease_checks", supabase.from("lease_checks").delete().eq("user_id", userId));
+  await must(
+    "waitlist_clicks",
+    supabase.from("waitlist_clicks").delete().eq("user_id", userId)
+  );
+  await must(
+    "device_push_tokens",
+    supabase.from("device_push_tokens").delete().eq("user_id", userId)
+  );
+  if (user.email) {
+    // A waitlist click made before signing in carries the address on the row
+    // rather than a user_id.
+    await must(
+      "waitlist_clicks by email",
+      supabase.from("waitlist_clicks").delete().eq("email", user.email)
+    );
+    // Invitations hold the person's address in invited_email.
+    await must(
+      "review_invites",
+      supabase.from("review_invites").delete().eq("invited_email", user.email)
+    );
+  }
+
+  const listingsScrubbed = await scrubListingContacts(user);
 
   let photosDeleted = 0;
   try {
@@ -90,18 +228,9 @@ async function purgeUser(user) {
   }
 
   // action_log holds full to_jsonb(OLD/NEW) snapshots of the users row — every
-  // historical email/phone/birthday/gender plus password_hash. Redact the
-  // payloads but keep the row/timestamp/event skeleton so the audit trail of
-  // *what happened* survives for security investigations.
-  await supabase
-    .from("action_log")
-    .update({ old_data: null, new_data: null, changed_fields: null })
-    .eq("changed_by_id", userId);
-  await supabase
-    .from("action_log")
-    .update({ old_data: null, new_data: null, changed_fields: null })
-    .eq("table_name", "users")
-    .eq("record_id", userId);
+  // historical email/phone/birthday/gender plus password_hash — and of every
+  // other row this person appears in.
+  await redactActionLog(userId, user.email);
 
   // Finally the row itself. Placeholders (not NULL) for the columns that are
   // never null in practice; the email is uniqueness-constrained, so it gets a
@@ -127,6 +256,8 @@ async function purgeUser(user) {
       email_verification_expires_at: null,
       password_reset_token: null,
       password_reset_expires_at: null,
+      profile_setup_token: null,
+      profile_setup_expires_at: null,
       google_account: false,
       apple_account: false,
       apple_sub: null,
@@ -134,7 +265,7 @@ async function purgeUser(user) {
     .eq("id", userId);
 
   if (error) throw error;
-  return { userId, photosDeleted };
+  return { userId, photosDeleted, listingsScrubbed };
 }
 
 export async function GET(req) {
@@ -149,7 +280,7 @@ export async function GET(req) {
   // keeps this run idempotent — a re-run picks up nothing it already handled.
   const { data: due, error } = await supabase
     .from("users")
-    .select("id, email")
+    .select("id, email, name, phone")
     .not("deleted_at", "is", null)
     .lt("deleted_at", cutoff)
     .not("email", "like", "deleted+%@deleted.invalid")

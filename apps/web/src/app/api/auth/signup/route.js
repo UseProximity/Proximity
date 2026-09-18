@@ -46,7 +46,7 @@ export async function POST(req) {
         return NextResponse.json(
           {
             error:
-              "This email is temporarily unavailable because it was recently used by a deleted account. Try again within 30 days. Need help? Contact info@useproximity.org.",
+              "This email is temporarily unavailable because it was recently used by a deleted account. It frees up 30 days after deletion. Need help? Contact info@useproximity.org.",
           },
           { status: 409 }
         );
