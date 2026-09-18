@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { Plus, X, Check } from "lucide-react";
 import toast from "react-hot-toast";
+import { checkListingDescription } from "@/lib/contentRules";
 
 // The amenity/utility columns listing_amenities and listing_utilities store.
 // Shown in full so a landlord ticks what applies rather than guessing what the
@@ -66,6 +67,8 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
   const [customText, setCustomText] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // No names, no links, no "contact us at" - same rule the property PATCH applies.
+  const descriptionProblem = checkListingDescription(draft.description);
 
   const set = (patch) => { setDraft((d) => ({ ...d, ...patch })); setDirty(true); };
   const toggleIn = (key, value) =>
@@ -84,6 +87,7 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
   };
 
   const save = async () => {
+    if (descriptionProblem) return toast.error(descriptionProblem);
     setSaving(true);
     try {
       const res = await fetch(`/api/landlord/listings/${listingId}/property`, {
@@ -116,7 +120,7 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
         )}
         {canEdit && dirty && (
           <button
-            onClick={save} disabled={saving}
+            onClick={save} disabled={saving || !!descriptionProblem}
             className="ml-auto rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save details"}
@@ -151,7 +155,11 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
       <label className="block">
         <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Description</span>
         <textarea rows={4} className={`mt-1 ${field}`} value={draft.description} disabled={!canEdit}
+          aria-invalid={descriptionProblem ? true : undefined}
           onChange={(e) => set({ description: e.target.value })} />
+        {descriptionProblem && (
+          <span className="mt-1 block text-sm text-red-600">{descriptionProblem}</span>
+        )}
       </label>
 
       <div className="flex flex-wrap gap-2">

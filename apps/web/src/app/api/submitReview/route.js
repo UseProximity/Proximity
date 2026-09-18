@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { isReviewEligibleEmail } from "@/lib/schools";
+import { checkReviewText } from "@/lib/contentRules";
 
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
 // /api/reviewReferral so both review entry points accept the same values.
@@ -40,6 +41,13 @@ export async function POST(req) {
 
     if (!isHalfStar(rating) || !comment || comment.trim().length < 5) {
       return NextResponse.json({ error: "Invalid rating or comment" }, { status: 400 });
+    }
+
+    // Reviews are public and permanent, so a named individual stays named. The
+    // form blocks this too; this is the check a crafted request cannot skip.
+    const named = checkReviewText(comment);
+    if (named) {
+      return NextResponse.json({ error: named }, { status: 400 });
     }
 
     if (!listingId) {

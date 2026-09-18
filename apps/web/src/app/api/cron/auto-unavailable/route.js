@@ -26,6 +26,11 @@
  *     of the test protocol; normal runs always exclude them.
  *
  * Protected by the same CRON_SECRET bearer token as the other crons.
+ *
+ * PAUSED 2026-09-12 (Ben): the hourly schedule was removed from apps/web/vercel.json
+ * until the 2027-28 availability data from landlords is flowing in. The route still
+ * works when called manually. To reactivate, add back to vercel.json:
+ *   { "path": "/api/cron/auto-unavailable", "schedule": "0 * * * *" }
  */
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";

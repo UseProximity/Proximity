@@ -1,7 +1,12 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
+<<<<<<< HEAD
   "_generated": "2026-09-14T18:27:33.737Z",
   "count": 78,
+=======
+  "_generated": "2026-09-13T18:56:07.858Z",
+  "count": 79,
+>>>>>>> origin/staging
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -18,6 +23,14 @@
     {
       "file": "src/lib/contactTracking.js",
       "description": "Single source of truth for recording that a student contacted a listing."
+    },
+    {
+      "file": "src/lib/contentRules/firstNames.js",
+      "description": "Name lists behind the \"no names in user-written text\" rule (lib/contentRules)."
+    },
+    {
+      "file": "src/lib/contentRules/index.js",
+      "description": "Content rules for text students and landlords write into Proximity."
     },
     {
       "file": "src/lib/email.js",
