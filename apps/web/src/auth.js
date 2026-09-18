@@ -84,6 +84,29 @@ const config = {
     error: "/",
   },
   callbacks: {
+    // Google only — Credentials already rejects a deleted account synchronously
+    // in authorize() below, before any session is created. Without this, Google
+    // completes the OAuth handshake and only the jwt callback's deleted_at guard
+    // (further down) strips the identity — but by then a session already exists
+    // with profileComplete: false, which is indistinguishable from a real new
+    // signup to anything that keys off that flag (ProfileCompletionModal).
+    // Returning a URL here aborts sign-in before jwt/session ever run for this
+    // attempt: no token, no cookie, no onboarding.
+    async signIn({ user, account }) {
+      if (account?.provider !== "google" || !user?.email) return true;
+
+      const { data: existing } = await supabase
+        .from("users")
+        .select("deleted_at")
+        .eq("email", user.email)
+        .single();
+
+      if (existing?.deleted_at) {
+        return "/login?error=ACCOUNT_DELETED";
+      }
+
+      return true;
+    },
     async jwt({ token, user, account, trigger, session: updateData }) {
       // Credentials sign-in: user.id is the DB id returned from authorize()
       if (account?.provider === "credentials" && user?.id) {
@@ -251,6 +274,25 @@ const config = {
       return token;
     },
     async session({ session, token }) {
+      // No resolvable identity — deleted account (every deletion guard above
+      // nulls token.userId), or a sign-in that failed to create/find its row.
+      // Strip email/name/image too, not just id: a lot of this app's routes
+      // (getDbRole, buildDashboardUser, editProfile, the admin layout's DB
+      // check) authorize by looking the user up via session.user.email rather
+      // than .id, with no deleted_at filter of their own. NextAuth prefills
+      // those fields onto `session` from the token before this callback runs,
+      // so leaving them in place would let a deleted account's email keep
+      // authenticating everywhere except the couple of spots that check .id.
+      if (!token.userId) {
+        session.user.id = null;
+        session.user.email = null;
+        session.user.name = null;
+        session.user.image = null;
+        session.user.role = null;
+        session.user.profileComplete = false;
+        return session;
+      }
+
       // Read from token — no DB hit
       session.user.id = token.userId;
       session.user.role = token.role ?? "student";

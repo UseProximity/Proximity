@@ -15,7 +15,11 @@ export default async function LoginPage({ searchParams }) {
   const initialTab = params?.tab === "signup" ? "signup" : "signin";
 
   const session = await auth();
-  if (session) {
+  // A deleted account keeps a truthy session object (see auth.js's session
+  // callback) but with no id. Checking bare truthiness here would bounce that
+  // session straight to callbackUrl, which dashboard/layout.js now redirects
+  // right back to /login for the same reason — an infinite loop.
+  if (session?.user?.id) {
     redirect(callbackUrl);
   }
 
