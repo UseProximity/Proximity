@@ -415,6 +415,29 @@ export default function AuthCard({
           >
             Continue with Google
           </button>
+
+          {/* Placed below the Google button rather than inside the Sign Up form
+              because this button creates an account too: a first-time Google
+              sign-in inserts the user row (see auth.js), and it is shared by both
+              tabs. Sitting here, the notice covers every path that can create an
+              account instead of only the email/password one. */}
+          <p className="mt-4 text-center text-xs leading-5 text-gray-400">
+            By creating an account, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="underline underline-offset-2 hover:text-gray-600 transition"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="underline underline-offset-2 hover:text-gray-600 transition"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </>
       )}
 
