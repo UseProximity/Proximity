@@ -98,8 +98,10 @@ or Google.
   We record *that* you contacted a listing; we do not store the message text in our
   database.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
-  you are signed in, your name, email address, and role, so we can follow up. Your IP
-  address is used momentarily to rate-limit submissions and is not stored.
+  you are signed in, your name, email address, and role, so we can follow up. Submitting
+  the form emails it straight to the Proximity team; the message is not stored in our
+  database, and it stays in our email inboxes rather than in the product. Your IP address
+  is used momentarily to rate-limit submissions and is not stored.
 - **Waitlist requests**: when you join the waitlist for a listing that is not currently
   available, we record the listing, the time, the page you came from, and your name, email
   address, and phone number, so the owner can reach you if it frees up and so we can let
@@ -112,8 +114,8 @@ or Google.
   timestamps. We do not record which listings you merely view against your account.
 - **Legacy viewing history**: an earlier version of the Services did record page and
   listing views against signed-in accounts. We stopped collecting this in June 2026. The
-  records already gathered are retained but no longer added to, are not used to build a
-  profile of you, and are erased when you delete your account (Section 8).
+  records already gathered are retained but no longer added to, and are not used to
+  build a profile of you or shown to anyone else.
 - **Aggregate listing metrics**: daily counts of views, saves, and contacts per listing.
   Views are counted in the aggregate only, not against your account. Landlords see these
   as totals in their dashboard, never as identified visitors.
@@ -181,10 +183,9 @@ section explains what, why, and how to have it removed.
   us in a review are used internally and are not displayed.
 
 **How long we keep it.** Roster information is kept while the student could still be
-living off campus near their university, and is deleted no later than one year after their
-listed graduation year. We delete a roster entry sooner if the person asks us to, or if
-they tell us they do not want to be invited. Landlord and property contact details are
-kept while the property is part of the marketplace.
+living off campus near their university. We delete a roster entry if the person asks us
+to, or if they tell us they do not want to be invited. Landlord and property contact
+details are kept while the property is part of the marketplace.
 
 **How to have it removed.** Email **info@useproximity.org** and ask us to delete your
 information. You do not need an account, and you do not need to explain why. We will
@@ -379,9 +380,9 @@ information becomes subject to a materially different privacy policy.
 - Access to production data is limited to Proximity personnel who need it to operate the
   Services.
 - We keep a separate, non-public copy of our database for development and testing. It is
-  restricted to the same Proximity personnel, is never used to contact you, and external
-  messaging is disabled in that environment so nothing sent there can reach you. We are
-  progressively replacing personal details in that copy with substitutes.
+  not reachable from the public Services, access is restricted to the same Proximity
+  personnel who can reach production, and outbound messaging is disabled in that
+  environment, so nothing done there can send you email or reach you in any other way.
 - We take routine encrypted backups of our database so we can recover from a failure.
   Backups are retained for a limited period and then expire. Because a backup is a
   point-in-time snapshot, data you delete can persist in one until it expires, after which
@@ -425,7 +426,6 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Matchmaking conversations, and the housing preferences derived from them | Permanently deleted. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |
-| Legacy viewing history | Any page or listing view recorded against your account before June 2026, when we stopped collecting it, is permanently deleted. See Section 1.5. |
 | Listings you owned alone | Already withdrawn from the marketplace at deletion. Your name, email address, and phone number are now removed from them, so the withdrawn record keeps no contact details of yours. |
 | Internal change history | The personal information inside each entry is erased, including entries recorded against other records that contain your details. A record that a change occurred, and when, is retained for security and audit purposes. |
 
@@ -453,10 +453,10 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
 | Saved listings and interaction history | While your account is active, then erased under Section 8. |
 | Waitlist entries | While your account is active, then erased under Section 8. |
-| Review invitations | Until the invitation is used or expires, and in any case erased on account deletion. |
-| Legacy viewing history | No longer collected. Existing records are erased on account deletion (Sections 1.5 and 8). |
-| Roster information about people without an account | Deleted no later than one year after the listed graduation year, or on request (Section 1.8). |
-| Email sent through the Services | Delivered; the message body is not retained in our database. Copies remain in the recipient's mailbox and in ours, outside the database. |
+| Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
+| Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
+| Roster information about people without an account | Kept while the student could still be living off campus near their university, and deleted on request (Section 1.8). |
+| Email sent through the Services | Delivered; the message body is not retained in our database. A copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
 | Aggregate listing metrics | Retained indefinitely in aggregate, non-identifying form. |
 | Internal change history | Retained for security and audit purposes. Personal data inside an entry is erased on account deletion. |
 | Database backups | Retained for a limited period and then expire (Section 7). |
