@@ -4,9 +4,8 @@ import Svg, { Path } from "react-native-svg";
 // apps/web/src/components/layout/Header.js). Web's SVG uses a single
 // external <style> class (.cls-1{fill:#e23a2f}) — RN SVG has no external
 // class-selector support, so each <path> gets its fill inline instead,
-// following the same per-element fill/stroke pattern already established in
-// src/components/listings/ListingMapPin.js. `color` is a real prop (not
-// hardcoded to the original brand hex) so the tab bar can drive it to
+// following the same per-element fill/stroke pattern. `color` is a real prop
+// (not hardcoded to the original brand hex) so the tab bar can drive it to
 // white/textMuted for the Matchmaking tab's active/inactive states.
 const PATH_1 =
   "M493.79,197.29c269-14.78,435.48,278.96,281.02,501.02-124.36,178.79-385.55,182.34-516.21,8.58-153.66-204.35-19.87-495.59,235.19-509.6ZM294,493c7.72-101.79,94.97-187.62,196.35-196.15l1.65-1.35v-55c-.75-1.02-.87-1.09-2.04-1.09-12.34-.02-28.8,3.34-40.97,6.07-117.3,26.35-204.7,127.56-213.99,247.51h59ZM534,239v58c102.23,6.2,192.16,93.31,199,196h59c-8.97-99.59-71.09-189.28-162.32-230.18-30.53-13.68-62.3-21.02-95.68-23.82ZM643.65,392.35c-108.21-112.35-302.62-42.24-309.69,115.11-5.96,132.6,131.1,225.7,252.72,171.72,111.54-49.51,142.58-197.93,56.97-286.83ZM293,534h-58c8.95,135.6,120.94,249.96,257,259v-58c-104.94-7.21-190.33-97.44-199-201ZM792,534h-59c-7.05,103.61-94.74,193.93-199,201v58c135.99-8.8,249.07-123.29,258-259Z";

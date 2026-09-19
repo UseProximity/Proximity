@@ -5,8 +5,8 @@
 // driving-route overlay, no "Browse this area" viewport filter, no
 // address-search fly-to.
 //
-// Markers render via a ShapeSource + SymbolLayer of pre-rasterized pin icons
-// (see usePinIconAtlas) rather than one live MarkerView per listing — this
+// Markers render via a ShapeSource + SymbolLayer of pre-rendered pin icons
+// (static PNGs, see pinIcons) rather than one live MarkerView per listing: this
 // keeps every pin fully GPU-composited and perfectly in sync with the camera
 // during pan/zoom. An earlier MarkerView-per-listing version measured ~3x
 // slower frame times during panning (gfxinfo: 93ms vs 31ms median frame time
@@ -18,7 +18,7 @@ import { useRouter } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { computeListingMapBounds, MAP_CAMPUS_CENTER } from "@proximity/shared";
 import Mapbox from "../../lib/mapbox";
-import { usePinIconAtlas, ratingIconId } from "./usePinIconAtlas";
+import { PIN_ICON_IMAGES, ratingIconId } from "./pinIcons";
 import { ShuttleStopsLayer } from "./ShuttleStopsLayer";
 import { colors, shadows } from "../../theme/tokens";
 
@@ -27,12 +27,16 @@ import { colors, shadows } from "../../theme/tokens";
 // and selected-listing preview card).
 const FLOATING_SHADOW = shadows.floating;
 
+// Pin size relative to the bundled artwork (35x49pt). Mapbox scales symbols
+// around their anchor, so with iconAnchor "bottom" the tip stays on the
+// listing's coordinate at any value here.
+const PIN_ICON_SCALE = 0.78;
+
 export function BrowseMapView({ listings }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState(null);
   const [showShuttleStops, setShowShuttleStops] = useState(false);
   const [shuttleStopName, setShuttleStopName] = useState(null);
-  const { images, hiddenAtlas } = usePinIconAtlas();
 
   const bounds = useMemo(() => computeListingMapBounds(listings), [listings]);
   const pinnable = useMemo(
@@ -69,7 +73,6 @@ export function BrowseMapView({ listings }) {
 
   return (
     <View className="flex-1">
-      {hiddenAtlas}
       <Mapbox.MapView
         style={{ flex: 1 }}
         styleURL="mapbox://styles/mapbox/streets-v11"
@@ -83,21 +86,19 @@ export function BrowseMapView({ listings }) {
           }}
         />
         <ShuttleStopsLayer visible={showShuttleStops} onSelectStop={setShuttleStopName} />
-        {images && <Mapbox.Images images={images} />}
-        {images && (
-          <Mapbox.ShapeSource id="listings-source" shape={shape} onPress={handlePress} hitbox={{ width: 44, height: 44 }}>
-            <Mapbox.SymbolLayer
-              id="listings-icons"
-              style={{
-                iconImage: ["get", "iconId"],
-                iconAnchor: "bottom",
-                iconAllowOverlap: true,
-                iconSize: 1,
-                symbolSortKey: ["get", "sortKey"],
-              }}
-            />
-          </Mapbox.ShapeSource>
-        )}
+        <Mapbox.Images images={PIN_ICON_IMAGES} />
+        <Mapbox.ShapeSource id="listings-source" shape={shape} onPress={handlePress} hitbox={{ width: 44, height: 44 }}>
+          <Mapbox.SymbolLayer
+            id="listings-icons"
+            style={{
+              iconImage: ["get", "iconId"],
+              iconAnchor: "bottom",
+              iconAllowOverlap: true,
+              iconSize: PIN_ICON_SCALE,
+              symbolSortKey: ["get", "sortKey"],
+            }}
+          />
+        </Mapbox.ShapeSource>
       </Mapbox.MapView>
 
       <View className="absolute top-3 right-3 flex-col gap-1.5">
