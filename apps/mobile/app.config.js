@@ -28,6 +28,7 @@ module.exports = {
     ],
     ios: {
       supportsTablet: true,
+      bundleIdentifier: "com.proximityllc.proximity",
     },
     android: {
       package: "org.useproximity.app",
@@ -44,6 +45,9 @@ module.exports = {
     extra: {
       apiUrl: process.env.EXPO_PUBLIC_API_URL,
       mapboxToken: process.env.EXPO_PUBLIC_MAPBOX_TOKEN,
+      eas: {
+        projectId: "d7d2b10d-0957-441e-8484-5510276d22b6",
+      },
     },
   },
 };
