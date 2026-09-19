@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-18T12:46:09.306Z",
+  "_generated": "2026-09-19T19:02:10.834Z",
   "count": 93,
   "routes": [
     {
@@ -29,9 +29,9 @@
         "POST": "any"
       },
       "tables": [
+        "listings",
         "home_types",
         "locations",
-        "listings",
         "listing_units",
         "unit_leases",
         "listing_drive_times",
@@ -458,13 +458,19 @@
         "GET": "public"
       },
       "tables": [
+        "action_log",
+        "listing_landlords",
+        "listings",
         "listing_reviews",
         "dorm_reviews",
         "user_listing_interactions",
         "review_votes",
         "matchmaking_chat_sessions",
+        "matchmaking_preferences",
         "lease_checks",
-        "action_log",
+        "waitlist_clicks",
+        "device_push_tokens",
+        "review_invites",
         "users"
       ],
       "file": "src/app/api/cron/purge-accounts/route.js"

@@ -25,7 +25,7 @@ import toast from "react-hot-toast";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
 import LeaseStep from "./LeaseStep";
-import { clampCount } from "@/utils/unitCounts";
+import { clampCount, clampWholeCount } from "@/utils/unitCounts";
 
 const emptyLease = (email) => ({
   rent: "",
@@ -182,6 +182,31 @@ export default function AddListingFlow({ user }) {
           }),
         });
       } else {
+        /*
+         * Ask again whether a property exists at this address rather than
+         * trusting the answer the address step took.
+         *
+         * That answer is captured when the address is chosen and never
+         * refreshed. If a publish already failed and left a property behind, or
+         * another tab added the building in between, the stale "nothing here"
+         * made the retry create a SECOND property row: four appeared at 7244
+         * Forsyth on Sep 16 2026 that way. Attaching is always the right call,
+         * because the match is made by the database's own normalizer, so a hit
+         * is the same building.
+         */
+        let attachId = isKnownProperty ? place.property.id : null;
+        if (!attachId) {
+          try {
+            const lookup = await fetch(
+              `/api/properties/lookup?address=${encodeURIComponent(place.address)}`
+            );
+            attachId = (await lookup.json())?.property?.id ?? null;
+          } catch {
+            // A lookup failure must not block publishing. The worst case is the
+            // duplicate row this check exists to prevent, which is where we were.
+          }
+        }
+
         res = await fetch("/api/addListing", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -196,7 +221,13 @@ export default function AddListingFlow({ user }) {
             contactPhone: lease.contactPhone,
             contactName: user?.name ?? null,
             // Attaching to a property we already hold rather than making a second one.
-            ...(isKnownProperty ? { attachToListingId: place.property.id } : {}),
+            ...(attachId ? { attachToListingId: attachId } : {}),
+            /*
+             * This flow has no photo step, so without this every listing it
+             * published went live with no cover image at all. The route ignores
+             * it when attaching, where the property already has its photos.
+             */
+            attachStreetView: true,
             unitTypes: [{
               bedrooms: Number(newUnit.bedrooms),
               bathrooms: Number(newUnit.bathrooms),
@@ -295,10 +326,10 @@ export default function AddListingFlow({ user }) {
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
                   Bedrooms <span className="text-red-500">*</span>
                 </span>
-                <input type="number" min="0" className={`${field} ${flag("bedrooms")}`}
+                <input type="number" min="0" step="1" className={`${field} ${flag("bedrooms")}`}
                   data-invalid={attempted && missingKeys.has("bedrooms")}
                   value={newUnit.bedrooms}
-                  onChange={(e) => setNewUnit({ ...newUnit, bedrooms: clampCount(e.target.value) })} />
+                  onChange={(e) => setNewUnit({ ...newUnit, bedrooms: clampWholeCount(e.target.value) })} />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
