@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-12T00:07:29.779Z",
-  "count": 98,
+  "_generated": "2026-09-14T18:27:33.731Z",
+  "count": 99,
   "components": [
     {
       "name": "DormsView",
@@ -171,6 +171,11 @@
     {
       "name": "PropertyContext",
       "file": "src/components/lease-check/PropertyContext.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LegalDocument",
+      "file": "src/components/legal/LegalDocument.js",
       "description": "No description — run generate after adding a description above."
     },
     {

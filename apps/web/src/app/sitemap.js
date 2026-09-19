@@ -33,6 +33,8 @@ const staticRoutes = [
   { path: "/CampusHub", priority: 0.6, changeFrequency: "weekly" },
   { path: "/lease-check", priority: 0.6, changeFrequency: "monthly" },
   { path: "/washu", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/privacy", priority: 0.3, changeFrequency: "yearly" },
+  { path: "/terms", priority: 0.3, changeFrequency: "yearly" },
 ];
 
 // /washu child pages enter the sitemap only when they meet the same
