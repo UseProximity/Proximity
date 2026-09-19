@@ -1,8 +1,13 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-14T18:27:33.731Z",
-  "count": 99,
+  "_generated": "2026-09-19T19:07:27.464Z",
+  "count": 100,
   "components": [
+    {
+      "name": "DeleteAccountButton",
+      "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description — run generate after adding a description above."
+    },
     {
       "name": "DormsView",
       "file": "src/components/admin/DormsView.js",

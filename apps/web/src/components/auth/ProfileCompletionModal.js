@@ -28,8 +28,11 @@ export default function ProfileCompletionModal({ session }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // Show only if Supabase profile_complete is explicitly false
-    if (session?.user?.profileComplete === false) {
+    // Show only for a resolved identity whose Supabase profile_complete is
+    // explicitly false. A deleted or otherwise identity-less session also
+    // carries profileComplete: false, so require id too or onboarding reopens
+    // for an account that isn't actually signed in.
+    if (session?.user?.id && session?.user?.profileComplete === false) {
       setIsOpen(true);
     }
     // Pre-select the role the user already has (e.g. a landlord who chose that

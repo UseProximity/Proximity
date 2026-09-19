@@ -101,9 +101,9 @@ export function Header({ session }) {
   const isLandlordType =
     session?.user?.role === "landlord" || session?.user?.role === "super";
   const addHref =
-    session?.user && !isLandlordType ? "/add-sublease" : "/add-listing";
+    session?.user?.id && !isLandlordType ? "/add-sublease" : "/add-listing";
   const addLabel =
-    session?.user && !isLandlordType ? "Add Sublease" : "Add Listing";
+    session?.user?.id && !isLandlordType ? "Add Sublease" : "Add Listing";
 
   // Primary links live inline in the bar; secondary links are tucked under "More".
   const primaryLinks = [
@@ -273,7 +273,7 @@ export function Header({ session }) {
 
           {/* Auth buttons — desktop only */}
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
-            {session?.user ? (
+            {session?.user?.id ? (
               <>
                 <Link
                   href={
@@ -394,7 +394,7 @@ export function Header({ session }) {
             ))}
 
           <div className="h-px bg-gray-100 my-2" />
-          {session?.user ? (
+          {session?.user?.id ? (
             <>
               <Link
                 href={
