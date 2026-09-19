@@ -29,6 +29,56 @@ nightly re-scrape would act on — and acting on it means publishing and
 unpublishing a landlord's apartments overnight. The acceptance test now fails on
 any floor plan that appears twice, which is a thing no correct import ever does.
 
+## Audit of two published listings — five bugs, all fixed
+
+Ben published One Hundred Above the Park and Dorchester to dev and asked for an
+audit. The data itself was sound: 47 and 44 offerings, every one with bedrooms,
+a rent and a lease length, rents $2,099-$5,850 and $1,375-$3,000. Five things
+were wrong around it.
+
+**1. Photographs in the floor plan box.** The worst of them, and mine twice
+over. RentCafe puts alt="Floor Plan 100N101a" on the FIRST IMAGE OF THE
+CAROUSEL, which is a photo of the kitchen, and names it "...kitchen1-thumbnail_2
+_fp.jpg". I saw the label and the _fp and called it a diagram; then, shown my
+own truncated output, I "corrected" myself into believing it again. It took
+downloading the published file and looking at it — an oven — to settle. A floor
+plan is now identified by its FILE (a plan word, no room word), and that test
+applies to the model's choice as well, since the model reads the same misleading
+label. Mac's two buildings keep 16 of 16 and 10 of 10 real diagrams; Lofts at
+Euclid drops from seven to one and Vivienne from twenty-four to none, which is
+those sites being honest — their diagrams open in a dialog and are not images on
+the page. The acceptance test used to DEMAND five from Euclid, so it was
+enforcing the bug.
+
+**2. No rent specials on either listing**, though both imports found one. The
+draft sends specials as plain sentences, and the wizard filtered for objects
+with a `description` — which they stopped being when the schema was flattened to
+get around a model error. Every special was dropped silently. The API had always
+taken either shape.
+
+**3. Five photos and nothing of the inside** on Dorchester. Not the model being
+fussy: of 236 images gathered, only the first 60 were offered to it, and in page
+order those were all from the home page and the floor-plans index — exteriors,
+a lobby, a neighbourhood shot. The room photographs live on the individual plan
+pages and never reached it. Candidates are now taken a page at a time so every
+page that was read contributes. Dorchester went 5 to 12, and the new ones are
+kitchens and living rooms. Same cap, same cost, better sixty.
+
+**4. "When is it available?" still on the first card.** It hid only when EVERY
+floor plan carried its own availability, and sixteen of One Hundred's thirty-six
+do while the other twenty are plans with nothing free. So the building that most
+obviously answers this per apartment was the one still asked, and it published
+with a property-wide date of 18 September that means nothing. Any apartment read
+off the site now settles it.
+
+**5. Publishing took most of a minute.** One round trip per unit, then another
+for that unit's leases: ninety-four in series for a forty-seven unit building.
+All the units now go in one insert and all their leases in a second. Measured on
+a forty-seven unit publish: 11 seconds, with the leases still on the right units
+(1000 -> $2,000, 1023 -> $2,023, 1046 -> $2,046) and the special saved.
+
+Both listings deleted from dev.
+
 ## Speed: the drill is not the thing to tune
 
 Ben: "it took 160+ seconds... is that the fastest it can go?" without changing

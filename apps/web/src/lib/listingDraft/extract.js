@@ -148,7 +148,7 @@ Rules, in order of importance:
 6. AMENITIES: map what the site states onto the allowed enum values; anything real that doesn't fit (e.g. "EV charging", "rooftop pool" beyond "pool"/"rooftop") goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
 6c. NEVER READ A NUMBER OUT OF AN IMAGE URL OR FILE NAME. Image candidates are given to you so you can choose which pictures to use, and for nothing else. Their file names contain apartment numbers, photo-shoot codes and internal ids that look like data and are not: a floor plan called 100N108A published as a 1108-BEDROOM apartment because "1108" appears in the name of its floor-plan image. Bedrooms, bathrooms, square footage, rent and dates come from the page's words. If the words do not say, leave the field null; a blank a landlord fills in is worth more than a number you inferred from a file name.
 6d. WAITLIST AND "CALL FOR DETAILS": set a unit's "available" to false when the pages show no price for it and instead invite the reader to join a waitlist, call for details, or ask about pricing — that floor plan exists but is not being let today. Everything else is available: true. Never invent a rent for one of these; leave rent null and let availability carry the meaning.
-7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
+7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. AIM FOR TWELVE AND INCLUDE THE INSIDES. A building's interior photographs usually sit on its FLOOR PLAN pages rather than its front page, under file names that say nothing a human would recognise — "p2245709_new_10d_dorchester-apt-10d-06232025_152317_40_ui.jpg" is a photograph of a room in apartment 10D, and a page full of those is the only place some buildings show their kitchens and bedrooms at all. An unreadable file name is not a reason to leave a photo out; it is what a real photo off a property management system looks like. A listing that goes out with five exterior shots and nothing of the inside is the common failure here, and students choose a flat by its rooms. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
 7b. FLOOR PLANS: a floor-plan diagram that clearly belongs to one specific unit type goes in that unit's floorPlanImageUrl (exact candidate URL) and NOT in imageUrls. Floor plans you can't match to a specific unit go at the END of imageUrls — students want them either way. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
 8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. NEVER name the landlord, management company, or their website/brand in the description (students contact through Proximity; e.g. write "the landlord" instead of "Mosaic Living"). title: the property's name as students would know the building (often the street address); never append the management company's brand to it.
 9. contact_*: only contact details shown on the pages for THIS landlord/property (leasing office email/phone). Never fabricate.
@@ -420,6 +420,23 @@ export async function extractListingDraft({
     }
   }
 
+  /*
+   * Shared with floorPlanUnits.js: a floor plan is identified by its FILE, not
+   * by a label next to it.
+   */
+  const ROOM_WORD_RE =
+    /kitchen|living|bedroom|bathroom|\bbath\b|\bbed\b|closet|laundry|dining|patio|balcony|exterior|interior|lobby|pool|gym|amenity|clubhouse|courtyard|banner|logo|hero|thumbnail/i;
+  const PLAN_FILE_RE = /floor[-_]?plan|floorplan|site[-_]?plan|[-_]fp\d*\.(png|jpe?g|gif|webp|svg)/i;
+  const looksLikeAFloorPlanFile = (url) => {
+    let file;
+    try {
+      file = decodeURIComponent(String(url).split("?")[0].split("/").pop() ?? "");
+    } catch {
+      file = String(url);
+    }
+    return !ROOM_WORD_RE.test(file) && PLAN_FILE_RE.test(file);
+  };
+
   if (draft.listing) {
     // Photos must be candidate URLs we actually offered — drop anything else.
     const offered = new Set(images.map((im) => im.url));
@@ -481,8 +498,18 @@ export async function extractListingDraft({
         u.availableFrom === "now" || /^\d{4}-\d{2}-\d{2}$/.test(u.availableFrom ?? "")
           ? u.availableFrom
           : null,
+      /*
+       * The same file-name test the page parser uses, applied to the model's
+       * choice as well. RentCafe labels the first photo in a plan's carousel
+       * "Floor Plan <name>", so a reader going by the label — human or model —
+       * puts a photograph of a kitchen in the floor plan box, and the landlord
+       * has to notice and undo it. A name that says kitchen, bedroom or lobby
+       * is not a floor plan whoever picked it.
+       */
       floorPlanImageUrl:
-        u.floorPlanImageUrl && offered.has(u.floorPlanImageUrl)
+        u.floorPlanImageUrl &&
+        offered.has(u.floorPlanImageUrl) &&
+        looksLikeAFloorPlanFile(u.floorPlanImageUrl)
           ? u.floorPlanImageUrl
           : null,
       };

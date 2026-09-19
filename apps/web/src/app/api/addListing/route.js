@@ -595,11 +595,24 @@ export async function POST(req) {
      * now includes the person who just created the property. Returning the ids
      * is what lets the client scope the upload instead of guessing.
      */
-    const createdUnitIds = [];
-    for (const unit of unitData) {
-      const { data: insertedUnit, error: unitError } = await supabase
-        .from("listing_units")
-        .insert({
+    /*
+     * All the units in one insert, then all their leases in one more.
+     *
+     * This used to be a loop: one round trip for each unit, then another for
+     * that unit's leases. A house is two round trips and nobody notices; One
+     * Hundred Above the Park is forty-seven units, so it was ninety-four trips
+     * to the database in series and the landlord watched a spinner for most of
+     * a minute after every other part of the work was done. The rows are
+     * identical either way.
+     *
+     * Postgres returns the rows of a multi-row insert in the order they were
+     * sent, which is what lets the leases below be matched back to their unit
+     * by position. The count is checked rather than assumed.
+     */
+    const { data: insertedUnits, error: unitError } = await supabase
+      .from("listing_units")
+      .insert(
+        unitData.map((unit) => ({
           listing_id: listingId,
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms,
@@ -608,17 +621,24 @@ export async function POST(req) {
           floor_plan_image_url: unit.floorPlanImageUrl,
           unit_designator: unit.designator,
           unit_number: unit.number,
-        })
-        .select("id")
-        .single();
+        }))
+      )
+      .select("id");
 
-      if (unitError) {
-        console.error("[addListing] Unit insert failed:", unitError.message);
-        await abandonListing();
-        return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
-      }
+    if (unitError || !insertedUnits || insertedUnits.length !== unitData.length) {
+      console.error(
+        "[addListing] Unit insert failed:",
+        unitError?.message ??
+          `expected ${unitData.length} units back, got ${insertedUnits?.length ?? 0}`
+      );
+      await abandonListing();
+      return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
+    }
 
-      createdUnitIds.push(insertedUnit.id);
+    const createdUnitIds = insertedUnits.map((u) => u.id);
+    const allLeaseRows = [];
+    for (const [i, unit] of unitData.entries()) {
+      const unitId = createdUnitIds[i];
 
       /*
        * One row per price, not one row per unit.
@@ -640,7 +660,7 @@ export async function POST(req) {
       )
         .slice(0, MAX_LEASES_PER_UNIT)
         .map((lease) => ({
-          unit_id: insertedUnit.id,
+          unit_id: unitId,
           owner_id: ownerId,
           rent: lease.rent ?? null,
           // Which number `rent` is. Dropped here until now, so an offering
@@ -661,12 +681,17 @@ export async function POST(req) {
           contact_name: contactName ?? null,
         }));
 
-      const { error: leaseError } = await supabase.from("unit_leases").insert(leaseRows);
+      allLeaseRows.push(...leaseRows);
+    }
+
+    if (allLeaseRows.length) {
+      const { error: leaseError } = await supabase.from("unit_leases").insert(allLeaseRows);
 
       if (leaseError) {
         // Raised by unit_leases_sublease_guard when a sublease is posted onto a
         // unit that is already being offered.
         if (leaseError.code === "23514" || /sublease/i.test(leaseError.message)) {
+          await abandonListing();
           return NextResponse.json(
             {
               error:

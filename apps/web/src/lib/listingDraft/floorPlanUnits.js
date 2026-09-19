@@ -293,22 +293,24 @@ function stripMarkdown(text) {
  * costs nothing.
  */
 /*
- * The floor plan's own diagram, off the floor plan's own page.
+ * The floor plan's own diagram — and nothing else.
  *
- * These pages were being opened for their apartments and their images thrown
- * away, so every import published with no floor plans at all — the model can
- * only choose from candidates it is shown, and it was never shown these. No
- * guessing is needed here: the page IS the plan, and RentCafe labels the image
- * "Floor Plan 100N108a". Failing that, the file is named after the plan.
+ * This was wrong twice before it was right, both times by trusting a label
+ * instead of the picture. RentCafe puts alt="Floor Plan 100N101a" on the FIRST
+ * IMAGE OF THE CAROUSEL, which is a photo of the kitchen, and names its assets
+ * "...-1101-kitchen1-thumbnail_2_fp.jpg" — so the alt says floor plan, the file
+ * ends _fp, and what a landlord saw in the floor plan box was a photograph of
+ * an oven. The actual diagram opens in a dialog and is not a plain image on the
+ * page at all, so on those pages there is nothing here to find.
  *
- * It goes on the unit's own floor-plan slot, never into the photo gallery.
- *
- * Read off the render that kept its HTML, not whichever render won on text
- * length. The markdown one loses the alt that says which image this is, and the
- * first attempt picked a kitchen photo off a plan page because of it — the same
- * trap that hid the lease terms. `linkHtml` is the HTML render fetchSite keeps
- * for exactly this.
+ * Hence: the FILE has to say it is a plan, and must not name a room. A blank
+ * floor plan box is honest. A kitchen in it is not, and the landlord has to
+ * notice and undo it.
  */
+const ROOM_WORD_RE =
+  /kitchen|living|bedroom|bathroom|\bbath\b|\bbed\b|closet|laundry|dining|patio|balcony|exterior|interior|lobby|pool|gym|amenity|clubhouse|courtyard|banner|logo|hero|thumbnail/i;
+const PLAN_FILE_RE = /floor[-_]?plan|floorplan|site[-_]?plan|[-_]fp\d*\.(png|jpe?g|gif|webp|svg)/i;
+
 function findPlanImage(html, finalUrl, name) {
   let images;
   try {
@@ -317,26 +319,17 @@ function findPlanImage(html, finalUrl, name) {
     return null;
   }
   const slug = String(name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const saysFloorPlan = (im) => /floor\s*plan/i.test(im.alt ?? "");
+  const looksLikeAPlan = (im) => {
+    const file = decodeURIComponent(im.url.split("/").pop() ?? "");
+    // A room in the name settles it, whatever the label claims.
+    if (ROOM_WORD_RE.test(file)) return false;
+    return PLAN_FILE_RE.test(file) || /floor\s*plan/i.test(im.alt ?? "");
+  };
   const namesThisPlan = (im) =>
     !!slug && im.url.toLowerCase().replace(/[^a-z0-9]/g, "").includes(slug);
-  // Labelled a floor plan AND named after this plan is the one we want. A
-  // building that labels every carousel thumbnail "floor plan" makes the label
-  // alone worth little, which is why the pair comes first.
-  /*
-   * Renders vary and some arrive with no alt text at all, which left eleven of
-   * sixteen plans with no diagram. The file itself is the second witness:
-   * these assets are named for the plan and marked as floor plans ("_fp.jpg",
-   * "floorplan"), so a file that is both is this plan's diagram whether or not
-   * the render kept the label.
-   */
-  const fileLooksLikeAPlan = (im) => /[._-]fp[._-]|floor[-_]?plan/i.test(im.url);
-  return (
-    images.find((im) => saysFloorPlan(im) && namesThisPlan(im))?.url ??
-    images.find((im) => fileLooksLikeAPlan(im) && namesThisPlan(im))?.url ??
-    images.find(saysFloorPlan)?.url ??
-    null
-  );
+
+  const candidates = images.filter(looksLikeAPlan);
+  return candidates.find(namesThisPlan)?.url ?? candidates[0]?.url ?? null;
 }
 
 function findSpecial(text) {

@@ -746,9 +746,17 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     } catch {
       /* keep fallback */
     }
+    /*
+     * The draft sends rent specials as plain sentences. This filtered for
+     * objects with a `description`, which they stopped being when the
+     * extraction schema was flattened to fix a model error — so every special
+     * was dropped here, silently, and two buildings published with none
+     * although both had one. The API has always taken either shape.
+     */
     setConcessions(
       (Array.isArray(listing.concessions) ? listing.concessions : [])
-        .filter((c) => c && typeof c.description === "string" && c.description.trim())
+        .map((c) => (typeof c === "string" ? c : c?.description))
+        .filter((c) => typeof c === "string" && c.trim())
         .slice(0, 6)
     );
     const photoUrls = Array.isArray(listing.imageUrls) ? listing.imageUrls : [];

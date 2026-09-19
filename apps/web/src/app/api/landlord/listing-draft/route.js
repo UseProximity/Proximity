@@ -236,6 +236,49 @@ export async function POST(req) {
     // (see withLinkHtml in fetchSite): the winning render is picked on text
     // length, which a markdown-only reader can win while carrying no <a> tags.
     const structureOf = (fetched) => fetched.linkHtml ?? fetched.html;
+    /*
+     * Sixty candidates, taken from ALL the pages rather than the first two.
+     *
+     * Dorchester gathered 236 images and offered the model the first sixty,
+     * which in page order were its home page and its floor-plans index: every
+     * one an exterior, a lobby or a neighbourhood shot. Not one photograph of a
+     * room was among them, because those live on the individual floor-plan
+     * pages further down the list, so the listing published with five pictures
+     * and nothing of the inside — and no amount of instruction helps a model
+     * choose a photo it was never shown.
+     *
+     * The front page still goes first, since it holds the shots a building
+     * leads with, and the rest are taken a page at a time so every page that
+     * was read contributes something.
+     */
+    const spreadAcrossPages = (map, cap) => {
+      const byPage = new Map();
+      for (const [url, v] of map) {
+        const page = Math.min(...v.pages);
+        if (!byPage.has(page)) byPage.set(page, []);
+        byPage.get(page).push({ url, alt: v.alt, pages: [...v.pages].sort() });
+      }
+      const pages = [...byPage.keys()].sort((a, b) => a - b);
+      const out = [];
+      for (let i = 0; out.length < cap; i++) {
+        let addedAny = false;
+        for (const page of pages) {
+          const list = byPage.get(page);
+          // The first page gets a bigger share on the first pass: it is where a
+          // building puts the picture it wants seen first.
+          const take = i === 0 && page === pages[0] ? 12 : 1;
+          for (let k = 0; k < take && out.length < cap; k++) {
+            const next = list.shift();
+            if (!next) break;
+            out.push(next);
+            addedAny = true;
+          }
+        }
+        if (!addedAny) break;
+      }
+      return out;
+    };
+
     const addImages = (html, finalUrl, pageNum) => {
       for (const im of extractImageCandidates(html, finalUrl)) {
         const cur = imageMap.get(im.url);
@@ -528,9 +571,7 @@ export async function POST(req) {
 
     const portalPage = isListingPortal(main.finalUrl);
     const brandName = extractSiteBrand(main.html);
-    const imagesWithFeed = [...imageMap.entries()]
-      .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
-      .slice(0, 60);
+    const imagesWithFeed = spreadAcrossPages(imageMap, 60);
     let draft = await extractListingDraft({
       pages,
       images: imagesWithFeed,

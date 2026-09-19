@@ -83,7 +83,15 @@ const CASES = {
       minBedVariety: 2,
       minUnitsWithApartments: 5,
       minPhotos: 5,
-      minFloorPlanImages: 5,
+      /*
+       * No floor plan diagrams expected, and that is the site being honest
+       * rather than the importer failing. This used to demand five, and got
+       * them: RentCafe labels the first photo of each plan's carousel
+       * "Floor Plan <name>", so the box filled with photographs of kitchens
+       * and the test called it a pass. The real diagrams open in a dialog and
+       * are not images on the page. Mac's two buildings do publish theirs, and
+       * their cases still require them.
+       */
       minConcessions: 1,
       // this site publishes no application page, so there is no term to read
       leaseTermsRequired: false,

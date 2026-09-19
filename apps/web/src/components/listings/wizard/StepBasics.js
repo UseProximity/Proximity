@@ -24,14 +24,24 @@ export default function StepBasics({ w }) {
    * typing in one place by hand, with no apartment numbers and no date.
    */
   const offered = (w.units ?? []).filter((u) => u.available !== false);
-  const unitDateState = offered.map((u) => {
-    const numbers = String(u.unitNumbers ?? "")
+  const carriesItsOwn = (u) =>
+    !!u.availableFrom ||
+    String(u.unitNumbers ?? "")
       .split(/[,\s]+/)
-      .filter(Boolean);
-    if (!numbers.length) return !!u.availableFrom;
-    return true;
-  });
-  const datedPerUnit = unitDateState.length > 0 && unitDateState.every(Boolean);
+      .filter(Boolean).length > 0;
+  /*
+   * ANY apartment read off the landlord's website makes the units step the
+   * place availability is answered, so this question stops asking.
+   *
+   * Requiring EVERY floor plan to carry its own still showed it on One Hundred
+   * Above the Park, because sixteen of its thirty-six plans have their
+   * apartments listed and the other twenty are plans with nothing free right
+   * now — so the building that most obviously answers this per apartment was
+   * the one that got asked anyway, and it published with a property-wide date
+   * of 18 September that means nothing. Those twenty have their own date box on
+   * the units step if a landlord wants to fill one in.
+   */
+  const datedPerUnit = offered.length > 0 && offered.some(carriesItsOwn);
   const anyUnitDated = unitDateState.some(Boolean);
   return (
     <StepFrame
