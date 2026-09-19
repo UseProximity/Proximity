@@ -101,17 +101,6 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   });
 }
 
-// Chat content is typed by one user and rendered in another user's inbox, so it can't be
-// interpolated raw — escaping keeps a message body from smuggling markup into the email.
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 const MESSAGE_PREVIEW_LIMIT = 300;
 
 // Notification for a new in-app chat message. The same thread has two sides, so the copy
@@ -420,6 +409,9 @@ export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken 
   });
 }
 
+// Any value a user typed gets escaped before it is interpolated into an email body.
+// Chat matters most: a message is typed by one user and rendered in another user's
+// inbox, so escaping is what stops a body from smuggling markup into that inbox.
 const escapeHtml = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
