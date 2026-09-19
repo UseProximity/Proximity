@@ -1,13 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import LoginClient from "./LoginClient";
-
-function sanitizeCallbackUrl(raw) {
-  if (!raw) return "/dashboard";
-  // Prevent open redirect: must be a relative path starting with /
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
-  return raw;
-}
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams;

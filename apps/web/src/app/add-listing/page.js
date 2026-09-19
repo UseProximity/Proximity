@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import { PencilLine, Globe } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
@@ -19,10 +20,15 @@ import AddListingFlow from "@/components/listings/add/AddListingFlow";
  * with a whole property's worth of fields already filled and need the review
  * steps that go with them.
  *
- * Role gating lives in layout.js.
+ * Role gating lives in layout.js. Signed-out visitors can go all the way through
+ * the manual path; AddListingFlow asks for an account when they publish. The
+ * import path stays behind login: it runs a paid extraction and only landlords
+ * may call it.
  */
 export default function AddListingPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const profileComplete = session?.user?.profileComplete;
   const [user, setUser] = useState(null);
   // The form prefills contact fields from `user` on its first render, so wait
   // for the profile fetch to settle before mounting it.
@@ -36,17 +42,28 @@ export default function AddListingPage() {
   const mode = searchParams.get("mode");
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
+  /*
+   * Fetched again when profileComplete changes: a new Google account fills in
+   * its name in the profile modal after this page has already loaded, and the
+   * listing is published under the name held here.
+   */
   useEffect(() => {
     fetch("/api/getUser")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => data && setUser(data))
       .catch(() => {})
       .finally(() => setReady(true));
-  }, []);
+  }, [profileComplete]);
+
+  useEffect(() => {
+    if (mode === "assisted" && !session) {
+      router.replace(`/login?callbackUrl=${encodeURIComponent("/add-listing?mode=assisted")}`);
+    }
+  }, [mode, session, router]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-4">
-      {!ready ? (
+      {!ready || (mode === "assisted" && !session) ? (
         <div className="flex justify-center py-20">
           <div className="w-8 h-8 border-4 border-gray-200 border-t-red-500 rounded-full animate-spin" />
         </div>
@@ -62,7 +79,7 @@ export default function AddListingPage() {
           }}
         />
       ) : (
-        <StartChoice onPick={setMode} />
+        <StartChoice onPick={setMode} signedOut={!session} />
       )}
     </div>
   );
@@ -72,7 +89,7 @@ export default function AddListingPage() {
  * The fork, lifted out of the wizard's own first step so the manual path never
  * mounts the wizard at all.
  */
-function StartChoice({ onPick }) {
+function StartChoice({ onPick, signedOut }) {
   const card =
     "group flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:border-red-400 hover:bg-red-50/50";
   return (
@@ -99,6 +116,7 @@ function StartChoice({ onPick }) {
             <p className="text-sm font-semibold text-gray-900">Import from a website or your PMS</p>
             <p className="text-xs text-gray-500">
               We&apos;ll pull the details in and you review them.
+              {signedOut && " You'll sign in first."}
             </p>
           </div>
         </button>

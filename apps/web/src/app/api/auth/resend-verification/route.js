@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 export async function POST(req) {
   try {
-    const { email } = await req.json();
+    const { email, callbackUrl } = await req.json();
 
     if (!email) return NextResponse.json({ error: "Email is required." }, { status: 400 });
 
@@ -27,7 +28,13 @@ export async function POST(req) {
       .update({ email_verification_token: token, email_verification_expires_at: expires })
       .eq("id", user.id);
 
-    await sendVerificationEmail({ email, name: user.name, token, baseUrl: getBaseUrl(req) });
+    await sendVerificationEmail({
+      email,
+      name: user.name,
+      token,
+      baseUrl: getBaseUrl(req),
+      next: sanitizeCallbackUrl(callbackUrl, null),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

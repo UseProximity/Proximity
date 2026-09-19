@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import supabase from "@/lib/supabase";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -31,5 +32,7 @@ export async function GET(req) {
     })
     .eq("id", user.id);
 
-  redirect("/login?verified=1");
+  // Back to whatever they were doing when they signed up, if the link says so.
+  const next = sanitizeCallbackUrl(searchParams.get("next"), null);
+  redirect(next ? `/login?verified=1&callbackUrl=${encodeURIComponent(next)}` : "/login?verified=1");
 }

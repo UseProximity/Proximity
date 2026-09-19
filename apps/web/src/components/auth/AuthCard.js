@@ -6,6 +6,13 @@
  * page and embedded inline elsewhere (e.g. the ambassador /refer pages) so users never
  * have to leave the page to sign up. On successful credentials sign-in it navigates to
  * `callbackUrl` (pass the current path to simply refresh into the signed-in view).
+ *
+ * Embedding it mid-task (Add Listing asks for an account only when you publish)
+ * takes three optional props: `initialEmail` pre-fills the email field but leaves
+ * it editable, `defaultRole` picks the role the sign-up form starts on, and `bare`
+ * drops the card chrome and heading so the host supplies its own. `callbackUrl`
+ * also rides along on sign-up and resend, so the emailed verification link comes
+ * back to the task rather than to the dashboard.
  */
 
 import { useState, useEffect } from "react";
@@ -18,13 +25,16 @@ export default function AuthCard({
   callbackUrl = "/dashboard",
   initialTab = "signin",
   showBackHome = false,
+  initialEmail = "",
+  defaultRole = "student",
+  bare = false,
 }) {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState(initialTab === "signup" ? "signup" : "signin");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState("student");
+  const [role, setRole] = useState(defaultRole);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [verificationSentTo, setVerificationSentTo] = useState("");
@@ -120,7 +130,7 @@ export default function AuthCard({
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name, email, password, role, callbackUrl }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -145,7 +155,7 @@ export default function AuthCard({
       await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: verificationSentTo }),
+        body: JSON.stringify({ email: verificationSentTo, callbackUrl }),
       });
       setResendMsg("Resent! Check your inbox.");
     } catch {
@@ -158,10 +168,12 @@ export default function AuthCard({
   const resetDone = searchParams.get("reset") === "1";
 
   return (
-    <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-sm">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-        {tab === "signin" ? "Sign in to continue" : "Create your account"}
-      </h1>
+    <div className={bare ? "w-full" : "bg-white rounded-2xl shadow-md p-8 w-full max-w-sm"}>
+      {!bare && (
+        <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+          {tab === "signin" ? "Sign in to continue" : "Create your account"}
+        </h1>
+      )}
 
       {/* Tab toggle */}
       <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
