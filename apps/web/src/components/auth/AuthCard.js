@@ -51,7 +51,14 @@ export default function AuthCard({
       setVerificationSentTo("");
     }
     if (searchParams.get("error") === "invalid_token") {
-      setError("Verification link is invalid or expired. Please request a new one below.");
+      setError(
+        "Verification link is invalid or expired. Please request a new one below."
+      );
+    }
+    if (searchParams.get("error") === "ACCOUNT_DELETED") {
+      setError(
+        "This email is temporarily unavailable because it was recently used by a deleted account. Try again within 30 days. Need help? Contact info@useproximity.org."
+      );
     }
   }, [searchParams]);
 
@@ -209,23 +216,36 @@ export default function AuthCard({
           {forgotSent ? (
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
-              <p>We sent a reset link to <span className="font-medium">{forgotEmail}</span>.</p>
-              <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
+              <p>
+                We sent a reset link to{" "}
+                <span className="font-medium">{forgotEmail}</span>.
+              </p>
+              <p className="mt-1 text-blue-700/80">
+                Don&apos;t see it? Check your spam folder.
+              </p>
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-600 mb-4">Enter your email and we&apos;ll send you a reset link.</p>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter your email and we&apos;ll send you a reset link.
+              </p>
               {forgotError && (
                 <div className="mb-3 px-4 py-3 rounded-lg bg-red-50 text-red-600 text-sm text-left">
                   {forgotError}
                 </div>
               )}
-              <form onSubmit={handleForgot} className="flex flex-col gap-3 text-left">
+              <form
+                onSubmit={handleForgot}
+                className="flex flex-col gap-3 text-left"
+              >
                 <input
                   type="email"
                   placeholder="Email"
                   value={forgotEmail}
-                  onChange={(e) => { setForgotEmail(e.target.value); setForgotError(""); }}
+                  onChange={(e) => {
+                    setForgotEmail(e.target.value);
+                    setForgotError("");
+                  }}
                   required
                   className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-red-400 transition"
                 />
@@ -240,7 +260,12 @@ export default function AuthCard({
             </>
           )}
           <button
-            onClick={() => { setForgotView(false); setForgotSent(false); setForgotEmail(""); setForgotError(""); }}
+            onClick={() => {
+              setForgotView(false);
+              setForgotSent(false);
+              setForgotEmail("");
+              setForgotError("");
+            }}
             className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
           >
             ← Back
@@ -254,7 +279,9 @@ export default function AuthCard({
               We sent a verification link to{" "}
               <span className="font-medium">{verificationSentTo}</span>.
             </p>
-            <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
+            <p className="mt-1 text-blue-700/80">
+              Don&apos;t see it? Check your spam folder.
+            </p>
           </div>
           <p className="text-sm text-gray-500 mb-3">Didn&apos;t get it?</p>
           <button
@@ -268,7 +295,10 @@ export default function AuthCard({
             <p className="mt-2 text-sm text-gray-500">{resendMsg}</p>
           )}
           <button
-            onClick={() => { setVerificationSentTo(""); setResendMsg(""); }}
+            onClick={() => {
+              setVerificationSentTo("");
+              setResendMsg("");
+            }}
             className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
           >
             ← Back
@@ -309,7 +339,11 @@ export default function AuthCard({
               </button>
               <button
                 type="button"
-                onClick={() => { setError(""); setForgotEmail(email); setForgotView(true); }}
+                onClick={() => {
+                  setError("");
+                  setForgotEmail(email);
+                  setForgotView(true);
+                }}
                 className="text-sm text-gray-400 hover:text-gray-600 transition text-center w-full"
               >
                 Forgot password?
@@ -345,7 +379,9 @@ export default function AuthCard({
               {/* Role intent — lets landlords be created with the right role from
                   the start, so their first session is correct. */}
               <div>
-                <span className="block text-xs font-medium text-gray-500 mb-1.5">I am a…</span>
+                <span className="block text-xs font-medium text-gray-500 mb-1.5">
+                  I am a…
+                </span>
                 <div className="flex rounded-xl bg-gray-100 p-1">
                   {[
                     { value: "student", label: "Student" },
@@ -383,11 +419,37 @@ export default function AuthCard({
           </div>
 
           <button
-            onClick={() => { trackEvent("Sign In Started", { provider: "google" }); signIn("google", { callbackUrl }); }}
+            onClick={() => {
+              trackEvent("Sign In Started", { provider: "google" });
+              signIn("google", { callbackUrl });
+            }}
             className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 rounded-lg transition"
           >
             Continue with Google
           </button>
+
+          {/* Placed below the Google button rather than inside the Sign Up form
+              because this button creates an account too: a first-time Google
+              sign-in inserts the user row (see auth.js), and it is shared by both
+              tabs. Sitting here, the notice covers every path that can create an
+              account instead of only the email/password one. */}
+          <p className="mt-4 text-center text-xs leading-5 text-gray-400">
+            By creating an account, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="underline underline-offset-2 hover:text-gray-600 transition"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="underline underline-offset-2 hover:text-gray-600 transition"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </>
       )}
 
