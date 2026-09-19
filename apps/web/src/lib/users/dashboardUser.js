@@ -413,6 +413,8 @@ export async function buildDashboardUser({ email, id } = {}) {
     roles: undefined, // flattened into `role` below
     role: user.roles?.name ?? null,
     _id: user.id?.toString(),
+    // Prefer camelCase for clients; snake_case remains via the spread above.
+    emailNotifications: user.email_notifications !== false,
     favorites: safeFavorites,
     favoritesIds: safeFavoritesIds,
     listings: safeListings,

@@ -56,6 +56,13 @@ export async function PATCH(req) {
     if (body.referralSource !== undefined) allowedFields.referral_source = body.referralSource;
     if (body.image !== undefined) allowedFields.image = body.image;
 
+    // Chat / outreach emails. Honoured by rpc_chat_notification_recipient.
+    if (body.emailNotifications !== undefined) {
+      allowedFields.email_notifications = Boolean(body.emailNotifications);
+    } else if (body.email_notifications !== undefined) {
+      allowedFields.email_notifications = Boolean(body.email_notifications);
+    }
+
     if (body.graduation_year !== undefined)
       allowedFields.graduation_year = body.graduation_year ?? null;
     if (body.graduation_month !== undefined)
@@ -110,9 +117,14 @@ export async function PATCH(req) {
     }
 
     // Expose role name at the top level so clients can read `updated.role`
-    // and feed it to NextAuth session.update({ role }).
+    // and feed it to NextAuth session.update({ role }). Prefer camelCase for
+    // the email preference so dashboards don't have to dual-read snake_case.
     const { roles, ...rest } = updated;
-    return NextResponse.json({ ...rest, role: roles?.name ?? null });
+    return NextResponse.json({
+      ...rest,
+      role: roles?.name ?? null,
+      emailNotifications: rest.email_notifications !== false,
+    });
   } catch (e) {
     console.error("PATCH /api/user/profile failed:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

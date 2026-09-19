@@ -7,6 +7,7 @@ import Image from "next/image";
 import {
   Phone,
   Mail,
+  MessageCircle,
   ThumbsUp,
   ThumbsDown,
   Car,
@@ -14,6 +15,7 @@ import {
   Star,
   LayoutGrid,
   X,
+  Tag,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
@@ -31,9 +33,34 @@ import {
 import { trackEvent, getListingSource } from "@/utils/analytics";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
+import SendOfferForm from "@/components/chat/SendOfferForm";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
+import { useMessages } from "@/context/MessagesContext";
+
+const CHAT_MAX_BODY = 5000;
+
+// Opening line the chat composer starts with. The usual reason a student doesn't
+// message is not knowing what to say, so the send button is one click away and the
+// text stays editable.
+function defaultListingInquiry(ownerName) {
+  const firstName = ownerName?.trim().split(/\s+/)[0];
+  return firstName
+    ? `Hi ${firstName}, I'm interested in this listing.`
+    : "Hi, I'm interested in this listing.";
+}
+
+// Prefill the offer composer with the listing's cheapest rent. min_rent is
+// trigger-maintained and can be missing, so fall back to the unit rents.
+function listingStartingRent(listing) {
+  const aggregate = Number(listing?.minRent);
+  if (Number.isFinite(aggregate) && aggregate > 0) return aggregate;
+  const rents = (listing?.unitTypes ?? [])
+    .map((unit) => Number(unit?.rent))
+    .filter((rent) => Number.isFinite(rent) && rent > 0);
+  return rents.length > 0 ? Math.min(...rents) : "";
+}
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -796,9 +823,27 @@ function ContactTab({
   contactSent,
   selectedLease = null,
 }) {
+  const { startListingChat, startListingOffer } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
     listing.twentyOnePlus ? "loading" : "ok"
   );
+  const [chatBody, setChatBody] = useState(() =>
+    defaultListingInquiry(listing?.owner?.name)
+  );
+  const [chatSending, setChatSending] = useState(false);
+  const [chatThreadId, setChatThreadId] = useState(null);
+  const [sentKind, setSentKind] = useState("message");
+  const [offerOpen, setOfferOpen] = useState(false);
+
+  const userId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  const canMessage = Boolean(
+    session?.user?.id && listing?.owner?.canChat && !isOwnListing
+  );
+  // An offer proposes a rent for this listing, so it only makes sense while it's active.
+  const canOffer = canMessage && !listing?.unavailable;
+  const offerDefaultRent = listingStartingRent(listing);
 
   useEffect(() => {
     if (!listing.twentyOnePlus) return;
@@ -861,9 +906,33 @@ function ContactTab({
   const handleChange = (field) => (e) =>
     setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
 
+  async function handleStartChat(e) {
+    e.preventDefault();
+    const text = chatBody.trim();
+    if (!text || chatSending || !listing?._id) return;
+    setChatSending(true);
+    try {
+      const data = await startListingChat(listing._id, text);
+      setChatThreadId(data?.threadId ?? "");
+      setSentKind("message");
+      toast.success("Message sent");
+    } catch (err) {
+      toast.error(err?.message || "Failed to start chat. Please try again.");
+    } finally {
+      setChatSending(false);
+    }
+  }
+
+  async function handleSendOffer({ proposedRent, note }) {
+    if (!listing?._id) return;
+    const data = await startListingOffer(listing._id, { proposedRent, note });
+    setChatThreadId(data?.threadId ?? "");
+    setSentKind("offer");
+    toast.success("Offer sent");
+  }
+
   return (
     <div className="max-w-xl">
-      {/* Landlord info */}
       {owner && (
         <div className="flex items-center gap-4 mb-6">
           <img
@@ -886,6 +955,85 @@ function ContactTab({
         </div>
       )}
 
+      {canMessage && (
+        <div id="listing-in-app-message" className="mb-8">
+          {chatThreadId !== null ? (
+            <div className="rounded-xl border border-red-100 bg-red-50/40 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <p className="text-sm text-gray-700">
+                {sentKind === "offer" ? "Offer" : "Message"} sent
+                {owner?.name ? ` to ${owner.name}` : ""}.
+              </p>
+              <div className="shrink-0 flex items-center gap-2">
+                {canOffer && sentKind !== "offer" && (
+                  <button
+                    type="button"
+                    onClick={() => setOfferOpen(true)}
+                    className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-xs font-semibold rounded-lg bg-white text-red-700 border border-red-200 shadow-sm hover:bg-red-50 hover:border-red-300 transition"
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                    Send offer
+                  </button>
+                )}
+                <Link
+                  href={
+                    chatThreadId ? `/messages?thread=${chatThreadId}` : "/messages"
+                  }
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-xs font-semibold rounded-lg bg-white text-red-700 border border-red-200 shadow-sm hover:bg-red-50 hover:border-red-300 transition"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  View conversation
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleStartChat} className="space-y-3">
+              <textarea
+                value={chatBody}
+                onChange={(e) =>
+                  setChatBody(e.target.value.slice(0, CHAT_MAX_BODY))
+                }
+                rows={3}
+                disabled={chatSending}
+                placeholder={defaultListingInquiry(owner?.name)}
+                aria-label="Message on Proximity"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={!chatBody.trim() || chatSending}
+                  className="flex-1 bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {chatSending ? "Sending..." : "Send message"}
+                </button>
+                {canOffer && (
+                  <button
+                    type="button"
+                    onClick={() => setOfferOpen(true)}
+                    disabled={chatSending}
+                    className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-red-200 bg-white text-red-700 text-sm font-semibold hover:bg-red-50 hover:border-red-300 transition disabled:opacity-50"
+                  >
+                    <Tag className="w-4 h-4" />
+                    Send offer
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {canMessage && (
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center" aria-hidden>
+            <div className="w-full border-t border-gray-100" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-gray-400">or email</span>
+          </div>
+        </div>
+      )}
+
       {contactSent ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
           Your message was sent!
@@ -893,6 +1041,11 @@ function ContactTab({
         </div>
       ) : (
         <form onSubmit={handleContactSubmit} className="space-y-3">
+          {!canMessage && (
+            <p className="text-xs text-gray-500 mb-1">
+              Send an email to the property manager.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">
@@ -964,10 +1117,18 @@ function ContactTab({
             disabled={contactLoading}
             className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {contactLoading ? "Sending..." : "Send Message"}
+            {contactLoading ? "Sending..." : "Send email"}
           </button>
         </form>
       )}
+
+      <SendOfferForm
+        mode="thread"
+        open={offerOpen}
+        onClose={() => setOfferOpen(false)}
+        onSubmit={handleSendOffer}
+        defaultRent={offerDefaultRent}
+      />
     </div>
   );
 }
@@ -1625,6 +1786,14 @@ export default function ListingModalInfo({
    * always sets one.
    */
   const reviewsLoaded = Array.isArray(listing.reviews);
+  const viewerId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === viewerId || listing?.owner?.id === viewerId;
+  const canShowMessage = Boolean(
+    viewerId && listing?.owner?.canChat && !isOwnListing
+  );
+
+  // Reviews
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
     .filter((r) => r.legitimacy);
@@ -1977,6 +2146,33 @@ export default function ListingModalInfo({
                   <span className="inline-flex items-center h-9 text-sm text-gray-400">
                     No reviews yet
                   </span>
+                )}
+                {/* Shortcut to the in-app composer in the Contact tab. Only
+                    rendered when the listing's owner is a real account that can
+                    actually receive a message (listing.owner.canChat). */}
+                {canShowMessage && (
+                  <button
+                    type="button"
+                    title="Message on Proximity"
+                    aria-label="Message on Proximity"
+                    onClick={() => {
+                      setActiveTab("contact");
+                      setTimeout(() => {
+                        scrollIntoContainer(
+                          document.getElementById("listing-tabs")
+                        );
+                        document
+                          .getElementById("listing-in-app-message")
+                          ?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "nearest",
+                          });
+                      }, 50);
+                    }}
+                    className="shrink-0 w-9 h-9 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </button>
                 )}
               </div>
             </div>

@@ -8,6 +8,7 @@ import {
   Star,
   MessageSquare,
   ThumbsUp,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -16,6 +17,7 @@ import EditorOverview from "@/components/listings/editor/EditorOverview";
 import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import ListingMetricsChart from "./ListingMetricsChart";
+import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 export default function PropertyAnalyticsSection({
   handleBackToProperties,
@@ -103,9 +105,19 @@ export default function PropertyAnalyticsSection({
             View as Student
           </button>
           {/* No Edit button. Everything below this header is editable in place
-              now — the old button opened a separate modal over a panel that
+              now, the old button opened a separate modal over a panel that
               already edits itself, which meant two ways to change the same
               record and two chances to disagree about it. */}
+          {!p.unavailable ? (
+            <BroadcastListingOfferButton
+              listingId={listingId}
+              defaultRent={p.minRent ?? p.min_rent ?? p.unitTypes?.[0]?.rent ?? ""}
+              className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 hover:border-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Tag className="h-3.5 w-3.5" />
+              Offer to savers
+            </BroadcastListingOfferButton>
+          ) : null}
         </div>
       </div>
 

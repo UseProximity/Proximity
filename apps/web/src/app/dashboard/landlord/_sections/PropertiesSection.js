@@ -13,6 +13,7 @@ import {
   Users,
   Trash2,
   Undo2,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -22,6 +23,7 @@ import {
   getAreaRangeLabel,
   getRentRangeLabel,
 } from "@/utils/listingFormatters";
+import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 /**
  * Rent across the landlord's OWN offerings at a property — the dashboard
@@ -326,6 +328,21 @@ export default function PropertiesSection({
                       <Pencil className="h-3.5 w-3.5" />
                       Edit
                     </button>
+                    {!property.unavailable ? (
+                      <BroadcastListingOfferButton
+                        listingId={property._id || property.id}
+                        defaultRent={
+                          property.minRent ??
+                          property.min_rent ??
+                          property.unitTypes?.[0]?.rent ??
+                          ""
+                        }
+                        className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                      >
+                        <Tag className="h-3.5 w-3.5" />
+                        Offer to savers
+                      </BroadcastListingOfferButton>
+                    ) : null}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
@@ -16,6 +17,10 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
     ? (listing.address || "")
     : (listing.address || "").replace(/^[^,]+,\s*/, "");
   const imageUrl = listing.images?.[0];
+  const listingId = listing._id || listing.id;
+  const isActive = !listing.unavailable;
+  const defaultRent =
+    listing.minRent ?? listing.min_rent ?? listing.unitTypes?.[0]?.rent ?? "";
 
   return (
     <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 flex flex-col">
@@ -46,25 +51,34 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100 flex-wrap">
           <Link
-            href={`/browse?listing=${listing._id}`}
-            className="flex-1 text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            href={`/browse?listing=${listingId}`}
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
           >
             View
           </Link>
           <button
             onClick={() => onEdit(listing)}
-            className="flex-1 text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
           >
             Edit
           </button>
+          {isActive ? (
+            <BroadcastListingOfferButton
+              listingId={listingId}
+              defaultRent={defaultRent}
+              className="flex-1 min-w-[5.5rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+            >
+              Offer to savers
+            </BroadcastListingOfferButton>
+          ) : null}
           {/* "Withdraw", not "Delete" — it takes the offering off the market
               and leaves the property alone. See handleWithdrawSublease. */}
           <button
             onClick={() => onDelete(listing)}
             disabled={deleting}
-            className="flex-1 text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
           >
             {deleting ? "…" : "Withdraw"}
           </button>
@@ -90,6 +104,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
     phone: user.phone || "",
     description: user.description || "",
     referralSource: user.referralSource || "",
+    emailNotifications:
+      user.emailNotifications ?? user.email_notifications !== false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -292,6 +308,36 @@ function EditProfileModal({ user, onClose, onSaved }) {
               <option value="On Campus">On Campus</option>
               <option value="Other">Other</option>
             </select>
+          </div>
+
+          {/* Email notifications */}
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800">Email notifications</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Get an email when someone messages you about a listing.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.emailNotifications}
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  emailNotifications: !prev.emailNotifications,
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                form.emailNotifications ? "bg-red-600" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                  form.emailNotifications ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
