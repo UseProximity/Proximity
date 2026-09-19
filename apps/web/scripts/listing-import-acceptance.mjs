@@ -200,6 +200,22 @@ function universalProblems(listing) {
     if (dates && dates !== named)
       problems.push(`${where}: ${dates} dates for ${named} apartments`);
   }
+  /*
+   * The same floor plan twice is always wrong, and it is how the worst kind of
+   * fault shows up: Dorchester returned ten units on one run and twenty on the
+   * next, the extra ten being copies whose names differed only by a hyphen.
+   * Nothing above would have caught it — every unit was individually fine — and
+   * a nightly sync would have seen the building's unit count flapping.
+   */
+  const byTitle = new Map();
+  for (const u of listing.units ?? []) {
+    const key = String(u.title ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (!key) continue;
+    byTitle.set(key, (byTitle.get(key) ?? 0) + 1);
+  }
+  for (const [key, n] of byTitle) {
+    if (n > 1) problems.push(`floor plan "${key}" came back ${n} times`);
+  }
   return problems;
 }
 

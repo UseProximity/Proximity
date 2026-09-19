@@ -8,6 +8,27 @@ Branch: `fix/listing-draft-multi-property`
 
 ---
 
+## The same floor plan twice — the fault that mattered most
+
+Dorchester came back with 10 units on one run and 20 on the next, and both
+passed every check, because each unit was individually fine. The reading was
+never the problem: it found 10 plans and 44 apartments every single time.
+
+The merge was. A plan's name is taken from its own URL — /floorplans/dor-3btd
+becomes "DOR 3BTD" — while the model writes what the page prints, "DOR-3BTD".
+The comparison stripped spaces but kept the hyphen, so on a run where the model
+used a hyphen NONE of the ten plans bound to the unit it belonged to, and all
+ten were appended alongside: twenty units, ten of them copies.
+
+Names are now compared on their letters and digits alone. Three consecutive
+Dorchester runs: 10 units, 10 with their apartments, every time.
+
+**This is the one to remember for the sync.** A listing whose unit count flaps
+between 10 and 20 depending on how a model spelled a name is exactly what a
+nightly re-scrape would act on — and acting on it means publishing and
+unpublishing a landlord's apartments overnight. The acceptance test now fails on
+any floor plan that appears twice, which is a thing no correct import ever does.
+
 ## Speed: the drill is not the thing to tune
 
 Ben: "it took 160+ seconds... is that the fastest it can go?" without changing

@@ -658,7 +658,19 @@ export async function POST(req) {
         const n = Number(value);
         return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
       };
-      const norm = (s) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
+      /*
+       * Compare floor plan names by their letters and digits alone.
+       *
+       * The parsed name comes from the page's own URL — /floorplans/dor-3btd
+       * becomes "DOR 3BTD" — and the model writes what the page prints, which
+       * for the same plan is often "DOR-3BTD". Stripping spaces but keeping the
+       * hyphen meant those two never matched, so all ten of Dorchester's plans
+       * failed to bind to the units they belonged to and were appended
+       * alongside them: twenty units, ten of them duplicates, and it happened
+       * on some runs and not others depending on how the model spelled them.
+       * That flapping is the thing a nightly sync would notice most.
+       */
+      const norm = (s) => String(s ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
       /*
        * Names first, and size only when there is no name to go on.
        *
