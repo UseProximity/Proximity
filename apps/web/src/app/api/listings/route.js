@@ -205,9 +205,6 @@ export function buildListing(row, owner = null) {
     placeWalkMinutes: walkTimesToMap(walkTimes),
     placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
-    contactEmail: row.contact_email ?? null,
-    contactPhone: row.contact_phone ?? null,
-    contactName: row.contact_name ?? null,
     leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
     leaseStructure: row.lease_structure ?? null,
     homeType: row.home_types?.label ?? "Other",
@@ -254,7 +251,6 @@ export function buildListing(row, owner = null) {
       ? {
           _id: owner.id,
           name: owner.name,
-          email: owner.email ?? null,
           image: owner.image ?? null,
         }
       : null,
