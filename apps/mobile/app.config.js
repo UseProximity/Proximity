@@ -14,6 +14,8 @@ module.exports = {
     userInterfaceStyle: "light",
     plugins: [
       "expo-router",
+      // Adds the com.apple.developer.applesignin entitlement (iOS only).
+      "expo-apple-authentication",
       ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }],
       // Library-only picking for Add Listing photos — no live camera capture,
       // so camera/microphone permissions are declined rather than requested.
@@ -28,6 +30,7 @@ module.exports = {
     ],
     ios: {
       supportsTablet: true,
+      bundleIdentifier: "com.proximityllc.proximity",
     },
     android: {
       package: "org.useproximity.app",
@@ -44,6 +47,9 @@ module.exports = {
     extra: {
       apiUrl: process.env.EXPO_PUBLIC_API_URL,
       mapboxToken: process.env.EXPO_PUBLIC_MAPBOX_TOKEN,
+      eas: {
+        projectId: "d7d2b10d-0957-441e-8484-5510276d22b6",
+      },
     },
   },
 };

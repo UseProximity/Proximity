@@ -9,6 +9,10 @@ export const AUTH_ERRORS = Object.freeze({
   // id_token) — the password path returns INVALID_CREDENTIALS instead so it
   // never confirms the address is registered.
   ACCOUNT_DELETED: "ACCOUNT_DELETED",
+  // Sign in with Apple could not produce a usable, verified email address
+  // (Apple School Manager accounts, or an unverified address), and an account
+  // cannot be created or matched without one.
+  APPLE_EMAIL_REQUIRED: "APPLE_EMAIL_REQUIRED",
   TOKEN_EXPIRED: "TOKEN_EXPIRED",
   MISSING_FIELDS: "MISSING_FIELDS",
   FORBIDDEN: "FORBIDDEN",

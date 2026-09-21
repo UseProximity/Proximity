@@ -1,25 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { Check } from "lucide-react-native";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
+import { isAppleSignInAvailable } from "../../src/lib/appleAuth";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
 import { colors } from "../../src/theme/tokens";
 
 const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 
+const APPLE_ERRORS = {
+  ACCOUNT_DELETED: "This account has been deleted.",
+  EMAIL_NOT_VERIFIED:
+    "An account with your Apple email exists but isn't verified yet. Verify it, or sign in the way you signed up.",
+  APPLE_EMAIL_REQUIRED: "Apple didn't share a verified email address, so we can't create your account.",
+};
+
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, signInWithGoogle, isLoading } = useAuth();
+  const { login, signInWithGoogle, signInWithApple, isLoading } = useAuth();
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
 
   async function handleLogin() {
     setError(null);
@@ -64,6 +78,19 @@ export default function LoginScreen() {
       router.replace("/(tabs)");
     } catch (err) {
       setError(err?.body?.error ?? err?.message ?? "Google sign in failed. Please try again.");
+    }
+  }
+
+  async function handleAppleSignIn() {
+    if (isLoading) return;
+    setError(null);
+    setNeedsVerification(false);
+    try {
+      // false means the user dismissed the Apple sheet: stay on this screen.
+      if (await signInWithApple()) router.replace("/(tabs)");
+    } catch (err) {
+      const code = err?.body?.error;
+      setError(APPLE_ERRORS[code] ?? code ?? err?.message ?? "Apple sign in failed. Please try again.");
     }
   }
 
@@ -148,6 +175,16 @@ export default function LoginScreen() {
             <Button variant="secondary" onPress={handleGoogleSignIn} loading={isLoading}>
               Continue with Google
             </Button>
+
+            {appleAvailable && (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={12}
+                onPress={handleAppleSignIn}
+                style={{ height: 48 }}
+              />
+            )}
           </View>
 
           <Link href="/(auth)/signup" className="mt-7 self-center">

@@ -12,7 +12,7 @@ export async function POST(req) {
 
     const { data: user } = await supabase
       .from("users")
-      .select("id, name, google_account")
+      .select("id, name, google_account, apple_account, password_hash")
       .eq("email", email)
       .single();
 
@@ -21,6 +21,11 @@ export async function POST(req) {
     }
     if (user.google_account) {
       return NextResponse.json({ error: "This email is linked to a Google account. Please sign in with Google." }, { status: 404 });
+    }
+    // No password to reset. An email/password account that also linked Apple
+    // still has one, so only an Apple-only account is turned away here.
+    if (user.apple_account && !user.password_hash) {
+      return NextResponse.json({ error: "This email is linked to an Apple account. Please sign in with Apple." }, { status: 404 });
     }
 
     const token = crypto.randomUUID();

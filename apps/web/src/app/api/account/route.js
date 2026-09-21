@@ -24,6 +24,7 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getRequestUser } from "@/lib/getRequestUser";
+import { revokeAppleToken } from "@/lib/appleAuth";
 
 export async function DELETE(req) {
   try {
@@ -35,7 +36,7 @@ export async function DELETE(req) {
 
     const { data: me, error: meErr } = await supabase
       .from("users")
-      .select("id, email, is_system, deleted_at")
+      .select("id, email, is_system, deleted_at, apple_refresh_token")
       .eq("id", userId)
       .single();
 
@@ -134,6 +135,14 @@ export async function DELETE(req) {
     if (delErr) {
       console.error("[account DELETE] soft-delete failed:", delErr);
       return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+    }
+
+    // Sign in with Apple accounts: Apple requires the user's grant to be revoked
+    // when they delete their account. The account is already deleted at this
+    // point, so a failure must not undo it; the token stays stored and the
+    // purge cron retries.
+    if (me.apple_refresh_token && (await revokeAppleToken(me.apple_refresh_token))) {
+      await supabase.from("users").update({ apple_refresh_token: null }).eq("id", userId);
     }
 
     return NextResponse.json({
