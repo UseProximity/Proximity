@@ -17,6 +17,50 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
+/*
+ * The footer every outbound email carries.
+ *
+ * CAN-SPAM requires commercial email to give a valid physical postal address and
+ * a working way to stop receiving it. Transactional mail (a password reset, a
+ * verification link, an inquiry we are delivering on someone's behalf) is exempt
+ * from the opt-out requirement, but carries the address anyway so that every
+ * message we send says plainly who sent it.
+ *
+ * The opt-out is a reply rather than a one-click link, which the statute allows
+ * as an internet-based mechanism. That makes it a promise about a mailbox rather
+ * than about code: the commercial senders set replyTo to OPT_OUT_INBOX, and
+ * whoever works that inbox has to action an unsubscribe within 10 business days
+ * for this to stay true. Swapping in a real link later means a stored opt-out
+ * list and a suppression check in sendMailSafe, not a change here.
+ *
+ * POSTAL_ADDRESS intentionally repeats what the legal documents say in
+ * src/content/legal/. If the company address ever changes, both move together.
+ */
+const POSTAL_ADDRESS =
+  "Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701";
+const OPT_OUT_INBOX = "info@useproximity.org";
+
+/*
+ * `reason` is the one line telling someone why this landed in their inbox. On a
+ * commercial send it is what identifies the message, so it is required there and
+ * the call sites all pass one.
+ */
+export function emailFooter({ reason, commercial = false } = {}) {
+  const optOut = commercial
+    ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">
+         Don&#39;t want these? Reply to this email with &quot;unsubscribe&quot; and we
+         will stop sending them.
+       </p>`
+    : "";
+
+  return `
+      <div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb">
+        ${reason ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">${reason}</p>` : ""}
+        ${optOut}
+        <p style="color:#999;font-size:12px;line-height:1.5;margin:0">${POSTAL_ADDRESS}</p>
+      </div>`;
+}
+
 export function getBaseUrl(req) {
   const proto = req.headers.get("x-forwarded-proto") ?? "http";
   const host = req.headers.get("host");
@@ -39,6 +83,9 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
         </a>
         <p style="color:#666;font-size:14px">Or copy this link:<br>${resetUrl}</p>
         <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+        ${emailFooter({
+          reason: "You are receiving this because someone asked to reset the password on the Proximity account for this address.",
+        })}
       </div>
     `,
   });
@@ -64,6 +111,10 @@ export async function sendLandlordNudgeEmail({ email, name }) {
         <p style="color:#666;font-size:14px">WashU students are searching for off-campus housing right now —
            getting listed takes about five minutes.</p>
         <p style="color:#999;font-size:12px">— The Proximity team</p>
+        ${emailFooter({
+          reason: "You are receiving this because you created a landlord account on Proximity.",
+          commercial: true,
+        })}
       </div>
     `,
   });
@@ -96,6 +147,9 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
         <p>Reply directly to this email to respond to ${student.name}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
         <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+        ${emailFooter({
+          reason: "You are receiving this because a student sent an inquiry about a property listed on Proximity as yours.",
+        })}
       </div>
     `,
   });
@@ -121,6 +175,9 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next 
           Verify Email
         </a>
         <p style="color:#666;font-size:14px">Or copy this link:<br>${verifyUrl}</p>
+        ${emailFooter({
+          reason: "You are receiving this because this address was used to create a Proximity account.",
+        })}
       </div>
     `,
   });
@@ -164,6 +221,9 @@ export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
         <p style="color:#666;font-size:13px;margin-top:16px">
           Full detail lives in pms_sync_events and pms_review_queue${baseUrl ? ` (${baseUrl})` : ""}.
         </p>
+        ${emailFooter({
+          reason: "You are receiving this because you administer PMS connections on Proximity.",
+        })}
       </div>
     `,
   });
@@ -226,6 +286,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
   await sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
+    replyTo: OPT_OUT_INBOX,
     subject,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
@@ -249,6 +310,10 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
                  any time with Google using this email address.</p>`
             : ""
         }
+        ${emailFooter({
+          reason: "You are receiving this because you wrote a review on Proximity using this address.",
+          commercial: true,
+        })}
       </div>
     `,
   });
@@ -300,6 +365,9 @@ export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken 
           This link works for 7 days. If you weren&#39;t expecting this, you can ignore this
           email and the account will stay unusable.
         </p>
+        ${emailFooter({
+          reason: "You are receiving this because this address was used to join a waitlist on Proximity.",
+        })}
       </div>
     `,
   });
@@ -416,9 +484,11 @@ export async function sendReviewInviteEmail({
           This link is personal to ${escapeHtml(email)} and posts your review under
           that address, so please don&#39;t forward it. ${expiryNote}
         </p>
-        <p style="color:#999;font-size:12px">
-          Not interested? Just ignore this and we won&#39;t email you again.
-        </p>
+        ${emailFooter({
+          reason:
+            "This is an invitation from Proximity, an off-campus housing marketplace for university students.",
+          commercial: true,
+        })}
       </div>
     `,
   });
