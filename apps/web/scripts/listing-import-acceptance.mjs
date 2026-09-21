@@ -93,8 +93,14 @@ const CASES = {
        * their cases still require them.
        */
       minConcessions: 1,
-      // this site publishes no application page, so there is no term to read
-      leaseTermsRequired: false,
+      /*
+       * It does publish its terms, and for a long time this said it did not.
+       * The apply link was matched on the word "oleapplication", which no
+       * RentCafe site uses, so Keeley's whole portfolio imported with four
+       * empty lease-term rows. Every plan page links to its rental-options
+       * page, which states the term beside the rent.
+       */
+      leaseTermsRequired: true,
     },
   },
   "keeley-vivienne": {
@@ -112,9 +118,11 @@ const CASES = {
      * its apartments "Unit 311 Starting From $2,300" rather than
      * "Apartment: #311"; and some plans are waitlist-only with no price.
      *
-     * No lease lengths are expected: this building publishes its terms behind
-     * a login, so the landlord sets them. That is a fact about the site, not a
-     * fault, and the import says so in its notes.
+     * No lease lengths are expected, and this one really is unreadable rather
+     * than merely missed: Vivienne publishes no floor-plan pages of its own, so
+     * its only leasing links are RentCafe portal shells that render "Loading
+     * application..." and reveal a term only after a unit is chosen inside the
+     * app. Verified 19 September. The import says so in its notes.
      */
     expect: {
       minUnits: 10,

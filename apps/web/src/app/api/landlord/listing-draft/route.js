@@ -770,7 +770,9 @@ export async function POST(req) {
           unitAvailability: plan.apartments.map((a) =>
             a.availableOn && a.availableOn !== "now" ? a.availableOn : ""
           ),
-          leaseTermMonths: unit?.leaseTermMonths ?? [],
+          leaseTermMonths: (plan.leaseTermMonths ?? []).length
+            ? plan.leaseTermMonths
+            : (unit?.leaseTermMonths ?? []),
           leaseTermPrices: [],
         };
       };
@@ -819,10 +821,15 @@ export async function POST(req) {
       }
       merged = merged.filter(informative);
 
-      const houseTerm = Number(floorPlanData.termRange?.reflects) || null;
-      draft.listing.units = houseTerm
+      const reflects = Number(floorPlanData.termRange?.reflects) || null;
+      const houseTerms = (floorPlanData.termRange?.offered ?? []).length
+        ? floorPlanData.termRange.offered
+        : reflects
+        ? [reflects]
+        : [];
+      draft.listing.units = houseTerms.length
         ? merged.map((u) =>
-            (u.leaseTermMonths ?? []).length ? u : { ...u, leaseTermMonths: [houseTerm] }
+            (u.leaseTermMonths ?? []).length ? u : { ...u, leaseTermMonths: houseTerms }
           )
         : merged;
       console.log(

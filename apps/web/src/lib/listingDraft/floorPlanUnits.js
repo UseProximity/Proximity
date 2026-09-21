@@ -244,6 +244,7 @@ export function parseFloorPlanPage(text, url) {
   const specials = findSpecial(text);
   return {
     specials,
+    leaseTermMonths: findLeaseTerms(text),
     // No price and no apartments because they are not letting it yet, rather
     // than because we could not read the page.
     waitlist: apartments.length === 0 && WAITLIST_RE.test(text),
@@ -332,6 +333,38 @@ function findPlanImage(html, finalUrl, name) {
   return candidates.find(namesThisPlan)?.url ?? candidates[0]?.url ?? null;
 }
 
+/*
+ * The lease lengths a page states, in months.
+ *
+ * These were only ever read off the leasing application page, which many sites
+ * do not publish — so a building that says "12 month lease" on every floor plan
+ * still handed the landlord four empty chip rows to fill in by hand. Anything
+ * we have already fetched is worth reading for it.
+ *
+ * A RANGE ("terms ranging from 3 to 24 months") is deliberately not read here:
+ * that is the lengths a leasing office will discuss, not lengths on offer at
+ * the published rent, and turning it into chips would put twenty-two lease
+ * options on a card. fetchLeaseTermRange still records it as a note.
+ */
+export function findLeaseTerms(text) {
+  if (!text) return [];
+  const months = new Set();
+  // "Lease Terms: 7, 9 or 12 months"
+  const listed = text.match(
+    /lease\s*terms?\s*(?:available|offered)?\s*[:\-]\s*((?:\d{1,2}\s*(?:,|\/|&|and|or)\s*)*\d{1,2})\s*months?/i
+  );
+  for (const n of listed?.[1]?.match(/\d{1,2}/g) ?? []) months.add(Number(n));
+  // "12-month lease", "9 month leases"
+  for (const m of text.matchAll(/(\d{1,2})\s*[-\u2013]?\s*month\s+leases?\b/gi)) {
+    months.add(Number(m[1]));
+  }
+  // "Lease Term 12 months", the label RentCafe pages use beside the rent
+  for (const m of text.matchAll(/lease\s*term\s*:?\s*(\d{1,2})\s*months?/gi)) {
+    months.add(Number(m[1]));
+  }
+  return [...months].filter((m) => m >= 1 && m <= 24).sort((a, b) => a - b);
+}
+
 function findSpecial(text) {
   const hit =
     text.match(/([^\n]*\b(?:MONTH|WEEKS?)\s+FREE\b[^\n]*)/i)?.[1]?.trim() ??
@@ -349,6 +382,7 @@ async function fetchLeaseTermRange(applyUrl) {
     const page = await fetchPageSmart(applyUrl);
     const text = stripMarkdown(htmlToText(page.html));
     const special = findSpecial(text);
+    const offered = findLeaseTerms(text);
     /*
      * The term the quoted rent belongs to, which the page states outright:
      * "Lease Term 12 months / Rent $3,095.00". Worth having on its own even
@@ -367,7 +401,9 @@ async function fetchLeaseTermRange(applyUrl) {
         `[listing-draft] lease terms: read ${text.length} chars from ${applyUrl.slice(0, 120)} ` +
           `but found no range${/lease\s*term/i.test(text) ? ' (the page does mention a lease term)' : ''}`
       );
-      return reflects || special ? { reflects, special } : null;
+      return reflects || special || offered.length
+        ? { reflects, special, offered }
+        : null;
     }
     /*
      * The page states the term its quoted rent assumes, in as many words:
@@ -375,7 +411,7 @@ async function fetchLeaseTermRange(applyUrl) {
      * belongs on; the 3-to-24 range is only what they will discuss.
      */
     console.log(`[listing-draft] lease terms: ${m[1]}-${m[2]} months, rate reflects ${reflects ?? "?"}`);
-    return { min: Number(m[1]), max: Number(m[2]), reflects, special };
+    return { min: Number(m[1]), max: Number(m[2]), reflects, special, offered };
   } catch (err) {
     console.log(`[listing-draft] lease terms: ${applyUrl.slice(0, 120)} failed — ${err.message}`);
     return null;
@@ -412,15 +448,29 @@ export async function fetchFloorPlanUnits(urls) {
         const plan = parseFloorPlanPage(text, page.finalUrl);
         plan.image = findPlanImage(page.linkHtml ?? page.html, page.finalUrl, plan.name);
         if (!applyUrl) {
+          /*
+           * The leasing application, not the resident portal: a
+           * .../residentservices/userlogin is a sign-in wall with no lease
+           * information on it at all.
+           *
+           * Matching only "oleapplication" found nothing on any RentCafe site,
+           * which is Keeley's entire portfolio — so every Keeley building
+           * imported with four empty lease-term rows and the note saying the
+           * site doesn't publish its lengths. It does. Each plan page carries a
+           * "Lease now" link to /onlineleasing/.../floorplans/<id>, which
+           * renders nothing until its JS runs, and a rental-options link,
+           * /onlineleasing/.../rentaloptions/<unit>/<plan>, which states
+           * "Lease term 12 months" beside the rent. Prefer the page with the
+           * answer on it.
+           */
+          const links = extractAllLinks(page.html, page.finalUrl, 200)
+            .map((l) => l.url)
+            .filter((u) => !/residentservices|userlogin/i.test(u));
           applyUrl =
-            /*
-             * The leasing application, not the resident portal. Matching
-             * "securecafe" loosely picked up .../residentservices/userlogin,
-             * which is a sign-in wall with no lease information on it at all.
-             */
-            extractAllLinks(page.html, page.finalUrl, 200).find(
-              (l) => /oleapplication/i.test(l.url) && !/residentservices/i.test(l.url)
-            )?.url ?? null;
+            links.find((u) => /rentaloptions/i.test(u)) ??
+            links.find((u) => /oleapplication/i.test(u)) ??
+            links.find((u) => /onlineleasing|securecafeapplicant/i.test(u)) ??
+            null;
         }
         // A waitlisted plan has no apartments BECAUSE it is waitlisted, which is
         // worth keeping; a plan with neither is one we simply could not read.

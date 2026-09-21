@@ -305,7 +305,7 @@ export async function extractListingDraft({
   if (liveInventory) sections.push(liveInventory);
   if (unitsHandledElsewhere) {
     sections.push(
-      `UNITS: return one "units" entry for EVERY floor plan the pages show, including the ones the AVAILABLE APARTMENTS block does not mention — that block covers only some of them, and a building's studios and larger plans are usually the ones it misses. For each, fill bedrooms, bathrooms, area, title (the floor plan's name or code as the site writes it) and rent. Do NOT list individual apartments: leave unitNames, unitRents, unitAvailability, leaseTermMonths and leaseTermPrices empty, because the apartments are supplied separately and will be merged in.`
+      `UNITS: return one "units" entry for EVERY floor plan the pages show, including the ones the AVAILABLE APARTMENTS block does not mention — that block covers only some of them, and a building's studios and larger plans are usually the ones it misses. For each, fill bedrooms, bathrooms, area, title (the floor plan's name or code as the site writes it) and rent. Do NOT list individual apartments: leave unitNames, unitRents and unitAvailability empty, because the apartments are supplied separately and will be merged in. DO still fill leaseTermMonths (and leaseTermPrices where the pages price a term) from anywhere on the site that states them — a lease length belongs to the building, not to an apartment, so nothing else supplies it and leaving it out means the landlord retypes it.`
     );
   }
   if (targetProperty) {
