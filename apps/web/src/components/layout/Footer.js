@@ -204,9 +204,23 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="mt-4 pt-4 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">
-            © 2026 Proximity. All rights reserved.
-          </p>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-start">
+            <p className="text-sm text-gray-600">
+              © 2026 Proximity. All rights reserved.
+            </p>
+            <Link
+              href="/privacy"
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Terms of Service
+            </Link>
+          </div>
           <div className="flex items-center gap-4">
             <button
               onClick={handleOpenFeedback}

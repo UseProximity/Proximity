@@ -26,3 +26,25 @@ export function isValidCount(value) {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0;
 }
+
+/*
+ * Bedrooms are a count of rooms, so unlike bathrooms they are always whole.
+ * listing_units.bedrooms is an integer column, which means a 2.5 reaches
+ * Postgres as "invalid input syntax for type integer" and surfaces as a generic
+ * save failure. A landlord hit exactly that three times at 7244 Forsyth on
+ * Sep 16 2026, leaving three empty property rows behind. Callers turn a false
+ * into a 400 that names the field.
+ */
+export function isWholeCount(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && Number.isInteger(n);
+}
+
+// The bedrooms counterpart to clampCount: also drops a fractional entry to the
+// whole number below it, so typing "2.5" settles at 2 rather than failing on
+// publish. Empty stays empty.
+export function clampWholeCount(value) {
+  const clamped = clampCount(value);
+  if (clamped === "") return "";
+  return Math.floor(Number(clamped));
+}

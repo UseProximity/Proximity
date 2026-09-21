@@ -6,7 +6,7 @@ import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
-import { isValidCount } from "@/utils/unitCounts";
+import { isValidCount, isWholeCount } from "@/utils/unitCounts";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import {
@@ -14,6 +14,7 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingDescription } from "@/lib/contentRules";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -75,6 +76,40 @@ const UTILITY_COLS = new Set([
 ]);
 
 export async function POST(req) {
+  /*
+   * The property row this request created, if it created one. Held at function
+   * scope so every failure path below, including the catch, can undo it.
+   */
+  let createdListingId = null;
+
+  /*
+   * Undo the property we made in this request, then report the failure.
+   *
+   * rpc_create_listing commits the property on its own; its units and leases are
+   * written afterwards in separate statements. A failure in between used to
+   * leave a property row carrying nothing, invisible on the landlord's dashboard
+   * but live on browse. Three of those appeared at 7244 Forsyth in 62 seconds
+   * when one submission failed three times over a fractional bedroom count.
+   *
+   * Every child of listings is ON DELETE CASCADE or SET NULL, so the row takes
+   * its amenities, utilities and walk times with it. A property we merely
+   * attached to is never touched: we did not create it.
+   */
+  const fail = async (status, error) => {
+    if (createdListingId) {
+      const { error: rollbackError } = await supabase
+        .from("listings")
+        .delete()
+        .eq("id", createdListingId);
+      if (rollbackError) {
+        console.error("[addListing] Rollback of orphaned property failed:", rollbackError.message);
+      } else {
+        createdListingId = null;
+      }
+    }
+    return NextResponse.json({ error }, { status });
+  };
+
   try {
     const body = await req.json();
 
@@ -159,6 +194,28 @@ export async function POST(req) {
       );
     }
 
+    /*
+     * Bedrooms land in an integer column, so a 2.5 used to travel all the way to
+     * the insert and come back as "invalid input syntax for type integer", which
+     * the landlord saw only as "Could not save a unit." Reject it here, by name,
+     * before a property row exists to be orphaned. Bathrooms are numeric and
+     * half baths are real, so they are deliberately not checked.
+     */
+    if (unitTypes.some((unit) => !isWholeCount(unit.bedrooms))) {
+      return NextResponse.json(
+        /*
+         * Deliberately NOT tagged with `field`: the wizard renders a field
+         * rejection only for `title` and swallows any other, so naming the field
+         * here would show the landlord nothing. The message carries the field.
+         */
+        {
+          error:
+            "Bedrooms must be a whole number. If you mean a half bath, put it in the bathrooms field.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Allow import script to bypass auth using a shared secret
     const importSecret = process.env.IMPORT_SECRET;
     const providedSecret = req.headers.get("x-import-secret");
@@ -192,6 +249,17 @@ export async function POST(req) {
           { error: "A contact email is required so students can reach you." },
           { status: 400 }
         );
+      }
+
+      /*
+       * No names, links or self-promotion in what a person writes. Deliberately
+       * NOT applied to the importer above: that path is a trusted seeding script
+       * copying whatever a source site published, with no author on the other
+       * end to rewrite it, so enforcing here would only fail the import.
+       */
+      for (const text of [description, body.leaseDescription]) {
+        const problem = checkListingDescription(text);
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       }
     }
 
@@ -458,6 +526,7 @@ export async function POST(req) {
         return NextResponse.json({ error: listingError.message }, { status: 500 });
       }
       listingId = newListingId;
+      createdListingId = newListingId;
     }
 
     /*
@@ -488,7 +557,7 @@ export async function POST(req) {
 
       if (unitError) {
         console.error("[addListing] Unit insert failed:", unitError.message);
-        return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
+        return fail(500, "Could not save a unit.");
       }
 
       createdUnitIds.push(insertedUnit.id);
@@ -517,18 +586,22 @@ export async function POST(req) {
         // Raised by unit_leases_sublease_guard when a sublease is posted onto a
         // unit that is already being offered.
         if (leaseError.code === "23514" || /sublease/i.test(leaseError.message)) {
-          return NextResponse.json(
-            {
-              error:
-                "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one.",
-            },
-            { status: 409 }
+          return fail(
+            409,
+            "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one."
           );
         }
         console.error("[addListing] Lease insert failed:", leaseError.message);
-        return NextResponse.json({ error: "Could not save a lease." }, { status: 500 });
+        return fail(500, "Could not save a lease.");
       }
     }
+
+    /*
+     * The property now has its units and their leases, so it is a real listing.
+     * Everything below is best-effort decoration and must never be able to take
+     * it back out, so release the rollback handle before running any of it.
+     */
+    createdListingId = null;
 
     /*
      * Attaching to a property nobody owns — a review stub carrying the Proximity
@@ -603,6 +676,6 @@ export async function POST(req) {
     );
   } catch (e) {
     console.error("Error:", e?.message);
-    return NextResponse.json({ error: e?.message }, { status: 500 });
+    return fail(500, e?.message);
   }
 }

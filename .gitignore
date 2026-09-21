@@ -64,6 +64,7 @@ apps/mobile/ios/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.idea
 
 # ── Local agent + tool state ──────────────────────────────────────────────────
 # .claude/skills/ IS committed so the team shares slash commands. Only per-machine

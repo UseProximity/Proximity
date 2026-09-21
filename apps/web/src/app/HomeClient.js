@@ -19,6 +19,7 @@ import UniversityLogosCarousel from "@/components/ui/UniversityLogosCarousel";
 import Footer from "@/components/layout/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import MapPopupCard from "@/components/listings/MapPopupCard";
+import { becomeLandlord } from "@/lib/auth/landlordRole";
 
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
   ssr: false,
@@ -840,14 +841,9 @@ export default function HomeClient({
       session?.user?.role === "student" &&
       session?.user?.profileComplete === false
     ) {
-      fetch("/api/editProfile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "landlord" }),
-      })
-        .then((res) => {
-          if (res.ok) {
-            update({ role: "landlord" });
+      becomeLandlord(update)
+        .then((changed) => {
+          if (changed) {
             // Remove the role param from the URL without a reload
             const url = new URL(window.location.href);
             url.searchParams.delete("role");

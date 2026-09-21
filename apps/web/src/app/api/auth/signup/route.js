@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 // Roles a user is allowed to self-assign at signup. Privileged roles (super,
 // admin, …) can never be granted here — only via an admin-side role change.
@@ -9,14 +10,21 @@ const SIGNUP_ROLES = new Set(["student", "landlord"]);
 
 export async function POST(req) {
   try {
-    const { name, email, password, role } = await req.json();
+    const { name, email, password, role, callbackUrl } = await req.json();
 
-    if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 });
+    if (!name?.trim())
+      return NextResponse.json({ error: "Name is required." }, { status: 400 });
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "Valid email is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Valid email is required." },
+        { status: 400 }
+      );
     }
     if (!password || password.length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters." },
+        { status: 400 }
+      );
     }
 
     // Honor the role chosen on the signup form; default to student. This lets an
@@ -26,18 +34,37 @@ export async function POST(req) {
 
     const { data: existing } = await supabase
       .from("users")
-      .select("id, password_hash")
+      .select("id, password_hash, deleted_at")
       .eq("email", email)
       .single();
 
     if (existing) {
-      if (!existing.password_hash) {
+      // Deleted accounts keep their row (and email) for a 30-day grace period
+      // before the purge cron frees it up — see api/cron/purge-accounts. Say so
+      // explicitly rather than "already exists," which reads as though signing
+      // in would work when it never will (auth.js rejects deleted accounts).
+      if (existing.deleted_at) {
         return NextResponse.json(
-          { error: "This email is linked to a Google account. Please sign in with Google." },
+          {
+            error:
+              "This email is temporarily unavailable because it was recently used by a deleted account. It frees up 30 days after deletion. Need help? Contact info@useproximity.org.",
+          },
           { status: 409 }
         );
       }
-      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 });
+      if (!existing.password_hash) {
+        return NextResponse.json(
+          {
+            error:
+              "This email is linked to a Google account. Please sign in with Google.",
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: "An account with this email already exists." },
+        { status: 409 }
+      );
     }
 
     const password_hash = await bcrypt.hash(password, 12);
@@ -67,7 +94,10 @@ export async function POST(req) {
 
     if (insertError) {
       console.error("signup: insert error", insertError);
-      return NextResponse.json({ error: "Failed to create account." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to create account." },
+        { status: 500 }
+      );
     }
 
     const token = crypto.randomUUID();
@@ -75,14 +105,26 @@ export async function POST(req) {
 
     await supabase
       .from("users")
-      .update({ email_verification_token: token, email_verification_expires_at: expires })
+      .update({
+        email_verification_token: token,
+        email_verification_expires_at: expires,
+      })
       .eq("id", newUser.id);
 
-    await sendVerificationEmail({ email, name: name.trim(), token, baseUrl: getBaseUrl(req) });
+    await sendVerificationEmail({
+      email,
+      name: name.trim(),
+      token,
+      baseUrl: getBaseUrl(req),
+      next: sanitizeCallbackUrl(callbackUrl, null),
+    });
 
     return NextResponse.json({ email });
   } catch (err) {
     console.error("signup error:", err);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }

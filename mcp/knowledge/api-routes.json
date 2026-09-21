@@ -1,8 +1,24 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-12T00:07:29.777Z",
-  "count": 91,
+  "_generated": "2026-09-19T19:09:26.057Z",
+  "count": 93,
   "routes": [
+    {
+      "path": "/api/account",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "DELETE": "any"
+      },
+      "tables": [
+        "users",
+        "listing_landlords",
+        "listings"
+      ],
+      "file": "src/app/api/account/route.js"
+    },
     {
       "path": "/api/addListing",
       "methods": [
@@ -13,9 +29,9 @@
         "POST": "any"
       },
       "tables": [
+        "listings",
         "home_types",
         "locations",
-        "listings",
         "listing_units",
         "unit_leases",
         "listing_drive_times",
@@ -431,6 +447,33 @@
         "users"
       ],
       "file": "src/app/api/cron/pms-sync/route.js"
+    },
+    {
+      "path": "/api/cron/purge-accounts",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "action_log",
+        "listing_landlords",
+        "listings",
+        "listing_reviews",
+        "dorm_reviews",
+        "user_listing_interactions",
+        "review_votes",
+        "matchmaking_chat_sessions",
+        "matchmaking_preferences",
+        "lease_checks",
+        "waitlist_clicks",
+        "device_push_tokens",
+        "review_invites",
+        "users"
+      ],
+      "file": "src/app/api/cron/purge-accounts/route.js"
     },
     {
       "path": "/api/cron/review-confirmations",
@@ -1126,9 +1169,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "any",
+      "auth": "public",
       "methodAuth": {
-        "GET": "any"
+        "GET": "public"
       },
       "tables": [
         "listings"

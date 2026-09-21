@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import DeleteAccountButton from "@/components/account/DeleteAccountButton";
 import Link from "next/link";
 import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
@@ -305,6 +306,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
               {saving ? "Saving…" : "Save Changes"}
             </button>
           </div>
+
+          <DeleteAccountButton />
         </form>
       </div>
     </div>
