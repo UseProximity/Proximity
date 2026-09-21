@@ -1,10 +1,26 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-09-16T16:49:19.636Z",
-  "count": 59,
+  "_generated": "2026-09-20T16:07:47.673Z",
+  "count": 63,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
+      "public": false
+    },
+    {
+      "name": "APPLE_BUNDLE_ID",
+      "public": false
+    },
+    {
+      "name": "APPLE_KEY_ID",
+      "public": false
+    },
+    {
+      "name": "APPLE_PRIVATE_KEY",
+      "public": false
+    },
+    {
+      "name": "APPLE_TEAM_ID",
       "public": false
     },
     {

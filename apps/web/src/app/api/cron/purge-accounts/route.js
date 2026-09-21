@@ -27,6 +27,7 @@ import { ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import supabase from "@/lib/supabase";
 import { r2 } from "@/lib/r2";
 import { isProdData } from "@/lib/appEnv";
+import { revokeAppleToken } from "@/lib/appleAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,17 @@ async function purgeUser(user) {
     .eq("table_name", "users")
     .eq("record_id", userId);
 
+  // Sign in with Apple: DELETE /api/account already revoked the grant and cleared
+  // this if Apple answered. If it didn't, this is the last chance to revoke it,
+  // because the token is scrubbed below either way (a permanently failing revoke
+  // must not stop the personal data from being erased).
+  const { data: apple } = await supabase
+    .from("users")
+    .select("apple_refresh_token")
+    .eq("id", userId)
+    .maybeSingle();
+  if (apple?.apple_refresh_token) await revokeAppleToken(apple.apple_refresh_token);
+
   // Finally the row itself. Placeholders (not NULL) for the columns that are
   // never null in practice; the email is uniqueness-constrained, so it gets a
   // per-user sentinel that frees the real address for future signup.
@@ -130,6 +142,7 @@ async function purgeUser(user) {
       google_account: false,
       apple_account: false,
       apple_sub: null,
+      apple_refresh_token: null,
     })
     .eq("id", userId);
 

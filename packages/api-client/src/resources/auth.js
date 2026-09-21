@@ -24,6 +24,13 @@ export class AuthResource {
     });
   }
 
+  appleSignIn({ identityToken, authorizationCode, nonce, fullName }) {
+    return this.client.request("/api/auth/mobile/apple", {
+      method: "POST",
+      body: JSON.stringify({ identityToken, authorizationCode, nonce, fullName }),
+    });
+  }
+
   // skipAuth: the refresh token IS the credential — no Bearer header
   refresh(refreshToken) {
     return this.client.request("/api/auth/mobile/refresh", {

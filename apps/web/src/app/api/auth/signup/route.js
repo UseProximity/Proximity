@@ -28,14 +28,19 @@ export async function POST(req) {
 
     const { data: existing } = await supabase
       .from("users")
-      .select("id, password_hash")
+      .select("id, password_hash, google_account, apple_account")
       .eq("email", email)
       .single();
 
     if (existing) {
       if (!existing.password_hash) {
         return NextResponse.json(
-          { error: "This email is linked to a Google account. Please sign in with Google." },
+          {
+            error:
+              existing.apple_account && !existing.google_account
+                ? "This email is linked to an Apple account. Please sign in with Apple."
+                : "This email is linked to a Google account. Please sign in with Google.",
+          },
           { status: 409 }
         );
       }

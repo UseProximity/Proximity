@@ -14,6 +14,8 @@ module.exports = {
     userInterfaceStyle: "light",
     plugins: [
       "expo-router",
+      // Adds the com.apple.developer.applesignin entitlement (iOS only).
+      "expo-apple-authentication",
       ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }],
       // Library-only picking for Add Listing photos — no live camera capture,
       // so camera/microphone permissions are declined rather than requested.

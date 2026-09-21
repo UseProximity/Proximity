@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../store/authStore";
 import apiClient from "../lib/apiClient";
 import { useGoogleSignIn } from "../lib/googleAuth";
+import { requestAppleCredential, isAppleCancellation } from "../lib/appleAuth";
 
 export function useAuth() {
   const user = useAuthStore((state) => state.user);
@@ -85,6 +86,39 @@ export function useAuth() {
     });
   }
 
+  /**
+   * Native Sign in with Apple. Resolves true once the user is signed in, and
+   * false when they dismissed the Apple sheet (nothing happened, so the caller
+   * must not navigate). Rejects on any real failure.
+   */
+  async function signInWithApple() {
+    setIsLoading(true);
+    try {
+      const { credential, rawNonce } = await requestAppleCredential();
+      // Apple only sends the name on a user's first authorization, so it has to
+      // travel with this request; the backend ignores it for returning users.
+      const fullName = credential.fullName
+        ? { givenName: credential.fullName.givenName, familyName: credential.fullName.familyName }
+        : null;
+      const result = await apiClient.auth.appleSignIn({
+        identityToken: credential.identityToken,
+        authorizationCode: credential.authorizationCode,
+        nonce: rawNonce,
+        fullName,
+      });
+      await setTokens(result);
+      // Load favorites after successful Apple sign-in
+      const { useFavoritesStore } = await import("../store/favoritesStore");
+      useFavoritesStore.getState().hydrate();
+      return true;
+    } catch (err) {
+      if (isAppleCancellation(err)) return false;
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   function logout() {
     storeLogout();
   }
@@ -97,6 +131,7 @@ export function useAuth() {
     login,
     signup,
     signInWithGoogle,
+    signInWithApple,
     logout,
   };
 }

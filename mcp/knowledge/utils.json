@@ -1,11 +1,15 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-16T16:49:19.624Z",
-  "count": 79,
+  "_generated": "2026-09-20T16:06:54.757Z",
+  "count": 82,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
+    },
+    {
+      "file": "src/lib/appleAuth.js",
+      "description": "Sign in with Apple, server side (native iOS flow)."
     },
     {
       "file": "src/lib/authMobile.js",
