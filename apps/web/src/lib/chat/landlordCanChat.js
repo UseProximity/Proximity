@@ -1,8 +1,17 @@
 /*
  * Server-side gate for in-app listing chat. Primary landlord must be a real
- * signed-in account — not a soft-deleted, system, or house (info@) placeholder.
- * Never expose password_hash (or other auth fields) on listing payloads; use
- * formatListingOwner() to strip to {_id, name, email, image, canChat}.
+ * signed-in account, not a soft-deleted, system, or house (info@) placeholder.
+ *
+ * Deciding canChat needs auth columns (password_hash, email_verified,
+ * google_account) that must never reach a browser, so the listing routes select
+ * LANDLORD_CHAT_SELECT and then pass the row through formatListingOwner(), which
+ * is the only shape allowed onto a public payload:
+ * {_id, name, image, canChat}.
+ *
+ * The landlord's email is deliberately NOT in that shape. Public listing
+ * payloads stopped carrying landlord contact details in 0e1d673, and
+ * /api/contactLandlord resolves the recipient server-side from the listing or
+ * lease, so nothing needs it client-side.
  */
 
 const HOUSE_ACCOUNT_EMAIL = "info@useproximity.org";
@@ -27,15 +36,14 @@ export function landlordCanChat(user) {
 }
 
 /**
- * Public listing.owner shape — never includes password_hash / auth fields.
- * @returns {{ _id: string, name: *, email: string|null, image: string|null, canChat: boolean } | null}
+ * Public listing.owner shape. Never includes auth fields or contact details.
+ * @returns {{ _id: string, name: *, image: string|null, canChat: boolean } | null}
  */
 export function formatListingOwner(user) {
   if (!user?.id) return null;
   return {
     _id: user.id,
     name: user.name,
-    email: user.email ?? null,
     image: user.image ?? null,
     canChat: landlordCanChat(user),
   };
