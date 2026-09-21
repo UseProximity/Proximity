@@ -13,7 +13,7 @@ Please read them carefully. Sections 18 and 19 limit our liability to you, and S
 sets out where any dispute must be resolved.
 
 **Contact:** info@useproximity.org
-**Postal address:** Proximity LLC, 70 Greendale Rd, Scarsdale, NY 10583-2133
+**Postal address:** Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 
 ---
 
@@ -438,5 +438,5 @@ agency relationship between you and Proximity.
 ## 24. Contact us
 
 **Proximity LLC**
-70 Greendale Rd, Scarsdale, NY 10583-2133
+117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 **info@useproximity.org**

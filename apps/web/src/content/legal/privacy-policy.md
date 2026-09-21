@@ -18,7 +18,7 @@ students at universities in the United States, and are intended for people **18 
 age or older**.
 
 **Privacy contact:** info@useproximity.org
-**Postal address:** Proximity LLC, 70 Greendale Rd, Scarsdale, NY 10583-2133
+**Postal address:** Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 
 ---
 
@@ -170,22 +170,14 @@ analysis. It is never kept beyond that.
 We hold a limited amount of information about some people who have never signed up. This
 section explains what, why, and how to have it removed.
 
-- **Student rosters.** We hold class-roster information for students at the universities
-  we serve: name, university email address, and class year. We use it for two things only:
-  to recognize that an email address belongs to a real student at that school, and to
-  create a personalized invitation link when we ask students to review a property they
-  have lived in. It is never published, never sold, never used for advertising, and is not
-  visible to landlords or to other students.
 - **Landlord and property contact details.** Where we compile a listing from public
   sources, or where a student names their landlord while leaving a review, we hold the
   contact details for that owner or manager so we can reach them and so we can identify
   the property. Contact details published on a live listing are public; details given to
   us in a review are used internally and are not displayed.
 
-**How long we keep it.** Roster information is kept while the student could still be
-living off campus near their university. We delete a roster entry if the person asks us
-to, or if they tell us they do not want to be invited. Landlord and property contact
-details are kept while the property is part of the marketplace.
+**How long we keep it.** Landlord and property contact details are kept while the
+property is part of the marketplace.
 
 **How to have it removed.** Email **info@useproximity.org** and ask us to delete your
 information. You do not need an account, and you do not need to explain why. We will
@@ -455,7 +447,6 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
 | Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
-| Roster information about people without an account | Kept while the student could still be living off campus near their university, and deleted on request (Section 1.8). |
 | Email sent through the Services | Delivered; the message body is not retained in our database. A copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
 | Aggregate listing metrics | Retained indefinitely in aggregate, non-identifying form. |
 | Internal change history | Retained for security and audit purposes. Personal data inside an entry is erased on account deletion. |
@@ -516,9 +507,8 @@ the statutory categories:
 | Sensitive personal information | Yes | Account log-in credentials; the contents of a lease you upload |
 
 **Sources:** you; Google or Apple, if you sign in with one of them; your use of the
-Services; universities, for the class-roster information described in Section 1.8; public
-listing sources and other users, for the landlord and property contact details also
-described there.
+Services; public listing sources and other users, for the landlord and property contact
+details described in Section 1.8.
 **Business purposes for collection and disclosure:** as described in Sections 2 and 6.
 **Sale or sharing:** We do not sell personal information for money. We use Google Analytics
 on our website, which involves disclosing usage information to Google; you can opt out by
@@ -562,5 +552,5 @@ an update takes effect means you accept the revised policy.
 ## 13. Contact us
 
 **Proximity LLC**
-70 Greendale Rd, Scarsdale, NY 10583-2133
+117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 Privacy and general enquiries: **info@useproximity.org**
