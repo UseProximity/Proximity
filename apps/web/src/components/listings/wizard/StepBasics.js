@@ -1,48 +1,16 @@
 "use client";
 
 import { HOME_TYPES } from "@/components/listings/listingFormOptions";
-import { StepFrame, Chip, FieldLabel, inputCls, importedInputCls } from "@/components/listings/wizard/wizardShared";
+import { StepFrame, Chip, FieldLabel } from "@/components/listings/wizard/wizardShared";
 
-// Screen 2: what kind of place. Chips and toggles only — the availability ask
-// costs one tap ("Available now" is pre-selected) but is a conscious choice,
-// because matchmaking needs a move-in signal on every listing.
+// Screen 2: what kind of place. Chips and toggles only.
+//
+// Availability used to be asked here as well, for the whole property. It is
+// not any more: a building releases apartment by apartment, so the date lives
+// on the units step, one per apartment, and that is the date students filter
+// on and the one the listing page shows. Asking a second time here only gave a
+// landlord a way to contradict themselves.
 export default function StepBasics({ w }) {
-  /*
-   * Is availability already answered one floor down?
-   *
-   * This asks for the whole property, and the units step asks per apartment,
-   * so a landlord who meets both reasonably wonders which one counts. It used
-   * to hide only when every apartment carried a DATE — which meant a building
-   * whose apartments are all available now still got asked here, because "now"
-   * is stored as a blank date. Blank is an answer on that step (it shows a
-   * green "Available now" beside every apartment), so it is an answer for this
-   * one too.
-   *
-   * An apartment we read off the landlord's own website therefore counts as
-   * answered. A waitlisted floor plan is not offered at all, so it has no say.
-   * What is left asking is the case this question was written for: someone
-   * typing in one place by hand, with no apartment numbers and no date.
-   */
-  const offered = (w.units ?? []).filter((u) => u.available !== false);
-  const carriesItsOwn = (u) =>
-    !!u.availableFrom ||
-    String(u.unitNumbers ?? "")
-      .split(/[,\s]+/)
-      .filter(Boolean).length > 0;
-  /*
-   * ANY apartment read off the landlord's website makes the units step the
-   * place availability is answered, so this question stops asking.
-   *
-   * Requiring EVERY floor plan to carry its own still showed it on One Hundred
-   * Above the Park, because sixteen of its thirty-six plans have their
-   * apartments listed and the other twenty are plans with nothing free right
-   * now — so the building that most obviously answers this per apartment was
-   * the one that got asked anyway, and it published with a property-wide date
-   * of 18 September that means nothing. Those twenty have their own date box on
-   * the units step if a landlord wants to fill one in.
-   */
-  const datedPerUnit = offered.length > 0 && offered.some(carriesItsOwn);
-  const anyUnitDated = unitDateState.some(Boolean);
   return (
     <StepFrame
       title="What kind of place is it?"
@@ -83,63 +51,6 @@ export default function StepBasics({ w }) {
           </Chip>
         </div>
       </div>
-
-      {/*
-        Availability belongs to the lease, not the building. The units step
-        collects a date per apartment, so once every apartment has one this
-        question is not just redundant, it invites a landlord to contradict
-        themselves on a building where apartments free up on different days.
-        It stays for the ordinary case (a house, or apartments that are all
-        available together) and as the fallback the API applies to any
-        apartment without its own date.
-      */}
-      {datedPerUnit ? (
-        <div className="mt-6 rounded-lg bg-gray-50 p-3">
-          <p className="text-xs font-medium text-gray-700">Availability</p>
-          <p className="mt-0.5 text-[11px] text-gray-500">
-            Set per apartment on the Units and rent step, which is where your
-            website listed it. Nothing to answer here.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-6">
-          <FieldLabel>When is it available?</FieldLabel>
-          <div className="flex flex-wrap items-center gap-2">
-            <Chip
-              on={w.availabilityMode === "now"}
-              onClick={() => {
-                w.setAvailabilityMode("now");
-                w.setField("move_in_date", "");
-              }}
-            >
-              Available now
-            </Chip>
-            <Chip
-              on={w.availabilityMode === "date"}
-              onClick={() => w.setAvailabilityMode("date")}
-            >
-              From a date
-            </Chip>
-            {w.availabilityMode === "date" && (
-              <input
-                type="date"
-                value={w.form.move_in_date}
-                onChange={(e) => w.setField("move_in_date", e.target.value)}
-                autoFocus
-                className={`${inputCls} w-44${
-                  w.importedFields.has("move_in_date") ? importedInputCls : ""
-                }`}
-              />
-            )}
-          </div>
-          {anyUnitDated && (
-            <p className="mt-1.5 text-[11px] text-gray-500">
-              Some apartments already have their own date on the Units step.
-              This one covers the rest.
-            </p>
-          )}
-        </div>
-      )}
     </StepFrame>
   );
 }

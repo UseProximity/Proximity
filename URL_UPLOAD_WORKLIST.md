@@ -129,18 +129,27 @@ and that this site does not publish lease lengths — and offers the four preset
 right there, applying to every floor plan at once. The per-row warning is kept
 only when a single plan is the exception.
 
-**The property-wide "when is it available?"** is gone from the Basics card for
-an import like this. It used to hide only when every apartment carried a DATE,
-so a building whose apartments are all available NOW still got asked, because
-"now" is stored as a blank date. Blank is an answer on the units step — it shows
-a green "Available now" beside every apartment — so it is an answer for this
-question too. What still gets asked is the case the question was written for:
-someone typing one place in by hand, with no apartment numbers and no date.
+**The property-wide "when is it available?"** is gone from the Basics card
+altogether (19 September). It hid itself for an import, then for an import where
+any apartment carried a date, and each version still left a grey box explaining
+why it was not asking — which is a question about a question. The date that
+counts is the one per apartment: `unit_leases.available_from` is what students
+filter on, what the listing page shows and what matchmaking reads, while the
+property-wide `listings.move_in_date` fed none of them (the property editor
+already refuses to change it, calling it superseded). The units step asks it for
+every shape of place, a house included, so nothing is lost. What gets published
+on the property row is now derived: the earliest date across the apartments on
+offer, or nothing at all when one of them is free today. The manual add-listing
+flow has only ever asked per lease, so the two paths finally agree.
 
 **Lease lengths.** Vivienne publishes its terms only inside the application, one
 login deep (Ben found 1 to 13 months there), and there is no price against each
 term. There is nothing on the public site to read, so the boxes are empty and
-the import now SAYS so instead of leaving a blank that looks like a bug:
+the import now SAYS so instead of leaving a blank that looks like a bug.
+
+This was true of every Keeley building until 19 September, and for the others it
+was our fault rather than the site's — see "Lease terms on RentCafe sites"
+below. Vivienne is the one that really is unreadable:
 
     This site doesn't publish its lease lengths, so choose them below.
     Everything else came from the site.
@@ -152,6 +161,50 @@ make them wonder why it is empty.
 Both notices are written wherever the units came from — the floor-plan drill, a
 live availability feed, or the model alone — because Vivienne reaches us by the
 SightMap feed and the first version of this only fired on the drill.
+
+## Lease terms on RentCafe sites — read, not missed (19 September)
+
+Ben, testing Keeley: "it doesnt fill in the lease terms. I thought we fixed
+this issue." Two causes, both ours.
+
+**The drill told the model to leave them empty.** When floor-plan pages are
+drilled, the extraction prompt lists the fields the merge will supply and asks
+the model not to fill them, "because the apartments are supplied separately".
+Lease terms were on that list. They are not apartment data — a lease length
+belongs to the building — so nothing else ever supplied them, and on a SightMap
+site it also threw away the term matrix the feed had already fetched. The prompt
+now excludes only the per-apartment arrays.
+
+**The apply link was matched on a word RentCafe never uses.** The leasing page
+was found by looking for `oleapplication` in a link, which is why Keeley's whole
+portfolio came back with nothing: their plan pages link to
+`<site>.securecafeapplicant.com/onlineleasing/.../rentaloptions/<unit>/<plan>`,
+and that page states "Lease term 12 months" beside the rent. The match now
+prefers a rental-options link, then `oleapplication`, then any other leasing
+link, and still refuses `residentservices`/`userlogin`.
+
+Every floor-plan page we already hold is also read for a term now
+(`findLeaseTerms`), so a site that says "12 month lease" on the plan itself
+needs no second fetch. A RANGE is deliberately not read: "terms ranging from 3
+to 24 months" is what a leasing office will discuss, not lengths on offer at the
+published rate, and it would put twenty-two chips on one card. That still
+becomes a note, as it did before.
+
+Measured against the live sites the same day:
+
+    Lofts at Euclid   7 of 7 units now carry [12]   was 0 of 7
+    Dorchester        10 of 10 carry [12], range note and concession intact — unchanged
+    Vivienne          still 0 of 34, and correctly so
+
+Vivienne publishes no floor-plan pages of its own, so its only leasing links are
+portal shells that render "Loading application..." and reveal a term only after
+a unit is chosen inside the app. Its acceptance case still expects no terms; the
+Lofts at Euclid case now REQUIRES them.
+
+Worth knowing before fetching securecafeapplicant.com again: plain curl gets a
+Cloudflare interstitial (403, "Just a moment..."), the free Jina reader returns
+the un-hydrated shell, and only Firecrawl renders it — one credit, and only the
+deeper rental-options URL is worth spending it on.
 
 ## The feature passes its own acceptance test
 

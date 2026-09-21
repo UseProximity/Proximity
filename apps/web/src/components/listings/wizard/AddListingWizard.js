@@ -43,7 +43,6 @@ const blankForm = (user) => ({
   furnished: false,
   sublease_friendly: false,
   twenty_one_plus: false,
-  move_in_date: "",
   contact_email: user?.email ?? "",
   contact_phone: user?.phone ?? "",
   contact_name: user?.name ?? "",
@@ -67,8 +66,6 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
   const [fieldError, setFieldError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [visited, setVisited] = useState(() => new Set());
-  // "now" | "date" — the required one-tap availability ask on the basics step.
-  const [availabilityMode, setAvailabilityMode] = useState("now");
 
   // Photos staged in the browser; uploaded to R2 after the listing is created.
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -93,6 +90,19 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
   const [importQueue, setImportQueue] = useState([]);
   // Rent specials read off the landlord's site, published with the listing.
   const [concessions, setConcessions] = useState([]);
+  /*
+   * Where this listing is being read from, kept for the publish call.
+   *
+   * Two URLs, because they answer different questions later: the property's own
+   * page is what the weekly check re-reads for rents and availability, and the
+   * pasted page is the company's list of properties, where this one is expected
+   * to keep appearing. A building that quietly drops off its landlord's own list
+   * has almost certainly been let.
+   *
+   * `importSourceUrl` is per property, so it is rewritten on every queue
+   * advance; `importPastedUrl` is the same for the whole batch.
+   */
+  const importSourceUrl = useRef(null);
   const importPastedUrl = useRef(null);
   const prefetchRef = useRef(null);
   const importBatch = useRef({ done: 0, total: 0 });
@@ -153,7 +163,6 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           (saved.units ?? []).some((u) => u.bedrooms !== "" || u.rent !== ""));
       if (!hasContent) return;
       setForm({ ...blankForm(user), ...saved.form });
-      if (saved.form?.move_in_date) setAvailabilityMode("date");
       setUnits(saved.units?.length ? saved.units : [emptyUnit()]);
       setCustomAmenities(saved.customAmenities ?? []);
       setCoords(saved.coords ?? { lat: null, lng: null });
@@ -226,10 +235,10 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setImportQueue([]);
     prefetchRef.current = null;
     importBatch.current = { done: 0, total: 0 };
-    setAvailabilityMode("now");
     setResumed(false);
     setError(null);
     setVisited(new Set());
+    importSourceUrl.current = null;
     importPastedUrl.current = null;
     setImportSeed("");
     setImportBoxKey((k) => k + 1);
@@ -583,16 +592,6 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     for (const [key, val] of Object.entries(importable)) {
       if (val != null && val !== "") marked.add(key);
     }
-    // Earliest dated unit availability prefills the move-in date ("now"
-    // means available immediately, which an empty date already implies).
-    const availDates = (listing.units ?? [])
-      .map((u) => u.availableFrom)
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
-      .sort();
-    if (availDates[0]) {
-      marked.add("move_in_date");
-      setAvailabilityMode("date");
-    }
 
     setForm((f) => {
       const next = { ...f };
@@ -600,7 +599,6 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
         if (val != null && val !== "") next[key] = val;
       }
       if (listing.furnished != null) next.furnished = listing.furnished;
-      if (availDates[0] && !f.move_in_date) next.move_in_date = availDates[0];
       const AMENITIES = new Set(f.amenities);
       (listing.amenities ?? []).forEach((a) => AMENITIES.add(a));
       next.amenities = [...AMENITIES];
@@ -734,6 +732,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     if (floorPlanImports.length) importFloorPlans(floorPlanImports);
     setImportedFields(marked);
 
+    importSourceUrl.current = sourceUrl ?? null;
     importPastedUrl.current = pastedUrl ?? importPastedUrl.current;
     setImportQueue(queue);
     prefetchNext(queue);
@@ -776,16 +775,8 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
 
     // Jump to the first gap. Steps the import satisfied count as visited so
     // the progress bar honestly shows them done (endowed progress you earned).
-    //
-    // Availability is the exception. It's a required signal, and the only way
-    // an import can answer it is a dated unit availability — everything else is
-    // us guessing. Counting "basics" as satisfied without one skipped the ask
-    // entirely and published every imported listing with an empty move_in_date,
-    // i.e. "available now" by default, which is the opposite of the deliberate
-    // signal this step exists to collect.
-    const availabilityImported = !!availDates[0];
     const importDone = new Set(["perks", "photos"]);
-    if (availabilityImported) importDone.add("basics");
+    if (listing.home_type) importDone.add("basics");
     if (listing.address) importDone.add("address");
     if (listing.description) importDone.add("description");
     setVisited((prev) => new Set([...prev, ...importDone]));
@@ -795,7 +786,7 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
       nextUnits.every((u) => (u.leaseTermMonths ?? []).length > 0);
     const firstGap = !listing.address
       ? "address"
-      : !availabilityImported
+      : !listing.home_type
       ? "basics"
       : !unitsOk
       ? "units"
@@ -833,14 +824,34 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     }
   }, []);
 
+  /*
+   * The earliest day any apartment on offer opens up. Availability belongs to
+   * the lease, so it is collected per apartment on the units step — this only
+   * summarises it for the property row.
+   */
+  const earliestUnitAvailability = () => {
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    const dates = [];
+    for (const u of units.filter((u) => u.available !== false)) {
+      const numbers = String(u.unitNumbers ?? "")
+        .split(/[,\s]+/)
+        .filter(Boolean);
+      const values = numbers.length
+        ? numbers.map((n) => (u.unitAvailability ?? {})[n] || "")
+        : [u.availableFrom ?? ""];
+      // A blank means available now, which beats every date on the page.
+      if (values.some((d) => !ISO_DATE.test(d))) return null;
+      dates.push(...values);
+    }
+    return dates.sort()[0] ?? null;
+  };
+
   const validateStep = (id) => {
     if (id === "address") {
       if (!form.address.trim()) return "Enter the property address to continue.";
       if (existingProperty && unitSelection.mode === "existing" && !unitSelection.unitId)
         return "Pick which unit this lease is for, or choose to add a new unit.";
     }
-    if (id === "basics" && availabilityMode === "date" && !form.move_in_date)
-      return "Pick the date it becomes available, or tap Available now.";
     if (id === "units") {
       if (units.length === 0) return "Add at least one unit.";
       if (units.some((u) => u.bedrooms === "" || u.bathrooms === ""))
@@ -1041,10 +1052,14 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
           // A property exists at this address and the user chose to add a new
           // unit to it — attach rather than create a second property row.
           ...(existingProperty ? { attachToListingId: existingProperty.id } : {}),
-          // /api/addListing reads camelCase moveInDate; the snake_case
-          // move_in_date in ...form was silently dropped (long-standing
-          // create-path bug — edit always saved it).
-          moveInDate: form.move_in_date || null,
+          // Availability is asked per apartment, and unit_leases.available_from
+          // is what students filter on and what the listing page shows. The
+          // property row carries the earliest of those so listings.move_in_date
+          // still means something to anything reading it.
+          moveInDate: earliestUnitAvailability(),
+          // Where this came from, so the weekly source check can find it again.
+          sourceUrl: importSourceUrl.current || null,
+          indexUrl: importPastedUrl.current || null,
           contactEmail: form.contact_email || null,
           contactPhone: form.contact_phone || null,
           contactName: form.contact_name || null,
@@ -1204,7 +1219,6 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     setCoords({ lat: null, lng: null });
     setImportedFields(new Set());
     setVisited(new Set());
-    setAvailabilityMode("now");
     while (queue.length) {
       const target = queue[0];
       queue = queue.slice(1);
@@ -1284,8 +1298,6 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
     removeStagedByUrl,
     coords,
     setCoords,
-    availabilityMode,
-    setAvailabilityMode,
     streetView,
     streetViewDeleted,
     setStreetViewDeleted,

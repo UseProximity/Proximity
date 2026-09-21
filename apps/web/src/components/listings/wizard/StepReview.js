@@ -41,6 +41,27 @@ function Row({ label, value, onChange, missing }) {
 export default function StepReview({ w }) {
   const { form, units } = w;
 
+  /*
+   * When this one opens up, in the same words the units step used.
+   *
+   * A blank date there means "available now" — it shows a green pill saying so
+   * — and a floor plan can hold one apartment free today and another that is
+   * not, so the soonest date on its own would be a lie about the plan.
+   */
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const availability = (u) => {
+    const numbers = String(u.unitNumbers ?? "")
+      .split(/[,\s]+/)
+      .filter(Boolean);
+    const values = numbers.length
+      ? numbers.map((n) => (u.unitAvailability ?? {})[n] || "")
+      : [u.availableFrom ?? ""];
+    const dated = values.filter((d) => ISO_DATE.test(d)).sort();
+    if (!dated.length) return "available now";
+    if (dated.length < values.length) return `some now, others from ${dated[0]}`;
+    return new Set(dated).size > 1 ? `from ${dated[0]} onward` : `from ${dated[0]}`;
+  };
+
   const unitLines = units.map((u, i) => {
     const bits = [];
     if (u.bedrooms !== "") bits.push(Number(u.bedrooms) === 0 ? "Studio" : `${u.bedrooms} bed`);
@@ -53,7 +74,7 @@ export default function StepReview({ w }) {
         {bits.join(" · ")}
         {terms ? ` · ${terms}` : ""}
         {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
-        {u.available === false ? " · not available" : ""}
+        {u.available === false ? " · not available" : ` · ${availability(u)}`}
       </p>
     );
   });
@@ -99,11 +120,7 @@ export default function StepReview({ w }) {
             form.home_type.charAt(0).toUpperCase() + form.home_type.slice(1)
           }${form.furnished ? " · Furnished" : ""}${
             form.sublease_friendly ? " · Sublease friendly" : ""
-          }${form.twenty_one_plus ? " · 21+" : ""}${
-            form.move_in_date
-              ? ` · Available from ${form.move_in_date}`
-              : " · Available now"
-          }`}
+          }${form.twenty_one_plus ? " · 21+" : ""}`}
           onChange={() => w.goTo("basics")}
         />
         <Row
