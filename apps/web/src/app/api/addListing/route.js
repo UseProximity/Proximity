@@ -14,6 +14,7 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { attachSourceUrl } from "@/lib/sourceSync/attach";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -117,6 +118,15 @@ export async function POST(req) {
     const subleaseFriendly = body.subleaseFriendly ?? body.sublease_friendly;
     const twenty_one_plus = body.twenty_one_plus ?? body.twentyOnePlus;
     const moveInDate = body.moveInDate || body.move_in_date || null;
+    /*
+     * Where this listing was read from. `sourceUrl` is the property's own page,
+     * `indexUrl` the company page the landlord pasted when that page listed
+     * several properties. Both are what the weekly source check re-reads later,
+     * so a listing that came in from a website is never left without a way back
+     * to it.
+     */
+    const sourceUrl = body.sourceUrl || body.source_url || null;
+    const indexUrl = body.indexUrl || body.index_url || null;
     const contactEmail = body.contactEmail || body.contact_email || null;
     const contactPhone = body.contactPhone || body.contact_phone || null;
     const contactName = body.contactName || body.contact_name || null;
@@ -728,6 +738,36 @@ export async function POST(req) {
       }
     }
 
+
+    /*
+     * Remember the page this came from, so it can be re-read later.
+     *
+     * Best-effort in the strongest sense: a listing must never fail to publish
+     * because we could not record where it was read from. Only for a property
+     * this request actually created — attaching an offering to someone else's
+     * building must not re-point their monitor at the page this landlord
+     * happened to paste.
+     */
+    if (sourceUrl && createdListingHere) {
+      try {
+        const attached = await attachSourceUrl({
+          listingId,
+          rawUrl: sourceUrl,
+          indexUrl,
+          userId: ownerId,
+        });
+        if (!attached.ok) {
+          console.error(`[addListing] Failed to record source URL: ${attached.reason}`);
+        } else {
+          console.log(
+            `[addListing] source recorded: ${attached.kind} ${attached.url}` +
+              (attached.indexUrl ? ` (listed on ${attached.indexUrl})` : "")
+          );
+        }
+      } catch (srcErr) {
+        console.error("[addListing] Failed to record source URL:", srcErr?.message);
+      }
+    }
 
     // Persist driving times (best-effort; never blocks listing creation). Written
     // after the create RPC rather than inside it — the service-role client bypasses
