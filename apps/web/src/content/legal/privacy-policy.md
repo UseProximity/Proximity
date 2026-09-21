@@ -18,7 +18,7 @@ students at universities in the United States, and are intended for people **18 
 age or older**.
 
 **Privacy contact:** info@useproximity.org
-**Postal address:** Proximity LLC, 70 Greendale Rd, Scarsdale, NY 10583-2133
+**Postal address:** Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 
 ---
 
@@ -562,5 +562,5 @@ an update takes effect means you accept the revised policy.
 ## 13. Contact us
 
 **Proximity LLC**
-70 Greendale Rd, Scarsdale, NY 10583-2133
+117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 Privacy and general enquiries: **info@useproximity.org**
