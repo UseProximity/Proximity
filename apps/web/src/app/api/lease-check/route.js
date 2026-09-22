@@ -17,7 +17,7 @@ import { auth } from "@/auth";
 import { isProdData } from "@/lib/appEnv";
 import { analyzeLease, Anthropic, LEASE_MODEL } from "@/lib/leaseCheck/analyzeLease";
 import { buildPropertyContext } from "@/lib/leaseCheck/propertyContext";
-import { leaseCheckRateLimited } from "@/lib/leaseCheck/rateLimit";
+import { leaseCheckRateKey, leaseCheckRateLimited } from "@/lib/leaseCheck/rateLimit";
 
 // Analysis of a scanned lease takes 60-120s. Requires Fluid compute (300s cap on the
 // current plan) — the legacy serverless mode would kill this at 60s.
@@ -62,15 +62,33 @@ function countPdfPages(buffer) {
   return matches ? matches.length : null;
 }
 
+// Rebuilds the same file_name/file_type a signed-in POST would have stored, from the
+// R2 keys alone — used when PUT creates the row itself (the anonymous path below,
+// where POST never had a user to attribute a row to).
+function fileMetaFromKeys(keys) {
+  const types = keys.map(mediaTypeForKey);
+  const hasPdf = types.includes("application/pdf");
+  const hasImage = types.some((t) => t && t !== "application/pdf");
+  const fileType = hasPdf && hasImage ? "mixed" : hasPdf ? "pdf" : "images";
+  const fileName =
+    keys.length === 1
+      ? (keys[0].split("/").pop() || "upload").replace(/^[0-9a-f-]{36}-/, "").slice(0, 200)
+      : `${keys.length} photos`;
+  return { fileName, fileType };
+}
+
 // POST /api/lease-check — body { files: [{ name, type, size }] }
+//
+// Signed-out visitors may call this: Lease Check lets anyone upload and fill out the
+// whole form, and only gates the actual (expensive) analysis behind sign-in (PUT,
+// below). Rate limiting still applies, keyed by IP instead of user id, so an
+// anonymous caller can't hammer R2 storage/bandwidth for free.
 export async function POST(req) {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const userId = session?.user?.id ?? null;
 
-    if (leaseCheckRateLimited(session.user.id)) {
+    if (leaseCheckRateLimited(leaseCheckRateKey(req, userId))) {
       return Response.json(
         { error: "That's a lot of leases. Try again in an hour." },
         { status: 429 }
@@ -101,35 +119,43 @@ export async function POST(req) {
     const hasImage = files.some((f) => f.type !== "application/pdf");
     const fileType = hasPdf && hasImage ? "mixed" : hasPdf ? "pdf" : "images";
 
-    const { data: row, error: insertError } = await supabase
-      .from("lease_checks")
-      .insert({
-        user_id: session.user.id,
-        file_name:
-          files.length === 1
-            ? files[0].name.slice(0, 200)
-            : `${files.length} photos`,
-        file_type: fileType,
-      })
-      .select("id")
-      .single();
-    if (insertError || !row) {
-      console.error("[lease-check] insert failed:", insertError);
-      return Response.json({ error: "Couldn't start the check" }, { status: 500 });
+    let leaseCheckId;
+    if (userId) {
+      const { data: row, error: insertError } = await supabase
+        .from("lease_checks")
+        .insert({
+          user_id: userId,
+          file_name:
+            files.length === 1
+              ? files[0].name.slice(0, 200)
+              : `${files.length} photos`,
+          file_type: fileType,
+        })
+        .select("id")
+        .single();
+      if (insertError || !row) {
+        console.error("[lease-check] insert failed:", insertError);
+        return Response.json({ error: "Couldn't start the check" }, { status: 500 });
+      }
+      leaseCheckId = row.id;
+    } else {
+      // Signed-out: no row yet, and none until PUT actually runs the analysis after
+      // sign-in — this id only needs to namespace this upload's R2 keys until then.
+      leaseCheckId = crypto.randomUUID();
     }
 
     const bucket = getBucket();
     const presigned = await Promise.all(
       files.map(async ({ name, type }) => {
         const safeName = (name || "upload").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 100);
-        const key = `lease-checks/tmp/${row.id}/${crypto.randomUUID()}-${safeName}`;
+        const key = `lease-checks/tmp/${leaseCheckId}/${crypto.randomUUID()}-${safeName}`;
         const command = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: type });
         const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 });
         return { uploadUrl, key };
       })
     );
 
-    return Response.json({ leaseCheckId: row.id, presigned });
+    return Response.json({ leaseCheckId, presigned });
   } catch (error) {
     console.error("[lease-check] presign error:", error);
     return Response.json({ error: "Couldn't start the check" }, { status: 500 });
@@ -155,18 +181,22 @@ export async function PUT(req) {
       return Response.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    // Never trust the client's leaseCheckId — the row must belong to this user.
-    const { data: check } = await supabase
+    /*
+     * Never trust the client's leaseCheckId — a row is only ever matched (and later
+     * updated) if it belongs to this user. A row that doesn't exist yet is the
+     * signed-out path: POST never created one (see above), so this is the first time
+     * we know who to credit the check to. It's created below, after analysis, instead
+     * of here — an id with no matching R2 objects still fails at the fetch loop
+     * beneath, the same as any other bad request.
+     */
+    const { data: existingCheck } = await supabase
       .from("lease_checks")
       .select("id, summary")
       .eq("id", leaseCheckId)
       .eq("user_id", session.user.id)
       .is("deleted_at", null)
       .maybeSingle();
-    if (!check) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-    if (check.summary != null) {
+    if (existingCheck?.summary != null) {
       return Response.json({ error: "Already analyzed" }, { status: 409 });
     }
 
@@ -237,21 +267,36 @@ export async function PUT(req) {
 
     // Persist results only. Deliberately NOT stored: the file, the address (a student's
     // home address), rent, landlord name — used within this request and discarded.
-    const { error: updateError } = await supabase
-      .from("lease_checks")
-      .update({
-        flags: analysis.flags,
-        summary: analysis.summary,
-        page_count: pageCount || null,
-        unreadable_pages: analysis.unreadablePages,
-        model: LEASE_MODEL,
-        matched_listing_id: context.listing?.id ?? null,
-        match_confidence: context.matchConfidence,
-      })
-      .eq("id", leaseCheckId)
-      .eq("user_id", session.user.id);
-    if (updateError) {
-      console.error("[lease-check] persist failed:", updateError);
+    const resultFields = {
+      flags: analysis.flags,
+      summary: analysis.summary,
+      page_count: pageCount || null,
+      unreadable_pages: analysis.unreadablePages,
+      model: LEASE_MODEL,
+      matched_listing_id: context.listing?.id ?? null,
+      match_confidence: context.matchConfidence,
+    };
+    if (existingCheck) {
+      const { error: updateError } = await supabase
+        .from("lease_checks")
+        .update(resultFields)
+        .eq("id", leaseCheckId)
+        .eq("user_id", session.user.id);
+      if (updateError) {
+        console.error("[lease-check] persist failed:", updateError);
+      }
+    } else {
+      const { fileName, fileType } = fileMetaFromKeys(keys);
+      const { error: insertError } = await supabase.from("lease_checks").insert({
+        id: leaseCheckId,
+        user_id: session.user.id,
+        file_name: fileName,
+        file_type: fileType,
+        ...resultFields,
+      });
+      if (insertError) {
+        console.error("[lease-check] persist failed:", insertError);
+      }
     }
 
     return Response.json({

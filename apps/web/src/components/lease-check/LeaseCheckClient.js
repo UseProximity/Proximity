@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Upload, FileText, X, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import { trackEvent } from "@/utils/analytics";
@@ -8,6 +9,8 @@ import FlagCard from "@/components/lease-check/FlagCard";
 import PropertyContext from "@/components/lease-check/PropertyContext";
 import LeaseDisclaimer from "@/components/lease-check/LeaseDisclaimer";
 import PastChecks from "@/components/lease-check/PastChecks";
+import LeaseAuthGate from "@/components/lease-check/LeaseAuthGate";
+import { savePendingCheck, loadPendingCheck, clearPendingCheck } from "@/lib/leaseCheck/pendingCheck";
 
 const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp,image/heic";
 const ALLOWED_TYPES = new Set(ACCEPT.split(","));
@@ -90,13 +93,18 @@ const PHASE_LABELS = {
 };
 
 export default function LeaseCheckClient() {
+  const { data: session, status: sessionStatus } = useSession();
+  const signedIn = !!session;
   const [files, setFiles] = useState([]);
-  const [phase, setPhase] = useState("idle"); // idle | uploading | reading | checking | done
+  const [phase, setPhase] = useState("idle"); // idle | uploading | auth | reading | checking | done
   const [pct, setPct] = useState(0);
   const [result, setResult] = useState(null);
   const [pastChecks, setPastChecks] = useState([]);
   const [viewingPast, setViewingPast] = useState(null);
+  const [pendingSaved, setPendingSaved] = useState(true);
+  const [resumed, setResumed] = useState(false);
   const creepTimer = useRef(null);
+  const resumeStarted = useRef(false);
 
   useEffect(() => {
     fetch("/api/lease-check")
@@ -107,6 +115,90 @@ export default function LeaseCheckClient() {
   }, []);
 
   const busy = phase === "uploading" || phase === "reading" || phase === "checking";
+  // Also locks the dropzone while the auth gate is open — the upload it's waiting on
+  // already happened, so there's nothing left to add until that's resolved.
+  const locked = busy || phase === "auth";
+
+  const fail = (reason, message) => {
+    clearInterval(creepTimer.current);
+    trackEvent("Lease Check Failed", { reason });
+    toast.error(message);
+    setPhase("idle");
+    setPct(0);
+  };
+
+  // The long wait — hits R2 then Claude. Shared by the immediate (already signed in)
+  // path and by the resume-after-sign-in path below; both start from an upload that's
+  // already sitting in R2, so all either needs is the id and keys.
+  const runAnalyze = async (leaseCheckId, keys) => {
+    setResult(null);
+    setViewingPast(null);
+    setPhase("reading");
+    setPct((p) => Math.max(p, 30));
+    startCreep();
+    const startedAt = Date.now();
+    try {
+      const analyzeRes = await fetch("/api/lease-check", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leaseCheckId, keys }),
+      });
+      const data = await analyzeRes.json();
+      clearInterval(creepTimer.current);
+      // The R2 objects are deleted server-side whether analysis succeeds or fails
+      // (route.js's finally block), so there's nothing left here to retry against.
+      clearPendingCheck();
+      if (!analyzeRes.ok) {
+        return fail(`analyze_${analyzeRes.status}`, data.error || "Something broke. Try again.");
+      }
+
+      setPhase("checking");
+      setPct(96);
+      const sortedFlags = [...data.flags].sort(
+        (a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3)
+      );
+      setResult({ ...data, flags: sortedFlags });
+      setPhase("done");
+      setPct(100);
+      setFiles([]);
+      trackEvent("Lease Check Completed", {
+        flagCount: data.flags.length,
+        redCount: data.flags.filter((f) => f.severity === "red").length,
+        matchConfidence: data.property?.matchConfidence ?? "none",
+        durationMs: Date.now() - startedAt,
+      });
+      fetch("/api/lease-check")
+        .then((res) => (res.ok ? res.json() : { checks: [] }))
+        .then((history) => setPastChecks(history.checks || []))
+        .catch(() => {});
+    } catch (err) {
+      clearPendingCheck();
+      fail("client_error", err?.message || "Something broke. Try again.");
+    }
+  };
+
+  /*
+   * A lease uploaded before sign-in survives the reload sign-in/sign-up causes (see
+   * lib/leaseCheck/pendingCheck). Once the session is known — not "loading" — either
+   * resume straight into analysis (already signed in by the time we check, e.g. the
+   * verification-email link landed here already authenticated) or reopen the gate so
+   * a plain page reload while still signed out doesn't strand them looking at an
+   * empty uploader.
+   */
+  useEffect(() => {
+    if (resumeStarted.current || sessionStatus === "loading") return;
+    resumeStarted.current = true;
+    const pending = loadPendingCheck();
+    if (!pending) return;
+    setResumed(true);
+    if (signedIn) {
+      runAnalyze(pending.leaseCheckId, pending.keys);
+    } else {
+      setPhase("auth");
+    }
+    // Runs once the session is known, against whatever was in storage at that point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionStatus]);
 
   const addFiles = (fileList) => {
     const incoming = Array.from(fileList || []);
@@ -133,18 +225,11 @@ export default function LeaseCheckClient() {
     }, 1000);
   };
 
-  const fail = (reason, message) => {
-    clearInterval(creepTimer.current);
-    trackEvent("Lease Check Failed", { reason });
-    toast.error(message);
-    setPhase("idle");
-    setPct(0);
-  };
-
   const runCheck = async () => {
     if (files.length === 0 || busy) return;
     setResult(null);
     setViewingPast(null);
+    setResumed(false);
     setPhase("uploading");
     setPct(2);
 
@@ -153,8 +238,8 @@ export default function LeaseCheckClient() {
     trackEvent("Lease Check Started", {
       fileCount: files.length,
       fileType: hasPdf && hasImage ? "mixed" : hasPdf ? "pdf" : "images",
+      signedIn,
     });
-    const startedAt = Date.now();
 
     try {
       // 1. Compress images client-side (PDFs pass through).
@@ -167,7 +252,9 @@ export default function LeaseCheckClient() {
         return fail("too_large", "That's over 32MB even after compressing. Trim it down.");
       }
 
-      // 2. Get presigned upload URLs.
+      // 2. Get presigned upload URLs. Works signed-out too — the whole form can be
+      // filled and uploaded before an account exists; only step 4 (the actual AI
+      // read) requires one.
       const presignRes = await fetch("/api/lease-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,43 +278,29 @@ export default function LeaseCheckClient() {
         if (!uploadRes.ok) return fail("upload", "Upload failed. Try again.");
         setPct(2 + ((i + 1) / prepared.length) * 28);
       }
+      const keys = presigned.map((p) => p.key);
 
-      // 4. Analyze. This is the long wait — keep the bar honest but moving.
-      setPhase("reading");
-      startCreep();
-      const analyzeRes = await fetch("/api/lease-check", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leaseCheckId, keys: presigned.map((p) => p.key) }),
-      });
-      const data = await analyzeRes.json();
-      clearInterval(creepTimer.current);
-      if (!analyzeRes.ok) {
-        return fail(`analyze_${analyzeRes.status}`, data.error || "Something broke. Try again.");
+      // 4. The lease is uploaded and the form is done — that's everything an account
+      // isn't needed for. Hold onto it and ask for one before running the (paid,
+      // expensive) analysis instead of calling it now.
+      if (!signedIn) {
+        setPendingSaved(savePendingCheck({ leaseCheckId, keys }));
+        setPhase("auth");
+        return;
       }
 
-      setPhase("checking");
-      setPct(96);
-      const sortedFlags = [...data.flags].sort(
-        (a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3)
-      );
-      setResult({ ...data, flags: sortedFlags });
-      setPhase("done");
-      setPct(100);
-      setFiles([]);
-      trackEvent("Lease Check Completed", {
-        flagCount: data.flags.length,
-        redCount: data.flags.filter((f) => f.severity === "red").length,
-        matchConfidence: data.property?.matchConfidence ?? "none",
-        durationMs: Date.now() - startedAt,
-      });
-      fetch("/api/lease-check")
-        .then((res) => (res.ok ? res.json() : { checks: [] }))
-        .then((history) => setPastChecks(history.checks || []))
-        .catch(() => {});
+      await runAnalyze(leaseCheckId, keys);
     } catch (err) {
       fail("client_error", err?.message || "Something broke. Try again.");
     }
+  };
+
+  const cancelAuthGate = () => {
+    clearPendingCheck();
+    setPhase("idle");
+    setPct(0);
+    setFiles([]);
+    setResumed(false);
   };
 
   const copyQuestions = () => {
@@ -272,7 +345,7 @@ export default function LeaseCheckClient() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              if (!busy) addFiles(e.dataTransfer.files);
+              if (!locked) addFiles(e.dataTransfer.files);
             }}
           >
             <input
@@ -280,7 +353,7 @@ export default function LeaseCheckClient() {
               accept={ACCEPT}
               multiple
               className="hidden"
-              disabled={busy}
+              disabled={locked}
               onChange={(e) => {
                 addFiles(e.target.files);
                 e.target.value = "";
@@ -307,7 +380,7 @@ export default function LeaseCheckClient() {
                   <span className="shrink-0 text-xs text-gray-400">
                     {(file.size / (1024 * 1024)).toFixed(1)}MB
                   </span>
-                  {!busy && (
+                  {!locked && (
                     <button
                       type="button"
                       onClick={() => removeFile(i)}
@@ -322,8 +395,15 @@ export default function LeaseCheckClient() {
             </ul>
           )}
 
-          {busy ? (
+          {phase === "auth" ? (
+            <LeaseAuthGate saved={pendingSaved} onCancel={cancelAuthGate} />
+          ) : busy ? (
             <div className="mt-4">
+              {resumed && phase === "reading" && (
+                <p className="mb-2 text-xs text-gray-500">
+                  You&apos;re signed in. Picking up the lease you uploaded and running the check.
+                </p>
+              )}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                   <div
