@@ -17,7 +17,7 @@ export default function ListDetailPanel({
   return (
     <div>
       {/* Sticky top banner */}
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4 py-3">
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4 py-3">
         <button
           onClick={onBack}
           aria-label="Back to listings"
