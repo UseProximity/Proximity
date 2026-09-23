@@ -81,8 +81,10 @@ or Google.
   email address and phone number are not. We use them to route inquiries to you, and they
   are not included in the listing page or in the data our website and apps receive.
 - **What you write in a listing**: the title, the description, and any other free text you
-  enter are published exactly as you write them. **If you put an email address, a phone
-  number, or a link in the description, it is public**, and search engines may index it.
+  enter are published exactly as you write them. We never rewrite your words. We do refuse
+  to save a description that contains an email address, a phone number, a link, or a social
+  handle, and ask you to edit it, because those belong in the contact fields above.
+  **Anything that does save is public**, and search engines may index it.
 - **Photos and floor plans** you upload for a listing.
 - **Reviews** of off-campus listings and on-campus dorms: star ratings, category ratings,
   written text, and the display name shown with the review. You may post a review
@@ -100,8 +102,9 @@ or Google.
 - **Inquiries to landlords**: the first name, last name, email address, phone number, and
   message you submit through a listing's contact form. We deliver this by email to the
   landlord, with your email address as the reply-to, and send a confirmation copy to you.
-  We record *that* you contacted a listing; we do not store the message text in our
-  database.
+  Both emails are sent from our own account, so **a copy of each stays in that account**,
+  as it would in any mailbox you send from. In our database we record only *that* you
+  contacted a listing, not the message text.
 - **Messages sent through Proximity**: where the Services let you message another user
   about a listing, we store the conversation. That means the text of each message, the
   listing it concerns, any file or photo attached to it, who sent it and when, whether it
@@ -184,11 +187,12 @@ analysis. It is never kept beyond that.
 We hold a limited amount of information about some people who have never signed up. This
 section explains what, why, and how to have it removed.
 
-- **Landlord and property contact details.** Where we compile a listing from public
-  sources, or where a student names their landlord while leaving a review, we hold the
-  contact details for that owner or manager so we can reach them and so we can identify
-  the property. Contact details published on a live listing are public; details given to
-  us in a review are used internally and are not displayed.
+- **Landlord and property contact details.** Where we set a listing up at an owner's
+  request before they have an account, or where a student names their landlord while
+  leaving a review, we hold the contact details for that owner or manager so we can reach
+  them and so we can identify the property. The contact name on a live listing is public;
+  the email address and phone number are used to route inquiries and are not displayed,
+  and details given to us in a review are used internally and are not displayed.
 
 **How long we keep it.** Landlord and property contact details are kept while the
 property is part of the marketplace.
@@ -469,7 +473,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
 | Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
-| Email sent through the Services | Delivered; the message body is not retained in our database. A copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
+| Email sent through the Services | The message body is not retained in our database. Because we send from our own email account, a copy of each message stays in that account, and a copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
 | Aggregate listing metrics | Retained indefinitely in aggregate, non-identifying form. |
 | Internal change history | Retained for security and audit purposes. Personal data inside an entry is erased on account deletion. |
 | Database backups | Retained for a limited period and then expire (Section 7). |

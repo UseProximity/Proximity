@@ -65,8 +65,9 @@ account's type where it is clearly wrong or is being used to get around these Te
 This matters more here than on most platforms, so we want to be direct about it.
 
 - **We do not verify listings.** Rent, availability, photos, square footage, amenities, lease
-  terms, and everything else on a listing come from the person who posted it or from the
-  sources described in Section 7. We do not independently confirm any of it.
+  terms, and everything else on a listing come from the landlord, whether they entered it
+  themselves, gave us a page to build it from, or asked us to set it up for them (Sections 6
+  and 7). We do not independently confirm any of it.
 - **We do not verify landlords or students.** We do not run background checks, credit checks,
   identity verification, or license checks on anyone.
 - **We do not inspect properties.** We have never visited most of the properties listed.
@@ -112,10 +113,18 @@ If you post a listing, you represent and agree that:
 students can see who they are dealing with. The contact email address and phone number you
 give are not shown on the listing: we use them to route inquiries to you.
 
-Everything else you write is published exactly as you type it. If you put an email address,
-a phone number, or a link in the description, it is public, and search engines may index
-it. Use the contact fields instead, and do not write anything into a description that you
-are not willing to make public.
+Everything else you write is published exactly as you type it: we never rewrite your words.
+We do refuse to save a description containing an email address, a phone number, a link, or a
+social handle, and ask you to edit it instead, because those belong in the contact fields
+above. Anything that does save is public and search engines may index it, so do not write
+anything into a description that you are not willing to make public.
+
+**Building a listing from your own web page.** Rather than typing everything in, you can give
+us the address of your own property website or an existing listing of yours. We fetch the
+public content of that page and use AI to pre-fill a draft, using only images that appeared
+on the page. Nothing is saved until you review the draft field by field and submit it, so the
+listing is still yours and you are still the one representing it. We do this only for a page
+you give us, for your own property.
 
 **Keeping listings fresh.** Proximity may email you from time to time to ask whether a
 listing is still available, using a one-click link that does not require signing in. If a
@@ -135,20 +144,27 @@ up after you do.
 If you delete your account, a listing you share with another owner stays live under them,
 and your published contact details on it are replaced with theirs. See Section 17.
 
-## 7. Listings we compile from public sources
+## 7. Listings we set up for a landlord
 
-Not every listing on Proximity was posted by an account holder. We also compile listings for
-off-campus properties from publicly available sources, including the contact details a
-property already advertises publicly.
+Not every listing was typed in by the person who owns the property. Where a landlord asks us
+to, we will set the listing up for them from the details and contact information they give
+us or point us to, and then hand it over.
 
-If your property appears on Proximity this way:
+**We do not list a property nobody asked us to list.** We do not scrape listing sites,
+property aggregators, or the web at large looking for properties to put on Proximity. A
+listing exists because its owner asked for it, or because they created it themselves.
 
-- **It does not mean you use Proximity** or have agreed to these Terms. An unclaimed listing
-  creates no agreement between us.
-- **You can claim it.** Create a landlord account and email info@useproximity.org, and we
-  will connect the listing to your account so you control it.
+Earlier on, that permission was usually given verbally or by email rather than in writing.
+
+If your property is on Proximity and you did not ask for it to be, or you no longer want it
+there:
+
 - **You can have it removed.** Email info@useproximity.org and we will remove the listing.
   You do not need an account to ask, and you do not need to give a reason.
+- **You can claim it instead.** Create a landlord account and email info@useproximity.org,
+  and we will connect the listing to your account so you control it.
+- **A listing we set up is not an agreement.** Until you create an account, these Terms
+  create no agreement between you and us.
 
 We aim to act on claim and removal requests promptly.
 
