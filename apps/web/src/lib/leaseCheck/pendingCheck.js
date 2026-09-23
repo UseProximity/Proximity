@@ -11,7 +11,7 @@
  * The lease stays in the visitor's own browser until they are signed in. Nothing is
  * uploaded to R2 before then: the lease-check bucket is publicly readable, so an
  * upload abandoned at the sign-in step would otherwise sit there, holding a student's
- * name and home address, until the 1-day lifecycle rule removed it.
+ * name and home address, until the hourly cleanup cron removed it.
  *
  * Deliberately NOT keyed by user: it's written before anyone is signed in. MAX_AGE_MS
  * keeps a shared computer from holding someone's lease indefinitely.
