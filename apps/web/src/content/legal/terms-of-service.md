@@ -257,7 +257,8 @@ keep only the output. See Privacy Policy §1.7 for exactly what is and is not re
 When you send an inquiry through a listing, Proximity delivers it by email to the person
 renting that property. Your name, email address, phone number if you gave one, and your
 message go to them, and **your email address is set as the reply-to** so they can respond to
-you directly. We send you a confirmation copy.
+you directly. We send you a confirmation copy. If we cannot deliver your inquiry, we tell
+you so, so you can try again.
 
 We do not guarantee that anyone will reply, that a listing is still available, or that the
 recipient is who they say they are. Once your message is delivered, it is in their inbox and
@@ -409,7 +410,8 @@ landlords. At the end of the three years they are erased. Privacy Policy §§8 a
 what this means for you.
 
 **Withdrawn listings.** A listing that is withdrawn stops being published but is retained as
-marketplace history. When a listing is withdrawn because its only owner deleted their
+marketplace history. This includes a listing you delete yourself: deleting it removes it from
+the marketplace, and we keep it, with its reviews and inquiry records, in hidden form. When a listing is withdrawn because its only owner deleted their
 account, that owner's name, email address, and phone number are removed from it.
 
 **People without an account.** We hold limited information about some people who never

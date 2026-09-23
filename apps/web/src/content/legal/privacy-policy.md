@@ -177,9 +177,10 @@ A lease may contain your full legal name, signature, home address, and financial
 Please do not upload a document you are not comfortable sending to an AI provider for
 analysis. See Section 4.
 
-If you upload a file and then leave before the analysis finishes, the file is removed
-automatically by a scheduled cleanup rule on our storage rather than at the end of the
-analysis. It is never kept beyond that.
+If you upload a file and the analysis never runs (for example, you leave before it
+starts), the file is removed by a scheduled cleanup job instead. That job runs every hour
+and deletes any upload more than an hour old, so a lease file is never kept for more than
+24 hours.
 
 ### 1.8 If you do not have a Proximity account
 
@@ -482,7 +483,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Category | Retention |
 |---|---|
 | Account and profile data | While your account is active, then as described in Section 8. |
-| Listings | While published. On account deletion, sole-owned listings are withdrawn from the marketplace and retained in hidden form as marketplace history, with your contact details removed from them. |
+| Listings | While published. A listing you delete is removed from the marketplace and retained in hidden form as marketplace history, together with its reviews and inquiry records. On account deletion, sole-owned listings are withdrawn in the same way, with your contact details removed from them. |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
 | Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
 | Inquiry records and recorded leases | While your account is active, then for three years after deletion with your name and email address, then erased (Section 8). |
