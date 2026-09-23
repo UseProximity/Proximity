@@ -48,6 +48,15 @@ export async function POST(req) {
     return Response.json({ error: "A unit is required." }, { status: 400 });
   }
 
+  // Terms Section 5: a subletter confirms their own lease lets them sublet.
+  // The add flow asks with a checkbox; this holds the line for direct calls.
+  if (sublease && body.subleaseRightsConfirmed !== true) {
+    return Response.json(
+      { error: "Please confirm you have the right to sublet this place." },
+      { status: 400 }
+    );
+  }
+
   // A renter has to be able to reach someone. An offering with no contact is
   // unanswerable, so it is not one we accept — the client pre-fills the
   // landlord's own address, which makes this a guard rather than a chore.
