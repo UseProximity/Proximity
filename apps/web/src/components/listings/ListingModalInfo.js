@@ -637,20 +637,13 @@ function ReviewsTab({
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-0.5">
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <span
-                          key={s}
-                          className={
-                            s <= review.rating
-                              ? "text-red-500 text-sm"
-                              : "text-gray-200 text-sm"
-                          }
-                        >
-                          ★
-                        </span>
-                      ))}
-                    </div>
+                    <StarRatingInput
+                      value={review.rating}
+                      readOnly
+                      showValue={false}
+                      px={14}
+                      color="red"
+                    />
                   </div>
                   <div className="mb-3">
                     <p className="text-gray-700 text-sm leading-relaxed">
