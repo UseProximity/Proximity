@@ -53,6 +53,7 @@ const emptyLease = (email) => ({
   availableFrom: "",
   leaseTermMonths: [12],
   sublease: false,
+  subleaseRightsConfirmed: false,
   furnished: false,
   contactEmail: email ?? "",
   contactPhone: "",
@@ -263,6 +264,9 @@ export default function AddListingFlow({ user }) {
   }
   if (!lease.contactEmail.trim()) missing.push({ key: "contactEmail", label: "Contact email" });
   if (!lease.leaseTermMonths.length) missing.push({ key: "leaseTermMonths", label: "Lease length" });
+  if (lease.sublease && !lease.subleaseRightsConfirmed) {
+    missing.push({ key: "subleaseRightsConfirmed", label: "Sublease confirmation" });
+  }
 
   const missingKeys = new Set(missing.map((m) => m.key));
   // Fields are only marked once they have tried to publish — flagging an empty
@@ -299,6 +303,7 @@ export default function AddListingFlow({ user }) {
             rentIsPerPerson: lease.rentIsPerPerson,
             leaseTermMonths: lease.leaseTermMonths,
             sublease: lease.sublease,
+            subleaseRightsConfirmed: !!lease.subleaseRightsConfirmed,
             furnished: lease.furnished,
             available: true,
             availableFrom: lease.availableFrom || null,
@@ -342,6 +347,7 @@ export default function AddListingFlow({ user }) {
             longitude: place.longitude,
             latitude: place.latitude,
             lease_type: lease.sublease ? "Sublease" : "Standard",
+            subleaseRightsConfirmed: !!lease.subleaseRightsConfirmed,
             description: lease.description,
             furnished: lease.furnished,
             contactEmail: lease.contactEmail,
