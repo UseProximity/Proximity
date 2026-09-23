@@ -94,7 +94,10 @@ const PHASE_LABELS = {
 
 export default function LeaseCheckClient() {
   const { data: session, status: sessionStatus } = useSession();
-  const signedIn = !!session;
+  // A stale session cookie still yields a session object, just with a null user id,
+  // and the API treats that as signed out. Match it, or the visitor would skip the
+  // gate and hit a 401.
+  const signedIn = !!session?.user?.id;
   const [files, setFiles] = useState([]);
   const [phase, setPhase] = useState("idle"); // idle | uploading | auth | reading | checking | done
   const [pct, setPct] = useState(0);
@@ -115,8 +118,8 @@ export default function LeaseCheckClient() {
   }, []);
 
   const busy = phase === "uploading" || phase === "reading" || phase === "checking";
-  // Also locks the dropzone while the auth gate is open — the upload it's waiting on
-  // already happened, so there's nothing left to add until that's resolved.
+  // Also locks the dropzone while the auth gate is open: the files it is holding are
+  // the ones that will be checked, so changing them there would be lost on sign-in.
   const locked = busy || phase === "auth";
 
   const fail = (reason, message) => {
@@ -125,80 +128,8 @@ export default function LeaseCheckClient() {
     toast.error(message);
     setPhase("idle");
     setPct(0);
+    setResumed(false);
   };
-
-  // The long wait — hits R2 then Claude. Shared by the immediate (already signed in)
-  // path and by the resume-after-sign-in path below; both start from an upload that's
-  // already sitting in R2, so all either needs is the id and keys.
-  const runAnalyze = async (leaseCheckId, keys) => {
-    setResult(null);
-    setViewingPast(null);
-    setPhase("reading");
-    setPct((p) => Math.max(p, 30));
-    startCreep();
-    const startedAt = Date.now();
-    try {
-      const analyzeRes = await fetch("/api/lease-check", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leaseCheckId, keys }),
-      });
-      const data = await analyzeRes.json();
-      clearInterval(creepTimer.current);
-      // The R2 objects are deleted server-side whether analysis succeeds or fails
-      // (route.js's finally block), so there's nothing left here to retry against.
-      clearPendingCheck();
-      if (!analyzeRes.ok) {
-        return fail(`analyze_${analyzeRes.status}`, data.error || "Something broke. Try again.");
-      }
-
-      setPhase("checking");
-      setPct(96);
-      const sortedFlags = [...data.flags].sort(
-        (a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3)
-      );
-      setResult({ ...data, flags: sortedFlags });
-      setPhase("done");
-      setPct(100);
-      setFiles([]);
-      trackEvent("Lease Check Completed", {
-        flagCount: data.flags.length,
-        redCount: data.flags.filter((f) => f.severity === "red").length,
-        matchConfidence: data.property?.matchConfidence ?? "none",
-        durationMs: Date.now() - startedAt,
-      });
-      fetch("/api/lease-check")
-        .then((res) => (res.ok ? res.json() : { checks: [] }))
-        .then((history) => setPastChecks(history.checks || []))
-        .catch(() => {});
-    } catch (err) {
-      clearPendingCheck();
-      fail("client_error", err?.message || "Something broke. Try again.");
-    }
-  };
-
-  /*
-   * A lease uploaded before sign-in survives the reload sign-in/sign-up causes (see
-   * lib/leaseCheck/pendingCheck). Once the session is known — not "loading" — either
-   * resume straight into analysis (already signed in by the time we check, e.g. the
-   * verification-email link landed here already authenticated) or reopen the gate so
-   * a plain page reload while still signed out doesn't strand them looking at an
-   * empty uploader.
-   */
-  useEffect(() => {
-    if (resumeStarted.current || sessionStatus === "loading") return;
-    resumeStarted.current = true;
-    const pending = loadPendingCheck();
-    if (!pending) return;
-    setResumed(true);
-    if (signedIn) {
-      runAnalyze(pending.leaseCheckId, pending.keys);
-    } else {
-      setPhase("auth");
-    }
-    // Runs once the session is known, against whatever was in storage at that point.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionStatus]);
 
   const addFiles = (fileList) => {
     const incoming = Array.from(fileList || []);
@@ -225,26 +156,40 @@ export default function LeaseCheckClient() {
     }, 1000);
   };
 
-  const runCheck = async () => {
-    if (files.length === 0 || busy) return;
+  /*
+   * `toCheck` defaults to the picked files; the resume path below passes the files it
+   * restored from storage, since state set in the same tick isn't readable yet.
+   * `isSignedIn` is passed the same way: on resume the session has only just loaded.
+   */
+  const runCheck = async (toCheck = files, isSignedIn = signedIn) => {
+    if (toCheck.length === 0 || busy) return;
+
+    // Signed out: nothing leaves the browser yet. Hold the files and ask for an
+    // account first; they are uploaded and read once the visitor is back signed in.
+    if (!isSignedIn) {
+      trackEvent("Lease Check Auth Prompted", { fileCount: toCheck.length });
+      setPendingSaved(await savePendingCheck(toCheck));
+      setPhase("auth");
+      return;
+    }
+
     setResult(null);
     setViewingPast(null);
-    setResumed(false);
     setPhase("uploading");
     setPct(2);
 
-    const hasPdf = files.some((f) => f.type === "application/pdf");
-    const hasImage = files.some((f) => f.type !== "application/pdf");
+    const hasPdf = toCheck.some((f) => f.type === "application/pdf");
+    const hasImage = toCheck.some((f) => f.type !== "application/pdf");
     trackEvent("Lease Check Started", {
-      fileCount: files.length,
+      fileCount: toCheck.length,
       fileType: hasPdf && hasImage ? "mixed" : hasPdf ? "pdf" : "images",
-      signedIn,
     });
+    const startedAt = Date.now();
 
     try {
       // 1. Compress images client-side (PDFs pass through).
       const prepared = [];
-      for (const file of files) {
+      for (const file of toCheck) {
         prepared.push(file.type === "application/pdf" ? file : await compressImage(file));
       }
       const totalBytes = prepared.reduce((sum, f) => sum + f.size, 0);
@@ -252,9 +197,7 @@ export default function LeaseCheckClient() {
         return fail("too_large", "That's over 32MB even after compressing. Trim it down.");
       }
 
-      // 2. Get presigned upload URLs. Works signed-out too — the whole form can be
-      // filled and uploaded before an account exists; only step 4 (the actual AI
-      // read) requires one.
+      // 2. Get presigned upload URLs. Each URL is locked to the size sent here.
       const presignRes = await fetch("/api/lease-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -268,7 +211,7 @@ export default function LeaseCheckClient() {
       }
       const { leaseCheckId, presigned } = presignData;
 
-      // 3. Upload straight to R2 — Vercel is not in this path, so no body limit.
+      // 3. Upload straight to R2. Vercel is not in this path, so no body limit.
       for (let i = 0; i < prepared.length; i++) {
         const uploadRes = await fetch(presigned[i].uploadUrl, {
           method: "PUT",
@@ -278,22 +221,71 @@ export default function LeaseCheckClient() {
         if (!uploadRes.ok) return fail("upload", "Upload failed. Try again.");
         setPct(2 + ((i + 1) / prepared.length) * 28);
       }
-      const keys = presigned.map((p) => p.key);
 
-      // 4. The lease is uploaded and the form is done — that's everything an account
-      // isn't needed for. Hold onto it and ask for one before running the (paid,
-      // expensive) analysis instead of calling it now.
-      if (!signedIn) {
-        setPendingSaved(savePendingCheck({ leaseCheckId, keys }));
-        setPhase("auth");
-        return;
+      // 4. Analyze. This is the long wait, so keep the bar honest but moving.
+      setPhase("reading");
+      startCreep();
+      const analyzeRes = await fetch("/api/lease-check", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leaseCheckId, keys: presigned.map((p) => p.key) }),
+      });
+      const data = await analyzeRes.json();
+      clearInterval(creepTimer.current);
+      if (!analyzeRes.ok) {
+        return fail(`analyze_${analyzeRes.status}`, data.error || "Something broke. Try again.");
       }
 
-      await runAnalyze(leaseCheckId, keys);
+      setPhase("checking");
+      setPct(96);
+      const sortedFlags = [...data.flags].sort(
+        (a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3)
+      );
+      setResult({ ...data, flags: sortedFlags });
+      setPhase("done");
+      setPct(100);
+      setFiles([]);
+      setResumed(false);
+      trackEvent("Lease Check Completed", {
+        flagCount: data.flags.length,
+        redCount: data.flags.filter((f) => f.severity === "red").length,
+        matchConfidence: data.property?.matchConfidence ?? "none",
+        durationMs: Date.now() - startedAt,
+      });
+      fetch("/api/lease-check")
+        .then((res) => (res.ok ? res.json() : { checks: [] }))
+        .then((history) => setPastChecks(history.checks || []))
+        .catch(() => {});
     } catch (err) {
       fail("client_error", err?.message || "Something broke. Try again.");
     }
   };
+
+  /*
+   * Files held before sign-in survive the reload sign-in/sign-up causes (see
+   * lib/leaseCheck/pendingCheck). Once the session is known (not "loading"), either
+   * run the check straight away (they came back signed in) or reopen the gate so a
+   * plain reload while still signed out doesn't strand them at an empty uploader.
+   * The stored copy is cleared as soon as it is picked up; the files stay in state,
+   * so a failed check can still be retried with the button.
+   */
+  useEffect(() => {
+    if (resumeStarted.current || sessionStatus === "loading") return;
+    resumeStarted.current = true;
+    loadPendingCheck().then((pending) => {
+      if (!pending) return;
+      setFiles(pending);
+      setResumed(true);
+      if (signedIn) {
+        clearPendingCheck();
+        runCheck(pending, true);
+      } else {
+        setPhase("auth");
+      }
+    });
+    // Runs once the session is known, against whatever was in storage at that point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionStatus]);
 
   const cancelAuthGate = () => {
     clearPendingCheck();
@@ -399,9 +391,9 @@ export default function LeaseCheckClient() {
             <LeaseAuthGate saved={pendingSaved} onCancel={cancelAuthGate} />
           ) : busy ? (
             <div className="mt-4">
-              {resumed && phase === "reading" && (
+              {resumed && (
                 <p className="mb-2 text-xs text-gray-500">
-                  You&apos;re signed in. Picking up the lease you uploaded and running the check.
+                  You&apos;re signed in. Picking up your lease and running the check.
                 </p>
               )}
               <div className="flex items-center gap-3">
@@ -425,7 +417,7 @@ export default function LeaseCheckClient() {
             <div className="mt-4">
               <button
                 type="button"
-                onClick={runCheck}
+                onClick={() => runCheck()}
                 disabled={files.length === 0}
                 className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors px-6 w-full sm:w-auto"
               >

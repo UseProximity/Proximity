@@ -1,31 +1,66 @@
 /*
- * A lease check that's been uploaded but not yet analyzed because the uploader
- * wasn't signed in.
+ * A lease picked by a signed-out visitor, held until they sign in.
  *
  * Signing in or up leaves the page (Google is a full redirect, password sign-in
  * reloads via window.location, email verification goes through an inbox link), so
- * what's needed to resume has to outlive the page the same way lib/listings/pendingDraft
- * does for Add Listing. Unlike that draft, the lease itself is already sitting in R2 by
- * the time this is saved (see api/lease-check/route.js) — all that has to survive the
- * trip is the id and the object keys needed to trigger analysis on the way back.
+ * the files have to outlive the page the same way lib/listings/pendingDraft does for
+ * Add Listing. Unlike that draft these are the files themselves, which is why this
+ * uses IndexedDB (it stores File objects as-is, and has room for a 32MB lease) instead
+ * of localStorage.
  *
- * Deliberately NOT keyed by user: it's written before anyone is signed in.
+ * The lease stays in the visitor's own browser until they are signed in. Nothing is
+ * uploaded to R2 before then: the lease-check bucket is publicly readable, so an
+ * upload abandoned at the sign-in step would otherwise sit there, holding a student's
+ * name and home address, until the 1-day lifecycle rule removed it.
+ *
+ * Deliberately NOT keyed by user: it's written before anyone is signed in. MAX_AGE_MS
+ * keeps a shared computer from holding someone's lease indefinitely.
  *
  * Every access is wrapped. Private windows and blocked site data throw on storage
  * access, and the flow must still work (just without surviving a reload).
  */
 
-const KEY = "proximity:pending-lease-check";
+const DB_NAME = "proximity";
+const STORE = "pending-lease-check";
+const RECORD_KEY = "current";
 const VERSION = 1;
-// R2's lifecycle rule expires lease-checks/tmp/ objects after 1 day (route.js); stay
-// comfortably inside that so a resume never points at objects that are already gone.
-const MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-export function savePendingCheck(pending) {
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE)) {
+        request.result.createObjectStore(STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Runs one request against the store and resolves with its result once the
+// transaction has committed.
+async function withStore(mode, run) {
+  const db = await openDb();
   try {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({ ...pending, v: VERSION, savedAt: Date.now() })
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, mode);
+      const request = run(tx.objectStore(STORE));
+      tx.oncomplete = () => resolve(request.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Resolves true if the files were saved, false if this browser won't allow it. */
+export async function savePendingCheck(files) {
+  try {
+    await withStore("readwrite", (store) =>
+      store.put({ v: VERSION, savedAt: Date.now(), files: Array.from(files) }, RECORD_KEY)
     );
     return true;
   } catch {
@@ -33,32 +68,30 @@ export function savePendingCheck(pending) {
   }
 }
 
-/** The saved pending check, or null if there is none, it is stale, or it is unreadable. */
-export function loadPendingCheck() {
+/** The saved files, or null if there are none, they are stale, or unreadable. */
+export async function loadPendingCheck() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const pending = JSON.parse(raw);
-    const fresh = Date.now() - (pending?.savedAt ?? 0) < MAX_AGE_MS;
+    const record = await withStore("readonly", (store) => store.get(RECORD_KEY));
+    if (!record) return null;
+    const fresh = Date.now() - (record.savedAt ?? 0) < MAX_AGE_MS;
     if (
-      pending?.v !== VERSION ||
+      record.v !== VERSION ||
       !fresh ||
-      !pending.leaseCheckId ||
-      !Array.isArray(pending.keys) ||
-      pending.keys.length === 0
+      !Array.isArray(record.files) ||
+      record.files.length === 0
     ) {
-      clearPendingCheck();
+      await clearPendingCheck();
       return null;
     }
-    return pending;
+    return record.files;
   } catch {
     return null;
   }
 }
 
-export function clearPendingCheck() {
+export async function clearPendingCheck() {
   try {
-    localStorage.removeItem(KEY);
+    await withStore("readwrite", (store) => store.delete(RECORD_KEY));
   } catch {
     // Nothing to clear if storage is unavailable.
   }
