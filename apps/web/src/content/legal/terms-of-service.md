@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** September 18, 2026
+**Last updated:** September 22, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -108,9 +108,14 @@ If you post a listing, you represent and agree that:
   discriminates on the basis of race, color, religion, national origin, sex, familial
   status, disability, or any other protected characteristic.
 
-**Your contact details are published.** The contact name, email address, and phone number
-you put on a listing are displayed publicly on that listing so students can reach you. Do
-not put anything there you are not willing to make public.
+**Your listing is public.** The contact name you put on a listing is displayed publicly so
+students can see who they are dealing with. The contact email address and phone number you
+give are not shown on the listing: we use them to route inquiries to you.
+
+Everything else you write is published exactly as you type it. If you put an email address,
+a phone number, or a link in the description, it is public, and search engines may index
+it. Use the contact fields instead, and do not write anything into a description that you
+are not willing to make public.
 
 **Keeping listings fresh.** Proximity may email you from time to time to ask whether a
 listing is still available, using a one-click link that does not require signing in. If a
@@ -219,6 +224,18 @@ We do not guarantee that anyone will reply, that a listing is still available, o
 recipient is who they say they are. Once your message is delivered, it is in their inbox and
 outside our control: we cannot recall it, including if you later delete your account.
 
+**Messaging inside Proximity.** Where the Services let you message another user about a
+listing, the conversation happens in the product rather than by email, and we store it so
+both of you can come back to it. The other participant can always see what you sent, and
+Proximity staff can read a conversation where they need to investigate a report of abuse or
+a dispute. The rules in Section 12 apply to messages exactly as they apply to listings and
+reviews, and we may remove a message or withdraw access to messaging for a breach of them.
+
+A message you have sent cannot be unsent, and deleting your account does not delete it. Your
+name and the link to your account are removed, and the text stays in the conversation
+because the other person relies on their own record of it. Privacy Policy §§8 and 9 set this
+out in full.
+
 ## 12. Acceptable use
 
 You agree not to:
@@ -307,9 +324,9 @@ something for longer.
 you stop using is kept until you delete it. If we introduce a dormancy period, we will give
 you notice by email before it takes effect and a chance to keep the account open.
 
-**What survives.** Sections 8 (reviews staying published in anonymized form), 13 (the
-licence, to the extent content remains published), 15, 17A, 18, 19, 20, and 22 survive the
-end of your account.
+**What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
+staying in the conversation in disconnected form), 13 (the licence, to the extent content
+remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion
 
