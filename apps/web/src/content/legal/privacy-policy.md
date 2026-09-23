@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** September 18, 2026
+**Last updated:** September 22, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -76,8 +76,15 @@ or Google.
   ZIP code, coordinates, description, rent, bedrooms, bathrooms, area, unit and lease
   details, amenities, utilities, move-in dates, lease terms, and whether the property is
   restricted to residents 21 or older.
-- **Listing contact details**: the name, email address, and phone number you choose to
-  publish on a listing so students can reach you. **These are displayed publicly.**
+- **Listing contact details**: the name, email address, and phone number you give so
+  students can reach you. **The contact name is displayed publicly on the listing.** The
+  email address and phone number are not. We use them to route inquiries to you, and they
+  are not included in the listing page or in the data our website and apps receive.
+- **What you write in a listing**: the title, the description, and any other free text you
+  enter are published exactly as you write them. We never rewrite your words. We do refuse
+  to save a description that contains an email address, a phone number, a link, or a social
+  handle, and ask you to edit it, because those belong in the contact fields above.
+  **Anything that does save is public**, and search engines may index it.
 - **Photos and floor plans** you upload for a listing.
 - **Reviews** of off-campus listings and on-campus dorms: star ratings, category ratings,
   written text, and the display name shown with the review. You may post a review
@@ -95,8 +102,18 @@ or Google.
 - **Inquiries to landlords**: the first name, last name, email address, phone number, and
   message you submit through a listing's contact form. We deliver this by email to the
   landlord, with your email address as the reply-to, and send a confirmation copy to you.
-  We record *that* you contacted a listing; we do not store the message text in our
-  database.
+  Both emails are sent from our own account, so **a copy of each stays in that account**,
+  as it would in any mailbox you send from. In our database we record only *that* you
+  contacted a listing, not the message text.
+- **Messages sent through Proximity**: where the Services let you message another user
+  about a listing, we store the conversation. That means the text of each message, the
+  listing it concerns, any file or photo attached to it, who sent it and when, whether it
+  has been read, and any offer made in the conversation. Unlike an inquiry sent through a
+  listing's contact form, these messages are kept in our database so both of you can come
+  back to the conversation. They are visible to the other participant, and to Proximity
+  staff who need to investigate a report of abuse or a dispute. **We keep a conversation
+  even if one of you later deletes their account, and we keep it with the sender's name
+  on it.** Section 8 explains why.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
   you are signed in, your name, email address, and role, so we can follow up. Submitting
   the form emails it straight to the Proximity team; the message is not stored in our
@@ -170,11 +187,12 @@ analysis. It is never kept beyond that.
 We hold a limited amount of information about some people who have never signed up. This
 section explains what, why, and how to have it removed.
 
-- **Landlord and property contact details.** Where we compile a listing from public
-  sources, or where a student names their landlord while leaving a review, we hold the
-  contact details for that owner or manager so we can reach them and so we can identify
-  the property. Contact details published on a live listing are public; details given to
-  us in a review are used internally and are not displayed.
+- **Landlord and property contact details.** Where we set a listing up at an owner's
+  request before they have an account, or where a student names their landlord while
+  leaving a review, we hold the contact details for that owner or manager so we can reach
+  them and so we can identify the property. The contact name on a live listing is public;
+  the email address and phone number are used to route inquiries and are not displayed,
+  and details given to us in a review are used internally and are not displayed.
 
 **How long we keep it.** Landlord and property contact details are kept while the
 property is part of the marketplace.
@@ -313,8 +331,9 @@ We do not sell your personal information for money.
 
 ### 6.1 Publicly: this is how the marketplace works
 
-- **Listings you publish** are public, including the contact name, email address, and phone
-  number you place on them.
+- **Listings you publish** are public, including the contact name you place on them and
+  everything you write in the title and description. The contact email address and phone
+  number you give are **not** published: they are used to route inquiries to you.
 - **Reviews you post** are public, with your display name unless you post anonymously.
 - **Landlord replies to reviews** are public.
 
@@ -414,6 +433,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Your account record | Name, email address, phone number, date of birth, gender, description, profile photo, graduation details, school, payout handle, and all authentication data, including sign-in credentials and any outstanding verification or password-reset tokens, are erased. Your email address is released so you can sign up again in future. |
 | Profile photos | Permanently deleted from our storage, including earlier photos you replaced. |
 | Reviews you wrote | **Kept, but anonymized.** We remove your name and your email address and disconnect the review from your account; the review text stays published, because it describes a property and continues to help other students. |
+| Messages you sent through Proximity | **Kept in full, including your name.** The text of each message, who sent it, and when are all retained. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute or investigate abuse. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
 | Saved listings, contacts, review votes | Permanently deleted. |
 | Matchmaking conversations, and the housing preferences derived from them | Permanently deleted. |
 | Lease Check results | Permanently deleted. |
@@ -429,6 +449,11 @@ Thirty days after deletion, an automated job permanently erases your personal da
   days it is irreversible.
 - **Emails already sent cannot be recalled.** A message you sent to a landlord is already
   in that landlord's inbox and is outside our control.
+- **Messages you sent inside Proximity are not deleted, and your name stays on them.**
+  This is the one part of your account that deletion does not reach. We keep the
+  conversation, with you named as the sender, as a record of your dealings with the other
+  participant. If you want a conversation removed, email info@useproximity.org and we will
+  consider it, but we will not normally remove a record the other person is relying on.
 - **Public content already copied elsewhere cannot be recalled.** We cannot remove material
   that third parties have already saved, cached, or indexed.
 
@@ -441,13 +466,14 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Account and profile data | While your account is active, then as described in Section 8. |
 | Listings | While published. On account deletion, sole-owned listings are withdrawn from the marketplace and retained in hidden form as marketplace history, with your contact details removed from them. |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
+| Messages sent through Proximity | Retained as a record of the conversation, with the sender named. Deleting your account does not end this retention (Section 8). |
 | Matchmaking conversations, and the housing preferences derived from them | While your account is active, then erased under Section 8. |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
 | Saved listings and interaction history | While your account is active, then erased under Section 8. |
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
 | Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
-| Email sent through the Services | Delivered; the message body is not retained in our database. A copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
+| Email sent through the Services | The message body is not retained in our database. Because we send from our own email account, a copy of each message stays in that account, and a copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
 | Aggregate listing metrics | Retained indefinitely in aggregate, non-identifying form. |
 | Internal change history | Retained for security and audit purposes. Personal data inside an entry is erased on account deletion. |
 | Database backups | Retained for a limited period and then expire (Section 7). |
