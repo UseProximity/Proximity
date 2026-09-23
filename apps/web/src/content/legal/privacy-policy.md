@@ -108,7 +108,9 @@ or Google.
   has been read, and any offer made in the conversation. Unlike an inquiry sent through a
   listing's contact form, these messages are kept in our database so both of you can come
   back to the conversation. They are visible to the other participant, and to Proximity
-  staff who need to investigate a report of abuse or a dispute.
+  staff who need to investigate a report of abuse or a dispute. **We keep a conversation
+  even if one of you later deletes their account, and we keep it with the sender's name
+  on it.** Section 8 explains why.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
   you are signed in, your name, email address, and role, so we can follow up. Submitting
   the form emails it straight to the Proximity team; the message is not stored in our
@@ -427,7 +429,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Your account record | Name, email address, phone number, date of birth, gender, description, profile photo, graduation details, school, payout handle, and all authentication data, including sign-in credentials and any outstanding verification or password-reset tokens, are erased. Your email address is released so you can sign up again in future. |
 | Profile photos | Permanently deleted from our storage, including earlier photos you replaced. |
 | Reviews you wrote | **Kept, but anonymized.** We remove your name and your email address and disconnect the review from your account; the review text stays published, because it describes a property and continues to help other students. |
-| Messages you sent through Proximity | **Kept, but disconnected from you.** We remove your name and the link to your account. The message text stays in the conversation, because the person you were talking to relies on their own record of what was agreed, in the same way an email you already sent sits in their inbox. |
+| Messages you sent through Proximity | **Kept in full, including your name.** The text of each message, who sent it, and when are all retained. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute or investigate abuse. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
 | Saved listings, contacts, review votes | Permanently deleted. |
 | Matchmaking conversations, and the housing preferences derived from them | Permanently deleted. |
 | Lease Check results | Permanently deleted. |
@@ -443,6 +445,11 @@ Thirty days after deletion, an automated job permanently erases your personal da
   days it is irreversible.
 - **Emails already sent cannot be recalled.** A message you sent to a landlord is already
   in that landlord's inbox and is outside our control.
+- **Messages you sent inside Proximity are not deleted, and your name stays on them.**
+  This is the one part of your account that deletion does not reach. We keep the
+  conversation, with you named as the sender, as a record of your dealings with the other
+  participant. If you want a conversation removed, email info@useproximity.org and we will
+  consider it, but we will not normally remove a record the other person is relying on.
 - **Public content already copied elsewhere cannot be recalled.** We cannot remove material
   that third parties have already saved, cached, or indexed.
 
@@ -455,7 +462,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Account and profile data | While your account is active, then as described in Section 8. |
 | Listings | While published. On account deletion, sole-owned listings are withdrawn from the marketplace and retained in hidden form as marketplace history, with your contact details removed from them. |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
-| Messages sent through Proximity | Retained while either participant's account is active, so both of you keep the conversation. Kept in disconnected form after an account is deleted (Section 8). |
+| Messages sent through Proximity | Retained as a record of the conversation, with the sender named. Deleting your account does not end this retention (Section 8). |
 | Matchmaking conversations, and the housing preferences derived from them | While your account is active, then erased under Section 8. |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
 | Saved listings and interaction history | While your account is active, then erased under Section 8. |

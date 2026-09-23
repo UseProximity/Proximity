@@ -231,10 +231,12 @@ Proximity staff can read a conversation where they need to investigate a report 
 a dispute. The rules in Section 12 apply to messages exactly as they apply to listings and
 reviews, and we may remove a message or withdraw access to messaging for a breach of them.
 
-A message you have sent cannot be unsent, and deleting your account does not delete it. Your
-name and the link to your account are removed, and the text stays in the conversation
-because the other person relies on their own record of it. Privacy Policy §§8 and 9 set this
-out in full.
+A message you have sent cannot be unsent, and deleting your account does not delete it or
+take your name off it. We keep the conversation as a record of your dealings with the other
+participant: they rely on it in the same way they would rely on an email you sent them, and
+we may need it to resolve a dispute or investigate abuse. This is an exception to the erasure
+timetable, and it is the one described in Section 17A. Privacy Policy §§8 and 9 set it out in
+full.
 
 ## 12. Acceptable use
 
@@ -325,7 +327,7 @@ you stop using is kept until you delete it. If we introduce a dormancy period, w
 you notice by email before it takes effect and a chance to keep the account open.
 
 **What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
-staying in the conversation in disconnected form), 13 (the licence, to the extent content
+staying in the conversation, with the sender named), 13 (the licence, to the extent content
 remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion
@@ -352,6 +354,13 @@ information from activity on the Services, such as how many people viewed a list
 prices move across a neighborhood, and we may keep and use it indefinitely, including after
 your account is gone. This information does not identify you and we do not attempt to
 re-identify it.
+
+**Messages between users.** Separately from the paragraph above, a conversation between two
+users is kept as a standing record of their dealings with each other, with each message
+attributed to whoever sent it. It is not subject to the erasure timetable and it is not
+time-limited: it survives either participant deleting their account. We keep it because the
+other participant relies on it and because we may need it to resolve a dispute between them.
+Privacy Policy §§8 and 9 set out what this means for you.
 
 **Withdrawn listings.** A listing that is withdrawn stops being published but is retained as
 marketplace history. When a listing is withdrawn because its only owner deleted their
