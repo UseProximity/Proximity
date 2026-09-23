@@ -286,7 +286,8 @@ export async function PUT(req) {
     return Response.json({ error: "Something broke. Try again." }, { status: 500 });
   } finally {
     // The lease never outlives the request — delete every object, error path included.
-    // (Backstop: an R2 lifecycle rule expires lease-checks/tmp/ after 1 day.)
+    // (Backstop: /api/cron/lease-check-cleanup deletes anything under
+    // lease-checks/tmp/ older than an hour, for uploads that never reach this PUT.)
     if (bucket && keys.length > 0) {
       await Promise.allSettled(
         keys
