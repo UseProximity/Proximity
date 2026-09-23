@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-19T19:09:26.067Z",
-  "count": 84,
+  "_generated": "2026-09-22T23:55:53.404Z",
+  "count": 85,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -54,6 +54,10 @@
     {
       "file": "src/lib/leaseCheck/analyzeLease.js",
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
+    },
+    {
+      "file": "src/lib/leaseCheck/pendingCheck.js",
+      "description": "A lease picked by a signed-out visitor, held until they sign in."
     },
     {
       "file": "src/lib/leaseCheck/prompt.js",

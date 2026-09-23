@@ -88,7 +88,7 @@ export async function POST(req) {
       if (!f || typeof f.name !== "string" || !ALLOWED_TYPES.has(f.type)) {
         return Response.json({ error: "PDF or photos only" }, { status: 400 });
       }
-      if (!Number.isFinite(f.size) || f.size <= 0) {
+      if (!Number.isInteger(f.size) || f.size <= 0) {
         return Response.json({ error: "Invalid file size" }, { status: 400 });
       }
     }
@@ -120,10 +120,18 @@ export async function POST(req) {
 
     const bucket = getBucket();
     const presigned = await Promise.all(
-      files.map(async ({ name, type }) => {
+      files.map(async ({ name, type, size }) => {
         const safeName = (name || "upload").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 100);
         const key = `lease-checks/tmp/${row.id}/${crypto.randomUUID()}-${safeName}`;
-        const command = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: type });
+        // ContentLength is signed into the URL, so R2 rejects (403) any upload that is
+        // not exactly the size declared and checked above. Without it the 32MB cap
+        // only applied to what the browser claimed, not to what it sent.
+        const command = new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ContentType: type,
+          ContentLength: size,
+        });
         const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 });
         return { uploadUrl, key };
       })
