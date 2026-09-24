@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-22T23:55:53.404Z",
-  "count": 85,
+  "_generated": "2026-09-24T20:16:59.153Z",
+  "count": 86,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -10,6 +10,10 @@
     {
       "file": "src/lib/auth/callbackUrl.js",
       "description": "A return URL that arrives from outside (a query string, a request body, an"
+    },
+    {
+      "file": "src/lib/auth/email.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/auth/landlordRole.js",

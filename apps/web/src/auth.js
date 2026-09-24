@@ -19,6 +19,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { emailMatchPattern } from "@/lib/auth/email";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
@@ -62,7 +63,7 @@ const config = {
         const { data: user } = await supabase
           .from("users")
           .select("id, email, name, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
-          .eq("email", email)
+          .ilike("email", emailMatchPattern(email))
           .single();
 
         // Deleted accounts fail exactly like a wrong password — same null
