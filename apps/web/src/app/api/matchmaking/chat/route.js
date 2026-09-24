@@ -264,7 +264,7 @@ export async function POST(request) {
 
       const assistantMessage =
         sent > 0
-          ? `Done! I've emailed ${sent === 1 ? "the owner" : `${sent} owners`} on your behalf and CC'd you (${student.email}), so their replies land straight in your inbox. Anything else I can do? I'm happy to fine-tune your matches, compare these places, or pull up more details on any of them.`
+          ? `Done! I've emailed ${sent === 1 ? "the owner" : `${sent} owners`} on your behalf and CC'd you, so their replies land straight in your inbox. Anything else I can do? I'm happy to fine-tune your matches, compare these places, or pull up more details on any of them.`
           : "I couldn't reach those owners just now, please try again in a moment. In the meantime, want me to refine your matches or tell you more about any of these places?";
 
       // Persist the exchange so a page reload still shows that Proxy reached out.

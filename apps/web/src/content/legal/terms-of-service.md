@@ -240,12 +240,15 @@ and then suggests listings. It is available on the website and in the mobile app
   matters against the listing itself and with the person renting it.
 - **It is a suggestion, not advice.** It is not housing, financial, or legal advice, and a
   recommendation is not an endorsement (see Section 4).
-- **Some listings are filtered.** Where a listing states that occupancy is restricted to
-  tenants of one gender, the assistant will not recommend it unless the gender on your
-  profile matches. This affects only what the assistant suggests. It never limits what you
-  can search, browse, view, or contact directly.
+- **Some listings are filtered.** Where a listing, typically a sublease, explicitly asks for
+  tenants of a certain gender in its description, the assistant will sometimes not suggest
+  it to students of another gender. This affects only what the assistant suggests. It never
+  limits what you can search, browse, view, or contact directly.
 - **Your first name is sent to our AI provider** so the assistant can address you naturally,
   along with your conversation and preferences. Privacy Policy §4 explains this in full.
+- **We keep your conversation and preferences.** They are a record of what you asked for
+  and why we showed you the listings we did. We keep them while your account is open and
+  for three years after you delete it (Privacy Policy §8).
 
 ## 10. Lease Check
 
@@ -381,7 +384,7 @@ you stop using is kept until you delete it. If we introduce a dormancy period, w
 you notice by email before it takes effect and a chance to keep the account open.
 
 **What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
-and inquiry records kept for three years, with the sender named), 13 (the licence, to the extent content
+and inquiry records kept for three years, with the sender named), 9 (matchmaking conversations and preferences kept for three years), 13 (the licence, to the extent content
 remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion

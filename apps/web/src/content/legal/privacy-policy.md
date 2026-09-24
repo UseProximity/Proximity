@@ -96,7 +96,9 @@ or Google.
   matchmaking assistant, the housing preferences derived from it (first name, budget,
   move-in and move-out dates, lease term, group size, neighborhood, furnishing,
   openness to roommates, priorities, and free-text notes), and the recommendations
-  generated for you.
+  generated for you. We keep these as a record of what you asked for and why we showed you
+  the properties we did, including for three years after you delete your account
+  (Section 8).
 - **Inquiries to landlords**: the first name, last name, email address, phone number, and
   message you submit through a listing's contact form. We deliver this by email to the
   landlord, with your email address as the reply-to, and send a confirmation copy to you.
@@ -244,12 +246,10 @@ to train artificial-intelligence models (see Section 4).
 ### 2.1 How we use gender
 
 If you have recorded a gender on your profile, the matchmaking assistant uses it in one
-narrow way: some listings state in their description that the landlord restricts occupancy
-to tenants of one gender. Where a listing states such a restriction, the matchmaker will
-not recommend it to you unless your recorded gender matches. If your gender is unrecorded,
-non-binary, or otherwise not resolvable to the stated restriction, those listings are not
-recommended to you. Where you have not recorded a gender, the assistant may also read a
-clear first-person statement in your free-text notes (for example, "I'm a girl").
+narrow way. Some listings, typically subleases, explicitly ask for tenants of a certain
+gender in their description (for example, "looking for a female roommate"). The
+matchmaking assistant will sometimes not suggest those listings to students of another
+gender.
 
 This affects only which listings the matchmaking assistant surfaces. It never restricts
 what you can search, browse, view, or contact directly, and it is not used for any other
@@ -457,7 +457,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Messages you sent through Proximity | **Kept for three years, with your name and email address.** The text of each message, who sent it, and when are retained for three years after deletion, and then erased. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute, investigate abuse, or confirm a lease. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
 | Inquiries you sent to landlords, and leases a landlord told us you signed | **Kept for three years, with your name and email address.** The record of which listing you contacted and when, and any lease recorded under Section 1.9, are retained for three years after deletion as a record of the introductions we make, and then erased. See Terms §17A. |
 | Saved listings, review votes | Permanently deleted. |
-| Matchmaking conversations, and the housing preferences derived from them | Permanently deleted. |
+| Matchmaking conversations, and the housing preferences derived from them | **Kept for three years.** The transcript, the preferences you gave, and the recommendations we made are retained for three years after deletion as a record of which properties we showed you and why, and then erased. They are never published and are visible only to Proximity staff who need them. See Terms §17A. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |
 | Listings you owned alone | Already withdrawn from the marketplace at deletion. **Kept for three years, with your name and email address.** The withdrawn record keeps your name and email address for three years after deletion as marketplace history, and then they are erased. Your phone number is removed from them. See Terms §17A. |
@@ -491,7 +491,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
 | Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
 | Inquiry records and recorded leases | While your account is active, then for three years after deletion with your name and email address, then erased (Section 8). |
-| Matchmaking conversations, and the housing preferences derived from them | While your account is active, then erased under Section 8. |
+| Matchmaking conversations, and the housing preferences derived from them | While your account is active, then for three years after deletion, then erased (Section 8). |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
 | Saved listings | While your account is active, then erased under Section 8. |
 | Waitlist entries | While your account is active, then erased under Section 8. |

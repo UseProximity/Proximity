@@ -9,8 +9,8 @@
  *   Stage 1 (here)  — soft-delete: stamp users.deleted_at. Every auth path
  *                     checks that column (see auth.js), so the account stops
  *                     authenticating immediately and disappears from the app.
- *   Stage 2 (cron)  — hard purge after 30 days: scrub PII, drop behavioral and
- *                     matchmaking rows, anonymize reviews, redact action_log,
+ *   Stage 2 (cron)  — hard purge after 30 days: scrub PII, drop behavioral rows
+ *                     (matchmaking rows are kept three years), anonymize reviews, redact action_log,
  *                     delete the profile photo. See api/cron/purge-accounts.
  *
  * Listings are handled here rather than left to the users.deleted_at trigger
