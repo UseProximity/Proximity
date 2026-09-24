@@ -42,40 +42,45 @@ export default function StepReview({ w }) {
   const { form, units } = w;
 
   /*
-   * When this one opens up, in the same words the units step used.
-   *
-   * A blank date there means "available now" — it shows a green pill saying so
-   * — and a floor plan can hold one apartment free today and another that is
-   * not, so the soonest date on its own would be a lie about the plan.
+   * Units with their leases underneath, the same shape as the units step and
+   * the listing page. A blank date means available now.
    */
   const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-  const availability = (u) => {
-    const numbers = String(u.unitNumbers ?? "")
-      .split(/[,\s]+/)
-      .filter(Boolean);
-    const values = numbers.length
-      ? numbers.map((n) => (u.unitAvailability ?? {})[n] || "")
-      : [u.availableFrom ?? ""];
-    const dated = values.filter((d) => ISO_DATE.test(d)).sort();
-    if (!dated.length) return "available now";
-    if (dated.length < values.length) return `some now, others from ${dated[0]}`;
-    return new Set(dated).size > 1 ? `from ${dated[0]} onward` : `from ${dated[0]}`;
-  };
+  const leaseLine = (l) =>
+    [
+      l.rent !== "" && l.rent != null
+        ? `$${Number(l.rent).toLocaleString()}/mo${l.rentIsPerPerson ? " per person" : ""}`
+        : "contact for pricing",
+      (l.leaseTermMonths ?? []).length
+        ? l.leaseTermMonths.map(termLabel).join(", ")
+        : "no lease length",
+      ISO_DATE.test(l.availableFrom ?? "") ? `from ${l.availableFrom}` : "available now",
+    ].join(" · ");
 
   const unitLines = units.map((u, i) => {
     const bits = [];
     if (u.bedrooms !== "") bits.push(Number(u.bedrooms) === 0 ? "Studio" : `${u.bedrooms} bed`);
     if (u.bathrooms !== "") bits.push(`${u.bathrooms} bath`);
-    bits.push(u.rent !== "" ? `$${u.rent}/mo` : "rent not set");
-    const terms = (u.leaseTermMonths ?? []).map(termLabel).join(", ");
+    if (u.area !== "" && u.area != null) bits.push(`${u.area} sq ft`);
     return (
-      <p key={i}>
-        {u.title ? `${u.title}: ` : ""}
-        {bits.join(" · ")}
-        {terms ? ` · ${terms}` : ""}
-        {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
-        {u.available === false ? " · not available" : ` · ${availability(u)}`}
-      </p>
+      <div key={i}>
+        <p className="font-medium">
+          {u.title || `Unit ${i + 1}`}
+          <span className="font-normal text-gray-500">
+            {bits.length ? ` · ${bits.join(" · ")}` : ""}
+            {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
+            {(u.photos ?? []).length
+              ? ` · ${u.photos.length} photo${u.photos.length === 1 ? "" : "s"}`
+              : ""}
+            {u.available === false ? " · waitlist only" : ""}
+          </span>
+        </p>
+        <ul className="mt-0.5 space-y-0.5 border-l-2 border-red-100 pl-3 text-gray-600">
+          {(u.leases ?? []).map((l, k) => (
+            <li key={k}>{leaseLine(l)}</li>
+          ))}
+        </ul>
+      </div>
     );
   });
 
@@ -93,9 +98,10 @@ export default function StepReview({ w }) {
       ? "Bedrooms and bathrooms needed"
       : units.some(
           (u) =>
-            u.available !== false && !(u.leaseTermMonths ?? []).length
+            u.available !== false &&
+            (u.leases ?? []).some((l) => !(l.leaseTermMonths ?? []).length)
         )
-      ? "Pick lease terms for each available unit"
+      ? "Pick lease lengths for every lease"
       : null;
 
   return (
@@ -125,7 +131,7 @@ export default function StepReview({ w }) {
         />
         <Row
           label={`Units (${units.length})`}
-          value={<div className="space-y-0.5">{unitLines}</div>}
+          value={<div className="space-y-2">{unitLines}</div>}
           missing={unitsMissing}
           onChange={() => w.goTo("units")}
         />
@@ -203,14 +209,23 @@ export default function StepReview({ w }) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={w.publish}
-        disabled={w.submitting}
-        className="mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
-      >
-        {w.submitting ? "Publishing…" : "Publish listing"}
-      </button>
+      {w.batchMode ? (
+        // In a multi-property import every listing goes out together, from
+        // the workspace's own button.
+        <p className="mt-6 rounded-lg bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">
+          Looks right? Check your other properties, then use{" "}
+          <span className="font-semibold text-gray-900">Publish all listings</span> at the top.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={w.publish}
+          disabled={w.submitting}
+          className="mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+        >
+          {w.submitting ? "Publishing…" : "Publish listing"}
+        </button>
+      )}
       {w.importQueue.length > 0 && (
         <p className="mt-2 text-center text-xs text-gray-500">
           Up next: {w.importQueue[0].name} ({w.importQueue.length} more to go)

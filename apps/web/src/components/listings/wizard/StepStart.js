@@ -28,6 +28,7 @@ export default function StepStart({ w, initialImportUrl = "" }) {
         <ListingDraftImport
           embedded
           onApply={w.applyDraft}
+          onImportMany={w.onImportMany}
           initialUrl={initialImportUrl}
         />
       </div>

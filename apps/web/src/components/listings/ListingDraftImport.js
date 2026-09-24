@@ -228,6 +228,9 @@ const makeNode = (p, parentUrl) => ({
   // page that actually describes it.
   levelUrl: parentUrl,
   nearLevel: p.nearLevel === true,
+  // Set by the server when this building is already on Proximity. Dropped
+  // here until now, so the picker never showed the marker it was sent.
+  alreadyListed: p.alreadyListed ?? null,
   children: null, // null = not opened yet
   open: false,
   loading: false,
@@ -299,6 +302,9 @@ function patchNode(nodes, uid, patch) {
  */
 export default function ListingDraftImport({
   onApply,
+  // Several properties at once: hands every ticked one to the tabbed import
+  // workspace instead of reading the first and queueing the rest.
+  onImportMany,
   disabled,
   embedded = false,
   initialUrl = "",
@@ -412,7 +418,27 @@ export default function ListingDraftImport({
         setError(data.error || "Something went wrong. Please try again.");
         return;
       }
-      // A one-property site skips the picker entirely.
+      // A one-property site skips the picker entirely. With the import
+      // workspace available it still opens there, as a single tab, so it gets
+      // the same "already on Proximity" check as a batch; the read already
+      // done travels with it rather than being paid for twice.
+      if (data.listing && onImportMany) {
+        setPhase("done");
+        onImportMany(
+          [
+            {
+              name: data.listing.title || data.listing.address || pasted,
+              address: data.listing.address || "",
+              url: data.sourceUrl || pasted,
+              levelUrl: null,
+              alreadyListed: null,
+              preread: { listing: data.listing, sourceUrl: data.sourceUrl ?? null },
+            },
+          ],
+          pasted
+        );
+        return;
+      }
       if (data.listing) {
         setPhase("done");
         onApply(data.listing, {
@@ -643,7 +669,6 @@ export default function ListingDraftImport({
 
   // ---------------------------------------------------------------- selection
   const toggleOne = (node) => {
-    if (node.alreadyListed) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(node.id)) next.delete(node.id);
@@ -669,12 +694,17 @@ export default function ListingDraftImport({
     [allProperties, selected]
   );
 
-  // "Select all" means all the ones that can be added, not the ones already on
-  // Proximity, which the row disables and which the write would refuse anyway.
+  /*
+   * Every row, including the ones already on Proximity. They used to be left
+   * out because they could not be picked; now they can (their tab edits the
+   * listing that is there), and leaving them out meant that on a site where
+   * everything was already listed, "Tick all" and "Untick everything" did
+   * nothing at all. Only the picker's own starting ticks skip them.
+   */
   const setAll = (on) => {
     const ids = [];
     walkTree(tree, (n) => {
-      if (n.kind === "property" && !n.alreadyListed) ids.push(n.id);
+      if (n.kind === "property") ids.push(n.id);
     });
     setSelected((prev) => {
       const next = new Set(prev);
@@ -686,7 +716,7 @@ export default function ListingDraftImport({
   const setBranch = (node, on) => {
     const ids = [];
     walkTree(node.children, (n) => {
-      if (n.kind === "property" && !n.alreadyListed) ids.push(n.id);
+      if (n.kind === "property") ids.push(n.id);
     });
     setSelected((prev) => {
       const next = new Set(prev);
@@ -707,7 +737,16 @@ export default function ListingDraftImport({
       address: p.address || "",
       url: p.url,
       levelUrl: p.levelUrl,
+      alreadyListed: p.alreadyListed || null,
     });
+    // Every pick opens in the import workspace, one tab each, read in the
+    // background and published together; a single pick still gets the same
+    // "already on Proximity" check there.
+    if (onImportMany) {
+      setPhase("done");
+      onImportMany(selectedProps.map(payload), pastedRef.current);
+      return;
+    }
     startLoading();
     try {
       const { ok, data } = await apiCall(first.levelUrl || pastedRef.current, {
@@ -766,40 +805,31 @@ export default function ListingDraftImport({
 
   const propertyRow = (n, depth, showBadge = false) => (
     /*
-     * A property already on Proximity is shown, greyed, and cannot be picked.
+     * A property already on Proximity is marked, and can still be picked.
      *
-     * Property names are unique, so importing one of these was always going to
-     * be refused — but the refusal used to arrive at the last step, after the
-     * landlord had checked every floor plan and waited for the photos, and it
-     * named the building rather than explaining it. A company adding the rest
-     * of its portfolio meets this constantly: Keeley already has four of theirs
-     * up. Left visible rather than hidden, so the landlord can see that we know
-     * about it and has not simply lost a building.
+     * Picking one does not create a second copy of the building: it opens as
+     * its own tab in the import, where the landlord adds their units to the
+     * existing listing or edits the leases they already hold there. "Select
+     * all" still leaves these unticked, so nobody adds to a building by
+     * accident.
      */
     <label
       key={n.uid}
       style={{ paddingLeft: `${12 + depth * 18}px` }}
       className={`flex items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
-        n.alreadyListed
-          ? "cursor-default border-gray-200 bg-gray-50"
-          : selected.has(n.id)
+        selected.has(n.id)
           ? "cursor-pointer border-red-500 bg-red-50"
           : "cursor-pointer border-gray-200 bg-white hover:border-red-300"
       }`}
     >
       <input
         type="checkbox"
-        checked={!n.alreadyListed && selected.has(n.id)}
-        disabled={!!n.alreadyListed}
+        checked={selected.has(n.id)}
         onChange={() => toggleOne(n)}
         className="h-4 w-4 shrink-0 accent-red-600 disabled:opacity-40"
       />
       <span className="min-w-0 flex-1">
-        <span
-          className={`block truncate font-medium ${
-            n.alreadyListed ? "text-gray-500" : "text-gray-900"
-          }`}
-        >
+        <span className="block truncate font-medium text-gray-900">
           {n.name}
         </span>
         {n.address &&
@@ -811,8 +841,8 @@ export default function ListingDraftImport({
       {/* Only worth showing when rows further out are on screen to contrast
           with. A column of identical badges is decoration. */}
       {n.alreadyListed && (
-        <span className="inline-flex shrink-0 items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
-          Already listed
+        <span className="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+          {n.alreadyListed.mine ? "On Proximity · yours" : "On Proximity"}
         </span>
       )}
       {!n.alreadyListed && showBadge && nearCampus(n) && (
@@ -1113,7 +1143,7 @@ export default function ListingDraftImport({
                 </button>
               </div>
               <p className="mt-1.5 text-xs text-gray-500">
-                You review and publish each one yourself. Nothing goes live from here.
+                Each property opens in its own tab to check. Nothing goes live until you publish.
               </p>
             </div>
           ) : (

@@ -8,6 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { PencilLine, Globe, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
+import ImportBatch, { loadBatch, newBatch } from "@/components/listings/wizard/ImportBatch";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
 
 /*
@@ -44,7 +45,25 @@ export default function AddListingPage() {
    */
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
-  const site = searchParams.get("site") ?? "";
+  /*
+   * The pasted address is read from the URL once and then taken out of it.
+   * Left in, every visit to this history entry re-ran the AI read: publishing
+   * sends the landlord to their dashboard, and pressing Back from there
+   * started the whole import again instead of returning to this page.
+   */
+  // Read whenever one arrives, not only on first load: "Find properties" on
+  // the start screen navigates within this same page, so it never remounts.
+  const siteParam = searchParams.get("site") ?? "";
+  const [keptSite, setSite] = useState(siteParam);
+  // The URL's copy on the first render (the import mounts then and reads it
+  // once), the remembered copy after it has been taken out of the URL.
+  const site = siteParam || keptSite;
+  useEffect(() => {
+    if (!siteParam) return;
+    setSite(siteParam);
+    router.replace(`/add-listing?mode=${mode ?? "assisted"}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteParam]);
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
   /*
@@ -59,6 +78,16 @@ export default function AddListingPage() {
       .catch(() => {})
       .finally(() => setReady(true));
   }, [profileComplete]);
+
+  /*
+   * A multi-property import in progress. Kept in the browser, so coming back
+   * to the page (or reloading it) reopens the same tabs instead of starting a
+   * new import. Read once the user is known, because it is stored per user.
+   */
+  const [batch, setBatch] = useState(null);
+  useEffect(() => {
+    if (ready && user?.id) setBatch(loadBatch(user.id));
+  }, [ready, user?.id]);
 
   useEffect(() => {
     if (mode === "assisted" && !session) {
@@ -78,10 +107,25 @@ export default function AddListingPage() {
         </div>
       ) : mode === "manual" ? (
         <AddListingFlow user={user} />
+      ) : mode === "assisted" && batch ? (
+        <ImportBatch
+          key={batch.tabs[0]?.key}
+          user={user}
+          initial={batch}
+          onDone={() => {
+            setBatch(null);
+            router.push("/dashboard/landlord?tab=properties");
+          }}
+          onCancel={() => {
+            setBatch(null);
+            router.push("/add-listing?mode=assisted");
+          }}
+        />
       ) : mode === "assisted" ? (
         <AddListingWizard
           user={user}
           initialImportUrl={site}
+          onImportMany={(targets, pastedUrl) => setBatch(newBatch(targets, pastedUrl))}
           onClose={() => setMode(null)}
           onSuccess={() => {
             toast.success("Listing published!");
