@@ -254,6 +254,25 @@ function buildListing(row, owner = null, reviews = []) {
      * pool that may already be a fallback.
      */
     propertyImages: propertyImages.map((img) => img.url),
+    /*
+     * Live rent specials, the ones a building puts in a banner or a popup.
+     * Expired offers are dropped here rather than in the UI so every surface
+     * that reads a listing gets the same answer.
+     */
+    concessions: (row.listing_concessions ?? [])
+      .filter((c) => c.active !== false)
+      .filter(
+        (c) =>
+          !c.valid_until ||
+          new Date(c.valid_until) >= new Date(new Date().toDateString())
+      )
+      .map((c) => ({
+        id: c.id,
+        description: c.description,
+        amount: c.amount ?? null,
+        conditions: c.conditions ?? null,
+        validUntil: c.valid_until ?? null,
+      })),
     // Every photo at this property, whatever its scope.
     allImages: allImages.map((img) => img.url),
     // True when the cover photo was auto-fetched from Google Street View. Read
@@ -352,6 +371,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
       listing_images(id, url, sort_order, source, unit_id),
+      listing_concessions(id, description, amount, amount_type, conditions, valid_until, active),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `

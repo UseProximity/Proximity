@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
-import { emptyUnit, parseUnitNumbers } from "@/components/listings/listingFormOptions";
+import {
+  emptyLease,
+  emptyUnit,
+  mergeWithLive,
+  normalizeWizardUnit,
+} from "@/components/listings/listingFormOptions";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";
@@ -26,12 +31,15 @@ import { checkListingDescription } from "@/lib/contentRules";
 export const STEPS = [
   { id: "address", label: "Address" },
   { id: "basics", label: "Basics" },
-  { id: "units", label: "Units & rent" },
+  { id: "units", label: "Units & leases" },
   { id: "perks", label: "Amenities" },
   { id: "photos", label: "Photos" },
   { id: "description", label: "Description" },
   { id: "review", label: "Review" },
 ];
+
+// Matches MAX_LEASES_PER_UNIT in /api/addListing.
+const MAX_LEASES_PER_UNIT = 40;
 
 const AUTOSAVE_KEY = (userId) => `proximity:add-listing-draft:${userId ?? "anon"}`;
 
@@ -44,7 +52,6 @@ const blankForm = (user) => ({
   furnished: false,
   sublease_friendly: false,
   twenty_one_plus: false,
-  move_in_date: "",
   contact_email: user?.email ?? "",
   contact_phone: user?.phone ?? "",
   contact_name: user?.name ?? "",
@@ -53,8 +60,42 @@ const blankForm = (user) => ({
   lease_availability: [],
 });
 
-export default function AddListingWizard({ user, onClose, onSuccess }) {
-  const [stepId, setStepId] = useState("start"); // "start" | STEPS ids
+/*
+ * `batch` is set when this wizard is one tab of a multi-property import (see
+ * ImportBatch): { tabKey, draft, sourceUrl, pastedUrl, existing, onRegister }.
+ * The tab never shows the start screen, saves its own draft under its own key,
+ * and is published by the workspace's "Publish all" rather than its own button.
+ * `existing` is set when the property is already on Proximity: the landlord adds
+ * units to that listing and edits the leases they already hold there.
+ */
+export default function AddListingWizard({
+  user,
+  onClose,
+  onSuccess,
+  initialImportUrl = "",
+  onImportMany,
+  batch = null,
+}) {
+  const [stepId, setStepId] = useState(batch ? "address" : "start"); // "start" | STEPS ids
+  const autosaveKey = batch
+    ? `proximity:add-listing-batch-tab:${user?.id ?? "anon"}:${batch.tabKey}`
+    : AUTOSAVE_KEY(user?.id);
+  const batchExisting = batch?.existing ?? null;
+  /*
+   * On a property already on Proximity: changes to leases this landlord already
+   * holds there (lease id -> changed fields), and new leases they are adding to
+   * units that already exist (unit id -> leases). Both are sent on publish.
+   */
+  const [existingEdits, setExistingEdits] = useState({});
+  const [existingNewLeases, setExistingNewLeases] = useState({});
+  /*
+   * The landlord's OWN listing at this address (they own it, or hold leases on
+   * it). Its live units and leases become the starting point of the units step,
+   * with the website laid over them (see mergeWithLive); `liveMergedFor` records
+   * which listing that was done for, so a reload does not do it twice.
+   */
+  const ownExisting = batchExisting?.mine ? batchExisting : null;
+  const [liveMergedFor, setLiveMergedFor] = useState(null);
   const [form, setForm] = useState(() => blankForm(user));
   const [units, setUnits] = useState([emptyUnit()]);
   const [customAmenities, setCustomAmenities] = useState([]);
@@ -68,8 +109,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const [fieldError, setFieldError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [visited, setVisited] = useState(() => new Set());
-  // "now" | "date" — the required one-tap availability ask on the basics step.
-  const [availabilityMode, setAvailabilityMode] = useState("now");
 
   // Photos staged in the browser; uploaded to R2 after the listing is created.
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -92,10 +131,34 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const [importInfo, setImportInfo] = useState(null);
   const [importedFields, setImportedFields] = useState(() => new Set());
   const [importQueue, setImportQueue] = useState([]);
+  // Rent specials read off the landlord's site, published with the listing.
+  const [concessions, setConcessions] = useState([]);
+  /*
+   * Where this listing is being read from, kept for the publish call.
+   *
+   * Two URLs, because they answer different questions later: the property's own
+   * page is what the weekly check re-reads for rents and availability, and the
+   * pasted page is the company's list of properties, where this one is expected
+   * to keep appearing. A building that quietly drops off its landlord's own list
+   * has almost certainly been let.
+   *
+   * `importSourceUrl` is per property, so it is rewritten on every queue
+   * advance; `importPastedUrl` is the same for the whole batch.
+   */
+  const importSourceUrl = useRef(null);
   const importPastedUrl = useRef(null);
   const prefetchRef = useRef(null);
   const importBatch = useRef({ done: 0, total: 0 });
   const [resumed, setResumed] = useState(false);
+  /*
+   * The address the import box starts with, and a key that remounts it.
+   * "Start over" used to drop the landlord back on the import box with the same
+   * address already in it, which immediately read the same site again — so a
+   * typo could not be corrected without leaving the page. Starting over now
+   * clears the address and gives them the empty box back.
+   */
+  const [importSeed, setImportSeed] = useState(initialImportUrl);
+  const [importBoxKey, setImportBoxKey] = useState(0);
 
   /*
    * Imported photos and floor plans download in the background (assets get a
@@ -116,27 +179,71 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   };
 
   // ------------------------------------------------------------------ autosave
+  /*
+   * The photo URLs an import brought in, kept so a reload can fetch them again.
+   *
+   * Staged photos are File objects living in memory, and the autosave is
+   * localStorage, which cannot hold a file. So a refresh restored the address,
+   * the units and the rent, and silently dropped every photo, with nothing on
+   * screen to say they had ever been there. Ben lost eight of them that way and
+   * reasonably concluded the import had stopped pulling photos at all. The URLs
+   * are a few hundred bytes of text, they save happily, and fetching them again
+   * costs nothing.
+   */
+  const [importedPhotoUrls, setImportedPhotoUrls] = useState([]);
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
     try {
-      const raw = localStorage.getItem(AUTOSAVE_KEY(user?.id));
-      if (!raw) return;
+      const raw = localStorage.getItem(autosaveKey);
+      if (!raw) {
+        // A tab with nothing saved yet starts from the draft the workspace read.
+        if (batch?.draft) {
+          applyDraft(batch.draft, { sourceUrl: batch.sourceUrl, pastedUrl: batch.pastedUrl });
+          if (batchExisting) lookupProperty(batchExisting.address || batch.draft.address);
+        }
+        return;
+      }
       const saved = JSON.parse(raw);
       const hasContent =
         saved?.form &&
         (saved.form.address?.trim() ||
           saved.form.description?.trim() ||
-          (saved.units ?? []).some((u) => u.bedrooms !== "" || u.rent !== ""));
+          (saved.units ?? []).some(
+            (u) =>
+              u.bedrooms !== "" ||
+              (u.rent ?? "") !== "" ||
+              (u.leases ?? []).some((l) => l.rent !== "")
+          ));
       if (!hasContent) return;
       setForm({ ...blankForm(user), ...saved.form });
-      if (saved.form?.move_in_date) setAvailabilityMode("date");
-      setUnits(saved.units?.length ? saved.units : [emptyUnit()]);
+      importSourceUrl.current = saved.importSourceUrl ?? null;
+      importPastedUrl.current = saved.importPastedUrl ?? null;
+      setExistingEdits(saved.existingEdits ?? {});
+      setExistingNewLeases(saved.existingNewLeases ?? {});
+      setLiveMergedFor(saved.liveMergedFor ?? null);
+      if (batchExisting) lookupProperty(batchExisting.address || saved.form.address);
+      // Older drafts hold floor-plan cards with apartment lists; this turns
+      // them into units with their leases underneath, merged by rent.
+      setUnits(saved.units?.length ? saved.units.map(normalizeWizardUnit) : [emptyUnit()]);
       setCustomAmenities(saved.customAmenities ?? []);
       setCoords(saved.coords ?? { lat: null, lng: null });
       if (saved.stepId && saved.stepId !== "start") setStepId(saved.stepId);
+      else if (batch) setStepId("address");
       setVisited(new Set(saved.visited ?? []));
+      // The photos themselves could not be saved, so go and get them again.
+      const savedPhotos = Array.isArray(saved.importedPhotoUrls) ? saved.importedPhotoUrls : [];
+      if (savedPhotos.length) {
+        setImportedPhotoUrls(savedPhotos);
+        setImportInfo((prev) => ({
+          ...(prev ?? {}),
+          photoCount: 0,
+          photosTotal: savedPhotos.length,
+          photosLoading: true,
+        }));
+        importPhotos(savedPhotos);
+      }
       setResumed(true);
     } catch {
       /* corrupt draft — start clean */
@@ -148,25 +255,44 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     if (!restoredRef.current) return;
     try {
       localStorage.setItem(
-        AUTOSAVE_KEY(user?.id),
+        autosaveKey,
         JSON.stringify({
           form,
+          // Kept with the draft so a reload still publishes where it came from.
+          importSourceUrl: importSourceUrl.current,
+          importPastedUrl: importPastedUrl.current,
+          existingEdits,
+          existingNewLeases,
+          liveMergedFor,
           units,
           customAmenities,
           coords,
           stepId,
           visited: [...visited],
+          importedPhotoUrls,
           savedAt: Date.now(),
         })
       );
     } catch {
       /* storage full/blocked — autosave is best-effort */
     }
-  }, [form, units, customAmenities, coords, stepId, visited, user?.id]);
+  }, [
+    form,
+    units,
+    customAmenities,
+    coords,
+    stepId,
+    visited,
+    importedPhotoUrls,
+    existingEdits,
+    existingNewLeases,
+    liveMergedFor,
+    autosaveKey,
+  ]);
 
   const clearAutosave = () => {
     try {
-      localStorage.removeItem(AUTOSAVE_KEY(user?.id));
+      localStorage.removeItem(autosaveKey);
     } catch {
       /* ignore */
     }
@@ -178,8 +304,10 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setForm(blankForm(user));
     setUnits([emptyUnit()]);
     setCustomAmenities([]);
+    setConcessions([]);
     stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
     setStagedFiles([]);
+    stagedPhotoUrls.current = new Set();
     setStagedPreviews([]);
     setCoords({ lat: null, lng: null });
     setStreetView({ available: false, url: null });
@@ -189,10 +317,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setImportQueue([]);
     prefetchRef.current = null;
     importBatch.current = { done: 0, total: 0 };
-    setAvailabilityMode("now");
     setResumed(false);
     setError(null);
     setVisited(new Set());
+    importSourceUrl.current = null;
+    importPastedUrl.current = null;
+    setImportSeed("");
+    setImportBoxKey((k) => k + 1);
     setStepId("start");
   };
 
@@ -228,17 +359,173 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       u.map((unit, idx) => (idx === i ? { ...unit, [field]: val } : unit))
     );
   };
-  const toggleUnitTerm = (i, months) =>
+  // ---- leases under a unit ----------------------------------------------
+  const patchUnit = (i, fn) =>
+    setUnits((u) => u.map((unit, idx) => (idx === i ? fn(unit) : unit)));
+
+  const addLease = (i) =>
+    patchUnit(i, (unit) => ({ ...unit, leases: [...(unit.leases ?? []), emptyLease()] }));
+
+  const removeLease = (i, k) =>
+    patchUnit(i, (unit) => {
+      const rest = (unit.leases ?? []).filter((_, idx) => idx !== k);
+      return { ...unit, leases: rest.length ? rest : [emptyLease()] };
+    });
+
+  const updateLease = (i, k, patch) => {
+    clearImported(`u${i}:leases`);
+    patchUnit(i, (unit) => ({
+      ...unit,
+      leases: (unit.leases ?? []).map((l, idx) => (idx === k ? { ...l, ...patch } : l)),
+    }));
+  };
+
+  /*
+   * Lease lengths are nearly always the same across a building, so one pick can
+   * set them on every lease of every floor plan. Returns what was there so the
+   * step can offer an undo: a bulk edit nobody can take back is worse than the
+   * typing it saves.
+   */
+  const applyTermsToAll = (months) => {
+    const before = units;
     setUnits((u) =>
-      u.map((unit, idx) => {
-        if (idx !== i) return unit;
-        const cur = Array.isArray(unit.leaseTermMonths) ? unit.leaseTermMonths : [];
-        const next = cur.includes(months)
-          ? cur.filter((m) => m !== months)
-          : [...cur, months].sort((a, b) => a - b);
-        return { ...unit, leaseTermMonths: next };
+      u.map((unit) => ({
+        ...unit,
+        leases: (unit.leases ?? []).map((l) => ({ ...l, leaseTermMonths: [...months] })),
+      }))
+    );
+    return before;
+  };
+  const restoreUnits = (snapshot) => setUnits(snapshot);
+
+  // ---- the landlord's own listing: what is live, and changes to it --------
+  const setUnitRetire = (i, retire) => patchUnit(i, (u) => ({ ...u, retire }));
+  const setLeaseRetire = (i, k, retire) =>
+    patchUnit(i, (u) => ({
+      ...u,
+      leases: u.leases.map((l, idx) => (idx === k ? { ...l, retire } : l)),
+    }));
+  // Back to what is on Proximity now, for one lease or one unit field.
+  const revertLease = (i, k) =>
+    patchUnit(i, (u) => ({
+      ...u,
+      leases: u.leases.map((l, idx) =>
+        idx === k && l.live
+          ? {
+              ...l,
+              rent: l.live.rent,
+              rentIsPerPerson: l.live.rentIsPerPerson,
+              availableFrom: l.live.availableFrom,
+              leaseTermMonths: l.live.leaseTermMonths,
+            }
+          : l
+      ),
+    }));
+  const revertUnitField = (i, field) =>
+    patchUnit(i, (u) => (u.live ? { ...u, [field]: u.live[field] } : u));
+
+  // ---- a property already on Proximity -----------------------------------
+  const editExistingLease = (leaseId, patch) =>
+    setExistingEdits((prev) => ({ ...prev, [leaseId]: { ...(prev[leaseId] ?? {}), ...patch } }));
+  const resetExistingLease = (leaseId) =>
+    setExistingEdits((prev) => {
+      const next = { ...prev };
+      delete next[leaseId];
+      return next;
+    });
+  const addExistingUnitLease = (unitId) =>
+    setExistingNewLeases((prev) => ({ ...prev, [unitId]: [...(prev[unitId] ?? []), emptyLease()] }));
+  const updateExistingUnitLease = (unitId, k, patch) =>
+    setExistingNewLeases((prev) => ({
+      ...prev,
+      [unitId]: (prev[unitId] ?? []).map((l, idx) => (idx === k ? { ...l, ...patch } : l)),
+    }));
+  const removeExistingUnitLease = (unitId, k) =>
+    setExistingNewLeases((prev) => ({
+      ...prev,
+      [unitId]: (prev[unitId] ?? []).filter((_, idx) => idx !== k),
+    }));
+
+  /*
+   * Photos of one unit. Uploaded as soon as they are picked, like the floor
+   * plan, so they survive a reload; filed against the unit after publish, once
+   * it has an id.
+   */
+  const [unitPhotoUploading, setUnitPhotoUploading] = useState({});
+  const uploadUnitPhotos = async (i, fileList) => {
+    const files = Array.from(fileList ?? []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    setFloorPlanError((p) => ({ ...p, [`photos${i}`]: null }));
+    setUnitPhotoUploading((p) => ({ ...p, [i]: (p[i] ?? 0) + files.length }));
+    let failed = 0;
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          const upload = await compressImage(file);
+          if (upload.size > 4 * 1024 * 1024) throw new Error("too big");
+          const fd = new FormData();
+          fd.append("file", upload);
+          fd.append("kind", "unit-photo");
+          const res = await fetch("/api/upload/floor-plan", { method: "POST", body: fd });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.url) throw new Error("upload failed");
+          setUnits((us) =>
+            us.map((u, idx) => (idx === i ? { ...u, photos: [...(u.photos ?? []), data.url] } : u))
+          );
+        } catch {
+          failed += 1;
+        } finally {
+          setUnitPhotoUploading((p) => ({ ...p, [i]: Math.max(0, (p[i] ?? 1) - 1) }));
+        }
       })
     );
+    if (failed)
+      setFloorPlanError((p) => ({
+        ...p,
+        [`photos${i}`]: `${failed} photo${failed === 1 ? "" : "s"} didn't upload. Try again.`,
+      }));
+  };
+  const removeUnitPhoto = (i, url) =>
+    setUnits((us) =>
+      us.map((u, idx) => (idx === i ? { ...u, photos: (u.photos ?? []).filter((p) => p !== url) } : u))
+    );
+
+  /*
+   * A floor plan the landlord uploads for a unit. Same endpoint the import uses
+   * for the diagrams it finds: the file goes to R2 now and the unit keeps only
+   * its URL, so it survives a reload like everything else in the draft. Photos
+   * are compressed first because a request body over 4.5 MB never reaches the
+   * route; a PDF cannot be, so an oversized one is refused here with a reason.
+   */
+  const [floorPlanUploading, setFloorPlanUploading] = useState({});
+  const [floorPlanError, setFloorPlanError] = useState({});
+  const uploadFloorPlan = async (i, file) => {
+    if (!file) return;
+    setFloorPlanError((p) => ({ ...p, [i]: null }));
+    const isPdf = file.type === "application/pdf";
+    if (!isPdf && !file.type.startsWith("image/")) {
+      setFloorPlanError((p) => ({ ...p, [i]: "Use an image or a PDF." }));
+      return;
+    }
+    const upload = isPdf ? file : await compressImage(file);
+    if (upload.size > 4 * 1024 * 1024) {
+      setFloorPlanError((p) => ({ ...p, [i]: "That file is over 4 MB. Try a smaller one." }));
+      return;
+    }
+    setFloorPlanUploading((p) => ({ ...p, [i]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("file", upload);
+      const res = await fetch("/api/upload/floor-plan", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || "Upload failed");
+      updateUnit(i, "floorPlanImageUrl", data.url);
+    } catch {
+      setFloorPlanError((p) => ({ ...p, [i]: "The upload didn't go through. Try again." }));
+    } finally {
+      setFloorPlanUploading((p) => ({ ...p, [i]: false }));
+    }
+  };
 
   const addCustomAmenity = (v) => {
     const val = v.trim();
@@ -298,7 +585,21 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   };
 
   // ------------------------------------------------------- website import
-  const importPhotos = async (urls) => {
+  /*
+   * Photos already staged, so the same one is never staged twice.
+   *
+   * A reload fetches the imported photos again, and anything that runs that
+   * twice (a double-invoked effect in development, a landlord clicking back
+   * into the flow) staged a second copy of every photo: three photos came back
+   * as six thumbnails. Keyed on the source URL, which is what we were given and
+   * is stable across a reload.
+   */
+  const stagedPhotoUrls = useRef(new Set());
+
+  const importPhotos = async (rawUrls) => {
+    const urls = rawUrls.filter((u) => !stagedPhotoUrls.current.has(u));
+    urls.forEach((u) => stagedPhotoUrls.current.add(u));
+    if (!urls.length) return;
     const epoch = importEpoch.current;
     const aborter = new AbortController();
     importAborters.current.add(aborter);
@@ -382,11 +683,18 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     }
   };
 
-  const requestQueuedDraft = (target) =>
+  const requestQueuedDraft = ({ levelUrl, ...target }) =>
     fetch("/api/landlord/listing-draft", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: importPastedUrl.current, targetProperty: target }),
+      // Re-read the page this property was listed on, not the pasted homepage.
+      // For a single-site landlord they are the same page; for a company whose
+      // buildings sit behind an area folder, the homepage never mentioned this
+      // property at all.
+      body: JSON.stringify({
+        url: levelUrl || importPastedUrl.current,
+        targetProperty: target,
+      }),
     }).then(async (res) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.listing) {
@@ -422,7 +730,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
             units.every(
               (u) =>
                 u.available === false ||
-                (Array.isArray(u.leaseTermMonths) && u.leaseTermMonths.length > 0)
+                (u.leases ?? []).every((l) => (l.leaseTermMonths ?? []).length > 0)
             )
           );
         case "description":
@@ -464,16 +772,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     for (const [key, val] of Object.entries(importable)) {
       if (val != null && val !== "") marked.add(key);
     }
-    // Earliest dated unit availability prefills the move-in date ("now"
-    // means available immediately, which an empty date already implies).
-    const availDates = (listing.units ?? [])
-      .map((u) => u.availableFrom)
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
-      .sort();
-    if (availDates[0]) {
-      marked.add("move_in_date");
-      setAvailabilityMode("date");
-    }
 
     setForm((f) => {
       const next = { ...f };
@@ -481,7 +779,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         if (val != null && val !== "") next[key] = val;
       }
       if (listing.furnished != null) next.furnished = listing.furnished;
-      if (availDates[0] && !f.move_in_date) next.move_in_date = availDates[0];
       const AMENITIES = new Set(f.amenities);
       (listing.amenities ?? []).forEach((a) => AMENITIES.add(a));
       next.amenities = [...AMENITIES];
@@ -502,27 +799,125 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     let nextUnits = [emptyUnit()];
     const floorPlanImports = [];
     if (Array.isArray(listing.units) && listing.units.length) {
-      nextUnits = listing.units.slice(0, 12).map((u, i) => {
-        for (const fld of ["bedrooms", "bathrooms", "rent", "area", "title"]) {
+      /*
+       * Enough for a real building. Twelve looked generous until One Hundred
+       * Above the Park came in with thirty-six floor plans and the landlord was
+       * shown twelve of them, all one-bedrooms, with no sign the rest existed.
+       * A card the landlord does not want is one click to remove; a floor plan
+       * that never arrived is invisible.
+       */
+      /*
+       * Once any floor plan in the import names its apartments, this is a
+       * building rather than a house, and the plans whose apartments the site
+       * did not publish are units too. Without this they came in with the unit
+       * type blank, and a thirty-six plan import stopped at "pick a unit type
+       * for each floor plan" with twenty cards to open to find the empty ones.
+       * A house, where no plan names an apartment, still asks the question.
+       */
+      const namesApartments = listing.units.some((u) => (u.unitNames ?? []).length);
+      nextUnits = listing.units.slice(0, 40).map((u, i) => {
+        for (const fld of ["bedrooms", "bathrooms", "area", "title"]) {
           if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
         }
+        if ((u.rent != null && u.rent !== "") || (u.leaseTermMonths ?? []).length)
+          marked.add(`u${i}:leases`);
         if (u.floorPlanImageUrl) floorPlanImports.push({ index: i, url: u.floorPlanImageUrl });
-        return {
+        /*
+         * The site's own unit identifiers ("2W", "101", "Madrid") fill in the
+         * "which units have this floor plan?" boxes, so each one becomes its
+         * own listing_units row with its own lease. They used to have nowhere
+         * to go and were landing in the floor-plan name box instead.
+         */
+        const names = (u.unitNames ?? []).filter((n) => typeof n === "string" && n.trim());
+        // Lease lengths the site offers on this floor plan, straight onto the
+        // chips. RealPage properties publish these per floor plan in their
+        // availability feed, which is the only place they exist.
+        const terms = [...new Set((u.leaseTermMonths ?? []).filter((m) => Number.isFinite(m) && m > 0))]
+          .sort((a, b) => a - b);
+        /*
+         * Dates the site gave for individual apartments, keyed by unit number.
+         * Only taken when there is one date per named unit: a partly filled
+         * list would silently put the wrong apartment on the wrong date.
+         */
+        const dates = u.unitAvailability ?? [];
+        const perUnit =
+          dates.length === names.length
+            ? Object.fromEntries(
+                names.map((n, k) => [n, dates[k]]).filter(([, d]) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
+              )
+            : {};
+        // Same alignment rule as the dates: all or nothing, so an apartment
+        // never inherits the price of the one listed next to it.
+        const rentList = u.unitRents ?? [];
+        const perUnitRent =
+          rentList.length === names.length
+            ? Object.fromEntries(
+                names.map((n, k) => [n, rentList[k]]).filter(([, r]) => Number.isFinite(r) && r > 0)
+              )
+            : {};
+        /*
+         * A price curve becomes one offering per distinct price, with the terms
+         * that share it grouped together: 9 and 10 months both at $2,019 is one
+         * offering on [9,10], not two identical rows.
+         */
+        const prices = u.leaseTermPrices ?? [];
+        const curve =
+          prices.length === terms.length && terms.length
+            ? [...prices.reduce((map, price, k) => {
+                if (!Number.isFinite(price) || price <= 0) return map;
+                const key = Math.round(price);
+                map.set(key, [...(map.get(key) ?? []), terms[k]]);
+                return map;
+              }, new Map())].map(([rent, months]) => ({ rent, leaseTermMonths: months }))
+            : [];
+        const cheapest = curve.length ? curve.reduce((a, b) => (a.rent <= b.rent ? a : b)) : null;
+        /*
+         * Read in the floor-plan-card shape the parsing above has always
+         * produced, then folded by normalizeWizardUnit into one unit with a
+         * lease per distinct rent. Apartments at the same price on the same
+         * plan become one lease; the plan's other prices become the others.
+         */
+        return normalizeWizardUnit({
           bedrooms: u.bedrooms ?? "",
           bathrooms: u.bathrooms ?? "",
-          rent: u.rent ?? "",
+          rent: cheapest ? cheapest.rent : u.rent ?? "",
           area: u.area ?? "",
-          available: true,
+          // A waitlist-only plan comes in switched off; everything else is on.
+          available: u.available !== false,
           title: u.title ?? "",
           floorPlanImageUrl: "",
-          leaseTermMonths: [],
-        };
+          leaseTermMonths: cheapest ? cheapest.leaseTermMonths : terms,
+          /*
+           * A plan the site lists without naming any apartment stays unlabelled
+           * on purpose. The database says so outright: a unit may carry a word
+           * in front only if it also carries a number ("Unit 1508"), or be
+           * "Whole" with no number, or have neither. Giving these a "Unit" with
+           * no number to get them past the form's own question is the one shape
+           * it refuses, and it took the publish down with a constraint error
+           * after the listing row had already been written.
+           *
+           * So: no word in front, no number, one unnamed unit for the plan. The
+           * landlord still sees the floor plan and can name its apartments when
+           * one comes free. A card typed by hand never carries this flag, so
+           * the form still insists on a unit type everywhere else.
+           */
+          designator: names.length ? "Unit" : "",
+          numbersUnknown: namesApartments && names.length === 0,
+          unitNumbers: names.join(", "),
+          availableFrom:
+            u.availableFrom && u.availableFrom !== "now" ? u.availableFrom : "",
+          unitAvailability: perUnit,
+          unitRents: perUnitRent,
+          // The card itself carries the cheapest offering; the rest hang off it.
+          extraLeases: cheapest ? curve.filter((c) => c !== cheapest) : [],
+        });
       });
     }
     setUnits(nextUnits);
     if (floorPlanImports.length) importFloorPlans(floorPlanImports);
     setImportedFields(marked);
 
+    importSourceUrl.current = sourceUrl ?? null;
     importPastedUrl.current = pastedUrl ?? importPastedUrl.current;
     setImportQueue(queue);
     prefetchNext(queue);
@@ -535,6 +930,19 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     } catch {
       /* keep fallback */
     }
+    /*
+     * The draft sends rent specials as plain sentences. This filtered for
+     * objects with a `description`, which they stopped being when the
+     * extraction schema was flattened to fix a model error — so every special
+     * was dropped here, silently, and two buildings published with none
+     * although both had one. The API has always taken either shape.
+     */
+    setConcessions(
+      (Array.isArray(listing.concessions) ? listing.concessions : [])
+        .map((c) => (typeof c === "string" ? c : c?.description))
+        .filter((c) => typeof c === "string" && c.trim())
+        .slice(0, 6)
+    );
     const photoUrls = Array.isArray(listing.imageUrls) ? listing.imageUrls : [];
     setImportInfo({
       host,
@@ -547,30 +955,23 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       batchTotal: importBatch.current.total,
       nextName: queue[0]?.name ?? null,
     });
+    setImportedPhotoUrls(photoUrls);
     if (photoUrls.length) importPhotos(photoUrls);
 
     // Jump to the first gap. Steps the import satisfied count as visited so
     // the progress bar honestly shows them done (endowed progress you earned).
-    //
-    // Availability is the exception. It's a required signal, and the only way
-    // an import can answer it is a dated unit availability — everything else is
-    // us guessing. Counting "basics" as satisfied without one skipped the ask
-    // entirely and published every imported listing with an empty move_in_date,
-    // i.e. "available now" by default, which is the opposite of the deliberate
-    // signal this step exists to collect.
-    const availabilityImported = !!availDates[0];
     const importDone = new Set(["perks", "photos"]);
-    if (availabilityImported) importDone.add("basics");
+    if (listing.home_type) importDone.add("basics");
     if (listing.address) importDone.add("address");
     if (listing.description) importDone.add("description");
     setVisited((prev) => new Set([...prev, ...importDone]));
     const unitsOk =
       nextUnits.length > 0 &&
       nextUnits.every((u) => u.bedrooms !== "" && u.bathrooms !== "") &&
-      nextUnits.every((u) => (u.leaseTermMonths ?? []).length > 0);
+      nextUnits.every((u) => u.leases.every((l) => l.leaseTermMonths.length > 0));
     const firstGap = !listing.address
       ? "address"
-      : !availabilityImported
+      : !listing.home_type
       ? "basics"
       : !unitsOk
       ? "units"
@@ -593,20 +994,68 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const lookupProperty = useCallback(async (address) => {
     if (!address?.trim()) return;
     setLookupLoading(true);
+    // On the landlord's own listing, ask for that one row only: its units are
+    // what the units step edits, not the union of every duplicate here.
+    const only = batchExisting?.mine ? `&listingId=${encodeURIComponent(batchExisting.id)}` : "";
     try {
       const res = await fetch(
-        `/api/properties/lookup?address=${encodeURIComponent(address)}`
+        `/api/properties/lookup?address=${encodeURIComponent(address)}${only}`
       );
       if (!res.ok) return;
       const data = await res.json();
       setPropertyLookup(data);
-      setUnitSelection({ mode: data?.property ? "existing" : "new", unitId: null });
+      // An existing-property tab edits that property's units on the units step,
+      // so its new units always attach to the property as new units.
+      setUnitSelection({
+        mode: data?.property && !batchExisting ? "existing" : "new",
+        unitId: null,
+      });
     } catch (err) {
       console.error("Property lookup error:", err);
     } finally {
       setLookupLoading(false);
     }
-  }, []);
+  }, [batchExisting]);
+
+  /*
+   * The tab learned after it opened that this address is already on Proximity
+   * (publishing was refused as a duplicate): load that listing now.
+   */
+  const seenExistingId = useRef(batchExisting?.id ?? null);
+  useEffect(() => {
+    const id = batchExisting?.id ?? null;
+    if (!id || id === seenExistingId.current) return;
+    seenExistingId.current = id;
+    lookupProperty(batchExisting.address || form.address);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchExisting?.id]);
+
+  // Start the landlord's own listing from what is live, website on top.
+  useEffect(() => {
+    if (!ownExisting || !existingProperty) return;
+    if (existingProperty.id !== ownExisting.id || liveMergedFor === ownExisting.id) return;
+    setUnits((current) => mergeWithLive(current, existingProperty.units ?? []));
+    setLiveMergedFor(ownExisting.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownExisting?.id, existingProperty?.id]);
+
+  /*
+   * The earliest day any apartment on offer opens up. Availability belongs to
+   * the lease, so it is collected per apartment on the units step — this only
+   * summarises it for the property row.
+   */
+  const earliestUnitAvailability = () => {
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    const dates = [];
+    for (const u of units.filter((u) => u.available !== false)) {
+      for (const l of u.leases ?? []) {
+        // A blank means available now, which beats every date on the page.
+        if (!ISO_DATE.test(l.availableFrom ?? "")) return null;
+        dates.push(l.availableFrom);
+      }
+    }
+    return dates.sort()[0] ?? null;
+  };
 
   const validateStep = (id) => {
     if (id === "address") {
@@ -614,46 +1063,49 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       if (existingProperty && unitSelection.mode === "existing" && !unitSelection.unitId)
         return "Pick which unit this lease is for, or choose to add a new unit.";
     }
-    if (id === "basics" && availabilityMode === "date" && !form.move_in_date)
-      return "Pick the date it becomes available, or tap Available now.";
     if (id === "units") {
-      if (units.length === 0) return "Add at least one unit.";
+      if (batchExisting) {
+        const newOnExisting = Object.values(existingNewLeases).flat();
+        if (newOnExisting.some((l) => !(l.leaseTermMonths ?? []).length))
+          return "Pick at least one lease length for each lease you're adding to an existing unit.";
+        if (
+          units.length === 0 &&
+          !newOnExisting.length &&
+          !Object.keys(existingEdits).length
+        )
+          return "Add a unit, add a lease to one of the existing units, or change one of your leases.";
+      } else if (units.length === 0) return "Add at least one unit.";
       if (units.some((u) => u.bedrooms === "" || u.bathrooms === ""))
         return "Each unit needs bedrooms and bathrooms.";
-      if (
-        units.some(
-          (u) =>
-            u.available !== false &&
-            !(Array.isArray(u.leaseTermMonths) && u.leaseTermMonths.length > 0)
-        )
-      )
-        return "Pick at least one lease term for each available unit.";
+      const unitName = (u, i) => u.title?.trim() || `Unit ${i + 1}`;
+      for (const [i, u] of units.entries()) {
+        if (u.available === false || u.retire) continue;
+        // Anything being marked unavailable is not being offered, so it needs
+        // no lease length to publish.
+        const leases = (u.leases ?? []).filter((l) => !l.retire);
+        if (leases.some((l) => !(l.leaseTermMonths ?? []).length))
+          return `Pick at least one lease length for every lease on ${unitName(u, i)}.`;
+        /*
+         * One lease per rent on a unit. Two at the same price are one option
+         * to a student, so ask for them to be combined rather than publishing
+         * the same line twice.
+         */
+        const rents = leases.map((l) => (l.rent === "" ? "" : Number(l.rent)));
+        const dupe = rents.find((r, k) => rents.indexOf(r) !== k);
+        if (dupe !== undefined)
+          return dupe === ""
+            ? `${unitName(u, i)} has two leases with no rent. Combine them into one.`
+            : `${unitName(u, i)} has two leases at $${dupe}. Combine them into one lease with both lease lengths.`;
+        if (leases.length > MAX_LEASES_PER_UNIT)
+          return `${unitName(u, i)} has more than ${MAX_LEASES_PER_UNIT} leases. Remove some to publish.`;
+      }
       /*
-       * Attaching to an existing unit creates ONE offering on that one unit, so
-       * only the first card is submitted. Say so rather than accepting extra
-       * cards and dropping them silently.
+       * Attaching to an existing unit creates offerings on that one unit, so
+       * only the first unit is submitted. Say so rather than accepting extra
+       * units and dropping them silently.
        */
       if (attachingToExistingUnit && units.length > 1) {
         return "You're adding your listing to one existing unit, so keep a single unit here. Choose “add a new unit” to list several.";
-      }
-      // Attaching to an existing unit reuses that unit's identity, so the
-      // floor-plan cards aren't creating anything that needs identifying.
-      if (!attachingToExistingUnit) {
-        if (units.some((u) => !u.designator))
-          return "Pick a unit type for each floor plan (or “Whole property” for a house).";
-        if (units.some((u) => parseUnitNumbers(u.designator, u.unitNumbers).length === 0))
-          return "List the unit numbers for each floor plan, e.g. 2W, 2E.";
-        // Two cards claiming the same unit would create duplicate units at the
-        // property — exactly the collision this model exists to prevent.
-        const seen = new Set();
-        for (const u of units) {
-          for (const n of parseUnitNumbers(u.designator, u.unitNumbers)) {
-            const key = `${u.designator}|${n ?? ""}`;
-            if (seen.has(key))
-              return `Unit ${u.designator} ${n ?? ""} is listed on more than one floor plan.`;
-            seen.add(key);
-          }
-        }
       }
     }
     if (id === "description") {
@@ -687,65 +1139,303 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setError(null);
     const idx = STEPS.findIndex((s) => s.id === stepId);
     if (idx > 0) setStepId(STEPS[idx - 1].id);
-    else setStepId("start");
+    else if (!batch) setStepId("start");
   };
 
   // ------------------------------------------------------------------ publish
-  const publish = async () => {
-    setFieldError(null);
+  // The first thing standing between this draft and publishing, if any.
+  const firstProblem = () => {
     for (const s of STEPS) {
       const problem = validateStep(s.id);
-      if (problem) {
-        setError(problem);
-        setStepId(s.id);
-        return;
-      }
+      if (problem) return { stepId: s.id, problem };
+    }
+    return null;
+  };
+  const showProblem = (p) => {
+    setError(p.problem);
+    setStepId(p.stepId);
+  };
+
+  /*
+   * Everything publishing does, short of leaving the page. Returns
+   * { ok, listingId, unitPayload, diff } or { ok: false, error }, so the
+   * single-listing button and the workspace's "Publish all" share one path.
+   */
+  const submitListing = async () => {
+    setFieldError(null);
+    const problem = firstProblem();
+    if (problem) {
+      showProblem(problem);
+      return { ok: false, error: problem.problem };
     }
     setSubmitting(true);
     setError(null);
     try {
-      // A card is a FLOOR PLAN; expand it into one payload row per physical unit
-      // sharing it, so each gets its own identity and its own lease.
-      const unitPayload = units.flatMap((u) =>
-        parseUnitNumbers(u.designator, u.unitNumbers).map((number) => ({
+      /*
+       * On a property already on Proximity, the landlord's changes to what they
+       * already hold there go first: edited leases, then new leases on units
+       * that already exist. New units, if any, attach to the listing below.
+       */
+      /*
+       * The landlord's own listing: bring what is live in line with the units
+       * step. Unit details (owner only), then each of their leases: changed
+       * fields, retired ones marked unavailable, new ones added to the unit.
+       * Units that are new altogether are created below like any others.
+       */
+      let createUnits = units;
+      if (ownExisting) {
+        const lid = ownExisting.id;
+        const send = async (url, method, body, fallback) => {
+          const res = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (res.ok) return null;
+          const d = await res.json().catch(() => ({}));
+          return d.error || fallback;
+        };
+        const sameTerms = (a, b) =>
+          JSON.stringify([...(a ?? [])].map(Number).sort()) ===
+          JSON.stringify([...(b ?? [])].map(Number).sort());
+        for (const u of units.filter((x) => x.live)) {
+          const label = u.title || "a unit";
+          if (ownExisting.mine === "owner") {
+            const patch = {};
+            for (const f of ["bedrooms", "bathrooms", "area", "title", "floorPlanImageUrl"])
+              if (String(u[f] ?? "") !== String(u.live[f] ?? "")) patch[f] = u[f];
+            if (Object.keys(patch).length) {
+              const problem = await send(
+                `/api/landlord/listings/${lid}/units/${u.live.id}`,
+                "PATCH",
+                patch,
+                `Could not update ${label}.`
+              );
+              if (problem) {
+                setError(problem);
+                return { ok: false, error: problem };
+              }
+            }
+          }
+          for (const l of u.leases ?? []) {
+            const off = !!(l.retire || u.retire || u.available === false);
+            if (l.live) {
+              const body = {};
+              if (String(l.rent ?? "") !== String(l.live.rent ?? ""))
+                body.rent = l.rent === "" ? null : Number(l.rent);
+              if (!!l.rentIsPerPerson !== !!l.live.rentIsPerPerson)
+                body.rentIsPerPerson = !!l.rentIsPerPerson;
+              if ((l.availableFrom || "") !== (l.live.availableFrom || ""))
+                body.availableFrom = l.availableFrom || null;
+              if (!sameTerms(l.leaseTermMonths, l.live.leaseTermMonths))
+                body.leaseTermMonths = (l.leaseTermMonths ?? []).map(Number);
+              if (off !== !!l.live.unavailable) body.unavailable = off;
+              if (!Object.keys(body).length) continue;
+              const problem = await send(
+                `/api/leases/${l.live.id}`,
+                "PATCH",
+                body,
+                `Could not update a lease on ${label}.`
+              );
+              if (problem) {
+                setError(problem);
+                return { ok: false, error: problem };
+              }
+            } else {
+              const payload = {
+                  unitId: u.live.id,
+                  rent: l.rent === "" ? null : Number(l.rent),
+                  rentIsPerPerson: !!l.rentIsPerPerson,
+                  leaseTermMonths: (l.leaseTermMonths ?? []).map(Number),
+                  availableFrom: l.availableFrom || null,
+                  sublease: String(form.lease_type).toLowerCase() === "sublease",
+                  available: !off,
+                  description: form.description,
+                  furnished: form.furnished,
+                  contactEmail: form.contact_email || null,
+                  contactPhone: form.contact_phone || null,
+                  contactName: form.contact_name || null,
+              };
+              const res = await fetch("/api/leases", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              const d = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                const problem = d.error || `Could not add a lease to ${label}.`;
+                setError(problem);
+                return { ok: false, error: problem };
+              }
+              /*
+               * Recorded as live straight away, so if something later in this
+               * publish fails, pressing Publish again edits this lease rather
+               * than adding a second copy of it.
+               */
+              const saved = {
+                id: d.lease?.id,
+                rent: l.rent,
+                rentIsPerPerson: !!l.rentIsPerPerson,
+                availableFrom: l.availableFrom || "",
+                leaseTermMonths: l.leaseTermMonths ?? [],
+                unavailable: off,
+              };
+              if (saved.id) {
+                setUnits((prev) =>
+                  prev.map((pu) =>
+                    pu !== u
+                      ? pu
+                      : {
+                          ...pu,
+                          leases: pu.leases.map((pl) =>
+                            pl === l ? { ...pl, live: saved, status: "live" } : pl
+                          ),
+                        }
+                  )
+                );
+              }
+            }
+          }
+          if ((u.photos ?? []).length) {
+            await send(
+              "/api/upload",
+              "PUT",
+              { listingId: lid, unitId: u.live.id, urls: u.photos },
+              null
+            );
+          }
+        }
+        createUnits = units.filter((x) => !x.live);
+        if (!createUnits.length) {
+          clearAutosave();
+          return { ok: true, listingId: lid, unitPayload: [], diff: null };
+        }
+      } else if (batchExisting && existingProperty) {
+        const leaseBody = (l) => ({
+          rent: l.rent !== "" && l.rent != null ? Number(l.rent) : null,
+          rentIsPerPerson: !!l.rentIsPerPerson,
+          leaseTermMonths: (l.leaseTermMonths ?? []).map(Number).filter((m) => m > 0),
+          availableFrom: l.availableFrom || null,
+        });
+        for (const [leaseId, patch] of Object.entries(existingEdits)) {
+          const res = await fetch(`/api/leases/${leaseId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(leaseBody(patch)),
+          });
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            const message = d.error || "One of your existing leases could not be updated.";
+            setError(message);
+            return { ok: false, error: message };
+          }
+        }
+        setExistingEdits({});
+        for (const [unitId, leases] of Object.entries(existingNewLeases)) {
+          for (const l of leases) {
+            const res = await fetch("/api/leases", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                unitId,
+                ...leaseBody(l),
+                sublease: String(form.lease_type).toLowerCase() === "sublease",
+                available: true,
+                description: form.description,
+                furnished: form.furnished,
+                contactEmail: form.contact_email || null,
+                contactPhone: form.contact_phone || null,
+                contactName: form.contact_name || null,
+              }),
+            });
+            if (!res.ok) {
+              const d = await res.json().catch(() => ({}));
+              const message = d.error || "A lease could not be added to an existing unit.";
+              setError(message);
+              return { ok: false, error: message };
+            }
+          }
+        }
+        setExistingNewLeases({});
+        // Nothing new to create: the edits were the whole job.
+        if (units.length === 0) {
+          clearAutosave();
+          return { ok: true, listingId: existingProperty.id, unitPayload: [], diff: null };
+        }
+      }
+
+      /*
+       * One unit per floor plan, with its leases underneath. A house typed in
+       * as a single unit is the whole property; anything else goes in with no
+       * unit number, which listing_units allows.
+       */
+      const wholeProperty = createUnits.length === 1 && form.home_type !== "apartment";
+      const termsOf = (l) =>
+        (l.leaseTermMonths ?? []).map(Number).filter((m) => Number.isFinite(m) && m > 0);
+      const unitPayload = createUnits.map((u) => {
+        const leases = (u.leases ?? []).map((l) => ({
+          rent: l.rent !== "" && l.rent != null ? Number(l.rent) : null,
+          rentIsPerPerson: !!l.rentIsPerPerson,
+          leaseTermMonths: termsOf(l),
+          availableFrom: l.availableFrom || null,
+        }));
+        const priced = leases.map((l) => l.rent).filter((r) => r != null);
+        const dates = leases.map((l) => l.availableFrom);
+        return {
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
-          rent: u.rent !== "" ? Number(u.rent) : null,
+          rent: priced.length ? Math.min(...priced) : null,
           area: u.area !== "" ? Number(u.area) : null,
           available: u.available !== false,
           title: (u.title ?? "").trim() || null,
           floorPlanImageUrl: u.floorPlanImageUrl || null,
-          leaseTermMonths: Array.isArray(u.leaseTermMonths)
-            ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
-            : [],
-          designator: u.designator || null,
-          number,
-        }))
-      );
+          // Every length offered on this unit, for the listing's summary.
+          leaseTermMonths: [...new Set(leases.flatMap((l) => l.leaseTermMonths))].sort(
+            (a, b) => a - b
+          ),
+          leases,
+          designator: wholeProperty ? "Whole" : null,
+          number: null,
+          leaseAvailability: dates.some((d) => !d) ? null : dates.sort()[0] ?? null,
+        };
+      });
 
       // The property and unit both already exist — only the caller's own lease
       // is created. The sublease guard is enforced by the database.
+      const postLease = (lease) =>
+        fetch("/api/leases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            unitId: unitSelection.unitId,
+            rent: lease.rent,
+            rentIsPerPerson: lease.rentIsPerPerson,
+            leaseTermMonths: lease.leaseTermMonths,
+            availableFrom: lease.availableFrom,
+            sublease: String(form.lease_type).toLowerCase() === "sublease",
+            available: units[0]?.available !== false,
+            description: form.description,
+            furnished: form.furnished,
+            contactEmail: form.contact_email || null,
+            contactPhone: form.contact_phone || null,
+            contactName: form.contact_name || null,
+          }),
+        });
+      /*
+       * Attaching to an existing unit: the unit is already there, so each lease
+       * is its own offering on it. Stops at the first refusal so the landlord
+       * sees why, and the photos below attach to the offering that went in.
+       */
+      const attachLeases = async () => {
+        let last = null;
+        for (const lease of unitPayload[0]?.leases ?? []) {
+          last = await postLease(lease);
+          if (!last.ok) break;
+        }
+        return last;
+      };
       const res = attachingToExistingUnit
-        ? await fetch("/api/leases", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              unitId: unitSelection.unitId,
-              rent: units[0]?.rent !== "" ? Number(units[0]?.rent) : null,
-              leaseTermMonths: Array.isArray(units[0]?.leaseTermMonths)
-                ? units[0].leaseTermMonths
-                    .map(Number)
-                    .filter((m) => Number.isFinite(m) && m > 0)
-                : [],
-              sublease: String(form.lease_type).toLowerCase() === "sublease",
-              available: units[0]?.available !== false,
-              description: form.description,
-              furnished: form.furnished,
-              contactEmail: form.contact_email || null,
-              contactPhone: form.contact_phone || null,
-              contactName: form.contact_name || null,
-            }),
-          })
+        ? await attachLeases()
         : await fetch("/api/addListing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -753,13 +1443,24 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           ...form,
           unitTypes: unitPayload,
           customAmenities,
+          concessions,
           // A property exists at this address and the user chose to add a new
           // unit to it — attach rather than create a second property row.
-          ...(existingProperty ? { attachToListingId: existingProperty.id } : {}),
-          // /api/addListing reads camelCase moveInDate; the snake_case
-          // move_in_date in ...form was silently dropped (long-standing
-          // create-path bug — edit always saved it).
-          moveInDate: form.move_in_date || null,
+          // On an import tab, the listing the address check matched (the
+          // landlord's own when they have one), not merely the oldest row.
+          ...(batchExisting
+            ? { attachToListingId: batchExisting.id }
+            : existingProperty
+            ? { attachToListingId: existingProperty.id }
+            : {}),
+          // Availability is asked per apartment, and unit_leases.available_from
+          // is what students filter on and what the listing page shows. The
+          // property row carries the earliest of those so listings.move_in_date
+          // still means something to anything reading it.
+          moveInDate: earliestUnitAvailability(),
+          // Where this came from, so the weekly source check can find it again.
+          sourceUrl: importSourceUrl.current || null,
+          indexUrl: importPastedUrl.current || null,
           contactEmail: form.contact_email || null,
           contactPhone: form.contact_phone || null,
           contactName: form.contact_name || null,
@@ -789,17 +1490,30 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
             message: data.error || "That value is already in use.",
             conflict: data.conflict ?? null,
           });
+        } else if (data.code === "address_taken" && batch?.onExisting) {
+          // Not a second copy: this tab now updates the listing already here.
+          batch.onExisting(batch.tabKey, data.existing);
+          const message =
+            "This address is already on Proximity, so this tab now updates that listing. Check the Units step, then publish again.";
+          setError(message);
+          setStepId("units");
+          return { ok: false, error: message };
         } else {
           setError(data.error || "Something went wrong.");
         }
-        return;
+        return { ok: false, error: data.error || "Something went wrong." };
       }
 
       // Upload staged images via presigned URLs (browser -> R2 directly).
       // A photo failure never un-saves the listing, so in queue mode it must
       // not hold the remaining properties hostage: toast it and keep going.
       let uploadError = null;
-      if (stagedFiles.length > 0) {
+      /*
+       * A property already on Proximity keeps the photos it has: the building's
+       * gallery belongs to its owner, and /api/upload would refuse anyone else.
+       * Photos of this landlord's own units still go on their units below.
+       */
+      if (stagedFiles.length > 0 && !batchExisting) {
         /*
          * The two submit paths return different shapes: /api/addListing gives
          * back `listing`, /api/leases gives back `lease: { id, listingId }`.
@@ -873,6 +1587,28 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       // The listing exists either way — staying on the form would invite a
       // duplicate publish. Toast the failure and complete the flow; the
       // dashboard is where photos get re-added.
+      /*
+       * Unit photos, already uploaded, filed against the units that were just
+       * created. /api/addListing returns their ids in the order the units were
+       * sent, which is the order of `units`.
+       */
+      const newUnitIds = data.listing?.unitIds ?? [];
+      const publishedId = data.listing?.id ?? data.lease?.listingId ?? null;
+      for (const [i, u] of createUnits.entries()) {
+        const urls = u.photos ?? [];
+        const unitId = attachingToExistingUnit ? unitSelection.unitId : newUnitIds[i];
+        if (!urls.length || !unitId || !publishedId) continue;
+        const res = await fetch("/api/upload", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: publishedId, unitId, urls }),
+        }).catch(() => null);
+        if (!res?.ok)
+          uploadError = `Listing saved, but the photos for ${
+            u.title || `unit ${i + 1}`
+          } could not be attached. You can add them from your dashboard.`;
+      }
+
       if (uploadError) toast.error(uploadError, { duration: 8000 });
 
       // Contact info different from the profile? Hand the diff to onSuccess.
@@ -886,19 +1622,57 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         diff.phone = trim(form.contact_phone);
 
       clearAutosave();
-
-      // Multi-property import: load the next queued property instead of leaving.
-      if (importQueue.length > 0) {
-        await advanceImportQueue(unitPayload, Object.keys(diff).length ? diff : null);
-        return;
-      }
-      await onSuccess(unitPayload, Object.keys(diff).length ? diff : null);
+      return {
+        ok: true,
+        listingId: publishedId,
+        unitPayload,
+        diff: Object.keys(diff).length ? diff : null,
+      };
     } catch {
       setError("Network error. Please try again.");
+      return { ok: false, error: "Network error. Please try again." };
     } finally {
       setSubmitting(false);
     }
   };
+
+  const publish = async () => {
+    const result = await submitListing();
+    if (!result.ok) return;
+    // Multi-property import: load the next queued property instead of leaving.
+    if (importQueue.length > 0) {
+      await advanceImportQueue(result.unitPayload, result.diff);
+      return;
+    }
+    await onSuccess(result.unitPayload, result.diff);
+  };
+
+  /*
+   * What the workspace needs from this tab, refreshed every render so it
+   * always reads current state: whether it can publish, a way to show why
+   * not, publishing itself, and a one-line summary for the sidebar.
+   */
+  const batchApi = useRef({});
+  batchApi.current = {
+    firstProblem,
+    showProblem,
+    submit: submitListing,
+    summary: {
+      title: form.title || form.address || null,
+      units: units.length,
+      leases: units.reduce((n, u) => n + (u.leases?.length ?? 0), 0),
+    },
+  };
+  useEffect(() => {
+    batch?.onRegister?.(batch.tabKey, batchApi);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The sidebar's line for this tab ("4 units · 9 leases"), kept current.
+  const summaryKey = JSON.stringify(batchApi.current.summary);
+  useEffect(() => {
+    batch?.onSummary?.(batch.tabKey, JSON.parse(summaryKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryKey]);
 
   const advanceImportQueue = async (unitPayload, diff) => {
     let queue = importQueue;
@@ -909,15 +1683,16 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setForm(blankForm(user));
     setUnits([emptyUnit()]);
     setCustomAmenities([]);
+    setConcessions([]);
     stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
     setStagedFiles([]);
+    stagedPhotoUrls.current = new Set();
     setStagedPreviews([]);
     setStreetView({ available: false, url: null });
     setStreetViewDeleted(false);
     setCoords({ lat: null, lng: null });
     setImportedFields(new Set());
     setVisited(new Set());
-    setAvailabilityMode("now");
     while (queue.length) {
       const target = queue[0];
       queue = queue.slice(1);
@@ -979,7 +1754,32 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     addUnit,
     removeUnit,
     updateUnit,
-    toggleUnitTerm,
+    addLease,
+    removeLease,
+    updateLease,
+    applyTermsToAll,
+    restoreUnits,
+    uploadUnitPhotos,
+    unitPhotoUploading,
+    removeUnitPhoto,
+    batchMode: !!batch,
+    batchExisting,
+    ownExisting,
+    setUnitRetire,
+    setLeaseRetire,
+    revertLease,
+    revertUnitField,
+    onImportMany,
+    existingEdits,
+    editExistingLease,
+    resetExistingLease,
+    existingNewLeases,
+    addExistingUnitLease,
+    updateExistingUnitLease,
+    removeExistingUnitLease,
+    uploadFloorPlan,
+    floorPlanUploading,
+    floorPlanError,
     customAmenities,
     addCustomAmenity,
     removeCustomAmenity,
@@ -991,8 +1791,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     removeStagedByUrl,
     coords,
     setCoords,
-    availabilityMode,
-    setAvailabilityMode,
     streetView,
     streetViewDeleted,
     setStreetViewDeleted,
@@ -1022,7 +1820,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   const renderStep = () => {
     switch (stepId) {
       case "start":
-        return <StepStart w={w} onBegin={() => goTo("address")} showScratch={false} />;
+        return (
+          <StepStart
+            key={importBoxKey}
+            w={w}
+            initialImportUrl={importSeed}
+          />
+        );
       case "address":
         return <StepAddress w={w} />;
       case "basics":
@@ -1049,7 +1853,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       : "Next";
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4 py-8">
+    <div className={batch ? "w-full" : "w-full max-w-2xl mx-auto px-4 py-8"}>
       {/* Queue-advance interstitial */}
       {importInfo?.loadingNext ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white p-10 shadow-sm">
@@ -1147,7 +1951,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-center gap-4 text-center">
+      {/* A tab's draft is kept and discarded by the workspace, not here. */}
+      <div className={`mt-3 flex items-center justify-center gap-4 text-center${batch ? " hidden" : ""}`}>
         <button
           type="button"
           onClick={onClose}
