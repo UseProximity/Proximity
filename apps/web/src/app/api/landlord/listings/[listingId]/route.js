@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
-import { deleteAsUser } from "@/lib/supabaseWithUser";
+import { updateAsUser } from "@/lib/supabaseWithUser";
 import {
   findPropertyNameConflict,
   propertyNameTakenResponse,
@@ -265,16 +265,27 @@ export async function PATCH(req, { params }) {
 }
 
 // DELETE /api/landlord/listings/[listingId]
+//
+// Archives rather than deletes. Every table hanging off listings cascades on a
+// real DELETE, so removing the row would also erase its reviews, inquiry
+// records, and metrics, which are the records we keep as marketplace history
+// (Privacy Policy s9, Terms s17A). Setting deleted_at is the same soft delete
+// the account-deletion trigger applies, and every public read already filters
+// on it, so the listing disappears from the marketplace exactly as before.
 export async function DELETE(_req, { params }) {
   const { listingId } = await params;
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
-  const { error } = await deleteAsUser(supabase, {
+  const { error } = await updateAsUser(supabase, {
     userId: check.session.user.id,
     table: "listings",
     rowId: listingId,
+    data: { deleted_at: new Date().toISOString() },
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[landlord/listings] archive failed:", error.message);
+    return NextResponse.json({ error: "Could not delete listing" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

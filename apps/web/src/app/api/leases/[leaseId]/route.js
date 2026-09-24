@@ -89,6 +89,16 @@ export async function PATCH(req, { params }) {
     );
   }
 
+  // Terms Section 5. Turning an offering into a sublease is posting one, so it
+  // needs the same confirmation the add flows ask for. Re-saving an offering
+  // that is already a sublease does not ask again.
+  if (body.sublease && !check.lease.sublease && body.subleaseRightsConfirmed !== true) {
+    return NextResponse.json(
+      { error: "Please confirm you have the right to sublet this place." },
+      { status: 400 }
+    );
+  }
+
   const patch = {};
   for (const [key, column] of Object.entries(BODY_TO_COLUMN)) {
     if (key in body) patch[column] = EDITABLE[column](body[key]);
