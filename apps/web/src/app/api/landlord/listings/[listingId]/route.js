@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
-import { deleteAsUser } from "@/lib/supabaseWithUser";
+import { updateAsUser } from "@/lib/supabaseWithUser";
 import {
   findPropertyNameConflict,
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
+import { checkListingDescription } from "@/lib/contentRules";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -158,6 +159,12 @@ export async function PATCH(req, { params }) {
     if (LISTING_COLS.has(k)) safeUpdates[k] = v;
   }
 
+  // Same no-names / no-self-promotion rule the listing had to pass to be created.
+  if (safeUpdates.description !== undefined) {
+    const problem = checkListingDescription(safeUpdates.description);
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+  }
+
   /*
    * A renamed property must not take a name another one at this school already
    * holds. Only checked when `title` is actually in the payload — the form sends
@@ -258,16 +265,27 @@ export async function PATCH(req, { params }) {
 }
 
 // DELETE /api/landlord/listings/[listingId]
+//
+// Archives rather than deletes. Every table hanging off listings cascades on a
+// real DELETE, so removing the row would also erase its reviews, inquiry
+// records, and metrics, which are the records we keep as marketplace history
+// (Privacy Policy s9, Terms s17A). Setting deleted_at is the same soft delete
+// the account-deletion trigger applies, and every public read already filters
+// on it, so the listing disappears from the marketplace exactly as before.
 export async function DELETE(_req, { params }) {
   const { listingId } = await params;
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
-  const { error } = await deleteAsUser(supabase, {
+  const { error } = await updateAsUser(supabase, {
     userId: check.session.user.id,
     table: "listings",
     rowId: listingId,
+    data: { deleted_at: new Date().toISOString() },
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[landlord/listings] archive failed:", error.message);
+    return NextResponse.json({ error: "Could not delete listing" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

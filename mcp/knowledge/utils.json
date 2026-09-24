@@ -1,11 +1,19 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-21T22:21:21.220Z",
-  "count": 81,
+  "_generated": "2026-09-24T00:06:23.008Z",
+  "count": 89,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
+    },
+    {
+      "file": "src/lib/auth/callbackUrl.js",
+      "description": "A return URL that arrives from outside (a query string, a request body, an"
+    },
+    {
+      "file": "src/lib/auth/landlordRole.js",
+      "description": "Turn the signed-in account into a landlord."
     },
     {
       "file": "src/lib/autoUnavailable.js",
@@ -18,6 +26,14 @@
     {
       "file": "src/lib/contactTracking.js",
       "description": "Single source of truth for recording that a student contacted a listing."
+    },
+    {
+      "file": "src/lib/contentRules/firstNames.js",
+      "description": "Name lists behind the \"no names in user-written text\" rule (lib/contentRules)."
+    },
+    {
+      "file": "src/lib/contentRules/index.js",
+      "description": "Content rules for text students and landlords write into Proximity."
     },
     {
       "file": "src/lib/email.js",
@@ -40,6 +56,10 @@
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
     },
     {
+      "file": "src/lib/leaseCheck/pendingCheck.js",
+      "description": "A lease picked by a signed-out visitor, held until they sign in."
+    },
+    {
       "file": "src/lib/leaseCheck/prompt.js",
       "description": "System + user prompts for the student-side lease check. The model returns a"
     },
@@ -50,6 +70,10 @@
     {
       "file": "src/lib/leaseCheck/rateLimit.js",
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
+    },
+    {
+      "file": "src/lib/legal.js",
+      "description": "Loader for the published legal documents (/privacy, /terms)."
     },
     {
       "file": "src/lib/listingDraft/extract.js",
@@ -88,8 +112,16 @@
       "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
     },
     {
+      "file": "src/lib/listings/lookupRateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out address lookups: 60 per minute per"
+    },
+    {
       "file": "src/lib/listings/ownership.js",
       "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
+    },
+    {
+      "file": "src/lib/listings/pendingDraft.js",
+      "description": "A listing someone has finished describing but not yet published."
     },
     {
       "file": "src/lib/listings/placeholderOwner.js",

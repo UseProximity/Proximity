@@ -5,6 +5,8 @@ import { Camera, Plus, X } from "lucide-react";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { clampCount } from "@/utils/unitCounts";
 import { compressImage } from "@/utils/compressImage";
+import { checkListingDescription } from "@/lib/contentRules";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -46,6 +48,7 @@ const UTILITY_LABELS = {
 };
 const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "studio", "other"];
 const LEASE_TYPES = ["sublease", "standard", "short-term"];
+const RIGHTS_NOT_CONFIRMED = "Please confirm you have the right to sublet this place.";
 
 const emptyUnit = () => ({
   bedrooms: "",
@@ -119,6 +122,12 @@ export default function SubleaseFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // Only asked when posting a new sublease. An edit is to a listing they have
+  // already confirmed.
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const needsRightsConfirmation =
+    !isEdit && String(form.lease_type).toLowerCase() === "sublease";
+  const descriptionProblem = checkListingDescription(form.description);
 
   // Image upload
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -338,6 +347,9 @@ export default function SubleaseFormPanel({
     setError(null);
     if (!form.address.trim()) { setError("Address is required."); return; }
     if (!form.description.trim()) { setError("Description is required."); return; }
+    // No names, no links, no "message me" - the contact fields below are the
+    // channel students are meant to use.
+    if (descriptionProblem) { setError(descriptionProblem); return; }
     if (units.length === 0) { setError("At least one unit is required."); return; }
     if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
       setError("Each unit needs bedrooms and bathrooms.");
@@ -355,6 +367,10 @@ export default function SubleaseFormPanel({
       setError(
         "Each available unit needs at least one lease term (or mark it unavailable)."
       );
+      return;
+    }
+    if (needsRightsConfirmation && !rightsConfirmed) {
+      setError(RIGHTS_NOT_CONFIRMED);
       return;
     }
 
@@ -409,6 +425,7 @@ export default function SubleaseFormPanel({
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
+            subleaseRightsConfirmed: rightsConfirmed,
           }),
         });
       }
@@ -596,7 +613,11 @@ export default function SubleaseFormPanel({
                   name="description" value={form.description} onChange={handleChange} required rows={3}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Describe the property..."
+                  aria-invalid={descriptionProblem ? true : undefined}
                 />
+                {descriptionProblem && (
+                  <p className="mt-1 text-sm text-red-600">{descriptionProblem}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Home Type</label>
@@ -935,6 +956,14 @@ export default function SubleaseFormPanel({
               <span className="text-xs text-gray-400 mt-0.5">JPG, PNG, WebP (auto-compressed if large)</span>
             </label>
           </div>
+
+          {needsRightsConfirmation && (
+            <SubleaseConsentCheckbox
+              checked={rightsConfirmed}
+              onChange={(v) => { setRightsConfirmed(v); if (v && error === RIGHTS_NOT_CONFIRMED) setError(null); }}
+              invalid={error === RIGHTS_NOT_CONFIRMED}
+            />
+          )}
 
           {/* Footer */}
           <div className="flex gap-3 pt-2 border-t border-gray-100">

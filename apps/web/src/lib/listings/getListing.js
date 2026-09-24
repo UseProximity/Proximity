@@ -123,8 +123,6 @@ export function shapeLeases(unitLeases, listingRow) {
       landlordName:
         l.users?.name ?? l.contact_name ?? listingRow.contact_name ?? null,
       landlordImage: l.users?.image ?? null,
-      contactEmail: l.contact_email ?? listingRow.contact_email ?? null,
-      contactPhone: l.contact_phone ?? listingRow.contact_phone ?? null,
     }))
     .sort((a, b) => {
       // Cheapest first; unpriced offers sink so a "Contact for price" row never
@@ -293,9 +291,6 @@ function buildListing(row, owner = null, reviews = []) {
     placeWalkMinutes: walkTimesToMap(walkTimes),
     placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
-    contactEmail: row.contact_email ?? null,
-    contactPhone: row.contact_phone ?? null,
-    contactName: row.contact_name ?? null,
     leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
     customAmenities: (row.listing_custom_amenities ?? [])
       .map((a) => a.label)
@@ -328,7 +323,6 @@ function buildListing(row, owner = null, reviews = []) {
       ? {
           _id: owner.id,
           name: owner.name,
-          email: owner.email ?? null,
           image: owner.image ?? null,
         }
       : null,

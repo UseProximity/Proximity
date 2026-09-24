@@ -1,8 +1,13 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-12T00:07:29.779Z",
-  "count": 98,
+  "_generated": "2026-09-23T22:28:48.910Z",
+  "count": 104,
   "components": [
+    {
+      "name": "DeleteAccountButton",
+      "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description — run generate after adding a description above."
+    },
     {
       "name": "DormsView",
       "file": "src/components/admin/DormsView.js",
@@ -154,6 +159,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "LeaseAuthGate",
+      "file": "src/components/lease-check/LeaseAuthGate.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "LeaseCheckClient",
       "file": "src/components/lease-check/LeaseCheckClient.js",
       "description": "No description — run generate after adding a description above."
@@ -171,6 +181,11 @@
     {
       "name": "PropertyContext",
       "file": "src/components/lease-check/PropertyContext.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LegalDocument",
+      "file": "src/components/legal/LegalDocument.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -264,6 +279,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "SubleaseConsentCheckbox",
+      "file": "src/components/listings/SubleaseConsentCheckbox.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "SubleaseFormPanel",
       "file": "src/components/listings/SubleaseFormPanel.js",
       "description": "No description — run generate after adding a description above."
@@ -294,8 +314,18 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "PublishGate",
+      "file": "src/components/listings/add/PublishGate.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "UnitStep",
       "file": "src/components/listings/add/UnitStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "lookupPlace",
+      "file": "src/components/listings/add/lookupPlace.js",
       "description": "No description — run generate after adding a description above."
     },
     {

@@ -19,6 +19,7 @@ import { Plus } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
 import { UnitPhotoRow } from "./EditorImageRows";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 
@@ -68,6 +69,9 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
 
   const avail = availabilityLabel(lease.availableFrom);
+  // Switching an offering to a sublease is posting one, so it asks for the same
+  // confirmation as the add flows. One that already is a sublease does not.
+  const needsRightsConfirmation = draft.sublease && !lease.sublease;
 
   const discard = () => {
     setDraft(leaseDraft(lease, currentUserEmail));
@@ -79,6 +83,9 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
     // legacy offerings, but a landlord editing their own can't leave it blank.
     if (!draft.contactEmail.trim()) {
       return toast.error("Add a contact email so students can reach you.");
+    }
+    if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
+      return toast.error("Please confirm you have the right to sublet this place.");
     }
     setSaving(true);
     try {
@@ -215,7 +222,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
       <div className="mt-3 flex flex-wrap gap-4 text-sm">
         <label className="inline-flex items-center gap-2 text-gray-700">
           <input type="checkbox" checked={draft.sublease}
-            onChange={(e) => set({ sublease: e.target.checked })} />
+            onChange={(e) => set({ sublease: e.target.checked, subleaseRightsConfirmed: false })} />
           This is a sublease
         </label>
         <label className="inline-flex items-center gap-2 text-gray-700">
@@ -229,6 +236,15 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
           Withdrawn (hide from students)
         </label>
       </div>
+
+      {needsRightsConfirmation && (
+        <div className="mt-3">
+          <SubleaseConsentCheckbox
+            checked={!!draft.subleaseRightsConfirmed}
+            onChange={(v) => set({ subleaseRightsConfirmed: v })}
+          />
+        </div>
+      )}
     </li>
   );
 }

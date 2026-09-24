@@ -139,10 +139,10 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* ── Desktop: original grid ── */}
-        <div className="hidden md:grid grid-cols-4 gap-10 md:gap-8">
+        {/* ── Desktop: one row with evenly distributed gaps, 2x2 below lg ── */}
+        <div className="hidden md:grid grid-cols-2 gap-10 md:gap-8 lg:flex lg:justify-between">
           {/* Brand block */}
-          <div className="col-span-2">
+          <div className="lg:max-w-xs">
             <Link href="/" className="flex items-center gap-2 mb-5">
               <Image
                 src={Logo}
@@ -153,7 +153,7 @@ export default function Footer() {
               />
               <span className="text-xl font-bold text-white">Proximity</span>
             </Link>
-            <p className="text-gray-400 text-sm leading-relaxed max-w-xs mb-6">
+            <p className="text-gray-400 text-sm leading-relaxed mb-6">
               Better apartments. Honest reviews. Zero stress. The first platform
               built entirely for students to find and secure off-campus housing
               with confidence.
@@ -162,7 +162,7 @@ export default function Footer() {
 
           {/* Nav columns */}
           {NAV_COLS.map((col) => (
-            <div key={col.heading} className="flex flex-col h-full">
+            <div key={col.heading} className="flex flex-col h-full lg:shrink-0">
               <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-5">
                 {col.heading}
               </h4>
@@ -204,9 +204,23 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="mt-4 pt-4 border-t border-gray-800/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">
-            © 2026 Proximity. All rights reserved.
-          </p>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-start">
+            <p className="text-sm text-gray-600">
+              © 2026 Proximity. All rights reserved.
+            </p>
+            <Link
+              href="/privacy"
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Terms of Service
+            </Link>
+          </div>
           <div className="flex items-center gap-4">
             <button
               onClick={handleOpenFeedback}

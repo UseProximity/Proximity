@@ -1,11 +1,18 @@
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { unitIsAvailable } from "@/lib/listings/unitAvailability";
+import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
 
 // Look up whether a property already exists at an address, and if so return its
 // units and the live leases on each. This drives the address -> unit -> lease
 // create flow: entering a known address attaches to the existing property rather
 // than creating a second one.
+//
+// Open to visitors, because Add Listing lets someone fill the whole form before
+// asking for an account. A signed-out caller gets what browse already shows
+// (address, units, whether an offering is live, its rent) and nothing about who
+// owns it: no owner ids, no contact names, and no "is this mine" flags. They are
+// rate limited per client, since there is no account to attribute a scan to.
 //
 // Several listing rows can still share a property_key (duplicates predating the
 // property model), so the match is collapsed into a SINGLE property view here —
@@ -13,10 +20,12 @@ import { unitIsAvailable } from "@/lib/listings/unitAvailability";
 // unioned onto it. That way the create flow behaves correctly even before the
 // duplicate rows have been merged in the database.
 //
-// @auth user
+// @auth public
 export async function GET(req) {
   const session = await auth();
-  if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session && lookupRateLimited(lookupClientKey(req))) {
+    return Response.json({ error: "Too many lookups. Try again shortly." }, { status: 429 });
+  }
 
   const address = new URL(req.url).searchParams.get("address")?.trim();
   if (!address) {
@@ -58,7 +67,7 @@ export async function GET(req) {
   if (!rows?.length) return Response.json({ propertyKey, property: null });
 
   const canonical = rows[0];
-  const userId = session.user.id;
+  const userId = session?.user?.id ?? null;
 
   const units = rows
     .flatMap((row) =>
@@ -142,6 +151,14 @@ export async function GET(req) {
   const ownerIds = new Set(
     mergedUnits.flatMap((u) => u.leases.filter((l) => l.live && l.ownerId).map((l) => l.ownerId))
   );
+
+  // The count above is safe to share; the ids and names behind it are not. The
+  // client only reads isMine, which a signed-out caller cannot have.
+  if (!session) {
+    for (const unit of mergedUnits) {
+      unit.leases = unit.leases.map(({ ownerId, contactName, isMine, ...lease }) => lease);
+    }
+  }
 
   return Response.json({
     propertyKey,

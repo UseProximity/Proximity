@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import Image from "next/image";
 import Link from "next/link";
@@ -21,10 +22,15 @@ import AddListingFlow from "@/components/listings/add/AddListingFlow";
  * with a whole property's worth of fields already filled and need the review
  * steps that go with them.
  *
- * Role gating lives in layout.js.
+ * Role gating lives in layout.js. Signed-out visitors can go all the way through
+ * the manual path; AddListingFlow asks for an account when they publish. The
+ * import path stays behind login: it runs a paid extraction and only landlords
+ * may call it.
  */
 export default function AddListingPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const profileComplete = session?.user?.profileComplete;
   const [user, setUser] = useState(null);
   // The form prefills contact fields from `user` on its first render, so wait
   // for the profile fetch to settle before mounting it.
@@ -41,17 +47,32 @@ export default function AddListingPage() {
   const site = searchParams.get("site") ?? "";
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
+  /*
+   * Fetched again when profileComplete changes: a new Google account fills in
+   * its name in the profile modal after this page has already loaded, and the
+   * listing is published under the name held here.
+   */
   useEffect(() => {
     fetch("/api/getUser")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => data && setUser(data))
       .catch(() => {})
       .finally(() => setReady(true));
-  }, []);
+  }, [profileComplete]);
+
+  useEffect(() => {
+    if (mode === "assisted" && !session) {
+      router.replace(
+        `/login?callbackUrl=${encodeURIComponent(
+          `/add-listing?mode=assisted${site ? `&site=${encodeURIComponent(site)}` : ""}`
+        )}`
+      );
+    }
+  }, [mode, session, router, site]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-4">
-      {!ready ? (
+      {!ready || (mode === "assisted" && !session) ? (
         <div className="flex justify-center py-20">
           <div className="w-8 h-8 border-4 border-gray-200 border-t-red-500 rounded-full animate-spin" />
         </div>
@@ -69,6 +90,7 @@ export default function AddListingPage() {
         />
       ) : (
         <StartChoice
+          signedOut={!session}
           onManual={() => setMode("manual")}
           onImport={(address) =>
             router.push(
@@ -96,7 +118,7 @@ const PMS_LOGOS = [
  * pick "import" again inside the wizard, then open the box. A landlord who came
  * to paste their website address should be able to paste it.
  */
-function StartChoice({ onManual, onImport }) {
+function StartChoice({ onManual, onImport, signedOut }) {
   const [address, setAddress] = useState("");
   // The click navigates to the wizard, which has to compile and mount before it
   // can show its own progress. On a cold dev server that gap is seconds of a
@@ -136,6 +158,7 @@ function StartChoice({ onManual, onImport }) {
             <p className="mt-0.5 text-xs text-gray-500">
               Paste your address below and we pull in your photos, units and details.
               You pick which properties to list.
+              {signedOut && " You'll sign in first."}
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <input

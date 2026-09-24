@@ -12,6 +12,7 @@ import StepPhotos from "@/components/listings/wizard/StepPhotos";
 import StepDescription from "@/components/listings/wizard/StepDescription";
 import StepReview from "@/components/listings/wizard/StepReview";
 import { compressImage } from "@/utils/compressImage";
+import { checkListingDescription } from "@/lib/contentRules";
 
 /*
  * Step-by-step Add Listing flow. One themed question set per screen, a labeled
@@ -898,8 +899,13 @@ export default function AddListingWizard({ user, onClose, onSuccess, initialImpo
         }
       }
     }
-    if (id === "description" && !form.description.trim())
-      return "A short description is required.";
+    if (id === "description") {
+      if (!form.description.trim()) return "A short description is required.";
+      // No names, no links, no "contact us at" - the contact fields on this same
+      // step are how students are meant to reach the landlord.
+      const problem = checkListingDescription(form.description);
+      if (problem) return problem;
+    }
     return null;
   };
 

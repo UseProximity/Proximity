@@ -64,6 +64,7 @@ import {
   resolveSchoolId,
 } from "@/lib/reviews/onboarding";
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
+import { checkReviewText } from "@/lib/contentRules";
 
 export const dynamic = "force-dynamic";
 
@@ -413,6 +414,10 @@ export async function POST(req) {
         { error: "Please write at least 10 characters." },
         { status: 400 }
       );
+    }
+    const named = checkReviewText(comment);
+    if (named) {
+      return NextResponse.json({ error: named }, { status: 400 });
     }
 
     // ── Validate landlord/company name + contact ────────────────────────────
