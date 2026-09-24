@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** September 23, 2026
+**Last updated:** September 24, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -105,7 +105,9 @@ applies to you exactly as it does to a landlord.
 sublease on Proximity unless the property's owner or landlord has consented to you
 subletting it, whether that consent is in your lease or given to you separately. Check your
 lease before you post, and ask your landlord if you are unsure. When you post a sublease, you
-confirm that you have that consent. We may remove a sublease listing at any time if we
+confirm that you have that consent and that you hold the lease on the place you are
+subletting, and we keep that confirmation as your written authorization for us to advertise
+the sublease. We may remove a sublease listing at any time if we
 believe the consent is missing, including at the owner's or landlord's request, and you are
 responsible for any claim that arises from advertising a sublease without it (Section 20).
 
@@ -171,6 +173,13 @@ listing to it so they control it from then on.
 **We do not list a property nobody asked us to list.** We do not scrape listing sites,
 property aggregators, or the web at large looking for properties to put on Proximity. A
 listing exists because its owner asked for it, or because they created it themselves.
+
+**One exception: pages for properties students have reviewed.** When a student reviews a
+building that is not on Proximity, we create a page for it so the review has somewhere to
+live. That page is marked unavailable and shows only the property's address, a Google Street
+View image of it, and its reviews. Nothing on it is offered for rent, and the matchmaking
+assistant never recommends it. If you own the property, you can email
+info@useproximity.org to have the page removed, or to claim it as described below.
 
 Earlier on, that permission was usually given verbally or by email rather than in writing.
 
@@ -412,7 +421,8 @@ what this means for you.
 **Withdrawn listings.** A listing that is withdrawn stops being published but is retained as
 marketplace history. This includes a listing you delete yourself: deleting it removes it from
 the marketplace, and we keep it, with its reviews and inquiry records, in hidden form. When a listing is withdrawn because its only owner deleted their
-account, that owner's name, email address, and phone number are removed from it.
+account, that owner's name and email address are kept with it for three years after the
+account is deleted, and then erased. Their phone number is removed from it.
 
 **People without an account.** We hold limited information about some people who never
 signed up, described in Privacy Policy §1.8, and they can have it deleted on request even

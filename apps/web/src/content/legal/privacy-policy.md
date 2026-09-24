@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** September 23, 2026
+**Last updated:** September 24, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -199,6 +199,10 @@ section explains what, why, and how to have it removed.
   link for submitting the review. We use it only to send that invitation and to recognize
   the review when it comes back. It is never published, never sold, never used for
   advertising, and is not visible to landlords or to other students.
+- **Addresses of properties students have reviewed.** When a student reviews a building
+  that is not on Proximity, we create an unavailable page for it that holds the property's
+  address, a Street View image, and its reviews. The page offers nothing for rent. The
+  owner can email info@useproximity.org to have it removed or to claim it (Terms §7).
 
 **How long we keep it.** Landlord and property contact details are kept while the
 property is part of the marketplace. Review invitation records are kept as a record of who
@@ -374,7 +378,7 @@ and only for the purposes we specify:
 | **Vercel** | Requests to the website and API, server logs, aggregate web analytics | Application hosting, scheduled jobs, analytics |
 | **Cloudflare** | Profile photos, listing photos, floor plans; lease documents transiently | Object storage and delivery |
 | **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content | AI features (Section 4) |
-| **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos); website usage (analytics) | Authentication, listing imagery, analytics |
+| **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
 | **Airtable** | New account name, email address, account identifier, sign-up date, and role; new listing details | Internal customer-relationship system for onboarding and support |
 | **Google Workspace** | Recipient email addresses and message content | Sending transactional and inquiry email |
@@ -447,7 +451,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 
 | Data | What we do |
 |---|---|
-| Your account record | Name, email address, phone number, date of birth, gender, description, profile photo, graduation details, school, and all authentication data, including sign-in credentials and any outstanding verification or password-reset tokens, are erased. The only exception is the name and email address kept with your messages and inquiry records, below. Your email address is released so you can sign up again in future. |
+| Your account record | Name, email address, phone number, date of birth, gender, description, profile photo, graduation details, school, and all authentication data, including sign-in credentials and any outstanding verification or password-reset tokens, are erased. The only exceptions are the name and email address kept with your messages, your inquiry records, and listings you owned alone, below. Your email address is released so you can sign up again in future. |
 | Profile photos | Permanently deleted from our storage, including earlier photos you replaced. |
 | Reviews you wrote | **Kept, but anonymized.** We remove your name and your email address and disconnect the review from your account; the review text stays published, because it describes a property and continues to help other students. |
 | Messages you sent through Proximity | **Kept for three years, with your name and email address.** The text of each message, who sent it, and when are retained for three years after deletion, and then erased. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute, investigate abuse, or confirm a lease. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
@@ -456,7 +460,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Matchmaking conversations, and the housing preferences derived from them | Permanently deleted. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |
-| Listings you owned alone | Already withdrawn from the marketplace at deletion. Your name, email address, and phone number are now removed from them, so the withdrawn record keeps no contact details of yours. |
+| Listings you owned alone | Already withdrawn from the marketplace at deletion. **Kept for three years, with your name and email address.** The withdrawn record keeps your name and email address for three years after deletion as marketplace history, and then they are erased. Your phone number is removed from them. See Terms §17A. |
 | Internal change history | The personal information inside each entry is erased, including entries recorded against other records that contain your details. A record that a change occurred, and when, is retained for security and audit purposes. |
 
 ### Important limits
@@ -483,7 +487,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Category | Retention |
 |---|---|
 | Account and profile data | While your account is active, then as described in Section 8. |
-| Listings | While published. A listing you delete is removed from the marketplace and retained in hidden form as marketplace history, together with its reviews and inquiry records. On account deletion, sole-owned listings are withdrawn in the same way, with your contact details removed from them. |
+| Listings | While published. A listing you delete is removed from the marketplace and retained in hidden form as marketplace history, together with its reviews and inquiry records. On account deletion, sole-owned listings are withdrawn in the same way and keep the owner's name and email address for three years after deletion, after which those details are erased (Section 8). |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
 | Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
 | Inquiry records and recorded leases | While your account is active, then for three years after deletion with your name and email address, then erased (Section 8). |
