@@ -11,6 +11,7 @@ import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import {
   findPropertyNameConflict,
+  listingsAtAddress,
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
@@ -78,7 +79,7 @@ const UTILITY_COLS = new Set([
 
 // A revenue-managed building quotes nine or ten lease lengths; past that it is
 // almost certainly a parsing accident rather than a real price list.
-const MAX_LEASES_PER_UNIT = 12;
+const MAX_LEASES_PER_UNIT = 40;
 
 export async function POST(req) {
   /*
@@ -496,7 +497,8 @@ export async function POST(req) {
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
       /*
        * Several priced offerings on one unit, cheapest-first on the listing
-       * page. Each entry is { rent, leaseTermMonths }.
+       * page. Each entry is { rent, leaseTermMonths, availableFrom?,
+       * rentIsPerPerson? }; the last two fall back to the unit's own when absent.
        */
       leases: Array.isArray(unit.leases)
         ? unit.leases
@@ -506,6 +508,11 @@ export async function POST(req) {
               leaseTermMonths: Array.isArray(l.leaseTermMonths)
                 ? l.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
                 : [],
+              availableFrom:
+                typeof l.availableFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(l.availableFrom)
+                  ? l.availableFrom
+                  : null,
+              rentIsPerPerson: l.rentIsPerPerson == null ? null : !!l.rentIsPerPerson,
             }))
         : null,
       // A unit can be offered for several lease durations (months).
@@ -595,6 +602,28 @@ export async function POST(req) {
        * school_id is not set on create yet, so the lookup runs against the
        * unschooled bucket — the same one the unique index folds NULLs into.
        */
+      /*
+       * One building, one listing. A second listing at an address that is
+       * already on Proximity is refused, whatever it is called: a batch import
+       * posted "5047 Waterman Blvd." beside "5047 Waterman Boulevard" because
+       * only the name was checked, and the two differ by an abbreviation. The
+       * address key is the one the database already stores on every row.
+       *
+       * The existing listing comes back so the caller can add to it or edit
+       * what the landlord already has there, which is what they meant to do.
+       */
+      const atAddress = await listingsAtAddress(address, ownerId);
+      if (atAddress.match) {
+        return NextResponse.json(
+          {
+            error: "This address is already on Proximity.",
+            code: "address_taken",
+            existing: atAddress.match,
+          },
+          { status: 409 }
+        );
+      }
+
       const nameConflict = await findPropertyNameConflict(title, { schoolId: null });
       if (nameConflict) {
         return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
@@ -738,11 +767,12 @@ export async function POST(req) {
           // Which number `rent` is. Dropped here until now, so an offering
           // published as per-person came back out as whole-unit rent and was
           // divided by the bedroom count a second time.
-          rent_is_per_person: unit.rentIsPerPerson,
+          rent_is_per_person: lease.rentIsPerPerson ?? unit.rentIsPerPerson,
           lease_term_months: Array.isArray(lease.leaseTermMonths)
             ? lease.leaseTermMonths
             : unit.leaseTermMonths,
-          available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+          available_from:
+            lease.availableFrom ?? unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
           sublease: unit.sublease,
           is_active: true,
           unavailable: !unit.available,

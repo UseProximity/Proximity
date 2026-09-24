@@ -124,21 +124,47 @@ export function addressFingerprint(address) {
   return street ? `${number}|${zip}|${street}` : null;
 }
 
-export async function findExistingProperties(entries) {
+/*
+ * Number and street name only, for an address that arrives without a ZIP.
+ * Company sites list "5047 Waterman Blvd." and nothing else, which the full
+ * fingerprint refuses, so every building on such a site went unmarked. Looser,
+ * so it is only a hint for the picker: the import checks each property again by
+ * its full address once it has been read.
+ */
+function looseFingerprint(address) {
+  const text = String(address ?? "").toLowerCase();
+  const number = text.match(/\b(\d{1,6})\b/)?.[1];
+  if (!number) return null;
+  const street = text
+    .split(",")[0]
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && !/^\d+$/.test(w) && !STREET_TYPES.has(w))
+    .sort((a, b) => b.length - a.length)[0];
+  return street ? `${number}|${street}` : null;
+}
+
+/*
+ * `ids` narrows the search to those listings, which is how the picker asks
+ * "is any of these one of MINE" before "is it anyone's".
+ */
+export async function findExistingProperties(entries, { ids = null } = {}) {
+  if (ids && !ids.length) return new Map();
   const byName = new Map();
   const byAddress = new Map();
+  const byLoose = new Map();
   for (const e of entries ?? []) {
     const n = normalizeLocally(e?.name);
     if (n) byName.set(n, null);
     const a = addressFingerprint(e?.address);
     if (a) byAddress.set(a, null);
+    const l = looseFingerprint(e?.address) ?? looseFingerprint(e?.name);
+    if (l) byLoose.set(l, null);
   }
-  if (!byName.size && !byAddress.size) return new Map();
+  if (!byName.size && !byAddress.size && !byLoose.size) return new Map();
 
-  const { data: rows, error } = await supabase
-    .from("listings")
-    .select("id, title, address")
-    .is("deleted_at", null);
+  let query = supabase.from("listings").select("id, title, address").is("deleted_at", null);
+  if (ids) query = query.in("id", ids);
+  const { data: rows, error } = await query;
   if (error) {
     console.error("[propertyName] existing lookup failed:", error.message);
     return new Map();
@@ -148,6 +174,8 @@ export async function findExistingProperties(entries) {
     if (n && byName.has(n) && !byName.get(n)) byName.set(n, row);
     const a = addressFingerprint(row.address);
     if (a && byAddress.has(a) && !byAddress.get(a)) byAddress.set(a, row);
+    const l = looseFingerprint(row.address);
+    if (l && byLoose.has(l) && !byLoose.get(l)) byLoose.set(l, row);
   }
 
   // Back to the caller's own entries, so it never has to normalize anything.
@@ -156,6 +184,7 @@ export async function findExistingProperties(entries) {
     const hit =
       byName.get(normalizeLocally(e?.name) ?? "") ??
       byAddress.get(addressFingerprint(e?.address) ?? "") ??
+      byLoose.get(looseFingerprint(e?.address) ?? looseFingerprint(e?.name) ?? "") ??
       null;
     if (hit) found.set(e, hit);
   }
@@ -185,3 +214,59 @@ export function propertyNameTakenResponse(conflict) {
 }
 
 export { NO_SCHOOL };
+
+/*
+ * Every live listing at this address, by the same normalised key the database
+ * stores on each row (normalize_property_key: "5047 waterman boulevard|63108"),
+ * so "Blvd." and "Boulevard", or a missing "United States", cannot slip past
+ * it the way a title comparison did.
+ *
+ * `mine` says how the user relates to each one: "owner" (a listing_landlords
+ * row), "lease" (they hold an offering on it), or null. `match` is the one a
+ * write should go to: theirs if they have one, otherwise the oldest.
+ */
+export async function listingsAtAddress(address, userId = null) {
+  if (!address || !String(address).trim()) return { key: null, listings: [], match: null };
+  const { data: key } = await supabase.rpc("normalize_property_key", { p_address: address });
+  if (!key) return { key: null, listings: [], match: null };
+
+  /*
+   * A website often gives just "716 Heman Avenue". The key then ends in an
+   * empty ZIP ("716 heman avenue|") and matches nothing, which let the check
+   * report "not listed" for a building that is. Without a ZIP, any listing at
+   * the same street address counts.
+   */
+  const noZip = key.endsWith("|");
+  const byKey = supabase.from("listings").select("id, title, address, created_at");
+  const { data: rows } = await (noZip ? byKey.like("property_key", `${key}%`) : byKey.eq("property_key", key))
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+  if (!rows?.length) return { key, listings: [], match: null };
+
+  const ids = rows.map((r) => r.id);
+  const owned = new Set();
+  const leased = new Set();
+  if (userId) {
+    const [{ data: owners }, { data: leases }] = await Promise.all([
+      supabase.from("listing_landlords").select("listing_id").in("listing_id", ids).eq("user_id", userId),
+      supabase
+        .from("unit_leases")
+        .select("listing_units!unit_id(listing_id, deleted_at)")
+        .eq("owner_id", userId),
+    ]);
+    (owners ?? []).forEach((o) => owned.add(o.listing_id));
+    for (const l of leases ?? []) {
+      const unit = l.listing_units;
+      if (unit?.listing_id && !unit.deleted_at && ids.includes(unit.listing_id)) leased.add(unit.listing_id);
+    }
+  }
+  const listings = rows.map((r) => ({
+    id: r.id,
+    title: r.title ?? null,
+    address: r.address ?? null,
+    mine: owned.has(r.id) ? "owner" : leased.has(r.id) ? "lease" : null,
+  }));
+  const match =
+    listings.find((l) => l.mine === "owner") ?? listings.find((l) => l.mine) ?? listings[0];
+  return { key, listings, match };
+}

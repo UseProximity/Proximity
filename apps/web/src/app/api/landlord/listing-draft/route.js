@@ -32,6 +32,7 @@ import {
   DraftFetchError,
 } from "@/lib/listingDraft/fetchSite";
 import { findExistingProperties } from "@/lib/listings/propertyName";
+import { getOwnedListings } from "@/lib/listings/ownership";
 
 // Display names for PMS portals named in landlord-facing messages.
 const PMS_DISPLAY = {
@@ -1025,10 +1026,32 @@ export async function POST(req) {
      * step of the wrong building. Saying it on the picker costs one query.
      */
     const pickable = properties.filter((p) => p.kind !== "group");
-    const listed = await findExistingProperties(pickable);
+    /*
+     * The landlord's own listings are looked for first, so an address that is
+     * theirs says so ("On Proximity · yours") even where someone else also has
+     * a listing there; then anyone's.
+     */
+    const owned = await getOwnedListings(session.user.id);
+    const [listed, mine] = await Promise.all([
+      findExistingProperties(pickable),
+      findExistingProperties(pickable, { ids: [...owned.keys()] }),
+    ]);
     const marked = properties.map((p) => {
-      const hit = listed.get(p);
-      return hit ? { ...p, alreadyListed: { address: hit.address ?? null } } : p;
+      const own = mine.get(p);
+      const hit = own ?? listed.get(p);
+      // The id and title let the import open the existing listing as its own
+      // tab, where the landlord adds units to it or edits the leases they hold.
+      return hit
+        ? {
+            ...p,
+            alreadyListed: {
+              id: hit.id,
+              title: hit.title ?? null,
+              address: hit.address ?? null,
+              mine: own ? owned.get(hit.id) ?? "owner" : null,
+            },
+          }
+        : p;
     });
     const alreadyCount = marked.filter((p) => p.alreadyListed).length;
     if (alreadyCount) {
