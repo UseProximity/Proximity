@@ -14,7 +14,7 @@
  * Exports: handlers (GET/POST for /api/auth/*), signIn, signOut, auth (server-side
  * session getter used by layout.js and protected API routes).
  */
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -25,6 +25,15 @@ import { emailMatchPattern } from "@/lib/auth/email";
 // Short enough to heal stale sessions (e.g. role was changed in another
 // tab / by an admin) without requiring a sign-out.
 const ROLE_REFRESH_MS = 60_000;
+
+// The right password on an account whose email was never verified. It has to
+// extend CredentialsSignin: Auth.js swaps any other error thrown from
+// authorize() for a generic "Configuration" error, so the sign-in form never
+// learned the account was unverified and said "Invalid email or password".
+// The code reaches the client as `result.code`.
+class EmailNotVerified extends CredentialsSignin {
+  code = "EMAIL_NOT_VERIFIED";
+}
 
 /*
  * Run a Supabase query without letting a network failure escape.
@@ -70,10 +79,13 @@ const config = {
         // return, no distinct error. Confirming "this account was deleted"
         // would leak that the address was registered.
         if (!user || !user.password_hash || user.deleted_at) return null;
-        if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) return null;
+
+        // Checked after the password, so only the account's owner learns that
+        // it exists but is unverified.
+        if (!user.email_verified) throw new EmailNotVerified();
 
         return { id: user.id, email: user.email, name: user.name };
       },
