@@ -476,7 +476,7 @@
       },
       {
         "table": "listing_images",
-        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover. [2026-08-12: owner_id = whose photography this is; NULL = property-level (Street View/exterior) shown on every offering. Stops one landlords photos being inherited by someone who later attaches a lease.]",
+        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover. [2026-08-12: owner_id = whose photography this is; NULL = property-level (Street View/exterior) shown on every offering. Stops one landlords photos being inherited by someone who later attaches a lease.] One gallery per property; units are tags in listing_image_units. unit_id is RETIRED (no longer read or written; old values backfilled as tags in 202609250001).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -488,6 +488,16 @@
           "updated_at:timestamptz",
           "source:text",
           "owner_id:uuid"
+        ]
+      },
+      {
+        "table": "listing_image_units",
+        "description": "Unit tags on photos: which units a listing_images row shows (many-to-many). Owner tags any photo; a lease holder tags only their own photos with units they lease (canTagPhoto). Trigger enforces same property.",
+        "columns": [
+          "image_id:uuid",
+          "unit_id:uuid",
+          "created_by:uuid",
+          "created_at:timestamptz"
         ]
       },
       {
@@ -918,7 +928,7 @@
       },
       {
         "table": "unit_leases",
-        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.]",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle.",
         "columns": [
           "id:uuid",
           "unit_id:uuid",
@@ -936,7 +946,8 @@
           "contact_phone:text",
           "description:text",
           "furnished:boolean",
-          "unavailable:boolean"
+          "unavailable:boolean",
+          "deleted_at:timestamptz"
         ]
       },
       {

@@ -23,7 +23,7 @@ export const LISTING_SELECT = `
     unit_designator, unit_number, title, floor_plan_image_url,
     unit_leases!unit_id(id, rent, is_active, unavailable, sublease,
       available_from, lease_term_months, furnished, owner_id, rent_is_per_person,
-      description, contact_email, contact_phone, contact_name)),
+      description, contact_email, contact_phone, contact_name, deleted_at)),
   listing_landlords!listing_id(user_id, is_primary),
   listing_amenities!listing_id(
     air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
@@ -31,6 +31,6 @@ export const LISTING_SELECT = `
     storage, stove, study_room),
   listing_utilities!listing_id(
     electric, gas, heat, water, internet, trash, cable, sewer, cooling),
-  listing_images(id, url, sort_order, unit_id, owner_id),
+  listing_images(id, url, sort_order, owner_id, listing_image_units(unit_id)),
   listing_reviews!listing_id(rating, legitimacy, deleted_at)
 `.trim();

@@ -5,7 +5,7 @@ import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import {
-  canManagePropertyPhotos,
+  hasStakeInListing,
   canAddUnitPhotos,
 } from "@/lib/listings/ownership";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
@@ -41,14 +41,15 @@ function getPublicBase(db) {
 // Takes the first two whitespace-tokens from the street part (before first comma),
 // lowercases them, strips non-alphanumeric chars, joins with a dash.
 /*
- * Resolve which SCOPE an upload is for and whether the caller may write there.
+ * Resolve whether the caller may add photos here, and which unit (if any) to tag
+ * the new photos with.
  *
- * unitId absent  -> a photo of the property; only its owner may add one.
- * unitId present -> a photo of that unit; anyone offering it may add one, as
- *                   may the property owner.
+ * A property has one gallery. Anyone with a stake at the property may add to
+ * it: the owner, or a landlord letting one of its units. unitId, when sent,
+ * tags the new photos with that unit, and needs a stake in that unit.
  *
  * The unit is also checked to belong to the listing being written to, so a
- * request cannot file a photo onto a unit at someone else's address. (The
+ * request cannot tag a photo with a unit at someone else's address. (The
  * database enforces the same thing, but a 403 here beats a 500 from the
  * trigger.)
  */
@@ -56,13 +57,12 @@ async function resolveUploadScope(session, listingId, unitId) {
   if (session.user.role === "super") return { ok: true, unitId: unitId ?? null };
 
   if (!unitId) {
-    return (await canManagePropertyPhotos(session.user.id, listingId))
+    return (await hasStakeInListing(session.user.id, listingId))
       ? { ok: true, unitId: null }
       : {
           ok: false,
           status: 403,
-          error:
-            "Only the property owner can add photos of the property itself. Add them to your unit instead.",
+          error: "You need a listing at this property to add photos to it.",
         };
   }
 
@@ -79,6 +79,44 @@ async function resolveUploadScope(session, listingId, unitId) {
     return { ok: false, status: 400, error: "That unit isn't at this property." };
   }
   return { ok: true, unitId };
+}
+
+/*
+ * File uploaded URLs into the property's gallery, appended after its last
+ * photo, and tag them with the upload's unit when there is one. The gallery is
+ * one sequence per property now (202609250001), so order is read listing-wide.
+ */
+async function fileIntoGallery({ listingId, scope, urls, userId }) {
+  const { data: existingImages } = await supabase
+    .from("listing_images")
+    .select("sort_order")
+    .eq("listing_id", listingId)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  const maxOrder = existingImages?.[0]?.sort_order ?? -1;
+  const imageRows = urls.map((url, i) => ({
+    listing_id: listingId,
+    // Who added it: the record that decides who may take it down again.
+    owner_id: userId,
+    url,
+    sort_order: maxOrder + 1 + i,
+  }));
+  const { data: inserted, error } = await insertBatchAsUser(supabase, {
+    userId,
+    table: "listing_images",
+    rows: imageRows,
+  });
+  if (error) throw new Error(error.message);
+
+  if (scope.unitId && Array.isArray(inserted) && inserted.length) {
+    const { error: tagErr } = await supabase.from("listing_image_units").insert(
+      inserted
+        .filter((row) => row?.id)
+        .map((row) => ({ image_id: row.id, unit_id: scope.unitId, created_by: userId }))
+    );
+    // The photos are saved; a missing tag is fixable from the dashboard.
+    if (tagErr) console.error("[upload] tagging failed (non-fatal):", tagErr.message);
+  }
 }
 
 function addressToFolderSlug(address) {
@@ -179,34 +217,7 @@ export async function PATCH(req) {
       return Response.json({ urls, url: urls[0] });
     }
 
-    /*
-     * Ordering is per SCOPE: the property's photos order among themselves and
-     * each unit's among its own. Appending to a listing-wide sequence would let
-     * one unit's uploads push the property's cover photo out of position 0.
-     */
-    const orderQuery = supabase
-      .from("listing_images")
-      .select("sort_order")
-      .eq("listing_id", listingId)
-      .order("sort_order", { ascending: false })
-      .limit(1);
-    const { data: existingImages } = await (scope.unitId
-      ? orderQuery.eq("unit_id", scope.unitId)
-      : orderQuery.is("unit_id", null));
-    const maxOrder = existingImages?.[0]?.sort_order ?? -1;
-    const imageRows = urls.map((url, i) => ({
-      listing_id: listingId,
-      unit_id: scope.unitId,
-      // Who added it — the record that decides who may take it down again.
-      owner_id: session.user.id,
-      url,
-      sort_order: maxOrder + 1 + i,
-    }));
-    await insertBatchAsUser(supabase, {
-      userId: session.user.id,
-      table: "listing_images",
-      rows: imageRows,
-    });
+    await fileIntoGallery({ listingId, scope, urls, userId: session.user.id });
 
     return Response.json({ urls, url: urls[0] });
   } catch (error) {
@@ -309,34 +320,7 @@ export async function PUT(req) {
       return Response.json({ urls, url: urls[0] });
     }
 
-    /*
-     * Ordering is per SCOPE: the property's photos order among themselves and
-     * each unit's among its own. Appending to a listing-wide sequence would let
-     * one unit's uploads push the property's cover photo out of position 0.
-     */
-    const orderQuery = supabase
-      .from("listing_images")
-      .select("sort_order")
-      .eq("listing_id", listingId)
-      .order("sort_order", { ascending: false })
-      .limit(1);
-    const { data: existingImages } = await (scope.unitId
-      ? orderQuery.eq("unit_id", scope.unitId)
-      : orderQuery.is("unit_id", null));
-    const maxOrder = existingImages?.[0]?.sort_order ?? -1;
-    const imageRows = urls.map((url, i) => ({
-      listing_id: listingId,
-      unit_id: scope.unitId,
-      // Who added it — the record that decides who may take it down again.
-      owner_id: session.user.id,
-      url,
-      sort_order: maxOrder + 1 + i,
-    }));
-    await insertBatchAsUser(supabase, {
-      userId: session.user.id,
-      table: "listing_images",
-      rows: imageRows,
-    });
+    await fileIntoGallery({ listingId, scope, urls, userId: session.user.id });
 
     return Response.json({ urls });
   } catch (error) {

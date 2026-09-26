@@ -237,7 +237,13 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     )
       return;
     try {
-      const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+      // Withdrawing is an edit, not a delete: the offering stays on record and
+      // can be put back. DELETE on this route removes it for good.
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: false, unavailable: true }),
+      });
       if (res.ok) {
         // Withdrawn, not deleted — the lease row survives as the ownership
         // record, so the property stays on their dashboard, now with no live

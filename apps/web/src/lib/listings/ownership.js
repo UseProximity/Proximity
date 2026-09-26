@@ -70,7 +70,9 @@ export async function getOwnedListings(userId) {
     supabase
       .from("unit_leases")
       .select("id, listing_units!unit_id(listing_id, deleted_at)")
-      .eq("owner_id", userId),
+      .eq("owner_id", userId)
+      // A deleted offering is no longer a stake here. See 202609250001.
+      .is("deleted_at", null),
   ]);
 
   for (const row of leaseRows ?? []) {
@@ -106,6 +108,7 @@ export async function hasAnyStake(userId) {
       .select("id")
       .eq("owner_id", userId)
       .eq("is_active", true)
+      .is("deleted_at", null)
       .limit(1),
   ]);
 
@@ -128,7 +131,8 @@ export async function hasStakeInListing(userId, listingId) {
   const { data } = await supabase
     .from("unit_leases")
     .select("id, listing_units!unit_id(listing_id, deleted_at)")
-    .eq("owner_id", userId);
+    .eq("owner_id", userId)
+    .is("deleted_at", null);
 
   return (data ?? []).some(
     (row) => row.listing_units?.listing_id === listingId && !row.listing_units?.deleted_at
@@ -138,10 +142,16 @@ export async function hasStakeInListing(userId, listingId) {
 /*
  * ——— Photo permissions ———————————————————————————————————————————————————
  *
- * Photos carry a scope: listing_images.unit_id is null for a picture of the
- * PROPERTY and set for a picture of one UNIT. The two answer to different
- * people, which is the whole point — a subletter should be able to picture the
- * apartment they are letting without touching the building's record.
+ * A property has ONE gallery. Units are tags on its photos
+ * (listing_image_units), so a picture of a shared kitchen can say it is true of
+ * several apartments at once. listing_images.unit_id is the retired single-unit
+ * scope: it is no longer written or read, and its old values became tags in
+ * 202609250001.
+ *
+ * Who may do what still follows who is behind the photo. Anyone with a stake at
+ * the property may add pictures; the property owner may arrange, tag and prune
+ * all of them; everyone else may only tag and remove their own, and only with
+ * the units they are actually letting.
  */
 
 /**
@@ -178,15 +188,18 @@ export async function canAddUnitPhotos(userId, unitId) {
     return { ok: true, listingId: unit.listing_id };
   }
 
-  const { data: lease } = await supabase
+  // limit(1), not maybeSingle(): one landlord can hold several offerings on the
+  // same unit, and "more than one row" is not a reason to say no.
+  const { data: leases } = await supabase
     .from("unit_leases")
     .select("id")
     .eq("unit_id", unitId)
     .eq("owner_id", userId)
     .eq("is_active", true)
-    .maybeSingle();
+    .is("deleted_at", null)
+    .limit(1);
 
-  return lease
+  return leases?.length
     ? { ok: true, listingId: unit.listing_id }
     : { ok: false, listingId: unit.listing_id, reason: "forbidden" };
 }
@@ -220,6 +233,58 @@ export async function canDeletePhoto(userId, imageId) {
 }
 
 /**
+ * May change the unit tags on ONE photo, and with which units.
+ *
+ * The property owner may tag any photo at their building with any of its units.
+ * Anyone else may tag only a photo they uploaded, and only with units they hold
+ * a live offering on: a landlord letting Apt 1W has no business saying what is
+ * in Apt 2W, or relabelling a competitor's pictures.
+ *
+ * Returns { ok, image, allowedUnitIds, reason }. allowedUnitIds is null when
+ * every unit at the property is allowed.
+ */
+export async function canTagPhoto(userId, imageId, { isSuper = false } = {}) {
+  if (!userId || !imageId) return { ok: false, reason: "missing" };
+  if (!isUuid(imageId)) return { ok: false, reason: "malformed" };
+
+  const { data: image, error } = await supabase
+    .from("listing_images")
+    .select("id, listing_id, owner_id")
+    .eq("id", imageId)
+    .maybeSingle();
+
+  if (error) return { ok: false, reason: "error" };
+  if (!image) return { ok: false, reason: "not_found" };
+
+  if (isSuper || (await isPropertyOwner(userId, image.listing_id))) {
+    return { ok: true, image, allowedUnitIds: null };
+  }
+  if (!image.owner_id || image.owner_id !== userId) {
+    return { ok: false, image, reason: "forbidden" };
+  }
+
+  const { data: leases } = await supabase
+    .from("unit_leases")
+    .select("unit_id, listing_units!unit_id(listing_id, deleted_at)")
+    .eq("owner_id", userId)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  const allowedUnitIds = [
+    ...new Set(
+      (leases ?? [])
+        .filter(
+          (l) => l.listing_units?.listing_id === image.listing_id && !l.listing_units?.deleted_at
+        )
+        .map((l) => l.unit_id)
+    ),
+  ];
+  if (!allowedUnitIds.length) return { ok: false, image, reason: "no_units" };
+
+  return { ok: true, image, allowedUnitIds };
+}
+
+/**
  * Property-level control: may edit the shared listing row, its unit set, and
  * delete it. Backed by listing_landlords alone — holding a lease is deliberately
  * NOT enough.
@@ -248,12 +313,12 @@ export async function canManageLease(userId, leaseId) {
 
   const { data: lease, error } = await supabase
     .from("unit_leases")
-    .select("id, owner_id, unit_id, sublease, listing_units!unit_id(listing_id, deleted_at)")
+    .select("id, owner_id, unit_id, sublease, deleted_at, listing_units!unit_id(listing_id, deleted_at)")
     .eq("id", leaseId)
     .maybeSingle();
 
   if (error) return { ok: false, reason: "error" };
-  if (!lease || lease.listing_units?.deleted_at) {
+  if (!lease || lease.deleted_at || lease.listing_units?.deleted_at) {
     return { ok: false, reason: "not_found" };
   }
 

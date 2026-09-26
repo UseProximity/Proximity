@@ -140,20 +140,15 @@ function buildListing(row, owner = null, reviews = []) {
   row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
 
   /*
-   * Photos carry a scope (listing_images.unit_id): null is a picture of the
-   * building, set is a picture of one unit. They are kept apart here because
-   * they answer different questions — `images` is what represents the PROPERTY,
-   * and a subletter's photo of one bedroom should not become the building's
-   * cover shot.
-   *
-   * The fallback exists so a property with no pictures of its own still has
-   * something to show: better a real unit photo than a grey placeholder.
+   * A property has one gallery, and units are tags on its photos
+   * (listing_image_units): a picture of the shared kitchen can be true of every
+   * apartment, a bedroom of just one. The order is the property owner's, and
+   * the first photo is the cover.
    */
   const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
   const allImages = (row.listing_images ?? []).slice().sort(bySort);
-  const propertyImages = allImages.filter((img) => !img.unit_id);
-  const unitImages = allImages.filter((img) => img.unit_id);
-  const coverPool = propertyImages.length ? propertyImages : unitImages;
+  const tagsOf = (img) => (img.listing_image_units ?? []).map((t) => t.unit_id);
+  const coverPool = allImages;
 
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
@@ -213,8 +208,8 @@ function buildListing(row, owner = null, reviews = []) {
       const leases = shapeLeases(u.unit_leases, row);
       return {
         id: u.id,
-        // This unit's own photos, in the order its landlord chose.
-        images: unitImages.filter((img) => img.unit_id === u.id).map((img) => img.url),
+        // The photos tagged with this unit, in gallery order.
+        images: allImages.filter((img) => tagsOf(img).includes(u.id)).map((img) => img.url),
         rent: activeRent != null ? Number(activeRent) : null,
         // From the same offering as `rent` — see cheapestPriced above.
         rentIsPerPerson: cheapestPriced?.rent_is_per_person ?? null,
@@ -247,18 +242,12 @@ function buildListing(row, owner = null, reviews = []) {
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
     images: coverPool.map((img) => img.url),
-    /*
-     * The property's OWN photos, kept separate from `images` because that falls
-     * back to unit photos when the building has none. The gallery has to tell
-     * the two apart to label them, and cannot recover the distinction from a
-     * pool that may already be a fallback.
-     */
-    propertyImages: propertyImages.map((img) => img.url),
-    // Every photo at this property, whatever its scope.
+    // Every photo at this property with the units it is tagged with, so the
+    // gallery can show them all and label each one.
+    gallery: allImages.map((img) => ({ url: img.url, unitIds: tagsOf(img) })),
+    // Every photo at this property, as plain URLs.
     allImages: allImages.map((img) => img.url),
-    // True when the cover photo was auto-fetched from Google Street View. Read
-    // from the property's own photos: a unit photo is never a Street View grab,
-    // and letting one sit at position 0 would clear the badge wrongly.
+    // True when the cover photo was auto-fetched from Google Street View.
     imageFromStreetView: coverPool[0]?.source === "street_view",
     numReviews: legitReviews.length,
     rating: legitReviews.length
@@ -351,7 +340,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
-      listing_images(id, url, sort_order, source, unit_id),
+      listing_images(id, url, sort_order, source, listing_image_units(unit_id)),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `

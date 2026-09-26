@@ -965,13 +965,13 @@ function ContactTab({
   );
 }
 
-function GalleryImage({ src, index, onImageLoad, onClick }) {
+function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted = false }) {
   const [loaded, setLoaded] = useState(false);
   return (
     <div
       className={`relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20${
         onClick ? " cursor-zoom-in" : ""
-      }`}
+      }${highlighted ? " ring-2 ring-red-500" : ""}`}
       onClick={onClick}
     >
       {!loaded && (
@@ -1013,6 +1013,22 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
           onImageLoad?.(src);
         }}
       />
+      {/* Which units this photo shows. The open unit's tag is red, so its
+          photos stand out from the rest of the building's. */}
+      {tags.length > 0 && (
+        <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium text-white ${
+                tag.active ? "bg-red-600" : "bg-black/60"
+              }`}
+            >
+              {tag.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1543,29 +1559,40 @@ export default function ListingModalInfo({
   const showingUnitPhotos = unitImages.length > 0;
 
   /*
-   * What the gallery shows: the building's own photos AND the photos of the
-   * unit whose tab is open, kept as labelled sections. A renter looking at
-   * Apt 1W wants the building and that apartment — not every other unit's
-   * bedrooms, which is a different listing to them.
+   * What the gallery shows: every photo at the property, each labelled with the
+   * units it is tagged with. The open unit's photos come first and are
+   * highlighted, so a renter looking at Apt 1W sees that apartment before the
+   * rest of the building, without losing the rest.
    *
-   * propertyImages is read separately from `images` because the latter falls
-   * back to unit photos when the building has none of its own; using it here
-   * would file those under "the property".
+   * `gallery` arrives with the detail fetch. Before it lands, the browse-feed
+   * shape only has plain URLs, which show untagged.
    */
-  const propertyGallery = Array.isArray(listing?.propertyImages)
-    ? listing.propertyImages.filter(Boolean).map(sanitizeUrl)
-    : images; // browse-feed shape, before the detail fetch lands
-
-  const gallerySections = [
-    ...(propertyGallery.length
-      ? [{ key: "property", label: "The property", photos: propertyGallery }]
-      : []),
-    ...(unitImages.length
-      ? [{ key: "unit", label: selectedUnitName ?? "This unit", photos: unitImages }]
-      : []),
+  const unitLabelById = new Map(
+    (listing?.unitTypes ?? []).map((u) => [
+      u.id,
+      u.identityLabel ??
+        u.title ??
+        ((u.bedrooms ?? 0) === 0 && u.bedrooms != null
+          ? "Studio"
+          : `${u.bedrooms ?? "?"} bd · ${u.bathrooms ?? "?"} ba`),
+    ])
+  );
+  const galleryItems = (
+    Array.isArray(listing?.gallery)
+      ? listing.gallery.filter((g) => g?.url)
+      : images.map((url) => ({ url, unitIds: [] }))
+  ).map((g) => ({
+    src: sanitizeUrl(g.url),
+    unitIds: (g.unitIds ?? []).filter((id) => unitLabelById.has(id)),
+  }));
+  const isSelectedUnitPhoto = (item) =>
+    !!selectedUnit?.id && item.unitIds.includes(selectedUnit.id);
+  const orderedGallery = [
+    ...galleryItems.filter(isSelectedUnitPhoto),
+    ...galleryItems.filter((item) => !isSelectedUnitPhoto(item)),
   ];
-  const galleryCount = gallerySections.reduce((n, sec) => n + sec.photos.length, 0);
-  const allGalleryPhotos = gallerySections.flatMap((section) => section.photos);
+  const galleryCount = orderedGallery.length;
+  const allGalleryPhotos = orderedGallery.map((item) => item.src);
   const lightboxSrc = lightboxIndex !== null ? allGalleryPhotos[lightboxIndex] : null;
   const showPrevPhoto = () =>
       setLightboxIndex((i) => (i - 1 + allGalleryPhotos.length) % allGalleryPhotos.length);
@@ -1591,10 +1618,13 @@ export default function ListingModalInfo({
     images[1] || images[0] || null,
     images[2] || images[1] || images[0] || null,
   ];
+  // A unit photo can also be the property's cover now that there is one
+  // gallery, and showing it twice side by side reads as a glitch.
+  const unitTiles = unitImages.filter((src) => src !== images[0]);
   const sideTiles = [0, 1]
     .map((i) =>
-      unitImages[i]
-        ? { src: unitImages[i], isUnit: true }
+      unitTiles[i]
+        ? { src: unitTiles[i], isUnit: true }
         : propertyTile[i]
           ? { src: propertyTile[i], isUnit: false }
           : null
@@ -1885,8 +1915,8 @@ export default function ListingModalInfo({
             </motion.div>
             )}
 
-            {/* "See all photos" — counts the property AND the open unit, which is
-                what the gallery actually opens with. */}
+            {/* "See all photos": every photo at the property, which is what the
+                gallery opens with. */}
             {galleryCount > 1 && (
               <button
                 onClick={() => setIsGalleryOpen(true)}
@@ -2243,39 +2273,25 @@ export default function ListingModalInfo({
                 ×
               </button>
             </div>
-            {gallerySections.map((section, sectionIdx) => {
-              const offset = gallerySections
-                  .slice(0, sectionIdx)
-                  .reduce((n, s) => n + s.photos.length, 0);
-              return (
-                <div key={section.key} className={sectionIdx ? "mt-10" : ""}>
-                  {/* Only worth a heading when there is more than one section —
-                  a single group needs no label to tell it apart from. */}
-                  {gallerySections.length > 1 && (
-                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">
-                        {section.label}
-                        <span className="ml-2 font-normal normal-case tracking-normal text-white/40">
-                    {section.photos.length}{" "}
-                          {section.photos.length === 1 ? "photo" : "photos"}
-                  </span>
-                      </h3>
-                  )}
-                  <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-                    {section.photos.map((src, i) => (
-                        <GalleryImage
-                            key={`${section.key}-${src}`}
-                            src={src}
-                            index={i}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setLightboxIndex(offset + i);
-                            }}
-                        />
-                    ))}
-                  </div>
-                </div>
-              )}
-            )}
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
+              {orderedGallery.map((item, i) => (
+                <GalleryImage
+                  key={item.src}
+                  src={item.src}
+                  index={i}
+                  highlighted={isSelectedUnitPhoto(item)}
+                  tags={item.unitIds.map((id) => ({
+                    id,
+                    label: unitLabelById.get(id),
+                    active: id === selectedUnit?.id,
+                  }))}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxIndex(i);
+                  }}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}

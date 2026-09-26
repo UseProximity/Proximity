@@ -74,7 +74,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
   const myLeases = currentUserId
     ? (l.listing_units ?? []).filter((u) => !u.deleted_at).flatMap((u) =>
         (u.unit_leases ?? [])
-          .filter((lease) => lease.owner_id === currentUserId)
+          .filter((lease) => lease.owner_id === currentUserId && !lease.deleted_at)
           .map((lease) => ({
             id: lease.id,
             unitId: u.id,
@@ -214,7 +214,9 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
       .map((i) => ({
         id: i.id,
         url: i.url,
-        unitId: i.unit_id ?? null,
+        // The units this photo is tagged with. One gallery per property, so a
+        // photo can show several units, or none (the building itself).
+        unitIds: (i.listing_image_units ?? []).map((t) => t.unit_id),
         mine: !!currentUserId && i.owner_id === currentUserId,
       })),
     rating,
@@ -327,7 +329,8 @@ export async function buildDashboardUser({ email, id } = {}) {
     supabase
       .from("unit_leases")
       .select("id, listing_units!unit_id(listing_id, deleted_at)")
-      .eq("owner_id", userId),
+      .eq("owner_id", userId)
+      .is("deleted_at", null),
   ]);
 
   const favoriteIds = (favInteractions ?? []).map((r) => r.listing_id);

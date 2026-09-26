@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-23T22:48:28.550Z",
-  "count": 94,
+  "_generated": "2026-09-26T04:35:00.667Z",
+  "count": 95,
   "routes": [
     {
       "path": "/api/account",
@@ -473,12 +473,12 @@
         "action_log",
         "listing_landlords",
         "listings",
+        "matchmaking_chat_sessions",
+        "matchmaking_preferences",
         "listing_reviews",
         "dorm_reviews",
         "user_listing_interactions",
         "review_votes",
-        "matchmaking_chat_sessions",
-        "matchmaking_preferences",
         "lease_checks",
         "waitlist_clicks",
         "device_push_tokens",
@@ -856,6 +856,21 @@
         "listing_images"
       ],
       "file": "src/app/api/landlord/photos/[imageId]/route.js"
+    },
+    {
+      "path": "/api/landlord/photos/[imageId]/units",
+      "methods": [
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PUT": "any"
+      },
+      "tables": [
+        "listing_units",
+        "listing_image_units"
+      ],
+      "file": "src/app/api/landlord/photos/[imageId]/units/route.js"
     },
     {
       "path": "/api/landlord/pms/confirm",
@@ -1364,8 +1379,9 @@
         "PATCH": "any"
       },
       "tables": [
-        "listings",
-        "listing_images"
+        "listing_images",
+        "listing_image_units",
+        "listings"
       ],
       "file": "src/app/api/upload/route.js"
     },
