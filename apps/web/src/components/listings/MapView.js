@@ -350,22 +350,21 @@ export default function MapView({
 
       const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
       const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
-      // An exactly-5.0 rating fills the star with a gold gradient; the red teardrop
-      // pin is unchanged. The active/clicked state keeps the old look (red star on a
+      // Every rated star fills with a gold gradient pinned to the full star, so the
+      // gold tip only shows as the fill nears the top (a 5.0 shows all of it, a 2.5
+      // almost none). The active/clicked state keeps the old look (pink star on a
       // lighter body), so gold only applies when not active.
-      const isGold = rating >= 5 && !isActive;
-      const goldGradient = `<linearGradient id="sg_${safeId}" x1="17.5" y1="8.2" x2="17.5" y2="31.4" gradientUnits="userSpaceOnUse">
+      const isGold = !isActive;
+      const goldGradient = `<linearGradient id="sg_${safeId}" x1="17.5" y1="${STAR_BOTTOM - STAR_HEIGHT}" x2="17.5" y2="${STAR_BOTTOM}" gradientUnits="userSpaceOnUse">
             <stop stop-color="#D69121"/>
-            <stop offset="0.45" stop-color="#F7D14A"/>
-            <stop offset="0.78" stop-color="#F7EF84"/>
-            <stop offset="1" stop-color="#FFFDEB"/>
+            <stop offset="0.115" stop-color="#F7D14A"/>
+            <stop offset="0.236" stop-color="#F7EF84"/>
+            <stop offset="0.394" stop-color="#FFFDEB"/>
           </linearGradient>`;
-      const starFill = isGold
-        ? `url(#sg_${safeId})`
-        : isActive
-        ? "#FFA2A2"
-        : "#FFFFF6";
-      const starStroke = isGold ? `url(#sg_${safeId})` : isActive ? "#FFA2A2" : "#FFFFF6";
+      const starFill = isGold ? `url(#sg_${safeId})` : "#FFA2A2";
+      // The outline stays cream over the unfilled part; the filled part gets a
+      // matching gradient stroke so its edge doesn't show a cream rim.
+      const outlineStroke = isActive ? "#FFA2A2" : "#FFFFF6";
 
       el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -375,12 +374,12 @@ export default function MapView({
           </linearGradient>
           ${isGold ? goldGradient : ""}
           <clipPath id="sc_${safeId}">
-            <rect x="4" y="${clipY}" width="27" height="${fillHeight}"/>
+            <rect x="4" y="${clipY}" width="27" height="${parseFloat(fillHeight) + 0.5}"/>
           </clipPath>
         </defs>
         <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
-        <path d="${STAR_PATH}" fill="${starFill}" clip-path="url(#sc_${safeId})"/>
-        <path d="${STAR_PATH}" fill="none" stroke="${starStroke}" stroke-width="0.75"/>
+        <path d="${STAR_PATH}" fill="none" stroke="${outlineStroke}" stroke-width="0.75"/>
+        <path d="${STAR_PATH}" fill="${starFill}" stroke="${starFill}" stroke-width="0.75" clip-path="url(#sc_${safeId})"/>
       </svg>${WRAP_CLOSE}`;
     }
 
