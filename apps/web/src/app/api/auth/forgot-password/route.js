@@ -35,7 +35,7 @@ export async function POST(req) {
       email,
       name: user.name,
       token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getBaseUrl(),
     });
 
     return NextResponse.json({}, { status: 200 });
