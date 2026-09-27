@@ -228,7 +228,7 @@ export async function POST(req) {
       );
     }
 
-    const baseUrl = getBaseUrl(req);
+    const baseUrl = getBaseUrl();
     const results = [];
 
     for (const person of recipients) {

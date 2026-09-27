@@ -32,7 +32,7 @@ export async function GET(req) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getBaseUrl();
   let sent = 0;
   let skipped = 0;
   const failures = [];

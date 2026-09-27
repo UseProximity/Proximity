@@ -117,7 +117,7 @@ export async function POST(req) {
       email,
       name: name.trim(),
       token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
     });
 
