@@ -80,7 +80,7 @@ export async function GET(req) {
     byRecipient.get(email).listings.push({ id: l.id, label: l.title || l.address || "Your listing" });
   }
 
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getBaseUrl();
   let emailed = 0;
   const stampIds = [];
   for (const [email, { name, listings: group }] of byRecipient) {
