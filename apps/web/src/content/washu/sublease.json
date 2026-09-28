@@ -1,29 +1,35 @@
 {
   "intro": [
-    "The WashU sublet market mostly lives inside private Facebook groups you have to beg to join. This page is the open version: real subleases near campus, browsable by anyone, no gatekeeping.",
-    "Subleases exist because of one structural fact: most leases near WashU run 12 months but the school year runs 9. Every spring, students leaving for internships and abroad semesters need someone to cover their summer, and every summer, students who missed the fall signing wave need a place. That mismatch is your opportunity from either side."
+    "Most WashU (Washington University in St. Louis) sublets get passed around in private Facebook groups and group chats, so you only see them if you're already in. Proximity puts them in the open: real subleases near campus, posted by students, that anyone can browse right here.",
+    "Subleases exist because of one structural fact. Most leases near WashU run 12 months but the school year runs 9. Every spring, students leaving for internships and abroad semesters need someone to cover their summer. Every summer, students who missed the fall signing wave need a place. That mismatch is your opening from either side."
   ],
   "directAnswer": "To find a WashU sublease, browse the live sublet listings on this page, which anyone can see without joining a private group. Most subleases near WashU are summer terms posted in spring by students leaving town, plus semester and lease-takeover options that appear year round.",
   "faqs": [
     {
       "q": "What is the difference between a sublease and a lease takeover?",
-      "a": "In a sublease, the original tenant stays on the lease and you pay them (or the landlord) for a set period, usually a summer or a semester. In a lease takeover, you replace them on the lease entirely and the remaining term becomes yours. Takeovers need landlord approval and paperwork; subleases need landlord permission in most WashU-area leases, so check the lease language either way."
+      "a": "In a sublease, the original tenant stays on the lease and you pay them or the landlord for a set period, usually a summer or a semester. In a lease takeover, you replace them on the lease entirely and the remaining term becomes yours. Both can require landlord approval and paperwork, so check the lease terms before agreeing to either one."
     },
     {
       "q": "When do WashU subleases get posted?",
-      "a": "The big wave is spring, when students lock in summer plans and post their places for May through August. A second trickle appears in November and December for spring-semester coverage. If you need a summer spot, start looking in March; the best-located sublets go before finals."
+      "a": "Many WashU subleases get posted in spring for summer move-ins, especially as students finalize internships, travel, or other plans. A second trickle appears in November and December for spring-semester coverage. if you need a summer place, starting your search in March or April gives you more time to compare options."
     },
     {
       "q": "Am I allowed to sublease my WashU apartment?",
-      "a": "Usually yes with landlord consent, but it depends entirely on your lease. Look for a sublet or assignment clause before you sign anything, and get the landlord's permission in writing. Some buildings prohibit it, some charge a fee, and some allow it freely. Our lease-check tool can flag what your lease says about subletting."
+      "a": "Usually yes with landlord consent, but it depends entirely on your lease. Look for a sublet or assignment clause before you sign anything, and get the landlord's permission in writing. Some landlords allow subletting, some charge a fee, and others prohibit it. Proximity’s lease-check tool can help flag what your lease says about subletting.",
+      "links": [
+        {
+          "label": "Check your lease free",
+          "href": "/lease-check"
+        }
+      ]
     },
     {
       "q": "How should I price a summer sublet?",
-      "a": "Below your actual rent, usually meaningfully below. Summer supply near WashU exceeds demand, so sublessors typically eat some loss to avoid eating the whole rent. Furnished places and spots near campus hold value best. Recovering most of your rent is a win; recovering all of it is rare."
+      "a": "Below your rent, usually well below. Summer supply near WashU exceeds demand, so sublessors typically eat some loss to avoid eating the whole rent. Furnished units and places close to campus may be easier to market, but the right price depends on the unit, timing, and current demand."
     },
     {
       "q": "How do I avoid sublease scams?",
-      "a": "Deal with verified people and see the place, at least on video, before sending money. On Proximity, sublease posts come from student accounts, not anonymous strangers. Anywhere else: never wire money to someone you have not verified, be suspicious of below-market prices with pressure to pay fast, and confirm the person actually holds the lease."
+      "a": "Deal with verified people and see the place, at least on video, before sending money. On Proximity, sublease posts come from student accounts rather than anonymous strangers. Anywhere else: never wire money to someone you haven't verified, and confirm the person really holds the lease. Be suspicious of a below-market price paired with pressure to pay fast."
     }
   ],
   "benchmarkNote": "Listings above are live sublease posts on Proximity and refresh automatically. Proximity does not publish averages computed from its own listings."

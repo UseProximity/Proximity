@@ -1,36 +1,33 @@
 {
   "intro": [
-    "A 1 bedroom near WashU means your own kitchen, your own bathroom, and nobody else's dishes. The tradeoff is price: you carry the whole rent yourself.",
-    "The listings below are live right now on Proximity, each with its walk time to campus and reviews from WashU students who lived there. That last part matters: a 1 bedroom decision is mostly a landlord decision, and reviews are how you find out who actually fixes things."
+    "A 1 bedroom near WashU (Washington University in St. Louis) means your own kitchen and nobody else's dishes in the sink. The tradeoff is price: you carry the whole rent yourself.",
+    "The listings below are live right now, with walk times to campus and student reviews where available. For a 1 bedroom near WashU, the building and landlord matter a lot, so the reviews can help you see how management actually handles maintenance and day-to-day issues."
   ],
-  "directAnswer": "1 bedroom apartments near WashU concentrate in Skinker-DeBaliviere, around the Delmar Loop, and in the Central West End. For context, HUD's FY2026 fair market rent for a 1 bedroom is $930 in Skinker-DeBaliviere (63112) and $1,110 in University City (63130), utilities included.",
+  "directAnswer": "1 bedroom apartments near WashU concentrate in Skinker-DeBaliviere and near the Delmar Loop, plus the Central West End for medical campus students. Every rent on this page is live, and the closer you get to campus, the more you'll pay.",
   "faqs": [
     {
       "q": "How much is a 1 bedroom apartment near WashU?",
-      "a": "HUD's FY2026 fair market rent for a 1 bedroom is $930 in ZIP 63112 (Skinker-DeBaliviere) and $1,110 in 63130 (University City), utilities included, and those are 40th percentile figures for the whole ZIP. Student-oriented buildings close to campus usually price above that benchmark. Every listing above shows its actual current rent."
+      "a": "It depends on the block and the building. Newer buildings near the Loop and campus cost the most, and older walk-ups a few streets back usually cost less. Every listing above shows its real current rent.",
+      "links": [
+        {
+          "label": "See the rent data",
+          "href": "/washu/housing-cost"
+        }
+      ]
     },
     {
       "q": "Where do WashU students live when they want to live alone?",
-      "a": "Mostly Skinker-DeBaliviere and the blocks around the Loop for the walk-to-campus crowd, and the Central West End for med and grad students. DeMun draws students who want quiet over nightlife."
+      "a": "Mostly Skinker-DeBaliviere and the blocks near the Loop if walking to campus matters, or the Central West End for medical and grad students. DeMun draws the ones who want quiet over nightlife."
     },
     {
       "q": "When do 1 bedrooms get taken for the next school year?",
-      "a": "Students report private landlords begin signing leases around November for the following August, and the best-located 1 bedrooms go early because they work for the widest range of renters: undergrads, grad students, and young professionals all want them. Start looking in the fall."
+      "a": "Students report private landlords begin signing around November for the following August. Well located 1 bedrooms go early because they suit almost everyone, so you're competing with grad students and young professionals, not just other undergrads. Start looking in the fall."
     },
     {
       "q": "Should I get a 1 bedroom or split a 2 bedroom?",
-      "a": "Money says split: two people sharing a 2 bedroom nearly always pay less per person than one person in a 1 bedroom. Sanity is your call. If you have lived with a bad housemate you already know the answer."
+      "a": "Money says split. Two people sharing a 2 bedroom nearly always pay less per person than one person in a 1 bedroom. Sanity is your call, and if you've lived with a bad housemate you already know the answer."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
-  "sources": [
-    {
-      "label": "HUD Fair Market Rents (FY2026)",
-      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
-    },
-    {
-      "label": "Zillow Research rent data",
-      "url": "https://www.zillow.com/research/"
-    }
-  ]
+  "benchmarkNote": "Rents on this page are each listing's current asking rent. Proximity does not publish averages computed from its own listings.",
+  "sources": []
 }

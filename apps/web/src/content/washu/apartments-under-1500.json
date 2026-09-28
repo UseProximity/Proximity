@@ -1,36 +1,33 @@
 {
   "intro": [
-    "Under $1,500 a month per person is the comfortable middle of the WashU market: enough for a solid place in a good location without luxury-tower pricing.",
-    "Every listing below qualifies on per-person cost, meaning your share after splitting the unit rent by bedrooms, or the room price where a listing rents by the room. At this budget you can choose between living alone in some areas or getting the nicer shared place. Walk times and student reviews are on every card."
+    "Under $1,500 a month per person is the comfortable middle of the WashU (Washington University in St. Louis) market: enough for a solid place in a good location without luxury-tower pricing.",
+    "Every listing below qualifies on per-person cost, meaning your share after splitting the unit rent by bedrooms, or the room price where a listing rents by the room. At this budget you get a real choice between living alone in some areas or taking the nicer shared place. Walk times and student reviews are on every card."
   ],
-  "directAnswer": "Under $1,500 a month per person buys real choice near WashU: most shared 2 and 3 bedrooms qualify, and so do many 1 bedrooms in Skinker-DeBaliviere and University City. For context, HUD's FY2026 fair market rent for a 1 bedroom in University City (63130) is $1,110, utilities included.",
+  "directAnswer": "Under $1,500 a month per person buys real choice near WashU: most shared 2 and 3 bedrooms qualify, and so do many 1 bedrooms in Skinker-DeBaliviere and University City, MO. Every listing on this page fits that budget per person.",
   "faqs": [
     {
       "q": "Can I live alone near WashU for under $1,500?",
-      "a": "Often, yes. HUD's FY2026 fair market rent for a 1 bedroom is $930 in Skinker-DeBaliviere (63112) and $1,110 in University City (63130), utilities included, and while student buildings near campus usually price above those benchmarks, plenty of 1 bedrooms and studios on this page fit the budget. Living alone in Clayton or the CWE is harder at this number."
+      "a": "Often, yes, especially in Skinker-DeBaliviere and University City, MO. Buildings right by campus can run higher, so check the actual listings and what utilities are included.",
+      "links": [
+        {
+          "label": "See the rent data",
+          "href": "/washu/housing-cost"
+        }
+      ]
     },
     {
       "q": "How is under $1,500 calculated here?",
-      "a": "Per person, because that is how students actually budget. A $2,800 two bedroom qualifies at $1,400 each. Room-priced listings count by their room price. Utilities vary by listing, so check what is included before comparing two places."
+      "a": "It’s calculated per person. A $2,800 two-bedroom works out to $1,400 per person if split evenly. Room-priced listings use the listed room price. Utilities vary, so check what’s included before comparing places."
     },
     {
       "q": "What does this budget get me that cheaper places do not?",
-      "a": "Mostly location and condition: closer walks to campus, in-unit laundry, renovated kitchens, and buildings with responsive management. Whether a specific building delivers is what the student reviews on each listing are for."
+      "a": "Mostly location and condition: shorter walks to campus, in-unit laundry, renovated kitchens, buildings with management that answers the phone. Whether a specific building delivers is what the student reviews on each listing are for."
     },
     {
       "q": "When should I sign to get the best options at this budget?",
-      "a": "Fall for next August. Students report private landlords begin signing around November, and mid-range places in walkable blocks are the most competitive segment of the market. WashU-affiliated companies open signing later in spring, so you get two waves of inventory."
+      "a": "Fall, for next August. Students report private landlords begin signing around November, and mid-range places in walkable blocks are the most competitive segment of the market. WashU affiliated companies open signing later in spring, so you get two waves of inventory."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
-  "sources": [
-    {
-      "label": "HUD Fair Market Rents (FY2026)",
-      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
-    },
-    {
-      "label": "Zillow Research rent data",
-      "url": "https://www.zillow.com/research/"
-    }
-  ]
+  "benchmarkNote": "Rents on this page are each listing's current asking rent. Proximity does not publish averages computed from its own listings.",
+  "sources": []
 }

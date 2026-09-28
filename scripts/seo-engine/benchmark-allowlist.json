@@ -1,13 +1,73 @@
 {
   "_comment": "Every dollar figure and percentage allowed to appear in /washu copy. Sources: HUD FY2026 SAFMR (huduser.gov) and Zillow ZORI (June 2026). Update this file, with its source, when benchmarks refresh; the validator rejects any draft figure not listed here and not already present in the previous version of the same file.",
   "hud_fy2026_safmr": [
-    "$890", "$930", "$1,140", "$1,470", "$1,700",
-    "$1,070", "$1,110", "$1,360", "$1,750", "$2,020",
-    "$1,360", "$1,410", "$1,730", "$2,230", "$2,570",
-    "$1,420", "$1,480", "$1,810", "$2,330", "$2,690",
-    "$1,000", "$1,050", "$1,280", "$1,650", "$1,900"
+    "$890",
+    "$930",
+    "$1,140",
+    "$1,470",
+    "$1,700",
+    "$1,070",
+    "$1,110",
+    "$1,360",
+    "$1,750",
+    "$2,020",
+    "$1,360",
+    "$1,410",
+    "$1,730",
+    "$2,230",
+    "$2,570",
+    "$1,420",
+    "$1,480",
+    "$1,810",
+    "$2,330",
+    "$2,690",
+    "$1,000",
+    "$1,050",
+    "$1,280",
+    "$1,650",
+    "$1,900"
   ],
-  "zori_june_2026": ["5.0%", "6.5%", "4.0%"],
-  "page_thresholds": ["$1,000", "$1,500", "$800", "$950", "$1,900", "$2,800", "$1,400", "$1,200"],
-  "derived_from_hud": ["$680"]
+  "zori_june_2026": [
+    "5.0%",
+    "6.5%",
+    "4.0%"
+  ],
+  "page_thresholds": [
+    "$1,000",
+    "$1,500",
+    "$800",
+    "$950",
+    "$1,900",
+    "$2,800",
+    "$1,400",
+    "$1,200"
+  ],
+  "derived_from_hud": [
+    "$680",
+    "$8,160"
+  ],
+  "reslife_room_rates_2026_27": [
+    "$14,204",
+    "$16,834",
+    "$17,532",
+    "$20,280"
+  ],
+  "_comment_reslife": "WashU Residential Life 2026-27 annual apartment bed-space rates (Rosedale $14,204; Greenway and University Drive $16,834; Lofts $17,532; Village East $20,280), https://reslife.washu.edu/room-rates/, checked 2026-09-27.",
+  "derived_from_reslife": [
+    "$1,870"
+  ],
+  "_comment_derived": "$1,870 = $16,834 / 9 school-year months; $8,160 = $680 (HUD 63130 2BR $1,360 / 2) x 12 months.",
+  "zori_august_2026": [
+    "4.7%",
+    "3.9%",
+    "$1,284",
+    "$1,484",
+    "$1,566",
+    "$1,653"
+  ],
+  "_comment_zori_august_2026": "Zillow ZORI (Zip_zori_uc_sfrcondomfr_sm_month.csv / Metro file), 2026-08-31 vs 2025-08-31: 63130 $1,484 +4.7%; 63112 $1,284 +3.9%; 63108 $1,566; 63105 $1,653; St. Louis metro +3.9%. Downloaded and computed 2026-09-28.",
+  "washu_law_coa_2026_27": [
+    "$13,617"
+  ],
+  "_comment_washu_law": "WashU Law cost of living, housing (rent, utilities, phone/internet), nine months, maximum student budget: $13,617 (~$1,513/mo), https://law.washu.edu/admissions/tuition-financial-aid/, checked 2026-09-28."
 }
