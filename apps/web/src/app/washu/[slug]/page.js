@@ -2,12 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { washuPages, getWashuPage } from "@/lib/washuPages";
 import { washuContent } from "@/content/washu";
-import {
-  getWashuPageListings,
-  walkMinutesRange,
-} from "@/lib/listings/queryListings";
+import { getWashuPageListings } from "@/lib/listings/queryListings";
 import WashuListingGrid from "@/components/washu/WashuListingGrid";
 import WashuPageJsonLd from "@/components/washu/WashuPageJsonLd";
+import WashuFaqLinks from "@/components/washu/WashuFaqLinks";
+import WashuSideCta from "@/components/washu/WashuSideCta";
 
 // Only registry slugs exist; anything else 404s so there is no crawlable
 // junk space of invented facet URLs.
@@ -44,8 +43,7 @@ export default async function WashuLandingPage({ params }) {
   const content = washuContent[slug];
   if (!page || !content) notFound();
 
-  const { listings, count, meetsThreshold } = await getWashuPageListings(page);
-  const walk = walkMinutesRange(listings);
+  const { listings, meetsThreshold } = await getWashuPageListings(page);
   const related = (page.related ?? [])
     .map((s) => getWashuPage(s))
     .filter(Boolean);
@@ -85,28 +83,13 @@ export default async function WashuLandingPage({ params }) {
               {content.directAnswer}
             </p>
           </div>
-
-          {walk ? (
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-4 py-1.5 text-sm text-gray-700 shadow-sm">
-              <svg
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="h-4 w-4 text-red-600"
-              >
-                <path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7" />
-              </svg>
-              {count === 1 ? "1 listing" : `${count} listings`},{" "}
-              {walk.min === walk.max ? walk.min : `${walk.min} to ${walk.max}`}{" "}
-              minute walk to campus
-            </div>
-          ) : null}
         </div>
       </section>
 
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         {/* Live inventory (answer pages are content-led and skip the grid) */}
         {page.filter ? (
-          <section className="mb-14">
+          <section id="listings" className="mb-14 scroll-mt-32">
             <span className="inline-block rounded-full bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-red-600 mb-3">
               Available Now
             </span>
@@ -117,40 +100,47 @@ export default async function WashuLandingPage({ params }) {
           </section>
         ) : null}
 
-        {/* Editorial intro */}
-        <section className="max-w-3xl mb-14">
-          {content.intro.map((paragraph, i) => (
-            <p
-              key={i}
-              className="text-[17px] text-gray-700 leading-relaxed mb-5"
-            >
-              {paragraph}
-            </p>
-          ))}
-        </section>
-
-        {/* FAQ: plain headings and paragraphs, no accordion, for extractability */}
-        {content.faqs?.length ? (
-          <section className="max-w-3xl mb-14">
-            <span className="inline-block rounded-full bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-red-600 mb-3">
-              Real Questions
-            </span>
-            <h2 className="text-2xl md:text-3xl font-black mb-6">
-              What students actually ask
-            </h2>
-            <div className="space-y-4">
-              {content.faqs.map((f, i) => (
-                <div
+        {/* Article column + sticky CTA in the otherwise empty right rail */}
+        <div className="mb-14 lg:grid lg:grid-cols-[minmax(0,48rem)_minmax(0,1fr)] lg:gap-12">
+          <div>
+            {/* Editorial intro */}
+            <section className="max-w-3xl mb-14">
+              {content.intro.map((paragraph, i) => (
+                <p
                   key={i}
-                  className="rounded-2xl border border-gray-100 bg-gray-50/60 p-5 hover:border-rose-200 transition-colors"
+                  className="text-[17px] text-gray-700 leading-relaxed mb-5"
                 >
-                  <h3 className="text-lg font-bold mb-2">{f.q}</h3>
-                  <p className="text-gray-700 leading-relaxed">{f.a}</p>
-                </div>
+                  {paragraph}
+                </p>
               ))}
-            </div>
-          </section>
-        ) : null}
+            </section>
+
+            {/* FAQ: plain headings and paragraphs, no accordion, for extractability */}
+            {content.faqs?.length ? (
+              <section className="max-w-3xl">
+                <span className="inline-block rounded-full bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-red-600 mb-3">
+                  Real Questions
+                </span>
+                <h2 className="text-2xl md:text-3xl font-black mb-6">
+                  What students actually ask
+                </h2>
+                <div className="space-y-4">
+                  {content.faqs.map((f, i) => (
+                    <div
+                      key={i}
+                      className="rounded-2xl border border-gray-100 bg-gray-50/60 p-5 hover:border-rose-200 transition-colors"
+                    >
+                      <h3 className="text-lg font-bold mb-2">{f.q}</h3>
+                      <p className="text-gray-700 leading-relaxed">{f.a}</p>
+                      <WashuFaqLinks links={f.links} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+          <WashuSideCta slug={page.slug} />
+        </div>
 
         {/* Related pages */}
         {related.length ? (
@@ -183,15 +173,14 @@ export default async function WashuLandingPage({ params }) {
             Your perfect WashU housing, found for you.
           </h2>
           <p className="relative text-red-50 mb-7 max-w-xl mx-auto leading-relaxed">
-            Share your budget and preferences, answer a few quick questions,
-            and matchmaking pairs you with places that actually fit. Free, no
-            spam, no broker fees.
+            Answer a few quick questions and our housing agent finds the
+            apartment that fits you best, completely free.
           </p>
           <Link
             href="/matchmaking"
             className="relative inline-flex items-center justify-center rounded-xl bg-white px-7 py-3.5 font-bold text-red-600 hover:bg-red-50 transition shadow-lg"
           >
-            Get matched free
+            Find my apartment
           </Link>
         </section>
 
