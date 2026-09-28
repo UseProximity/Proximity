@@ -14,16 +14,49 @@
  * Exports: handlers (GET/POST for /api/auth/*), signIn, signOut, auth (server-side
  * session getter used by layout.js and protected API routes).
  */
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { emailMatchPattern } from "@/lib/auth/email";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
 // tab / by an admin) without requiring a sign-out.
 const ROLE_REFRESH_MS = 60_000;
+
+// The right password on an account whose email was never verified. It has to
+// extend CredentialsSignin: Auth.js swaps any other error thrown from
+// authorize() for a generic "Configuration" error, so the sign-in form never
+// learned the account was unverified and said "Invalid email or password".
+// The code reaches the client as `result.code`.
+class EmailNotVerified extends CredentialsSignin {
+  code = "EMAIL_NOT_VERIFIED";
+}
+
+/*
+ * Run a Supabase query without letting a network failure escape.
+ *
+ * supabase-js returns { data, error } for anything Postgres says no to, but a
+ * transport failure — the "TypeError: fetch failed" this project sees against
+ * Supabase — REJECTS instead. Unhandled inside the jwt callback, that rejection
+ * takes the whole callback down, and next-auth answers /api/auth/session with
+ * nothing: the browser concludes it is signed out and the UI starts asking a
+ * logged-in landlord to sign in.
+ *
+ * A blip must not end a session. The caller decides what a failed read means;
+ * here it simply becomes an error result like any other, and the token keeps
+ * the identity it was already carrying.
+ */
+async function safeQuery(run) {
+  try {
+    return await run();
+  } catch (err) {
+    console.error("[auth] Supabase query failed, keeping cached token:", err?.message);
+    return { data: null, error: err };
+  }
+}
 
 const config = {
   providers: [
@@ -38,15 +71,21 @@ const config = {
 
         const { data: user } = await supabase
           .from("users")
-          .select("id, email, name, password_hash, email_verified, profile_complete, roles!role_id(name)")
-          .eq("email", email)
+          .select("id, email, name, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
+          .ilike("email", emailMatchPattern(email))
           .single();
 
-        if (!user || !user.password_hash) return null;
-        if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+        // Deleted accounts fail exactly like a wrong password — same null
+        // return, no distinct error. Confirming "this account was deleted"
+        // would leak that the address was registered.
+        if (!user || !user.password_hash || user.deleted_at) return null;
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) return null;
+
+        // Checked after the password, so only the account's owner learns that
+        // it exists but is unverified.
+        if (!user.email_verified) throw new EmailNotVerified();
 
         return { id: user.id, email: user.email, name: user.name };
       },
@@ -58,6 +97,29 @@ const config = {
     error: "/",
   },
   callbacks: {
+    // Google only — Credentials already rejects a deleted account synchronously
+    // in authorize() below, before any session is created. Without this, Google
+    // completes the OAuth handshake and only the jwt callback's deleted_at guard
+    // (further down) strips the identity — but by then a session already exists
+    // with profileComplete: false, which is indistinguishable from a real new
+    // signup to anything that keys off that flag (ProfileCompletionModal).
+    // Returning a URL here aborts sign-in before jwt/session ever run for this
+    // attempt: no token, no cookie, no onboarding.
+    async signIn({ user, account }) {
+      if (account?.provider !== "google" || !user?.email) return true;
+
+      const { data: existing } = await supabase
+        .from("users")
+        .select("deleted_at")
+        .eq("email", user.email)
+        .single();
+
+      if (existing?.deleted_at) {
+        return "/login?error=ACCOUNT_DELETED";
+      }
+
+      return true;
+    },
     async jwt({ token, user, account, trigger, session: updateData }) {
       // Credentials sign-in: user.id is the DB id returned from authorize()
       if (account?.provider === "credentials" && user?.id) {
@@ -82,9 +144,21 @@ const config = {
 
         const { data: existing } = await supabase
           .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
+          .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
           .eq("email", user.email)
           .single();
+
+        // Deleted account: leave the token without an identity rather than
+        // falling through to the insert below, which would attempt a second row
+        // on an email that already exists. The session callback then yields no
+        // user.id, so this reads as signed-out everywhere downstream.
+        if (existing?.deleted_at) {
+          token.userId = null;
+          token.role = null;
+          token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
+          return token;
+        }
 
         if (!existing) {
           const { data: studentRole } = await supabase
@@ -128,14 +202,20 @@ const config = {
         }
       }
 
-      // Backfill old tokens issued before JWT caching was introduced
+      // Backfill old tokens issued before JWT caching was introduced.
+      // Must also honor deleted_at: this block keys off `!token.userId`, which
+      // is exactly the state the deletion guards above leave behind, so without
+      // the check it would re-resolve the row by email on the very next request
+      // and resurrect the signed-out session.
       if (!token.userId && token.email) {
-        const { data: sbUser } = await supabase
-          .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
-          .eq("email", token.email)
-          .single();
-        if (sbUser) {
+        const { data: sbUser } = await safeQuery(() =>
+          supabase
+            .from("users")
+            .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
+            .eq("email", token.email)
+            .single()
+        );
+        if (sbUser && !sbUser.deleted_at) {
           token.userId = sbUser.id;
           token.role = sbUser.roles?.name ?? "student";
           token.profileComplete = sbUser.profile_complete ?? false;
@@ -165,22 +245,67 @@ const config = {
         (!token.roleCheckedAt ||
           Date.now() - token.roleCheckedAt > ROLE_REFRESH_MS)
       ) {
-        const { data: fresh, error: refreshErr } = await supabase
-          .from("users")
-          .select("profile_complete, roles!role_id(name)")
-          .eq("id", token.userId)
-          .single();
+        const { data: fresh, error: refreshErr } = await safeQuery(() =>
+          supabase
+            .from("users")
+            .select("profile_complete, deleted_at, roles!role_id(name)")
+            .eq("id", token.userId)
+            .single()
+        );
+        // Account deleted, or the row is definitively gone (PGRST116 = no rows
+        // matched): strip the identity off the token so the session callback
+        // below yields no user.id and every downstream guard treats this as
+        // signed-out. Piggybacks on the existing role-refresh query rather than
+        // adding a per-request lookup, so a deleted web session goes dead
+        // within ROLE_REFRESH_MS.
+        //
+        // Any OTHER error (DB unreachable, timeout) deliberately falls through
+        // and keeps the existing token: a transient blip must not sign every
+        // active user out. That's the same fail-open reasoning the original
+        // `if (!refreshErr && fresh)` guard had — only true deletion is
+        // fail-closed.
+        if (fresh?.deleted_at || refreshErr?.code === "PGRST116") {
+          token.userId = null;
+          token.role = null;
+          token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
+          return token;
+        }
         if (!refreshErr && fresh) {
           token.role = fresh.roles?.name ?? token.role ?? "student";
           token.profileComplete =
             fresh.profile_complete ?? token.profileComplete ?? false;
+          token.roleCheckedAt = Date.now();
         }
-        token.roleCheckedAt = Date.now();
+        /*
+         * On failure the timestamp is deliberately NOT advanced: the refresh
+         * did not happen, so the next call should try again rather than wait
+         * out another interval on stale data it never actually checked.
+         */
       }
 
       return token;
     },
     async session({ session, token }) {
+      // No resolvable identity — deleted account (every deletion guard above
+      // nulls token.userId), or a sign-in that failed to create/find its row.
+      // Strip email/name/image too, not just id: a lot of this app's routes
+      // (getDbRole, buildDashboardUser, editProfile, the admin layout's DB
+      // check) authorize by looking the user up via session.user.email rather
+      // than .id, with no deleted_at filter of their own. NextAuth prefills
+      // those fields onto `session` from the token before this callback runs,
+      // so leaving them in place would let a deleted account's email keep
+      // authenticating everywhere except the couple of spots that check .id.
+      if (!token.userId) {
+        session.user.id = null;
+        session.user.email = null;
+        session.user.name = null;
+        session.user.image = null;
+        session.user.role = null;
+        session.user.profileComplete = false;
+        return session;
+      }
+
       // Read from token — no DB hit
       session.user.id = token.userId;
       session.user.role = token.role ?? "student";

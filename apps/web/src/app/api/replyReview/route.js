@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
+import { checkReviewText } from "@/lib/contentRules";
 
 export async function POST(req) {
   try {
@@ -19,6 +20,13 @@ export async function POST(req) {
     if (!reviewId || !reply?.trim()) {
       console.log("POST /api/reviewReply failed: Missing fields", { body });
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+
+    // A public reply naming the student who wrote the review is the same
+    // exposure as a review naming the landlord, so it is held to the same rule.
+    const named = checkReviewText(reply);
+    if (named) {
+      return NextResponse.json({ error: named }, { status: 400 });
     }
 
     const { data: review } = await supabase

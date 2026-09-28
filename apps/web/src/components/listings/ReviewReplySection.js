@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "react-hot-toast";
+import { checkReviewText } from "@/lib/contentRules";
 
 export default function ReviewReplySection({ review, owner, isLandlord }) {
   const [replyTexts, setReplyTexts] = useState({});
@@ -9,12 +10,20 @@ export default function ReviewReplySection({ review, owner, isLandlord }) {
 
   const reviewId = review.id || review._id; // Support both review.id and review._id for flexibility
 
+  // A public reply must not name the student who wrote the review.
+  const replyProblem = checkReviewText(replyTexts[reviewId] || "");
+
   async function handleReplySubmit(reviewId) {
     const reply = replyTexts[reviewId];
 
     if (!reply?.trim()) return;
 
     if (isSubmitting) return;
+
+    if (replyProblem) {
+      toast.error(replyProblem);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -32,7 +41,8 @@ export default function ReviewReplySection({ review, owner, isLandlord }) {
       });
 
       if (!res.ok) {
-        toast.error("Failed to post reply");
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error || "Failed to post reply");
         return;
       }
 
@@ -93,13 +103,17 @@ export default function ReviewReplySection({ review, owner, isLandlord }) {
             }
             placeholder="Reply to this review..."
             rows={3}
+            aria-invalid={replyProblem ? true : undefined}
             className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
           />
+          {replyProblem && (
+            <p className="mt-2 text-sm text-red-600">{replyProblem}</p>
+          )}
 
           <div className="flex justify-end mt-2">
             <button
               type="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !!replyProblem}
               onClick={() => handleReplySubmit(reviewId)}
               className="bg-red-600 text-white text-xs font-medium px-4 py-2 rounded-full hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >

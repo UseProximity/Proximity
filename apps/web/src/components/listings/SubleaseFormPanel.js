@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Plus, X } from "lucide-react";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
+import { clampCount } from "@/utils/unitCounts";
+import { compressImage } from "@/utils/compressImage";
+import { checkListingDescription } from "@/lib/contentRules";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -44,6 +48,7 @@ const UTILITY_LABELS = {
 };
 const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "studio", "other"];
 const LEASE_TYPES = ["sublease", "standard", "short-term"];
+const RIGHTS_NOT_CONFIRMED = "Please confirm you have the right to sublet this place.";
 
 const emptyUnit = () => ({
   bedrooms: "",
@@ -117,6 +122,12 @@ export default function SubleaseFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // Only asked when posting a new sublease. An edit is to a listing they have
+  // already confirmed.
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const needsRightsConfirmation =
+    !isEdit && String(form.lease_type).toLowerCase() === "sublease";
+  const descriptionProblem = checkListingDescription(form.description);
 
   // Image upload
   const [stagedFiles, setStagedFiles] = useState([]);
@@ -204,37 +215,6 @@ export default function SubleaseFormPanel({
     setAddressSuggestions([]);
     setAddressDropdownOpen(false);
   };
-
-  const compressImage = (file) =>
-    new Promise((resolve) => {
-      if (file.size < 1 * 1024 * 1024) { resolve(file); return; }
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const MAX = 1920;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || blob.size >= file.size) { resolve(file); return; }
-            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
-          },
-          "image/jpeg",
-          0.85
-        );
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-      img.src = url;
-    });
 
   const handleImageFiles = async (files) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith("image/"));
@@ -367,6 +347,9 @@ export default function SubleaseFormPanel({
     setError(null);
     if (!form.address.trim()) { setError("Address is required."); return; }
     if (!form.description.trim()) { setError("Description is required."); return; }
+    // No names, no links, no "message me" - the contact fields below are the
+    // channel students are meant to use.
+    if (descriptionProblem) { setError(descriptionProblem); return; }
     if (units.length === 0) { setError("At least one unit is required."); return; }
     if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) {
       setError("Each unit needs bedrooms and bathrooms.");
@@ -384,6 +367,10 @@ export default function SubleaseFormPanel({
       setError(
         "Each available unit needs at least one lease term (or mark it unavailable)."
       );
+      return;
+    }
+    if (needsRightsConfirmation && !rightsConfirmed) {
+      setError(RIGHTS_NOT_CONFIRMED);
       return;
     }
 
@@ -438,6 +425,7 @@ export default function SubleaseFormPanel({
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
+            subleaseRightsConfirmed: rightsConfirmed,
           }),
         });
       }
@@ -451,6 +439,17 @@ export default function SubleaseFormPanel({
         const listingId = isEdit
           ? (listing._id || listing.id)
           : data.listing?.id;
+        /*
+         * File a sublease's photos against the UNIT, not the property.
+         *
+         * They are pictures of the room being let, and the person letting it no
+         * longer owns the building's record — a sublease creates the property
+         * unclaimed rather than making the subletter its landlord. /api/upload
+         * reserves property photos for the property owner, so an unscoped upload
+         * would 403 for exactly the people this form is for. Same fix as the
+         * wizard's attach flow.
+         */
+        const unitId = isEdit ? null : (data.listing?.unitIds?.[0] ?? null);
         if (listingId) {
           // Step 1: get presigned PUT URLs for each file
           const presignRes = await fetch("/api/upload", {
@@ -458,6 +457,7 @@ export default function SubleaseFormPanel({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               listingId,
+              ...(unitId ? { unitId } : {}),
               files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
             }),
           });
@@ -492,6 +492,7 @@ export default function SubleaseFormPanel({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               listingId,
+              ...(unitId ? { unitId } : {}),
               urls: presigned.map((p) => p.publicUrl),
             }),
           });
@@ -612,7 +613,11 @@ export default function SubleaseFormPanel({
                   name="description" value={form.description} onChange={handleChange} required rows={3}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Describe the property..."
+                  aria-invalid={descriptionProblem ? true : undefined}
                 />
+                {descriptionProblem && (
+                  <p className="mt-1 text-sm text-red-600">{descriptionProblem}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Home Type</label>
@@ -773,7 +778,7 @@ export default function SubleaseFormPanel({
                         <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
                         <input
                           type="number" min={min} step={step} value={unit[field]}
-                          onChange={(e) => updateUnit(i, field, e.target.value)}
+                          onChange={(e) => updateUnit(i, field, clampCount(e.target.value))}
                           className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
                       </div>
@@ -792,7 +797,7 @@ export default function SubleaseFormPanel({
                     </div>
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Lease Terms — select all this unit is offered for
+                        Lease Terms: select all this unit is offered for
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
                         {LEASE_TERM_PRESETS.map((p) => {
@@ -900,17 +905,6 @@ export default function SubleaseFormPanel({
                         )}
                       </div>
                     </div>
-                    <label className="flex items-center gap-2 text-sm text-gray-700 select-none sm:col-span-4">
-                      <input
-                        type="checkbox"
-                        checked={unit.available !== false}
-                        onChange={(e) =>
-                          updateUnit(i, "available", e.target.checked)
-                        }
-                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                      />
-                      Available
-                    </label>
                   </div>
                   {units.length > 1 && (
                     <button type="button" onClick={() => removeUnit(i)}
@@ -959,9 +953,17 @@ export default function SubleaseFormPanel({
                 onChange={(e) => handleImageFiles(e.target.files)} />
               <Camera className="h-6 w-6 text-gray-400 mb-1" />
               <span className="text-sm text-gray-500 font-medium">Drop photos here or tap to browse</span>
-              <span className="text-xs text-gray-400 mt-0.5">JPG, PNG, WebP — auto-compressed if large</span>
+              <span className="text-xs text-gray-400 mt-0.5">JPG, PNG, WebP (auto-compressed if large)</span>
             </label>
           </div>
+
+          {needsRightsConfirmation && (
+            <SubleaseConsentCheckbox
+              checked={rightsConfirmed}
+              onChange={(v) => { setRightsConfirmed(v); if (v && error === RIGHTS_NOT_CONFIRMED) setError(null); }}
+              invalid={error === RIGHTS_NOT_CONFIRMED}
+            />
+          )}
 
           {/* Footer */}
           <div className="flex gap-3 pt-2 border-t border-gray-100">

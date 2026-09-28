@@ -249,7 +249,7 @@ async function shownListingsContext(session) {
     const { data } = await supabase
       .from("listings")
       .select(
-        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly, listing_units!listing_id(unit_leases!unit_id(is_active, sublease))"
+        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly, listing_units!listing_id(unit_leases!unit_id(is_active, unavailable, sublease))"
       )
       .in("id", recs.map((r) => r.listing_id));
     rows = Object.fromEntries((data ?? []).map((r) => [r.id, r]));
@@ -263,7 +263,7 @@ async function shownListingsContext(session) {
     // (unit_leases.sublease, rent listed or not) — NOT when sublease_friendly is
     // set, which only means a tenant would be allowed to sublet.
     const activeLeases = (row.listing_units ?? []).flatMap((u) =>
-      (u.unit_leases ?? []).filter((l) => l.is_active)
+      (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable)
     );
     return {
       // 1-based position in the order shown, so "the first/second/third one" is unambiguous.
@@ -854,7 +854,7 @@ async function maybeCommuteConfirm(session) {
     return null;
   }
 
-  const slim = eligible.map((e) => slimCandidate(e.listing));
+  const slim = eligible.map((e) => slimCandidate(e.listing, e.offer));
   const walk = (c) => (typeof c.walk_to_campus_min === "number" ? c.walk_to_campus_min : null);
   const far = slim.filter((c) => walk(c) !== null && walk(c) > COMMUTE_WALK_LIMIT);
   const near = slim.filter((c) => walk(c) !== null && walk(c) <= COMMUTE_WALK_LIMIT);

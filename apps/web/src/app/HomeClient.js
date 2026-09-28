@@ -19,6 +19,7 @@ import UniversityLogosCarousel from "@/components/ui/UniversityLogosCarousel";
 import Footer from "@/components/layout/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import MapPopupCard from "@/components/listings/MapPopupCard";
+import { becomeLandlord } from "@/lib/auth/landlordRole";
 
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
   ssr: false,
@@ -158,6 +159,10 @@ function HeroMapSection({ initialListings = null }) {
               listings={previewListings}
               heroMode={true}
               onListingSelect={setSelectedListing}
+              // Lights up the clicked pin and zooms to it, the same as browse.
+              // Without this the hero popped its card while the map sat still
+              // and every pin stayed unselected.
+              selectedListingId={selectedListing?._id}
             />
           </div>
 
@@ -505,8 +510,14 @@ function RentalCard({ listing, index, isInView }) {
           aria-label={listing.title || listing.address}
           className="absolute inset-0 z-[1]"
           onClick={(e) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+              // Let the browser open the new tab, but stop the click reaching
+              // the wrapper's router.push — otherwise a cmd-click opens the
+              // listing in a background tab AND navigates this one to the
+              // modal, losing the reader's place on the homepage.
+              e.stopPropagation();
               return;
+            }
             e.preventDefault();
           }}
         />
@@ -604,7 +615,12 @@ function PopularRentals({ initialPopular = null }) {
           : Array.isArray(data?.listings)
           ? data.listings
           : [];
-        setListings(all.slice(0, 6));
+        // Keep the server-rendered cards if the refresh comes back empty (a
+        // 500 returns {error}, which parses to []). Overwriting unconditionally
+        // replaced six painted cards with an empty grid — and loading is
+        // already false by then, so not even skeletons. HeroMapSection guards
+        // this the same way.
+        if (all.length) setListings(all.slice(0, 6));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -825,14 +841,9 @@ export default function HomeClient({
       session?.user?.role === "student" &&
       session?.user?.profileComplete === false
     ) {
-      fetch("/api/editProfile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "landlord" }),
-      })
-        .then((res) => {
-          if (res.ok) {
-            update({ role: "landlord" });
+      becomeLandlord(update)
+        .then((changed) => {
+          if (changed) {
             // Remove the role param from the URL without a reload
             const url = new URL(window.location.href);
             url.searchParams.delete("role");

@@ -6,6 +6,7 @@
  * bucket; the returned public URL is stored in Supabase as the listing's media reference.
  */
 import { S3Client } from "@aws-sdk/client-s3";
+import { isProdData } from "@/lib/appEnv";
 
 export const r2 = new S3Client({
   region: "auto",
@@ -18,3 +19,33 @@ export const r2 = new S3Client({
   requestChecksumCalculation: "WHEN_REQUIRED",
   responseChecksumValidation: "WHEN_REQUIRED",
 });
+
+/*
+ * Which bucket a request targets. `db` lets an admin tool act against prod
+ * explicitly; otherwise it follows the environment, so staging and local write
+ * to the dev bucket.
+ *
+ * These three were copy-pasted into /api/upload, /api/admin/listing-images and
+ * lib/streetview.js. Defined once here so a fourth caller — the landlord photo
+ * delete — doesn't add a fourth copy that can drift from the others.
+ */
+export function isProdBucket(db) {
+  if (db === "prod") return true;
+  if (!db && isProdData()) return true;
+  return false;
+}
+
+export function getBucket(db) {
+  return isProdBucket(db)
+    ? process.env.R2_BUCKET_NAME_PROD || process.env.R2_BUCKET_NAME
+    : process.env.R2_BUCKET_NAME;
+}
+
+// NOTE: the prod variable really is spelled with a lowercase suffix
+// (R2_PUBLIC_BASE_URL_prod). Every existing copy reads it that way, so it is
+// preserved verbatim — renaming it here would break prod image URLs.
+export function getPublicBaseUrl(db) {
+  return isProdBucket(db)
+    ? process.env.R2_PUBLIC_BASE_URL_prod || process.env.R2_PUBLIC_BASE_URL
+    : process.env.R2_PUBLIC_BASE_URL;
+}

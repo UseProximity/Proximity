@@ -46,3 +46,21 @@ body {
 body {
   overscroll-behavior-y: none;
 }
+
+/*
+ * Hide a scroll container's bar while keeping it scrollable (wheel, trackpad,
+ * touch, keyboard and programmatic scrolling all still work).
+ *
+ * For panels whose content is visibly cut off, where the bar is noise rather
+ * than information: macOS "always show scrollbars" renders a 15px grey track
+ * that sits inside the panel's own padding and reads as a rendering fault.
+ * Do NOT put this on a container whose overflow isn't otherwise obvious, since
+ * the bar is the only thing telling a mouse user there is more to see.
+ */
+.scrollbar-hidden {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}

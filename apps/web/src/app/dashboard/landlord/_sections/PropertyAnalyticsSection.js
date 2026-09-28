@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Eye,
-  Pencil,
   Star,
   MessageSquare,
   ThumbsUp,
@@ -13,22 +12,34 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
+import EditorOverview from "@/components/listings/editor/EditorOverview";
+import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
+import EditorUnits from "@/components/listings/editor/EditorUnits";
 import ListingMetricsChart from "./ListingMetricsChart";
 
 export default function PropertyAnalyticsSection({
   handleBackToProperties,
   selectedProperty: p,
-  onEditListing,
   viewAsId,
+  onPhotosChanged,
+  currentUserEmail,
 }) {
   const router = useRouter();
   const [allTimeMetrics, setAllTimeMetrics] = useState([]);
   const [contactTotals, setContactTotals] = useState({});
 
   const listingId = p?._id || p?.id;
+  // "lease" ownership means they hold an offering here but not the property
+  // record; getUser tags it, and every endpoint re-checks it server-side.
+  const isPropertyOwner = p?.ownership !== "lease";
+  /*
+   * Traffic figures belong to the property, and the API scopes them to
+   * listing_landlords — so a lease-only stake gets an empty set no matter who
+   * asks. Fetching it anyway painted a row of confident zeroes over a building
+   * that is in fact being viewed and saved, which is worse than not showing it.
+   */
   useEffect(() => {
-    if (!listingId) return;
+    if (!listingId || !isPropertyOwner) return;
     const params = new URLSearchParams({ range: "all", listingIds: listingId });
     if (viewAsId) params.set("viewAs", viewAsId);
     fetch(`/api/landlord/metrics?${params}`)
@@ -38,7 +49,7 @@ export default function PropertyAnalyticsSection({
         setContactTotals(data.contactTotals ?? {});
       })
       .catch(console.error);
-  }, [listingId, viewAsId]);
+  }, [listingId, viewAsId, isPropertyOwner]);
 
   if (!p) return null;
 
@@ -50,12 +61,7 @@ export default function PropertyAnalyticsSection({
     .reduce((sum, m) => sum + m.count, 0);
   const totalContacts = contactTotals[listingId] ?? 0;
 
-  const units = p.unitTypes ?? [];
   const images = Array.isArray(p.images) ? p.images : [];
-  const amenities = Array.isArray(p.amenities) ? p.amenities : [];
-  const utilities = Array.isArray(p.utilitiesIncluded)
-    ? p.utilitiesIncluded
-    : [];
 
   const handleViewAsStudent = () => {
     window.open(`/browse?panel=${p._id || p.id}`, "_blank");
@@ -96,15 +102,10 @@ export default function PropertyAnalyticsSection({
             <Eye className="h-3.5 w-3.5" />
             View as Student
           </button>
-          {onEditListing && (
-            <button
-              onClick={() => onEditListing(p)}
-              className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </button>
-          )}
+          {/* No Edit button. Everything below this header is editable in place
+              now — the old button opened a separate modal over a panel that
+              already edits itself, which meant two ways to change the same
+              record and two chances to disagree about it. */}
         </div>
       </div>
 
@@ -121,7 +122,6 @@ export default function PropertyAnalyticsSection({
           ))}
         </div>
       )}
-
       {/* Stat cards */}
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         {[
@@ -165,169 +165,37 @@ export default function PropertyAnalyticsSection({
       </div>
 
       {/* Per-listing metrics chart */}
-      <ListingMetricsChart listingId={p._id || p.id} viewAsId={viewAsId} />
+        <ListingMetricsChart listingId={p._id || p.id} viewAsId={viewAsId} />
 
-      {/* Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Property Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-            {[
-              { label: "Home type", value: p.homeType },
-              { label: "Lease type", value: p.leaseType },
-              { label: "Furnished", value: p.furnished ? "Yes" : "No" },
-              {
-                label: "Sublease friendly",
-                value: p.subleaseFriendly ? "Yes" : "No",
-              },
-              {
-                label: "Move-in date",
-                value: p.moveInDate
-                  ? new Date(p.moveInDate).toLocaleDateString()
-                  : "—",
-              },
-              { label: "Rent range", value: getRentRangeLabel(units) || "—" },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <dt className="text-gray-500 font-medium">{label}</dt>
-                <dd className="text-gray-900 capitalize mt-0.5">
-                  {value ?? "—"}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </CardContent>
-      </Card>
+      {/*
+        * The listing as a student sees it, made editable. Structured the same
+        * way — the building, then each unit, then the offerings on it — because
+        * that is the shape of the data now, and because a landlord checking
+        * their listing wants to see what a renter sees.
+        *
+        * Each level saves through its own endpoint. Nothing here can post the
+        * whole property at once, which is what let a property owner's save
+        * silently rewrite another landlord's offering.
+        */}
+      <EditorOverview
+        listing={p}
+        canEdit={isPropertyOwner}
+        onChanged={onPhotosChanged}
+      />
 
-      {/* Units */}
-      {units.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Units ({units.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left">
-                    {[
-                      "Beds",
-                      "Baths",
-                      "Rent / mo",
-                      "Area (sq ft)",
-                      "Availability",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-2.5 font-medium text-gray-500 whitespace-nowrap"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {units.map((u, i) => (
-                    <tr
-                      key={i}
-                      className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
-                    >
-                      <td className="px-4 py-2.5">{u.bedrooms ?? "—"}</td>
-                      <td className="px-4 py-2.5">{u.bathrooms ?? "—"}</td>
-                      <td className="px-4 py-2.5">
-                        {u.rent != null ? `$${u.rent.toLocaleString()}` : "—"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {u.area != null ? u.area.toLocaleString() : "—"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {u.leaseAvailability ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <PropertyPhotoRow
+        listing={p}
+        isPropertyOwner={isPropertyOwner}
+        onChanged={onPhotosChanged}
+      />
 
-      {/* Amenities & utilities */}
-      {(amenities.length > 0 || utilities.length > 0) && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {amenities.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Amenities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {amenities.map((a) => (
-                    <span
-                      key={a}
-                      className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium"
-                    >
-                      {a}
-                    </span>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {utilities.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Utilities Included</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {utilities.map((u) => (
-                    <span
-                      key={u}
-                      className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium"
-                    >
-                      {u}
-                    </span>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+      <EditorUnits
+        listing={p}
+        isPropertyOwner={isPropertyOwner}
+        currentUserEmail={currentUserEmail}
+        onChanged={onPhotosChanged}
+      />
 
-      {/* Contact info */}
-      {(p.contactName || p.contactEmail || p.contactPhone) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact Info</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-              {p.contactName && (
-                <div>
-                  <dt className="text-gray-500 font-medium">Name</dt>
-                  <dd className="mt-0.5">{p.contactName}</dd>
-                </div>
-              )}
-              {p.contactEmail && (
-                <div>
-                  <dt className="text-gray-500 font-medium">Email</dt>
-                  <dd className="mt-0.5 break-all">{p.contactEmail}</dd>
-                </div>
-              )}
-              {p.contactPhone && (
-                <div>
-                  <dt className="text-gray-500 font-medium">Phone</dt>
-                  <dd className="mt-0.5">{p.contactPhone}</dd>
-                </div>
-              )}
-            </dl>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

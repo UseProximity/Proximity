@@ -79,83 +79,18 @@ export async function GET(req, { params }) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// PATCH /api/listing/[listingId]
-// ---------------------------------------------------------------------------
-
-export async function PATCH(req, { params }) {
-  try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { listingId } = await params;
-    if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
-      return NextResponse.json(
-        { error: "Missing listing ID" },
-        { status: 400 }
-      );
-    }
-
-    // Verify listing exists
-    const { data: listing, error: listingErr } = await supabase
-      .from("listings")
-      .select("id")
-      .eq("id", listingId)
-      .single();
-
-    if (listingErr || !listing) {
-      return NextResponse.json({ error: "Listing not found" }, { status: 404 });
-    }
-
-    // Ownership check via listing_landlords (landlord_id[] dropped in v4)
-    const { data: landlordRow, error: ownershipErr } = await supabase
-      .from("listing_landlords")
-      .select("user_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-
-    if (ownershipErr) {
-      console.error("[listing PATCH] ownership check error:", ownershipErr);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
-
-    if (!landlordRow) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { unavailable } = await req.json();
-    if (typeof unavailable !== "boolean") {
-      return NextResponse.json(
-        { error: "Invalid value for unavailable" },
-        { status: 400 }
-      );
-    }
-
-    const { error: updateError } = await supabase
-      .from("listings")
-      .update({ unavailable })
-      .eq("id", listingId);
-
-    if (updateError) {
-      console.error("[listing PATCH] update error:", updateError);
-      return NextResponse.json(
-        { error: "Failed to update listing" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, unavailable });
-  } catch (err) {
-    console.error("[listing PATCH] unexpected error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+/*
+ * There is deliberately no PATCH here any more.
+ *
+ * It existed for one caller: a "Mark Unavailable" switch on the landlord
+ * dashboard that set listings.unavailable by hand. Availability is not a
+ * property-level fact. A building is on the market when something in it is
+ * actually for rent, so it is the offerings that decide, and each offering is
+ * withdrawn and published by the landlord who owns it (DELETE and PATCH on
+ * /api/leases/[leaseId]). Two levers for one question is how a property came to
+ * read "Available" on the dashboard while browse had hidden it.
+ *
+ * listings.unavailable survives as a SYSTEM hide, written by the availability
+ * check-in replies and the auto-unavailable cron, and cleared when a landlord
+ * claims an auto-created stub. No landlord-facing route sets it.
+ */

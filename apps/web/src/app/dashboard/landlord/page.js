@@ -1,9 +1,10 @@
 "use client";
 
-import { BarChart3, MapPin, Star, User, Menu, X } from "lucide-react";
-import ListingFormPanel from "@/components/listings/ListingFormPanel";
+import { BarChart3, MapPin, Plug, Star, User, Menu, X } from "lucide-react";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
+import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
+import EditLeaseModal from "./_modals/EditLeaseModal";
 import ProfileSection from "./_sections/ProfileSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
@@ -17,9 +18,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     sidebarOpen,
     setSidebarOpen,
     user,
-    setUser,
-    listingModal,
-    setListingModal,
     coOwnersModal,
     setCoOwnersModal,
     profileUpdatePrompt,
@@ -34,10 +32,14 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     cancelEdit,
     saveProfile,
     handleAddListing,
-    handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
-    handleListingModalSuccess,
+    handleEditLease,
+    handleWithdrawLease,
+    handleRepublishLease,
+    leaseModal,
+    setLeaseModal,
+    fetchUser,
     handleProfileUpdate,
     handleNavigation,
     handlePropertySelect,
@@ -46,32 +48,61 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     router,
   } = useLandlordDashboard({ initialViewAsId });
 
+  /*
+   * This dashboard is reachable by anyone holding a stake, which now includes a
+   * student subletting a room. Three of its sections are the property business's
+   * back office rather than anything about an offering: portfolio Analytics,
+   * Reviews of the landlord, and PMS Sync. A subletter has no portfolio, no
+   * reviews, and no property management system, so those are hidden for them.
+   *
+   * `role` comes from the DB via getUser, not from the JWT, so a freshly
+   * promoted landlord sees them without signing out. The APIs behind each
+   * section enforce their own access; this only decides what to show.
+   */
+  const role = (user?.role ?? "").toLowerCase();
+  // Sections that belong to running a property business, not to holding one lease.
+  const LANDLORD_ONLY = new Set(["analytics", "reviews", "integrations"]);
+  const isLandlord = role === "landlord" || role === "super";
+
   const renderContent = () => {
     if (selectedProperty)
       return (
         <PropertyAnalyticsSection
           handleBackToProperties={handleBackToProperties}
           selectedProperty={selectedProperty}
-          onEditListing={handleEditListing}
           viewAsId={viewAsId}
+          onPhotosChanged={fetchUser}
+          currentUserEmail={user?.email ?? null}
         />
       );
-    switch (activeView) {
+    /*
+     * Guarded as well as hidden: ?tab=analytics is a URL anyone can type, and a
+     * hidden button is not access control. Someone without the role lands on
+     * their properties — the thing they actually came here for — rather than a
+     * blank panel or an error.
+     */
+    const view =
+      LANDLORD_ONLY.has(activeView) && !isLandlord ? "properties" : activeView;
+
+    switch (view) {
       case "properties":
         return (
           <PropertiesSection
             user={user}
-            setUser={setUser}
             handlePropertySelect={handlePropertySelect}
             router={router}
             onAddListing={handleAddListing}
-            onEditListing={handleEditListing}
             onDeleteListing={handleDeleteListing}
+            onEditLease={handleEditLease}
+            onWithdrawLease={handleWithdrawLease}
+            onRepublishLease={handleRepublishLease}
             onManageCoOwners={handleManageCoOwners}
           />
         );
       case "reviews":
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
+      case "integrations":
+        return <IntegrationsSection />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
       case "profile":
@@ -93,19 +124,19 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
   return (
     <>
-      {listingModal && (
-        <ListingFormPanel
-          listing={listingModal.mode === "edit" ? listingModal.listing : null}
-          onClose={() => setListingModal(null)}
-          onSuccess={handleListingModalSuccess}
-          user={user}
-        />
-      )}
       {coOwnersModal && (
         <ManageCoOwnersModal
           listing={coOwnersModal}
           currentUserId={user?.id}
           onClose={() => setCoOwnersModal(null)}
+        />
+      )}
+      {leaseModal && (
+        <EditLeaseModal
+          property={leaseModal.property}
+          lease={leaseModal.lease}
+          onClose={() => setLeaseModal(null)}
+          onSaved={fetchUser}
         />
       )}
       {profileUpdatePrompt && (
@@ -193,7 +224,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
               sidebarOpen ? "translate-x-0" : "-translate-x-full"
             } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
           >
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            {/* h-16 matches the content header exactly so the two bottom
+                borders form one continuous line across the page. */}
+            <div className="h-16 px-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
                   P
@@ -229,6 +262,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <User className="h-4 w-4" />
                     My Profile
                   </button>
+                  {isLandlord && (
                   <button
                     onClick={() => handleNavigation("analytics")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -240,6 +274,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <BarChart3 className="h-4 w-4" />
                     Analytics
                   </button>
+                  )}
                   <button
                     onClick={() => handleNavigation("properties")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -251,6 +286,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <MapPin className="h-4 w-4" />
                     Properties
                   </button>
+                  {isLandlord && (
                   <button
                     onClick={() => handleNavigation("reviews")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -262,6 +298,23 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <Star className="h-4 w-4" />
                     Reviews
                   </button>
+                  )}
+                  {isLandlord && (
+                  <button
+                    onClick={() => handleNavigation("integrations")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "integrations"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Plug className="h-4 w-4" />
+                    PMS Sync
+                    <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                      Beta
+                    </span>
+                  </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -269,7 +322,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
           {/* Main Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-20">
+            <div className="flex h-16 items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 sticky top-0 z-20">
               <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate min-w-0">
                 {getPageTitle()}
               </h1>

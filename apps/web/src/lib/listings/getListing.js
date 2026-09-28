@@ -13,6 +13,8 @@
 
 import { cache } from "react";
 import supabase from "@/lib/supabase";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -77,7 +79,77 @@ function driveTimesToMap(driveTimes) {
   return map;
 }
 
+/**
+ * Human label for a unit's identity ("Apt 2W", "Whole property"), or null when
+ * the unit predates unit identity and has nothing to label it with. Callers must
+ * fall back to the floor-plan description rather than inventing a name — 60% of
+ * existing units are unidentified, and a made-up label would be indistinguishable
+ * from a real one.
+ */
+export function unitIdentityLabel(designator, number) {
+  if (!designator) return null;
+  if (designator === "Whole") return "Whole property";
+  return `${designator} ${number ?? ""}`.trim();
+}
+
+/**
+ * Shape a unit's lease rows into the offering list the UI renders beneath it.
+ *
+ * One lease = one owner's offering on that unit, so these are competing options
+ * a renter chooses between, not attributes of the unit. Withdrawn offers
+ * (is_active false, or the owner flagged unavailable) are dropped — they are
+ * neither contactable nor real choices.
+ *
+ * Contact falls back to the listing row because pre-migration leases carry the
+ * property-level contact; once a lease has its own, that wins.
+ */
+export function shapeLeases(unitLeases, listingRow) {
+  return (unitLeases ?? [])
+    .filter((l) => l.is_active && !l.unavailable)
+    .map((l) => ({
+      id: l.id,
+      rent: l.rent != null ? Number(l.rent) : null,
+      // null = the landlord never said; rentBasis falls back to inference.
+      rentIsPerPerson: l.rent_is_per_person ?? null,
+      sublease: !!l.sublease,
+      furnished: l.furnished ?? null,
+      description: l.description ?? null,
+      availableFrom: l.available_from ?? null,
+      leaseTermMonths: Array.isArray(l.lease_term_months)
+        ? l.lease_term_months.map(Number).filter(Number.isFinite)
+        : [],
+      ownerId: l.owner_id ?? null,
+      // The person a renter would actually be emailing about THIS offering.
+      landlordName:
+        l.users?.name ?? l.contact_name ?? listingRow.contact_name ?? null,
+      landlordImage: l.users?.image ?? null,
+    }))
+    .sort((a, b) => {
+      // Cheapest first; unpriced offers sink so a "Contact for price" row never
+      // heads the list ahead of a real number.
+      if (a.rent == null && b.rent == null) return 0;
+      if (a.rent == null) return 1;
+      if (b.rent == null) return -1;
+      return a.rent - b.rent;
+    });
+}
+
 function buildListing(row, owner = null, reviews = []) {
+  // Retired units are not part of the property any more — see the note in
+  // api/listings/route.js; PostgREST can't filter an embedded resource.
+  row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
+
+  /*
+   * A property has one gallery, and units are tags on its photos
+   * (listing_image_units): a picture of the shared kitchen can be true of every
+   * apartment, a bedroom of just one. The order is the property owner's, and
+   * the first photo is the cover.
+   */
+  const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const allImages = (row.listing_images ?? []).slice().sort(bySort);
+  const tagsOf = (img) => (img.listing_image_units ?? []).map((t) => t.unit_id);
+  const coverPool = allImages;
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find(
@@ -91,31 +163,71 @@ function buildListing(row, owner = null, reviews = []) {
     _id: row.id,
     title: row.title ?? null,
     address: row.address,
+    // Identifies the property across databases, so listing-level config keyed by
+    // address (e.g. the off-site waitlists) doesn't ride on a UUID.
+    propertyKey: row.property_key ?? null,
+    /*
+     * The label for this property's off-site waitlist button, or null when it
+     * has none. Resolved HERE rather than in the browser because whether a
+     * waitlist exists depends on a server-only env var: the client cannot see
+     * it, so a client-side check would render a button that 404s the moment an
+     * environment forgot to configure the destination.
+     */
+    waitlistLabel: (() => {
+      const waitlist = waitlistFor(row.property_key);
+      return waitlist && resolveWaitlistUrl(waitlist) ? waitlist.label : null;
+    })(),
     longitude: row.longitude != null ? Number(row.longitude) : null,
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      // Live offerings only, and cheapest first — a withdrawn lease is not this
+      // unit's price. Matches the browse feed (api/listings/route.js).
+      const liveLeases = (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable);
+      /*
+       * Keep the cheapest priced OFFERING, not just its number, so the rent and
+       * the basis that explains it travel together. Taking the flag from
+       * liveLeases[0] instead would pair them wrongly whenever the first live
+       * offering is not the cheapest one — which is the normal case on a unit
+       * several landlords are competing for.
+       */
+      const cheapestPriced = liveLeases
+        .filter((l) => l.rent != null)
+        .sort((a, b) => Number(a.rent) - Number(b.rent))[0] ?? null;
+      const activeRent = cheapestPriced?.rent;
       const nextAvailable =
         (u.unit_leases ?? [])
           .filter((l) => l.available_from)
           .sort(
             (a, b) => new Date(a.available_from) - new Date(b.available_from)
           )[0]?.available_from ?? null;
-      const activeLease = (u.unit_leases ?? []).find((l) => l.is_active);
+      const activeLease = liveLeases[0];
+      // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
+      // above stay as the first-active-lease summary so existing callers (cards,
+      // filters, matchmaking) keep working unchanged.
+      const leases = shapeLeases(u.unit_leases, row);
       return {
         id: u.id,
+        // The photos tagged with this unit, in gallery order.
+        images: allImages.filter((img) => tagsOf(img).includes(u.id)).map((img) => img.url),
         rent: activeRent != null ? Number(activeRent) : null,
+        // From the same offering as `rent` — see cheapestPriced above.
+        rentIsPerPerson: cheapestPriced?.rent_is_per_person ?? null,
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         title: u.title ?? null,
         floorPlanImageUrl: u.floor_plan_image_url ?? null,
+        designator: u.unit_designator ?? null,
+        number: u.unit_number ?? null,
+        identityLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
+        leases,
         leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
           ? activeLease.lease_term_months.map(Number)
           : [],
         leaseAvailability: nextAvailable,
-        available: u.available ?? true,
+        // Derived from the offerings above, not stored — see unitAvailability.js.
+        available: unitIsAvailable(u),
       };
     }),
     leaseType: (() => {
@@ -125,19 +237,18 @@ function buildListing(row, owner = null, reviews = []) {
       // Decide the listing's label from its AVAILABLE units when it has any, so an
       // available sublease surfaces as "Sublease" even alongside an unavailable
       // standard lease (and an unavailable sublease no longer forces the badge).
-      const availablePool = activeLeases(units.filter((u) => u.available !== false));
+      const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
       return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
-    images: (row.listing_images ?? [])
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((img) => img.url),
-    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
-    imageFromStreetView:
-      (row.listing_images ?? [])
-        .slice()
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
-      "street_view",
+    images: coverPool.map((img) => img.url),
+    // Every photo at this property with the units it is tagged with, so the
+    // gallery can show them all and label each one.
+    gallery: allImages.map((img) => ({ url: img.url, unitIds: tagsOf(img) })),
+    // Every photo at this property, as plain URLs.
+    allImages: allImages.map((img) => img.url),
+    // True when the cover photo was auto-fetched from Google Street View.
+    imageFromStreetView: coverPool[0]?.source === "street_view",
     numReviews: legitReviews.length,
     rating: legitReviews.length
       ? Math.round(
@@ -150,9 +261,6 @@ function buildListing(row, owner = null, reviews = []) {
     placeWalkMinutes: walkTimesToMap(walkTimes),
     placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
-    contactEmail: row.contact_email ?? null,
-    contactPhone: row.contact_phone ?? null,
-    contactName: row.contact_name ?? null,
     leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
     customAmenities: (row.listing_custom_amenities ?? [])
       .map((a) => a.label)
@@ -164,11 +272,7 @@ function buildListing(row, owner = null, reviews = []) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: (() => {
-      if (row.unavailable) return true;
-      const units = row.listing_units ?? [];
-      return units.length > 0 && units.every((u) => u.available === false);
-    })(),
+    unavailable: listingIsUnavailable(row),
     amenities: amenitiesRowToArray(row.listing_amenities),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
@@ -178,6 +282,10 @@ function buildListing(row, owner = null, reviews = []) {
     maxBathrooms: row.max_bathrooms != null ? Number(row.max_bathrooms) : null,
     minArea: row.min_area != null ? Number(row.min_area) : null,
     maxArea: row.max_area != null ? Number(row.max_area) : null,
+    // "Verified live" badge: the listing's data flows straight from the landlord's
+    // property management system (pms_connection_id marks the connection).
+    verifiedLive: !!row.pms_connection_id,
+    verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
@@ -185,7 +293,6 @@ function buildListing(row, owner = null, reviews = []) {
       ? {
           _id: owner.id,
           name: owner.name,
-          email: owner.email ?? null,
           image: owner.image ?? null,
         }
       : null,
@@ -208,13 +315,20 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       lease_type, contact_email, contact_phone, contact_name,
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
-      city, state, zipcode, created_at,
+      city, state, zipcode, created_at, property_key,
+      pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(
-        id, bedrooms, bathrooms, area, available, title, floor_plan_image_url,
-        unit_leases(rent, is_active, available_from, sublease, lease_term_months)
+        id, bedrooms, bathrooms, area, deleted_at, title, floor_plan_image_url,
+        unit_designator, unit_number,
+        unit_leases(
+          id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
+          unavailable, description, furnished, owner_id,
+          contact_name, contact_email, contact_phone,
+          users!owner_id(id, name, image)
+        )
       ),
       listing_custom_amenities(label),
       listing_landlords(user_id, is_primary),
@@ -226,7 +340,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
-      listing_images(url, sort_order, source),
+      listing_images(id, url, sort_order, source, listing_image_units(unit_id)),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `

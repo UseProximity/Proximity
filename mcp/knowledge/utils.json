@@ -1,23 +1,43 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-12T20:52:02.384Z",
-  "count": 41,
+  "_generated": "2026-09-24T20:16:59.153Z",
+  "count": 86,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
     },
     {
-      "file": "src/lib/authMobile.js",
-      "description": "Mobile bearer-token auth — the planned counterpart to `auth()` for a native client."
+      "file": "src/lib/auth/callbackUrl.js",
+      "description": "A return URL that arrives from outside (a query string, a request body, an"
+    },
+    {
+      "file": "src/lib/auth/email.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/auth/landlordRole.js",
+      "description": "Turn the signed-in account into a landlord."
     },
     {
       "file": "src/lib/autoUnavailable.js",
       "description": "Auto-unavailable: when a landlord reports a listing as leased through the"
     },
     {
+      "file": "src/lib/availabilityCheck.js",
+      "description": "One-click \"still available?\" landlord email."
+    },
+    {
       "file": "src/lib/contactTracking.js",
       "description": "Single source of truth for recording that a student contacted a listing."
+    },
+    {
+      "file": "src/lib/contentRules/firstNames.js",
+      "description": "Name lists behind the \"no names in user-written text\" rule (lib/contentRules)."
+    },
+    {
+      "file": "src/lib/contentRules/index.js",
+      "description": "Content rules for text students and landlords write into Proximity."
     },
     {
       "file": "src/lib/email.js",
@@ -40,6 +60,10 @@
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
     },
     {
+      "file": "src/lib/leaseCheck/pendingCheck.js",
+      "description": "A lease picked by a signed-out visitor, held until they sign in."
+    },
+    {
       "file": "src/lib/leaseCheck/prompt.js",
       "description": "System + user prompts for the student-side lease check. The model returns a"
     },
@@ -52,12 +76,56 @@
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
     },
     {
+      "file": "src/lib/legal.js",
+      "description": "Loader for the published legal documents (/privacy, /terms)."
+    },
+    {
+      "file": "src/lib/listingDraft/extract.js",
+      "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
+    },
+    {
+      "file": "src/lib/listingDraft/fetchSite.js",
+      "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
+    },
+    {
+      "file": "src/lib/listingDraft/rateLimit.js",
+      "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
+    },
+    {
+      "file": "src/lib/listings/filterListings.js",
+      "description": "Browse filtering, evaluated against the property → unit → lease model."
+    },
+    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
+      "file": "src/lib/listings/leaseDescription.js",
+      "description": "A lease's blurb: the one or two sentences a landlord adds about THEIR offering"
+    },
+    {
       "file": "src/lib/listings/listingSelect.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
+    },
+    {
+      "file": "src/lib/listings/lookupRateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out address lookups: 60 per minute per"
+    },
+    {
+      "file": "src/lib/listings/ownership.js",
+      "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
+    },
+    {
+      "file": "src/lib/listings/pendingDraft.js",
+      "description": "A listing someone has finished describing but not yet published."
+    },
+    {
+      "file": "src/lib/listings/placeholderOwner.js",
+      "description": "The shared \"Proximity\" landlord account."
+    },
+    {
+      "file": "src/lib/listings/propertyName.js",
+      "description": "Display-name uniqueness for properties."
     },
     {
       "file": "src/lib/listings/queryListings.js",
@@ -66,6 +134,10 @@
     {
       "file": "src/lib/listings/rentBasis.js",
       "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
+    },
+    {
+      "file": "src/lib/listings/unitAvailability.js",
+      "description": "Is this unit something a renter can actually take?"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
@@ -81,7 +153,7 @@
     },
     {
       "file": "src/lib/matchmaking/listingFilter.js",
-      "description": "best-effort"
+      "description": "——— Coherent unit offers ————————————————————————————————————————————————"
     },
     {
       "file": "src/lib/matchmaking/narrowing.js",
@@ -104,8 +176,84 @@
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
     },
     {
+      "file": "src/lib/pms/appfolio.js",
+      "description": "AppFolio connector (via Nango Proxy — \"private-api-basic\" template, key"
+    },
+    {
+      "file": "src/lib/pms/buildium.js",
+      "description": "Buildium connector (via Nango Proxy — provider config key \"buildium\")."
+    },
+    {
+      "file": "src/lib/pms/doorloop.js",
+      "description": "DoorLoop connector (via Nango Proxy — custom API config, key \"doorloop\")."
+    },
+    {
+      "file": "src/lib/pms/holdToken.js",
+      "description": "Signed release links for PMS swing-guard holds. Same trust model as the"
+    },
+    {
+      "file": "src/lib/pms/httpRetry.js",
+      "description": "fetch with timeout + backoff for PMS/Nango calls."
+    },
+    {
+      "file": "src/lib/pms/index.js",
+      "description": "PMS connector registry. Every connector implements the contract in types.js:"
+    },
+    {
+      "file": "src/lib/pms/ingest.js",
+      "description": "Create a Proximity listing from a normalized PMS property (shared by the"
+    },
+    {
+      "file": "src/lib/pms/mapping.js",
+      "description": "Mapping between PMS physical units and Proximity's listing model."
+    },
+    {
+      "file": "src/lib/pms/mock.js",
+      "description": "Demo mode — a synthetic PMS account for testing the entire flow (connect →"
+    },
+    {
+      "file": "src/lib/pms/nango.js",
+      "description": "Nango hosted-auth helper."
+    },
+    {
+      "file": "src/lib/pms/rentec.js",
+      "description": "Rentec Direct connector (via Nango Proxy — provider config key \"rentec\")."
+    },
+    {
+      "file": "src/lib/pms/sync.js",
+      "description": "The PMS sync engine — one connection per call, PMS as source of truth"
+    },
+    {
+      "file": "src/lib/pms/types.js",
+      "description": "PMS connector contract + normalized shapes."
+    },
+    {
       "file": "src/lib/r2.js",
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
+    },
+    {
+      "file": "src/lib/reviews/confirmation.js",
+      "description": "Batched \"your review is live\" confirmations."
+    },
+    {
+      "file": "src/lib/reviews/invites.js",
+      "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
+      "file": "src/lib/reviews/onboarding.js",
+      "description": "Accounts born from a signed-out review (the QR flow)."
+    },
+    {
+      "file": "src/lib/reviews/placeName.js",
+      "description": "What to call the place a review is about, in copy addressed to the reviewer."
+    },
+    {
+      "file": "src/lib/reviews/rateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out review submissions: 5 per hour"
+    },
+    {
+      "file": "src/lib/reviews/source.js",
+      "description": "The campaign tag a printed QR code carries: /r?src=<tag>."
     },
     {
       "file": "src/lib/schools.js",
@@ -140,12 +288,36 @@
       "description": "Resolve a user's authoritative role straight from the database."
     },
     {
+      "file": "src/lib/users/dashboardUser.js",
+      "description": "The dashboard payload, built once for whoever is being looked at."
+    },
+    {
+      "file": "src/lib/users/viewAs.js",
+      "description": "Who a dashboard request is actually ABOUT."
+    },
+    {
+      "file": "src/lib/waitlistNudge.js",
+      "description": "The half-hour follow-up for a waitlist lead who never finished their account."
+    },
+    {
+      "file": "src/lib/waitlists.js",
+      "description": "Properties that run their own waitlist off-site."
+    },
+    {
       "file": "src/lib/washuPages.js",
       "description": "Registry for the /washu landing pages, mirroring lib/guides.js. Structure"
     },
     {
       "file": "src/utils/analytics.js",
       "description": "── Cross-page navigation source ──"
+    },
+    {
+      "file": "src/utils/availability.js",
+      "description": "How an offering's start date reads to a person."
+    },
+    {
+      "file": "src/utils/compressImage.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/drivePlaces.js",
@@ -158,6 +330,14 @@
     {
       "file": "src/utils/listingFormatters.js",
       "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
+    },
+    {
+      "file": "src/utils/unitCounts.js",
+      "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/uploadImagesToR2.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/walkTimes.js",

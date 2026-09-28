@@ -70,6 +70,31 @@ jobs:
             fs.writeFileSync('ci-out/prev-state.json', state);
             core.info(state === 'null' ? 'No prior ledger — first run.' : `Loaded prior ledger (${state.length} chars).`);
 
+      - name: Seed release-review fixtures
+        env:
+          DEV_DB_URL: ${{ secrets.DEV_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-out
+          # Safety guard, same shape as the snapshot workflow: refuse to write
+          # unless the connection string really is the dev project. Seeding into
+          # prod would create fake landlords on the live site.
+          case "$DEV_DB_URL" in
+            *ngytjsckypjxddzpaekt*) ;;
+            *) echo "::error::DEV_DB_URL is not the dev project — refusing to seed." && exit 1 ;;
+          esac
+          psql "$DEV_DB_URL" -Atq -f mcp/scripts/ci-fixtures.sql > ci-out/fixtures.json
+          node -e "JSON.parse(require('fs').readFileSync('ci-out/fixtures.json','utf8'))" \
+            || { echo "::error::Fixture seed produced no catalogue."; exit 1; }
+          echo "Seeded release-review fixtures."
+
+      - name: Collect commit messages under review
+        # The narrative leans on these for intent: a diff shows what changed, the
+        # messages say why, which is what a test plan needs to state expectations.
+        run: |
+          git log --no-merges --format='- %s%n%b' origin/main..HEAD > ci-out/commits.md || true
+          wc -l < ci-out/commits.md
+
       - name: Analyze impact + run tests against staging
         env:
           STAGING_URL: ${{ vars.STAGING_URL }}

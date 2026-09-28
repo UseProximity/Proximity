@@ -17,10 +17,58 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-export function getBaseUrl(req) {
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const host = req.headers.get("host");
-  return `${proto}://${host}`;
+/*
+ * The footer every outbound email carries.
+ *
+ * CAN-SPAM requires commercial email to give a valid physical postal address and
+ * a working way to stop receiving it. Transactional mail (a password reset, a
+ * verification link, an inquiry we are delivering on someone's behalf) is exempt
+ * from the opt-out requirement, but carries the address anyway so that every
+ * message we send says plainly who sent it.
+ *
+ * The opt-out is a reply rather than a one-click link, which the statute allows
+ * as an internet-based mechanism. That makes it a promise about a mailbox rather
+ * than about code: the commercial senders set replyTo to OPT_OUT_INBOX, and
+ * whoever works that inbox has to action an unsubscribe within 10 business days
+ * for this to stay true. Swapping in a real link later means a stored opt-out
+ * list and a suppression check in sendMailSafe, not a change here.
+ *
+ * POSTAL_ADDRESS intentionally repeats what the legal documents say in
+ * src/content/legal/. If the company address ever changes, both move together.
+ */
+const POSTAL_ADDRESS =
+  "Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701";
+const OPT_OUT_INBOX = "info@useproximity.org";
+
+/*
+ * `reason` is the one line telling someone why this landed in their inbox. On a
+ * commercial send it is what identifies the message, so it is required there and
+ * the call sites all pass one.
+ */
+export function emailFooter({ reason, commercial = false } = {}) {
+  const optOut = commercial
+    ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">
+         Don&#39;t want these? Reply to this email with &quot;unsubscribe&quot; and we
+         will stop sending them.
+       </p>`
+    : "";
+
+  return `
+      <div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb">
+        ${reason ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">${reason}</p>` : ""}
+        ${optOut}
+        <p style="color:#999;font-size:12px;line-height:1.5;margin:0">${POSTAL_ADDRESS}</p>
+      </div>`;
+}
+
+export function getBaseUrl() {
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "http://localhost:3000";
 }
 
 export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
@@ -39,6 +87,9 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
         </a>
         <p style="color:#666;font-size:14px">Or copy this link:<br>${resetUrl}</p>
         <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+        ${emailFooter({
+          reason: "You are receiving this because someone asked to reset the password on the Proximity account for this address.",
+        })}
       </div>
     `,
   });
@@ -64,6 +115,10 @@ export async function sendLandlordNudgeEmail({ email, name }) {
         <p style="color:#666;font-size:14px">WashU students are searching for off-campus housing right now —
            getting listed takes about five minutes.</p>
         <p style="color:#999;font-size:12px">— The Proximity team</p>
+        ${emailFooter({
+          reason: "You are receiving this because you created a landlord account on Proximity.",
+          commercial: true,
+        })}
       </div>
     `,
   });
@@ -96,13 +151,21 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
         <p>Reply directly to this email to respond to ${student.name}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
         <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+        ${emailFooter({
+          reason: "You are receiving this because a student sent an inquiry about a property listed on Proximity as yours.",
+        })}
       </div>
     `,
   });
 }
 
-export async function sendVerificationEmail({ email, name, token, baseUrl }) {
-  const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
+// `next` is where to send them once verified, so someone who signed up in the
+// middle of something (publishing a listing) lands back in it. The verify route
+// sanitizes it again, so the link is not trusted just because we built it.
+export async function sendVerificationEmail({ email, name, token, baseUrl, next }) {
+  const verifyUrl =
+    `${baseUrl}/api/auth/verify-email?token=${token}` +
+    (next ? `&next=${encodeURIComponent(next)}` : "");
   await sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
@@ -116,6 +179,320 @@ export async function sendVerificationEmail({ email, name, token, baseUrl }) {
           Verify Email
         </a>
         <p style="color:#666;font-size:14px">Or copy this link:<br>${verifyUrl}</p>
+        ${emailFooter({
+          reason: "You are receiving this because this address was used to create a Proximity account.",
+        })}
+      </div>
+    `,
+  });
+}
+
+// One email per PMS sync run, only when a human should look: errored or
+// guard-held connections, suppressed delists, and dry-run connections with
+// intended changes waiting for review. Sent to PMS_ALERT_EMAIL or all supers.
+export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // i.note is our own trusted HTML (may carry the hold-release link);
+  // provider and landlord are data and get escaped.
+  const rows = items
+    .map(
+      (i) => `
+        <tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;font-weight:600;text-transform:capitalize">${esc(i.provider)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(i.landlord)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee">${i.note}</td>
+        </tr>`
+    )
+    .join("");
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `PMS sync: ${items.length} connection${items.length === 1 ? "" : "s"} need${items.length === 1 ? "s" : ""} a look`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111">
+        <h2 style="color:#111">PMS sync digest</h2>
+        <p style="color:#444">Today's sync flagged the following. Nothing here was applied
+           without its safety checks; anything held is waiting on you.</p>
+        <table style="border-collapse:collapse;width:100%;font-size:14px">
+          <tr>
+            <th align="left" style="padding:8px 10px;border-bottom:2px solid #111">System</th>
+            <th align="left" style="padding:8px 10px;border-bottom:2px solid #111">Landlord</th>
+            <th align="left" style="padding:8px 10px;border-bottom:2px solid #111">What happened</th>
+          </tr>
+          ${rows}
+        </table>
+        <p style="color:#666;font-size:13px;margin-top:16px">
+          Full detail lives in pms_sync_events and pms_review_queue${baseUrl ? ` (${baseUrl})` : ""}.
+        </p>
+        ${emailFooter({
+          reason: "You are receiving this because you administer PMS connections on Proximity.",
+        })}
+      </div>
+    `,
+  });
+}
+/*
+ * The one email a reviewer gets after reviewing.
+ *
+ * It replaces a pair that used to fire back-to-back — a "your review is live"
+ * note and a separate "finish setting up your account" welcome — which meant a
+ * new reviewer received two emails within a second of each other, both
+ * announcing the same thing. There is now one, sent once per REVIEWER rather
+ * than once per review, so someone who reviewed three places hears about all
+ * three together. lib/reviews/confirmation.js decides when it goes out.
+ *
+ * `places` is every place they just reviewed. Names are escaped rather than
+ * trusted: a stub listing's address comes from whatever the reviewer picked in
+ * the Mapbox autocomplete, so it is not our text.
+ *
+ * `setupToken` is what splits the two versions. When the account still has a
+ * profile to finish, the CTA is that — it is the only thing standing between
+ * them and an account they can sign into. When there is nothing to finish, the
+ * CTA is matchmaking, because a review is the moment a student has proved they
+ * care and the moment they are most likely to come back.
+ */
+export async function sendReviewConfirmationEmail({ email, name, baseUrl, places, setupToken }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+
+  const list = (places ?? []).filter(Boolean);
+  const safe = list.map(esc);
+  // "A", "A and B", "A, B and C" — the subject and body both read as a sentence.
+  const phrase =
+    safe.length === 0
+      ? "your place"
+      : safe.length === 1
+      ? safe[0]
+      : `${safe.slice(0, -1).join(", ")} and ${safe[safe.length - 1]}`;
+  const plural = list.length > 1;
+  const firstName = name ? esc(String(name).split(" ")[0]) : "";
+
+  const subject = plural
+    ? `Your ${list.length} reviews are live`
+    : `Your review of ${list[0] || "your place"} is live`;
+
+  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/matchmaking`;
+  const ctaLabel = setupToken ? "Finish my profile" : "Matchmaking";
+
+  const tail = setupToken
+    ? `<p style="font-size:15px;line-height:1.6;color:#333">
+         We started an account for you so you can edit ${plural ? "them" : "it"}, save places
+         and message landlords. Finish setting it up, it takes about a minute:
+       </p>`
+    : `<p style="font-size:15px;line-height:1.6;color:#333">
+         Proximity is free for students. When you&#39;re looking for your next place, we
+         match you on budget, priorities, and reviews like the ${plural ? "ones" : "one"} you just wrote.
+       </p>`;
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    replyTo: OPT_OUT_INBOX,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111;font-size:20px;margin:0 0 16px">
+          ${firstName ? `${firstName}, your` : "Your"} review${plural ? "s" : ""} of ${phrase}
+          ${plural ? "are" : "is"} live.
+        </h2>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          Students move out every year and take what they learned about the building with
+          them. Now, yours stays. It&#39;s what the next person sees before they sign.
+        </p>
+        ${tail}
+        <a href="${ctaUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          ${ctaLabel}
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${ctaUrl}</p>
+        ${
+          setupToken
+            ? `<p style="color:#999;font-size:12px">This link works for 7 days. You can also sign in
+                 any time with Google using this email address.</p>`
+            : ""
+        }
+        ${emailFooter({
+          reason: "You are receiving this because you wrote a review on Proximity using this address.",
+          commercial: true,
+        })}
+      </div>
+    `,
+  });
+}
+
+/*
+ * The nudge for a waitlist lead who never finished their account.
+ *
+ * They gave us a name to reach a landlord's waitlist and an account was created
+ * from it. Half an hour later, if they still have no way to sign in, this is the
+ * one message that tells them the account exists at all.
+ *
+ * Deliberately says nothing about which waitlist. Naming the building would tell
+ * whoever opens this inbox what the person typed into a form somewhere, and the
+ * address is unverified: it may not be theirs. The account is the only thing
+ * this email is actually about, so it is the only thing it mentions.
+ *
+ * Sent at most once per person (waitlist_clicks.nudge_sent_at), and never to
+ * someone who already has credentials.
+ */
+export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken }) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+
+  const firstName = name ? esc(String(name).split(" ")[0]) : "";
+  const ctaUrl = `${baseUrl}/review/finish?token=${setupToken}`;
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `Finish setting up your Proximity account`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111;font-size:20px;margin:0 0 16px">
+          ${firstName ? `${firstName}, your` : "Your"} Proximity account is almost ready.
+        </h2>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          We started an account for you. It just needs a password before you can sign in
+          and use it to track places, save listings and message landlords.
+        </p>
+        <a href="${ctaUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Finish my account
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${ctaUrl}</p>
+        <p style="color:#999;font-size:12px">
+          This link works for 7 days. If you weren&#39;t expecting this, you can ignore this
+          email and the account will stay unusable.
+        </p>
+        ${emailFooter({
+          reason: "You are receiving this because this address was used to join a waitlist on Proximity.",
+        })}
+      </div>
+    `,
+  });
+}
+
+const escapeHtml = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+
+/*
+ * The placeholders an admin may use in a bulk invite message. Exported so the
+ * composer's help text, its validation and this renderer cannot drift apart.
+ */
+export const INVITE_PLACEHOLDERS = ["{first_name}", "{link}"];
+
+/**
+ * Turn an admin's plain-text message into the body of one person's email.
+ *
+ * Escape first, THEN substitute. Doing it the other way round would escape the
+ * anchor we just built and mail people a visible <a href=...>. The braces in the
+ * placeholders survive escaping untouched, which is what makes that order safe.
+ *
+ * The admin's text is trusted enough to send but not trusted as markup: they are
+ * writing a message, not HTML, and a stray < in "rent < $900" should read as a
+ * less-than sign rather than eat the rest of the paragraph.
+ */
+export function renderInviteMessage(message, { firstName, inviteUrl }) {
+  const name = firstName ? String(firstName).split(" ")[0] : "";
+  const link =
+    `<a href="${inviteUrl}" style="color:#dc2626;font-weight:600">Write my review</a>`;
+
+  return escapeHtml(message)
+    .split(/\n{2,}/)
+    .map((para) => {
+      const html = para
+        .split("\n")
+        .join("<br>")
+        .split("{first_name}")
+        .join(escapeHtml(name))
+        .split("{link}")
+        .join(link);
+      return `<p style="font-size:15px;line-height:1.6;color:#333">${html}</p>`;
+    })
+    .join("");
+}
+
+/*
+ * The review invite: a link that only works from one inbox.
+ *
+ * Everything the review flow normally takes on trust (who you are, that the
+ * school email you typed is yours) is instead carried by the token in this URL.
+ * So the footer has to make the personal nature of the link obvious, because the
+ * one behaviour that breaks the guarantee is forwarding it to a friend: whoever
+ * opens it posts under THIS address. That footer is appended to every invite,
+ * custom message or not, because it is a property of the link rather than of
+ * whatever the admin chose to say above it.
+ *
+ * `message` is an admin-written template (see renderInviteMessage). Without one
+ * the default copy below is used, which is what a one-off invite sends.
+ *
+ * `firstName` comes from the roster when we have it. It is escaped rather than
+ * trusted: roster rows are bulk-imported from a file, not typed by us.
+ */
+export async function sendReviewInviteEmail({
+  email,
+  firstName,
+  token,
+  baseUrl,
+  expiresAt,
+  subject,
+  message,
+}) {
+  const inviteUrl = `${baseUrl}/review-invite/t/${encodeURIComponent(token)}`;
+  const name = firstName ? escapeHtml(String(firstName).split(" ")[0]) : "";
+  const expiryNote = expiresAt
+    ? `This link works until ${new Date(expiresAt).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+      })}.`
+    : "";
+
+  const defaultBody = `
+        <h2 style="color:#111;font-size:20px;margin:0 0 16px">
+          ${name ? `${name}, what` : "What"} was your place actually like?
+        </h2>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          Proximity is where WashU students find off-campus housing. The part that
+          makes it useful is the reviews, and the only people who can write them are
+          the students who lived there.
+        </p>
+        <p style="font-size:15px;line-height:1.6;color:#333">
+          It takes about two minutes and there is no account to create first.
+        </p>
+        <a href="${inviteUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Write my review
+        </a>`;
+
+  const body = message
+    ? renderInviteMessage(message, { firstName, inviteUrl })
+    : defaultBody;
+
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to: email,
+    replyTo: "info@useproximity.org",
+    subject: subject?.trim() || "Where did you live this year?",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        ${body}
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${inviteUrl}</p>
+        <p style="color:#999;font-size:12px;line-height:1.5">
+          This link is personal to ${escapeHtml(email)} and posts your review under
+          that address, so please don&#39;t forward it. ${expiryNote}
+        </p>
+        ${emailFooter({
+          reason:
+            "This is an invitation from Proximity, an off-campus housing marketplace for university students.",
+          commercial: true,
+        })}
       </div>
     `,
   });

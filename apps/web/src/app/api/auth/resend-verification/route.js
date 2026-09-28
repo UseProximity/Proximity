@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
+import { emailMatchPattern } from "@/lib/auth/email";
 
 export async function POST(req) {
   try {
-    const { email } = await req.json();
+    const { email, callbackUrl } = await req.json();
 
     if (!email) return NextResponse.json({ error: "Email is required." }, { status: 400 });
 
     const { data: user } = await supabase
       .from("users")
       .select("id, name, email_verified, password_hash")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     // Always return 200 to avoid leaking whether an account exists
@@ -27,7 +29,13 @@ export async function POST(req) {
       .update({ email_verification_token: token, email_verification_expires_at: expires })
       .eq("id", user.id);
 
-    await sendVerificationEmail({ email, name: user.name, token, baseUrl: getBaseUrl(req) });
+    await sendVerificationEmail({
+      email,
+      name: user.name,
+      token,
+      baseUrl: getBaseUrl(),
+      next: sanitizeCallbackUrl(callbackUrl, null),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

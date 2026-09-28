@@ -1,0 +1,31 @@
+-- Remove the guard that refused a sublease on a unit with a live lease.
+--
+-- 202608120004 added a trigger stopping a live sublease from being posted onto a
+-- unit that already had a live lease. The reasoning was that a unit already
+-- being let is not available to sublet.
+--
+-- That has it backwards. Subletting IS taking over part of a lease that exists:
+-- the landlord holds the lease and the tenant sublets the room. A unit with no
+-- live lease is precisely the one that CANNOT be sublet, because there is
+-- nothing to sublet from. The guard forbade the normal case and permitted the
+-- impossible one.
+--
+-- It showed in the data as soon as we looked. 729 Westgate is one house with
+-- three offerings — two students subletting and the landlord's own standard
+-- lease — and merging it into a single unit only worked by writing the
+-- subleases before the standard lease, because the guard rejected the reverse
+-- order. Same shape at 5803 Waterman and 6105 Delmar. The rule was not
+-- protecting anything; it was dictating insertion order.
+--
+-- It also made bad data unrepairable. When rpc_edit_listing overwrote a
+-- subletter's offering and flipped sublease to false, the guard then refused to
+-- let it be set back, because by that point two live standard leases existed on
+-- the unit. A constraint that blocks the repair of the state it failed to
+-- prevent is worse than none.
+--
+-- Nothing replaces it: whether a unit may be sublet is the landlord's business,
+-- expressed by listings.sublease_friendly, not something the database should
+-- decide from the shape of the rows.
+
+DROP TRIGGER IF EXISTS unit_leases_sublease_guard ON unit_leases;
+DROP FUNCTION IF EXISTS trg_unit_leases_sublease_guard();

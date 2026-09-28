@@ -9,9 +9,21 @@ import { useState, useRef } from "react";
  *   images     string[]              — ordered list of image URLs
  *   onReorder  (newUrls: string[]) => void  — called after a successful drag
  *   onRemove   (url: string) => void        — called when × is clicked
- *   saving     boolean               — shows a saving indicator
+ *   saving     boolean               — shows a busy indicator
+ *   busyLabel  string                — what that indicator says
+ *   renderCorner (url: string) => node: optional control pinned to each
+ *                                          image's bottom-right corner
  */
-export default function DraggableImageGrid({ images, onReorder, onRemove, saving }) {
+export default function DraggableImageGrid({
+  images,
+  onReorder,
+  onRemove,
+  saving,
+  // Named by the caller because the same busy flag covers reordering, uploading
+  // and removing, and "Saving order…" during a delete describes the wrong act.
+  busyLabel = "Saving order…",
+  renderCorner,
+}) {
   const dragIdx = useRef(null);
   const [dragOver, setDragOver] = useState(null);
 
@@ -52,7 +64,7 @@ export default function DraggableImageGrid({ images, onReorder, onRemove, saving
       {saving && (
         <p className="text-xs text-gray-400 mb-2 flex items-center gap-1.5">
           <span className="w-3 h-3 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-          Saving order…
+          {busyLabel}
         </p>
       )}
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -80,6 +92,10 @@ export default function DraggableImageGrid({ images, onReorder, onRemove, saving
             <div className="absolute bottom-1 left-1 bg-black/50 rounded px-1.5 py-0.5 text-white text-[10px] font-medium">
               {i + 1}
             </div>
+
+            {renderCorner && (
+              <div className="absolute bottom-1 right-1">{renderCorner(url)}</div>
+            )}
 
             {/* Remove */}
             {onRemove && (

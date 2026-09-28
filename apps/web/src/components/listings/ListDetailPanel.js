@@ -4,13 +4,20 @@ import { useSession } from "next-auth/react";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
 
-export default function ListDetailPanel({ listing, onBack }) {
+export default function ListDetailPanel({
+  listing,
+  onBack,
+  initialUnitId = null,
+  // True while /api/listing/[id] is still in flight. The panel opens on browse
+  // feed data, which has no leases and no review bodies. See ListingModalInfo.
+  detailLoading = false,
+}) {
   const { data: session } = useSession();
 
   return (
     <div>
       {/* Sticky top banner */}
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4 py-3">
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4 py-3">
         <button
           onClick={onBack}
           aria-label="Back to listings"
@@ -37,6 +44,8 @@ export default function ListDetailPanel({ listing, onBack }) {
         session={session}
         excludeTabs={["map"]}
         compact={true}
+        initialUnitId={initialUnitId}
+        detailLoading={detailLoading}
       />
     </div>
   );

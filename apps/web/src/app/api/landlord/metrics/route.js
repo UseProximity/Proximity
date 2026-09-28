@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { resolveDashboardUserId } from "@/lib/users/viewAs";
 
 // GET /api/landlord/metrics?range=7d|30d|6m&listingIds=id1,id2,...
 export async function GET(req) {
@@ -9,9 +10,13 @@ export async function GET(req) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!["landlord", "super"].includes(session.user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  /*
+   * No role check. The real guard is the scoping below: results are limited to
+   * listings the CALLER owns via listing_landlords, so this returns nothing for
+   * someone with no properties whatever their role. The role test added no
+   * protection and did cause harm — a student who posts a sublease at a new
+   * address owns that listing, and was refused metrics for their own property.
+   */
 
   const { searchParams } = new URL(req.url);
   const range = searchParams.get("range") || "30d";
@@ -23,8 +28,7 @@ export async function GET(req) {
       ? null
       : new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-  const viewAsId = searchParams.get("viewAs");
-  const targetUserId = (viewAsId && session.user.role === "super") ? viewAsId : session.user.id;
+  const targetUserId = resolveDashboardUserId(session, searchParams);
 
   // Fetch all listing IDs for this landlord via listing_landlords
   const { data: ll, error: llError } = await supabase
