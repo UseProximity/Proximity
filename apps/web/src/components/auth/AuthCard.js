@@ -44,6 +44,7 @@ export default function AuthCard({
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
   const [forgotError, setForgotError] = useState("");
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function AuthCard({
     setResendMsg("");
     setForgotView(false);
     setForgotSent(false);
+    setForgotMessage("");
   };
 
   const handleForgot = async (e) => {
@@ -81,10 +83,11 @@ export default function AuthCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         setForgotError(data.error ?? "Something went wrong. Please try again.");
       } else {
+        setForgotMessage(data.message);
         setForgotSent(true);
       }
     } catch {
@@ -216,10 +219,7 @@ export default function AuthCard({
           {forgotSent ? (
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
-              <p>
-                We sent a reset link to{" "}
-                <span className="font-medium">{forgotEmail}</span>.
-              </p>
+              <p>{forgotMessage}</p>
               <p className="mt-1 text-blue-700/80">
                 Don&apos;t see it? Check your spam folder.
               </p>
