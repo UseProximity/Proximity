@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-23T22:28:48.910Z",
-  "count": 104,
+  "_generated": "2026-09-28T18:35:26.269Z",
+  "count": 106,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -509,6 +509,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "WashuFaqLinks",
+      "file": "src/components/washu/WashuFaqLinks.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "WashuListingGrid",
       "file": "src/components/washu/WashuListingGrid.js",
       "description": "No description — run generate after adding a description above."
@@ -516,6 +521,11 @@
     {
       "name": "WashuPageJsonLd",
       "file": "src/components/washu/WashuPageJsonLd.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WashuSideCta",
+      "file": "src/components/washu/WashuSideCta.js",
       "description": "No description — run generate after adding a description above."
     },
     {

@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-09-12T00:07:29.820Z",
-  "count": 56,
+  "_generated": "2026-09-28T18:35:26.365Z",
+  "count": 58,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -144,6 +144,10 @@
       "public": false
     },
     {
+      "name": "NEXTAUTH_URL",
+      "public": false
+    },
+    {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
       "public": true
     },
@@ -221,6 +225,10 @@
     },
     {
       "name": "VERCEL_ENV",
+      "public": false
+    },
+    {
+      "name": "VERCEL_URL",
       "public": false
     },
     {
