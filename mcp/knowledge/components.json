@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-16T16:49:19.618Z",
-  "count": 99,
+  "_generated": "2026-09-25T18:46:22.596Z",
+  "count": 105,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -159,6 +159,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "LeaseAuthGate",
+      "file": "src/components/lease-check/LeaseAuthGate.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "LeaseCheckClient",
       "file": "src/components/lease-check/LeaseCheckClient.js",
       "description": "No description — run generate after adding a description above."
@@ -176,6 +181,11 @@
     {
       "name": "PropertyContext",
       "file": "src/components/lease-check/PropertyContext.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "LegalDocument",
+      "file": "src/components/legal/LegalDocument.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -274,6 +284,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "SubleaseConsentCheckbox",
+      "file": "src/components/listings/SubleaseConsentCheckbox.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "SubleaseFormPanel",
       "file": "src/components/listings/SubleaseFormPanel.js",
       "description": "No description — run generate after adding a description above."
@@ -304,8 +319,18 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "PublishGate",
+      "file": "src/components/listings/add/PublishGate.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "UnitStep",
       "file": "src/components/listings/add/UnitStep.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "lookupPlace",
+      "file": "src/components/listings/add/lookupPlace.js",
       "description": "No description — run generate after adding a description above."
     },
     {
@@ -327,6 +352,11 @@
       "name": "AddListingWizard",
       "file": "src/components/listings/wizard/AddListingWizard.js",
       "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "ImportBatch",
+      "file": "src/components/listings/wizard/ImportBatch.js",
+      "description": "Multi-property import workspace: one tab per picked property, read one at a time, each running the add-listing steps; marks properties already on Proximity (yours or someone else's) and publishes every tab together behind a confirmation"
     },
     {
       "name": "StepAddress",

@@ -22,7 +22,16 @@ const finalConfig = withNativeWind(config, { input: "./global.css" });
 // compiled-CSS module calls injectData() on one copy while our render
 // path reads getStyle() from the other, and every className silently
 // resolves to nothing.
-const CSS_INTEROP_ROOT = path.resolve(projectRoot, "node_modules/react-native-css-interop");
+//
+// Resolved via require.resolve rather than a hardcoded apps/mobile/node_modules
+// path: npm's hoisting decides per-install whether the single deduped copy
+// lands nested here or up at the monorepo root (see
+// apps/mobile/scripts/fix-plugin-resolution.js's header for the same
+// hoisting-dependent behavior), so a hardcoded path silently pointed at a
+// copy that no longer existed once hoisting shifted it to the root.
+const CSS_INTEROP_ROOT = path.dirname(
+  require.resolve("react-native-css-interop/package.json", { paths: [projectRoot] })
+);
 const previousResolveRequest = finalConfig.resolver.resolveRequest;
 finalConfig.resolver.resolveRequest = (context, moduleName, platform) => {
   const resolve = previousResolveRequest ?? context.resolveRequest;

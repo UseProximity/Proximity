@@ -248,7 +248,7 @@ export async function canManageLease(userId, leaseId) {
 
   const { data: lease, error } = await supabase
     .from("unit_leases")
-    .select("id, owner_id, unit_id, listing_units!unit_id(listing_id, deleted_at)")
+    .select("id, owner_id, unit_id, sublease, listing_units!unit_id(listing_id, deleted_at)")
     .eq("id", leaseId)
     .maybeSingle();
 

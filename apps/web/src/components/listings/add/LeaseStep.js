@@ -12,6 +12,7 @@
 
 import { Users } from "lucide-react";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 
 export default function LeaseStep({ unit, existingLeases = [], value, onChange, invalid = null }) {
@@ -98,7 +99,7 @@ export default function LeaseStep({ unit, existingLeases = [], value, onChange, 
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="inline-flex items-center gap-2 text-gray-700">
           <input type="checkbox" checked={value.sublease}
-            onChange={(e) => set({ sublease: e.target.checked })} />
+            onChange={(e) => set({ sublease: e.target.checked, subleaseRightsConfirmed: false })} />
           This is a sublease
         </label>
         <label className="inline-flex items-center gap-2 text-gray-700">
@@ -107,6 +108,14 @@ export default function LeaseStep({ unit, existingLeases = [], value, onChange, 
           Furnished
         </label>
       </div>
+
+      {value.sublease && (
+        <SubleaseConsentCheckbox
+          checked={!!value.subleaseRightsConfirmed}
+          onChange={(v) => set({ subleaseRightsConfirmed: v })}
+          invalid={!!invalid?.has("subleaseRightsConfirmed")}
+        />
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">

@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Loader2, Check } from "lucide-react";
+import { lookupPlace } from "./lookupPlace";
 
 export default function AddressStep({ value, onResolved }) {
   const [query, setQuery] = useState(value ?? "");
@@ -58,25 +59,11 @@ export default function AddressStep({ value, onResolved }) {
     setChosen(s.label);
     setLooking(true);
     try {
-      const res = await fetch(`/api/properties/lookup?address=${encodeURIComponent(s.label)}`);
-      const data = await res.json();
-      onResolved({
+      onResolved(await lookupPlace({
         address: s.label,
         longitude: s.center?.[0] ?? null,
         latitude: s.center?.[1] ?? null,
-        property: data.property ?? null,
-        units: data.property?.units ?? [],
-      });
-    } catch {
-      // A lookup failure must not block listing — treat it as a new property and
-      // let the address-key check on submit catch a genuine collision.
-      onResolved({
-        address: s.label,
-        longitude: s.center?.[0] ?? null,
-        latitude: s.center?.[1] ?? null,
-        property: null,
-        units: [],
-      });
+      }));
     } finally {
       setLooking(false);
     }

@@ -16,16 +16,34 @@
  * thing reads back as a single page rather than a sequence of screens — the same
  * property → unit → lease shape the browse panel uses, which is also the shape
  * of the data underneath.
+ *
+ * Nobody has to be signed in to get through it. A signed-out visitor fills in
+ * everything, and pressing Publish opens PublishGate instead of calling the API:
+ * the answers are saved to localStorage (lib/listings/pendingDraft), they sign in
+ * or up, and on coming back the draft is restored here on the last step. There is
+ * still exactly one place that publishes, submit() below, and the API routes
+ * behind it still refuse a request with no session.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Check, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
 import LeaseStep from "./LeaseStep";
-import { clampCount } from "@/utils/unitCounts";
+import PublishGate, { RESUME_URL } from "./PublishGate";
+import { lookupPlace } from "./lookupPlace";
+import { clampCount, clampWholeCount } from "@/utils/unitCounts";
+import { becomeLandlord } from "@/lib/auth/landlordRole";
+import {
+  clearPendingDraft,
+  loadPendingDraft,
+  savePendingDraft,
+} from "@/lib/listings/pendingDraft";
+
+const emptyNewUnit = { designator: "", number: "", bedrooms: "", bathrooms: "", area: "" };
 
 const emptyLease = (email) => ({
   rent: "",
@@ -35,6 +53,7 @@ const emptyLease = (email) => ({
   availableFrom: "",
   leaseTermMonths: [12],
   sublease: false,
+  subleaseRightsConfirmed: false,
   furnished: false,
   contactEmail: email ?? "",
   contactPhone: "",
@@ -76,12 +95,114 @@ export default function AddListingFlow({ user }) {
   const [place, setPlace] = useState(null);          // resolved address + property
   const [unitMode, setUnitMode] = useState(null);    // "existing" | "new"
   const [unit, setUnit] = useState(null);            // chosen existing unit
-  const [newUnit, setNewUnit] = useState({ designator: "", number: "", bedrooms: "", bathrooms: "", area: "" });
+  const [newUnit, setNewUnit] = useState(emptyNewUnit);
   const [lease, setLease] = useState(emptyLease(user?.email));
   const [submitting, setSubmitting] = useState(false);
   // Set once a listing is live, so the flow can offer another on the same unit
   // instead of walking the landlord back through the address.
   const [published, setPublished] = useState(null);
+
+  const { data: session, update: updateSession } = useSession();
+  const signedIn = !!session;
+  const accountEmail = user?.email ?? session?.user?.email ?? "";
+  // Shown in place of Publish for someone with no account yet.
+  const [gateOpen, setGateOpen] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(true);
+  /*
+   * A saved draft is noticed before the first render so the address step does
+   * not flash while the lookup behind it is rebuilt. Reading storage in a state
+   * initializer is safe here because this component only mounts on the client:
+   * the page waits on a fetch before rendering it.
+   */
+  const [restoring, setRestoring] = useState(() => !!loadPendingDraft());
+  const [resumed, setResumed] = useState(false);
+  const restoreStarted = useRef(false);
+
+  /*
+   * Put back what they entered before signing in. Only the answers were saved,
+   * so the address is looked up again: the building may have gained a listing
+   * since, and a unit id from then may not exist now.
+   */
+  useEffect(() => {
+    if (!restoring || restoreStarted.current) return;
+    restoreStarted.current = true;
+    const draft = loadPendingDraft();
+    if (!draft) { setRestoring(false); return; }
+    (async () => {
+      const found = await lookupPlace({
+        address: draft.address,
+        latitude: draft.latitude ?? null,
+        longitude: draft.longitude ?? null,
+      });
+      setPlace(found);
+      setLease({ ...emptyLease(user?.email), ...draft.lease });
+      if (draft.unitMode === "existing") {
+        // A merged unit answers to the ids of the duplicates folded into it.
+        const match = found.units.find(
+          (u) => u.id === draft.unitId || u.duplicateUnitIds?.includes(draft.unitId)
+        );
+        if (match) {
+          setUnit(match);
+          setUnitMode("existing");
+        } else {
+          toast.error("That apartment is no longer listed. Pick it again to continue.");
+        }
+      } else if (draft.unitMode === "new") {
+        setUnitMode("new");
+        setNewUnit({ ...emptyNewUnit, ...draft.newUnit });
+      }
+      setResumed(true);
+      setRestoring(false);
+      if (urlStep !== "lease") router.replace(RESUME_URL);
+    })();
+    // Runs once, on the draft found at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoring]);
+
+  /*
+   * A first Google sign-in creates a student. Coming back from the publish gate
+   * means they were listing a place, so correct it, the same way the home page
+   * does after "Login as Landlord". Only for a brand-new account: an existing
+   * student who signed in here keeps the role they chose.
+   */
+  useEffect(() => {
+    if (!searchParams.has("resume")) return;
+    if (session?.user?.role === "student" && session?.user?.profileComplete === false) {
+      becomeLandlord(updateSession).catch(console.error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
+  /*
+   * While the gate is open the answers can still change (it sits beside the
+   * form), so keep the saved copy current rather than saving once at the click.
+   */
+  useEffect(() => {
+    if (!gateOpen || signedIn || !place) return;
+    setDraftSaved(savePendingDraft({
+      address: place.address,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      unitMode,
+      unitId: unit?.id ?? null,
+      newUnit,
+      lease,
+    }));
+  }, [gateOpen, signedIn, place, unitMode, unit, newUnit, lease]);
+
+  useEffect(() => {
+    if (gateOpen) {
+      document.querySelector("[data-publish-gate]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [gateOpen]);
+
+  const discardDraft = () => {
+    clearPendingDraft();
+    setPlace(null); setUnit(null); setUnitMode(null); setNewUnit(emptyNewUnit);
+    setLease(emptyLease(user?.email));
+    setAttempted(false); setResumed(false); setGateOpen(false);
+    router.replace("/add-listing?mode=manual");
+  };
 
   const isKnownProperty = !!place?.property;
   // An unknown address has no units to choose from, so it goes straight to
@@ -143,6 +264,9 @@ export default function AddListingFlow({ user }) {
   }
   if (!lease.contactEmail.trim()) missing.push({ key: "contactEmail", label: "Contact email" });
   if (!lease.leaseTermMonths.length) missing.push({ key: "leaseTermMonths", label: "Lease length" });
+  if (lease.sublease && !lease.subleaseRightsConfirmed) {
+    missing.push({ key: "subleaseRightsConfirmed", label: "Sublease confirmation" });
+  }
 
   const missingKeys = new Set(missing.map((m) => m.key));
   // Fields are only marked once they have tried to publish — flagging an empty
@@ -156,6 +280,13 @@ export default function AddListingFlow({ user }) {
       setAttempted(true);
       const first = document.querySelector("[data-invalid='true']");
       first?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    // Everything is answered, and this is the one thing that needs an account.
+    // Nothing is published: the effect above saves the draft, and they come back
+    // to it signed in.
+    if (!signedIn) {
+      setGateOpen(true);
       return;
     }
     setSubmitting(true);
@@ -172,6 +303,7 @@ export default function AddListingFlow({ user }) {
             rentIsPerPerson: lease.rentIsPerPerson,
             leaseTermMonths: lease.leaseTermMonths,
             sublease: lease.sublease,
+            subleaseRightsConfirmed: !!lease.subleaseRightsConfirmed,
             furnished: lease.furnished,
             available: true,
             availableFrom: lease.availableFrom || null,
@@ -182,6 +314,31 @@ export default function AddListingFlow({ user }) {
           }),
         });
       } else {
+        /*
+         * Ask again whether a property exists at this address rather than
+         * trusting the answer the address step took.
+         *
+         * That answer is captured when the address is chosen and never
+         * refreshed. If a publish already failed and left a property behind, or
+         * another tab added the building in between, the stale "nothing here"
+         * made the retry create a SECOND property row: four appeared at 7244
+         * Forsyth on Sep 16 2026 that way. Attaching is always the right call,
+         * because the match is made by the database's own normalizer, so a hit
+         * is the same building.
+         */
+        let attachId = isKnownProperty ? place.property.id : null;
+        if (!attachId) {
+          try {
+            const lookup = await fetch(
+              `/api/properties/lookup?address=${encodeURIComponent(place.address)}`
+            );
+            attachId = (await lookup.json())?.property?.id ?? null;
+          } catch {
+            // A lookup failure must not block publishing. The worst case is the
+            // duplicate row this check exists to prevent, which is where we were.
+          }
+        }
+
         res = await fetch("/api/addListing", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -190,13 +347,20 @@ export default function AddListingFlow({ user }) {
             longitude: place.longitude,
             latitude: place.latitude,
             lease_type: lease.sublease ? "Sublease" : "Standard",
+            subleaseRightsConfirmed: !!lease.subleaseRightsConfirmed,
             description: lease.description,
             furnished: lease.furnished,
             contactEmail: lease.contactEmail,
             contactPhone: lease.contactPhone,
             contactName: user?.name ?? null,
             // Attaching to a property we already hold rather than making a second one.
-            ...(isKnownProperty ? { attachToListingId: place.property.id } : {}),
+            ...(attachId ? { attachToListingId: attachId } : {}),
+            /*
+             * This flow has no photo step, so without this every listing it
+             * published went live with no cover image at all. The route ignores
+             * it when attaching, where the property already has its photos.
+             */
+            attachStreetView: true,
             unitTypes: [{
               bedrooms: Number(newUnit.bedrooms),
               bathrooms: Number(newUnit.bathrooms),
@@ -219,6 +383,7 @@ export default function AddListingFlow({ user }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't publish that listing.");
       toast.success("Your listing is live.");
+      clearPendingDraft();
       const listingId = data.listing?.id ?? data.lease?.listingId ?? place.property?.id;
       /*
        * A landlord often has more than one offering on the same apartment —
@@ -237,6 +402,23 @@ export default function AddListingFlow({ user }) {
   const field =
     "w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-red-400 focus:outline-none";
 
+  /*
+   * Flagged, never blocked: a landlord may well want students to write to a
+   * leasing office address rather than the one they signed up with. Only shown
+   * for a restored draft, where the two were chosen at different moments and
+   * the difference is easy to miss.
+   */
+  const contact = lease.contactEmail.trim().toLowerCase();
+  const emailMismatch = !!accountEmail && !!contact && contact !== accountEmail.toLowerCase();
+
+  if (restoring) {
+    return (
+      <div className="flex justify-center py-20">
+        <div className="w-8 h-8 border-4 border-gray-200 border-t-red-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-4 px-4 py-10">
       <div className="mb-2">
@@ -249,7 +431,7 @@ export default function AddListingFlow({ user }) {
       <Section n={1} title="Where is it?" done={!!place}
         subtitle={place ? place.address : null}>
         <AddressStep value={place?.address} onResolved={(r) => {
-          setPlace(r); setUnit(null); setUnitMode(null); advance("unit");
+          setPlace(r); setUnit(null); setUnitMode(null); setGateOpen(false); advance("unit");
         }} />
       </Section>
 
@@ -295,10 +477,10 @@ export default function AddListingFlow({ user }) {
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
                   Bedrooms <span className="text-red-500">*</span>
                 </span>
-                <input type="number" min="0" className={`${field} ${flag("bedrooms")}`}
+                <input type="number" min="0" step="1" className={`${field} ${flag("bedrooms")}`}
                   data-invalid={attempted && missingKeys.has("bedrooms")}
                   value={newUnit.bedrooms}
-                  onChange={(e) => setNewUnit({ ...newUnit, bedrooms: clampCount(e.target.value) })} />
+                  onChange={(e) => setNewUnit({ ...newUnit, bedrooms: clampWholeCount(e.target.value) })} />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
@@ -324,14 +506,46 @@ export default function AddListingFlow({ user }) {
             onChange={setLease}
             invalid={attempted ? missingKeys : null}
           />
-          {!published && (
+          {!published && resumed && (
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              {signedIn
+                ? "You are signed in. We restored the listing you started, so check it over and publish."
+                : "We restored the listing you started."}{" "}
+              <button type="button" onClick={discardDraft} className="font-medium underline">
+                Discard it
+              </button>
+            </div>
+          )}
+          {!published && resumed && signedIn && emailMismatch && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Students will contact <span className="font-medium">{lease.contactEmail.trim()}</span>,
+              but you are signed in as <span className="font-medium">{accountEmail}</span>. That is
+              fine, you can publish as it is, or{" "}
+              <button
+                type="button"
+                onClick={() => setLease({ ...lease, contactEmail: accountEmail })}
+                className="font-medium underline"
+              >
+                use {accountEmail}
+              </button>
+              .
+            </div>
+          )}
+          {!published && !gateOpen && (
           <button
             onClick={submit} disabled={submitting}
             className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Publishing…" : "Publish listing"}
+            {submitting ? "Publishing…" : signedIn ? "Publish listing" : "Create account to publish"}
           </button>
+          )}
+          {!published && gateOpen && !signedIn && (
+            <PublishGate
+              email={lease.contactEmail.trim()}
+              saved={draftSaved}
+              onBack={() => setGateOpen(false)}
+            />
           )}
           {published && (
             <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">

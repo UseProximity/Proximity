@@ -105,8 +105,13 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   });
 }
 
-export async function sendVerificationEmail({ email, name, token, baseUrl, req }) {
-  const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
+// `next` is where to send them once verified, so someone who signed up in the
+// middle of something (publishing a listing) lands back in it. The verify route
+// sanitizes it again, so the link is not trusted just because we built it.
+export async function sendVerificationEmail({ email, name, token, baseUrl, next, req }) {
+  const verifyUrl =
+    `${baseUrl}/api/auth/verify-email?token=${token}` +
+    (next ? `&next=${encodeURIComponent(next)}` : "");
   await sendMailSafe(
     transporter,
     {

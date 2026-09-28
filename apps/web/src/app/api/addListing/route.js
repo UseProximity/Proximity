@@ -6,15 +6,17 @@ import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
-import { isValidCount } from "@/utils/unitCounts";
+import { isValidCount, isWholeCount } from "@/utils/unitCounts";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import {
   findPropertyNameConflict,
+  listingsAtAddress,
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
+import { attachSourceUrl } from "@/lib/sourceSync/attach";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -75,7 +77,45 @@ const UTILITY_COLS = new Set([
   "trash", "cable", "sewer", "cooling",
 ]);
 
+// A revenue-managed building quotes nine or ten lease lengths; past that it is
+// almost certainly a parsing accident rather than a real price list.
+const MAX_LEASES_PER_UNIT = 40;
+
 export async function POST(req) {
+  /*
+   * The property row this request created, if it created one. Held at function
+   * scope so every failure path below, including the catch, can undo it.
+   */
+  let createdListingId = null;
+
+  /*
+   * Undo the property we made in this request, then report the failure.
+   *
+   * rpc_create_listing commits the property on its own; its units and leases are
+   * written afterwards in separate statements. A failure in between used to
+   * leave a property row carrying nothing, invisible on the landlord's dashboard
+   * but live on browse. Three of those appeared at 7244 Forsyth in 62 seconds
+   * when one submission failed three times over a fractional bedroom count.
+   *
+   * Every child of listings is ON DELETE CASCADE or SET NULL, so the row takes
+   * its amenities, utilities and walk times with it. A property we merely
+   * attached to is never touched: we did not create it.
+   */
+  const fail = async (status, error) => {
+    if (createdListingId) {
+      const { error: rollbackError } = await supabase
+        .from("listings")
+        .delete()
+        .eq("id", createdListingId);
+      if (rollbackError) {
+        console.error("[addListing] Rollback of orphaned property failed:", rollbackError.message);
+      } else {
+        createdListingId = null;
+      }
+    }
+    return NextResponse.json({ error }, { status });
+  };
+
   try {
     const body = await req.json();
 
@@ -114,6 +154,15 @@ export async function POST(req) {
     const subleaseFriendly = body.subleaseFriendly ?? body.sublease_friendly;
     const twenty_one_plus = body.twenty_one_plus ?? body.twentyOnePlus;
     const moveInDate = body.moveInDate || body.move_in_date || null;
+    /*
+     * Where this listing was read from. `sourceUrl` is the property's own page,
+     * `indexUrl` the company page the landlord pasted when that page listed
+     * several properties. Both are what the weekly source check re-reads later,
+     * so a listing that came in from a website is never left without a way back
+     * to it.
+     */
+    const sourceUrl = body.sourceUrl || body.source_url || null;
+    const indexUrl = body.indexUrl || body.index_url || null;
     const contactEmail = body.contactEmail || body.contact_email || null;
     const contactPhone = body.contactPhone || body.contact_phone || null;
     const contactName = body.contactName || body.contact_name || null;
@@ -156,6 +205,28 @@ export async function POST(req) {
     ) {
       return NextResponse.json(
         { error: "Bedrooms and bathrooms cannot be negative." },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Bedrooms land in an integer column, so a 2.5 used to travel all the way to
+     * the insert and come back as "invalid input syntax for type integer", which
+     * the landlord saw only as "Could not save a unit." Reject it here, by name,
+     * before a property row exists to be orphaned. Bathrooms are numeric and
+     * half baths are real, so they are deliberately not checked.
+     */
+    if (unitTypes.some((unit) => !isWholeCount(unit.bedrooms))) {
+      return NextResponse.json(
+        /*
+         * Deliberately NOT tagged with `field`: the wizard renders a field
+         * rejection only for `title` and swallows any other, so naming the field
+         * here would show the landlord nothing. The message carries the field.
+         */
+        {
+          error:
+            "Bedrooms must be a whole number. If you mean a half bath, put it in the bathrooms field.",
+        },
         { status: 400 }
       );
     }
@@ -204,6 +275,20 @@ export async function POST(req) {
       for (const text of [description, body.leaseDescription]) {
         const problem = checkListingDescription(text);
         if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+      }
+
+      /*
+       * Terms Section 5: posting a sublease means the poster confirms their own
+       * lease lets them sublet. The form asks with an unticked checkbox; this is
+       * the same check for anyone calling the route without it.
+       */
+      const postsSublease =
+        String(leaseType ?? body.lease_type ?? "").toLowerCase() === "sublease";
+      if (postsSublease && body.subleaseRightsConfirmed !== true) {
+        return NextResponse.json(
+          { error: "Please confirm you have the right to sublet this place." },
+          { status: 400 }
+        );
       }
     }
 
@@ -329,6 +414,80 @@ export async function POST(req) {
       ? description?.trim() || null
       : shortDescription(body.leaseDescription ?? description);
 
+    /*
+     * Rent specials. listing_concessions has existed unused since the schema
+     * was written, and a special is the single biggest thing a student cannot
+     * see when comparing two rents: "1 month free on a 10+ month lease, sign by
+     * September 30" is worth more than the gap between most listings.
+     *
+     * Attached to the listing rather than to a lease: the table's lease foreign
+     * key points at listing_leases, which is the retired table, and a banner
+     * special is property-wide anyway.
+     */
+    const concessionRows = (Array.isArray(body.concessions) ? body.concessions : [])
+      .map((c) => (typeof c === "string" ? c : c?.description))
+      .filter((c) => typeof c === "string" && c.trim())
+      .slice(0, 6)
+      .map((text) => {
+        /*
+         * The deadline, pulled out of the sentence here rather than asked of
+         * the model, so the extraction schema stays flat. "on or before
+         * September 30th, 2026" and "9/30/2026" both land as a date; anything
+         * we cannot read stays in the sentence, which is the part a renter
+         * reads anyway.
+         */
+        const t = text.trim().slice(0, 300);
+        const iso = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+        const slash = t.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+        const written = t.match(
+          /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/i
+        );
+        let validUntil = null;
+        if (iso) validUntil = iso[0];
+        else if (slash) {
+          validUntil = `${slash[3]}-${String(slash[1]).padStart(2, "0")}-${String(slash[2]).padStart(2, "0")}`;
+        } else if (written) {
+          const month =
+            [
+              "january", "february", "march", "april", "may", "june",
+              "july", "august", "september", "october", "november", "december",
+            ].indexOf(written[1].toLowerCase()) + 1;
+          validUntil = `${written[3]}-${String(month).padStart(2, "0")}-${String(written[2]).padStart(2, "0")}`;
+        }
+        /*
+         * amount_type is constrained to flat | percentage | months_free, so it
+         * is only set when the sentence actually says which kind of offer this
+         * is, with the number alongside it. Left null otherwise: the sentence
+         * already says what the renter gets, and inventing a category to
+         * satisfy a column would put a wrong number on a listing.
+         */
+        const monthsFree = t.match(/(\d+(?:\.\d+)?)\s*(?:month|mo)s?\s+free/i);
+        const percentOff = t.match(/(\d+(?:\.\d+)?)\s*%\s*(?:off|discount)/i);
+        const flatOff = t.match(/\$\s*([\d,]+(?:\.\d{2})?)\s*(?:off|credit|discount)/i);
+        let amount = null;
+        let amountType = null;
+        if (monthsFree) {
+          amount = Number(monthsFree[1]);
+          amountType = "months_free";
+        } else if (percentOff) {
+          amount = Number(percentOff[1]);
+          amountType = "percentage";
+        } else if (flatOff) {
+          amount = Number(flatOff[1].replace(/,/g, ""));
+          amountType = "flat";
+        }
+        return {
+          description: t,
+          amount,
+          amount_type: amountType,
+          conditions: null,
+          valid_until: validUntil,
+          active: true,
+          last_verified_source: "import",
+          last_verified_at: new Date().toISOString(),
+        };
+      });
+
     const unitData = unitTypes.map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
@@ -336,6 +495,26 @@ export async function POST(req) {
       rent: unit.rent ?? null,
       title: unit.title ?? null,
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
+      /*
+       * Several priced offerings on one unit, cheapest-first on the listing
+       * page. Each entry is { rent, leaseTermMonths, availableFrom?,
+       * rentIsPerPerson? }; the last two fall back to the unit's own when absent.
+       */
+      leases: Array.isArray(unit.leases)
+        ? unit.leases
+            .filter((l) => l && (l.rent != null || Array.isArray(l.leaseTermMonths)))
+            .map((l) => ({
+              rent: l.rent != null && l.rent !== "" ? Number(l.rent) : null,
+              leaseTermMonths: Array.isArray(l.leaseTermMonths)
+                ? l.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+                : [],
+              availableFrom:
+                typeof l.availableFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(l.availableFrom)
+                  ? l.availableFrom
+                  : null,
+              rentIsPerPerson: l.rentIsPerPerson == null ? null : !!l.rentIsPerPerson,
+            }))
+        : null,
       // A unit can be offered for several lease durations (months).
       leaseTermMonths: Array.isArray(unit.leaseTermMonths)
         ? unit.leaseTermMonths
@@ -352,7 +531,19 @@ export async function POST(req) {
       sublease: isSublease,
       // Unit identity. 'Whole' covers the entire property and carries no number
       // (enforced by listing_units_number_check).
-      designator: unit.designator ?? null,
+      /*
+       * listing_units allows a word in front only alongside a number ("Unit
+       * 1508"), or "Whole" with no number, or neither. A word with no number is
+       * refused outright, and the landlord gets "could not save a unit", which
+       * tells them nothing they can act on and, before the listing was rolled
+       * back, blocked the retry as a duplicate address. A unit with nothing to
+       * call it is a real thing — a floor plan whose apartments the site never
+       * published — so drop the word rather than the unit.
+       */
+      designator:
+        unit.designator === "Whole" || String(unit.number ?? "").trim()
+          ? unit.designator ?? null
+          : null,
       number: unit.designator === "Whole" ? null : unit.number ?? null,
     }));
 
@@ -364,6 +555,7 @@ export async function POST(req) {
     // payload row it came from — every row in one transaction shares a created_at,
     // so identity and lease ownership could not be attributed afterwards.
     let listingId = attachToListingId ?? null;
+    let createdListingHere = false;
 
     if (listingId) {
       // Attaching to an existing property: the property row, its amenities and
@@ -410,6 +602,28 @@ export async function POST(req) {
        * school_id is not set on create yet, so the lookup runs against the
        * unschooled bucket — the same one the unique index folds NULLs into.
        */
+      /*
+       * One building, one listing. A second listing at an address that is
+       * already on Proximity is refused, whatever it is called: a batch import
+       * posted "5047 Waterman Blvd." beside "5047 Waterman Boulevard" because
+       * only the name was checked, and the two differ by an abbreviation. The
+       * address key is the one the database already stores on every row.
+       *
+       * The existing listing comes back so the caller can add to it or edit
+       * what the landlord already has there, which is what they meant to do.
+       */
+      const atAddress = await listingsAtAddress(address, ownerId);
+      if (atAddress.match) {
+        return NextResponse.json(
+          {
+            error: "This address is already on Proximity.",
+            code: "address_taken",
+            existing: atAddress.match,
+          },
+          { status: 409 }
+        );
+      }
+
       const nameConflict = await findPropertyNameConflict(title, { schoolId: null });
       if (nameConflict) {
         return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
@@ -470,6 +684,8 @@ export async function POST(req) {
         return NextResponse.json({ error: listingError.message }, { status: 500 });
       }
       listingId = newListingId;
+      createdListingHere = true;
+      createdListingId = newListingId;
     }
 
     /*
@@ -481,11 +697,24 @@ export async function POST(req) {
      * now includes the person who just created the property. Returning the ids
      * is what lets the client scope the upload instead of guessing.
      */
-    const createdUnitIds = [];
-    for (const unit of unitData) {
-      const { data: insertedUnit, error: unitError } = await supabase
-        .from("listing_units")
-        .insert({
+    /*
+     * All the units in one insert, then all their leases in one more.
+     *
+     * This used to be a loop: one round trip for each unit, then another for
+     * that unit's leases. A house is two round trips and nobody notices; One
+     * Hundred Above the Park is forty-seven units, so it was ninety-four trips
+     * to the database in series and the landlord watched a spinner for most of
+     * a minute after every other part of the work was done. The rows are
+     * identical either way.
+     *
+     * Postgres returns the rows of a multi-row insert in the order they were
+     * sent, which is what lets the leases below be matched back to their unit
+     * by position. The count is checked rather than assumed.
+     */
+    const { data: insertedUnits, error: unitError } = await supabase
+      .from("listing_units")
+      .insert(
+        unitData.map((unit) => ({
           listing_id: listingId,
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms,
@@ -494,53 +723,92 @@ export async function POST(req) {
           floor_plan_image_url: unit.floorPlanImageUrl,
           unit_designator: unit.designator,
           unit_number: unit.number,
-        })
-        .select("id")
-        .single();
+        }))
+      )
+      .select("id");
 
-      if (unitError) {
-        console.error("[addListing] Unit insert failed:", unitError.message);
-        return NextResponse.json({ error: "Could not save a unit." }, { status: 500 });
-      }
+    if (unitError || !insertedUnits || insertedUnits.length !== unitData.length) {
+      console.error(
+        "[addListing] Unit insert failed:",
+        unitError?.message ??
+          `expected ${unitData.length} units back, got ${insertedUnits?.length ?? 0}`
+      );
+      return fail(500, "Could not save a unit.");
+    }
 
-      createdUnitIds.push(insertedUnit.id);
+    const createdUnitIds = insertedUnits.map((u) => u.id);
+    const allLeaseRows = [];
+    for (const [i, unit] of unitData.entries()) {
+      const unitId = createdUnitIds[i];
 
-      const { error: leaseError } = await supabase.from("unit_leases").insert({
-        unit_id: insertedUnit.id,
-        owner_id: ownerId,
-        rent: unit.rent,
-        // Which number `rent` is. Dropped here until now, so an offering
-        // published as per-person came back out as whole-unit rent and was
-        // divided by the bedroom count a second time.
-        rent_is_per_person: unit.rentIsPerPerson,
-        lease_term_months: unit.leaseTermMonths,
-        available_from: unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
-        sublease: unit.sublease,
-        is_active: true,
-        unavailable: !unit.available,
-        description: leaseBlurb,
-        furnished: furnished ?? null,
-        contact_email: contactEmail ?? null,
-        contact_phone: contactPhone ?? null,
-        contact_name: contactName ?? null,
-      });
+      /*
+       * One row per price, not one row per unit.
+       *
+       * A unit can be offered at more than one price: a revenue-managed
+       * building quotes a different rent for each lease length (Metropolitan
+       * Flats asks $1,915 for seven months and $1,725 for fifteen on the same
+       * apartment). unit_leases has always allowed several rows per unit, each
+       * with its own rent and its own set of durations, and the listing page
+       * already renders one panel per offering. Nothing but this insert was
+       * stopping it, so a caller can now send `leases: [...]` and an importer
+       * can reproduce a whole price curve. Callers that send a single rent are
+       * unchanged: they become an array of one.
+       */
+      const leaseRows = (
+        Array.isArray(unit.leases) && unit.leases.length
+          ? unit.leases
+          : [{ rent: unit.rent, leaseTermMonths: unit.leaseTermMonths }]
+      )
+        .slice(0, MAX_LEASES_PER_UNIT)
+        .map((lease) => ({
+          unit_id: unitId,
+          owner_id: ownerId,
+          rent: lease.rent ?? null,
+          // Which number `rent` is. Dropped here until now, so an offering
+          // published as per-person came back out as whole-unit rent and was
+          // divided by the bedroom count a second time.
+          rent_is_per_person: lease.rentIsPerPerson ?? unit.rentIsPerPerson,
+          lease_term_months: Array.isArray(lease.leaseTermMonths)
+            ? lease.leaseTermMonths
+            : unit.leaseTermMonths,
+          available_from:
+            lease.availableFrom ?? unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+          sublease: unit.sublease,
+          is_active: true,
+          unavailable: !unit.available,
+          description: leaseBlurb,
+          furnished: furnished ?? null,
+          contact_email: contactEmail ?? null,
+          contact_phone: contactPhone ?? null,
+          contact_name: contactName ?? null,
+        }));
+
+      allLeaseRows.push(...leaseRows);
+    }
+
+    if (allLeaseRows.length) {
+      const { error: leaseError } = await supabase.from("unit_leases").insert(allLeaseRows);
 
       if (leaseError) {
         // Raised by unit_leases_sublease_guard when a sublease is posted onto a
         // unit that is already being offered.
         if (leaseError.code === "23514" || /sublease/i.test(leaseError.message)) {
-          return NextResponse.json(
-            {
-              error:
-                "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one.",
-            },
-            { status: 409 }
+          return fail(
+            409,
+            "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one."
           );
         }
         console.error("[addListing] Lease insert failed:", leaseError.message);
-        return NextResponse.json({ error: "Could not save a lease." }, { status: 500 });
+        return fail(500, "Could not save a lease.");
       }
     }
+
+    /*
+     * The property now has its units and their leases, so it is a real listing.
+     * Everything below is best-effort decoration and must never be able to take
+     * it back out, so release the rollback handle before running any of it.
+     */
+    createdListingId = null;
 
     /*
      * Attaching to a property nobody owns — a review stub carrying the Proximity
@@ -553,6 +821,47 @@ export async function POST(req) {
       listingId,
       sublease: isSublease,
     });
+
+    if (concessionRows.length && listingId) {
+      const { error: concessionError } = await supabase
+        .from("listing_concessions")
+        .insert(concessionRows.map((c) => ({ ...c, listing_id: listingId })));
+      if (concessionError) {
+        // A special is worth having but never worth failing a publish over.
+        console.error("[addListing] Concession insert failed:", concessionError.message);
+      }
+    }
+
+
+    /*
+     * Remember the page this came from, so it can be re-read later.
+     *
+     * Best-effort in the strongest sense: a listing must never fail to publish
+     * because we could not record where it was read from. Only for a property
+     * this request actually created — attaching an offering to someone else's
+     * building must not re-point their monitor at the page this landlord
+     * happened to paste.
+     */
+    if (sourceUrl && createdListingHere) {
+      try {
+        const attached = await attachSourceUrl({
+          listingId,
+          rawUrl: sourceUrl,
+          indexUrl,
+          userId: ownerId,
+        });
+        if (!attached.ok) {
+          console.error(`[addListing] Failed to record source URL: ${attached.reason}`);
+        } else {
+          console.log(
+            `[addListing] source recorded: ${attached.kind} ${attached.url}` +
+              (attached.indexUrl ? ` (listed on ${attached.indexUrl})` : "")
+          );
+        }
+      } catch (srcErr) {
+        console.error("[addListing] Failed to record source URL:", srcErr?.message);
+      }
+    }
 
     // Persist driving times (best-effort; never blocks listing creation). Written
     // after the create RPC rather than inside it — the service-role client bypasses
@@ -615,6 +924,6 @@ export async function POST(req) {
     );
   } catch (e) {
     console.error("Error:", e?.message);
-    return NextResponse.json({ error: e?.message }, { status: 500 });
+    return fail(500, e?.message);
   }
 }

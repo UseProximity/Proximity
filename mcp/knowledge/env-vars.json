@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-09-20T16:07:47.673Z",
-  "count": 63,
+  "_generated": "2026-09-25T18:46:22.615Z",
+  "count": 65,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -132,6 +132,10 @@
       "public": false
     },
     {
+      "name": "JINA_READER_KEY_2",
+      "public": false
+    },
+    {
       "name": "LEASE_SCANNER_KEY",
       "public": false
     },
@@ -241,6 +245,10 @@
     },
     {
       "name": "RESEND_API_KEY",
+      "public": false
+    },
+    {
+      "name": "SOURCE_SYNC_PORTALS_ENABLED",
       "public": false
     },
     {

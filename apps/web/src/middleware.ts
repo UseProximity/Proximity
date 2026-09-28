@@ -1,8 +1,8 @@
 /*
  * Next.js middleware, running on every non-static request. Its only job is to inject
  * x-pathname and x-search into the request headers so Server Components deeper in the
- * tree can read the current URL. Exactly one file consumes them today:
- * src/app/dashboard/layout.js.
+ * tree can read the current URL. Two files consume them today:
+ * src/app/dashboard/layout.js and src/app/add-listing/layout.js.
  *
  * It used to also build an @supabase/ssr server client on every request to refresh a
  * Supabase session cookie. The app authenticates with NextAuth and has never used

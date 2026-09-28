@@ -37,6 +37,8 @@ export async function GET(req) {
     .from("listings")
     .select("*, listing_units(bedrooms, bathrooms, area)")
     .in("id", ids)
+    // Deleting a listing archives it (deleted_at), so it must drop out here too.
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

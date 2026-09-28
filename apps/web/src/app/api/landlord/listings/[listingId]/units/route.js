@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { isWholeCount } from "@/utils/unitCounts";
 
 /*
  * Add a unit to a property.
@@ -67,6 +68,18 @@ export async function POST(req, { params }) {
   if (bedrooms < 0 || bathrooms < 0) {
     return NextResponse.json(
       { error: "Bedrooms and bathrooms cannot be negative." },
+      { status: 400 }
+    );
+  }
+  // listing_units.bedrooms is an integer column, so a fractional count reaches
+  // Postgres as invalid integer syntax and surfaces as a generic save failure.
+  // Bathrooms are numeric, so half baths stay legal.
+  if (!isWholeCount(bedrooms)) {
+    return NextResponse.json(
+      {
+        error:
+          "Bedrooms must be a whole number. If you mean a half bath, put it in the bathrooms field.",
+      },
       { status: 400 }
     );
   }

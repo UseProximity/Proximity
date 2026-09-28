@@ -38,6 +38,51 @@ const UnitSchema = z.object({
   rentBasis: z.enum(["total", "per_person", "unknown"]),
   area: z.number().nullable(),
   title: z.string().nullable(),
+  /*
+   * The site's own identifiers for the physical units on this floor plan:
+   * "2W", "3E", "101", or a name like "Madrid". An ARRAY on purpose — the
+   * schema is at its 16 nullable/union field ceiling (see availableFrom), and
+   * arrays don't count against it.
+   *
+   * These map to listing_units.unit_designator + unit_number. Before this
+   * existed the model had nowhere to put a unit id, so it filed them under
+   * `title`, and importing One Hundred Above the Park wrote "100N101a" into
+   * the floor-plan name box.
+   */
+  unitNames: z.array(z.string()),
+  /*
+   * Lease lengths in months offered on this floor plan, e.g. [7, 9, 12]. An
+   * array, so it costs nothing against the 16 nullable/union field ceiling.
+   * Maps to the wizard's leaseTermMonths chips.
+   */
+  leaseTermMonths: z.array(z.number()),
+  /*
+   * One date per entry in unitNames, same order, YYYY-MM-DD. Buildings free up
+   * apartment by apartment: Metropolitan Flats' Pershing plan has A217 on
+   * October 2nd, A215 on the 15th and B215 on November 3rd, and asking the
+   * landlord for one date for the whole property throws that away.
+   */
+  unitAvailability: z.array(z.string()),
+  /*
+   * One rent per entry of unitNames, same order. Apartments on the same floor
+   * plan are not the same price: One Hundred Above the Park asks $3,080 for
+   * #1501 and $3,095 for #2701, usually because of the floor or the view.
+   */
+  unitRents: z.array(z.number()),
+  /*
+   * One price per entry of leaseTermMonths, same order, for buildings that
+   * quote a different rent per lease length (7 months $1,915 ... 15 months
+   * $1,725). Each distinct price becomes its own offering on the unit.
+   */
+  leaseTermPrices: z.array(z.number()),
+  /*
+   * Whether this floor plan can actually be rented right now. A building
+   * routinely lists layouts it is not letting — "Pricing: Call For Details",
+   * "Join Waitlist" — and they came through as ordinary units with an empty
+   * price, which reads as something we failed to read rather than something
+   * the building is not offering.
+   */
+  available: z.boolean(),
   floorPlanImageUrl: z.string().nullable(),
   // "now", "YYYY-MM-DD", or null when the site doesn't say. NOTE: the API caps
   // structured-output schemas at 16 nullable/union fields and this is #16 —
@@ -56,6 +101,15 @@ const PropertySchema = z.object({
   kind: z.enum(["property", "group"]),
 });
 
+/*
+ * Rent specials, one sentence each, in the site's own words.
+ *
+ * Deliberately flat strings. A nested object here (description, amount,
+ * conditions, validUntil) pushed the structured-output schema past the API's
+ * grammar size limit and every extraction started failing with "the compiled
+ * grammar is too large" — a 500 on every import, from one nested field. The
+ * deadline is pulled out of the sentence on our side, where it costs nothing.
+ */
 const ListingSchema = z.object({
   address: z.string().nullable(),
   title: z.string().nullable(),
@@ -70,6 +124,7 @@ const ListingSchema = z.object({
   utilities_included: z.array(z.enum(UTILITY_VALUES)),
   units: z.array(UnitSchema),
   imageUrls: z.array(z.string()),
+  concessions: z.array(z.string()),
   sourceNotes: z.array(z.string()),
   confidence: z.number(),
 });
@@ -86,15 +141,18 @@ Rules, in order of importance:
 2. Every field is nullable: when the pages don't state a fact, return null (or omit from arrays). Do not pad, estimate, or average.
 2b. ADDRESS: return the most complete address the pages state. A street-only address like "718 Limit" or "723 Interdrive" IS worth returning — the landlord confirms the full address from a dropdown afterwards. Never invent a city, state, or zip the pages don't show.
 3. RENT: Proximity stores rent for the WHOLE unit per month. If the site gives a price per person / per bed / per room, or you cannot tell which convention it uses, set rent to null, set rentBasis accordingly ("per_person" or "unknown"), and add a sourceNote quoting the price you saw. Only set a rent number when you are confident it is the whole-unit monthly price (then rentBasis "total"). Prices like "$TBD" or "call for pricing" are null.
-4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its same-site URL from CANDIDATE LINKS if one clearly matches; use an empty string "" for an unknown address or url, never invent one) and set "listing" to null. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
+4. MULTI-PROPERTY SITES: if the pages cover more than one distinct rental property/building and no TARGET PROPERTY is specified, list every property you can identify in "properties" (name, address if stated, and its URL from CANDIDATE LINKS if one clearly matches; use an empty string "" for an unknown address or url, never invent one), and set "listing" to null. A URL from CANDIDATE LINKS counts whether it sits on this site or on a building's own dedicated website, which large management companies routinely give each property (a link whose text or surrounding card names that building). Only ever use a URL exactly as it appears in CANDIDATE LINKS. If the pages describe exactly one property, or a TARGET PROPERTY is specified, fill "listing" for that property (and still list the properties you saw). Note that many properties sharing one street address (e.g. one building with several floor plans) is ONE property with several units.
 4c. RENTALS ONLY, RESIDENTIAL ONLY: Proximity lists residential rentals. Exclude commercial, office, retail, industrial, land, and self-storage properties, AND anything offered FOR SALE (homes for sale, "buy" sections) — from "properties" (including group entries: never list a for-sale or commercial section as a group) and from any listing, even when the site mixes them with rentals. When you genuinely can't tell, include it.
 4b. GROUPS vs PROPERTIES: each entry gets a "kind". A neighborhood, area, city, or category page (e.g. "Central West End", "Clayton", "Our Communities") is kind "group", never a property; the landlord will open it to see the actual buildings inside. So is a site section that leads to the residential rentals, but ONLY when the buildings themselves aren't on the current page (e.g. "Apartments for Rent", "Available Rentals", "Our Properties" from CANDIDATE LINKS). When the individual properties ARE already listed here, never also return a nav/section link ("Find Your Home", "Our Properties") as a group — it would duplicate them. An individual building or complex with its own name or street address is kind "property". When the page shows both (areas AND some buildings), list both with correct kinds. Never return an empty properties list when the site clearly has a rentals section you can point to as a group. Never invent a listing from a group page's teaser text.
-5. UNITS are floor-plan types (e.g. "2 bed / 1 bath"), not physical apartments. Collapse repeats. When the page lists one bathrooms value alongside several bedroom options (e.g. "Bedrooms: 1/2/3, Bathrooms: 1"), apply that bathroom count to each floor plan rather than leaving it null (add a sourceNote); reserve null for when the page gives no bathroom information at all. "title" is the floor plan's marketing name if the site uses one (e.g. "The Loft"). STUDIOS: record a studio as bedrooms 0, and put "Studio" in the unit's title (unless the site gives it a specific name). AVAILABILITY: when the site states when a unit is available, set availableFrom: "now" for "available now/immediately", or the date as YYYY-MM-DD (infer the year sensibly for month-day dates: the next occurrence). Null when not stated.
+5. UNITS are floor-plan types (e.g. "2 bed / 1 bath"), not physical apartments. Collapse repeats. When the page lists one bathrooms value alongside several bedroom options (e.g. "Bedrooms: 1/2/3, Bathrooms: 1"), apply that bathroom count to each floor plan rather than leaving it null (add a sourceNote); reserve null for when the page gives no bathroom information at all. "title" is the floor plan's marketing NAME if the site markets one (e.g. "The Loft", "Garden Two Bed") and nothing else: never put a unit or apartment identifier there, and never invent a name out of the bed/bath count. When an AVAILABLE APARTMENTS or LIVE AVAILABILITY block names the floor plan (e.g. "100N101A", "DOR-3BTD", "Newstead"), that IS this floor plan's name: put it in "title" exactly as given, even though it looks like a code, because it is what the building calls the layout and what the landlord will recognise. When the site instead identifies the individual apartments on this floor plan (e.g. "2W", "3E", "Unit 101", "100N101a", or a name the building uses like "Madrid"), list those identifiers in "unitNames" and leave "title" null unless a separate marketing name really exists. Return unitNames as an empty array when the site names no individual units. STUDIOS: record a studio as bedrooms 0, and put "Studio" in the unit's title (unless the site gives it a specific name). LEASE TERMS: put the lease lengths this floor plan is offered on, in months, in "leaseTermMonths" (e.g. [7,9,12]); an empty array when the pages don't say. A LIVE AVAILABILITY FEED section, when present, is the property's own availability system and outranks the page text for prices, unit numbers, lease terms and dates: use its numbers exactly, give each floor plan the unit numbers it lists, and set rentBasis "total" for its prices, which are whole-unit monthly rents. LEASE-TERM RANGES ARE NOT PRICES: a page that says something like "we offer flexible lease terms ranging from 3 to 24 months" and shows ONE rent is telling you the lengths they will discuss, not a price per length. In that case put the single rent on the term the page says it reflects (these pages normally say the displayed rate is a 12-month rate, so use 12), leave "leaseTermPrices" empty, and add a sourceNote saying the site quotes terms from X to Y months and that only the displayed rate is published. Never spread one price across a range, and never invent a price for a term the page does not price. PER-UNIT RENT: when the pages price individual apartments differently, put one whole-unit monthly rent per entry of "unitNames", in the SAME ORDER, in "unitRents". Same length as unitNames or empty, never partially filled. PER-TERM PRICING: when the pages quote a different rent for different lease lengths, put one price per entry of "leaseTermMonths", in the SAME ORDER, in "leaseTermPrices". Same length as leaseTermMonths or empty. Both are whole-unit monthly rents. PER-UNIT AVAILABILITY: when the pages give a different date for individual apartments, put one date per entry of "unitNames", in the SAME ORDER, in "unitAvailability" as YYYY-MM-DD. Same length as unitNames or empty; never partially filled, and never a guess. AVAILABILITY: when the site states when a unit is available, set availableFrom: "now" for "available now/immediately", or the date as YYYY-MM-DD (infer the year sensibly for month-day dates: the next occurrence). Null when not stated.
 6. AMENITIES: map what the site states onto the allowed enum values; anything real that doesn't fit (e.g. "EV charging", "rooftop pool" beyond "pool"/"rooftop") goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
-7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
+6c. NEVER READ A NUMBER OUT OF AN IMAGE URL OR FILE NAME. Image candidates are given to you so you can choose which pictures to use, and for nothing else. Their file names contain apartment numbers, photo-shoot codes and internal ids that look like data and are not: a floor plan called 100N108A published as a 1108-BEDROOM apartment because "1108" appears in the name of its floor-plan image. Bedrooms, bathrooms, square footage, rent and dates come from the page's words. If the words do not say, leave the field null; a blank a landlord fills in is worth more than a number you inferred from a file name.
+6d. WAITLIST AND "CALL FOR DETAILS": set a unit's "available" to false when the pages show no price for it and instead invite the reader to join a waitlist, call for details, or ask about pricing — that floor plan exists but is not being let today. Everything else is available: true. Never invent a rent for one of these; leave rent null and let availability carry the meaning.
+7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. AIM FOR TWELVE AND INCLUDE THE INSIDES. A building's interior photographs usually sit on its FLOOR PLAN pages rather than its front page, under file names that say nothing a human would recognise — "p2245709_new_10d_dorchester-apt-10d-06232025_152317_40_ui.jpg" is a photograph of a room in apartment 10D, and a page full of those is the only place some buildings show their kitchens and bedrooms at all. An unreadable file name is not a reason to leave a photo out; it is what a real photo off a property management system looks like. A listing that goes out with five exterior shots and nothing of the inside is the common failure here, and students choose a flat by its rooms. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
 7b. FLOOR PLANS: a floor-plan diagram that clearly belongs to one specific unit type goes in that unit's floorPlanImageUrl (exact candidate URL) and NOT in imageUrls. Floor plans you can't match to a specific unit go at the END of imageUrls — students want them either way. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
 8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. NEVER name the landlord, management company, or their website/brand in the description (students contact through Proximity; e.g. write "the landlord" instead of "Mosaic Living"). title: the property's name as students would know the building (often the street address); never append the management company's brand to it.
 9. contact_*: only contact details shown on the pages for THIS landlord/property (leasing office email/phone). Never fabricate.
+9b. CONCESSIONS / SPECIALS: capture any rent special the pages advertise, wherever it appears, into "concessions". These live in the places designed to catch the eye and not in the body copy: a banner across the top of the page, a popup that opens on arrival, a coloured strip above the floor plans, a "Specials" or "Offers" heading, or a line on a floor plan. Give each as ONE sentence in the site's own words, including what the renter has to do to get it and any deadline, e.g. "1 month free rent, must sign on or before September 30 2026, lease term must be 10+ months". Return an empty array when the pages advertise nothing. Never invent a special, never turn an ordinary amenity or a fee into one, and never restate a special you already captured.
 10. sourceNotes: short plain-English notes for the landlord about anything ambiguous or worth double-checking ("Rent shown as $800/person for the 4-bed — enter the whole-unit price", "Availability dates weren't listed"). confidence: 0-1 overall.`;
 
 // claude-sonnet-5 pricing, USD per token (standard rates) — mirrors Lease Check.
@@ -122,6 +180,74 @@ function logCost(tag, usage) {
   );
 }
 
+/*
+ * Rescue what we can from an output that stopped mid-JSON. Walks the
+ * "properties" array collecting only brace-balanced objects, so the half
+ * property the model was writing when it ran out of room is dropped and every
+ * complete one before it survives. Returns null when there is nothing to save
+ * (a truncated single-listing extraction is not worth half-filling a form
+ * with, so this deliberately only rescues the property picker).
+ */
+function salvageDraft(raw) {
+  const start = raw.indexOf('"properties"');
+  if (start === -1) return null;
+  const open = raw.indexOf("[", start);
+  if (open === -1) return null;
+
+  const properties = [];
+  let depth = 0;
+  let objStart = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = open + 1; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try {
+          properties.push(PropertySchema.parse(JSON.parse(raw.slice(objStart, i + 1))));
+        } catch {
+          /* a malformed entry is skipped, not fatal */
+        }
+        objStart = -1;
+      }
+    } else if (ch === "]" && depth === 0) break;
+  }
+
+  return properties.length ? { properties, listing: null } : null;
+}
+
+/*
+ * A floor-plan name is prose ("The Loft", "Garden Two Bed"). A unit identifier
+ * is a short code with a digit in it ("2W", "101", "100N101a"). The model is
+ * told the difference, but it filed unit codes under `title` often enough to be
+ * worth a backstop: anything that reads like a code moves to unitNames, where
+ * the form turns it into a real listing_units row instead of a floor-plan name
+ * no student would recognise.
+ */
+const looksLikeUnitCode = (s, unitNames = []) => {
+  const t = (s ?? "").trim();
+  if (!t) return false;
+  /*
+   * Only a title that IS one of this floor plan's apartment numbers gets moved.
+   * The old length-and-digits test also ate legitimate plan names — Mac calls
+   * its layouts 100N101A and Dorchester calls one DOR-3BTD — which left every
+   * floor plan on those buildings unnamed.
+   */
+  return unitNames.some((n) => String(n).trim().toLowerCase() === t.toLowerCase());
+};
+
 // Same belt-and-suspenders as Lease Check: no em dash ever reaches the form.
 function stripEmDashes(value) {
   if (typeof value === "string") return value.replace(/\s*—\s*/g, ", ").replace(/—/g, "-");
@@ -139,7 +265,16 @@ const PAGE_TEXT_CAP = 30000; // chars per page — well under the token budget
  * links: [{ url, text }]; targetProperty: { name, address?, url? } | null.
  * Returns the parsed draft or null when the model's output failed to parse.
  */
-export async function extractListingDraft({ pages, images, links, targetProperty, brandName }) {
+export async function extractListingDraft({
+  pages,
+  images,
+  links,
+  targetProperty,
+  brandName,
+  liveInventory = null,
+  portalPage = false,
+  unitsHandledElsewhere = false,
+}) {
   const client = getClient();
 
   const sections = pages.map(
@@ -162,6 +297,17 @@ export async function extractListingDraft({ pages, images, links, targetProperty
       links.map((l) => `${l.url} | ${l.text || "(no text)"}`).join("\n") || "(none)"
     }`
   );
+  if (portalPage) {
+    sections.push(
+      `LISTING PORTAL — THIS OVERRIDES RULE 4. This page is on a rental portal (Apartments.com, Zillow, ForRent and the like) and describes exactly ONE property: the one named in the page title and address. Every other property on the page is the portal's own "similar listings" or "nearby" rail and belongs to other landlords. Rule 4 does NOT apply here: however many properties you can see, this page is a single property. You MUST fill "listing" for the property this page is about, and you MUST return an empty "properties" array. Never return listing: null for this page.`
+    );
+  }
+  if (liveInventory) sections.push(liveInventory);
+  if (unitsHandledElsewhere) {
+    sections.push(
+      `UNITS: return one "units" entry for EVERY floor plan the pages show, including the ones the AVAILABLE APARTMENTS block does not mention — that block covers only some of them, and a building's studios and larger plans are usually the ones it misses. For each, fill bedrooms, bathrooms, area, title (the floor plan's name or code as the site writes it) and rent. Do NOT list individual apartments: leave unitNames, unitRents and unitAvailability empty, because the apartments are supplied separately and will be merged in. DO still fill leaseTermMonths (and leaseTermPrices where the pages price a term) from anywhere on the site that states them — a lease length belongs to the building, not to an apartment, so nothing else supplies it and leaving it out means the landlord retypes it.`
+    );
+  }
   if (targetProperty) {
     sections.push(
       `TARGET PROPERTY: extract the listing for "${targetProperty.name}"` +
@@ -175,20 +321,84 @@ export async function extractListingDraft({ pages, images, links, targetProperty
     );
   }
 
-  const response = await client.messages.parse({
-    model: DRAFT_MODEL,
-    max_tokens: 16000,
-    output_config: { format: zodOutputFormat(DraftSchema) },
-    messages: [{ role: "user", content: sections.join("\n\n---\n\n") }],
-    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-  });
+  /*
+   * Streamed, and parsed by hand rather than through messages.parse().
+   *
+   * messages.parse() THROWS an AnthropicError the moment the JSON doesn't
+   * parse, and a management company's full inventory page overruns the output
+   * cap: macapartments.com/searchlisting (124 properties) came back cut off
+   * mid-string at character 14,652, the helper threw, and the route's outer
+   * catch turned it into a blanket 500 "Something went wrong reading that
+   * website." A landlord with a big site got a hard failure and no clue why.
+   *
+   * So: stream (required at this max_tokens to stay under the HTTP timeout),
+   * read stop_reason, and salvage the properties we did receive when the model
+   * ran out of room. A partial list the landlord can pick from beats an error.
+   */
+  const response = await client.messages
+    .stream({
+      model: DRAFT_MODEL,
+      max_tokens: 32000,
+      output_config: { format: zodOutputFormat(DraftSchema) },
+      messages: [{ role: "user", content: sections.join("\n\n---\n\n") }],
+      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    })
+    .finalMessage();
 
   logCost(targetProperty ? "target" : "initial", response.usage);
 
-  // parsed_output is null when schema parsing failed — callers must treat that
-  // as "couldn't read it", never as an empty success.
-  if (!response.parsed_output) return null;
-  const draft = stripEmDashes(response.parsed_output);
+  const raw = response.content.find((b) => b.type === "text")?.text ?? "";
+  let parsed = null;
+  try {
+    /*
+     * Fill in array fields the model left out before validating.
+     *
+     * Every array here is required by the schema, so one omission threw the
+     * whole parse and the request fell through to the salvage path, which
+     * returns properties and a NULL listing. Adding `concessions` did exactly
+     * that: the building extracted fine and came back as nothing at all. A
+     * missing list means "none", not "unreadable".
+     */
+    const obj = JSON.parse(raw);
+    if (obj?.listing && typeof obj.listing === "object") {
+      for (const key of [
+        "concessions",
+        "amenities",
+        "customAmenities",
+        "utilities_included",
+        "units",
+        "imageUrls",
+        "sourceNotes",
+      ]) {
+        if (!Array.isArray(obj.listing[key])) obj.listing[key] = [];
+      }
+      for (const u of obj.listing.units) {
+        for (const key of [
+          "unitNames",
+          "unitAvailability",
+          "unitRents",
+          "leaseTermMonths",
+          "leaseTermPrices",
+        ]) {
+          if (!Array.isArray(u?.[key])) u[key] = [];
+        }
+      }
+    }
+    if (!Array.isArray(obj?.properties)) obj.properties = [];
+    parsed = DraftSchema.parse(obj);
+  } catch {
+    parsed = salvageDraft(raw);
+    if (parsed) {
+      console.warn(
+        `[listing-draft] output truncated (stop_reason: ${response.stop_reason}) — ` +
+          `salvaged ${parsed.properties.length} properties`
+      );
+    }
+  }
+  // Callers must treat a failed parse as "couldn't read it", never as an empty
+  // success — an empty properties list is how the picker decides to give up.
+  if (!parsed) return null;
+  const draft = stripEmDashes(parsed);
 
   // Code-level backstop for the company-name ban: sites often open with
   // "<Brand>'s newest property" and the copy-faithfully instinct sometimes
@@ -210,28 +420,100 @@ export async function extractListingDraft({ pages, images, links, targetProperty
     }
   }
 
+  /*
+   * Shared with floorPlanUnits.js: a floor plan is identified by its FILE, not
+   * by a label next to it.
+   */
+  const ROOM_WORD_RE =
+    /kitchen|living|bedroom|bathroom|\bbath\b|\bbed\b|closet|laundry|dining|patio|balcony|exterior|interior|lobby|pool|gym|amenity|clubhouse|courtyard|banner|logo|hero|thumbnail/i;
+  const PLAN_FILE_RE = /floor[-_]?plan|floorplan|site[-_]?plan|[-_]fp\d*\.(png|jpe?g|gif|webp|svg)/i;
+  const looksLikeAFloorPlanFile = (url) => {
+    let file;
+    try {
+      file = decodeURIComponent(String(url).split("?")[0].split("/").pop() ?? "");
+    } catch {
+      file = String(url);
+    }
+    return !ROOM_WORD_RE.test(file) && PLAN_FILE_RE.test(file);
+  };
+
   if (draft.listing) {
     // Photos must be candidate URLs we actually offered — drop anything else.
     const offered = new Set(images.map((im) => im.url));
+    const askedFor = (draft.listing.imageUrls ?? []).length;
     draft.listing.imageUrls = (draft.listing.imageUrls ?? [])
       .filter((u) => offered.has(u))
       .slice(0, 12);
+    /*
+     * Photos go quiet in two different ways and they need telling apart: the
+     * model naming none, and the model naming ones we never offered it (which
+     * the filter then drops to nothing). Both end as an empty gallery.
+     */
+    console.log(
+      `[listing-draft] photos: offered ${images.length}, model picked ${askedFor}, ` +
+        `kept ${draft.listing.imageUrls.length}, ` +
+        `floor plans on units ${(draft.listing.units ?? []).filter((u) => u.floorPlanImageUrl).length}`
+    );
     // A rent the model wasn't sure is whole-unit must never prefill the form,
     // and unit floor plans must also come from the offered candidates.
-    draft.listing.units = (draft.listing.units ?? []).map((u) => ({
+    draft.listing.units = (draft.listing.units ?? []).map((u) => {
+      // A unit code in the name box helps nobody; move it where it belongs.
+      const names = [...(u.unitNames ?? [])];
+      let title = u.title;
+      if (looksLikeUnitCode(title, names)) {
+        if (!names.some((n) => n.toLowerCase() === title.trim().toLowerCase())) {
+          names.push(title.trim());
+        }
+        title = null;
+      }
+      /*
+       * A bed or bath count that cannot be true is dropped, not published.
+       *
+       * One floor plan came back as a 1108-bedroom apartment. 1108 is not on
+       * that page anywhere: the plan reads "1 Bedroom" and 734 Sq.Ft., so the
+       * number was invented somewhere between the page and here, and it reached
+       * the landlord's form because nothing was checking. Blank is recoverable
+       * and a landlord fills it in; a listing published as 1108 bedrooms is
+       * wrong in the database and wrong in search. Anything outside what a home
+       * can actually have becomes blank.
+       */
+      const sane = (value, max) => {
+        // Number(null) and Number("") are both 0, and 0 bedrooms means studio,
+        // so "we don't know" has to be caught before the conversion.
+        if (value === null || value === undefined || value === "") return null;
+        const n = Number(value);
+        return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+      };
+      return {
       ...u,
+      bedrooms: sane(u.bedrooms, 20),
+      bathrooms: sane(u.bathrooms, 20),
+      // A plan with no price that the site is not letting stays switched off.
+      available: u.available !== false,
+      unitNames: names.filter((n) => typeof n === "string" && n.trim()).slice(0, 60),
       // Studios import as 0-bed, titled "Studio" so the type stays visible.
-      title: u.bedrooms === 0 ? u.title || "Studio" : u.title,
+      title: u.bedrooms === 0 ? title || "Studio" : title,
       rent: u.rentBasis === "total" ? u.rent : null,
       availableFrom:
         u.availableFrom === "now" || /^\d{4}-\d{2}-\d{2}$/.test(u.availableFrom ?? "")
           ? u.availableFrom
           : null,
+      /*
+       * The same file-name test the page parser uses, applied to the model's
+       * choice as well. RentCafe labels the first photo in a plan's carousel
+       * "Floor Plan <name>", so a reader going by the label — human or model —
+       * puts a photograph of a kitchen in the floor plan box, and the landlord
+       * has to notice and undo it. A name that says kitchen, bedroom or lobby
+       * is not a floor plan whoever picked it.
+       */
       floorPlanImageUrl:
-        u.floorPlanImageUrl && offered.has(u.floorPlanImageUrl)
+        u.floorPlanImageUrl &&
+        offered.has(u.floorPlanImageUrl) &&
+        looksLikeAFloorPlanFile(u.floorPlanImageUrl)
           ? u.floorPlanImageUrl
           : null,
-    }));
+      };
+    });
   }
   return draft;
 }

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 import { validateName, validateEmail, validatePassword, SIGNUP_ROLES } from "@proximity/auth-core";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 export async function POST(req) {
   try {
@@ -12,7 +13,7 @@ export async function POST(req) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
-    const { name, email, password, role } = body;
+    const { name, email, password, role, callbackUrl } = body;
 
     const nameErr = validateName(name);
     if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 });
@@ -28,11 +29,24 @@ export async function POST(req) {
 
     const { data: existing } = await supabase
       .from("users")
-      .select("id, password_hash, google_account, apple_account")
+      .select("id, password_hash, deleted_at, google_account, apple_account")
       .eq("email", email)
       .single();
 
     if (existing) {
+      // Deleted accounts keep their row (and email) for a 30-day grace period
+      // before the purge cron frees it up — see api/cron/purge-accounts. Say so
+      // explicitly rather than "already exists," which reads as though signing
+      // in would work when it never will (auth.js rejects deleted accounts).
+      if (existing.deleted_at) {
+        return NextResponse.json(
+          {
+            error:
+              "This email is temporarily unavailable because it was recently used by a deleted account. It frees up 30 days after deletion. Need help? Contact info@useproximity.org.",
+          },
+          { status: 409 }
+        );
+      }
       if (!existing.password_hash) {
         return NextResponse.json(
           {
@@ -44,7 +58,10 @@ export async function POST(req) {
           { status: 409 }
         );
       }
-      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 });
+      return NextResponse.json(
+        { error: "An account with this email already exists." },
+        { status: 409 }
+      );
     }
 
     const password_hash = await bcrypt.hash(password, 12);
@@ -74,7 +91,10 @@ export async function POST(req) {
 
     if (insertError) {
       console.error("signup: insert error", insertError);
-      return NextResponse.json({ error: "Failed to create account." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to create account." },
+        { status: 500 }
+      );
     }
 
     const token = crypto.randomUUID();
@@ -82,14 +102,27 @@ export async function POST(req) {
 
     await supabase
       .from("users")
-      .update({ email_verification_token: token, email_verification_expires_at: expires })
+      .update({
+        email_verification_token: token,
+        email_verification_expires_at: expires,
+      })
       .eq("id", newUser.id);
 
-    await sendVerificationEmail({ email, name: name.trim(), token, baseUrl: getBaseUrl(req), req });
+    await sendVerificationEmail({
+      email,
+      name: name.trim(),
+      token,
+      baseUrl: getBaseUrl(req),
+      next: sanitizeCallbackUrl(callbackUrl, null),
+      req,
+    });
 
     return NextResponse.json({ email });
   } catch (err) {
     console.error("signup error:", err);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }
