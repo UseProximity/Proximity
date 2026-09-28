@@ -106,14 +106,13 @@ export function buildListing(row, owner = null) {
   row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
 
   /*
-   * Card imagery is the PROPERTY's, falling back to a unit photo only when the
-   * building has none of its own. Otherwise whichever landlord uploaded first
-   * would pick the cover shot for a building they may not even own.
+   * Card imagery is the property's one gallery, in the order the property owner
+   * set. Units are tags on those photos now, not a separate pool, and a photo
+   * added by anyone else is appended after the owner's, so the cover stays
+   * theirs to choose.
    */
   const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
-  const sorted = (row.listing_images ?? []).slice().sort(bySort);
-  const propertyImages = sorted.filter((img) => !img.unit_id);
-  const coverPool = propertyImages.length ? propertyImages : sorted;
+  const coverPool = (row.listing_images ?? []).slice().sort(bySort);
 
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
@@ -295,7 +294,7 @@ export async function fetchListings() {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
-      listing_images(url, sort_order, source, unit_id),
+      listing_images(url, sort_order, source),
       listing_reviews(rating, legitimacy, deleted_at),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))

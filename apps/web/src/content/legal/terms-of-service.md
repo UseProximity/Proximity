@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** September 23, 2026
+**Last updated:** September 24, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -105,7 +105,9 @@ applies to you exactly as it does to a landlord.
 sublease on Proximity unless the property's owner or landlord has consented to you
 subletting it, whether that consent is in your lease or given to you separately. Check your
 lease before you post, and ask your landlord if you are unsure. When you post a sublease, you
-confirm that you have that consent. We may remove a sublease listing at any time if we
+confirm that you have that consent and that you hold the lease on the place you are
+subletting, and we keep that confirmation as your written authorization for us to advertise
+the sublease. We may remove a sublease listing at any time if we
 believe the consent is missing, including at the owner's or landlord's request, and you are
 responsible for any claim that arises from advertising a sublease without it (Section 20).
 
@@ -172,6 +174,13 @@ listing to it so they control it from then on.
 property aggregators, or the web at large looking for properties to put on Proximity. A
 listing exists because its owner asked for it, or because they created it themselves.
 
+**One exception: pages for properties students have reviewed.** When a student reviews a
+building that is not on Proximity, we create a page for it so the review has somewhere to
+live. That page is marked unavailable and shows only the property's address, a Google Street
+View image of it, and its reviews. Nothing on it is offered for rent, and the matchmaking
+assistant never recommends it. If you own the property, you can email
+info@useproximity.org to have the page removed, or to claim it as described below.
+
 Earlier on, that permission was usually given verbally or by email rather than in writing.
 
 If your property is on Proximity and you did not ask for it to be, or you no longer want it
@@ -231,12 +240,15 @@ and then suggests listings. It is available on the website and in the mobile app
   matters against the listing itself and with the person renting it.
 - **It is a suggestion, not advice.** It is not housing, financial, or legal advice, and a
   recommendation is not an endorsement (see Section 4).
-- **Some listings are filtered.** Where a listing states that occupancy is restricted to
-  tenants of one gender, the assistant will not recommend it unless the gender on your
-  profile matches. This affects only what the assistant suggests. It never limits what you
-  can search, browse, view, or contact directly.
+- **Some listings are filtered.** Where a listing, typically a sublease, explicitly asks for
+  tenants of a certain gender in its description, the assistant will sometimes not suggest
+  it to students of another gender. This affects only what the assistant suggests. It never
+  limits what you can search, browse, view, or contact directly.
 - **Your first name is sent to our AI provider** so the assistant can address you naturally,
   along with your conversation and preferences. Privacy Policy §4 explains this in full.
+- **We keep your conversation and preferences.** They are a record of what you asked for
+  and why we showed you the listings we did. We keep them while your account is open and
+  for three years after you delete it (Privacy Policy §8).
 
 ## 10. Lease Check
 
@@ -372,7 +384,7 @@ you stop using is kept until you delete it. If we introduce a dormancy period, w
 you notice by email before it takes effect and a chance to keep the account open.
 
 **What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
-and inquiry records kept for three years, with the sender named), 13 (the licence, to the extent content
+and inquiry records kept for three years, with the sender named), 9 (matchmaking conversations and preferences kept for three years), 13 (the licence, to the extent content
 remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion
@@ -412,7 +424,8 @@ what this means for you.
 **Withdrawn listings.** A listing that is withdrawn stops being published but is retained as
 marketplace history. This includes a listing you delete yourself: deleting it removes it from
 the marketplace, and we keep it, with its reviews and inquiry records, in hidden form. When a listing is withdrawn because its only owner deleted their
-account, that owner's name, email address, and phone number are removed from it.
+account, that owner's name and email address are kept with it for three years after the
+account is deleted, and then erased. Their phone number is removed from it.
 
 **People without an account.** We hold limited information about some people who never
 signed up, described in Privacy Policy §1.8, and they can have it deleted on request even

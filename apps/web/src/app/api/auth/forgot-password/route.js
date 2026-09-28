@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendPasswordResetEmail } from "@/lib/email";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
 export async function POST(req) {
   try {
-    const { email } = await req.json();
+    const { email: rawEmail } = await req.json();
+    const email = normalizeEmail(rawEmail);
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Valid email is required." }, { status: 400 });
@@ -13,7 +15,7 @@ export async function POST(req) {
     const { data: user } = await supabase
       .from("users")
       .select("id, name, google_account")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     if (!user) {

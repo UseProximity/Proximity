@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
+import { emailMatchPattern } from "@/lib/auth/email";
 
 export async function POST(req) {
   try {
@@ -12,7 +13,7 @@ export async function POST(req) {
     const { data: user } = await supabase
       .from("users")
       .select("id, name, email_verified, password_hash")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     // Always return 200 to avoid leaking whether an account exists
