@@ -33,8 +33,13 @@ When you create an account, we collect:
 - **Password**: if you sign up with email and password. We store only a salted,
   irreversible hash; we never store your password itself.
 - **Sign-in method**: whether your account is linked to a Google or Apple identity.
-- **Email verification status** and, temporarily, the tokens used to verify your email
-  address or reset your password.
+- **Email verification status** and the one-time tokens behind the links we email you to
+  verify your email address or reset your password. A verification link is valid for 24
+  hours (7 days for the link that finishes setting up an account created from a review you
+  submitted without signing in), and a password-reset link is valid for 1 hour. Using a
+  link deletes its token. A token that is never used stops working when it expires, but it
+  stays on your account record until a newer one replaces it or your account is erased
+  (Section 8).
 - **Account role**: student or landlord.
 - **Your school**: derived from the domain of your email address (for example,
   `wustl.edu` identifies a Washington University in St. Louis account). We record it when
