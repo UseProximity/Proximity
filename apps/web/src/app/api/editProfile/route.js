@@ -61,9 +61,14 @@ export async function PATCH(req) {
     if (body.graduation_month !== undefined)
       allowedFields.graduation_month = body.graduation_month ?? null;
 
-    // Only allow role changes if provided; only super can promote to super or admin
+    // Only allow role changes if provided. Privileged roles require super;
+    // any other role must be on the self-assignable allowlist unless the
+    // caller is already super (default-deny for roles like parent/other/system).
     if (body.role !== undefined && body.role !== null) {
-      if ((body.role === "super" || body.role === "admin") && currentRole !== "super") {
+      const isPrivileged = PRIVILEGED_ROLES.has(body.role);
+      const isAllowed =
+        currentRole === "super" || (!isPrivileged && SELF_ASSIGNABLE_ROLES.has(body.role));
+      if (!isAllowed) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       const { data: roleRow, error: roleErr } = await supabase
