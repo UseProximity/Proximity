@@ -92,7 +92,7 @@ export async function PATCH(req) {
     if (error) {
       console.error("PATCH /api/editProfile: update failed", {
         supabaseId,
-        allowedFields,
+        fields: Object.keys(allowedFields),
         error,
       });
       return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
