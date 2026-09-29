@@ -242,8 +242,8 @@ export async function POST(req, { params }) {
       .single();
 
     if (error) {
-      const detail = [error.message, error.details, error.hint].filter(Boolean).join(" | ");
-      return Response.json({ error: detail }, { status: 500 });
+      console.error(`[admin POST] table=${table}`, error);
+      return Response.json({ error: "Failed to create record" }, { status: 500 });
     }
     return Response.json(data, { status: 201 });
   } catch (err) {

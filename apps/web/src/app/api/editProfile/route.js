@@ -24,10 +24,7 @@ export async function PATCH(req) {
         email: session.user.email,
         error: lookupError,
       });
-      return NextResponse.json(
-        { error: "User not found in Supabase", detail: lookupError.message, code: lookupError.code },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     if (!sbUser) {
@@ -97,15 +94,12 @@ export async function PATCH(req) {
         allowedFields,
         error,
       });
-      return NextResponse.json(
-        { error: "DB update failed", detail: error.message, code: error.code },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
     }
 
     const { data: updated, error: fetchError } = await supabase
       .from("users")
-      .select("*, roles!role_id(name)")
+      .select("name, birthday, gender, phone, description, roles!role_id(name)")
       .eq("id", supabaseId)
       .single();
 
