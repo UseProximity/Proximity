@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
+import { SELF_ASSIGNABLE_ROLES, PRIVILEGED_ROLES } from "@/lib/auth/roles";
 
 export async function PATCH(req) {
   try {
