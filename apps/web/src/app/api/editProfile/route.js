@@ -15,7 +15,7 @@ export async function PATCH(req) {
 
     const { data: sbUser, error: lookupError } = await supabase
       .from("users")
-      .select("id, roles!role_id(name)")
+      .select("id, name, birthday, gender, phone, description, roles!role_id(name)")
       .eq("email", session.user.email)
       .single();
 
