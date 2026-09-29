@@ -79,7 +79,7 @@ export async function PATCH(req) {
       allowedFields.role_id = roleRow.id;
     }
 
-    console.log("PATCH /api/editProfile: updating fields", allowedFields);
+    console.log("PATCH /api/editProfile: updating fields", { fields: Object.keys(allowedFields) });
 
     const { error } = await updateAsUser(supabase, {
       userId: supabaseId,
