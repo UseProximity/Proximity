@@ -17,13 +17,18 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: async () => {
+    // Unregister the device's push token before clearing local tokens — the
+    // DELETE call needs the still-valid access token to authenticate.
+    const { unregisterDeviceToken } = await import("../lib/pushNotifications");
+    await unregisterDeviceToken();
+
     set({ user: null, accessToken: null, refreshToken: null });
     await Promise.all([
       secureStorage.remove("access_token"),
       secureStorage.remove("refresh_token"),
       secureStorage.remove("user"),
     ]);
-    
+
     // Clear favorites on logout
     const { useFavoritesStore } = await import("./favoritesStore");
     useFavoritesStore.getState().clear();
