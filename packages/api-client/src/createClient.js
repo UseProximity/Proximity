@@ -8,6 +8,7 @@ import { AuthResource } from "./resources/auth.js";
 import { UserResource } from "./resources/user.js";
 import { FavoritesResource } from "./resources/favorites.js";
 import { UploadsResource } from "./resources/uploads.js";
+import { DevicesResource } from "./resources/devices.js";
 
 // No web equivalent to port — web calls its own API routes directly via
 // same-origin fetch under a cookie session (NextAuth). Mobile needs an
@@ -47,6 +48,7 @@ class ApiClient {
     this.user = new UserResource(this);
     this.favorites = new FavoritesResource(this);
     this.uploads = new UploadsResource(this);
+    this.devices = new DevicesResource(this);
   }
 
   async request(path, options = {}) {

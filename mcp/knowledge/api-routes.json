@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-25T18:46:22.593Z",
-  "count": 99,
+  "_generated": "2026-09-30T10:10:55.138Z",
+  "count": 100,
   "routes": [
     {
       "path": "/api/account",
@@ -651,6 +651,22 @@
         "listings"
       ],
       "file": "src/app/api/dev/matchmaking-saturation-sim/route.js"
+    },
+    {
+      "path": "/api/devices/push-token",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "device_push_tokens"
+      ],
+      "file": "src/app/api/devices/push-token/route.js"
     },
     {
       "path": "/api/dormReviews",

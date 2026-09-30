@@ -19,6 +19,7 @@ import {
 import { useAuthStore } from "../src/store/authStore";
 import { useFavoritesStore } from "../src/store/favoritesStore";
 import { ProfileCompletionModal } from "../src/components/ProfileCompletionModal";
+import { usePushNotifications } from "../src/hooks/usePushNotifications";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -31,6 +32,8 @@ export default function RootLayout() {
   const user = useAuthStore((state) => state.user);
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
+
+  usePushNotifications();
 
   useEffect(() => {
     // Hydrate auth first

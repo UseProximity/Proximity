@@ -79,6 +79,18 @@
         ]
       },
       {
+        "table": "device_push_tokens",
+        "description": "Expo push tokens for the mobile app, one row per physical device. expo_push_token is globally unique (not per-user), so a device changing owners (shared device, or logout/login as a different user) reassigns user_id via a service-role upsert (apps/web/src/app/api/devices/push-token/route.js) rather than an RLS-scoped client write. Read by sendPushNotification (apps/web/src/lib/push.js).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "expo_push_token:text",
+          "platform:text",
+          "created_at:timestamptz",
+          "last_seen_at:timestamptz"
+        ]
+      },
+      {
         "table": "dorm_review_tags",
         "description": "Join: dorm review ↔ tag.",
         "columns": [

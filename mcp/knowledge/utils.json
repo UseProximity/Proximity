@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-25T18:46:22.602Z",
-  "count": 92,
+  "_generated": "2026-09-29T12:25:15.410Z",
+  "count": 93,
   "utils": [
     {
       "file": "src/lib/appEnv.js",
@@ -242,6 +242,10 @@
     {
       "file": "src/lib/pms/types.js",
       "description": "PMS connector contract + normalized shapes."
+    },
+    {
+      "file": "src/lib/push.js",
+      "description": "Push notification sender. The single entry point every feature should call:"
     },
     {
       "file": "src/lib/r2.js",

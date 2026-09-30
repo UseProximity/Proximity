@@ -27,6 +27,15 @@ module.exports = {
           microphonePermission: false,
         },
       ],
+      // Registers the APNs entitlement (iOS) and default notification
+      // channel (Android) at build time — no local ios/android project to
+      // hand-edit, this is the only place that config is set.
+      "expo-notifications",
+      // Excludes SecureStore's encrypted values from Android Auto Backup and
+      // adds the (unused but required-to-declare) iOS Face ID permission
+      // string — defaults are correct here, src/lib/secureStorage.js doesn't
+      // use SecureStore's optional biometric-gated `requireAuthentication`.
+      "expo-secure-store",
     ],
     ios: {
       supportsTablet: true,
@@ -34,6 +43,14 @@ module.exports = {
     },
     android: {
       package: "org.useproximity.app",
+      // Wires the downloaded Firebase config into the native Android build at
+      // prebuild time (EAS Build or local `expo prebuild`/`run:android`) — no
+      // manual Gradle edits: Expo's own config-plugin system copies the file
+      // in, adds the com.google.gms:google-services classpath, and applies
+      // the plugin automatically. This alone does NOT enable sending pushes —
+      // that also needs an FCM v1 service-account key uploaded separately via
+      // `eas credentials -p android`.
+      googleServicesFile: "./google-services.json",
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/android-icon-foreground.png",
