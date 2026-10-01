@@ -38,12 +38,16 @@ export default function AuthCard({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [verificationSentTo, setVerificationSentTo] = useState("");
+  // True when the inbox view comes from signing in to an unverified account
+  // rather than from signing up, so the copy doesn't claim we just sent a link.
+  const [unverifiedSignIn, setUnverifiedSignIn] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
   const [forgotView, setForgotView] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
   const [forgotError, setForgotError] = useState("");
 
   useEffect(() => {
@@ -52,7 +56,7 @@ export default function AuthCard({
     }
     if (searchParams.get("error") === "invalid_token") {
       setError(
-        "Verification link is invalid or expired. Please request a new one below."
+        "Verification link is invalid or expired. Sign in below and we'll offer to send you a new one."
       );
     }
     if (searchParams.get("error") === "ACCOUNT_DELETED") {
@@ -69,6 +73,7 @@ export default function AuthCard({
     setResendMsg("");
     setForgotView(false);
     setForgotSent(false);
+    setForgotMessage("");
   };
 
   const handleForgot = async (e) => {
@@ -81,10 +86,11 @@ export default function AuthCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         setForgotError(data.error ?? "Something went wrong. Please try again.");
       } else {
+        setForgotMessage(data.message);
         setForgotSent(true);
       }
     } catch {
@@ -109,8 +115,9 @@ export default function AuthCard({
       setError("Something went wrong. Please try again.");
       return;
     }
-    if (result.error === "EMAIL_NOT_VERIFIED") {
+    if (result.code === "EMAIL_NOT_VERIFIED") {
       setVerificationSentTo(email);
+      setUnverifiedSignIn(true);
       return;
     }
     if (result.error) {
@@ -125,6 +132,7 @@ export default function AuthCard({
     e.preventDefault();
     setError("");
     setVerificationSentTo("");
+    setUnverifiedSignIn(false);
     setLoading(true);
     try {
       const res = await fetch("/api/auth/signup", {
@@ -216,10 +224,7 @@ export default function AuthCard({
           {forgotSent ? (
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
-              <p>
-                We sent a reset link to{" "}
-                <span className="font-medium">{forgotEmail}</span>.
-              </p>
+              <p>{forgotMessage}</p>
               <p className="mt-1 text-blue-700/80">
                 Don&apos;t see it? Check your spam folder.
               </p>
@@ -274,11 +279,25 @@ export default function AuthCard({
       ) : verificationSentTo ? (
         <div className="text-center">
           <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
-            <p className="font-semibold mb-1">Check your inbox</p>
-            <p>
-              We sent a verification link to{" "}
-              <span className="font-medium">{verificationSentTo}</span>.
-            </p>
+            {unverifiedSignIn ? (
+              <>
+                <p className="font-semibold mb-1">Verify your email to sign in</p>
+                <p>
+                  Your account for{" "}
+                  <span className="font-medium">{verificationSentTo}</span>{" "}
+                  isn&apos;t verified yet. Open the link we emailed you, or send
+                  a new one below.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold mb-1">Check your inbox</p>
+                <p>
+                  We sent a verification link to{" "}
+                  <span className="font-medium">{verificationSentTo}</span>.
+                </p>
+              </>
+            )}
             <p className="mt-1 text-blue-700/80">
               Don&apos;t see it? Check your spam folder.
             </p>

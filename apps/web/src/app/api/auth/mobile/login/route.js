@@ -2,10 +2,12 @@ import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
 import { AUTH_ERRORS } from "@proximity/auth-core";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
 export async function POST(req) {
   try {
-    const { email, password } = await req.json();
+    const { email: rawEmail, password } = await req.json();
+    const email = normalizeEmail(rawEmail);
 
     if (!email || !password) {
       return Response.json({ error: AUTH_ERRORS.MISSING_FIELDS }, { status: 400 });
@@ -14,7 +16,7 @@ export async function POST(req) {
     const { data: user } = await supabase
       .from("users")
       .select("id, email, name, image, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     // A deleted account fails identically to a wrong password — same status,

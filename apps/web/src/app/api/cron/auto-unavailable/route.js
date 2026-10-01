@@ -167,7 +167,7 @@ export async function GET(req) {
   const url = new URL(req.url);
   const dryRun = url.searchParams.get("dry_run") === "1" || process.env.AUTO_UNAVAILABLE_DRY_RUN === "1";
   const includeTest = url.searchParams.get("include_test") === "1";
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getBaseUrl();
 
   // ---- Detect ------------------------------------------------------------
   const { data: listings, error } = await supabase

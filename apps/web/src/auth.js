@@ -14,17 +14,27 @@
  * Exports: handlers (GET/POST for /api/auth/*), signIn, signOut, auth (server-side
  * session getter used by layout.js and protected API routes).
  */
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { AUTH_ERRORS } from "@proximity/auth-core";
+import { emailMatchPattern } from "@/lib/auth/email";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
 // tab / by an admin) without requiring a sign-out.
 const ROLE_REFRESH_MS = 60_000;
+
+// The right password on an account whose email was never verified. It has to
+// extend CredentialsSignin: Auth.js swaps any other error thrown from
+// authorize() for a generic "Configuration" error, so the sign-in form never
+// learned the account was unverified and said "Invalid email or password".
+// The code reaches the client as `result.code`.
+class EmailNotVerified extends CredentialsSignin {
+  code = AUTH_ERRORS.EMAIL_NOT_VERIFIED;
+}
 
 /*
  * Run a Supabase query without letting a network failure escape.
@@ -63,17 +73,20 @@ const config = {
         const { data: user } = await supabase
           .from("users")
           .select("id, email, name, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
-          .eq("email", email)
+          .ilike("email", emailMatchPattern(email))
           .single();
 
         // Deleted accounts fail exactly like a wrong password — same null
         // return, no distinct error. Confirming "this account was deleted"
         // would leak that the address was registered.
         if (!user || !user.password_hash || user.deleted_at) return null;
-        if (!user.email_verified) throw new Error(AUTH_ERRORS.EMAIL_NOT_VERIFIED);
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) return null;
+
+        // Checked after the password, so only the account's owner learns that
+        // it exists but is unverified.
+        if (!user.email_verified) throw new EmailNotVerified();
 
         return { id: user.id, email: user.email, name: user.name };
       },

@@ -2,6 +2,7 @@ import supabase from "@/lib/supabase";
 import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
 import { AppleTokenError, verifyAppleIdentityToken, exchangeAuthorizationCode } from "@/lib/appleAuth";
 import { AUTH_ERRORS } from "@proximity/auth-core";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
 const USER_SELECT = "id, email, name, image, profile_complete, deleted_at, roles!role_id(name)";
 
@@ -37,7 +38,7 @@ export async function POST(req) {
       return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
     }
     const appleSub = claims.sub;
-    const email = claims.email;
+    const email = claims.email ? normalizeEmail(claims.email) : claims.email;
     const isPrivateRelay = isTrue(claims.is_private_email);
 
     // apple_sub is the identity. Apple only sends the email on the first
@@ -72,7 +73,7 @@ export async function POST(req) {
         const { data: existing, error: existingError } = await supabase
           .from("users")
           .select(`${USER_SELECT}, email_verified, google_account`)
-          .eq("email", email)
+          .ilike("email", emailMatchPattern(email))
           .maybeSingle();
         if (existingError) throw existingError;
 

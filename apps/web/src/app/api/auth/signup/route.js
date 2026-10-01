@@ -4,6 +4,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 import { validateName, validateEmail, validatePassword, SIGNUP_ROLES } from "@proximity/auth-core";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
 export async function POST(req) {
   try {
@@ -13,7 +14,8 @@ export async function POST(req) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
-    const { name, email, password, role, callbackUrl } = body;
+    const { name, email: rawEmail, password, role, callbackUrl } = body;
+    const email = normalizeEmail(rawEmail);
 
     const nameErr = validateName(name);
     if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 });
@@ -30,7 +32,7 @@ export async function POST(req) {
     const { data: existing } = await supabase
       .from("users")
       .select("id, password_hash, deleted_at, google_account, apple_account")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     if (existing) {
@@ -112,7 +114,7 @@ export async function POST(req) {
       email,
       name: name.trim(),
       token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
       req,
     });

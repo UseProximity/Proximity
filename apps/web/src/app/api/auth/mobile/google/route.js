@@ -1,6 +1,7 @@
 import supabase from "@/lib/supabase";
 import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
 import { AUTH_ERRORS } from "@proximity/auth-core";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
 export async function POST(req) {
   try {
@@ -28,13 +29,17 @@ export async function POST(req) {
       return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
     }
 
-    const { email, name, picture } = tokenInfo;
+    const { name, picture } = tokenInfo;
+    if (typeof tokenInfo.email !== "string" || !tokenInfo.email) {
+      return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
+    }
+    const email = normalizeEmail(tokenInfo.email);
 
     // Look up user by email
     const { data: existing } = await supabase
       .from("users")
       .select("id, email, name, image, profile_complete, deleted_at, roles!role_id(name)")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     // Reject a deleted account explicitly. Falling through to the create branch
@@ -49,7 +54,7 @@ export async function POST(req) {
 
     if (existing) {
       const imageUpdate = picture ? { image: picture, google_account: true } : { google_account: true };
-      await supabase.from("users").update(imageUpdate).eq("email", email);
+      await supabase.from("users").update(imageUpdate).eq("id", existing.id);
       userRow = {
         ...existing,
         image: picture ?? existing.image,
