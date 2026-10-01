@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** September 24, 2026
+**Last updated:** October 1, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -145,12 +145,18 @@ or Google.
 - **Internal change history**: an internal log records changes to records in our
   database, including who made the change and the values before and after, so we can
   investigate errors, disputes, and abuse.
+- **Push notification token (mobile apps)**: if you allow notifications on your phone, the
+  app obtains a push token for your device from Expo's push service (which relies on
+  Apple's push service on iOS and Google's Firebase Cloud Messaging on Android) and sends
+  it to us with your device platform (iOS or Android) and the time it was last seen. We use
+  it only to deliver notifications to your device. It is not tied to any advertising
+  profile.
 - **Website analytics**: see Section 5.1.
 
 ### 1.6 Information we do **not** collect
 
-- **Your device's location.** Neither app requests location permission, and neither uses
-  it. Map features use property coordinates, which are attributes of a listing, not of
+- **Your device's location.** Neither app declares or requests location permission, and
+  neither uses it. Map features use property coordinates, which are attributes of a listing, not of
   you.
 - **Your contacts, calendar, or microphone.** Camera and microphone access are explicitly
   disabled in the mobile apps. The apps request photo-library access only when a landlord
@@ -339,8 +345,12 @@ your device's secure, encrypted storage:
 
 Signing out deletes your credentials and cached profile from the device. The mobile apps do
 not store your matchmaking conversation on the device. They contain no analytics,
-advertising, attribution, or crash-reporting code, do not use push notifications, and do
-not use over-the-air updates.
+advertising, attribution, or crash-reporting code, and do not use over-the-air updates.
+
+If you allow notifications, the apps also register a push token for your device with our
+servers (Section 1.5). The apps ask for notification permission after you sign in, and you
+can decline or turn notifications off at any time in your device settings. Signing out of
+the app removes the token from our servers when the device is online.
 
 ---
 
@@ -379,6 +389,7 @@ and only for the purposes we specify:
 | **Cloudflare** | Profile photos, listing photos, floor plans; lease documents transiently | Object storage and delivery |
 | **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content | AI features (Section 4) |
 | **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
+| **Expo, Apple, and Google (Firebase Cloud Messaging)** | Your device's push token, your device platform, and the content of any notification we send you. Expo's push service forwards notifications to Apple's push notification service (iOS) or Google's Firebase Cloud Messaging (Android). | Delivering push notifications to the mobile apps |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
 | **Airtable** | New account name, email address, account identifier, sign-up date, and role; new listing details | Internal customer-relationship system for onboarding and support |
 | **Google Workspace** | Recipient email addresses and message content | Sending transactional and inquiry email |
@@ -428,14 +439,14 @@ notify you and the relevant authorities as required by applicable law.
 
 ## 8. Deleting your account
 
-**You can delete your account yourself, at any time, from the website:** your dashboard →
-**Delete account**. Deleting from the website deletes the account itself, so it also ends
-access on any other platform you use it on.
+**You can delete your account yourself, at any time, from the website** (your dashboard →
+**Delete account**) **or from the mobile apps** (Profile → **Delete Account**). Either way
+deletes the account itself, so it also ends access on any other platform you use it on.
 
 ### Immediately, when you confirm
 
-- Your account stops working. You are signed out and can no longer sign in, by password or
-  by Google, on any device or platform.
+- Your account stops working. You are signed out and can no longer sign in, by password,
+  by Google, or by Apple, on any device or platform.
 - Your profile disappears from the Services.
 - **Listings you owned alone** are withdrawn from the marketplace.
 - **Listings you co-owned with another landlord** remain live under that co-owner. You are
@@ -447,7 +458,9 @@ access on any other platform you use it on.
 
 ### 30 days later
 
-Thirty days after deletion, an automated job permanently erases your personal data:
+Thirty days after deletion, an automated job permanently erases your personal data, except
+the records the table below marks as kept for three years, which are erased at the end of
+that period instead:
 
 | Data | What we do |
 |---|---|
@@ -457,6 +470,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Messages you sent through Proximity | **Kept for three years, with your name and email address.** The text of each message, who sent it, and when are retained for three years after deletion, and then erased. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute, investigate abuse, or confirm a lease. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
 | Inquiries you sent to landlords, and leases a landlord told us you signed | **Kept for three years, with your name and email address.** The record of which listing you contacted and when, and any lease recorded under Section 1.9, are retained for three years after deletion as a record of the introductions we make, and then erased. See Terms §17A. |
 | Saved listings, review votes | Permanently deleted. |
+| Push notification tokens | Permanently deleted. |
 | Matchmaking conversations, and the housing preferences derived from them | **Kept for three years.** The transcript, the preferences you gave, and the recommendations we made are retained for three years after deletion as a record of which properties we showed you and why, and then erased. They are never published and are visible only to Proximity staff who need them. See Terms §17A. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |
@@ -487,6 +501,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Category | Retention |
 |---|---|
 | Account and profile data | While your account is active, then as described in Section 8. |
+| Push notification tokens | Until you sign out of the app or delete your account, then erased (Section 8). |
 | Listings | While published. A listing you delete is removed from the marketplace and retained in hidden form as marketplace history, together with its reviews and inquiry records. On account deletion, sole-owned listings are withdrawn in the same way and keep the owner's name and email address for three years after deletion, after which those details are erased (Section 8). |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
 | Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
@@ -518,6 +533,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
   your reviews, and you can post reviews anonymously.
 - **Withdraw device permissions.** You can revoke the mobile app's photo-library access in
   your device settings at any time. This affects only the ability to add listing photos.
+  You can likewise turn off notifications for the app in your device settings at any time.
 - **Decline the AI features.** Matchmaking and Lease Check are optional. Nothing is sent to
   Anthropic unless you choose to use them.
 - **Request a copy of your data.** Email info@useproximity.org from the address on your

@@ -10,6 +10,7 @@ import { useFavoritesStore } from "../../src/store/favoritesStore";
 import apiClient from "../../src/lib/apiClient";
 import { getErrorMessage } from "../../src/lib/apiError";
 import { colors } from "../../src/theme/tokens";
+import { openLegalLink, PRIVACY_URL, TERMS_URL } from "../../src/lib/legalLinks";
 
 function ProfileSection({ title, children }) {
   return (
@@ -67,7 +68,7 @@ export default function ProfileScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       "Delete account",
-      "This deletes your Proximity account and personal data. Your account stops working immediately, and your data is permanently erased after 30 days. This can't be undone.",
+      "This deletes your Proximity account. Your account stops working immediately, and your personal data is erased after 30 days, except some records we keep for up to three years (see our Privacy Policy). This can't be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -118,7 +119,7 @@ export default function ProfileScreen() {
         </View>
         <Text className="text-lg font-bold text-gray-900 mb-1">Sign in to Proximity</Text>
         <Text className="text-sm text-gray-500 text-center mb-6">
-          Save listings and manage your profile once you're signed in.
+          Save listings and manage your profile once you&apos;re signed in.
         </Text>
         <Link href="/(auth)/login" asChild>
           <Pressable className="bg-red-600 rounded-xl px-6 py-3">
@@ -189,8 +190,8 @@ export default function ProfileScreen() {
 
         {/* About Section */}
         <ProfileSection title="About">
-          <MenuItem label="Terms of Service" icon={FileText} onPress={() => {}} />
-          <MenuItem label="Privacy Policy" icon={ShieldCheck} onPress={() => {}} />
+          <MenuItem label="Terms of Service" icon={FileText} onPress={() => openLegalLink(TERMS_URL)} />
+          <MenuItem label="Privacy Policy" icon={ShieldCheck} onPress={() => openLegalLink(PRIVACY_URL)} />
           <MenuItem
             label="Version 1.0.0"
             icon={Info}

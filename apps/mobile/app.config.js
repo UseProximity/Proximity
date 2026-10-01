@@ -31,15 +31,22 @@ module.exports = {
       // channel (Android) at build time — no local ios/android project to
       // hand-edit, this is the only place that config is set.
       "expo-notifications",
-      // Excludes SecureStore's encrypted values from Android Auto Backup and
-      // adds the (unused but required-to-declare) iOS Face ID permission
-      // string — defaults are correct here, src/lib/secureStorage.js doesn't
-      // use SecureStore's optional biometric-gated `requireAuthentication`.
-      "expo-secure-store",
+      // Excludes SecureStore's encrypted values from Android Auto Backup.
+      // Face ID is disabled (faceIDPermission: false): src/lib/secureStorage.js
+      // doesn't use SecureStore's optional biometric-gated
+      // `requireAuthentication`, so the Face ID string would be unused. The
+      // matching Android biometric permissions are blocked below.
+      ["expo-secure-store", { faceIDPermission: false }],
     ],
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.proximityllc.proximity",
+      // Only standard HTTPS (system TLS) is used, which is exempt from US export
+      // rules. Sets ITSAppUsesNonExemptEncryption=false so App Store Connect
+      // stops asking the export-compliance question on every upload.
+      config: {
+        usesNonExemptEncryption: false,
+      },
     },
     android: {
       package: "org.useproximity.app",
@@ -51,6 +58,17 @@ module.exports = {
       // that also needs an FCM v1 service-account key uploaded separately via
       // `eas credentials -p android`.
       googleServicesFile: "./google-services.json",
+      // Library-contributed permissions the app never uses. Location comes from
+      // the Mapbox SDK (the map only plots listing coordinates, never the
+      // device), the overlay permission from Expo's prebuild defaults, and the
+      // biometric pair from expo-secure-store (requireAuthentication is unused).
+      blockedPermissions: [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+      ],
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/android-icon-foreground.png",

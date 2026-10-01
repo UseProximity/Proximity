@@ -8,6 +8,7 @@ import apiClient from "../../src/lib/apiClient";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
 import { colors } from "../../src/theme/tokens";
+import { openLegalLink, PRIVACY_URL, TERMS_URL } from "../../src/lib/legalLinks";
 
 const ROLES = [
   { value: "student", label: "Student" },
@@ -148,6 +149,18 @@ export default function SignupScreen() {
             <Button onPress={handleSignup} loading={isLoading}>
               Create Account
             </Button>
+
+            <Text className="text-center text-xs leading-[18px] text-gray-500">
+              By creating an account you agree to our{" "}
+              <Text className="font-semibold text-gray-900" onPress={() => openLegalLink(TERMS_URL)}>
+                Terms of Service
+              </Text>{" "}
+              and{" "}
+              <Text className="font-semibold text-gray-900" onPress={() => openLegalLink(PRIVACY_URL)}>
+                Privacy Policy
+              </Text>
+              .
+            </Text>
           </View>
         </View>
       </KeyboardAvoidingView>

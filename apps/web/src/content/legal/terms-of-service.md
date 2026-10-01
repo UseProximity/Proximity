@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** September 24, 2026
+**Last updated:** October 1, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -366,11 +366,13 @@ who handle personal information.
 
 ## 17. Suspension, termination, and deleting your account
 
-**You can leave at any time.** Account deletion is self-service on the website, from your
-dashboard. When you confirm, your account stops working immediately, listings you owned
-alone are withdrawn from the marketplace, listings you co-owned stay live under the
-co-owner, and your personal data is permanently erased after 30 days. There is no undo.
-Privacy Policy §8 sets out exactly what is erased, what is anonymized, and what is kept.
+**You can leave at any time.** Account deletion is self-service, on the website from your
+dashboard or in the mobile apps under Profile → Delete Account. When you confirm, your
+account stops working immediately, listings you owned alone are withdrawn from the
+marketplace, listings you co-owned stay live under the co-owner, and after 30 days your
+personal data is erased, except the records Section 17A and Privacy Policy §8 allow us to
+keep for three years. There is no undo. Privacy Policy §8 sets out exactly what is erased,
+what is anonymized, and what is kept.
 
 **We can suspend or terminate.** We may suspend or terminate your account, remove your
 content, or withdraw a listing if we believe you have breached these Terms, if it is
