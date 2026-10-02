@@ -1,56 +1,23 @@
-import { importPKCS8, SignJWT } from "jose";
+import { getGoogleAccessToken, serviceAccountConfigured } from "@/lib/google/serviceAccount";
 
 /*
- * Google Search Console client using a service account, with no new
- * dependency: the JWT-bearer OAuth flow is built directly on `jose` (already
- * in package.json) instead of pulling in googleapis.
+ * Google Search Console client using the project service account (token flow
+ * in @/lib/google/serviceAccount, no googleapis dependency).
  *
- * Env (Vercel Production only):
- *   GSC_CLIENT_EMAIL  service account email (added as a restricted user on
- *                     the Search Console property)
- *   GSC_PRIVATE_KEY   the service account's PKCS8 private key; newlines may
- *                     be stored as literal \n
+ * Env (Vercel Preview + Production): GSC_CLIENT_EMAIL and GSC_PRIVATE_KEY (see
+ * serviceAccount.js; the account is added as a restricted user on the Search
+ * Console property), plus
  *   GSC_SITE_URL      property identifier, e.g. "sc-domain:useproximity.org"
  *                     or "https://useproximity.org/"
  */
 
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 
 export function gscConfigured() {
-  return Boolean(
-    process.env.GSC_CLIENT_EMAIL &&
-      process.env.GSC_PRIVATE_KEY &&
-      process.env.GSC_SITE_URL
-  );
+  return Boolean(serviceAccountConfigured() && process.env.GSC_SITE_URL);
 }
 
-async function getAccessToken() {
-  const clientEmail = process.env.GSC_CLIENT_EMAIL;
-  const rawKey = process.env.GSC_PRIVATE_KEY.replace(/\\n/g, "\n");
-  const key = await importPKCS8(rawKey, "RS256");
-
-  const assertion = await new SignJWT({ scope: SCOPE })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(clientEmail)
-    .setAudience(TOKEN_URL)
-    .setIssuedAt()
-    .setExpirationTime("1h")
-    .sign(key);
-
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`GSC token exchange failed: ${res.status} ${await res.text()}`);
-  }
-  return (await res.json()).access_token;
-}
+const getAccessToken = () => getGoogleAccessToken(SCOPE);
 
 const GSC_PAGE_SIZE = 5000; // API maximum per request
 const GSC_MAX_ROWS = 100000; // stop runaway paging on a very large site
