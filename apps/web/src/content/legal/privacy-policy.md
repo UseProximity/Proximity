@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** October 1, 2026
+**Last updated:** October 2, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -346,6 +346,8 @@ your device's secure, encrypted storage:
 Signing out deletes your credentials and cached profile from the device. The mobile apps do
 not store your matchmaking conversation on the device. They contain no analytics,
 advertising, attribution, or crash-reporting code, and do not use over-the-air updates.
+The apps turn off the optional usage telemetry that the Mapbox map library would otherwise
+send to Mapbox. Map requests themselves still reach Mapbox (Section 6.3).
 
 If you allow notifications, the apps also register a push token for your device with our
 servers (Section 1.5). The apps ask for notification permission after you sign in, and you
