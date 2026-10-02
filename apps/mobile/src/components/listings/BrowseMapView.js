@@ -27,6 +27,11 @@ import { colors, shadows } from "../../theme/tokens";
 // and selected-listing preview card).
 const FLOATING_SHADOW = shadows.floating;
 
+// Mapbox logo and attribution "i" offsets. The clearance is the selected-listing
+// card's height (about 62) plus its 16 bottom offset, with a little breathing room.
+const ORNAMENT_MARGIN = 8;
+const SELECTED_CARD_CLEARANCE = 88;
+
 // Pin size relative to the bundled artwork (35x49pt). Mapbox scales symbols
 // around their anchor, so with iconAnchor "bottom" the tip stays on the
 // listing's coordinate at any value here.
@@ -44,6 +49,10 @@ export function BrowseMapView({ listings }) {
     [listings]
   );
   const selected = pinnable.find((l) => l._id === selectedId) ?? null;
+  // Mapbox's logo and attribution "i" (the telemetry opt-in) sit at the bottom
+  // corners. Lift them clear of the selected-listing card so they stay visible
+  // and tappable while it is open.
+  const ornamentBottom = selected ? SELECTED_CARD_CLEARANCE : ORNAMENT_MARGIN;
 
   const shape = useMemo(
     () => ({
@@ -77,6 +86,8 @@ export function BrowseMapView({ listings }) {
         style={{ flex: 1 }}
         styleURL="mapbox://styles/mapbox/streets-v11"
         surfaceView={false}
+        logoPosition={{ bottom: ornamentBottom, left: ORNAMENT_MARGIN }}
+        attributionPosition={{ bottom: ornamentBottom, right: ORNAMENT_MARGIN }}
       >
         <Mapbox.Camera
           bounds={bounds ?? undefined}
