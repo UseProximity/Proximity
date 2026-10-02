@@ -33,18 +33,22 @@ export default function WashuPageJsonLd({ page, content, listings }) {
           { "@type": "ListItem", position: 3, name: page.h1, item: url },
         ],
       },
-      {
-        "@type": "ItemList",
-        "@id": `${url}#listings`,
-        name: page.h1,
-        numberOfItems: listings.length,
-        itemListElement: listings.map((l, i) => ({
-          "@type": "ListItem",
-          position: i + 1,
-          name: l.title || l.address?.split(",")[0]?.trim() || "Listing",
-          url: `${SITE_URL}/listings/${l._id}`,
-        })),
-      },
+      ...(listings.length
+        ? [
+            {
+              "@type": "ItemList",
+              "@id": `${url}#listings`,
+              name: page.h1,
+              numberOfItems: listings.length,
+              itemListElement: listings.map((l, i) => ({
+                "@type": "ListItem",
+                position: i + 1,
+                name: l.title || l.address?.split(",")[0]?.trim() || "Listing",
+                url: `${SITE_URL}/listings/${l._id}`,
+              })),
+            },
+          ]
+        : []),
       ...(content?.faqs?.length
         ? [
             {
