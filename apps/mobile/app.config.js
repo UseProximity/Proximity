@@ -39,7 +39,7 @@ module.exports = {
       ["expo-secure-store", { faceIDPermission: false }],
     ],
     ios: {
-      supportsTablet: true,
+      supportsTablet: false,
       bundleIdentifier: "com.proximityllc.proximity",
       // Only standard HTTPS (system TLS) is used, which is exempt from US export
       // rules. Sets ITSAppUsesNonExemptEncryption=false so App Store Connect
