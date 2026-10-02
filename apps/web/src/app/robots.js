@@ -19,6 +19,7 @@ export default function robots() {
         // the rest are auth/utility shells with no search value.
         disallow: [
           "/api/",
+          "/analytics",
           "/dashboard/",
           "/login",
           "/reset-password",
