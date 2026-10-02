@@ -1,5 +1,5 @@
 import { fetchAll, countRows, lookupIds } from "@/lib/analytics/db";
-import { gaConfigured, gaEventsWeekly, gaEventUsers, gaTraffic } from "@/lib/analytics/ga";
+import { gaConfigured, gaEventUsers, gaTraffic } from "@/lib/analytics/ga";
 import { gscConfigured, fetchGscWindows } from "@/lib/seo/gsc";
 import { weeklyCounts, periodTotals, sum } from "@/lib/analytics/periods";
 
@@ -22,6 +22,21 @@ import { weeklyCounts, periodTotals, sum } from "@/lib/analytics/periods";
 
 const DB = "Database";
 const GA = "Google Analytics (live site)";
+
+/*
+ * One source of truth per number, so the page never shows two different counts of the same
+ * thing:
+ *   - Totals (how many chats, reviews, lease checks, contacts) come from the database, which
+ *     records every one.
+ *   - Google Analytics is used only for what the database cannot see: steps that leave no row
+ *     (opened matchmaking, clicked a recommendation) shown as drop-off between steps, and
+ *     site traffic. GA misses visitors who block tracking, so its counts run lower; a GA
+ *     funnel is read as percentages, not as a second total.
+ *   - Vercel Analytics receives the same events but is not read here: it counts visitors
+ *     differently, and showing both would put two disagreeing numbers on one page.
+ */
+const GA_FUNNEL_NOTE =
+  "Funnels come from Google Analytics, which only sees visitors who allow tracking, so its counts run lower than the database totals above. Read funnels as drop-off between steps; use the database numbers for totals.";
 const DAY = 24 * 60 * 60 * 1000;
 
 const since = (period) => (q) => q.gte("created_at", period.prevStart);
@@ -44,24 +59,18 @@ function gaNote(err) {
 
 /** GA events as a weekly trend plus a "users who did this" funnel table. */
 async function gaFunnel(period, title, steps) {
-  const names = steps.map((s) => s.event);
-  const [weekly, users] = await Promise.all([
-    gaEventsWeekly(period, names),
-    gaEventUsers(period, names),
-  ]);
-  const first = users[names[0]];
+  const users = await gaEventUsers(period, steps.map((s) => s.event));
+  const first = users[steps[0].event];
   return {
-    weekly,
     table: {
       title,
       source: GA,
       columns: [
         { label: "Step" },
-        { label: "Users", format: "number" },
+        { label: "Visitors", format: "number" },
         { label: "% of first step", format: "percent" },
-        { label: "Times it happened", format: "number" },
       ],
-      rows: steps.map((s) => [s.label, users[s.event], pct(users[s.event], first), weekly[s.event].current]),
+      rows: steps.map((s) => [s.label, users[s.event], pct(users[s.event], first)]),
     },
   };
 }
@@ -167,13 +176,8 @@ async function matchmaking(period) {
   };
 
   try {
-    const { weekly, table } = await gaFunnel(period, "Matchmaking funnel", MATCHMAKING_STEPS);
-    section.tables.push(table);
-    section.trends.push({
-      title: "Matchmaking funnel per week (events)",
-      source: GA,
-      series: MATCHMAKING_STEPS.map((s) => ({ label: s.label, values: weekly[s.event].weekly })),
-    });
+    section.tables.push((await gaFunnel(period, "Matchmaking funnel", MATCHMAKING_STEPS)).table);
+    section.notes.push(GA_FUNNEL_NOTE);
   } catch (err) {
     section.notes.push(gaNote(err));
   }
@@ -366,10 +370,12 @@ async function engagement(period) {
 
 // ─── Reviews ───────────────────────────────────────────────────────────────────
 
+// The /review flow (QR codes and invites). "Review Submitted" is a different flow (the review
+// box on a listing page) and is not a step here.
 const REVIEW_STEPS = [
-  { event: "qr_review_start", label: "Started from a QR code" },
+  { event: "qr_review_start", label: "Opened the review page from a QR code" },
   { event: "review_account_started", label: "Started creating an account" },
-  { event: "Review Submitted", label: "Submitted a review" },
+  { event: "review_submitted", label: "Submitted a review" },
 ];
 
 async function reviews(period) {
@@ -400,7 +406,8 @@ async function reviews(period) {
     notes: [],
   };
   try {
-    section.tables.push((await gaFunnel(period, "Review funnel", REVIEW_STEPS)).table);
+    section.tables.push((await gaFunnel(period, "Review funnel (QR code flow)", REVIEW_STEPS)).table);
+    section.notes.push(GA_FUNNEL_NOTE);
   } catch (err) {
     section.notes.push(gaNote(err));
   }
@@ -433,6 +440,7 @@ async function leaseCheck(period) {
   };
   try {
     section.tables.push((await gaFunnel(period, "Lease check funnel", LEASE_STEPS)).table);
+    section.notes.push(GA_FUNNEL_NOTE);
   } catch (err) {
     section.notes.push(gaNote(err));
   }
@@ -484,7 +492,9 @@ async function traffic(period) {
       section.notes.push("Google Search Console could not be reached just now.");
     }
   }
-  section.notes.push("Page views and visitors by page are also in the Vercel dashboard (Analytics tab).");
+  section.notes.push(
+    "Traffic comes from Google Analytics only. Vercel Analytics counts visitors differently, so its numbers will not match these; treat this page as the reference."
+  );
   return section;
 }
 

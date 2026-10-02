@@ -60,36 +60,6 @@ function eventFilter(eventNames) {
   };
 }
 
-/**
- * Weekly event counts plus period totals for each event.
- * { [eventName]: { weekly: number[], current, previous } }
- */
-export async function gaEventsWeekly(period, eventNames) {
-  const rows = await runReport({
-    dateRanges: [dateRange(period.prevStart, period.today)],
-    dimensions: [{ name: "date" }, { name: "eventName" }],
-    metrics: [{ name: "eventCount" }],
-    dimensionFilter: eventFilter(eventNames),
-  });
-  const byEvent = Object.fromEntries(eventNames.map((e) => [e, []]));
-  for (const r of rows) {
-    byEvent[r.dimensionValues[1].value]?.push({
-      date: gaDate(r.dimensionValues[0].value),
-      n: Number(r.metricValues[0].value),
-    });
-  }
-  const weight = (row) => row.n;
-  return Object.fromEntries(
-    eventNames.map((e) => [
-      e,
-      {
-        weekly: weeklyCounts(period, byEvent[e], "date", weight),
-        ...periodTotals(period, byEvent[e], "date", weight),
-      },
-    ])
-  );
-}
-
 /** Unique users who fired each event in the current period: { [eventName]: users }. */
 export async function gaEventUsers(period, eventNames) {
   const rows = await runReport({
