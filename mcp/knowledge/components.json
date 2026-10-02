@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-28T18:35:26.269Z",
-  "count": 106,
+  "_generated": "2026-10-02T21:11:15.770Z",
+  "count": 109,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -67,6 +67,21 @@
       "name": "RosterPicker",
       "file": "src/components/admin/reviewInvites/RosterPicker.js",
       "description": "Student roster picker for review invites: search, filter by contacted status, flag missing first names, and draw N at random"
+    },
+    {
+      "name": "AnalyticsSection",
+      "file": "src/components/analytics/AnalyticsSection.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "TrendChart",
+      "file": "src/components/analytics/TrendChart.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "format",
+      "file": "src/components/analytics/format.js",
+      "description": "No description — run generate after adding a description above."
     },
     {
       "name": "AuthCard",

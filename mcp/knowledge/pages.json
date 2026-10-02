@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-09-14T18:27:33.735Z",
-  "count": 37,
+  "_generated": "2026-10-02T17:39:16.508Z",
+  "count": 38,
   "pages": [
     {
       "path": "/",
@@ -34,6 +34,10 @@
     {
       "path": "/add-sublease",
       "file": "src/app/add-sublease/page.js"
+    },
+    {
+      "path": "/analytics",
+      "file": "src/app/analytics/page.js"
     },
     {
       "path": "/browse",
