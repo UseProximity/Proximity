@@ -57,20 +57,25 @@ function gaNote(err) {
   return "Google Analytics could not be reached just now, so its numbers are hidden. The database numbers above are unaffected.";
 }
 
-/** GA events as a weekly trend plus a "users who did this" funnel table. */
-async function gaFunnel(period, title, steps) {
+/**
+ * Visitors who did each step, from GA. `sequential` adds "% of first step", which only makes
+ * sense when every step follows the one before it; otherwise the table is plain counts.
+ */
+async function gaFunnel(period, title, steps, { sequential = true } = {}) {
   const users = await gaEventUsers(period, steps.map((s) => s.event));
   const first = users[steps[0].event];
+  const columns = [{ label: "Step" }, { label: "Visitors", format: "number" }];
+  if (sequential) columns.push({ label: "% of first step", format: "percent" });
   return {
     table: {
       title,
       source: GA,
-      columns: [
-        { label: "Step" },
-        { label: "Visitors", format: "number" },
-        { label: "% of first step", format: "percent" },
-      ],
-      rows: steps.map((s) => [s.label, users[s.event], pct(users[s.event], first)]),
+      columns,
+      rows: steps.map((s) => {
+        const row = [s.label, users[s.event]];
+        if (sequential) row.push(pct(users[s.event], first));
+        return row;
+      }),
     },
   };
 }
@@ -370,12 +375,13 @@ async function engagement(period) {
 
 // ─── Reviews ───────────────────────────────────────────────────────────────────
 
-// The /review flow (QR codes and invites). "Review Submitted" is a different flow (the review
-// box on a listing page) and is not a step here.
+// Activity on the /review page. Not a funnel: people with an account skip the account step,
+// and reviews also arrive from invite links, not only QR codes. "Review Submitted" (the review
+// box on a listing page) is a separate flow and is counted in the database totals above.
 const REVIEW_STEPS = [
   { event: "qr_review_start", label: "Opened the review page from a QR code" },
-  { event: "review_account_started", label: "Started creating an account" },
-  { event: "review_submitted", label: "Submitted a review" },
+  { event: "review_account_started", label: "Started creating an account to review" },
+  { event: "review_submitted", label: "Submitted a review on the review page" },
 ];
 
 async function reviews(period) {
@@ -406,7 +412,9 @@ async function reviews(period) {
     notes: [],
   };
   try {
-    section.tables.push((await gaFunnel(period, "Review funnel (QR code flow)", REVIEW_STEPS)).table);
+    section.tables.push(
+      (await gaFunnel(period, "Review page activity", REVIEW_STEPS, { sequential: false })).table
+    );
     section.notes.push(GA_FUNNEL_NOTE);
   } catch (err) {
     section.notes.push(gaNote(err));
