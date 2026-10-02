@@ -32,11 +32,14 @@ export class AuthResource {
   }
 
   // skipAuth: the refresh token IS the credential — no Bearer header
-  refresh(refreshToken) {
+  // `signal` (optional AbortSignal) is forwarded when a caller's own request was
+  // made abortable, so cancelling that request cancels its refresh too.
+  refresh(refreshToken, { signal } = {}) {
     return this.client.request("/api/auth/mobile/refresh", {
       method: "POST",
       body: JSON.stringify({ refreshToken }),
       skipAuth: true,
+      signal,
     });
   }
 

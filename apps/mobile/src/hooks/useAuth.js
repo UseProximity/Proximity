@@ -120,7 +120,7 @@ export function useAuth() {
   }
 
   function logout() {
-    storeLogout();
+    return storeLogout();
   }
 
   return {
