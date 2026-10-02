@@ -23,6 +23,10 @@ Notifications.setNotificationHandler({
 // without re-deriving it (and without prompting for permission again).
 let cachedToken = null;
 
+// Upper bound on how long logout waits for the server-side unregister. Past this
+// the request is aborted and logout carries on with the local cleanup.
+const UNREGISTER_TIMEOUT_MS = 3000;
+
 // `devicePushToken` is optional and only ever passed by the token-rotation
 // listener (usePushNotifications.js), which already receives the native
 // DevicePushToken as its argument. Passing it through here skips
@@ -71,12 +75,30 @@ export async function unregisterDeviceToken() {
   if (!cachedToken) return;
   const token = cachedToken;
   cachedToken = null;
+  // Aborting (rather than just abandoning the request) matters: a request left
+  // running could 401 after local state is cleared and trigger onTokenExpired,
+  // which would log out whoever signed in next. The signal also cancels the api
+  // client's token-refresh retry; the race is a backstop for a fetch that
+  // doesn't honor the signal, so logout never waits past the timeout.
+  const controller = new AbortController();
+  let timer;
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve();
+    }, UNREGISTER_TIMEOUT_MS);
+  });
   try {
-    await apiClient.devices.unregisterPushToken(token);
+    await Promise.race([
+      apiClient.devices.unregisterPushToken(token, { signal: controller.signal }),
+      timedOut,
+    ]);
   } catch {
-    // Logout must proceed regardless — a failed unregister just leaves a
-    // stale row that a future registration (this device, any user) will
-    // overwrite via the upsert's onConflict, or that purge-accounts cleans
-    // up eventually.
+    // Logout must proceed regardless (offline, timed out, server error). A
+    // failed unregister just leaves a stale row that a future registration
+    // (this device, any user) will overwrite via the upsert's onConflict, or
+    // that purge-accounts cleans up eventually.
+  } finally {
+    clearTimeout(timer);
   }
 }

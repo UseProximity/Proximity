@@ -10,10 +10,12 @@ export class DevicesResource {
     });
   }
 
-  unregisterPushToken(expoPushToken) {
+  // `signal` (optional AbortSignal) lets the caller cancel a stalled request.
+  unregisterPushToken(expoPushToken, { signal } = {}) {
     return this.client.request("/api/devices/push-token", {
       method: "DELETE",
       body: JSON.stringify({ expoPushToken }),
+      signal,
     });
   }
 }

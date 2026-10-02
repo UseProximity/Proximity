@@ -73,11 +73,15 @@ class ApiClient {
       const refreshToken = this.getRefreshToken();
       if (refreshToken) {
         try {
-          const { accessToken } = await this.auth.refresh(refreshToken);
+          const { accessToken } = await this.auth.refresh(refreshToken, { signal: fetchOptions.signal });
+          // The caller gave up (e.g. logout timed out): don't write a late token
+          // back into the store or report the session as expired.
+          if (fetchOptions.signal?.aborted) throw new Error("Request aborted");
           if (this.onTokenRefreshed) await this.onTokenRefreshed(accessToken);
           const retryHeaders = { ...headers, Authorization: `Bearer ${accessToken}` };
           res = await fetch(url, { ...fetchOptions, headers: retryHeaders });
-        } catch {
+        } catch (refreshErr) {
+          if (fetchOptions.signal?.aborted) throw refreshErr;
           await this.onTokenExpired();
           const err = new Error("Session expired");
           err.status = 401;

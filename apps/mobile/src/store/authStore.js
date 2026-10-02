@@ -19,15 +19,25 @@ export const useAuthStore = create((set, get) => ({
   logout: async () => {
     // Unregister the device's push token before clearing local tokens — the
     // DELETE call needs the still-valid access token to authenticate.
-    const { unregisterDeviceToken } = await import("../lib/pushNotifications");
-    await unregisterDeviceToken();
+    // Best effort and time-bounded (see unregisterDeviceToken): a failure here
+    // must never stop the local sign-out below.
+    try {
+      const { unregisterDeviceToken } = await import("../lib/pushNotifications");
+      await unregisterDeviceToken();
+    } catch (err) {
+      console.warn("logout: push token cleanup skipped", err);
+    }
 
     set({ user: null, accessToken: null, refreshToken: null });
-    await Promise.all([
+    // allSettled so one failing key can't skip the others or the favorites clear.
+    const removals = await Promise.allSettled([
       secureStorage.remove("access_token"),
       secureStorage.remove("refresh_token"),
       secureStorage.remove("user"),
     ]);
+    if (removals.some((r) => r.status === "rejected")) {
+      console.warn("logout: could not clear all stored credentials");
+    }
 
     // Clear favorites on logout
     const { useFavoritesStore } = await import("./favoritesStore");
