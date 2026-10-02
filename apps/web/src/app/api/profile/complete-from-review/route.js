@@ -26,12 +26,9 @@ import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import { loadProfileSetupUser, clearProfileSetupToken } from "@/lib/reviews/onboarding";
 import { GENDERS, REFERRAL_SOURCES } from "@/components/auth/profileFields";
+import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
-
-// A student self-completing a profile may only ever be one of these. admin,
-// super and system are assignable exclusively by an admin, server-side.
-const REVIEW_ONBOARDING_ROLES = new Set(["student", "landlord", "parent", "other"]);
 
 export async function GET(req) {
   try {
@@ -79,7 +76,7 @@ export async function POST(req) {
     }
 
     const roleName = String(role || "").toLowerCase();
-    if (!REVIEW_ONBOARDING_ROLES.has(roleName)) {
+    if (!SELF_ASSIGNABLE_ROLES.has(roleName)) {
       return NextResponse.json({ error: "Select who you are." }, { status: 400 });
     }
     if (!GENDERS.includes(gender)) {

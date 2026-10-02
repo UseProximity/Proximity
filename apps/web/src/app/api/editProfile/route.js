@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
-import { SELF_ASSIGNABLE_ROLES, PRIVILEGED_ROLES } from "@/lib/auth/roles";
+import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 
 export async function PATCH(req) {
   try {
@@ -16,7 +16,7 @@ export async function PATCH(req) {
 
     const { data: sbUser, error: lookupError } = await supabase
       .from("users")
-      .select("id, name, birthday, gender, phone, description, roles!role_id(name)")
+      .select("id, roles!role_id(name)")
       .eq("email", session.user.email)
       .single();
 
@@ -59,14 +59,10 @@ export async function PATCH(req) {
     if (body.graduation_month !== undefined)
       allowedFields.graduation_month = body.graduation_month ?? null;
 
-    // Only allow role changes if provided. Privileged roles require super;
-    // any other role must be on the self-assignable allowlist unless the
-    // caller is already super (default-deny for roles like parent/other/system).
+    // Only allow role changes if provided. Anything off the self-assignable
+    // allowlist (super, admin, system, ...) requires the caller to be super.
     if (body.role !== undefined && body.role !== null) {
-      const isPrivileged = PRIVILEGED_ROLES.has(body.role);
-      const isAllowed =
-        currentRole === "super" || (!isPrivileged && SELF_ASSIGNABLE_ROLES.has(body.role));
-      if (!isAllowed) {
+      if (currentRole !== "super" && !SELF_ASSIGNABLE_ROLES.has(body.role)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       const { data: roleRow, error: roleErr } = await supabase

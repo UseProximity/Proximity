@@ -4,7 +4,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
-import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
+import { SIGNUP_ROLES } from "@/lib/auth/roles";
 
 export async function POST(req) {
   try {
@@ -29,7 +29,7 @@ export async function POST(req) {
     // Honor the role chosen on the signup form; default to student. This lets an
     // email/password landlord be created with the right role from the start so
     // their first session token is correct (mirrors Google's "Login as Landlord").
-    const signupRole = SELF_ASSIGNABLE_ROLES.has(role) ? role : "student";
+    const signupRole = SIGNUP_ROLES.has(role) ? role : "student";
 
     const { data: existing } = await supabase
       .from("users")
