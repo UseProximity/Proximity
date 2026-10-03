@@ -8,7 +8,7 @@
 --     when a listing changes hands.
 --   * a unique partial index on (listing_id, interested_user_id) so one user can't end up
 --     with two live threads about the same listing.
---   * chat_messages.message_type / metadata so richer messages (e.g. discount offers)
+--   * chat_messages.message_type / metadata so richer messages (e.g. attachments)
 --     don't require another ALTER later.
 --   * a trigger bumping chat_threads.updated_at on new messages — inserting a message
 --     doesn't touch the thread row, so without this "sort inbox by recent activity" breaks.
@@ -40,7 +40,7 @@ ALTER TABLE public.chat_messages
 DO $$ BEGIN
   ALTER TABLE public.chat_messages
     ADD CONSTRAINT chat_messages_message_type_check
-    CHECK (message_type IN ('text', 'discount_offer'));
+    CHECK (message_type IN ('text'));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

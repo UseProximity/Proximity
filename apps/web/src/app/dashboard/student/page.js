@@ -8,7 +8,6 @@ import Link from "next/link";
 import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
-import BroadcastListingOfferButton from "@/components/chat/BroadcastListingOfferButton";
 
 function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
@@ -19,8 +18,6 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
   const imageUrl = listing.images?.[0];
   const listingId = listing._id || listing.id;
   const isActive = !listing.unavailable;
-  const defaultRent =
-    listing.minRent ?? listing.min_rent ?? listing.unitTypes?.[0]?.rent ?? "";
 
   return (
     <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 flex flex-col">
@@ -64,15 +61,6 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
           >
             Edit
           </button>
-          {isActive ? (
-            <BroadcastListingOfferButton
-              listingId={listingId}
-              defaultRent={defaultRent}
-              className="flex-1 min-w-[5.5rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-            >
-              Offer to savers
-            </BroadcastListingOfferButton>
-          ) : null}
           {/* "Withdraw", not "Delete" — it takes the offering off the market
               and leaves the property alone. See handleWithdrawSublease. */}
           <button

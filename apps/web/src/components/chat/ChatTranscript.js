@@ -5,8 +5,6 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
-import DiscountOfferCard from "@/components/chat/DiscountOfferCard";
-import SendOfferForm from "@/components/chat/SendOfferForm";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -100,47 +98,23 @@ function findReadReceiptMessageId(list, otherUserLastReadAt) {
   return null;
 }
 
-function formatMoneyLabel(value) {
-  if (value == null || value === "") return null;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return `$${Math.round(n).toLocaleString()}`;
-}
-
-/** Newest accepted discount_offer in the thread, if any. */
-function findAcceptedOffer(list) {
-  if (!list?.length) return null;
-  for (let i = list.length - 1; i >= 0; i--) {
-    const msg = list[i];
-    if (msg?.messageType !== "discount_offer") continue;
-    if ((msg.metadata?.status || "pending") !== "accepted") continue;
-    const proposed = Number(msg.metadata?.proposedRent);
-    if (!Number.isFinite(proposed) || proposed <= 0) continue;
-    return msg;
-  }
-  return null;
-}
-
 /**
  * Message bubbles + composer for one thread (useMessages messages + sendMessage).
  * A centered day·time header starts each new day and each gap over 3h. Otherwise
- * time is hover / swipe-left. discount_offer messages render as offer cards;
- * attachment messages render inline images / downloadable files.
+ * time is hover / swipe-left. attachment messages render inline images /
+ * downloadable files.
  */
 export default function ChatTranscript({
   thread,
   messages,
   messagesLoading = false,
   onSend,
-  onSendOffer,
-  onRespondOffer,
   onBack,
   headerActions = null,
 }) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
-  const [offerOpen, setOfferOpen] = useState(false);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
@@ -166,16 +140,6 @@ export default function ChatTranscript({
     thread?.listingMinRent,
     thread?.listingMaxRent
   );
-  const acceptedOffer = findAcceptedOffer(list);
-  const acceptedRentLabel = acceptedOffer
-    ? formatMoneyLabel(acceptedOffer.metadata?.proposedRent)
-    : null;
-  const acceptedOriginalLabel =
-    formatMoneyLabel(acceptedOffer?.metadata?.originalRent) ||
-    formatMoneyLabel(thread?.listingMinRent);
-  // Either side of a listing thread can open an offer: the owner discounting the rent,
-  // or the interested user proposing one. The RPC re-checks participation.
-  const canSendOffer = !!onSendOffer && !!thread?.listingId;
   const canSend = (!!input.trim() || pendingFiles.length > 0) && !sending;
 
   useEffect(() => {
@@ -290,25 +254,6 @@ export default function ChatTranscript({
     setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function handleSendOffer({ proposedRent, note }) {
-    if (!onSendOffer || !thread?.threadId) return;
-    await onSendOffer(thread.threadId, { proposedRent, note });
-    toast.success("Offer sent");
-  }
-
-  async function handleRespondOffer(messageId, action, extra = {}) {
-    if (!onRespondOffer) return;
-    try {
-      await onRespondOffer(messageId, action, extra);
-      if (action === "accept") toast.success("Offer accepted");
-      else if (action === "deny") toast.success("Offer declined");
-      else if (action === "counter") toast.success("Counter offer sent");
-    } catch (err) {
-      toast.error(err?.message || "Could not update offer.");
-      throw err;
-    }
-  }
-
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -353,7 +298,7 @@ export default function ChatTranscript({
           <p className="text-sm font-semibold text-gray-900 truncate">
             {thread?.otherUserName || "Conversation"}
           </p>
-          {(listingLabel || acceptedRentLabel || listingRentLabel) && (
+          {(listingLabel || listingRentLabel) && (
             <div className="flex items-baseline justify-between gap-2 min-w-0">
               {listingLabel ? (
                 thread?.listingId ? (
@@ -372,17 +317,7 @@ export default function ChatTranscript({
               ) : (
                 <span className="min-w-0" />
               )}
-              {acceptedRentLabel ? (
-                <p className="text-xs font-medium tabular-nums flex-shrink-0 flex items-baseline gap-1.5">
-                  <span className="text-green-700">{acceptedRentLabel}/mo</span>
-                  {acceptedOriginalLabel &&
-                  acceptedOriginalLabel !== acceptedRentLabel ? (
-                    <span className="text-gray-400 line-through">
-                      {acceptedOriginalLabel}/mo
-                    </span>
-                  ) : null}
-                </p>
-              ) : listingRentLabel ? (
+              {listingRentLabel ? (
                 <p className="text-xs font-medium text-gray-600 tabular-nums flex-shrink-0">
                   {listingRentLabel}
                 </p>
@@ -415,7 +350,6 @@ export default function ChatTranscript({
             const showSession = shouldShowSessionDivider(prev, msg);
             const timeLabel = formatMessageTime(msg.createdAt);
             const sessionLabel = formatSessionDivider(msg.createdAt);
-            const isOffer = msg.messageType === "discount_offer";
             const isAttachment = msg.messageType === "attachment";
 
             return (
@@ -435,20 +369,14 @@ export default function ChatTranscript({
                         shiftPx > 0 ? `translateX(${-shiftPx}px)` : undefined,
                     }}
                   >
-                    {!msg.isMine && !isOffer && (
+                    {!msg.isMine && (
                       <ChatAvatar
                         src={thread?.otherUserImage}
                         name={thread?.otherUserName}
                         size="sm"
                       />
                     )}
-                    {isOffer ? (
-                      <DiscountOfferCard
-                        message={msg}
-                        canRespond={!!onRespondOffer}
-                        onRespond={handleRespondOffer}
-                      />
-                    ) : isAttachment ? (
+                    {isAttachment ? (
                       <div
                         className={`relative max-w-[72%] ${
                           msg.isMine ? "items-end" : "items-start"
@@ -549,17 +477,6 @@ export default function ChatTranscript({
           </div>
         )}
         <div className="flex items-start gap-2">
-          {canSendOffer ? (
-            <button
-              type="button"
-              onClick={() => setOfferOpen(true)}
-              disabled={sending}
-              className="mt-2 flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"
-              aria-label="Send offer"
-            >
-              Offer
-            </button>
-          ) : null}
           <div
             className={`flex-1 min-w-0 flex items-end gap-2 bg-gray-50 rounded-xl border px-3 py-2 ${
               sending ? "border-gray-200 opacity-80" : "border-gray-200"
@@ -665,14 +582,6 @@ export default function ChatTranscript({
           </p>
         )}
       </div>
-
-      <SendOfferForm
-        mode="thread"
-        open={offerOpen}
-        onClose={() => setOfferOpen(false)}
-        onSubmit={handleSendOffer}
-        defaultRent={thread?.listingMinRent ?? ""}
-      />
     </div>
   );
 }

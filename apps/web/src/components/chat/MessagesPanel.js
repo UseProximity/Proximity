@@ -26,8 +26,6 @@ export default function MessagesPanel({
     activeThreadId,
     setActiveThreadId,
     sendMessage,
-    sendOffer,
-    respondOffer,
     refreshThreads,
     prefetchMessages,
   } = useMessages();
@@ -101,8 +99,6 @@ export default function MessagesPanel({
               messages={activeMessages}
               messagesLoading={messagesLoading}
               onSend={sendMessage}
-              onSendOffer={sendOffer}
-              onRespondOffer={respondOffer}
               onBack={backToList}
             />
           ) : (
@@ -116,8 +112,6 @@ export default function MessagesPanel({
               messages={activeMessages}
               messagesLoading={messagesLoading}
               onSend={sendMessage}
-              onSendOffer={sendOffer}
-              onRespondOffer={respondOffer}
               onBack={null}
             />
           ) : (

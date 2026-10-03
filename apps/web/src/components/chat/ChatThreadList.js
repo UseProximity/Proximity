@@ -27,19 +27,12 @@ function formatPreviewTime(iso) {
 }
 
 function threadPreview(thread) {
-  const offerPreview =
-    thread.lastMessageType === "discount_offer"
-      ? thread.lastMessageMine
-        ? "You sent an offer"
-        : "Sent you an offer"
-      : null;
   const attachmentPreview =
     thread.lastMessageType === "attachment"
       ? thread.lastMessageMine
         ? `You: ${thread.lastMessageBody || "Sent a file"}`
         : thread.lastMessageBody || "Sent a file"
       : null;
-  if (offerPreview) return offerPreview;
   if (attachmentPreview) return attachmentPreview;
   return thread.lastMessageMine
     ? `You: ${thread.lastMessageBody || ""}`

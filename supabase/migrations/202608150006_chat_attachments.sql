@@ -12,7 +12,7 @@ ALTER TABLE public.chat_messages
 
 ALTER TABLE public.chat_messages
   ADD CONSTRAINT chat_messages_message_type_check
-  CHECK (message_type IN ('text', 'discount_offer', 'attachment'));
+  CHECK (message_type IN ('text', 'attachment'));
 
 CREATE TABLE IF NOT EXISTS public.chat_attachments (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

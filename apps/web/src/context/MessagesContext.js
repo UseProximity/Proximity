@@ -9,8 +9,7 @@
  * last_read_at for "Read · time" receipts in ChatTranscript. Prefetches recent
  * thread histories so opening a conversation feels instant. No UI chrome
  * (composer text lives in ChatTranscript). Consumed by /messages, header
- * unread badge, and the listing modal's Message / Offer CTAs via startListingChat
- * and startListingOffer.
+ * unread badge, and the listing modal's Message CTA via startListingChat.
  */
 "use client";
 
@@ -66,12 +65,6 @@ function patchMessage(list, message) {
   const next = [...prev];
   next[idx] = { ...next[idx], ...message };
   return next;
-}
-
-function formatOfferBody(proposedRent) {
-  const n = Number(proposedRent);
-  if (!Number.isFinite(n)) return "Offer";
-  return `Offer: $${Math.round(n).toLocaleString()}/mo`;
 }
 
 export function MessagesProvider({ children }) {
@@ -422,140 +415,6 @@ export function MessagesProvider({ children }) {
     }
   }, [refreshThreads, loadMessages]);
 
-  const sendOffer = useCallback(
-    async (threadId, { proposedRent, note, parentOfferId } = {}) => {
-      if (!userIdRef.current || !threadId) {
-        throw new Error("Not signed in");
-      }
-      const rent = Number(proposedRent);
-      if (!Number.isFinite(rent) || rent <= 0) {
-        throw new Error("proposedRent must be a positive number");
-      }
-
-      const tempId = `temp-${crypto.randomUUID()}`;
-      const metadata = {
-        status: "pending",
-        proposedRent: rent,
-        originalRent: null,
-        note: note?.trim() || null,
-        parentOfferId: parentOfferId ?? null,
-        respondedAt: null,
-        respondedBy: null,
-      };
-      const optimistic = {
-        id: tempId,
-        threadId,
-        senderId: userIdRef.current,
-        isMine: true,
-        body: formatOfferBody(rent),
-        messageType: "discount_offer",
-        metadata,
-        createdAt: new Date().toISOString(),
-      };
-
-      setMessagesByThread((prev) => {
-        const list = (prev[threadId] ?? []).map((m) => {
-          if (
-            m.messageType === "discount_offer" &&
-            (m.metadata?.status || "pending") === "pending"
-          ) {
-            return {
-              ...m,
-              metadata: { ...m.metadata, status: "superseded" },
-            };
-          }
-          return m;
-        });
-        return {
-          ...prev,
-          [threadId]: upsertMessage(list, optimistic),
-        };
-      });
-
-      try {
-        const res = await fetch(`/api/chat/threads/${threadId}/offers`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            proposedRent: rent,
-            note: note?.trim() || undefined,
-            parentOfferId: parentOfferId || undefined,
-          }),
-        });
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => null);
-          throw new Error(errBody?.error || `Failed to send offer (${res.status})`);
-        }
-        const data = await res.json();
-        const confirmed = {
-          ...optimistic,
-          id: data.messageId,
-          body: data.body || optimistic.body,
-          metadata: data.metadata || metadata,
-        };
-        setMessagesByThread((prev) => ({
-          ...prev,
-          [threadId]: replaceTempMessage(prev[threadId], tempId, confirmed),
-        }));
-        refreshThreads().catch(() => {});
-        return confirmed;
-      } catch (err) {
-        setMessagesByThread((prev) => ({
-          ...prev,
-          [threadId]: (prev[threadId] ?? []).filter((m) => m.id !== tempId),
-        }));
-        // Reload to restore superseded statuses if optimistic patch was wrong.
-        loadMessages(threadId).catch(() => {});
-        throw err;
-      }
-    },
-    [refreshThreads, loadMessages]
-  );
-
-  const respondOffer = useCallback(
-    async (messageId, action, { proposedRent, note } = {}) => {
-      if (!userIdRef.current || !messageId) {
-        throw new Error("Not signed in");
-      }
-
-      const res = await fetch(`/api/chat/offers/${messageId}/respond`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          proposedRent,
-          note: note?.trim() || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => null);
-        throw new Error(errBody?.error || `Failed to respond (${res.status})`);
-      }
-      const data = await res.json();
-      const threadId = data.threadId;
-
-      if (action === "counter" && threadId) {
-        // New offer row; also mark others superseded via reload for accuracy.
-        await loadMessages(threadId);
-      } else if (threadId && data.messageId) {
-        setMessagesByThread((prev) => ({
-          ...prev,
-          [threadId]: patchMessage(prev[threadId], {
-            id: data.messageId,
-            threadId,
-            body: data.body,
-            messageType: "discount_offer",
-            metadata: data.metadata,
-          }),
-        }));
-      }
-
-      refreshThreads().catch(() => {});
-      return data;
-    },
-    [loadMessages, refreshThreads]
-  );
-
   const startListingChat = useCallback(
     async (listingId, body) => {
       if (!userIdRef.current) throw new Error("Not signed in");
@@ -579,38 +438,6 @@ export function MessagesProvider({ children }) {
       return data;
     },
     [refreshThreads]
-  );
-
-  const startListingOffer = useCallback(
-    async (listingId, { proposedRent, note } = {}) => {
-      if (!userIdRef.current) throw new Error("Not signed in");
-      const rent = Number(proposedRent);
-      if (!Number.isFinite(rent) || rent <= 0) {
-        throw new Error("proposedRent must be a positive number");
-      }
-
-      const res = await fetch("/api/chat/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          listingId,
-          proposedRent: rent,
-          note: note?.trim() || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => null);
-        throw new Error(errBody?.error || `Failed to send offer (${res.status})`);
-      }
-      const data = await res.json();
-      await refreshThreads();
-      if (data?.threadId) {
-        setActiveThreadId(data.threadId);
-        loadMessages(data.threadId).catch(() => {});
-      }
-      return data;
-    },
-    [refreshThreads, loadMessages]
   );
 
   // Bootstrap inbox on login; clear on logout. Ignore session "loading" so we
@@ -822,10 +649,7 @@ export function MessagesProvider({ children }) {
       loadMessages,
       prefetchMessages,
       sendMessage,
-      sendOffer,
-      respondOffer,
       startListingChat,
-      startListingOffer,
       markThreadRead,
       setActiveThreadId,
     }),
@@ -840,10 +664,7 @@ export function MessagesProvider({ children }) {
       loadMessages,
       prefetchMessages,
       sendMessage,
-      sendOffer,
-      respondOffer,
       startListingChat,
-      startListingOffer,
       markThreadRead,
     ]
   );
