@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-02T17:39:16.519Z",
-  "count": 92,
+  "_generated": "2026-10-03T21:01:47.828Z",
+  "count": 93,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -38,6 +38,10 @@
     {
       "file": "src/lib/auth/landlordRole.js",
       "description": "Turn the signed-in account into a landlord."
+    },
+    {
+      "file": "src/lib/auth/roles.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/autoUnavailable.js",
