@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-03T20:06:12.442Z",
-  "count": 101,
+  "_generated": "2026-10-03T20:44:25.907Z",
+  "count": 102,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -74,6 +74,10 @@
     {
       "file": "src/lib/chat/realtime.js",
       "description": "Supabase Realtime helper for listing chat."
+    },
+    {
+      "file": "src/lib/chat/scanAttachment.js",
+      "description": "Vision screening for chat attachments."
     },
     {
       "file": "src/lib/chat/sendGuards.js",

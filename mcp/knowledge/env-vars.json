@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-03T20:06:12.457Z",
-  "count": 64,
+  "_generated": "2026-10-03T20:44:25.941Z",
+  "count": 66,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -9,6 +9,10 @@
     },
     {
       "name": "ANALYTICS_EXTRA_VIEWERS",
+      "public": false
+    },
+    {
+      "name": "ANTHROPIC_API_KEY",
       "public": false
     },
     {
@@ -29,6 +33,10 @@
     },
     {
       "name": "AVAILABILITY_LINK_SECRET",
+      "public": false
+    },
+    {
+      "name": "CHAT_MODERATION_KEY",
       "public": false
     },
     {
