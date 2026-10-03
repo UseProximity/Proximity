@@ -39,6 +39,9 @@ import { AnswerBar } from "../../src/components/matchmaking/AnswerBar";
 import { RecommendationCard } from "../../src/components/matchmaking/RecommendationCard";
 import { DraftCompose } from "../../src/components/matchmaking/DraftCompose";
 import { SendButton } from "../../src/components/ui/SendButton";
+import { Button } from "../../src/components/ui/Button";
+import { useAiConsent } from "../../src/lib/aiConsent";
+import { openLegalLink, PRIVACY_URL } from "../../src/lib/legalLinks";
 
 function TypingRow() {
   return (
@@ -68,15 +71,28 @@ export default function MatchmakingScreen() {
     editAnswer,
   } = useChatStore();
   const userId = useAuthStore((s) => s.user?.id);
+  const isAuthHydrated = useAuthStore((s) => s.isHydrated);
+  const consent = useAiConsent(userId);
+  const [declined, setDeclined] = useState(false);
   const [composerText, setComposerText] = useState("");
   const listRef = useRef(null);
 
   // Re-runs on every auth identity change (login or logout), not just mount —
   // this tab stays mounted for the app's lifetime once visited once, so a
   // mount-only check would go stale across a logout/login cycle.
+  //
+  // AI consent gate: for a signed-in user nothing below (init, resuming a saved
+  // session, the first question, any answer) may run until they have agreed to
+  // share data with the AI provider, because every later turn can reach
+  // Anthropic. Waiting for auth hydration first means userId is trustworthy, so
+  // a signed-in user can never slip through as "logged out" while it loads. A
+  // signed-out user still runs init(): it only sends an unauthenticated request
+  // that the server answers with 401, which shows the sign-in prompt.
   useEffect(() => {
+    if (!isAuthHydrated) return;
+    if (userId && consent.status !== "granted") return;
     useChatStore.getState().reinit();
-  }, [userId]);
+  }, [userId, isAuthHydrated, consent.status]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -94,6 +110,45 @@ export default function MatchmakingScreen() {
   const lastMessage = messages[messages.length - 1];
   const activeQuestion = lastMessage?.question;
   const hasRecommendations = status === "recommendations_ready";
+
+  // Checked before everything else: a signed-in user with no consent sees only
+  // this, whatever the chat store still holds from an earlier visit.
+  if (userId && consent.status !== "granted") {
+    if (consent.status === "loading") {
+      return (
+        <SafeAreaView className="flex-1 items-center justify-center bg-white">
+          <ActivityIndicator size="large" />
+        </SafeAreaView>
+      );
+    }
+    return (
+      <SafeAreaView className="flex-1 bg-white items-center justify-center px-8">
+        <Text className="text-lg font-bold text-gray-900 mb-3">Before you start</Text>
+        <Text className="text-sm text-gray-500 text-center mb-3">
+          Proxy uses Anthropic, a third-party AI provider, to personalize your housing
+          recommendations and answer your questions.
+        </Text>
+        <Text className="text-sm text-gray-500 text-center mb-4">
+          Information such as your first name, profile details and preferences may be shared with
+          Anthropic for this purpose.
+        </Text>
+        <Pressable onPress={() => openLegalLink(PRIVACY_URL)} hitSlop={8} className="mb-6">
+          <Text className="text-sm font-semibold text-gray-900 underline">Privacy Policy</Text>
+        </Pressable>
+        <Button onPress={consent.grant} className="self-stretch">
+          Agree & continue
+        </Button>
+        <Button variant="ghost" onPress={() => setDeclined(true)} className="self-stretch mt-2">
+          Not now
+        </Button>
+        {declined ? (
+          <Text className="text-xs text-gray-500 text-center mt-3">
+            Proxy needs this to work. You can agree whenever you&apos;re ready.
+          </Text>
+        ) : null}
+      </SafeAreaView>
+    );
+  }
 
   if (needsAuth) {
     return (
