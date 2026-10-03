@@ -285,7 +285,13 @@ export function MessagesProvider({ children }) {
         }
         const data = await res.json();
         trackEvent("chat_message_sent", { threadId, hasAttachments: false });
-        const confirmed = { ...optimistic, id: data.messageId };
+        // The RPC resolves which listing a reply inherits, so take it from the
+        // response rather than leaving the optimistic row without context.
+        const confirmed = {
+          ...optimistic,
+          id: data.messageId,
+          listingId: data.listingId ?? null,
+        };
         setMessagesByThread((prev) => ({
           ...prev,
           [threadId]: replaceTempMessage(prev[threadId], tempId, confirmed),

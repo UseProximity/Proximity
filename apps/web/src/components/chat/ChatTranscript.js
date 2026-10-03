@@ -76,15 +76,33 @@ function formatSessionDivider(iso) {
  * about whichever listing the reader had in mind. Shown on the first message
  * and wherever the listing changes, never on every message.
  */
-function listingContextLabel(msg) {
-  return msg?.listingTitle || msg?.listingAddress || null;
-}
-
 function shouldShowListingDivider(prev, msg) {
   if (!msg?.listingId) return false;
-  if (!listingContextLabel(msg)) return false;
   if (!prev) return true;
   return prev.listingId !== msg.listingId;
+}
+
+/*
+ * listingId to label, for drawing the dividers.
+ *
+ * A message loaded through rpc_get_chat_messages carries its own listing title
+ * and address, but one that arrived over Realtime is the raw table row and has
+ * only the id. Collecting every label the thread has seen means a live message
+ * about an already-discussed listing is labelled immediately, and the thread's
+ * current listing covers the first message about a new one.
+ */
+function buildListingLabels(list, thread) {
+  const labels = new Map();
+  for (const msg of list) {
+    if (!msg?.listingId || labels.has(msg.listingId)) continue;
+    const label = msg.listingTitle || msg.listingAddress;
+    if (label) labels.set(msg.listingId, label);
+  }
+  const threadLabel = thread?.listingTitle || thread?.listingAddress;
+  if (thread?.listingId && threadLabel && !labels.has(thread.listingId)) {
+    labels.set(thread.listingId, threadLabel);
+  }
+  return labels;
 }
 
 function shouldShowSessionDivider(prev, msg) {
@@ -154,6 +172,7 @@ export default function ChatTranscript({
   const readReceiptTime = formatMessageTime(thread?.otherUserLastReadAt);
   const showLoading = messagesLoading && list.length === 0;
   const listingLabel = thread?.listingTitle || thread?.listingAddress || "";
+  const listingLabels = buildListingLabels(list, thread);
   const listingRentLabel = formatListingRentLabel(
     thread?.listingMinRent,
     thread?.listingMaxRent
@@ -370,7 +389,9 @@ export default function ChatTranscript({
             const sessionLabel = formatSessionDivider(msg.createdAt);
             const isAttachment = msg.messageType === "attachment";
             const showListing = shouldShowListingDivider(prev, msg);
-            const listingContext = showListing ? listingContextLabel(msg) : null;
+            const listingContext = showListing
+              ? listingLabels.get(msg.listingId) ?? null
+              : null;
 
             return (
               <div key={msg.id} className="space-y-2">

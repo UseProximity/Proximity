@@ -54,6 +54,11 @@ export function mapRealtimeMessage(row, currentUserId) {
     messageType: row.message_type,
     metadata: row.metadata ?? {},
     createdAt: row.created_at,
+    // Which listing the message is about. The Realtime payload is the raw
+    // chat_messages row, so it carries the id but not the listing's title or
+    // address: rpc_get_chat_messages joins those. ChatTranscript resolves the
+    // label from the messages it already holds, falling back to the thread.
+    listingId: row.listing_id ?? null,
   };
 }
 
