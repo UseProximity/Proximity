@@ -50,7 +50,7 @@ export async function GET(req) {
     }
   }
 
-  await sendDigest(summary, req);
+  await sendDigest(summary);
 
   return NextResponse.json({ synced: summary.length, summary });
 }
@@ -59,7 +59,7 @@ export async function GET(req) {
 // human should see. Always: errors, guard holds (with a one-click release
 // link), suppressed delists, dry-run observations. During a connection's
 // first WATCH_DAYS: every applied change, so new integrations are watched.
-async function sendDigest(summary, req) {
+async function sendDigest(summary) {
   const noteworthy = [];
   for (const s of summary) {
     const changes = (s.created ?? 0) + (s.updated ?? 0) + (s.delisted ?? 0) + (s.relisted ?? 0);
@@ -84,7 +84,7 @@ async function sendDigest(summary, req) {
   if (!noteworthy.length) return;
 
   try {
-    const baseUrl = getBaseUrl(req);
+    const baseUrl = getBaseUrl();
 
     // Attach a one-click release link to every held item's open review row.
     for (const n of noteworthy) {

@@ -180,7 +180,7 @@ export async function POST(req) {
      */
     if (moved && session.user.email) {
       try {
-        await flushReviewConfirmation({ userId: targetId, baseUrl: getBaseUrl(req) });
+        await flushReviewConfirmation({ userId: targetId, baseUrl: getBaseUrl() });
       } catch (mailErr) {
         console.error("claim-review: confirmation send failed:", mailErr?.message);
       }

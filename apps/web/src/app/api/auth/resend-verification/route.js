@@ -33,7 +33,7 @@ export async function POST(req) {
       email,
       name: user.name,
       token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
     });
 

@@ -18,29 +18,27 @@ export async function POST(req) {
       .ilike("email", emailMatchPattern(email))
       .single();
 
-    if (!user) {
-      return NextResponse.json({ error: "No account found for that email." }, { status: 404 });
+    if (user && !user.google_account) {
+      const token = crypto.randomUUID();
+      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+      await supabase
+        .from("users")
+        .update({ password_reset_token: token, password_reset_expires_at: expires })
+        .eq("id", user.id);
+
+      await sendPasswordResetEmail({
+        email,
+        name: user.name,
+        token,
+        baseUrl: getBaseUrl(),
+      });
     }
-    if (user.google_account) {
-      return NextResponse.json({ error: "This email is linked to a Google account. Please sign in with Google." }, { status: 404 });
-    }
 
-    const token = crypto.randomUUID();
-    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-
-    await supabase
-      .from("users")
-      .update({ password_reset_token: token, password_reset_expires_at: expires })
-      .eq("id", user.id);
-
-    await sendPasswordResetEmail({
-      email,
-      name: user.name,
-      token,
-      baseUrl: getBaseUrl(req),
-    });
-
-    return NextResponse.json({}, { status: 200 });
+    return NextResponse.json(
+      { message: "If an account exists for that email, a reset link has been sent." },
+      { status: 200 }
+    );
   } catch (err) {
     console.error("forgot-password error:", err);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

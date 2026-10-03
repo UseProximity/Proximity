@@ -61,10 +61,14 @@ export function emailFooter({ reason, commercial = false } = {}) {
       </div>`;
 }
 
-export function getBaseUrl(req) {
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const host = req.headers.get("host");
-  return `${proto}://${host}`;
+export function getBaseUrl() {
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "http://localhost:3000";
 }
 
 export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {

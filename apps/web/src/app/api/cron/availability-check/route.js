@@ -10,6 +10,12 @@
  * PMS-connected listings are excluded — their availability already syncs
  * daily. Outreach is env-gated via sendMailSafe (suppressed/redirected off
  * production). Protected by the same CRON_SECRET as the other crons.
+ *
+ * PAUSED 2026-10-03 (Ben): the daily schedule was removed from apps/web/vercel.json.
+ * Landlords have been told the listing source sync will keep listings current, so
+ * the "still available?" emails stop until that sync is live. The route still
+ * works when called manually. To reactivate, add back to vercel.json:
+ *   { "path": "/api/cron/availability-check", "schedule": "0 16 * * *" }
  */
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
@@ -80,7 +86,7 @@ export async function GET(req) {
     byRecipient.get(email).listings.push({ id: l.id, label: l.title || l.address || "Your listing" });
   }
 
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getBaseUrl();
   let emailed = 0;
   const stampIds = [];
   for (const [email, { name, listings: group }] of byRecipient) {

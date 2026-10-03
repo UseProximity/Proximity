@@ -1,8 +1,28 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-24T20:16:59.153Z",
-  "count": 86,
+  "_generated": "2026-10-02T17:39:16.519Z",
+  "count": 92,
   "utils": [
+    {
+      "file": "src/lib/analytics/access.js",
+      "description": "Who can open /analytics, and which sections they see."
+    },
+    {
+      "file": "src/lib/analytics/db.js",
+      "description": "Small read helpers for /analytics. Reads go through the deployment's own database"
+    },
+    {
+      "file": "src/lib/analytics/ga.js",
+      "description": "Google Analytics 4 Data API reads for /analytics."
+    },
+    {
+      "file": "src/lib/analytics/periods.js",
+      "description": "Weekly time buckets for /analytics. Weeks start on Monday (UTC) and are keyed by"
+    },
+    {
+      "file": "src/lib/analytics/sections.js",
+      "description": "One loader per /analytics section. Every loader returns the same plain shape, which the"
+    },
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
@@ -46,6 +66,10 @@
     {
       "file": "src/lib/geo/neighborhoods.js",
       "description": "Canonical neighborhood table for the WashU market. Listings only carry"
+    },
+    {
+      "file": "src/lib/google/serviceAccount.js",
+      "description": "Access tokens for Google APIs from the project's service account, using the"
     },
     {
       "file": "src/lib/guides.js",
@@ -261,7 +285,7 @@
     },
     {
       "file": "src/lib/seo/gsc.js",
-      "description": "Google Search Console client using a service account, with no new"
+      "description": "Google Search Console client using the project service account (token flow"
     },
     {
       "file": "src/lib/seo/report.js",

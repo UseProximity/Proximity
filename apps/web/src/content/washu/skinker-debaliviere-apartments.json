@@ -1,26 +1,36 @@
 {
   "intro": [
-    "Skinker-DeBaliviere is the beating heart of WashU off-campus life: the blocks behind the Loop where streets like Pershing, Waterman, and Kingsbury fill up with students every August. Big old flats, porches, housemates, and a walk to campus that beats most dorm-to-class commutes.",
-    "This is also where the landlord matters most. The housing stock is old, the management companies range from great to notorious, and the difference is your whole year. Every listing below carries reviews from students who actually lived there. Use them."
+    "Skinker-DeBaliviere is the beating heart of WashU (Washington University in St. Louis) off-campus life: the blocks right behind the Delmar Loop that fill up with students every August. Big old flats with deep porches, and a walk to campus that beats most dorm-to-class commutes.",
+    "Because a lot of the housing stock is older, the building and landlord can make a big difference. Check the student reviews on each listing for things like maintenance, management, and what it was actually like to live there."
   ],
-  "directAnswer": "Skinker-DeBaliviere is the neighborhood directly east of WashU behind the Delmar Loop, centered on streets like Pershing, Waterman, and Kingsbury, and it houses more WashU students than any other off-campus area. For context, HUD's FY2026 fair market rent in ZIP 63112 is $930 for a 1 bedroom and $1,140 for a 2 bedroom, utilities included.",
+  "directAnswer": "Skinker-DeBaliviere is the neighborhood directly east of WashU behind the Delmar Loop, and it houses more WashU students than any other off-campus area. It's also one of the lower-cost areas near campus, and every listing on this page shows its live rent.",
   "faqs": [
     {
       "q": "Why is Skinker-DeBaliviere the most popular WashU neighborhood?",
-      "a": "Distance and price together. It starts at the edge of campus, the Loop is at the corner, and by HUD's FY2026 benchmarks it is the most affordable ZIP adjacent to campus: $930 fair market rent for a 1 bedroom and $1,140 for a 2 bedroom, utilities included. Big shared flats push per-person costs even lower."
+      "a": "Skinker-DeBaliviere is popular with WashU students because it combines proximity to the Danforth Campus with lower rents than several nearby areas, on both HUD's and Zillow's data. Shared apartments can bring the per-person cost down further."
     },
     {
       "q": "What should I watch out for in Skinker-DeBaliviere?",
-      "a": "Old buildings and uneven landlords. The same block can hold a lovingly maintained flat and a neglected one, and students' recurring complaints are slow maintenance, deposit games, and surprise fees. Read the reviews on any listing here before touring, and ask previous tenants if you can."
+      "a": "Old buildings and uneven landlords. The same block can hold a lovingly maintained flat and a neglected one, and the complaints students repeat are slow maintenance, deposit games, surprise fees at move-out. Read the reviews on any listing here before touring, and ask previous tenants if you can reach them."
     },
     {
       "q": "How close is it to campus, really?",
-      "a": "The western blocks are minutes from the east end of campus, and even the farther streets are usually within a 15 to 25 minute walk. Every listing above shows its exact computed walk time, plus the nearest shuttle stop distance where relevant."
+      "a": "Many Skinker-DeBaliviere apartments are within walking distance of WashU, but the exact time depends on the block. Some addresses are only a few minutes from the Danforth Campus, while farther streets can take closer to 15 to 25 minutes. Check the walk time on the specific listing before deciding."
     },
     {
       "q": "Are rents rising in Skinker-DeBaliviere?",
-      "a": "Fastest of the WashU-adjacent ZIPs: Zillow's rent index for 63112 was up 6.5% year over year as of June 2026, against about 4.0% for the metro. Source: Zillow Research. Popular blocks reward signing early in the fall cycle."
+      "a": "Yes, in line with the metro. Zillow's rent index for 63112 was up 3.9% year over year as of August 2026, the same as the St. Louis metro. Source: Zillow Research. Popular blocks still reward signing early in the fall cycle."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) for ZIP 63112, whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Neighborhood comparisons cite HUD FY2026 Small Area Fair Market Rents and Zillow's Observed Rent Index (ZORI) for ZIP 63112, as of August 2026. Rents on listings are each landlord's current asking rent. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

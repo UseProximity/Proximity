@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
+import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 
 export async function PATCH(req) {
   try {
@@ -24,10 +25,7 @@ export async function PATCH(req) {
         email: session.user.email,
         error: lookupError,
       });
-      return NextResponse.json(
-        { error: "User not found in Supabase", detail: lookupError.message, code: lookupError.code },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     if (!sbUser) {
@@ -61,9 +59,10 @@ export async function PATCH(req) {
     if (body.graduation_month !== undefined)
       allowedFields.graduation_month = body.graduation_month ?? null;
 
-    // Only allow role changes if provided; only super can promote to super or admin
+    // Only allow role changes if provided. Anything off the self-assignable
+    // allowlist (super, admin, system, ...) requires the caller to be super.
     if (body.role !== undefined && body.role !== null) {
-      if ((body.role === "super" || body.role === "admin") && currentRole !== "super") {
+      if (currentRole !== "super" && !SELF_ASSIGNABLE_ROLES.has(body.role)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       const { data: roleRow, error: roleErr } = await supabase
@@ -77,7 +76,7 @@ export async function PATCH(req) {
       allowedFields.role_id = roleRow.id;
     }
 
-    console.log("PATCH /api/editProfile: updating fields", allowedFields);
+    console.log("PATCH /api/editProfile: updating fields", { fields: Object.keys(allowedFields) });
 
     const { error } = await updateAsUser(supabase, {
       userId: supabaseId,
@@ -89,18 +88,15 @@ export async function PATCH(req) {
     if (error) {
       console.error("PATCH /api/editProfile: update failed", {
         supabaseId,
-        allowedFields,
+        fields: Object.keys(allowedFields),
         error,
       });
-      return NextResponse.json(
-        { error: "DB update failed", detail: error.message, code: error.code },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
     }
 
     const { data: updated, error: fetchError } = await supabase
       .from("users")
-      .select("*, roles!role_id(name)")
+      .select("name, birthday, gender, phone, description, roles!role_id(name)")
       .eq("id", supabaseId)
       .single();
 

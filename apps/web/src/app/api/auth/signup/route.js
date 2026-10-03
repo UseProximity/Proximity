@@ -4,10 +4,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
-
-// Roles a user is allowed to self-assign at signup. Privileged roles (super,
-// admin, …) can never be granted here — only via an admin-side role change.
-const SIGNUP_ROLES = new Set(["student", "landlord"]);
+import { SIGNUP_ROLES } from "@/lib/auth/roles";
 
 export async function POST(req) {
   try {
@@ -117,7 +114,7 @@ export async function POST(req) {
       email,
       name: name.trim(),
       token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
     });
 
