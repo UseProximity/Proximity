@@ -381,7 +381,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
   // Fetch reviews from listing_reviews (renamed from reviews in v4)
   // Show all reviews (including illegitimate) so the UI can mark them;
   // only legit + not-deleted count toward the rating (handled in buildListing)
-  const { data: reviewRows, error: reviewErr } = await supabase
+  const { data: allReviewRows, error: reviewErr } = await supabase
     .from("listing_reviews")
     .select(
       `
@@ -411,6 +411,24 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
 
   if (reviewErr) {
     console.error("[getListing] reviews fetch error:", reviewErr);
+  }
+
+  // Hide reviews written by anyone the signed-in viewer has blocked. Viewer-only:
+  // the reviews stay as they are for everyone else (user_blocks is generic and
+  // reused by messaging later).
+  let reviewRows = allReviewRows;
+  if (currentUserId && reviewRows?.length) {
+    const { data: blocks, error: blocksErr } = await supabase
+      .from("user_blocks")
+      .select("blocked_id")
+      .eq("blocker_id", currentUserId);
+    if (blocksErr) {
+      console.error("[getListing] blocks fetch error:", blocksErr);
+    } else if (blocks?.length) {
+      const blocked = new Set(blocks.map((b) => b.blocked_id));
+      // Anonymous reviews are never hidden by a block: that would reveal their author.
+      reviewRows = reviewRows.filter((r) => r.anonymous || !blocked.has(r.user_id));
+    }
   }
 
   // Batch-fetch reviewer profiles
@@ -468,6 +486,9 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       upvotes: votes.up,
       downvotes: votes.down,
       userVote: votes.userVote,
+      // Viewer-only: true when the signed-in viewer wrote this review. Lets the UI
+      // skip Report/Block on it even when it is anonymous (author otherwise hidden).
+      isMine: Boolean(currentUserId && r.user_id === currentUserId),
       reviewer: reviewer
         ? {
             _id: reviewer.id,
