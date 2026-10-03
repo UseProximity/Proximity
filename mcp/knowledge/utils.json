@@ -1,11 +1,15 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-02T17:39:16.519Z",
-  "count": 92,
+  "_generated": "2026-10-03T21:11:00.134Z",
+  "count": 100,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
-      "description": "Who can open /analytics, and which sections they see."
+      "description": "Who can open /analytics, and which tabs they see."
+    },
+    {
+      "file": "src/lib/analytics/blocks.js",
+      "description": "Building blocks shared by every /analytics tab."
     },
     {
       "file": "src/lib/analytics/db.js",
@@ -20,8 +24,36 @@
       "description": "Weekly time buckets for /analytics. Weeks start on Monday (UTC) and are keyed by"
     },
     {
-      "file": "src/lib/analytics/sections.js",
-      "description": "One loader per /analytics section. Every loader returns the same plain shape, which the"
+      "file": "src/lib/analytics/tabs/engagement.js",
+      "description": "Listing engagement: what students do with listings. Views, saves and contacts come from the"
+    },
+    {
+      "file": "src/lib/analytics/tabs/index.js",
+      "description": "Every /analytics tab, in display order. To add a tab: write a loader in this folder that"
+    },
+    {
+      "file": "src/lib/analytics/tabs/landlords.js",
+      "description": "Landlord flow: who signs up, whether they add listings, how complete and fresh those"
+    },
+    {
+      "file": "src/lib/analytics/tabs/leaseCheck.js",
+      "description": "Lease check: students uploading a lease for review."
+    },
+    {
+      "file": "src/lib/analytics/tabs/matchmaking.js",
+      "description": "Matchmaking (the Proxy chat). Shared with partners on the sandbox, so everything here is a"
+    },
+    {
+      "file": "src/lib/analytics/tabs/overview.js",
+      "description": "Overview: accounts and the state of the site, for the team."
+    },
+    {
+      "file": "src/lib/analytics/tabs/reviews.js",
+      "description": "Reviews: apartment and dorm reviews, invites, and the /review page."
+    },
+    {
+      "file": "src/lib/analytics/tabs/traffic.js",
+      "description": "Traffic: visitors to the live site, from Google Analytics and Google Search Console."
     },
     {
       "file": "src/lib/appEnv.js",
