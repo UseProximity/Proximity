@@ -501,14 +501,18 @@ function ReviewsTab({
   // Reviews may not name people. Shown as they type; the submit handler and the
   // API both block it too.
   const reviewProblem = checkReviewText(reviewText);
-  // Reviews the viewer has just blocked, hidden locally. The server hides them
-  // on every later load (getListing filters by user_blocks).
+  // Reviews the viewer has just blocked, hidden locally. On every later load the
+  // server sends them score-only (hiddenByBlock). Either way only the text is
+  // hidden: their ratings stay in the header stats, same as for everyone else.
   const [hiddenReviewIds, setHiddenReviewIds] = useState(() => new Set());
   // { [reviewId]: message } shown under a review after Report / Block.
   const [reviewActionMsg, setReviewActionMsg] = useState({});
   // The review whose author the viewer is being asked to block (confirm modal).
   const [blockTarget, setBlockTarget] = useState(null);
-  const visibleReviews = legitimateReviews.filter((r) => !hiddenReviewIds.has(r._id));
+  const visibleReviews = legitimateReviews.filter(
+    (r) => !r.hiddenByBlock && !hiddenReviewIds.has(r._id)
+  );
+  const blockedHiddenCount = legitimateReviews.length - visibleReviews.length;
   const displayed = showAllReviews ? visibleReviews : visibleReviews.slice(0, 4);
 
   // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
@@ -580,7 +584,8 @@ function ReviewsTab({
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-semibold text-gray-900">Block user?</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Their reviews will no longer be visible to you.
+              Their reviews will no longer be visible to you. Their star ratings
+              still count toward this property&apos;s score.
             </p>
             <p className="mt-3 text-sm text-gray-600">
               If you want to unblock this user later, contact Proximity support at{" "}
@@ -681,6 +686,13 @@ function ReviewsTab({
          */
         <div className="text-center py-10 text-gray-400 italic text-sm">
           Reviews couldn&apos;t be loaded. Refresh to try again.
+        </div>
+      ) : visibleReviews.length === 0 && blockedHiddenCount > 0 ? (
+        <div className="text-center py-10 text-gray-400 italic text-sm">
+          {blockedHiddenCount === 1
+            ? "This property's only review is from a user you blocked."
+            : "All reviews of this property are from users you blocked."}{" "}
+          Their ratings still count toward the score.
         </div>
       ) : visibleReviews.length === 0 ? (
         <div className="text-center py-10 text-gray-400 italic text-sm">
@@ -809,6 +821,13 @@ function ReviewsTab({
             })}
           </div>
 
+          {blockedHiddenCount > 0 && (
+            <p className="text-center text-xs text-gray-400 mb-4">
+              {blockedHiddenCount === 1
+                ? "1 review from a user you blocked is hidden. Its rating still counts."
+                : `${blockedHiddenCount} reviews from users you blocked are hidden. Their ratings still count.`}
+            </p>
+          )}
           {visibleReviews.length > 4 && (
             <div className="flex justify-center mb-6">
               <button
