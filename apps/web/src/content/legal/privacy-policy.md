@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** September 18, 2026
+**Last updated:** September 24, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -15,10 +15,11 @@ the website and the mobile apps; where something applies to only one of them, we
 Proximity is an off-campus housing marketplace for university students and the landlords
 who rent to them. The Services are operated from the United States, are directed to
 students at universities in the United States, and are intended for people **18 years of
-age or older**.
+age or older**. Some members of our team work from outside the United States (see
+Section 7).
 
 **Privacy contact:** info@useproximity.org
-**Postal address:** Proximity LLC, 70 Greendale Rd, Scarsdale, NY 10583-2133
+**Postal address:** Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 
 ---
 
@@ -32,8 +33,13 @@ When you create an account, we collect:
 - **Password**: if you sign up with email and password. We store only a salted,
   irreversible hash; we never store your password itself.
 - **Sign-in method**: whether your account is linked to a Google or Apple identity.
-- **Email verification status** and, temporarily, the tokens used to verify your email
-  address or reset your password.
+- **Email verification status** and the one-time tokens behind the links we email you to
+  verify your email address or reset your password. A verification link is valid for 24
+  hours (7 days for the link that finishes setting up an account created from a review you
+  submitted without signing in), and a password-reset link is valid for 1 hour. Using a
+  link deletes its token. A token that is never used stops working when it expires, but it
+  stays on your account record until a newer one replaces it or your account is erased
+  (Section 8).
 - **Account role**: student or landlord.
 - **Your school**: derived from the domain of your email address (for example,
   `wustl.edu` identifies a Washington University in St. Louis account). We record it when
@@ -51,9 +57,6 @@ When you complete or edit your profile, you may also provide:
 - **Profile photo**
 - **Expected graduation month and year**
 - **How you heard about Proximity**
-
-If you take part in the ambassador referral program, we also collect the **payout method
-(Venmo or Zelle) and the payout handle** you give us.
 
 ### 1.3 Information from Google or Apple
 
@@ -76,8 +79,15 @@ or Google.
   ZIP code, coordinates, description, rent, bedrooms, bathrooms, area, unit and lease
   details, amenities, utilities, move-in dates, lease terms, and whether the property is
   restricted to residents 21 or older.
-- **Listing contact details**: the name, email address, and phone number you choose to
-  publish on a listing so students can reach you. **These are displayed publicly.**
+- **Listing contact details**: the name, email address, and phone number you give so
+  students can reach you. **The contact name is displayed publicly on the listing.** The
+  email address and phone number are not. We use them to route inquiries to you, and they
+  are not included in the listing page or in the data our website and apps receive.
+- **What you write in a listing**: the title, the description, and any other free text you
+  enter are published exactly as you write them. We never rewrite your words. We do refuse
+  to save a description that contains an email address, a phone number, a link, or a social
+  handle, and ask you to edit it, because those belong in the contact fields above.
+  **Anything that does save is public**, and search engines may index it.
 - **Photos and floor plans** you upload for a listing.
 - **Reviews** of off-campus listings and on-campus dorms: star ratings, category ratings,
   written text, and the display name shown with the review. You may post a review
@@ -91,12 +101,26 @@ or Google.
   matchmaking assistant, the housing preferences derived from it (first name, budget,
   move-in and move-out dates, lease term, group size, neighborhood, furnishing,
   openness to roommates, priorities, and free-text notes), and the recommendations
-  generated for you.
+  generated for you. We keep these as a record of what you asked for and why we showed you
+  the properties we did, including for three years after you delete your account
+  (Section 8).
 - **Inquiries to landlords**: the first name, last name, email address, phone number, and
   message you submit through a listing's contact form. We deliver this by email to the
   landlord, with your email address as the reply-to, and send a confirmation copy to you.
-  We record *that* you contacted a listing; we do not store the message text in our
-  database.
+  Both emails are sent from our own account, so **a copy of each stays in that account**,
+  as it would in any mailbox you send from. In our database we record only *that* you
+  contacted a listing, not the message text. We keep that record, with your name and
+  email address, for three years after you delete your account (Section 8).
+- **Messages sent through Proximity**: where the Services let you message another user
+  about a listing, we store the conversation. That means the text of each message, the
+  listing it concerns, any file or photo attached to it, who sent it and when, whether it
+  has been read, and any offer made in the conversation. Unlike an inquiry sent through a
+  listing's contact form, these messages are kept in our database so both of you can come
+  back to the conversation. They are visible to the other participant, and to Proximity
+  staff who need to investigate a report of abuse or a dispute, or to confirm that a lease
+  was signed. **If one of you deletes their account, we keep the conversation for three
+  years afterwards, with the sender's name and email address on it.** Section 8 explains
+  why.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
   you are signed in, your name, email address, and role, so we can follow up. Submitting
   the form emails it straight to the Proximity team; the message is not stored in our
@@ -104,8 +128,9 @@ or Google.
   is used momentarily to rate-limit submissions and is not stored.
 - **Waitlist requests**: when you join the waitlist for a listing that is not currently
   available, we record the listing, the time, the page you came from, and your name, email
-  address, and phone number, so the owner can reach you if it frees up and so we can let
-  you know.
+  address, and phone number, so we can let you know if it frees up. We keep this ourselves
+  and do not pass it to the owner. If you want to reach the owner, we direct you to the
+  listing's contact form, which works as described above.
 - **Lease Check uploads**: see Section 1.7.
 
 ### 1.5 Usage and technical information
@@ -138,9 +163,7 @@ or Google.
 - **Advertising identifiers.** The mobile apps contain no advertising, attribution, or
   crash-reporting code, and no third-party analytics beyond what is described in Section
   5.
-- **Payment card or bank details.** Proximity does not process payments. The only
-  payment-related data we hold is a Venmo or Zelle handle voluntarily provided by
-  ambassadors.
+- **Payment card or bank details.** Proximity does not process payments.
 - **Government ID, income, credit, or background-check information.**
 - **Biometric data.**
 
@@ -161,31 +184,43 @@ A lease may contain your full legal name, signature, home address, and financial
 Please do not upload a document you are not comfortable sending to an AI provider for
 analysis. See Section 4.
 
-If you upload a file and then leave before the analysis finishes, the file is removed
-automatically by a scheduled cleanup rule on our storage rather than at the end of the
-analysis. It is never kept beyond that.
+If you upload a file and the analysis never runs (for example, you leave before it
+starts), the file is removed by a scheduled cleanup job instead. That job runs every hour
+and deletes any upload more than an hour old, so a lease file is never kept for more than
+24 hours.
 
 ### 1.8 If you do not have a Proximity account
 
 We hold a limited amount of information about some people who have never signed up. This
 section explains what, why, and how to have it removed.
 
-- **Student rosters.** We hold class-roster information for students at the universities
-  we serve: name, university email address, and class year. We use it for two things only:
-  to recognize that an email address belongs to a real student at that school, and to
-  create a personalized invitation link when we ask students to review a property they
-  have lived in. It is never published, never sold, never used for advertising, and is not
-  visible to landlords or to other students.
-- **Landlord and property contact details.** Where we compile a listing from public
-  sources, or where a student names their landlord while leaving a review, we hold the
-  contact details for that owner or manager so we can reach them and so we can identify
-  the property. Contact details published on a live listing are public; details given to
-  us in a review are used internally and are not displayed.
+- **Landlord and property contact details.** Where we set a listing up at an owner's
+  request before they have an account, or where a student names their landlord while
+  leaving a review, we hold the contact details for that owner or manager so we can reach
+  them and so we can identify the property. The contact name on a live listing is public;
+  the email address and phone number are used to route inquiries and are not displayed,
+  and details given to us in a review are used internally and are not displayed.
+- **Students we invite to leave a review.** We email students at the universities we
+  serve to invite them to review a place they have lived. For this we hold the student's
+  university email address and a record of the invitation, which includes a single-use
+  link for submitting the review. We use it only to send that invitation and to recognize
+  the review when it comes back. It is never published, never sold, never used for
+  advertising, and is not visible to landlords or to other students.
+- **Addresses of properties students have reviewed.** When a student reviews a building
+  that is not on Proximity, we create an unavailable page for it that holds the property's
+  address, a Street View image, and its reviews. The page offers nothing for rent. The
+  owner can email info@useproximity.org to have it removed or to claim it (Terms §7).
 
-**How long we keep it.** Roster information is kept while the student could still be
-living off campus near their university. We delete a roster entry if the person asks us
-to, or if they tell us they do not want to be invited. Landlord and property contact
-details are kept while the property is part of the marketplace.
+**How long we keep it.** Landlord and property contact details are kept while the
+property is part of the marketplace. Review invitation records are kept as a record of who
+we have already asked, and deleted on request.
+
+### 1.9 Information landlords give us
+
+A landlord may tell us when a student who contacted them through Proximity signs a lease.
+We record that a lease was signed, the listing it was for, and when. We use this to keep an
+accurate record of the introductions we make and, once commissions take effect (Terms
+§1), to bill landlords who pay one.
 
 **How to have it removed.** Email **info@useproximity.org** and ask us to delete your
 information. You do not need an account, and you do not need to explain why. We will
@@ -202,11 +237,12 @@ another, replying to say so is enough.
 | **Match you to housing** | Operate the matchmaking assistant; store your preferences so you can resume where you left off; rank and explain listings against those preferences. |
 | **Connect students and landlords** | Deliver contact-form messages by email; send inquiry emails on your behalf when you ask the matchmaking assistant to; send you a confirmation copy. |
 | **Account and transactional email** | Verify your email address; reset your password; ask landlords to confirm whether a listing is still available; remind new landlords who have not yet posted. |
+| **Collect reviews** | Email students at the universities we serve to invite them to review a place they have lived, using a single-use link. |
 | **Analyze a lease you upload** | Produce the Lease Check flags and summary. |
 | **Keep listings accurate** | Sync availability from a landlord's property-management system, where the landlord has connected one. |
 | **Safety, integrity, and support** | Apply eligibility rules (only students at a school we serve may leave reviews, and we use your date of birth to check eligibility on listings restricted to residents 21 or older); investigate abuse and fraud; respond to your questions. |
 | **Improve the Services** | Understand which pages and listings are used; act on feedback and bug reports. |
-| **Business operations** | Maintain a record of new accounts and listings for onboarding and support. |
+| **Business operations** | Maintain a record of new accounts and listings for onboarding and support; keep a record of the introductions we make and the leases they lead to; once commissions take effect (Terms §1), bill landlords who pay one. |
 | **Legal** | Comply with applicable law and enforce our Terms. |
 
 We do not use your personal information to build advertising profiles, and we do not use it
@@ -215,12 +251,10 @@ to train artificial-intelligence models (see Section 4).
 ### 2.1 How we use gender
 
 If you have recorded a gender on your profile, the matchmaking assistant uses it in one
-narrow way: some listings state in their description that the landlord restricts occupancy
-to tenants of one gender. Where a listing states such a restriction, the matchmaker will
-not recommend it to you unless your recorded gender matches. If your gender is unrecorded,
-non-binary, or otherwise not resolvable to the stated restriction, those listings are not
-recommended to you. Where you have not recorded a gender, the assistant may also read a
-clear first-person statement in your free-text notes (for example, "I'm a girl").
+narrow way. Some listings, typically subleases, explicitly ask for tenants of a certain
+gender in their description (for example, "looking for a female roommate"). The
+matchmaking assistant will sometimes not suggest those listings to students of another
+gender.
 
 This affects only which listings the matchmaking assistant surfaces. It never restricts
 what you can search, browse, view, or contact directly, and it is not used for any other
@@ -243,7 +277,7 @@ If you believe a minor has created an account, contact us at info@useproximity.o
 Three Proximity features send information to **Anthropic PBC** (the Claude API), a service
 provider located in the United States:
 
-- **Matchmaking.** Each turn of your conversation sends the conversation transcript, the
+- **Matchmaking.** Each conversation sends its transcript, the
   housing preferences derived from it, and a catalog of listings that fit your filters.
   The listings are public marketplace data. **Your first name is included in this payload**
   so the assistant can address you naturally, and your recorded gender is included where
@@ -321,8 +355,9 @@ We do not sell your personal information for money.
 
 ### 6.1 Publicly: this is how the marketplace works
 
-- **Listings you publish** are public, including the contact name, email address, and phone
-  number you place on them.
+- **Listings you publish** are public, including the contact name you place on them and
+  everything you write in the title and description. The contact email address and phone
+  number you give are **not** published: they are used to route inquiries to you.
 - **Reviews you post** are public, with your display name unless you post anonymously.
 - **Landlord replies to reviews** are public.
 
@@ -348,7 +383,7 @@ and only for the purposes we specify:
 | **Vercel** | Requests to the website and API, server logs, aggregate web analytics | Application hosting, scheduled jobs, analytics |
 | **Cloudflare** | Profile photos, listing photos, floor plans; lease documents transiently | Object storage and delivery |
 | **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content | AI features (Section 4) |
-| **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos); website usage (analytics) | Authentication, listing imagery, analytics |
+| **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
 | **Airtable** | New account name, email address, account identifier, sign-up date, and role; new listing details | Internal customer-relationship system for onboarding and support |
 | **Google Workspace** | Recipient email addresses and message content | Sending transactional and inquiry email |
@@ -378,7 +413,9 @@ information becomes subject to a materially different privacy policy.
   storage, and the short-lived credential is refreshed automatically.
 - On the website, your session is carried in a signed, protected cookie.
 - Access to production data is limited to Proximity personnel who need it to operate the
-  Services.
+  Services. Some of those personnel work from outside the United States, including in the
+  European Union, and access personal information remotely from there to build, maintain,
+  and support the Services. The same access restrictions apply wherever they work.
 - We keep a separate, non-public copy of our database for development and testing. It is
   not reachable from the public Services, access is restricted to the same Proximity
   personnel who can reach production, and outbound messaging is disabled in that
@@ -419,14 +456,16 @@ Thirty days after deletion, an automated job permanently erases your personal da
 
 | Data | What we do |
 |---|---|
-| Your account record | Name, email address, phone number, date of birth, gender, description, profile photo, graduation details, school, payout handle, and all authentication data, including sign-in credentials and any outstanding verification or password-reset tokens, are erased. Your email address is released so you can sign up again in future. |
+| Your account record | Name, email address, phone number, date of birth, gender, description, profile photo, graduation details, school, and all authentication data, including sign-in credentials and any outstanding verification or password-reset tokens, are erased. The only exceptions are the name and email address kept with your messages, your inquiry records, and listings you owned alone, below. Your email address is released so you can sign up again in future. |
 | Profile photos | Permanently deleted from our storage, including earlier photos you replaced. |
 | Reviews you wrote | **Kept, but anonymized.** We remove your name and your email address and disconnect the review from your account; the review text stays published, because it describes a property and continues to help other students. |
-| Saved listings, contacts, review votes | Permanently deleted. |
-| Matchmaking conversations, and the housing preferences derived from them | Permanently deleted. |
+| Messages you sent through Proximity | **Kept for three years, with your name and email address.** The text of each message, who sent it, and when are retained for three years after deletion, and then erased. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute, investigate abuse, or confirm a lease. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
+| Inquiries you sent to landlords, and leases a landlord told us you signed | **Kept for three years, with your name and email address.** The record of which listing you contacted and when, and any lease recorded under Section 1.9, are retained for three years after deletion as a record of the introductions we make, and then erased. See Terms §17A. |
+| Saved listings, review votes | Permanently deleted. |
+| Matchmaking conversations, and the housing preferences derived from them | **Kept for three years.** The transcript, the preferences you gave, and the recommendations we made are retained for three years after deletion as a record of which properties we showed you and why, and then erased. They are never published and are visible only to Proximity staff who need them. See Terms §17A. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |
-| Listings you owned alone | Already withdrawn from the marketplace at deletion. Your name, email address, and phone number are now removed from them, so the withdrawn record keeps no contact details of yours. |
+| Listings you owned alone | Already withdrawn from the marketplace at deletion. **Kept for three years, with your name and email address.** The withdrawn record keeps your name and email address for three years after deletion as marketplace history, and then they are erased. Your phone number is removed from them. See Terms §17A. |
 | Internal change history | The personal information inside each entry is erased, including entries recorded against other records that contain your details. A record that a change occurred, and when, is retained for security and audit purposes. |
 
 ### Important limits
@@ -437,6 +476,12 @@ Thirty days after deletion, an automated job permanently erases your personal da
   days it is irreversible.
 - **Emails already sent cannot be recalled.** A message you sent to a landlord is already
   in that landlord's inbox and is outside our control.
+- **Messages and inquiry records are kept for three years, with your name and email
+  address.** These are the parts of your account that deletion does not reach straight
+  away. We keep them, with you named as the sender, as a record of your dealings with the
+  other participant and of the introductions we make, and erase them after three years.
+  If you want a conversation removed sooner, email info@useproximity.org and we will
+  consider it, but we will not normally remove a record the other person is relying on.
 - **Public content already copied elsewhere cannot be recalled.** We cannot remove material
   that third parties have already saved, cached, or indexed.
 
@@ -447,16 +492,17 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Category | Retention |
 |---|---|
 | Account and profile data | While your account is active, then as described in Section 8. |
-| Listings | While published. On account deletion, sole-owned listings are withdrawn from the marketplace and retained in hidden form as marketplace history, with your contact details removed from them. |
+| Listings | While published. A listing you delete is removed from the marketplace and retained in hidden form as marketplace history, together with its reviews and inquiry records. On account deletion, sole-owned listings are withdrawn in the same way and keep the owner's name and email address for three years after deletion, after which those details are erased (Section 8). |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
-| Matchmaking conversations, and the housing preferences derived from them | While your account is active, then erased under Section 8. |
+| Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
+| Inquiry records and recorded leases | While your account is active, then for three years after deletion with your name and email address, then erased (Section 8). |
+| Matchmaking conversations, and the housing preferences derived from them | While your account is active, then for three years after deletion, then erased (Section 8). |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
-| Saved listings and interaction history | While your account is active, then erased under Section 8. |
+| Saved listings | While your account is active, then erased under Section 8. |
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
 | Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
-| Roster information about people without an account | Kept while the student could still be living off campus near their university, and deleted on request (Section 1.8). |
-| Email sent through the Services | Delivered; the message body is not retained in our database. A copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
+| Email sent through the Services | The message body is not retained in our database. Because we send from our own email account, a copy of each message stays in that account, and a copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
 | Aggregate listing metrics | Retained indefinitely in aggregate, non-identifying form. |
 | Internal change history | Retained for security and audit purposes. Personal data inside an entry is erased on account deletion. |
 | Database backups | Retained for a limited period and then expire (Section 7). |
@@ -468,8 +514,8 @@ Thirty days after deletion, an automated job permanently erases your personal da
 ## 10. Your choices
 
 - **Access and correct.** On the website you can view and edit your name, email address,
-  phone number, date of birth, gender, description, photo, graduation details, and payout
-  handle at any time from your profile. The mobile apps currently let you edit your name,
+  phone number, date of birth, gender, description, photo, and graduation details at
+  any time from your profile. The mobile apps currently let you edit your name,
   email address, and graduation year; for the remaining fields, use the website or email
   us.
 - **Delete.** See Section 8.
@@ -503,9 +549,9 @@ the statutory categories:
 | Category | Collected? | Examples |
 |---|---|---|
 | Identifiers | Yes | Name, email address, phone number, account identifier, IP address |
-| Personal information under Cal. Civ. Code §1798.80 | Yes | Name, phone number, payout handle |
+| Personal information under Cal. Civ. Code §1798.80 | Yes | Name, phone number |
 | Protected classification characteristics | Yes | Date of birth / age, gender |
-| Commercial information | Yes | Listings saved and contacted |
+| Commercial information | Yes | Listings saved and contacted; leases a landlord tells us you signed |
 | Biometric information | No | N/A |
 | Internet or network activity | Yes | Pages viewed, referring page, analytics events |
 | Geolocation data | No | We do not collect device location |
@@ -516,9 +562,9 @@ the statutory categories:
 | Sensitive personal information | Yes | Account log-in credentials; the contents of a lease you upload |
 
 **Sources:** you; Google or Apple, if you sign in with one of them; your use of the
-Services; universities, for the class-roster information described in Section 1.8; public
-listing sources and other users, for the landlord and property contact details also
-described there.
+Services; landlords and property managers, and other users, for the landlord and property
+contact details described in Section 1.8; landlords, for the lease information described in
+Section 1.9.
 **Business purposes for collection and disclosure:** as described in Sections 2 and 6.
 **Sale or sharing:** We do not sell personal information for money. We use Google Analytics
 on our website, which involves disclosing usage information to Google; you can opt out by
@@ -562,5 +608,5 @@ an update takes effect means you accept the revised policy.
 ## 13. Contact us
 
 **Proximity LLC**
-70 Greendale Rd, Scarsdale, NY 10583-2133
+117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 Privacy and general enquiries: **info@useproximity.org**

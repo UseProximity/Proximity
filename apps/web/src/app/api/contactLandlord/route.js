@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import { outreachEnabled } from "@/lib/appEnv";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { calcAge } from "@/utils/listingFormatters";
@@ -351,8 +352,14 @@ export async function POST(req) {
       }
     }
 
-    // If email credentials are not configured, log and return success (dev mode)
+    // Missing email credentials. Locally that is expected, so pretend it sent. On
+    // production it means the inquiry cannot be delivered, and the student must be
+    // told so rather than shown a success they will rely on.
     if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      if (outreachEnabled()) {
+        console.error("[contactLandlord] Email env vars missing on production; inquiry not sent.");
+        return NextResponse.json({ error: "Failed to send message" }, { status: 503 });
+      }
       console.warn("[contactLandlord] Email env vars not set — skipping send in dev mode.");
       console.log("[contactLandlord] Would have sent:", { to: toEmail, from: senderName, subject: landlordMailOptions.subject });
       return NextResponse.json({ ok: true, dev: true });
@@ -361,8 +368,15 @@ export async function POST(req) {
     const landlordInfo = await sendMailSafe(transporter, landlordMailOptions);
     console.log(`[contactLandlord] Landlord email sent to ${toEmail} — messageId: ${landlordInfo.messageId}`);
 
-    const studentInfo = await sendMailSafe(transporter, studentConfirmationOptions);
-    console.log(`[contactLandlord] Student confirmation sent to ${email} — messageId: ${studentInfo.messageId}`);
+    // The inquiry has reached the landlord at this point, so a failed confirmation
+    // copy must not turn into an error: the student would retry and the landlord
+    // would get the same inquiry twice.
+    try {
+      const studentInfo = await sendMailSafe(transporter, studentConfirmationOptions);
+      console.log(`[contactLandlord] Student confirmation sent to ${email} — messageId: ${studentInfo.messageId}`);
+    } catch (confirmErr) {
+      console.error("[contactLandlord] Inquiry delivered but confirmation copy failed:", confirmErr);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

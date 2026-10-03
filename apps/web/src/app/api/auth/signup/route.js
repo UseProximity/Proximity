@@ -3,14 +3,13 @@ import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
-
-// Roles a user is allowed to self-assign at signup. Privileged roles (super,
-// admin, …) can never be granted here — only via an admin-side role change.
-const SIGNUP_ROLES = new Set(["student", "landlord"]);
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+import { SIGNUP_ROLES } from "@/lib/auth/roles";
 
 export async function POST(req) {
   try {
-    const { name, email, password, role, callbackUrl } = await req.json();
+    const { name, email: rawEmail, password, role, callbackUrl } = await req.json();
+    const email = normalizeEmail(rawEmail);
 
     if (!name?.trim())
       return NextResponse.json({ error: "Name is required." }, { status: 400 });
@@ -35,7 +34,7 @@ export async function POST(req) {
     const { data: existing } = await supabase
       .from("users")
       .select("id, password_hash, deleted_at")
-      .eq("email", email)
+      .ilike("email", emailMatchPattern(email))
       .single();
 
     if (existing) {
@@ -115,7 +114,7 @@ export async function POST(req) {
       email,
       name: name.trim(),
       token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
     });
 

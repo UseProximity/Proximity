@@ -1,8 +1,28 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-09-19T22:21:24.524Z",
-  "count": 90,
+  "_generated": "2026-10-02T17:39:16.519Z",
+  "count": 92,
   "utils": [
+    {
+      "file": "src/lib/analytics/access.js",
+      "description": "Who can open /analytics, and which sections they see."
+    },
+    {
+      "file": "src/lib/analytics/db.js",
+      "description": "Small read helpers for /analytics. Reads go through the deployment's own database"
+    },
+    {
+      "file": "src/lib/analytics/ga.js",
+      "description": "Google Analytics 4 Data API reads for /analytics."
+    },
+    {
+      "file": "src/lib/analytics/periods.js",
+      "description": "Weekly time buckets for /analytics. Weeks start on Monday (UTC) and are keyed by"
+    },
+    {
+      "file": "src/lib/analytics/sections.js",
+      "description": "One loader per /analytics section. Every loader returns the same plain shape, which the"
+    },
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
@@ -10,6 +30,10 @@
     {
       "file": "src/lib/auth/callbackUrl.js",
       "description": "A return URL that arrives from outside (a query string, a request body, an"
+    },
+    {
+      "file": "src/lib/auth/email.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/auth/landlordRole.js",
@@ -22,26 +46,6 @@
     {
       "file": "src/lib/availabilityCheck.js",
       "description": "One-click \"still available?\" landlord email."
-    },
-    {
-      "file": "src/lib/chat/accessToken.js",
-      "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
-    },
-    {
-      "file": "src/lib/chat/attachments.js",
-      "description": "Shared allowlist / limits for chat attachments (presign API + client)."
-    },
-    {
-      "file": "src/lib/chat/landlordCanChat.js",
-      "description": "Server-side gate for in-app listing chat. Primary landlord must be a real"
-    },
-    {
-      "file": "src/lib/chat/notifyEmail.js",
-      "description": "Email notification for a new in-app chat message."
-    },
-    {
-      "file": "src/lib/chat/realtime.js",
-      "description": "Supabase Realtime helper for listing chat."
     },
     {
       "file": "src/lib/contactTracking.js",
@@ -64,6 +68,10 @@
       "description": "Canonical neighborhood table for the WashU market. Listings only carry"
     },
     {
+      "file": "src/lib/google/serviceAccount.js",
+      "description": "Access tokens for Google APIs from the project's service account, using the"
+    },
+    {
       "file": "src/lib/guides.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -74,6 +82,10 @@
     {
       "file": "src/lib/leaseCheck/analyzeLease.js",
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
+    },
+    {
+      "file": "src/lib/leaseCheck/pendingCheck.js",
+      "description": "A lease picked by a signed-out visitor, held until they sign in."
     },
     {
       "file": "src/lib/leaseCheck/prompt.js",
@@ -273,7 +285,7 @@
     },
     {
       "file": "src/lib/seo/gsc.js",
-      "description": "Google Search Console client using a service account, with no new"
+      "description": "Google Search Console client using the project service account (token flow"
     },
     {
       "file": "src/lib/seo/report.js",
@@ -328,10 +340,6 @@
       "description": "How an offering's start date reads to a person."
     },
     {
-      "file": "src/utils/chatThreadGrouping.js",
-      "description": "Client-side inbox organization for chat threads."
-    },
-    {
       "file": "src/utils/compressImage.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -345,7 +353,7 @@
     },
     {
       "file": "src/utils/listingFormatters.js",
-      "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
+      "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
     },
     {
       "file": "src/utils/unitCounts.js",

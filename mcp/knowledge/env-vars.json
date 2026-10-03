@@ -1,10 +1,14 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-09-19T22:21:24.565Z",
+  "_generated": "2026-10-02T17:39:16.559Z",
   "count": 60,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
+      "public": false
+    },
+    {
+      "name": "ANALYTICS_EXTRA_VIEWERS",
       "public": false
     },
     {
@@ -36,10 +40,6 @@
       "public": false
     },
     {
-      "name": "DEV_SUPABASE_JWT_SECRET",
-      "public": false
-    },
-    {
       "name": "DEV_SUPABASE_SERVICE_KEY",
       "public": false
     },
@@ -65,6 +65,10 @@
     },
     {
       "name": "FIRECRAWL_API_KEY",
+      "public": false
+    },
+    {
+      "name": "GA4_PROPERTY_ID",
       "public": false
     },
     {
@@ -148,19 +152,15 @@
       "public": false
     },
     {
+      "name": "NEXTAUTH_URL",
+      "public": false
+    },
+    {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
       "public": true
     },
     {
       "name": "NEXT_PUBLIC_MAPBOX_TOKEN",
-      "public": true
-    },
-    {
-      "name": "NEXT_PUBLIC_SUPABASE_DEFAULT_KEY",
-      "public": true
-    },
-    {
-      "name": "NEXT_PUBLIC_SUPABASE_URL",
       "public": true
     },
     {
@@ -185,10 +185,6 @@
     },
     {
       "name": "PMS_WATCH_DAYS",
-      "public": false
-    },
-    {
-      "name": "PROD_SUPABASE_JWT_SECRET",
       "public": false
     },
     {
@@ -237,6 +233,10 @@
     },
     {
       "name": "VERCEL_ENV",
+      "public": false
+    },
+    {
+      "name": "VERCEL_URL",
       "public": false
     },
     {

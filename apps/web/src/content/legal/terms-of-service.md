@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** September 18, 2026
+**Last updated:** September 24, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -13,7 +13,7 @@ Please read them carefully. Sections 18 and 19 limit our liability to you, and S
 sets out where any dispute must be resolved.
 
 **Contact:** info@useproximity.org
-**Postal address:** Proximity LLC, 70 Greendale Rd, Scarsdale, NY 10583-2133
+**Postal address:** Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 
 ---
 
@@ -28,6 +28,15 @@ not a real-estate broker, a leasing agent, a property manager, a landlord, or a 
 screening service. We do not own, manage, inspect, or control any property listed on the
 Services. Any lease, sublease, application, deposit, or payment is strictly between you and
 the other person. Proximity is not involved and has no obligations under it.
+
+**How Proximity will be paid (effective date: TBD).** Students never pay Proximity
+anything. Proximity does not charge landlords a commission today. From a date we have not
+yet set, Proximity may be paid a commission by a landlord when a student who found their
+property through Proximity signs a lease there. We will update these Terms with that date,
+and notify registered users, before any commission takes effect. That arrangement will be
+between Proximity and the landlord, under a separate agreement with them. It will not make
+Proximity a party to your lease, and it will not change anything a landlord owes you or you
+owe a landlord.
 
 ## 2. Acceptance and eligibility
 
@@ -65,8 +74,9 @@ account's type where it is clearly wrong or is being used to get around these Te
 This matters more here than on most platforms, so we want to be direct about it.
 
 - **We do not verify listings.** Rent, availability, photos, square footage, amenities, lease
-  terms, and everything else on a listing come from the person who posted it or from the
-  sources described in Section 7. We do not independently confirm any of it.
+  terms, and everything else on a listing come from the landlord, whether they entered it
+  themselves, gave us a page to build it from, or asked us to set it up for them (Sections 6
+  and 7). We do not independently confirm any of it.
 - **We do not verify landlords or students.** We do not run background checks, credit checks,
   identity verification, or license checks on anyone.
 - **We do not inspect properties.** We have never visited most of the properties listed.
@@ -75,7 +85,8 @@ This matters more here than on most platforms, so we want to be direct about it.
   the property or the person renting it is safe, legitimate, lawful, or suitable for you.
 - **We are not involved in your money.** We never collect rent, deposits, application fees,
   or any other payment between a student and a landlord, and we will never ask you to send
-  one through us.
+  one through us. Any commission a landlord pays us once commissions take effect
+  (Section 1) is between us and the landlord, and is never collected from you.
 
 **Use your own judgment.** Visit the property, meet the person, read the lease, and be
 cautious with anyone who pressures you to pay or sign quickly, refuses to meet, or asks for
@@ -88,8 +99,17 @@ use the matchmaking assistant and Lease Check, and leave reviews if you are elig
 
 **Sublease listings.** If you are subletting your own place, you may post it as a listing.
 Everything in Section 6 about listing accuracy, your right to list, and non-discrimination
-applies to you exactly as it does to a landlord, including the requirement that you
-actually have the right to sublet under your own lease. Check your lease before you post.
+applies to you exactly as it does to a landlord.
+
+**You need the owner's consent before you advertise a sublease.** You may not post a
+sublease on Proximity unless the property's owner or landlord has consented to you
+subletting it, whether that consent is in your lease or given to you separately. Check your
+lease before you post, and ask your landlord if you are unsure. When you post a sublease, you
+confirm that you have that consent and that you hold the lease on the place you are
+subletting, and we keep that confirmation as your written authorization for us to advertise
+the sublease. We may remove a sublease listing at any time if we
+believe the consent is missing, including at the owner's or landlord's request, and you are
+responsible for any claim that arises from advertising a sublease without it (Section 20).
 
 ## 6. Using Proximity as a landlord
 
@@ -108,9 +128,22 @@ If you post a listing, you represent and agree that:
   discriminates on the basis of race, color, religion, national origin, sex, familial
   status, disability, or any other protected characteristic.
 
-**Your contact details are published.** The contact name, email address, and phone number
-you put on a listing are displayed publicly on that listing so students can reach you. Do
-not put anything there you are not willing to make public.
+**Your listing is public.** The contact name you put on a listing is displayed publicly so
+students can see who they are dealing with. The contact email address and phone number you
+give are not shown on the listing: we use them to route inquiries to you.
+
+Everything else you write is published exactly as you type it: we never rewrite your words.
+We do refuse to save a description containing an email address, a phone number, a link, or a
+social handle, and ask you to edit it instead, because those belong in the contact fields
+above. Anything that does save is public and search engines may index it, so do not write
+anything into a description that you are not willing to make public.
+
+**Building a listing from your own web page.** Rather than typing everything in, you can give
+us the address of your own property website or an existing listing of yours. We fetch the
+public content of that page and use AI to pre-fill a draft, using only images that appeared
+on the page. Nothing is saved until you review the draft field by field and submit it, so the
+listing is still yours and you are still the one representing it. We do this only for a page
+you give us, for your own property.
 
 **Keeping listings fresh.** Proximity may email you from time to time to ask whether a
 listing is still available, using a one-click link that does not require signing in. If a
@@ -130,20 +163,35 @@ up after you do.
 If you delete your account, a listing you share with another owner stays live under them,
 and your published contact details on it are replaced with theirs. See Section 17.
 
-## 7. Listings we compile from public sources
+## 7. Listings we set up for a landlord
 
-Not every listing on Proximity was posted by an account holder. We also compile listings for
-off-campus properties from publicly available sources, including the contact details a
-property already advertises publicly.
+Not every listing was typed in by the person who owns the property. Where a landlord asks us
+to, we will set the listing up for them from the details and contact information they give
+us or point us to. Once the landlord creates their own landlord account, we assign the
+listing to it so they control it from then on.
 
-If your property appears on Proximity this way:
+**We do not list a property nobody asked us to list.** We do not scrape listing sites,
+property aggregators, or the web at large looking for properties to put on Proximity. A
+listing exists because its owner asked for it, or because they created it themselves.
 
-- **It does not mean you use Proximity** or have agreed to these Terms. An unclaimed listing
-  creates no agreement between us.
-- **You can claim it.** Create a landlord account and email info@useproximity.org, and we
-  will connect the listing to your account so you control it.
+**One exception: pages for properties students have reviewed.** When a student reviews a
+building that is not on Proximity, we create a page for it so the review has somewhere to
+live. That page is marked unavailable and shows only the property's address, a Google Street
+View image of it, and its reviews. Nothing on it is offered for rent, and the matchmaking
+assistant never recommends it. If you own the property, you can email
+info@useproximity.org to have the page removed, or to claim it as described below.
+
+Earlier on, that permission was usually given verbally or by email rather than in writing.
+
+If your property is on Proximity and you did not ask for it to be, or you no longer want it
+there:
+
 - **You can have it removed.** Email info@useproximity.org and we will remove the listing.
   You do not need an account to ask, and you do not need to give a reason.
+- **You can claim it instead.** Create a landlord account and email info@useproximity.org,
+  and we will connect the listing to your account so you control it.
+- **A listing we set up is not an agreement.** Until you create an account, these Terms
+  create no agreement between you and us.
 
 We aim to act on claim and removal requests promptly.
 
@@ -173,6 +221,11 @@ host any particular review, and removing one is not an endorsement of the proper
 subject to the same rules as a review, and may not identify a reviewer who posted
 anonymously or retaliate against them.
 
+**Landlord disputes.** If you are a landlord and believe a reviewer never lived at or dealt
+with your property, you can come to us directly at info@useproximity.org. We will look into
+it and decide whether the review stays up, is hidden, or is removed under the moderation
+rules above. That decision is ours.
+
 **Reviews outlive accounts.** If you delete your account, your reviews stay on Proximity in
 anonymized form: your name and the link to your account are removed, and the text remains
 because it describes a property, not you. See Section 17 and Privacy Policy §8.
@@ -187,12 +240,15 @@ and then suggests listings. It is available on the website and in the mobile app
   matters against the listing itself and with the person renting it.
 - **It is a suggestion, not advice.** It is not housing, financial, or legal advice, and a
   recommendation is not an endorsement (see Section 4).
-- **Some listings are filtered.** Where a listing states that occupancy is restricted to
-  tenants of one gender, the assistant will not recommend it unless the gender on your
-  profile matches. This affects only what the assistant suggests. It never limits what you
-  can search, browse, view, or contact directly.
+- **Some listings are filtered.** Where a listing, typically a sublease, explicitly asks for
+  tenants of a certain gender in its description, the assistant will sometimes not suggest
+  it to students of another gender. This affects only what the assistant suggests. It never
+  limits what you can search, browse, view, or contact directly.
 - **Your first name is sent to our AI provider** so the assistant can address you naturally,
   along with your conversation and preferences. Privacy Policy §4 explains this in full.
+- **We keep your conversation and preferences.** They are a record of what you asked for
+  and why we showed you the listings we did. We keep them while your account is open and
+  for three years after you delete it (Privacy Policy §8).
 
 ## 10. Lease Check
 
@@ -213,18 +269,38 @@ keep only the output. See Privacy Policy §1.7 for exactly what is and is not re
 When you send an inquiry through a listing, Proximity delivers it by email to the person
 renting that property. Your name, email address, phone number if you gave one, and your
 message go to them, and **your email address is set as the reply-to** so they can respond to
-you directly. We send you a confirmation copy.
+you directly. We send you a confirmation copy. If we cannot deliver your inquiry, we tell
+you so, so you can try again.
 
 We do not guarantee that anyone will reply, that a listing is still available, or that the
 recipient is who they say they are. Once your message is delivered, it is in their inbox and
-outside our control: we cannot recall it, including if you later delete your account.
+outside our control: we cannot recall it, including if you later delete your account. We
+also keep a record that you sent the inquiry (which listing, to whom, and when) for three
+years, including after you delete your account.
+
+**Messaging inside Proximity.** Where the Services let you message another user about a
+listing, the conversation happens in the product rather than by email, and we store it so
+both of you can come back to it. The other participant can always see what you sent, and
+Proximity staff can read a conversation where they need to investigate a report of abuse or
+a dispute, or to confirm that a lease was signed. The rules in Section 12 apply to messages
+exactly as they apply to listings and reviews, and we may remove a message or withdraw
+access to messaging for a breach of them.
+
+A message you have sent cannot be unsent. If you delete your account, we keep your
+conversations for three years afterwards, with your name and email address as the only
+account details attached to them, and then erase them. We keep them as a record of your
+dealings with the other participant: they rely on them in the same way they would rely on
+an email you sent them, and we may need them to resolve a dispute, investigate abuse, or
+confirm a lease. This, together with the inquiry records above, is the exception to the
+erasure timetable described in Section 17A. Privacy Policy §§8 and 9 set it out in full.
 
 ## 12. Acceptable use
 
 You agree not to:
 
 - post anything false, misleading, fraudulent, or that you do not have the right to post;
-- list a property you have no right to rent or sublet;
+- list a property you have no right to rent or sublet, or advertise a sublease without the
+  owner's or landlord's consent;
 - post a discriminatory listing or send a discriminatory message;
 - write, solicit, buy, sell, or coordinate fake, incentivized, or retaliatory reviews, or
   create additional accounts to leave more reviews than these Terms allow;
@@ -307,9 +383,9 @@ something for longer.
 you stop using is kept until you delete it. If we introduce a dormancy period, we will give
 you notice by email before it takes effect and a chance to keep the account open.
 
-**What survives.** Sections 8 (reviews staying published in anonymized form), 13 (the
-licence, to the extent content remains published), 15, 17A, 18, 19, 20, and 22 survive the
-end of your account.
+**What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
+and inquiry records kept for three years, with the sender named), 9 (matchmaking conversations and preferences kept for three years), 13 (the licence, to the extent content
+remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion
 
@@ -336,9 +412,20 @@ prices move across a neighborhood, and we may keep and use it indefinitely, incl
 your account is gone. This information does not identify you and we do not attempt to
 re-identify it.
 
+**Messages and inquiry records.** Separately from the paragraph above, conversations between
+users, and our records of inquiries sent through a listing, are kept for three years after
+the account that sent them is deleted, with each message attributed to whoever sent it. For
+that period the only account details kept with them are the sender's name and email address.
+We keep them because the other participant relies on them, because we may need them to
+resolve a dispute, and as a record of the introductions we make between students and
+landlords. At the end of the three years they are erased. Privacy Policy §§8 and 9 set out
+what this means for you.
+
 **Withdrawn listings.** A listing that is withdrawn stops being published but is retained as
-marketplace history. When a listing is withdrawn because its only owner deleted their
-account, that owner's name, email address, and phone number are removed from it.
+marketplace history. This includes a listing you delete yourself: deleting it removes it from
+the marketplace, and we keep it, with its reviews and inquiry records, in hidden form. When a listing is withdrawn because its only owner deleted their
+account, that owner's name and email address are kept with it for three years after the
+account is deleted, and then erased. Their phone number is removed from it.
 
 **People without an account.** We hold limited information about some people who never
 signed up, described in Privacy Policy §1.8, and they can have it deleted on request even
@@ -438,5 +525,5 @@ agency relationship between you and Proximity.
 ## 24. Contact us
 
 **Proximity LLC**
-70 Greendale Rd, Scarsdale, NY 10583-2133
+117 South Lexington Street, Ste 100, Harrisonville, MO 64701
 **info@useproximity.org**

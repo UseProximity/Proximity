@@ -261,6 +261,20 @@ export async function POST(req) {
         const problem = checkListingDescription(text);
         if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       }
+
+      /*
+       * Terms Section 5: posting a sublease means the poster confirms their own
+       * lease lets them sublet. The form asks with an unticked checkbox; this is
+       * the same check for anyone calling the route without it.
+       */
+      const postsSublease =
+        String(leaseType ?? body.lease_type ?? "").toLowerCase() === "sublease";
+      if (postsSublease && body.subleaseRightsConfirmed !== true) {
+        return NextResponse.json(
+          { error: "Please confirm you have the right to sublet this place." },
+          { status: 400 }
+        );
+      }
     }
 
     // Geocode address if lat/lng not provided

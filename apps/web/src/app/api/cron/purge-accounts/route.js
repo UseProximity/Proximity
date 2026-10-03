@@ -1,5 +1,6 @@
 /*
- * Daily cron: hard-purge accounts whose 30-day deletion grace period has elapsed.
+ * Daily cron: hard-purge accounts whose 30-day deletion grace period has elapsed,
+ * then erase the records kept for three years once that window has passed too.
  *
  * Stage 2 of the deletion flow started by DELETE /api/account (stage 1 stamps
  * users.deleted_at and stops the account authenticating immediately). This run
@@ -18,15 +19,16 @@
  *                    DIFFERENT person and are deliberately left in place.
  *   - behavioral     user_listing_interactions, review_votes, waitlist_clicks:
  *                    deleted outright.
- *   - matchmaking    chat sessions hold verbatim conversation content, and
- *                    matchmaking_preferences holds what was derived from them.
- *                    Privacy Policy s8 promises both, so both are deleted.
+ *   - matchmaking    chat sessions and matchmaking_preferences are KEPT for
+ *                    three years (Privacy Policy s8). They record why we showed
+ *                    this person the properties we did, so they are erased by
+ *                    the retention stage below, not here.
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
- *   - listings       sole-owned listings are soft-deleted by the users trigger,
- *                    but keep the owner's published contact details. Those are
- *                    the departing person's data, so they are scrubbed too.
+ *   - listings       sole-owned listings are soft-deleted by the users trigger.
+ *                    The owner's phone is scrubbed now; their name and email
+ *                    stay on the withdrawn listing for three years (Terms s17A).
  *   - profile photo  every object under profiles/{userId}/ removed from R2.
  *   - action_log     PII payloads redacted, audit skeleton retained (see below).
  *
@@ -35,6 +37,10 @@
  * that failed silently would leave real data behind on a user this job will
  * never look at again. Throwing instead leaves the account un-tombstoned and
  * the next run retries it from the top (every step below is safe to repeat).
+ *
+ * Retention stage: once a tombstoned account is three years past deleted_at,
+ * its matchmaking rows are deleted and the contact name and email on its
+ * withdrawn listings are cleared. Every step is safe to repeat.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  */
@@ -46,7 +52,10 @@ import { isProdData } from "@/lib/appEnv";
 
 export const dynamic = "force-dynamic";
 
-const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const GRACE_PERIOD_MS = 30 * DAY_MS;
+const RETENTION_MS = 3 * 365 * DAY_MS;
+const TOMBSTONE_EMAIL = "deleted+%@deleted.invalid";
 
 // Surface a failed step instead of letting it pass as a no-op. See the header:
 // a swallowed error plus the tombstone filter equals data that is never purged.
@@ -118,9 +127,9 @@ async function redactActionLog(userId, email) {
 }
 
 // Sole-owned listings are soft-deleted by the users trigger, but withdrawn is
-// not erased: the published contact block can still be the departing owner's
-// name, email and phone. Clear only the fields that are demonstrably theirs, so
-// a management company's shared inbox on the listing survives untouched.
+// not erased. The owner's name and email stay for three years as marketplace
+// history (cleared by eraseRetainedRecords); the phone goes now. Clear it only
+// where it is demonstrably theirs, so a management company's number survives.
 async function scrubListingContacts(user) {
   const { data: links, error } = await supabase
     .from("listing_landlords")
@@ -131,19 +140,50 @@ async function scrubListingContacts(user) {
   const ids = (links ?? []).map((l) => l.listing_id);
   if (ids.length === 0) return 0;
 
-  const fields = [
-    ["contact_email", user.email],
-    ["contact_name", user.name],
-    ["contact_phone", user.phone],
-  ];
-  for (const [column, value] of fields) {
-    if (!value) continue;
+  if (user.phone) {
     await must(
-      `listing ${column}`,
-      supabase.from("listings").update({ [column]: null }).in("id", ids).eq(column, value)
+      "listing contact_phone",
+      supabase
+        .from("listings")
+        .update({ contact_phone: null })
+        .in("id", ids)
+        .eq("contact_phone", user.phone)
     );
   }
   return ids.length;
+}
+
+// Three years after deletion: erase what purgeUser deliberately kept. The users
+// row is a tombstone by now, so the listing contact can no longer be matched by
+// value. Every withdrawn listing still linked to this account is cleared instead;
+// co-owned listings were handed to the remaining owner at deletion and are live.
+async function eraseRetainedRecords(userId) {
+  await must(
+    "retained matchmaking_chat_sessions",
+    supabase.from("matchmaking_chat_sessions").delete().eq("user_id", userId)
+  );
+  await must(
+    "retained matchmaking_preferences",
+    supabase.from("matchmaking_preferences").delete().eq("user_id", userId)
+  );
+
+  const { data: links, error } = await supabase
+    .from("listing_landlords")
+    .select("listing_id")
+    .eq("user_id", userId);
+  if (error) throw new Error(`retained listing links: ${error.message}`);
+
+  const ids = (links ?? []).map((l) => l.listing_id);
+  if (ids.length > 0) {
+    await must(
+      "retained listing contacts",
+      supabase
+        .from("listings")
+        .update({ contact_name: null, contact_email: null })
+        .in("id", ids)
+        .not("deleted_at", "is", null)
+    );
+  }
 }
 
 async function purgeUser(user) {
@@ -183,16 +223,7 @@ async function purgeUser(user) {
     supabase.from("user_listing_interactions").delete().eq("user_id", userId)
   );
   await must("review_votes", supabase.from("review_votes").delete().eq("user_id", userId));
-  await must(
-    "matchmaking_chat_sessions",
-    supabase.from("matchmaking_chat_sessions").delete().eq("user_id", userId)
-  );
-  // The preferences derived from those conversations are promised alongside
-  // them in Privacy Policy s8, and outlive the session rows otherwise.
-  await must(
-    "matchmaking_preferences",
-    supabase.from("matchmaking_preferences").delete().eq("user_id", userId)
-  );
+  // Matchmaking sessions and preferences are kept for three years; see the header.
   await must("lease_checks", supabase.from("lease_checks").delete().eq("user_id", userId));
   await must(
     "waitlist_clicks",
@@ -283,7 +314,7 @@ export async function GET(req) {
     .select("id, email, name, phone")
     .not("deleted_at", "is", null)
     .lt("deleted_at", cutoff)
-    .not("email", "like", "deleted+%@deleted.invalid")
+    .not("email", "like", TOMBSTONE_EMAIL)
     .limit(200);
 
   if (error) {
@@ -302,11 +333,40 @@ export async function GET(req) {
     }
   }
 
+  // Retention stage. Only tombstones reach it, so every account here has
+  // already been through purgeUser above.
+  const retentionCutoff = new Date(Date.now() - RETENTION_MS).toISOString();
+  const { data: expired, error: expiredError } = await supabase
+    .from("users")
+    .select("id")
+    .lt("deleted_at", retentionCutoff)
+    .like("email", TOMBSTONE_EMAIL)
+    .limit(200);
+
+  let erased = 0;
+  const eraseFailed = [];
+  if (expiredError) {
+    console.error("[purge-accounts] retention query failed:", expiredError);
+  } else {
+    for (const { id } of expired ?? []) {
+      try {
+        await eraseRetainedRecords(id);
+        erased += 1;
+      } catch (err) {
+        console.error(`[purge-accounts] retention erase failed for ${id}:`, err);
+        eraseFailed.push(id);
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     cutoff,
     eligible: due?.length ?? 0,
     purged: purged.length,
     failed: failed.length,
+    retentionCutoff,
+    retentionErased: erased,
+    retentionFailed: eraseFailed.length + (expiredError ? 1 : 0),
   });
 }

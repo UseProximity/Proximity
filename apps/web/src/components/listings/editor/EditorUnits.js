@@ -15,10 +15,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
-import { UnitPhotoRow } from "./EditorImageRows";
+import { UnitFloorPlan } from "./EditorImageRows";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 
@@ -68,6 +69,9 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
 
   const avail = availabilityLabel(lease.availableFrom);
+  // Switching an offering to a sublease is posting one, so it asks for the same
+  // confirmation as the add flows. One that already is a sublease does not.
+  const needsRightsConfirmation = draft.sublease && !lease.sublease;
 
   const discard = () => {
     setDraft(leaseDraft(lease, currentUserEmail));
@@ -80,6 +84,9 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
     if (!draft.contactEmail.trim()) {
       return toast.error("Add a contact email so students can reach you.");
     }
+    if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
+      return toast.error("Please confirm you have the right to sublet this place.");
+    }
     setSaving(true);
     try {
       const res = await fetch(`/api/leases/${lease.id}`, {
@@ -91,6 +98,31 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
       if (!res.ok) return toast.error(data.error || "Couldn't save that listing.");
       toast.success("Your listing was updated.");
       setDirty(false);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /*
+   * Delete is for good; the Withdrawn box below is the undoable way off the
+   * market. Only on your own offerings: the server re-checks ownership.
+   */
+  const remove = async () => {
+    if (
+      !confirm(
+        "Delete this listing? It is removed from your dashboard and students stop seeing it. This can't be undone. To take it down temporarily, tick Withdrawn instead."
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't delete that listing.");
+      toast.success("Listing deleted.");
       await onChanged();
     } catch {
       toast.error("Network error.");
@@ -149,6 +181,11 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
             </button>
           </>
         )}
+        <button onClick={remove} disabled={saving} type="button"
+          title="Delete this listing" aria-label="Delete this listing"
+          className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -215,7 +252,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
       <div className="mt-3 flex flex-wrap gap-4 text-sm">
         <label className="inline-flex items-center gap-2 text-gray-700">
           <input type="checkbox" checked={draft.sublease}
-            onChange={(e) => set({ sublease: e.target.checked })} />
+            onChange={(e) => set({ sublease: e.target.checked, subleaseRightsConfirmed: false })} />
           This is a sublease
         </label>
         <label className="inline-flex items-center gap-2 text-gray-700">
@@ -229,6 +266,15 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
           Withdrawn (hide from students)
         </label>
       </div>
+
+      {needsRightsConfirmation && (
+        <div className="mt-3">
+          <SubleaseConsentCheckbox
+            checked={!!draft.subleaseRightsConfirmed}
+            onChange={(v) => set({ subleaseRightsConfirmed: v })}
+          />
+        </div>
+      )}
     </li>
   );
 }
@@ -270,6 +316,34 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
     }
   };
 
+  /*
+   * Removing a unit is the property owner's alone (the server enforces the
+   * same), and it takes every offering on the unit with it, so the prompt says
+   * how many.
+   */
+  const removeUnit = async () => {
+    const n = (unit.leases ?? []).length;
+    const name = unit.identityLabel ?? unit.title ?? "this unit";
+    const extra = n
+      ? ` Its ${n} ${n === 1 ? "listing is" : "listings are"} taken down with it.`
+      : "";
+    if (!confirm(`Delete ${name}? Students stop seeing it.${extra}`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/units/${unit.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't delete that unit.");
+      toast.success("Unit deleted.");
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white">
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
@@ -283,11 +357,20 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
         {!unit.available && (
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
         )}
-        {isPropertyOwner && dirty && (
-          <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
-            className="ml-auto rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
-            {saving ? "Saving…" : "Save unit"}
-          </button>
+        {isPropertyOwner && (
+          <div className="ml-auto flex items-center gap-2">
+            {dirty && (
+              <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+                {saving ? "Saving…" : "Save unit"}
+              </button>
+            )}
+            <button onClick={removeUnit} disabled={saving} type="button"
+              title="Delete this unit" aria-label="Delete this unit"
+              className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -336,12 +419,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
         </p>
       )}
 
-      <UnitPhotoRow
-        listing={listing}
-        unit={unit}
-        isPropertyOwner={isPropertyOwner}
-        onChanged={onChanged}
-      />
+      <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} />
 
       {/*
         * The offerings sit on a darker ground than the unit above them. They are

@@ -6,6 +6,7 @@ import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { clampCount } from "@/utils/unitCounts";
 import { compressImage } from "@/utils/compressImage";
 import { checkListingDescription } from "@/lib/contentRules";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -47,6 +48,7 @@ const UTILITY_LABELS = {
 };
 const HOME_TYPES = ["apartment", "house", "condo", "townhouse", "studio", "other"];
 const LEASE_TYPES = ["sublease", "standard", "short-term"];
+const RIGHTS_NOT_CONFIRMED = "Please confirm you have the right to sublet this place.";
 
 const emptyUnit = () => ({
   bedrooms: "",
@@ -120,6 +122,11 @@ export default function SubleaseFormPanel({
   const [floorPlanUploading, setFloorPlanUploading] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // Only asked when posting a new sublease. An edit is to a listing they have
+  // already confirmed.
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const needsRightsConfirmation =
+    !isEdit && String(form.lease_type).toLowerCase() === "sublease";
   const descriptionProblem = checkListingDescription(form.description);
 
   // Image upload
@@ -362,6 +369,10 @@ export default function SubleaseFormPanel({
       );
       return;
     }
+    if (needsRightsConfirmation && !rightsConfirmed) {
+      setError(RIGHTS_NOT_CONFIRMED);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -414,6 +425,7 @@ export default function SubleaseFormPanel({
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
+            subleaseRightsConfirmed: rightsConfirmed,
           }),
         });
       }
@@ -944,6 +956,14 @@ export default function SubleaseFormPanel({
               <span className="text-xs text-gray-400 mt-0.5">JPG, PNG, WebP (auto-compressed if large)</span>
             </label>
           </div>
+
+          {needsRightsConfirmation && (
+            <SubleaseConsentCheckbox
+              checked={rightsConfirmed}
+              onChange={(v) => { setRightsConfirmed(v); if (v && error === RIGHTS_NOT_CONFIRMED) setError(null); }}
+              invalid={error === RIGHTS_NOT_CONFIRMED}
+            />
+          )}
 
           {/* Footer */}
           <div className="flex gap-3 pt-2 border-t border-gray-100">

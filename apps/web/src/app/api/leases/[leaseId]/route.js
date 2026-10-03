@@ -89,6 +89,16 @@ export async function PATCH(req, { params }) {
     );
   }
 
+  // Terms Section 5. Turning an offering into a sublease is posting one, so it
+  // needs the same confirmation the add flows ask for. Re-saving an offering
+  // that is already a sublease does not ask again.
+  if (body.sublease && !check.lease.sublease && body.subleaseRightsConfirmed !== true) {
+    return NextResponse.json(
+      { error: "Please confirm you have the right to sublet this place." },
+      { status: 400 }
+    );
+  }
+
   const patch = {};
   for (const [key, column] of Object.entries(BODY_TO_COLUMN)) {
     if (key in body) patch[column] = EDITABLE[column](body[key]);
@@ -115,9 +125,14 @@ export async function PATCH(req, { params }) {
 }
 
 /*
- * Withdraw an offering. This is a soft withdrawal (is_active false), not a row
- * delete: the lease is the ownership record for photos and enquiries at this
- * property, and hard-deleting it would strand them.
+ * Delete an offering. Withdrawing (PATCH isActive/unavailable) is the
+ * reversible way off the market; this is the permanent one, and the landlord
+ * no longer sees it on their dashboard afterwards.
+ *
+ * The row is soft-deleted rather than removed: enquiries and photo attribution
+ * point at it, and hard-deleting it would strand them. It is also taken off the
+ * market in the same write, so every surface that only knows about is_active
+ * and unavailable already treats it as gone.
  *
  * @auth user
  */
@@ -146,14 +161,14 @@ export async function DELETE(_req, { params }) {
 
   const { error } = await supabase
     .from("unit_leases")
-    .update({ is_active: false, unavailable: true })
+    .update({ is_active: false, unavailable: true, deleted_at: new Date().toISOString() })
     .eq("id", leaseId)
     .eq("owner_id", session.user.id);
 
   if (error) {
-    console.error("[leases/:id] Withdraw failed:", error.message);
-    return NextResponse.json({ error: "Could not withdraw that lease." }, { status: 500 });
+    console.error("[leases/:id] Delete failed:", error.message);
+    return NextResponse.json({ error: "Could not delete that lease." }, { status: 500 });
   }
 
-  return NextResponse.json({ message: "Lease withdrawn", listingId: check.listingId });
+  return NextResponse.json({ message: "Lease deleted", listingId: check.listingId });
 }

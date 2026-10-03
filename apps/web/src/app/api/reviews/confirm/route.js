@@ -51,7 +51,7 @@ export async function POST(req) {
 
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const result = await flushReviewConfirmation({ userId, baseUrl: getBaseUrl(req) });
+    const result = await flushReviewConfirmation({ userId, baseUrl: getBaseUrl() });
     // "Nothing pending" is the normal outcome of a double-click, not a failure.
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {

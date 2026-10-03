@@ -26,12 +26,9 @@ import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import { loadProfileSetupUser, clearProfileSetupToken } from "@/lib/reviews/onboarding";
 import { GENDERS, REFERRAL_SOURCES } from "@/components/auth/profileFields";
+import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
-
-// A student self-completing a profile may only ever be one of these. admin,
-// super and system are assignable exclusively by an admin, server-side.
-const SELF_ASSIGNABLE_ROLES = new Set(["student", "landlord", "parent", "other"]);
 
 export async function GET(req) {
   try {

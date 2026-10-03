@@ -1,20 +1,25 @@
 "use client";
 
 /*
- * The property's photos on top, the open unit's underneath.
+ * The property's one gallery, and each unit's floor plan.
  *
- * They are two rows rather than one gallery because they belong to different
- * people: the building's pictures are the property owner's, and a unit's may
- * have been added by whoever is letting it. Stacking them makes that ownership
- * visible at a glance instead of burying it in a permission error when someone
- * tries to delete the wrong one.
+ * Photos are not split by unit any more. A property has a single gallery, and a
+ * photo says which apartments it shows through unit tags: the "+ Units" button
+ * in each photo's corner. A picture of the shared kitchen can carry every unit,
+ * a bedroom just the one it is in.
  *
- * The floor plan sits at the far left of the unit row — it is a picture OF the
- * unit, but a diagram rather than a photo, and it has exactly one slot.
+ * Ownership still decides what you can touch. The property owner arranges, tags
+ * and prunes everything. A landlord letting a unit here can add photos, and tag
+ * and remove their own, with the units they let. Other people's photos are shown
+ * but locked.
+ *
+ * The floor plan stays per unit: it is a diagram of one apartment, not a photo,
+ * and it has exactly one slot.
  */
 
-import { useState } from "react";
-import { Lock, Plus, Trash2, LayoutGrid } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Lock, Plus, Trash2, LayoutGrid, Tag, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { compressImage } from "@/utils/compressImage";
@@ -26,7 +31,7 @@ const BUSY_LABEL = {
   reorder: "Saving order…",
 };
 
-function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onChanged, children }) {
+function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onChanged, renderCorner, children }) {
   // null when idle, otherwise which act is in flight — a delete used to report
   // itself as "Saving order…", which is a different thing happening.
   const [busy, setBusy] = useState(null);
@@ -74,7 +79,7 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
       const res = await fetch(`/api/landlord/listings/${listingId}/images`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls, unitId: unitId ?? null }),
+        body: JSON.stringify({ urls }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -123,6 +128,7 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
               onRemove={remove}
               saving={!!busy}
               busyLabel={BUSY_LABEL[busy] ?? "Working…"}
+              renderCorner={renderCorner}
             />
           )}
           {pinned.length > 0 && (
@@ -251,62 +257,220 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
   );
 }
 
+// What a unit is called on a tag: its identity, then the landlord's name for
+// the floor plan, then its shape. Same order as the unit tabs.
+function unitLabel(unit) {
+  if (unit.identityLabel) return unit.identityLabel;
+  if (unit.title) return unit.title;
+  if ((unit.bedrooms ?? 0) === 0 && unit.bedrooms != null) return "Studio";
+  return `${unit.bedrooms ?? "?"} bd · ${unit.bathrooms ?? "?"} ba`;
+}
+
+/*
+ * The "+ Units" control in a photo's corner, and the small pop-up it opens.
+ *
+ * The pop-up is portalled to the page body because each photo tile clips its
+ * contents (overflow-hidden), which would cut the list off at the tile's edge.
+ * Every tick saves straight away: there is nothing else on the pop-up to
+ * confirm, and a Save button would just be one more thing to forget.
+ */
+function UnitTagButton({ photo, units, allowedUnitIds, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+  const tagged = new Set(photo.unitIds ?? []);
+  const count = units.filter((u) => tagged.has(u.id)).length;
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      if (popRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const esc = (e) => e.key === "Escape" && setOpen(false);
+    const reposition = () => setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [open]);
+
+  const toggleOpen = (e) => {
+    e.stopPropagation();
+    if (open) return setOpen(false);
+    const r = btnRef.current.getBoundingClientRect();
+    // Open below the button, or above it when there is no room underneath.
+    const below = window.innerHeight - r.bottom > 220;
+    setPos({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 232)),
+      top: below ? r.bottom + 6 : undefined,
+      bottom: below ? undefined : window.innerHeight - r.top + 6,
+    });
+    setOpen(true);
+  };
+
+  const toggleUnit = async (unitId) => {
+    const next = new Set(tagged);
+    if (next.has(unitId)) next.delete(unitId);
+    else next.add(unitId);
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/landlord/photos/${photo.id}/units`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitIds: [...next] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't save those units.");
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggleOpen}
+        onMouseDown={(e) => e.stopPropagation()}
+        draggable={false}
+        aria-label="Tag this photo with units"
+        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white shadow transition ${
+          count ? "bg-red-600 hover:bg-red-700" : "bg-black/60 hover:bg-black/80"
+        }`}
+      >
+        {count ? (
+          <>
+            <Tag className="h-2.5 w-2.5" />
+            {count} {count === 1 ? "unit" : "units"}
+          </>
+        ) : (
+          <>
+            <Plus className="h-2.5 w-2.5" />
+            Units
+          </>
+        )}
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={popRef}
+            style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom }}
+            className="z-[80] w-56 rounded-xl border border-gray-200 bg-white p-2 shadow-xl"
+          >
+            <p className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              Show this photo on
+            </p>
+            {units.length === 0 ? (
+              <p className="px-2 pb-2 text-xs text-gray-400">This property has no units yet.</p>
+            ) : (
+              <ul className="max-h-56 overflow-y-auto">
+                {units.map((u) => {
+                  const allowed = !allowedUnitIds || allowedUnitIds.has(u.id);
+                  const on = tagged.has(u.id);
+                  return (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        disabled={!allowed || saving}
+                        onClick={() => toggleUnit(u.id)}
+                        title={allowed ? undefined : "You can only tag units you have a listing on."}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                            on ? "border-red-600 bg-red-600 text-white" : "border-gray-300"
+                          }`}
+                        >
+                          {on && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="truncate">{unitLabel(u)}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 /**
- * The building's own photos — the top row, above every unit.
+ * The property's gallery: every photo at the building, each with its unit tags.
  */
 export function PropertyPhotoRow({ listing, isPropertyOwner, onChanged }) {
+  const photos = listing?.photos ?? [];
+  const units = listing?.unitTypes ?? [];
+  /*
+   * Which units this person may tag with. The owner: all of them. Anyone else:
+   * the units they have a live offering on, which is also what the server
+   * allows (canTagPhoto).
+   */
+  const allowedUnitIds = isPropertyOwner
+    ? null
+    : new Set(
+        (listing?.myLeases ?? []).filter((l) => l.isActive).map((l) => l.unitId)
+      );
+  const byUrl = new Map(photos.map((p) => [p.url, p]));
+  const canTag = (photo) => isPropertyOwner || (photo.mine && allowedUnitIds.size > 0);
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white">
       <Row
-        label="Property photos"
-        hint={isPropertyOwner ? "Used on the listing card" : "Managed by the property owner"}
-        photos={(listing?.photos ?? []).filter((p) => !p.unitId)}
-        canAdd={isPropertyOwner}
+        label="Photos"
+        hint={
+          isPropertyOwner
+            ? "First photo is the cover · Tag photos with the units they show"
+            : "Add photos of your unit, then tag them with it"
+        }
+        photos={photos}
+        canAdd
         canMoveAll={isPropertyOwner}
         listingId={listing?._id || listing?.id}
         unitId={null}
         onChanged={onChanged}
+        renderCorner={(url) => {
+          const photo = byUrl.get(url);
+          if (!photo || !canTag(photo)) return null;
+          return (
+            <UnitTagButton
+              photo={photo}
+              units={units}
+              allowedUnitIds={allowedUnitIds}
+              onChanged={onChanged}
+            />
+          );
+        }}
       />
     </div>
   );
 }
 
 /**
- * One unit's photos, with its floor plan pinned to the far left. Rendered
- * inside that unit's panel so a property with four units has four rows, each
- * beside the unit it belongs to.
+ * One unit's floor plan. Rendered inside that unit's panel.
  */
-export function UnitPhotoRow({ listing, unit, isPropertyOwner, onChanged }) {
+export function UnitFloorPlan({ listing, unit, onChanged }) {
   const listingId = listing?._id || listing?.id;
-  /*
-   * The plan is never one of the photos, even for units uploaded before the
-   * upload flag existed — those rows still carry the plan in the gallery, and
-   * they would otherwise be counted twice and shown twice.
-   */
-  const plan = unit?.floorPlanImageUrl || null;
-  const photos = (listing?.photos ?? []).filter(
-    (p) => p.unitId === unit.id && p.url !== plan
-  );
   return (
-    <Row
-      label="Photos"
-      photos={photos}
-      canAdd
-      canMoveAll={isPropertyOwner}
-      listingId={listingId}
-      unitId={unit.id}
-      onChanged={onChanged}
-    >
-      {/* Editable by anyone who may add photos to this unit — the property
-          owner, or a landlord letting it. Gating this on property ownership
-          alone left the slot dead on every building a landlord doesn't own,
-          which is exactly where they are most likely to hold the plan. */}
-      <FloorPlanSlot
-        unit={unit}
-        canEdit
-        listingId={listingId}
-        onChanged={onChanged}
-      />
-    </Row>
+    <div className="border-t border-gray-100 px-4 py-3">
+      {/* Editable by anyone who may add to this unit: the property owner, or a
+          landlord letting it. The server only lets a non-owner fill an empty
+          slot, never replace the owner's plan. */}
+      <FloorPlanSlot unit={unit} canEdit listingId={listingId} onChanged={onChanged} />
+    </div>
   );
 }

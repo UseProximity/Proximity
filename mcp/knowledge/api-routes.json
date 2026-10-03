@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-19T22:21:24.496Z",
-  "count": 104,
+  "_generated": "2026-09-26T04:35:00.667Z",
+  "count": 95,
   "routes": [
     {
       "path": "/api/account",
@@ -359,133 +359,6 @@
       "file": "src/app/api/availability/confirm/route.js"
     },
     {
-      "path": "/api/chat/access-token",
-      "methods": [
-        "GET"
-      ],
-      "auth": "public",
-      "methodAuth": {
-        "GET": "public"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/access-token/route.js"
-    },
-    {
-      "path": "/api/chat/attachments/[attachmentId]",
-      "methods": [
-        "GET"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/attachments/[attachmentId]/route.js"
-    },
-    {
-      "path": "/api/chat/offers",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/offers/route.js"
-    },
-    {
-      "path": "/api/chat/offers/[messageId]/respond",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/offers/[messageId]/respond/route.js"
-    },
-    {
-      "path": "/api/chat/realtime-token",
-      "methods": [
-        "GET"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/realtime-token/route.js"
-    },
-    {
-      "path": "/api/chat/threads",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any",
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/threads/route.js"
-    },
-    {
-      "path": "/api/chat/threads/[threadId]/attachments/presign",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [
-        "chat_participants",
-        "chat_threads"
-      ],
-      "file": "src/app/api/chat/threads/[threadId]/attachments/presign/route.js"
-    },
-    {
-      "path": "/api/chat/threads/[threadId]/messages",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any",
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/threads/[threadId]/messages/route.js"
-    },
-    {
-      "path": "/api/chat/threads/[threadId]/offers",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/threads/[threadId]/offers/route.js"
-    },
-    {
-      "path": "/api/chat/threads/[threadId]/read",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/chat/threads/[threadId]/read/route.js"
-    },
-    {
       "path": "/api/contacted",
       "methods": [
         "POST"
@@ -560,6 +433,18 @@
       "file": "src/app/api/cron/landlord-nudge/route.js"
     },
     {
+      "path": "/api/cron/lease-check-cleanup",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/lease-check-cleanup/route.js"
+    },
+    {
       "path": "/api/cron/pms-sync",
       "methods": [
         "GET"
@@ -588,12 +473,12 @@
         "action_log",
         "listing_landlords",
         "listings",
+        "matchmaking_chat_sessions",
+        "matchmaking_preferences",
         "listing_reviews",
         "dorm_reviews",
         "user_listing_interactions",
         "review_votes",
-        "matchmaking_chat_sessions",
-        "matchmaking_preferences",
         "lease_checks",
         "waitlist_clicks",
         "device_push_tokens",
@@ -973,6 +858,21 @@
       "file": "src/app/api/landlord/photos/[imageId]/route.js"
     },
     {
+      "path": "/api/landlord/photos/[imageId]/units",
+      "methods": [
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PUT": "any"
+      },
+      "tables": [
+        "listing_units",
+        "listing_image_units"
+      ],
+      "file": "src/app/api/landlord/photos/[imageId]/units/route.js"
+    },
+    {
       "path": "/api/landlord/pms/confirm",
       "methods": [
         "POST"
@@ -1170,20 +1070,6 @@
         "users"
       ],
       "file": "src/app/api/listings/route.js"
-    },
-    {
-      "path": "/api/listings/[listingId]/offers",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any",
-        "POST": "any"
-      },
-      "tables": [],
-      "file": "src/app/api/listings/[listingId]/offers/route.js"
     },
     {
       "path": "/api/listings/popular",
@@ -1493,8 +1379,9 @@
         "PATCH": "any"
       },
       "tables": [
-        "listings",
-        "listing_images"
+        "listing_images",
+        "listing_image_units",
+        "listings"
       ],
       "file": "src/app/api/upload/route.js"
     },
