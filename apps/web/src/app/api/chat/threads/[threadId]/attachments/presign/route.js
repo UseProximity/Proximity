@@ -16,6 +16,10 @@ import {
   CHAT_ATTACHMENT_MAX_FILES,
   sanitizeChatAttachmentFileName,
 } from "@/lib/chat/attachments";
+import {
+  isChatRateLimitError,
+  CHAT_RATE_LIMIT_MESSAGE,
+} from "@/lib/chat/sendGuards";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -101,6 +105,27 @@ export async function POST(req, { params }) {
     }
     if (!thread) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    }
+
+    /*
+     * Presigning is rate limited as well as sending. A presign that is never
+     * followed by a send still costs an R2 object, so without a ceiling here
+     * the attachment limit only governs what lands in a conversation and not
+     * what lands in the bucket.
+     */
+    const { error: rateError } = await supabase.rpc("fn_chat_assert_send_rate", {
+      p_user_id: session.user.id,
+      p_kind: "attachment",
+    });
+    if (rateError) {
+      if (isChatRateLimitError(rateError)) {
+        return NextResponse.json(
+          { error: CHAT_RATE_LIMIT_MESSAGE },
+          { status: 429 }
+        );
+      }
+      console.error("POST attachments/presign rate check failed:", rateError);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
     const bucket = getBucket();
