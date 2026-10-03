@@ -82,6 +82,29 @@ export async function screenOutgoingChat({
   return { blocked: false, flagged: false, reasons: [] };
 }
 
+/**
+ * Record an attachment scan result.
+ *
+ * Same table as text screening, with the file names standing in for the body
+ * excerpt: a reviewer needs to know which upload was refused, and the file
+ * itself is in R2 under the thread's prefix.
+ */
+export async function recordAttachmentScan({
+  userId,
+  threadId,
+  blocked,
+  reasons,
+  fileNames = [],
+}) {
+  await logModeration({
+    userId,
+    action: blocked ? "block" : "flag",
+    reasons,
+    body: `[attachment] ${fileNames.join(", ")}`,
+    threadId,
+  });
+}
+
 /*
  * fn_chat_assert_send_rate raises with a 'chat rate limit: ' prefix. Matching
  * on the prefix keeps the specific ceiling that tripped out of the response,

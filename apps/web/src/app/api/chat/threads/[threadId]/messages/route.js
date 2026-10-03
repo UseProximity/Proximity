@@ -10,9 +10,11 @@ import {
 } from "@/lib/chat/attachments";
 import {
   screenOutgoingChat,
+  recordAttachmentScan,
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
 } from "@/lib/chat/sendGuards";
+import { scanChatAttachments } from "@/lib/chat/scanAttachment";
 
 // Surfaced to the client as-is; everything else becomes a generic 500.
 const SAFE_SEND_MESSAGE_ERRORS = new Set([
@@ -235,6 +237,26 @@ export async function POST(req, { params }) {
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
       }
+    }
+
+    /*
+     * The files are already in R2 at this point, since they upload straight
+     * from the browser. Screening them here, before the message row exists,
+     * is what keeps a blocked attachment from ever reaching the recipient.
+     * Orphaned objects from a blocked send are the accepted cost.
+     */
+    const scan = await scanChatAttachments({ attachments: normalized.attachments });
+    if (scan.reasons.length > 0) {
+      await recordAttachmentScan({
+        userId: session.user.id,
+        threadId,
+        blocked: scan.blocked,
+        reasons: scan.reasons,
+        fileNames: normalized.attachments.map((a) => a.fileName),
+      });
+    }
+    if (scan.blocked) {
+      return NextResponse.json({ error: scan.message }, { status: 422 });
     }
 
     const { data, error } = await supabase.rpc("rpc_send_chat_attachment_message", {
