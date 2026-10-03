@@ -1,15 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ChatAvatar from "@/components/chat/ChatAvatar";
-import {
-  CHAT_GROUP_MODES,
-  CHAT_GROUP_MODE_LABELS,
-  CHAT_GROUP_MODE_STORAGE_KEY,
-  groupChatThreads,
-  normalizeChatGroupMode,
-} from "@/utils/chatThreadGrouping";
+import { sortThreadsByRecency } from "@/utils/chatThreadGrouping";
 
 function formatPreviewTime(iso) {
   if (!iso) return "";
@@ -39,8 +32,22 @@ function threadPreview(thread) {
     : thread.lastMessageBody || "";
 }
 
+/*
+ * The second line of an inbox row. A thread is one person now, not one
+ * property, so the listing is context for the row rather than its identity:
+ * "re:" marks it as what the conversation is currently about, and the count
+ * tells a landlord this student has asked about more than one place.
+ */
+function listingLineFor(thread) {
+  const label = thread.listingTitle || thread.listingAddress;
+  if (!label) return null;
+  const count = Number(thread.listingCount) || 0;
+  return count > 1 ? `re: ${label} +${count - 1} more` : `re: ${label}`;
+}
+
 function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
   const preview = threadPreview(thread);
+  const listingLine = listingLineFor(thread);
   return (
     <button
       type="button"
@@ -53,8 +60,8 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
     >
       <div className="relative flex-shrink-0">
         <ChatAvatar
-          src={thread.listingImage || thread.otherUserImage}
-          name={thread.listingTitle || thread.otherUserName}
+          src={thread.otherUserImage || thread.listingImage}
+          name={thread.otherUserName || thread.listingTitle}
           shape={thread.listingImage ? "square" : "circle"}
         />
         {thread.hasUnread && (
@@ -76,9 +83,9 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
             {formatPreviewTime(thread.lastMessageAt)}
           </span>
         </div>
-        {thread.listingTitle && (
+        {listingLine && (
           <p className="text-[11px] text-gray-400 truncate mt-0.5">
-            {thread.listingTitle}
+            {listingLine}
           </p>
         )}
         <p
@@ -100,37 +107,6 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
   );
 }
 
-function GroupModeControl({ mode, onChange }) {
-  return (
-    <div
-      className="flex-shrink-0 px-3 py-2 border-b border-gray-100"
-      role="group"
-      aria-label="Organize conversations"
-    >
-      <div className="flex rounded-lg bg-gray-100 p-0.5">
-        {CHAT_GROUP_MODES.map((value) => {
-          const active = mode === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => onChange(value)}
-              aria-pressed={active}
-              className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
-                active
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {CHAT_GROUP_MODE_LABELS[value]}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Inbox rows from useMessages().threads
  */
@@ -144,31 +120,7 @@ export default function ChatThreadList({
   error = false,
   onRetry,
 }) {
-  const [groupMode, setGroupMode] = useState("recent");
-
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(CHAT_GROUP_MODE_STORAGE_KEY);
-      setGroupMode(normalizeChatGroupMode(stored));
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  const handleGroupModeChange = useCallback((next) => {
-    const normalized = normalizeChatGroupMode(next);
-    setGroupMode(normalized);
-    try {
-      window.localStorage.setItem(CHAT_GROUP_MODE_STORAGE_KEY, normalized);
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  const organized = useMemo(
-    () => groupChatThreads(threads, groupMode),
-    [threads, groupMode]
-  );
+  const ordered = sortThreadsByRecency(threads);
 
   if (loading) {
     return (
@@ -235,36 +187,16 @@ export default function ChatThreadList({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <GroupModeControl mode={groupMode} onChange={handleGroupModeChange} />
       <div className="flex-1 overflow-y-auto min-h-0">
-        {organized.flat
-          ? organized.flat.map((thread) => (
-              <ThreadRow
-                key={thread.threadId}
-                thread={thread}
-                selected={thread.threadId === activeThreadId}
-                onSelect={onSelect}
-                onPrefetch={onPrefetch}
-              />
-            ))
-          : organized.groups.map((group) => (
-              <div key={group.key}>
-                <div className="sticky top-0 z-10 px-4 py-1.5 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 truncate">
-                    {group.label}
-                  </p>
-                </div>
-                {group.threads.map((thread) => (
-                  <ThreadRow
-                    key={thread.threadId}
-                    thread={thread}
-                    selected={thread.threadId === activeThreadId}
-                    onSelect={onSelect}
-                    onPrefetch={onPrefetch}
-                  />
-                ))}
-              </div>
-            ))}
+        {ordered.map((thread) => (
+          <ThreadRow
+            key={thread.threadId}
+            thread={thread}
+            selected={thread.threadId === activeThreadId}
+            onSelect={onSelect}
+            onPrefetch={onPrefetch}
+          />
+        ))}
       </div>
     </div>
   );

@@ -3,6 +3,11 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import {
+  screenOutgoingChat,
+  isChatRateLimitError,
+  CHAT_RATE_LIMIT_MESSAGE,
+} from "@/lib/chat/sendGuards";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -71,6 +76,15 @@ export async function POST(req) {
       );
     }
 
+    const screen = await screenOutgoingChat({
+      userId: session.user.id,
+      body: trimmedBody,
+      listingId: listingId.trim(),
+    });
+    if (screen.blocked) {
+      return NextResponse.json({ error: screen.message }, { status: 422 });
+    }
+
     const { data, error } = await supabase.rpc("rpc_start_or_get_listing_chat", {
       p_user_id: session.user.id,
       p_listing_id: listingId.trim(),
@@ -78,6 +92,12 @@ export async function POST(req) {
     });
 
     if (error) {
+      if (isChatRateLimitError(error)) {
+        return NextResponse.json(
+          { error: CHAT_RATE_LIMIT_MESSAGE },
+          { status: 429 }
+        );
+      }
       console.error("POST /api/chat/threads failed:", error);
       if (SAFE_START_CHAT_ERRORS.has(error.message)) {
         return NextResponse.json({ error: error.message }, { status: 400 });

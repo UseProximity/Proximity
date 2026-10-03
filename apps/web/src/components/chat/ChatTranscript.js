@@ -69,6 +69,24 @@ function formatSessionDivider(iso) {
   return day || time;
 }
 
+/*
+ * A thread covers one landlord and one student, not one property, so a
+ * conversation can move from "412 Delmar" to "6633 Kingsbury" partway down.
+ * Without a marker the landlord's "it is still available" reads as an answer
+ * about whichever listing the reader had in mind. Shown on the first message
+ * and wherever the listing changes, never on every message.
+ */
+function listingContextLabel(msg) {
+  return msg?.listingTitle || msg?.listingAddress || null;
+}
+
+function shouldShowListingDivider(prev, msg) {
+  if (!msg?.listingId) return false;
+  if (!listingContextLabel(msg)) return false;
+  if (!prev) return true;
+  return prev.listingId !== msg.listingId;
+}
+
 function shouldShowSessionDivider(prev, msg) {
   if (!msg?.createdAt) return false;
   if (!prev?.createdAt) return true;
@@ -351,6 +369,8 @@ export default function ChatTranscript({
             const timeLabel = formatMessageTime(msg.createdAt);
             const sessionLabel = formatSessionDivider(msg.createdAt);
             const isAttachment = msg.messageType === "attachment";
+            const showListing = shouldShowListingDivider(prev, msg);
+            const listingContext = showListing ? listingContextLabel(msg) : null;
 
             return (
               <div key={msg.id} className="space-y-2">
@@ -358,6 +378,25 @@ export default function ChatTranscript({
                   <p className="text-[11px] text-gray-400 text-center py-2 select-none">
                     {sessionLabel}
                   </p>
+                )}
+                {listingContext && (
+                  <div className="flex items-center gap-2 py-2 select-none">
+                    <span className="h-px flex-1 bg-gray-200" />
+                    {msg.listingId ? (
+                      <Link
+                        href={`/listings/${msg.listingId}`}
+                        className="text-[11px] font-medium text-gray-500 hover:text-red-600 hover:underline max-w-[70%] truncate"
+                        title={`View ${listingContext}`}
+                      >
+                        about {listingContext}
+                      </Link>
+                    ) : (
+                      <span className="text-[11px] font-medium text-gray-500 max-w-[70%] truncate">
+                        about {listingContext}
+                      </span>
+                    )}
+                    <span className="h-px flex-1 bg-gray-200" />
+                  </div>
                 )}
                 <div className="group relative">
                   <div

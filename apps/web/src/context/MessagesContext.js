@@ -13,6 +13,7 @@
  */
 "use client";
 
+import { trackEvent } from "@/utils/analytics";
 import {
   createContext,
   useCallback,
@@ -65,6 +66,18 @@ function patchMessage(list, message) {
   const next = [...prev];
   next[idx] = { ...next[idx], ...message };
   return next;
+}
+
+/*
+ * Why a send was refused, for the event stream. The content screen answers 422
+ * and the rate limiter 429, and both are product signals rather than faults:
+ * without them "messages sent" and "messages attempted" look identical and
+ * there is no way to tell a moderation false positive from a quiet user.
+ */
+function sendRejectionKind(status) {
+  if (status === 422) return "blocked";
+  if (status === 429) return "rate_limited";
+  return "error";
 }
 
 export function MessagesProvider({ children }) {
@@ -264,9 +277,14 @@ export function MessagesProvider({ children }) {
         });
         if (!res.ok) {
           const errBody = await res.json().catch(() => null);
+          trackEvent("chat_message_rejected", {
+            threadId,
+            reason: sendRejectionKind(res.status),
+          });
           throw new Error(errBody?.error || `Failed to send (${res.status})`);
         }
         const data = await res.json();
+        trackEvent("chat_message_sent", { threadId, hasAttachments: false });
         const confirmed = { ...optimistic, id: data.messageId };
         setMessagesByThread((prev) => ({
           ...prev,
@@ -383,8 +401,18 @@ export function MessagesProvider({ children }) {
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
+        trackEvent("chat_message_rejected", {
+          threadId,
+          reason: sendRejectionKind(res.status),
+          hasAttachments: true,
+        });
         throw new Error(errBody?.error || `Failed to send (${res.status})`);
       }
+      trackEvent("chat_message_sent", {
+        threadId,
+        hasAttachments: true,
+        attachmentCount: presigned.length,
+      });
       const data = await res.json();
       const confirmed = {
         ...optimistic,
@@ -428,9 +456,18 @@ export function MessagesProvider({ children }) {
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
+        trackEvent("chat_start_rejected", {
+          listingId,
+          reason: sendRejectionKind(res.status),
+        });
         throw new Error(errBody?.error || `Failed to start chat (${res.status})`);
       }
       const data = await res.json();
+      trackEvent("chat_conversation_started", {
+        listingId,
+        newThread: Boolean(data?.isNew),
+        newListingContext: Boolean(data?.isNewListing),
+      });
       await refreshThreads();
       if (data?.threadId) {
         setActiveThreadId(data.threadId);

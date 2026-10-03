@@ -8,6 +8,11 @@ import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_FILES,
 } from "@/lib/chat/attachments";
+import {
+  screenOutgoingChat,
+  isChatRateLimitError,
+  CHAT_RATE_LIMIT_MESSAGE,
+} from "@/lib/chat/sendGuards";
 
 // Surfaced to the client as-is; everything else becomes a generic 500.
 const SAFE_SEND_MESSAGE_ERRORS = new Set([
@@ -30,6 +35,9 @@ const THREAD_NOT_FOUND_ERROR = "conversation not found";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function mapChatRpcError(error) {
+  if (isChatRateLimitError(error)) {
+    return NextResponse.json({ error: CHAT_RATE_LIMIT_MESSAGE }, { status: 429 });
+  }
   if (error.message === NOT_PARTICIPANT_ERROR) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -179,6 +187,15 @@ export async function POST(req, { params }) {
         );
       }
 
+      const screen = await screenOutgoingChat({
+        userId: session.user.id,
+        body: bodyText,
+        threadId,
+      });
+      if (screen.blocked) {
+        return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
+
       const { data, error } = await supabase.rpc("rpc_send_chat_message", {
         p_user_id: session.user.id,
         p_thread_id: threadId,
@@ -207,6 +224,17 @@ export async function POST(req, { params }) {
         { error: "Message body exceeds the 5000 character limit" },
         { status: 400 }
       );
+    }
+
+    if (bodyText) {
+      const screen = await screenOutgoingChat({
+        userId: session.user.id,
+        body: bodyText,
+        threadId,
+      });
+      if (screen.blocked) {
+        return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
     }
 
     const { data, error } = await supabase.rpc("rpc_send_chat_attachment_message", {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { trackEvent } from "@/utils/analytics";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -78,10 +79,12 @@ export default function ChatLinkClient() {
         callbackUrl: threadUrl(threadId),
       });
       if (!result || result.error) {
-        setActionError("This link is invalid or has already been used.");
+        trackEvent("chat_email_link_failed", { threadId: threadId || null });
         setBusy(false);
+        setActionError("This link is invalid or has already been used.");
         return;
       }
+      trackEvent("chat_email_link_redeemed", { threadId: threadId || null });
       window.location.href = result.url ?? threadUrl(threadId);
     } catch {
       setActionError("Something went wrong. Please try again.");
@@ -100,10 +103,12 @@ export default function ChatLinkClient() {
         callbackUrl: threadUrl(threadId),
       });
       if (!result || result.error) {
-        setActionError("This link is invalid or has already been used.");
+        trackEvent("chat_email_link_failed", { threadId: threadId || null });
         setBusy(false);
+        setActionError("This link is invalid or has already been used.");
         return;
       }
+      trackEvent("chat_email_link_redeemed", { threadId: threadId || null });
       window.location.href = result.url ?? threadUrl(threadId);
     } catch {
       setActionError("Something went wrong. Please try again.");
