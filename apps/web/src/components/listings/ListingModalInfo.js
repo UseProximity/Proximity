@@ -889,7 +889,6 @@ function ContactTab({
     try {
       const data = await startListingChat(listing._id, text);
       setChatThreadId(data?.threadId ?? "");
-      setSentKind("message");
       toast.success("Message sent");
     } catch (err) {
       toast.error(err?.message || "Failed to start chat. Please try again.");
