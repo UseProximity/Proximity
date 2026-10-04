@@ -33,8 +33,13 @@ When you create an account, we collect:
 - **Password**: if you sign up with email and password. We store only a salted,
   irreversible hash; we never store your password itself.
 - **Sign-in method**: whether your account is linked to a Google or Apple identity.
-- **Email verification status** and, temporarily, the tokens used to verify your email
-  address or reset your password.
+- **Email verification status** and the one-time tokens behind the links we email you to
+  verify your email address or reset your password. A verification link is valid for 24
+  hours (7 days for the link that finishes setting up an account created from a review you
+  submitted without signing in), and a password-reset link is valid for 1 hour. Using a
+  link deletes its token. A token that is never used stops working when it expires, but it
+  stays on your account record until a newer one replaces it or your account is erased
+  (Section 8).
 - **Account role**: student or landlord.
 - **Your school**: derived from the domain of your email address (for example,
   `wustl.edu` identifies a Washington University in St. Louis account). We record it when
@@ -70,6 +75,10 @@ or Google.
 
 ### 1.4 Content you create
 
+- **Reports and blocks**: if you report a review, we record which review you reported,
+  who wrote it, and when. If you block a user, we record that you blocked them and when,
+  and hide that user's reviews from you. Neither is shown to the person reported or
+  blocked. To remove a block, email info@useproximity.org.
 - **Listings** (landlords and subletters): property title, street address, city, state,
   ZIP code, coordinates, description, rent, bedrooms, bathrooms, area, unit and lease
   details, amenities, utilities, move-in dates, lease terms, and whether the property is
@@ -457,6 +466,7 @@ Thirty days after deletion, an automated job permanently erases your personal da
 | Messages you sent through Proximity | **Kept for three years, with your name and email address.** The text of each message, who sent it, and when are retained for three years after deletion, and then erased. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute, investigate abuse, or confirm a lease. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
 | Inquiries you sent to landlords, and leases a landlord told us you signed | **Kept for three years, with your name and email address.** The record of which listing you contacted and when, and any lease recorded under Section 1.9, are retained for three years after deletion as a record of the introductions we make, and then erased. See Terms §17A. |
 | Saved listings, review votes | Permanently deleted. |
+| Blocks you set, and reports you filed | Permanently deleted. |
 | Matchmaking conversations, and the housing preferences derived from them | **Kept for three years.** The transcript, the preferences you gave, and the recommendations we made are retained for three years after deletion as a record of which properties we showed you and why, and then erased. They are never published and are visible only to Proximity staff who need them. See Terms §17A. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-09-26T04:35:00.667Z",
-  "count": 95,
+  "_generated": "2026-10-03T21:01:47.808Z",
+  "count": 97,
   "routes": [
     {
       "path": "/api/account",
@@ -482,6 +482,8 @@
         "lease_checks",
         "waitlist_clicks",
         "device_push_tokens",
+        "user_blocks",
+        "review_reports",
         "review_invites",
         "users"
       ],
@@ -1259,6 +1261,21 @@
       "file": "src/app/api/reviewReferral/route.js"
     },
     {
+      "path": "/api/reviewReport",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "review_reports"
+      ],
+      "file": "src/app/api/reviewReport/route.js"
+    },
+    {
       "path": "/api/reviews/confirm",
       "methods": [
         "POST"
@@ -1410,6 +1427,22 @@
         "users"
       ],
       "file": "src/app/api/uploadProfilePhoto/route.js"
+    },
+    {
+      "path": "/api/userBlock",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "users",
+        "user_blocks"
+      ],
+      "file": "src/app/api/userBlock/route.js"
     },
     {
       "path": "/api/waitlist/[listingId]",

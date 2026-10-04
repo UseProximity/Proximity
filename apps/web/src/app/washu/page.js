@@ -1,4 +1,5 @@
 import Link from "next/link";
+import WashuFaqLinks from "@/components/washu/WashuFaqLinks";
 import { washuPages } from "@/lib/washuPages";
 import { washuContent } from "@/content/washu";
 import { getWashuPageListings } from "@/lib/listings/queryListings";
@@ -9,14 +10,15 @@ export const revalidate = 3600;
 const SITE_URL = "https://useproximity.org";
 
 export const metadata = {
-  title: "WashU Off-Campus Housing: Apartments, Rents & Student Reviews | Proximity",
+  title:
+    "WashU Off-Campus Housing: Apartments, Rents & Student Reviews | Proximity",
   description:
-    "The WashU off-campus housing hub: apartments by neighborhood, bedroom count, and budget, with walk times to campus and honest reviews from WashU students.",
+    "The WashU (WUSTL) off-campus housing hub: apartments by neighborhood, bedroom count, and budget, with walk times and honest reviews from WashU students.",
   alternates: { canonical: "/washu" },
   openGraph: {
     title: "WashU Off-Campus Housing | Proximity",
     description:
-      "Apartments near WashU by neighborhood, bedroom count, and budget, with walk times and honest student reviews.",
+      "Apartments near WashU (WUSTL) by neighborhood, bedroom count, and budget, with walk times and honest student reviews.",
     url: "/washu",
   },
 };
@@ -25,6 +27,8 @@ const KIND_LABELS = {
   neighborhood: "By neighborhood",
   beds: "By bedroom count",
   price: "By budget",
+  sublease: "Subleases",
+  answer: "Money, timing, and how it works",
 };
 
 export default async function WashuHubPage() {
@@ -36,11 +40,17 @@ export default async function WashuHubPage() {
     washuPages.map(async (p) => ({
       page: p,
       result: await getWashuPageListings(p),
-    }))
+    })),
   );
   const indexable = withCounts.filter(({ result }) => result.meetsThreshold);
 
-  const grouped = { neighborhood: [], beds: [], price: [] };
+  const grouped = {
+    neighborhood: [],
+    beds: [],
+    price: [],
+    sublease: [],
+    answer: [],
+  };
   for (const item of indexable) grouped[item.page.kind]?.push(item);
 
   const jsonLd = {
@@ -104,7 +114,7 @@ export default async function WashuHubPage() {
           ))}
         </section>
 
-        {["neighborhood", "beds", "price"].map((kind) =>
+        {["neighborhood", "beds", "price", "sublease", "answer"].map((kind) =>
           grouped[kind].length ? (
             <section key={kind} className="mb-10">
               <h2 className="text-2xl font-bold mb-4">{KIND_LABELS[kind]}</h2>
@@ -119,36 +129,49 @@ export default async function WashuHubPage() {
                       {page.h1}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {result.count} listing{result.count === 1 ? "" : "s"}{" "}
-                      available now
+                      {page.filter
+                        ? `${result.count} listing${result.count === 1 ? "" : "s"} available now`
+                        : "Straight answers, real sources"}
                     </p>
                   </Link>
                 ))}
               </div>
             </section>
-          ) : null
+          ) : null,
         )}
 
         <section className="mb-12">
           <h2 className="text-2xl font-bold mb-4">Guides worth your time</h2>
           <ul className="space-y-2">
             <li>
-              <Link href="/guides/washu-off-campus-budget" className="text-red-600 font-medium hover:text-red-700">
+              <Link
+                href="/guides/washu-off-campus-budget"
+                className="text-red-600 font-medium hover:text-red-700"
+              >
                 How much to budget for rent near WashU
               </Link>
             </li>
             <li>
-              <Link href="/guides/washu-apartment-checklist" className="text-red-600 font-medium hover:text-red-700">
+              <Link
+                href="/guides/washu-apartment-checklist"
+                className="text-red-600 font-medium hover:text-red-700"
+              >
                 The questions to ask before signing a lease
               </Link>
             </li>
             <li>
-              <Link href="/guides/four-types-washu-housing" className="text-red-600 font-medium hover:text-red-700">
+              <Link
+                href="/guides/four-types-washu-housing"
+                className="text-red-600 font-medium hover:text-red-700"
+              >
                 The 4 types of off-campus housing near WashU
               </Link>
             </li>
             <li>
-              <Link href="/guides" className="text-red-600 font-medium hover:text-red-700">
+              <Link
+                href="/guides"
+                className="text-red-600 font-medium hover:text-red-700"
+              >
                 All housing guides
               </Link>
             </li>
@@ -162,32 +185,54 @@ export default async function WashuHubPage() {
               <div key={i} className="mb-6">
                 <h3 className="text-lg font-semibold mb-2">{f.q}</h3>
                 <p className="text-gray-700 leading-relaxed">{f.a}</p>
+                <WashuFaqLinks links={f.links} />
               </div>
             ))}
           </section>
         ) : null}
 
-        <section className="rounded-2xl bg-gray-900 px-8 py-10 text-center mb-10">
-          <h2 className="text-3xl font-black text-white mb-3">
-            Skip the search. Get matched.
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-red-600 to-rose-700 px-8 py-12 text-center mb-10">
+          <div className="absolute -top-16 -right-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+          <h2 className="relative text-3xl md:text-4xl font-black text-white mb-3">
+            Your perfect WashU housing, found for you.
           </h2>
-          <p className="text-gray-300 mb-6 max-w-xl mx-auto">
-            Tell us your budget, move-in date, and vibe. Free matchmaking built
-            by WashU students who know these blocks.
+          <p className="relative text-red-50 mb-7 max-w-xl mx-auto leading-relaxed">
+            Answer a few quick questions and our housing agent finds the
+            apartment that fits you best, completely free.
           </p>
           <Link
             href="/matchmaking"
-            className="inline-flex items-center justify-center rounded-xl bg-red-600 px-6 py-3 font-semibold text-white hover:bg-red-700 transition"
+            className="relative inline-flex items-center justify-center rounded-xl bg-white px-7 py-3.5 font-bold text-red-600 hover:bg-red-50 transition shadow-lg"
           >
-            Get matched free
+            Find my apartment
           </Link>
         </section>
 
-        {content.benchmarkNote ? (
-          <p className="text-xs text-gray-400 max-w-3xl">
-            {content.benchmarkNote}
-          </p>
-        ) : null}
+        {(content.sources?.length || content.benchmarkNote) && (
+          <div className="max-w-3xl border-t border-gray-100 pt-5">
+            {content.sources?.length ? (
+              <p className="text-sm text-gray-600 mb-2">
+                <span className="font-semibold">Sources: </span>
+                {content.sources.map((s, i) => (
+                  <span key={s.url}>
+                    {i > 0 ? " · " : ""}
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-red-600 underline decoration-red-200 underline-offset-2 hover:decoration-red-600"
+                    >
+                      {s.label}
+                    </a>
+                  </span>
+                ))}
+              </p>
+            ) : null}
+            {content.benchmarkNote ? (
+              <p className="text-xs text-gray-400">{content.benchmarkNote}</p>
+            ) : null}
+          </div>
+        )}
       </div>
     </main>
   );
