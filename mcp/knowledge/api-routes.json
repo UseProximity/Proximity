@@ -1331,20 +1331,6 @@
       "file": "src/app/api/seo/opportunities/route.js"
     },
     {
-      "path": "/api/staging/email-recipients",
-      "methods": [
-        "GET"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any"
-      },
-      "tables": [
-        "users"
-      ],
-      "file": "src/app/api/staging/email-recipients/route.js"
-    },
-    {
       "path": "/api/streetview/preview",
       "methods": [
         "GET"

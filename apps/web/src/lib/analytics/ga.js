@@ -28,21 +28,41 @@ async function accessToken() {
   return token;
 }
 
+const RETRIES = 2;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Worth another try: a dropped connection ("fetch failed"), rate limiting, or a Google-side error.
+const retryable = (status) => status === 429 || status >= 500;
+
 async function runReport(body) {
-  const res = await fetch(
-    `https://analyticsdata.googleapis.com/v1beta/properties/${process.env.GA4_PROPERTY_ID}:runReport`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${await accessToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ limit: 100000, ...body }),
-      cache: "no-store",
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(
+        `https://analyticsdata.googleapis.com/v1beta/properties/${process.env.GA4_PROPERTY_ID}:runReport`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${await accessToken()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ limit: 100000, ...body }),
+          cache: "no-store",
+        }
+      );
+    } catch (err) {
+      if (attempt < RETRIES) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+      throw err;
     }
-  );
-  if (!res.ok) throw new Error(`GA report failed: ${res.status} ${await res.text()}`);
-  return (await res.json()).rows ?? [];
+    if (res.ok) return (await res.json()).rows ?? [];
+    if (retryable(res.status) && attempt < RETRIES) {
+      await sleep(400 * (attempt + 1));
+      continue;
+    }
+    throw new Error(`GA report failed: ${res.status} ${await res.text()}`);
+  }
 }
 
 const gaDate = (d) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
@@ -58,36 +78,6 @@ function eventFilter(eventNames) {
   return {
     filter: { fieldName: "eventName", inListFilter: { values: eventNames } },
   };
-}
-
-/**
- * Weekly event counts plus period totals for each event.
- * { [eventName]: { weekly: number[], current, previous } }
- */
-export async function gaEventsWeekly(period, eventNames) {
-  const rows = await runReport({
-    dateRanges: [dateRange(period.prevStart, period.today)],
-    dimensions: [{ name: "date" }, { name: "eventName" }],
-    metrics: [{ name: "eventCount" }],
-    dimensionFilter: eventFilter(eventNames),
-  });
-  const byEvent = Object.fromEntries(eventNames.map((e) => [e, []]));
-  for (const r of rows) {
-    byEvent[r.dimensionValues[1].value]?.push({
-      date: gaDate(r.dimensionValues[0].value),
-      n: Number(r.metricValues[0].value),
-    });
-  }
-  const weight = (row) => row.n;
-  return Object.fromEntries(
-    eventNames.map((e) => [
-      e,
-      {
-        weekly: weeklyCounts(period, byEvent[e], "date", weight),
-        ...periodTotals(period, byEvent[e], "date", weight),
-      },
-    ])
-  );
 }
 
 /** Unique users who fired each event in the current period: { [eventName]: users }. */
@@ -133,4 +123,88 @@ export async function gaTraffic(period) {
     pageViewTotals: periodTotals(period, rows, "date", (r) => r.views),
     visitors: { current: usersOf(current), previous: usersOf(previous) },
   };
+}
+
+/**
+ * Break a metric down by one dimension for the current period: [[value, n]], largest first.
+ * `dimension` is a GA API name: built-in ("deviceCategory", "sessionDefaultChannelGroup",
+ * "landingPage") or a registered event parameter ("customEvent:stage").
+ * `event` (or `events`) limits the report to those events, e.g. who opened matchmaking;
+ * `match` adds one exact-value condition, e.g. { field: "customEvent:source", value: "matchmaking" }.
+ */
+export async function gaBreakdown(
+  period,
+  { dimension, event, events, match, metric = "totalUsers", limit = 15 }
+) {
+  const names = events ?? (event ? [event] : null);
+  const filters = [
+    ...(names ? [eventFilter(names)] : []),
+    ...(match
+      ? [{ filter: { fieldName: match.field, stringFilter: { matchType: "EXACT", value: match.value } } }]
+      : []),
+  ];
+  const rows = await runReport({
+    dateRanges: [dateRange(period.start, period.today)],
+    dimensions: [{ name: dimension }],
+    metrics: [{ name: metric }],
+    ...(filters.length === 1 ? { dimensionFilter: filters[0] } : {}),
+    ...(filters.length > 1 ? { dimensionFilter: { andGroup: { expressions: filters } } } : {}),
+    orderBys: [{ metric: { metricName: metric }, desc: true }],
+    limit,
+  });
+  // GA reports device categories in lowercase ("desktop"); show them as words.
+  const label = (v) => (dimension === "deviceCategory" ? v.charAt(0).toUpperCase() + v.slice(1) : v);
+  return rows.map((r) => [label(r.dimensionValues[0].value), Number(r.metricValues[0].value)]);
+}
+
+/**
+ * Weekly page views and period visitors for pages under each path prefix.
+ * { [prefix]: { weekly: number[], views: { current, previous }, visitors } }
+ */
+export async function gaPathViews(period, prefixes) {
+  const pathFilter = {
+    orGroup: {
+      expressions: prefixes.map((p) => ({
+        filter: { fieldName: "pagePath", stringFilter: { matchType: "BEGINS_WITH", value: p } },
+      })),
+    },
+  };
+  const [daily, visitors] = await Promise.all([
+    runReport({
+      dateRanges: [dateRange(period.prevStart, period.today)],
+      dimensions: [{ name: "date" }, { name: "pagePath" }],
+      metrics: [{ name: "screenPageViews" }],
+      dimensionFilter: pathFilter,
+    }),
+    runReport({
+      dateRanges: [dateRange(period.start, period.today)],
+      dimensions: [{ name: "pagePath" }],
+      metrics: [{ name: "totalUsers" }],
+      dimensionFilter: pathFilter,
+    }),
+  ]);
+  const prefixOf = (path) => prefixes.find((p) => path.startsWith(p));
+  const byPrefix = Object.fromEntries(prefixes.map((p) => [p, []]));
+  for (const r of daily) {
+    const p = prefixOf(r.dimensionValues[1].value);
+    if (p) byPrefix[p].push({ date: gaDate(r.dimensionValues[0].value), n: Number(r.metricValues[0].value) });
+  }
+  // Visitors per path are summed across a prefix's sub-paths, so one person who opened two
+  // sub-pages counts twice. Fine for a "how many people reached this area" read.
+  const visitorTotals = Object.fromEntries(prefixes.map((p) => [p, 0]));
+  for (const r of visitors) {
+    const p = prefixOf(r.dimensionValues[0].value);
+    if (p) visitorTotals[p] += Number(r.metricValues[0].value);
+  }
+  const weight = (row) => row.n;
+  return Object.fromEntries(
+    prefixes.map((p) => [
+      p,
+      {
+        weekly: weeklyCounts(period, byPrefix[p], "date", weight),
+        views: periodTotals(period, byPrefix[p], "date", weight),
+        visitors: visitorTotals[p],
+      },
+    ])
+  );
 }
