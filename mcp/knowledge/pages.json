@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-10-04T13:39:26.817Z",
-  "count": 39,
+  "_generated": "2026-10-04T14:00:13.167Z",
+  "count": 40,
   "pages": [
     {
       "path": "/",
@@ -42,6 +42,10 @@
     {
       "path": "/analytics",
       "file": "src/app/analytics/page.js"
+    },
+    {
+      "path": "/analytics/[tab]",
+      "file": "src/app/analytics/[tab]/page.js"
     },
     {
       "path": "/browse",
