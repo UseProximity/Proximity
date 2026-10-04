@@ -183,6 +183,45 @@ export default function ListingDetailScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Review safety. Wording mirrors the web ReviewsTab. A duplicate report is a
+  // success on the server, so it reads the same as a first one here.
+  async function handleReportReview(review) {
+    try {
+      await apiClient.listings.reportReview(review._id);
+      Alert.alert("Report sent", "Thanks, we'll take a look at this review.");
+    } catch (err) {
+      if (err?.status === 401) return; // session expired: the api client already signed out
+      Alert.alert("Couldn't send your report", "Please try again.");
+    }
+  }
+
+  function handleBlockReviewAuthor(review) {
+    Alert.alert(
+      "Block user?",
+      "Their reviews will no longer be visible to you.\n\nIf you want to unblock this user later, contact Proximity support at info@useproximity.org.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiClient.listings.blockReviewAuthor(review._id);
+            } catch (err) {
+              if (err?.status === 401) return;
+              Alert.alert("Couldn't block this user", "Please try again.");
+              return;
+            }
+            // The server now sends this author's reviews score-only
+            // (hiddenByBlock), so a refetch makes them disappear from the list.
+            await apiClient.listings.getListing(id).then(setListing).catch(() => {});
+            Alert.alert("User blocked successfully.");
+          },
+        },
+      ]
+    );
+  }
+
   async function handleContactSubmit() {
     if (!listing) return;
     setSending(true);
@@ -250,6 +289,9 @@ export default function ListingDetailScreen() {
   const shuttleMin = typeof listing.shuttleWalkMinutes === "number" ? listing.shuttleWalkMinutes : null;
   const walkRows = walkTimesList(listing);
   const reviews = listing.reviews ?? [];
+  // Rating and count use every review, as on web and the server: a blocked
+  // author's review stays in the score, only its text is hidden.
+  const visibleReviews = reviews.filter((r) => !r.hiddenByBlock);
   const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / reviews.length : 0;
 
   return (
@@ -442,11 +484,17 @@ export default function ListingDetailScreen() {
                 title="Reviews"
                 subtitle={reviews.length > 0 ? `${avgRating.toFixed(1)} · ${reviews.length} review${reviews.length === 1 ? "" : "s"}` : undefined}
               />
-              {reviews.length === 0 ? (
+              {visibleReviews.length === 0 ? (
                 <Text className="text-sm text-gray-500">No reviews yet.</Text>
               ) : (
-                reviews.map((review) => (
-                  <ReviewCard key={review._id} review={review} ownerName={listing.owner?.name} />
+                visibleReviews.map((review) => (
+                  <ReviewCard
+                    key={review._id}
+                    review={review}
+                    ownerName={listing.owner?.name}
+                    onReport={user ? handleReportReview : undefined}
+                    onBlock={user ? handleBlockReviewAuthor : undefined}
+                  />
                 ))
               )}
             </DetailCard>

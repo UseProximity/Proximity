@@ -1,4 +1,4 @@
-import { View, Text, Image } from "react-native";
+import { View, Text, Image, Pressable } from "react-native";
 import { ThumbsDown, ThumbsUp } from "lucide-react-native";
 import { formatDate } from "@proximity/shared";
 import { StarRating } from "../ui/StarRating";
@@ -6,8 +6,15 @@ import { colors } from "../../theme/tokens";
 
 // Read-only port of the review card in apps/web/src/components/listings/
 // ListingModalInfo.js's ReviewsTab. Voting and submitting reviews both
-// require auth (Phase 6) — this only displays.
-export function ReviewCard({ review, ownerName }) {
+// require auth (Phase 6), so this only displays, plus Report / Block links.
+//
+// `onReport` / `onBlock` are passed only for a signed-in viewer. Never offered on
+// the viewer's own review (`isMine`, set by the server even for anonymous ones).
+// Block additionally needs a public author: anonymous reviews can be reported but
+// not blocked, and the server refuses a block on them anyway.
+export function ReviewCard({ review, ownerName, onReport, onBlock }) {
+  const canReport = !!onReport && !review.isMine;
+  const canBlock = !!onBlock && !review.isMine && !!review.reviewer?._id;
   const reviewerImage = review.reviewer?.image?.trim() ? review.reviewer.image : null;
   const date = formatDate(review.createdAt, { month: "short", day: "numeric", year: "numeric" });
 
@@ -50,6 +57,18 @@ export function ReviewCard({ review, ownerName }) {
           <ThumbsDown size={13} color={colors.textMuted} strokeWidth={2} />
           <Text className="text-xs text-gray-400">{review.downvotes ?? 0}</Text>
         </View>
+        {canReport && (
+          <View className="flex-row items-center gap-4 ml-auto">
+            <Pressable onPress={() => onReport(review)} hitSlop={8}>
+              <Text className="text-xs text-gray-400">Report</Text>
+            </Pressable>
+            {canBlock && (
+              <Pressable onPress={() => onBlock(review)} hitSlop={8}>
+                <Text className="text-xs text-gray-400">Block</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
