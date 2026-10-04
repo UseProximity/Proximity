@@ -81,6 +81,11 @@ $$;
 -- that is the person who holds the unit being asked about; then the lease's
 -- contact address; then the listing's primary landlord; then the listing's
 -- contact address.
+--
+-- info@useproximity.org is refused at every step, matching landlordCanChat. It
+-- is a shared inbox, not a landlord, and routing to it would have meant a client
+-- that says "no contact available" while the server quietly delivered into a
+-- mailbox nobody reads as a landlord queue.
 CREATE OR REPLACE FUNCTION fn_chat_resolve_landlord(
   p_listing_id uuid,
   p_lease_id   uuid DEFAULT NULL
@@ -88,6 +93,7 @@ CREATE OR REPLACE FUNCTION fn_chat_resolve_landlord(
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp AS $$
 DECLARE
+  v_house constant text := 'info@useproximity.org';
   v_lease   record;
   v_user_id uuid;
 BEGIN
@@ -109,16 +115,21 @@ BEGIN
     IF FOUND THEN
       IF v_lease.owner_id IS NOT NULL AND EXISTS (
         SELECT 1 FROM users
-        WHERE id = v_lease.owner_id AND deleted_at IS NULL AND is_system IS NOT TRUE
+        WHERE id = v_lease.owner_id
+          AND deleted_at IS NULL
+          AND is_system IS NOT TRUE
+          AND lower(btrim(coalesce(email, ''))) <> v_house
       ) THEN
         RETURN v_lease.owner_id;
       END IF;
 
-      v_user_id := fn_chat_find_or_create_contact_user(
-        v_lease.contact_email, v_lease.contact_name
-      );
-      IF v_user_id IS NOT NULL THEN
-        RETURN v_user_id;
+      IF lower(btrim(coalesce(v_lease.contact_email, ''))) <> v_house THEN
+        v_user_id := fn_chat_find_or_create_contact_user(
+          v_lease.contact_email, v_lease.contact_name
+        );
+        IF v_user_id IS NOT NULL THEN
+          RETURN v_user_id;
+        END IF;
       END IF;
     END IF;
   END IF;
@@ -126,7 +137,10 @@ BEGIN
   v_user_id := fn_chat_primary_landlord_id(p_listing_id);
   IF v_user_id IS NOT NULL AND EXISTS (
     SELECT 1 FROM users
-    WHERE id = v_user_id AND deleted_at IS NULL AND is_system IS NOT TRUE
+    WHERE id = v_user_id
+      AND deleted_at IS NULL
+      AND is_system IS NOT TRUE
+      AND lower(btrim(coalesce(email, ''))) <> v_house
   ) THEN
     RETURN v_user_id;
   END IF;
@@ -134,7 +148,9 @@ BEGIN
   SELECT fn_chat_find_or_create_contact_user(l.contact_email, l.contact_name)
   INTO v_user_id
   FROM listings l
-  WHERE l.id = p_listing_id AND l.deleted_at IS NULL;
+  WHERE l.id = p_listing_id
+    AND l.deleted_at IS NULL
+    AND lower(btrim(coalesce(l.contact_email, ''))) <> v_house;
 
   RETURN v_user_id;
 END;

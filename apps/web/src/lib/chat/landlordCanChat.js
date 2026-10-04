@@ -28,6 +28,9 @@
  * payloads stopped carrying landlord contact details in 0e1d673, and the chat
  * RPCs resolve the recipient server-side, so nothing needs it client-side.
  */
+// Shared inbox, not a person. A message here reaches nobody in particular.
+const HOUSE_ACCOUNT_EMAIL = "info@useproximity.org";
+
 export const LANDLORD_CHAT_SELECT =
   "id, name, email, image, is_system, deleted_at, google_account, password_hash, email_verified";
 
@@ -76,11 +79,32 @@ export function listingIsReachable(user, listing) {
  * @returns {{ _id: string, name: *, image: string|null, canChat: boolean } | null}
  */
 export function formatListingOwner(user, listing = null) {
-  if (!user?.id) return null;
+  if (user?.id) {
+    return {
+      _id: user.id,
+      name: user.name,
+      image: user.image ?? null,
+      canChat: listingIsReachable(user, listing),
+    };
+  }
+
+  /*
+   * No landlord account, but the listing carries its own contact address. 47 of
+   * 205 dev listings are in this state, and the server can route them:
+   * fn_chat_resolve_landlord provisions an account from that address. Returning
+   * null here meant the composer never rendered, so with the email form retired
+   * they would have had no contact path at all.
+   *
+   * The synthesised owner carries no id, because there is no account yet. The UI
+   * only needs a name to address the message to, and the recipient is resolved
+   * server-side from the listing, never from this payload. The address itself
+   * stays out of it, same as every other owner shape.
+   */
+  if (!listingIsReachable(null, listing)) return null;
   return {
-    _id: user.id,
-    name: user.name,
-    image: user.image ?? null,
-    canChat: listingIsReachable(user, listing),
+    _id: null,
+    name: listing?.contact_name?.trim() || "Property manager",
+    image: null,
+    canChat: true,
   };
 }
