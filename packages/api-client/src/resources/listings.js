@@ -11,6 +11,18 @@ export function createListingsResource(client) {
     getListings: () => client.request("/api/listings"),
     getListing: (listingId) => client.request(`/api/listing/${listingId}`),
     getPopularListings: () => client.request("/api/listings/popular"),
+    // Review safety (both need a bearer token). The server resolves the review's
+    // author itself, so anonymous reviews can be reported but never blocked.
+    reportReview: (reviewId) =>
+      client.request("/api/reviewReport", {
+        method: "POST",
+        body: JSON.stringify({ reviewId }),
+      }),
+    blockReviewAuthor: (reviewId) =>
+      client.request("/api/userBlock", {
+        method: "POST",
+        body: JSON.stringify({ reviewId }),
+      }),
     createListing: (payload) =>
       client.request("/api/addListing", {
         method: "POST",

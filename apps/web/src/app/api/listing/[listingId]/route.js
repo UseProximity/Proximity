@@ -28,7 +28,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getListing } from "@/lib/listings/getListing";
 
@@ -39,8 +39,10 @@ import { getListing } from "@/lib/listings/getListing";
 export async function GET(req, { params }) {
   try {
     const { listingId } = await params;
-    const session = await auth().catch(() => null);
-    const currentUserId = session?.user?.id ?? null;
+    // Web cookie or mobile Bearer token; only used to personalise reviews
+    // (votes, own-review flag, blocked authors), so a failure means anonymous.
+    const requestUser = await getRequestUser(req).catch(() => null);
+    const currentUserId = requestUser?.id ?? null;
 
     if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
       return NextResponse.json(
