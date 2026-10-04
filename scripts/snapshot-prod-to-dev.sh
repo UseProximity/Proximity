@@ -5,10 +5,13 @@
 #
 # ⚠️ DESTRUCTIVE to the DEV database's `public` schema. It NEVER writes to prod.
 #
-# Steps: [1] dump prod (+ capture its FK set)  [2] restore into dev  [3] re-grant Supabase roles
-#        [4] reconcile FKs against prod, then verify parity or abort.
-# Step 4 exists because the tolerant restore in step 2 can silently lose foreign keys, which
-# breaks PostgREST embeds with PGRST200 → HTTP 500. See the comment on step 4 for the mechanism.
+# Steps: [1] dump prod (+ capture its FK set)  [2] save partner sandbox data  [3] restore into dev
+#        [4] re-grant Supabase roles  [5] reconcile FKs against prod, then verify parity or abort
+#        [6] put partner sandbox data back.
+# Steps 2 and 6 keep dev-only partner accounts (snapshot_preserve.protected_users) and everything
+# they created alive across the wipe. See scripts/snapshot-preserve.sql.
+# Step 5 exists because the tolerant restore in step 2 can silently lose foreign keys, which
+# breaks PostgREST embeds with PGRST200 → HTTP 500. See the comment on step 5 for the mechanism.
 #
 # Setup: copy connection strings into .env.snapshot.local at the repo root (gitignored):
 #     PROD_DB_URL=postgresql://postgres:...@db.<prod-ref>.supabase.co:5432/postgres
@@ -51,15 +54,15 @@ FKS="$(mktemp -t prox-prod-fks-XXXXXX.tsv)"
 FKSQL="$(mktemp -t prox-prod-fks-XXXXXX.sql)"
 trap 'rm -f "$DUMP" "$DUMP.err" "$FKS" "$FKSQL"' EXIT
 
-echo "[1/4] Dumping PROD public schema → $DUMP"
+echo "[1/6] Dumping PROD public schema → $DUMP"
 # --clean --if-exists: dump includes DROPs so the restore replaces existing objects.
 # --no-owner --no-privileges: skip role/grant statements (roles differ across projects).
 pg_dump "$PROD_DB_URL" \
   --schema=public --no-owner --no-privileges --clean --if-exists \
   --file="$DUMP"
 
-# Capture prod's foreign keys separately so step [4/4] can reconcile them. The dump *does*
-# contain these, but the tolerant restore below can silently drop them (see step 4's note),
+# Capture prod's foreign keys separately so step [5/6] can reconcile them. The dump *does*
+# contain these, but the tolerant restore below can silently drop them (see step 5's note),
 # and PostgREST builds its embedded-resource graph from FKs — a missing one turns every
 # nested select into a PGRST200 / HTTP 500.
 FK_SELECT="
@@ -74,7 +77,7 @@ psql "$PROD_DB_URL" -t -A -F$'\t' --no-psqlrc -v ON_ERROR_STOP=1 -o "$FKS" \
   -c "select t.relname, c.conname, pg_get_constraintdef(c.oid) $FK_SELECT;"
 
 # (b) the same rows as INSERT statements. Built server-side with format(%L) so identifiers and
-# definitions are escaped correctly, and so step 4 can run one self-contained SQL file —
+# definitions are escaped correctly, and so step 5 can run one self-contained SQL file —
 # \copy does not interpolate psql variables, so a file path cannot be passed into the session.
 psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -o "$FKSQL" \
   -c "select format('insert into _prod_fks values (%L,%L,%L);',
@@ -82,7 +85,38 @@ psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -o "$FKSQL" \
 
 echo "    prod foreign keys captured: $(grep -c . "$FKS" 2>/dev/null || echo 0)"
 
-echo "[2/4] Restoring into DEV (destructive)…"
+echo "[2/6] Saving partner sandbox data (snapshot_preserve)…"
+# Partner accounts live only in dev, so the restore below would wipe them. Install/refresh the
+# snapshot_preserve schema, tell it which rows prod has (so it only saves rows created on dev), then
+# save. Any failure here aborts BEFORE dev is touched, so partner data is never lost to a bad run.
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -f "$REPO_ROOT/scripts/snapshot-preserve.sql" >/dev/null
+
+# Built from PROD's catalog (not dev's), because dev has tables prod lacks. One SELECT per table
+# that an FK points at, yielding (table, key-as-json) for every prod row.
+PROD_KEYS_SQL="$(psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
+  select coalesce(string_agg(q, ' union all '), 'select null::text, null::text where false')
+  from (
+    select distinct format('select %L, jsonb_build_object(%s)::text from public.%I',
+             pt.relname,
+             (select string_agg(format('%L, %I', a.attname, a.attname), ', ' order by k.ord)
+                from unnest(c.confkey) with ordinality k(attnum, ord)
+                join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.attnum),
+             pt.relname) as q
+    from pg_constraint c
+    join pg_class pt     on pt.oid = c.confrelid
+    join pg_namespace pn on pn.oid = pt.relnamespace
+    join pg_class ct     on ct.oid = c.conrelid
+    join pg_namespace cn on cn.oid = ct.relnamespace
+    where c.contype = 'f' and pn.nspname = 'public' and cn.nspname = 'public'
+      and pt.relname <> 'users'
+  ) s;")"
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "truncate snapshot_preserve.prod_keys"
+psql "$PROD_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "copy ($PROD_KEYS_SQL) to stdout" \
+  | psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
+      -c "copy snapshot_preserve.prod_keys (table_name, key) from stdin"
+psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.save();"
+
+echo "[3/6] Restoring into DEV (destructive)…"
 # Tolerant restore: prod's public schema references Supabase system schemas the dev project
 # doesn't have (e.g. supabase_functions webhook triggers). We skip those benign errors rather
 # than abort — dev doesn't need them. ERROR count is reported below for visibility.
@@ -97,7 +131,7 @@ if [[ "${USERS:-0}" -lt 1 ]]; then
 fi
 echo "    dev users restored: $USERS"
 
-echo "[3/4] Re-granting Supabase role privileges + stamping snapshot date…"
+echo "[4/6] Re-granting Supabase role privileges + stamping snapshot date…"
 # The dump used --no-privileges and --clean dropped the originals, so the PostgREST roles
 # (anon/authenticated/service_role) lose table access after a restore — which makes the app's
 # API return permission errors (500s). Re-grant Supabase's standard privileges, set default
@@ -123,7 +157,7 @@ on conflict (key) do update set value = excluded.value, updated_at = now();
 notify pgrst, 'reload schema';
 SQL
 
-echo "[4/4] Reconciling foreign keys against PROD…"
+echo "[5/6] Reconciling foreign keys against PROD…"
 # WHY THIS EXISTS: the restore above is deliberately tolerant (`|| true`), because prod's schema
 # references Supabase system schemas dev lacks. But that tolerance also hides a real failure mode:
 # any table that exists ONLY in dev (e.g. chat_access_tokens) is absent from the prod dump, so the
@@ -221,4 +255,10 @@ if [[ -s "$MISSING_KEYS" ]]; then
 fi
 echo "    foreign key parity with PROD verified ($(grep -c . "$PROD_KEYS") constraints)"
 
-echo "✓ Done. DEV mirrors PROD; role grants re-applied; FKs reconciled; snapshot_taken_at stamped."
+echo "[6/6] Putting partner sandbox data back…"
+# Runs last so FKs are in place: rows that no longer fit (e.g. they point at something prod deleted)
+# are reported as warnings and skipped rather than restored as orphans.
+psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.restore();"
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema';"
+
+echo "✓ Done. DEV mirrors PROD; role grants re-applied; FKs reconciled; partner data restored; snapshot_taken_at stamped."
