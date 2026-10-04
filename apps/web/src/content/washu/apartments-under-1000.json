@@ -1,30 +1,52 @@
 {
   "intro": [
-    "Stop overpaying. Under $1,000 a month per person is realistic near WashU if you share, pick the right blocks, and move before the good stuff is gone.",
-    "The listings below qualify because your share of rent, not the whole unit price, stays under $1,000. For shared apartments that means the unit rent divided by the bedrooms. Where a listing is priced by the room, we use that room price directly. Each card shows walk time to campus and reviews from students who lived there."
+    "Stop overpaying. You can find apartments near WashU (Washington University in St. Louis) for under $1,000 per person if you share, pick the right blocks, and start looking early.",
+    "The listings below qualify based on your share of the rent, not the full unit price. For shared apartments, we estimate the per-person cost by dividing the unit rent across the bedrooms. If a listing is priced by the room, we use that room price directly. Each listing also shows walk time to campus and student reviews where available."
   ],
-  "directAnswer": "Yes, you can live near WashU for under $1,000 a month per person, usually by sharing a 2 or 3 bedroom in Skinker-DeBaliviere or University City. For context, HUD's FY2026 fair market rent for a whole 1 bedroom in Skinker-DeBaliviere (63112) is $930, utilities included.",
+  "directAnswer": "Yes, you can find apartments near WashU for under $1,000 per person, usually by sharing a 2 or 3 bedroom in Skinker-DeBaliviere or University City, MO. Every listing on this page already fits that budget on a per-person basis.",
   "faqs": [
     {
       "q": "How do these listings qualify as under $1,000?",
-      "a": "By per-person cost. A $1,900 two bedroom counts because each person pays $950. Listings priced by the room count by their room price. The math is shown from each listing's real current rent, and utilities may be extra, so check what is included before you compare."
+      "a": "By per-person cost. A $1,900 two bedroom counts because each person pays $950. Listings priced by the room count by their room price. The math comes from each listing's real current rent, and utilities may be extra, so check what's included before you compare two places."
     },
     {
       "q": "Which areas near WashU are cheapest?",
-      "a": "By HUD's FY2026 benchmarks, Skinker-DeBaliviere (63112) is the most affordable ZIP adjacent to campus, with a fair market rent of $930 for a 1 bedroom and $1,140 for a 2 bedroom, utilities included. University City (63130) benchmarks at $1,110 and $1,360. Clayton and the Central West End benchmark meaningfully higher."
+      "a": "Skinker-DeBaliviere (63112) comes in lowest of the main WashU student neighborhoods on both HUD's and Zillow's rent data, with University City, MO (63130) next. Clayton and the Central West End run highest.",
+      "links": [
+        {
+          "label": "See the rent data",
+          "href": "/washu/housing-cost"
+        }
+      ]
     },
     {
       "q": "Does moving off campus save money compared to the dorms?",
-      "a": "Usually yes, even paying a 12 month lease for a 9 month school year, which is the trap students worry about. Splitting a shared apartment typically comes in under WashU room and board, and you can sublease the summer to claw back more. Run your own numbers in our budget guide before deciding."
+      "a": "Usually yes, even paying a 12 month lease for a 9 month school year, which is the trap students worry about. Splitting a shared apartment typically comes in under WashU room and board, and you can sublease the summer to claw back more. Run your own numbers in our budget guide before deciding.",
+      "links": [
+        {
+          "label": "Open the budget guide",
+          "href": "/guides/washu-off-campus-budget"
+        }
+      ]
     },
     {
       "q": "What is the catch with cheap places?",
-      "a": "The landlord, almost always. A low rent with a landlord who ignores maintenance is not a deal. That is exactly why reviews exist on every Proximity listing: students who lived there tell you if the deposit came back and how long the broken furnace took. Read them before you tour."
+      "a": "The landlord, almost always. A low rent with a landlord who ignores maintenance isn't a deal. That's exactly why reviews exist on every Proximity listing: students who lived there tell you whether the deposit came back and how long the broken furnace took. Read them before you tour."
     },
     {
       "q": "Will these prices go up?",
-      "a": "The trend says gradually, yes. Zillow's rent index had University City (63130) up 5.0% and Skinker-DeBaliviere (63112) up 6.5% year over year as of June 2026. Source: Zillow Research. The cheaper end of the market also moves fastest, so waiting rarely helps."
+      "a": "The trend says gradually, yes. Zillow's rent index had University City, MO (63130) up 4.7% and Skinker-DeBaliviere (63112) up 3.9% year over year as of August 2026. Source: Zillow Research. Waiting rarely helps."
     }
   ],
-  "benchmarkNote": "Rent context on this page cites HUD FY2026 Small Area Fair Market Rents (huduser.gov), whole-unit figures with utilities included, and Zillow ZORI ZIP-level trend data as of June 2026. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Neighborhood comparisons cite HUD FY2026 Small Area Fair Market Rents and Zillow's Observed Rent Index (ZORI), ZIP-level data as of August 2026. Rents on listings are each landlord's current asking rent. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

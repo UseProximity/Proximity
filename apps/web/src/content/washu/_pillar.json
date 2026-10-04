@@ -1,26 +1,42 @@
 {
   "intro": [
-    "Off-campus housing at WashU works on one simple, slightly brutal rule: first and second years live on campus, and everyone else fights over the same ten walkable neighborhoods. The students who win start early, know the blocks, and sign with landlords other students actually vouch for.",
-    "Proximity is that knowledge, organized. Live listings with walk times to campus already computed, reviews from students who lived in the buildings, and free matchmaking that does the searching for you. Start with a neighborhood, a bedroom count, or a budget below."
+    "Off-campus housing at WashU (Washington University in St. Louis) runs on one slightly brutal rule: first and second years live on campus, and everyone else competes for the same handful of walkable neighborhoods. The students who win start early and sign with landlords other students vouch for.",
+    "Proximity is that knowledge, organized. Every listing shows the walk time to campus and reviews from students who lived in the building. If you'd rather skip the search entirely, matchmaking is free and does it for you. Start with a neighborhood below, or jump straight to your budget."
   ],
-  "directAnswer": "WashU students move off campus starting junior year, mostly into Skinker-DeBaliviere, University City, the Delmar Loop, DeMun, Clayton, and the Central West End. Private landlords begin signing leases for the next school year in late fall, and WashU-affiliated companies open signing in spring.",
+  "directAnswer": "WashU students move off campus starting junior year, mostly into Skinker-DeBaliviere, University City, MO, the Delmar Loop, DeMun, Clayton, and the Central West End. Private landlords begin signing leases for the next school year in late fall, and WashU affiliated companies open signing in spring.",
   "faqs": [
     {
       "q": "When should WashU students start looking for off-campus housing?",
-      "a": "Start looking in October and be ready to sign by November or December for the following August. Students consistently report private landlords begin signing in late fall and the best-located places go first. WashU-affiliated companies like Quadrangle and Parallel typically open their signing in March or April, which gives you a second wave if you miss the first."
+      "a": "Start looking in October and be ready to sign by November or December for the following August. Students consistently report that private landlords begin signing in late fall, and the best located places go first. WashU affiliated companies like Quadrangle and Parallel usually open signing in March or April, so there's a second wave if you miss the first."
     },
     {
       "q": "Where do WashU students live off campus?",
-      "a": "The biggest concentration is Skinker-DeBaliviere, the blocks behind the Delmar Loop on streets like Pershing, Waterman, and Kingsbury. University City and the Loop itself come next, then DeMun and Clayton on the quieter side, and the Central West End for the med campus crowd."
+      "a": "The biggest concentration is Skinker-DeBaliviere, the blocks right behind the Delmar Loop. University City, MO and the Loop itself come next. DeMun and Clayton are the quieter picks, and the Central West End is where the medical campus crowd lands."
     },
     {
       "q": "Is off-campus housing cheaper than WashU dorms?",
-      "a": "Usually, especially if you share. Splitting a 2 or 3 bedroom typically brings your monthly share below on-campus room and board even when you carry a 12 month lease for a 9 month school year, and summer subleasing can recover part of the gap. Run your own numbers in our budget guide."
+      "a": "Usually, especially if you share. Splitting a 2 or 3 bedroom typically puts your monthly share below on-campus room and board, even carrying a 12 month lease across a 9 month school year. Subleasing the summer recovers part of the gap. Run your own numbers in our budget guide.",
+      "links": [
+        {
+          "label": "Open the budget guide",
+          "href": "/guides/washu-off-campus-budget"
+        }
+      ]
     },
     {
       "q": "Do I need a cosigner or credit history to rent near WashU?",
-      "a": "Many landlords ask for a guarantor when a student has no credit history, and international students hit this most often. It is normal: a parent or guardian typically cosigns. Ask each landlord early so it does not stall your lease at signing time."
+      "a": "Many landlords ask for a guarantor when a student has no credit history, and international students hit this most often. It's normal, and a parent or guardian usually cosigns. Ask each landlord early so it doesn't stall you at signing."
     }
   ],
-  "benchmarkNote": "Rent context across these pages cites HUD FY2026 Small Area Fair Market Rents (huduser.gov) and Zillow ZORI trend data. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings."
+  "benchmarkNote": "Rent context across these pages cites Zillow's Observed Rent Index (ZORI) as of August 2026, HUD FY2026 Small Area Fair Market Rents and WashU Law's cost of living estimate. Source: HUD; Source: Zillow Research. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    },
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
 }

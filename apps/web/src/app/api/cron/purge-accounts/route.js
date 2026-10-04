@@ -26,6 +26,7 @@
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
+ *   - blocks/reports user_blocks (either side) and the review_reports this person filed.
  *   - listings       sole-owned listings are soft-deleted by the users trigger.
  *                    The owner's phone is scrubbed now; their name and email
  *                    stay on the withdrawn listing for three years (Terms s17A).
@@ -236,6 +237,17 @@ async function purgeUser(user) {
   await must(
     "device_push_tokens",
     supabase.from("device_push_tokens").delete().eq("user_id", userId)
+  );
+  // Blocks in either direction, and the reports this person filed. Reports
+  // about their content stay: they name only an id, and the review they point at
+  // is kept anonymized.
+  await must(
+    "user_blocks",
+    supabase.from("user_blocks").delete().or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`)
+  );
+  await must(
+    "review_reports by reporter",
+    supabase.from("review_reports").delete().eq("reporter_id", userId)
   );
   if (user.email) {
     // A waitlist click made before signing in carries the address on the row

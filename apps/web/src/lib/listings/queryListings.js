@@ -40,6 +40,9 @@ import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 export const MIN_INVENTORY = 5;
 
 function matchesPageFilter(listing, filter) {
+  if (filter.sublease) {
+    return listing.leaseType === "Sublease";
+  }
   if (filter.bedrooms != null) {
     // `u.bedrooms != null` first: buildListing emits null for an unsized unit,
     // and Number(null) is 0 — so every unit with an unknown bedroom count would
@@ -72,6 +75,11 @@ function matchesPageFilter(listing, filter) {
  * page body, its metadata, its JSON-LD, and the sitemap.
  */
 export async function getWashuPageListings(pageDef) {
+  // Answer pages (no filter) are content-led: no listing grid, and they are
+  // indexable on the strength of their copy rather than inventory.
+  if (!pageDef.filter) {
+    return { listings: [], count: 0, meetsThreshold: true };
+  }
   const all = await getCachedListings();
   const listings = all
     .filter((l) => !l.unavailable && matchesPageFilter(l, pageDef.filter))

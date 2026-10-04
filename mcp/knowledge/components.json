@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-09-25T18:46:22.596Z",
-  "count": 105,
+  "_generated": "2026-10-04T15:03:04.023Z",
+  "count": 112,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -67,6 +67,31 @@
       "name": "RosterPicker",
       "file": "src/components/admin/reviewInvites/RosterPicker.js",
       "description": "Student roster picker for review invites: search, filter by contacted status, flag missing first names, and draw N at random"
+    },
+    {
+      "name": "AnalyticsBlock",
+      "file": "src/components/analytics/AnalyticsBlock.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "AnalyticsHeader",
+      "file": "src/components/analytics/AnalyticsHeader.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "DistributionChart",
+      "file": "src/components/analytics/DistributionChart.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "TrendChart",
+      "file": "src/components/analytics/TrendChart.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "format",
+      "file": "src/components/analytics/format.js",
+      "description": "No description — run generate after adding a description above."
     },
     {
       "name": "AuthCard",
@@ -514,6 +539,11 @@
       "description": "No description — run generate after adding a description above."
     },
     {
+      "name": "WashuFaqLinks",
+      "file": "src/components/washu/WashuFaqLinks.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "WashuListingGrid",
       "file": "src/components/washu/WashuListingGrid.js",
       "description": "No description — run generate after adding a description above."
@@ -521,6 +551,11 @@
     {
       "name": "WashuPageJsonLd",
       "file": "src/components/washu/WashuPageJsonLd.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "WashuSideCta",
+      "file": "src/components/washu/WashuSideCta.js",
       "description": "No description — run generate after adding a description above."
     },
     {

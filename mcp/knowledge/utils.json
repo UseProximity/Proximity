@@ -1,8 +1,60 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-01T13:25:38.264Z",
-  "count": 94,
+  "_generated": "2026-10-04T15:03:04.030Z",
+  "count": 109,
   "utils": [
+    {
+      "file": "src/lib/analytics/access.js",
+      "description": "Who can open /analytics, and which tabs they see."
+    },
+    {
+      "file": "src/lib/analytics/blocks.js",
+      "description": "Building blocks shared by every /analytics tab."
+    },
+    {
+      "file": "src/lib/analytics/db.js",
+      "description": "Small read helpers for /analytics. Reads go through the deployment's own database"
+    },
+    {
+      "file": "src/lib/analytics/ga.js",
+      "description": "Google Analytics 4 Data API reads for /analytics."
+    },
+    {
+      "file": "src/lib/analytics/periods.js",
+      "description": "Weekly time buckets for /analytics. Weeks start on Monday (UTC) and are keyed by"
+    },
+    {
+      "file": "src/lib/analytics/tabs/engagement.js",
+      "description": "Listing engagement: what students do with listings. Views, saves and contacts come from the"
+    },
+    {
+      "file": "src/lib/analytics/tabs/index.js",
+      "description": "Every /analytics tab, in display order. To add a tab: write a loader in this folder that"
+    },
+    {
+      "file": "src/lib/analytics/tabs/landlords.js",
+      "description": "Landlord flow: who signs up, whether they add listings, how complete and fresh those"
+    },
+    {
+      "file": "src/lib/analytics/tabs/leaseCheck.js",
+      "description": "Lease check: students uploading a lease for review."
+    },
+    {
+      "file": "src/lib/analytics/tabs/matchmaking.js",
+      "description": "Matchmaking (the Proxy chat). Shared with partners on the sandbox, so everything here is a"
+    },
+    {
+      "file": "src/lib/analytics/tabs/overview.js",
+      "description": "Overview: accounts and the state of the site, for the team."
+    },
+    {
+      "file": "src/lib/analytics/tabs/reviews.js",
+      "description": "Reviews: apartment and dorm reviews, invites, and the /review page."
+    },
+    {
+      "file": "src/lib/analytics/tabs/traffic.js",
+      "description": "Traffic: visitors to the live site, from Google Analytics and Google Search Console."
+    },
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
@@ -22,6 +74,10 @@
     {
       "file": "src/lib/auth/landlordRole.js",
       "description": "Turn the signed-in account into a landlord."
+    },
+    {
+      "file": "src/lib/auth/roles.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/authMobile.js",
@@ -58,6 +114,10 @@
     {
       "file": "src/lib/getRequestUser.js",
       "description": "Resolves the current request's user via the NextAuth session (web) first,"
+    },
+    {
+      "file": "src/lib/google/serviceAccount.js",
+      "description": "Access tokens for Google APIs from the project's service account, using the"
     },
     {
       "file": "src/lib/guides.js",
@@ -285,7 +345,7 @@
     },
     {
       "file": "src/lib/seo/gsc.js",
-      "description": "Google Search Console client using a service account, with no new"
+      "description": "Google Search Console client using the project service account (token flow"
     },
     {
       "file": "src/lib/seo/report.js",

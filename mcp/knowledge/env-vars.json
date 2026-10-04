@@ -1,10 +1,14 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-01T13:25:38.281Z",
-  "count": 67,
+  "_generated": "2026-10-04T15:03:04.044Z",
+  "count": 69,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
+      "public": false
+    },
+    {
+      "name": "ANALYTICS_EXTRA_VIEWERS",
       "public": false
     },
     {
@@ -77,6 +81,10 @@
     },
     {
       "name": "FIRECRAWL_API_KEY",
+      "public": false
+    },
+    {
+      "name": "GA4_PROPERTY_ID",
       "public": false
     },
     {

@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
-import { validateName, validateEmail, validatePassword, SIGNUP_ROLES } from "@proximity/auth-core";
+import { validateName, validateEmail, validatePassword } from "@proximity/auth-core";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+import { SIGNUP_ROLES } from "@/lib/auth/roles";
 
 export async function POST(req) {
   try {
