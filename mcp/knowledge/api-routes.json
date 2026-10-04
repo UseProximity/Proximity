@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-03T20:06:12.433Z",
+  "_generated": "2026-10-04T01:04:40.734Z",
   "count": 102,
   "routes": [
     {
@@ -297,6 +297,20 @@
       "file": "src/app/api/auth/reset-password/route.js"
     },
     {
+      "path": "/api/auth/set-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/set-password/route.js"
+    },
+    {
       "path": "/api/auth/signup",
       "methods": [
         "POST"
@@ -460,22 +474,6 @@
       },
       "tables": [],
       "file": "src/app/api/contacted/route.js"
-    },
-    {
-      "path": "/api/contactLandlord",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [
-        "unit_leases",
-        "listings",
-        "users"
-      ],
-      "file": "src/app/api/contactLandlord/route.js"
     },
     {
       "path": "/api/cron/auto-unavailable",

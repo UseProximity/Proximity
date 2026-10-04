@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-03T20:44:25.941Z",
-  "count": 66,
+  "_generated": "2026-10-04T01:04:40.789Z",
+  "count": 65,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -245,10 +245,6 @@
     },
     {
       "name": "R2_SECRET_ACCESS_KEY",
-      "public": false
-    },
-    {
-      "name": "RESEND_API_KEY",
       "public": false
     },
     {

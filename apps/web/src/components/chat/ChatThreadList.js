@@ -33,21 +33,33 @@ function threadPreview(thread) {
 }
 
 /*
- * The second line of an inbox row. A thread is one person now, not one
- * property, so the listing is context for the row rather than its identity:
- * "re:" marks it as what the conversation is currently about, and the count
- * tells a landlord this student has asked about more than one place.
+ * Every property the conversation has covered, most recent inquiry first.
+ *
+ * A thread is one person now, not one property, so showing only the latest
+ * inquiry hid the rest: a landlord could not see that the same student had also
+ * asked about two other places. Capped at three lines, because an inbox row that
+ * grows without limit pushes every other conversation off the screen.
  */
-function listingLineFor(thread) {
-  const label = thread.listingTitle || thread.listingAddress;
-  if (!label) return null;
-  const count = Number(thread.listingCount) || 0;
-  return count > 1 ? `re: ${label} +${count - 1} more` : `re: ${label}`;
+const MAX_LISTING_LINES = 3;
+
+function listingLinesFor(thread) {
+  const list = Array.isArray(thread.listings) ? thread.listings : [];
+  if (list.length === 0) {
+    const fallback = thread.listingTitle || thread.listingAddress;
+    return { lines: fallback ? [fallback] : [], extra: 0 };
+  }
+  const labels = list
+    .map((l) => l?.title || l?.address)
+    .filter(Boolean);
+  return {
+    lines: labels.slice(0, MAX_LISTING_LINES),
+    extra: Math.max(0, labels.length - MAX_LISTING_LINES),
+  };
 }
 
 function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
   const preview = threadPreview(thread);
-  const listingLine = listingLineFor(thread);
+  const { lines: listingLines, extra: extraListings } = listingLinesFor(thread);
   return (
     <button
       type="button"
@@ -83,10 +95,22 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
             {formatPreviewTime(thread.lastMessageAt)}
           </span>
         </div>
-        {listingLine && (
-          <p className="text-[11px] text-gray-400 truncate mt-0.5">
-            {listingLine}
-          </p>
+        {listingLines.length > 0 && (
+          <div className="mt-0.5 space-y-px">
+            {listingLines.map((label) => (
+              <p
+                key={label}
+                className="text-[11px] text-gray-400 truncate leading-snug"
+              >
+                {label}
+              </p>
+            ))}
+            {extraListings > 0 && (
+              <p className="text-[11px] text-gray-400 leading-snug">
+                +{extraListings} more
+              </p>
+            )}
+          </div>
         )}
         <p
           className={`text-xs truncate mt-0.5 ${

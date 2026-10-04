@@ -5,6 +5,8 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
+import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
+import { useMessages } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -148,6 +150,7 @@ export default function ChatTranscript({
   onBack,
   headerActions = null,
 }) {
+  const { needsPassword, clearNeedsPassword } = useMessages();
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
@@ -509,6 +512,11 @@ export default function ChatTranscript({
         <div ref={bottomRef} />
       </div>
 
+      {needsPassword ? (
+        <div className="flex-shrink-0">
+          <SetPasswordPrompt onDone={clearNeedsPassword} />
+        </div>
+      ) : (
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
         {pendingFiles.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -642,6 +650,7 @@ export default function ChatTranscript({
           </p>
         )}
       </div>
+      )}
     </div>
   );
 }

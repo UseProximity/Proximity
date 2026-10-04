@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-03T20:06:12.436Z",
-  "count": 118,
+  "_generated": "2026-10-04T01:04:40.738Z",
+  "count": 120,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -124,6 +124,11 @@
       "description": "Per-thread message bubbles and composer (5000-char limit, send toasts)"
     },
     {
+      "name": "GlobalMessagesPanel",
+      "file": "src/components/chat/GlobalMessagesPanel.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
       "name": "MessagesPanel",
       "file": "src/components/chat/MessagesPanel.js",
       "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
@@ -131,6 +136,11 @@
     {
       "name": "ProximityAssistantTranscript",
       "file": "src/components/chat/ProximityAssistantTranscript.js",
+      "description": "No description — run generate after adding a description above."
+    },
+    {
+      "name": "SetPasswordPrompt",
+      "file": "src/components/chat/SetPasswordPrompt.js",
       "description": "No description — run generate after adding a description above."
     },
     {

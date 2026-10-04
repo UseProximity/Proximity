@@ -11,6 +11,9 @@ import {
 import {
   screenOutgoingChat,
   recordAttachmentScan,
+  assertSenderCanSend,
+  CHAT_PASSWORD_REQUIRED_CODE,
+  CHAT_PASSWORD_REQUIRED_MESSAGE,
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
 } from "@/lib/chat/sendGuards";
@@ -159,6 +162,21 @@ export async function POST(req, { params }) {
     const { threadId } = await params;
     if (!UUID_RE.test(threadId ?? "")) {
       return NextResponse.json({ error: "threadId must be a valid UUID" }, { status: 400 });
+    }
+
+    /*
+     * A magic-link arrival can read this thread without any credentials. Sending
+     * is the line: an account with neither a password nor Google has to set one.
+     */
+    const eligibility = await assertSenderCanSend(session.user.id);
+    if (!eligibility.ok) {
+      return NextResponse.json(
+        {
+          error: CHAT_PASSWORD_REQUIRED_MESSAGE,
+          code: CHAT_PASSWORD_REQUIRED_CODE,
+        },
+        { status: 403 }
+      );
     }
 
     let payload;

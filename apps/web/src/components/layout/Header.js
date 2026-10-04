@@ -18,6 +18,7 @@ import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { recordPageVisit } from "@/utils/analytics";
 import { useMessages } from "@/context/MessagesContext";
+import { withMessages } from "@/lib/chat/messagesUrl";
 
 export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -31,9 +32,19 @@ export function Header({ session }) {
   const pathname = usePathname();
   const { unreadCount } = useMessages();
 
+  /*
+   * Messages is an overlay driven by ?messages=1, not a page, so this adds a
+   * parameter instead of navigating. Read from window.location rather than
+   * useSearchParams: the header renders in the root layout, and subscribing to
+   * search params there would opt every page out of static rendering. A click
+   * handler can read the live URL directly.
+   */
   function openInbox() {
     setMobileMenuOpen(false);
-    router.push("/messages");
+    const current = new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search
+    );
+    router.push(pathname + withMessages(current), { scroll: false });
   }
 
   useEffect(() => {

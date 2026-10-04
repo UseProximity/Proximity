@@ -1,11 +1,16 @@
 /*
- * /messages — authenticated inbox. Server gate redirects to login; client
- * panel lives in MessagesPageClient (handles ?thread= deep links).
+ * /messages is no longer a page. The inbox is a URL-driven overlay
+ * (components/chat/GlobalMessagesPanel) opened by ?messages=1, so this route
+ * exists only to keep older links working: the header used to push here, and
+ * every chat notification email sent before the change points at
+ * /messages?thread=<id>.
+ *
+ * Redirect rather than render, so there is one inbox surface instead of two that
+ * can drift apart visually. The thread parameter is carried across, which is the
+ * whole point for an email link.
  */
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import MessagesPageClient from "./MessagesPageClient";
 
 export const metadata = {
   title: "Messages | Proximity",
@@ -13,23 +18,19 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-function MessagesFallback() {
-  return (
-    <div className="h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)] flex items-center justify-center text-sm text-gray-400">
-      Loading messages…
-    </div>
-  );
-}
+export default async function MessagesPage({ searchParams }) {
+  const params = await searchParams;
+  const thread = typeof params?.thread === "string" ? params.thread : null;
 
-export default async function MessagesPage() {
+  const target = thread
+    ? `/?messages=1&thread=${encodeURIComponent(thread)}`
+    : "/?messages=1";
+
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/login?callbackUrl=/messages");
+    // Sign in, then land on the overlay rather than back on this redirect.
+    redirect(`/login?callbackUrl=${encodeURIComponent(target)}`);
   }
 
-  return (
-    <Suspense fallback={<MessagesFallback />}>
-      <MessagesPageClient />
-    </Suspense>
-  );
+  redirect(target);
 }

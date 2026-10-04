@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-03T20:44:25.907Z",
-  "count": 102,
+  "_generated": "2026-10-04T01:04:40.753Z",
+  "count": 103,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -61,7 +61,11 @@
     },
     {
       "file": "src/lib/chat/landlordCanChat.js",
-      "description": "Server-side gate for in-app listing chat. Primary landlord must be a real"
+      "description": "Server-side gate for in-app listing chat: can this landlord be reached?"
+    },
+    {
+      "file": "src/lib/chat/messagesUrl.js",
+      "description": "The messages overlay lives in the URL, the same way the listing modal does"
     },
     {
       "file": "src/lib/chat/moderation.js",

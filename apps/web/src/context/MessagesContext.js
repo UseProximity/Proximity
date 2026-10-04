@@ -77,6 +77,7 @@ function patchMessage(list, message) {
 function sendRejectionKind(status) {
   if (status === 422) return "blocked";
   if (status === 429) return "rate_limited";
+  if (status === 403) return "password_required";
   return "error";
 }
 
@@ -90,6 +91,11 @@ export function MessagesProvider({ children }) {
   // per thread: loading | ready | error — undefined means never requested
   const [messagesStatusByThread, setMessagesStatusByThread] = useState({});
   const [activeThreadId, setActiveThreadId] = useState(null);
+  /*
+   * Set when a send comes back PASSWORD_REQUIRED. The composer swaps itself for
+   * the set-password prompt rather than repeating a toast the user cannot act on.
+   */
+  const [needsPassword, setNeedsPassword] = useState(false);
 
   const threadUnsubscribeRef = useRef(null);
   const inboxUnsubscribeRef = useRef(null);
@@ -281,6 +287,7 @@ export function MessagesProvider({ children }) {
             threadId,
             reason: sendRejectionKind(res.status),
           });
+          if (errBody?.code === "PASSWORD_REQUIRED") setNeedsPassword(true);
           throw new Error(errBody?.error || `Failed to send (${res.status})`);
         }
         const data = await res.json();
@@ -450,15 +457,16 @@ export function MessagesProvider({ children }) {
   }, [refreshThreads, loadMessages]);
 
   const startListingChat = useCallback(
-    async (listingId, body) => {
+    async (listingId, body, leaseId = null) => {
       if (!userIdRef.current) throw new Error("Not signed in");
       const trimmed = typeof body === "string" ? body.trim() : "";
       if (!trimmed) throw new Error("Message body required");
 
+      // leaseId decides the recipient on a property with competing leases.
       const res = await fetch("/api/chat/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, body: trimmed }),
+        body: JSON.stringify({ listingId, body: trimmed, leaseId }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
@@ -466,6 +474,7 @@ export function MessagesProvider({ children }) {
           listingId,
           reason: sendRejectionKind(res.status),
         });
+        if (errBody?.code === "PASSWORD_REQUIRED") setNeedsPassword(true);
         throw new Error(errBody?.error || `Failed to start chat (${res.status})`);
       }
       const data = await res.json();
@@ -695,6 +704,8 @@ export function MessagesProvider({ children }) {
       startListingChat,
       markThreadRead,
       setActiveThreadId,
+      needsPassword,
+      clearNeedsPassword: () => setNeedsPassword(false),
     }),
     [
       threads,
@@ -709,6 +720,7 @@ export function MessagesProvider({ children }) {
       sendMessage,
       startListingChat,
       markThreadRead,
+      needsPassword,
     ]
   );
 

@@ -293,7 +293,7 @@ function buildListing(row, owner = null, reviews = []) {
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
-    owner: formatListingOwner(owner),
+    owner: formatListingOwner(owner, row),
     createdAt: row.created_at ?? null,
   };
 }

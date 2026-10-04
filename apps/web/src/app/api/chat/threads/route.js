@@ -5,6 +5,9 @@ import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import {
   screenOutgoingChat,
+  assertSenderCanSend,
+  CHAT_PASSWORD_REQUIRED_CODE,
+  CHAT_PASSWORD_REQUIRED_MESSAGE,
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
 } from "@/lib/chat/sendGuards";
@@ -50,6 +53,17 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const eligibility = await assertSenderCanSend(session.user.id);
+    if (!eligibility.ok) {
+      return NextResponse.json(
+        {
+          error: CHAT_PASSWORD_REQUIRED_MESSAGE,
+          code: CHAT_PASSWORD_REQUIRED_CODE,
+        },
+        { status: 403 }
+      );
+    }
+
     let payload;
     try {
       payload = await req.json();
@@ -57,7 +71,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { listingId, body } = payload ?? {};
+    const { listingId, body, leaseId } = payload ?? {};
     if (typeof listingId !== "string" || !listingId.trim()) {
       return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
@@ -66,6 +80,23 @@ export async function POST(req) {
     }
     if (typeof body !== "string" || !body.trim()) {
       return NextResponse.json({ error: "Message body required" }, { status: 400 });
+    }
+
+    /*
+     * Optional. It names which lease the enquiry is about, which is what decides
+     * the recipient on a property carrying competing leases from different
+     * landlords. The RPC re-checks that the lease belongs to the listing, so a
+     * lease id from elsewhere cannot redirect a message at an unrelated person.
+     */
+    let leaseIdArg = null;
+    if (leaseId !== undefined && leaseId !== null) {
+      if (typeof leaseId !== "string" || !UUID_RE.test(leaseId.trim())) {
+        return NextResponse.json(
+          { error: "leaseId must be a valid UUID" },
+          { status: 400 }
+        );
+      }
+      leaseIdArg = leaseId.trim();
     }
 
     const trimmedBody = body.trim();
@@ -89,6 +120,7 @@ export async function POST(req) {
       p_user_id: session.user.id,
       p_listing_id: listingId.trim(),
       p_body: trimmedBody,
+      p_lease_id: leaseIdArg,
     });
 
     if (error) {

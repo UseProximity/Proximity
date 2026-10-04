@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
@@ -36,6 +37,7 @@ import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
 import { useMessages } from "@/context/MessagesContext";
+import { withMessages } from "@/lib/chat/messagesUrl";
 
 const CHAT_MAX_BODY = 5000;
 
@@ -796,22 +798,16 @@ function ReviewsTab({
 function ContactTab({
   listing,
   session,
-  contactForm,
-  setContactForm,
-  handleContactSubmit,
-  contactLoading,
-  contactSent,
   selectedLease = null,
+  onOpenThread,
 }) {
   const { startListingChat } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
     listing.twentyOnePlus ? "loading" : "ok"
   );
-  const [chatBody, setChatBody] = useState(() =>
-    defaultListingInquiry(listing?.owner?.name)
-  );
   const [chatSending, setChatSending] = useState(false);
-  const [chatThreadId, setChatThreadId] = useState(null);
+  const [chatBodyEdited, setChatBodyEdited] = useState(false);
+  const [chatBody, setChatBody] = useState("");
 
   const userId = session?.user?.id;
   const isOwnListing =
@@ -819,6 +815,21 @@ function ContactTab({
   const canMessage = Boolean(
     session?.user?.id && listing?.owner?.canChat && !isOwnListing
   );
+
+  /*
+   * Re-prefill when the recipient changes. Picking a different lease changes who
+   * the message goes to, and greeting the previous landlord by name would be
+   * worse than no greeting. Skipped once the user has edited the text, so their
+   * own words are never overwritten.
+   */
+  const recipientName = selectedLease
+    ? selectedLease.landlordName ?? listing?.owner?.name
+    : listing?.owner?.name;
+
+  useEffect(() => {
+    if (chatBodyEdited) return;
+    setChatBody(defaultListingInquiry(recipientName));
+  }, [recipientName, chatBodyEdited]);
 
   useEffect(() => {
     if (!listing.twentyOnePlus) return;
@@ -878,18 +889,29 @@ function ContactTab({
       }
     : listing.owner;
 
-  const handleChange = (field) => (e) =>
-    setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
-
   async function handleStartChat(e) {
     e.preventDefault();
     const text = chatBody.trim();
     if (!text || chatSending || !listing?._id) return;
     setChatSending(true);
     try {
-      const data = await startListingChat(listing._id, text);
-      setChatThreadId(data?.threadId ?? "");
+      /*
+       * The lease id is what routes the message. A property can carry competing
+       * leases from different landlords, so sending without it reaches whoever
+       * is primary rather than the person who holds the unit being asked about.
+       */
+      const data = await startListingChat(
+        listing._id,
+        text,
+        selectedLease?.id ?? null
+      );
       toast.success("Message sent");
+      /*
+       * Open the conversation rather than leaving a "sent" receipt behind. The
+       * thread id lands in the URL, so the step from enquiry to conversation is
+       * a real navigation and is attributable (Wyatt, 2026-10-03).
+       */
+      onOpenThread?.(data?.threadId ?? null);
     } catch (err) {
       toast.error(err?.message || "Failed to start chat. Please try again.");
     } finally {
@@ -912,7 +934,7 @@ function ContactTab({
           />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide">
-              Listing by
+              {canMessage ? "Messaging" : "Listing by"}
             </p>
             <span className="text-lg font-semibold text-gray-900">
               {owner.name}
@@ -923,145 +945,28 @@ function ContactTab({
 
       {canMessage && (
         <div id="listing-in-app-message" className="mb-8">
-          {chatThreadId !== null ? (
-            <div className="rounded-xl border border-red-100 bg-red-50/40 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <p className="text-sm text-gray-700">
-                Message sent{owner?.name ? ` to ${owner.name}` : ""}.
-              </p>
-              <div className="shrink-0 flex items-center gap-2">
-                <Link
-                  href={
-                    chatThreadId ? `/messages?thread=${chatThreadId}` : "/messages"
-                  }
-                  className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-xs font-semibold rounded-lg bg-white text-red-700 border border-red-200 shadow-sm hover:bg-red-50 hover:border-red-300 transition"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  View conversation
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleStartChat} className="space-y-3">
-              <textarea
-                value={chatBody}
-                onChange={(e) =>
-                  setChatBody(e.target.value.slice(0, CHAT_MAX_BODY))
-                }
-                rows={3}
-                disabled={chatSending}
-                placeholder={defaultListingInquiry(owner?.name)}
-                aria-label="Message on Proximity"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={!chatBody.trim() || chatSending}
-                className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {chatSending ? "Sending..." : "Send message"}
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-
-      {canMessage && (
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center" aria-hidden>
-            <div className="w-full border-t border-gray-100" />
-          </div>
-          <div className="relative flex justify-center">
-            <span className="bg-white px-3 text-xs text-gray-400">or email</span>
-          </div>
-        </div>
-      )}
-
-      {contactSent ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
-          Your message was sent!
-          {owner ? ` ${owner.name} will be in touch soon.` : ""}
-        </div>
-      ) : (
-        <form onSubmit={handleContactSubmit} className="space-y-3">
-          {!canMessage && (
-            <p className="text-xs text-gray-500 mb-1">
-              Send an email to the property manager.
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                First Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={contactForm.firstName}
-                onChange={handleChange("firstName")}
-                placeholder="Jane"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={contactForm.lastName}
-                onChange={handleChange("lastName")}
-                placeholder="Doe"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Email *
-            </label>
-            <input
-              type="email"
-              required
-              value={contactForm.email}
-              onChange={handleChange("email")}
-              placeholder="jane@example.com"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              value={contactForm.phone}
-              onChange={handleChange("phone")}
-              placeholder="(123) 456-7890"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Message *
-            </label>
+          <form onSubmit={handleStartChat} className="space-y-3">
             <textarea
-              required
-              rows={4}
-              value={contactForm.message}
-              onChange={handleChange("message")}
-              placeholder="I'm interested in touring this location!"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
+              value={chatBody}
+              onChange={(e) => {
+                setChatBodyEdited(true);
+                setChatBody(e.target.value.slice(0, CHAT_MAX_BODY));
+              }}
+              rows={3}
+              disabled={chatSending}
+              placeholder={defaultListingInquiry(recipientName)}
+              aria-label="Message on Proximity"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
             />
-          </div>
-          <button
-            type="submit"
-            disabled={contactLoading}
-            className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {contactLoading ? "Sending..." : "Send email"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={!chatBody.trim() || chatSending}
+              className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {chatSending ? "Sending..." : "Send message"}
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );
@@ -1386,17 +1291,6 @@ export default function ListingModalInfo({
   const storedDriveTimes = listing?.placeDriveMinutes;
   const driveTimes = useMemo(() => storedDriveTimes ?? {}, [storedDriveTimes]);
 
-  // Contact form state
-  const [contactForm, setContactForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    message: "",
-  });
-  const [contactLoading, setContactLoading] = useState(false);
-  const [contactSent, setContactSent] = useState(false);
-
   // Hero image loading state
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
   const heroImgWrapperRef = useRef(null);
@@ -1526,6 +1420,24 @@ export default function ListingModalInfo({
   const leasesLoading = !!selectedUnit && selectedUnit.leases === undefined;
 
   /*
+   * Sending an enquiry opens the conversation, it does not leave a receipt on
+   * the listing. The thread id goes into the URL (?messages=1&thread=<id>) so
+   * the move from enquiry to conversation is a real navigation: it is
+   * attributable, the back button returns to the listing, and the link can be
+   * shared (Wyatt, 2026-10-03). withMessages drops ?listing= so the two
+   * overlays cannot stack on a phone.
+   */
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const openThread = (threadId) => {
+    router.push(pathname + withMessages(searchParams, threadId), {
+      scroll: false,
+    });
+  };
+
+  /*
    * Which lease the contact form is about. Set by the Contact button on a lease
    * row; falls back to the open unit's first offering when the Contact tab is
    * reached from the tab strip instead.
@@ -1601,15 +1513,11 @@ export default function ListingModalInfo({
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);
     /*
-     * Clicking Contact is an intent to send, so the form comes back even after
-     * a previous enquiry. It used to latch: contactSent was set on the first
-     * submit and never cleared, so every later lease showed "Your message was
-     * sent!" instead of a form — and on a unit with competing offerings, a
-     * renter who wrote to one landlord could not write to the next.
-     * The typed fields are deliberately kept, so asking several landlords about
-     * the same place doesn't mean retyping the same message.
+     * Clicking Contact on a specific lease names that lease's landlord as the
+     * recipient, which is who the message is routed to. On a unit with
+     * competing offerings this is the difference between reaching the person
+     * who holds the unit and reaching whoever happens to be primary.
      */
-    setContactSent(false);
     setActiveTab("contact");
     setTimeout(
       () => scrollIntoContainer(document.getElementById("listing-tabs")),
@@ -1753,10 +1661,6 @@ export default function ListingModalInfo({
   const viewerId = session?.user?.id;
   const isOwnListing =
     listing?.owner?._id === viewerId || listing?.owner?.id === viewerId;
-  const canShowMessage = Boolean(
-    viewerId && listing?.owner?.canChat && !isOwnListing
-  );
-
   // Reviews
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
@@ -1847,53 +1751,6 @@ export default function ListingModalInfo({
       toast.error("Something went wrong. Please try again.");
     } finally {
       setReviewLoading(false);
-    }
-  };
-
-  const handleContactSubmit = async (e) => {
-    e.preventDefault();
-    if (!session) {
-      signIn(undefined, { callbackUrl: window.location.href });
-      return;
-    }
-    setContactLoading(true);
-    try {
-      const res = await fetch("/api/contactLandlord", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...contactForm,
-          listingId: listing._id,
-          // The recipient is resolved server-side from the lease. The names
-          // below are only a fallback for listings whose units carry no lease.
-          leaseId: selectedLease?.id ?? null,
-          landlordEmail: listing.contactEmail ?? listing.owner?.email,
-          landlordName: listing.contactName ?? listing.owner?.name,
-          listingAddress: listing.address,
-        }),
-      });
-      if (res.ok) {
-        fetch("/api/contacted", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing._id }),
-        });
-        setTimeout(() => {
-          const source = getListingSource(listing._id);
-          trackEvent("Contact Submitted", {
-            listingId: listing._id,
-            address: listing.address,
-            ...(source ? { source } : {}),
-          });
-        }, 0);
-        setContactSent(true);
-      } else {
-        toast.error("Failed to send message. Please try again.");
-      }
-    } catch {
-      toast.error("Network error. Please try again.");
-    } finally {
-      setContactLoading(false);
     }
   };
 
@@ -2110,33 +1967,6 @@ export default function ListingModalInfo({
                   <span className="inline-flex items-center h-9 text-sm text-gray-400">
                     No reviews yet
                   </span>
-                )}
-                {/* Shortcut to the in-app composer in the Contact tab. Only
-                    rendered when the listing's owner is a real account that can
-                    actually receive a message (listing.owner.canChat). */}
-                {canShowMessage && (
-                  <button
-                    type="button"
-                    title="Message on Proximity"
-                    aria-label="Message on Proximity"
-                    onClick={() => {
-                      setActiveTab("contact");
-                      setTimeout(() => {
-                        scrollIntoContainer(
-                          document.getElementById("listing-tabs")
-                        );
-                        document
-                          .getElementById("listing-in-app-message")
-                          ?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "nearest",
-                          });
-                      }, 50);
-                    }}
-                    className="shrink-0 w-9 h-9 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                  </button>
                 )}
               </div>
             </div>
@@ -2355,12 +2185,8 @@ export default function ListingModalInfo({
                 <ContactTab
                   listing={listing}
                   session={session}
-                  contactForm={contactForm}
-                  setContactForm={setContactForm}
-                  handleContactSubmit={handleContactSubmit}
-                  contactLoading={contactLoading}
-                  contactSent={contactSent}
                   selectedLease={selectedLease}
+                  onOpenThread={openThread}
                 />
               )}
             </div>
