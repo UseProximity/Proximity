@@ -75,6 +75,8 @@ export default function MapView({
   const mapRef = useRef(null);
   const preSelectZoomRef = useRef(null);
   const listingsRef = useRef(listings);
+  const selectedListingIdRef = useRef(selectedListingId);
+  selectedListingIdRef.current = selectedListingId;
   // Set synchronously at the top of the panelExpanded effect so the
   // selectedListingId effect (which runs after, in definition order) can
   // read it and skip its own flyTo.
@@ -429,8 +431,10 @@ export default function MapView({
     // Tell the selection effect to repaint: these pins were all built unselected.
     setMarkersVersion((v) => v + 1);
 
-    // Zoom to fit all visible listings whenever the listings set changes
-    if (listings.length > 0) {
+    // Zoom to fit all visible listings whenever the listings set changes,
+    // unless a listing is selected: a ?panel= deep link's feed refetch would
+    // otherwise pull the camera back out from the listing it just zoomed to.
+    if (listings.length > 0 && !selectedListingIdRef.current) {
       const valid = listings.filter((l) => l.longitude && l.latitude);
       if (valid.length > 0) {
         const campusLng = WASHU_CAMPUS_CENTER.longitude;
