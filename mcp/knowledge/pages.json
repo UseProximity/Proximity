@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-10-03T21:11:00.123Z",
-  "count": 39,
+  "_generated": "2026-10-04T14:00:13.167Z",
+  "count": 40,
   "pages": [
     {
       "path": "/",
@@ -10,6 +10,10 @@
     {
       "path": "/_landlord/[landlordId]",
       "file": "src/app/_landlord/[landlordId]/page.js"
+    },
+    {
+      "path": "/(legal)/delete-account",
+      "file": "src/app/(legal)/delete-account/page.js"
     },
     {
       "path": "/(legal)/privacy",
