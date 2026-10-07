@@ -340,8 +340,6 @@ function EditProfileModal({ user, onClose, onSaved }) {
               {saving ? "Saving…" : "Save Changes"}
             </button>
           </div>
-
-          <DeleteAccountButton />
         </form>
       </div>
     </div>
@@ -783,6 +781,10 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                 <p className="text-xs text-gray-400 mt-1">Opens in new tab</p>
               </a>
             )}
+
+            {/* Danger zone: not shown while an admin is viewing as another user, since
+                the button deletes the signed-in account, not the one being viewed. */}
+            {!isViewingAs && <DeleteAccountButton variant="card" />}
           </div>
 
           {/* ── RIGHT COLUMN ── */}

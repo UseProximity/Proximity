@@ -84,6 +84,18 @@ const TABS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/*
+ * Where to come back to after signing in from a listing tab: the current page,
+ * plus which tab the reader was on, so they land on Reviews or Contact again
+ * rather than the default Overview. Path-relative, because /login only follows
+ * a callbackUrl that is a path on this site.
+ */
+function returnUrlForTab(tab) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("listingTab", tab);
+  return `${window.location.pathname}?${params.toString()}`;
+}
+
 function parseAddress(addressStr) {
   const ci = addressStr?.indexOf(",") ?? -1;
   if (ci !== -1)
@@ -445,7 +457,7 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 
 // ─── Auth Gate ───────────────────────────────────────────────────────────────
 
-function SignInPrompt({ message }) {
+function SignInPrompt({ message, tab }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-6">
       <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center">
@@ -471,15 +483,11 @@ function SignInPrompt({ message }) {
         </p>
       </div>
       <button
-        onClick={() => signIn("google", { callbackUrl: window.location.href })}
-        className="flex items-center gap-3 bg-white border border-gray-200 shadow-sm hover:shadow-md text-gray-700 text-sm font-medium px-5 py-2.5 rounded-lg transition"
+        type="button"
+        onClick={() => signIn(undefined, { callbackUrl: returnUrlForTab(tab) })}
+        className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
       >
-        <img
-          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-          alt="Google"
-          className="w-5 h-5"
-        />
-        Continue with Google
+        Log in or sign up
       </button>
     </div>
   );
@@ -517,9 +525,19 @@ function ReviewsTab({
   // Reviews may not name people. Shown as they type; the submit handler and the
   // API both block it too.
   const reviewProblem = checkReviewText(reviewText);
-  const displayed = showAllReviews
-    ? legitimateReviews
-    : legitimateReviews.slice(0, 4);
+  // Reviews the viewer has just blocked, hidden locally. On every later load the
+  // server sends them score-only (hiddenByBlock). Either way only the text is
+  // hidden: their ratings stay in the header stats, same as for everyone else.
+  const [hiddenReviewIds, setHiddenReviewIds] = useState(() => new Set());
+  // { [reviewId]: message } shown under a review after Report / Block.
+  const [reviewActionMsg, setReviewActionMsg] = useState({});
+  // The review whose author the viewer is being asked to block (confirm modal).
+  const [blockTarget, setBlockTarget] = useState(null);
+  const visibleReviews = legitimateReviews.filter(
+    (r) => !r.hiddenByBlock && !hiddenReviewIds.has(r._id)
+  );
+  const blockedHiddenCount = legitimateReviews.length - visibleReviews.length;
+  const displayed = showAllReviews ? visibleReviews : visibleReviews.slice(0, 4);
 
   // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
   const [voteOverrides, setVoteOverrides] = useState({});
@@ -544,8 +562,88 @@ function ReviewsTab({
   const isLandlord =
     listing?.owner?._id === userId || listing?.owner?.id === userId;
 
+  async function handleReport(review) {
+    const res = await fetch("/api/reviewReport", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId: review._id }),
+    }).catch(() => null);
+    setReviewActionMsg((prev) => ({
+      ...prev,
+      [review._id]: res?.ok
+        ? "Thanks, we'll take a look at this review."
+        : "Couldn't send your report. Please try again.",
+    }));
+  }
+
+  async function handleBlock(review) {
+    const res = await fetch("/api/userBlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId: review._id }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setReviewActionMsg((prev) => ({
+        ...prev,
+        [review._id]: "Couldn't block this user. Please try again.",
+      }));
+      return;
+    }
+    // Hide this review and, when the author is public, their other reviews too.
+    const authorId = review.reviewer?._id;
+    setHiddenReviewIds((prev) => {
+      const next = new Set(prev);
+      for (const r of legitimateReviews) {
+        if (r._id === review._id || (authorId && r.reviewer?._id === authorId)) next.add(r._id);
+      }
+      return next;
+    });
+    toast.success("User blocked successfully.", { duration: 6000 });
+  }
+
   return (
     <div>
+      {blockTarget && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-semibold text-gray-900">Block user?</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Their reviews will no longer be visible to you. Their star ratings
+              still count toward this property&apos;s score.
+            </p>
+            <p className="mt-3 text-sm text-gray-600">
+              If you want to unblock this user later, contact Proximity support at{" "}
+              <a
+                href="mailto:info@useproximity.org"
+                className="font-medium text-gray-900 underline"
+              >
+                info@useproximity.org
+              </a>
+              .
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBlockTarget(null)}
+                className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const review = blockTarget;
+                  setBlockTarget(null);
+                  handleBlock(review);
+                }}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Block
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Overall rating header */}
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         {/* Left: overall + bar chart */}
@@ -613,13 +711,20 @@ function ReviewsTab({
         <div className="text-center py-10 text-gray-400 italic text-sm">
           Reviews couldn&apos;t be loaded. Refresh to try again.
         </div>
-      ) : legitimateReviews.length === 0 ? (
+      ) : visibleReviews.length === 0 && blockedHiddenCount > 0 ? (
+        <div className="text-center py-10 text-gray-400 italic text-sm">
+          {blockedHiddenCount === 1
+            ? "This property's only review is from a user you blocked."
+            : "All reviews of this property are from users you blocked."}{" "}
+          Their ratings still count toward the score.
+        </div>
+      ) : visibleReviews.length === 0 ? (
         <div className="text-center py-10 text-gray-400 italic text-sm">
           No verified reviews yet. Be the first to share your experience!
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-4 mb-4">
             {displayed.map((review, i) => {
               const date = review.createdAt
                 ? new Date(review.createdAt).toLocaleDateString("en-US", {
@@ -710,13 +815,44 @@ function ReviewsTab({
                         </>
                       );
                     })()}
+                    {session?.user && !review.isMine && review.reviewer?._id !== userId && (
+                      <span className="ml-auto flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleReport(review)}
+                          className="hover:text-gray-700 transition"
+                        >
+                          Report
+                        </button>
+                        {/* Anonymous reviews have no public author, so only Report applies. */}
+                        {review.reviewer?._id && (
+                          <button
+                            type="button"
+                            onClick={() => setBlockTarget(review)}
+                            className="hover:text-gray-700 transition"
+                          >
+                            Block
+                          </button>
+                        )}
+                      </span>
+                    )}
                   </div>
+                  {reviewActionMsg[review._id] && (
+                    <p className="mt-2 text-xs text-gray-500">{reviewActionMsg[review._id]}</p>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {legitimateReviews.length > 4 && (
+          {blockedHiddenCount > 0 && (
+            <p className="text-center text-xs text-gray-400 mb-4">
+              {blockedHiddenCount === 1
+                ? "1 review from a user you blocked is hidden. Its rating still counts."
+                : `${blockedHiddenCount} reviews from users you blocked are hidden. Their ratings still count.`}
+            </p>
+          )}
+          {visibleReviews.length > 4 && (
             <div className="flex justify-center mb-6">
               <button
                 type="button"
@@ -1251,6 +1387,24 @@ export default function ListingModalInfo({
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
 
+  // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
+  // param so a reload or a shared link opens on Overview as usual.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("listingTab");
+    if (!tab) return;
+    if (TABS.some((t) => t.id === tab) && !excludeTabs.includes(tab)) {
+      setActiveTab(tab);
+    }
+    params.delete("listingTab");
+    const qs = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${qs ? `?${qs}` : ""}`
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {
     if (!isGalleryOpen) return;
@@ -1704,7 +1858,7 @@ export default function ListingModalInfo({
     if (reviewLoading) return;
 
     if (!session) {
-      signIn(undefined, { callbackUrl: "/browse" });
+      signIn(undefined, { callbackUrl: returnUrlForTab("reviews") });
       return;
     }
     if (!["student", "super"].includes(session.user.role)) {
@@ -2148,7 +2302,7 @@ export default function ListingModalInfo({
                 />
               )}
               {activeTab === "reviews" && !session && (
-                <SignInPrompt message="Sign in to view and leave reviews." />
+                <SignInPrompt message="Sign in to view and leave reviews." tab="reviews" />
               )}
               {activeTab === "reviews" && session && (
                 <ReviewsTab
@@ -2179,7 +2333,10 @@ export default function ListingModalInfo({
                 />
               )}
               {activeTab === "contact" && !session && (
-                <SignInPrompt message="Sign in to contact the property manager." />
+                <SignInPrompt
+                  message="Sign in to contact the property manager."
+                  tab="contact"
+                />
               )}
               {activeTab === "contact" && session && (
                 <ContactTab

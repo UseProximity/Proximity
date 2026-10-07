@@ -379,7 +379,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
   // Fetch reviews from listing_reviews (renamed from reviews in v4)
   // Show all reviews (including illegitimate) so the UI can mark them;
   // only legit + not-deleted count toward the rating (handled in buildListing)
-  const { data: reviewRows, error: reviewErr } = await supabase
+  const { data: allReviewRows, error: reviewErr } = await supabase
     .from("listing_reviews")
     .select(
       `
@@ -411,9 +411,39 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
     console.error("[getListing] reviews fetch error:", reviewErr);
   }
 
+  /*
+   * Reviews written by anyone the signed-in viewer has blocked. Viewer-only: the
+   * reviews stay as they are for everyone else (user_blocks is generic and
+   * reused by messaging later). A block hides the review's TEXT from the blocker,
+   * never its score: the row is still returned so the rating, count and star
+   * breakdown match what every other visitor sees, and a block can't be used to
+   * raise a property's rating.
+   */
+  const reviewRows = allReviewRows;
+  let blockedAuthors = new Set();
+  if (currentUserId && reviewRows?.length) {
+    const { data: blocks, error: blocksErr } = await supabase
+      .from("user_blocks")
+      .select("blocked_id")
+      .eq("blocker_id", currentUserId);
+    if (blocksErr) {
+      console.error("[getListing] blocks fetch error:", blocksErr);
+    } else {
+      blockedAuthors = new Set((blocks ?? []).map((b) => b.blocked_id));
+    }
+  }
+  // Anonymous reviews are never hidden by a block: that would reveal their author.
+  const isHiddenByBlock = (r) =>
+    !r.anonymous && Boolean(r.user_id) && blockedAuthors.has(r.user_id);
+
   // Batch-fetch reviewer profiles
   const reviewerIds = [
-    ...new Set((reviewRows ?? []).map((r) => r.user_id).filter(Boolean)),
+    ...new Set(
+      (reviewRows ?? [])
+        .filter((r) => !isHiddenByBlock(r))
+        .map((r) => r.user_id)
+        .filter(Boolean)
+    ),
   ];
   let reviewerMap = {};
   if (reviewerIds.length > 0) {
@@ -449,6 +479,27 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
   }
 
   const reviews = (reviewRows ?? []).map((r) => {
+    // Score only: the text, author and reply never reach the blocker's browser.
+    if (isHiddenByBlock(r)) {
+      return {
+        _id: r.id,
+        rating: r.rating,
+        comment: null,
+        legitimacy: r.legitimacy ?? false,
+        communicationRating: r.communication_rating ?? null,
+        locationRating: r.location_rating ?? null,
+        valueRating: r.value_rating ?? null,
+        createdAt: r.created_at ?? null,
+        deletedAt: r.deleted_at ?? null,
+        upvotes: 0,
+        downvotes: 0,
+        userVote: null,
+        isMine: false,
+        hiddenByBlock: true,
+        reviewer: null,
+        landlordReply: null,
+      };
+    }
     // Anonymous reviews never expose the author — drop the profile join entirely
     // so the UI falls back to "Anonymous" + default avatar.
     const reviewer = r.anonymous || !r.user_id ? null : reviewerMap[r.user_id];
@@ -466,6 +517,9 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       upvotes: votes.up,
       downvotes: votes.down,
       userVote: votes.userVote,
+      // Viewer-only: true when the signed-in viewer wrote this review. Lets the UI
+      // skip Report/Block on it even when it is anonymous (author otherwise hidden).
+      isMine: Boolean(currentUserId && r.user_id === currentUserId),
       reviewer: reviewer
         ? {
             _id: reviewer.id,

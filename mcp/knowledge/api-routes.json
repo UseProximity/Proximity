@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-04T01:04:40.734Z",
-  "count": 102,
+  "_generated": "2026-10-07T17:55:22.656Z",
+  "count": 103,
   "routes": [
     {
       "path": "/api/account",
@@ -571,6 +571,8 @@
         "lease_checks",
         "waitlist_clicks",
         "device_push_tokens",
+        "user_blocks",
+        "review_reports",
         "review_invites",
         "users"
       ],
@@ -1348,6 +1350,21 @@
       "file": "src/app/api/reviewReferral/route.js"
     },
     {
+      "path": "/api/reviewReport",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "review_reports"
+      ],
+      "file": "src/app/api/reviewReport/route.js"
+    },
+    {
       "path": "/api/reviews/confirm",
       "methods": [
         "POST"
@@ -1401,20 +1418,6 @@
       },
       "tables": [],
       "file": "src/app/api/seo/opportunities/route.js"
-    },
-    {
-      "path": "/api/staging/email-recipients",
-      "methods": [
-        "GET"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "GET": "any"
-      },
-      "tables": [
-        "users"
-      ],
-      "file": "src/app/api/staging/email-recipients/route.js"
     },
     {
       "path": "/api/streetview/preview",
@@ -1499,6 +1502,22 @@
         "users"
       ],
       "file": "src/app/api/uploadProfilePhoto/route.js"
+    },
+    {
+      "path": "/api/userBlock",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "users",
+        "user_blocks"
+      ],
+      "file": "src/app/api/userBlock/route.js"
     },
     {
       "path": "/api/waitlist/[listingId]",

@@ -14,6 +14,10 @@ export default function ProfileSection({
   cancelEdit,
   saveProfile,
   setIsEditing,
+  // Opt in, so a new caller can't show it by accident. Must stay false while an
+  // admin is viewing as this landlord: the button deletes the signed-in
+  // account, not the one being viewed.
+  canDeleteAccount = false,
 }) {
   if (!user) {
     return (
@@ -24,6 +28,7 @@ export default function ProfileSection({
   }
 
   return (
+    <>
     <div className="bg-white p-5 sm:p-8 rounded-lg shadow-lg mb-8">
       <div className="flex flex-col md:flex-row gap-5 md:gap-8">
         {/* Profile Image */}
@@ -274,8 +279,8 @@ export default function ProfileSection({
           ) : null}
         </div>
       </div>
-
-      <DeleteAccountButton />
     </div>
+    {canDeleteAccount && <DeleteAccountButton variant="card-wide" className="mb-8" />}
+    </>
   );
 }

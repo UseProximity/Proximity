@@ -276,14 +276,24 @@ export default function MapView({
       container.addEventListener("wheel", onUserInput, { once: true });
     }
 
-    // Handle window resize
-    const handleResize = () => {
-      if (mapRef.current) {
-        mapRef.current.resize();
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
+    // Mapbox resizes itself on window resize, but not when the container
+    // changes size on its own (the browse panel opening or closing), which can
+    // leave the canvas at a stale width. Watch the container and resize at most
+    // once per frame. Deferred to the next frame rather than run inside the
+    // callback: resizing the canvas inside the observed box can otherwise
+    // trip a "ResizeObserver loop" error when the box is sized by its content.
+    let resizeFrame = null;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            if (resizeFrame != null) return;
+            resizeFrame = requestAnimationFrame(() => {
+              resizeFrame = null;
+              mapRef.current?.resize();
+            });
+          })
+        : null;
+    resizeObserver?.observe(container);
 
     return () => {
       if (!heroMode) {
@@ -295,10 +305,11 @@ export default function MapView({
         container.removeEventListener("wheel", onUserInput);
       }
 
-      // Remove resize listener
-      window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
+      if (resizeFrame != null) cancelAnimationFrame(resizeFrame);
 
-      // Only remove the map on unmount
+      // Runs on unmount AND whenever a dependency changes (isActive flips when
+      // the viewport crosses the md breakpoint), so the map is rebuilt then too.
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -429,48 +440,59 @@ export default function MapView({
     // Tell the selection effect to repaint: these pins were all built unselected.
     setMarkersVersion((v) => v + 1);
 
-    // Zoom to fit all visible listings whenever the listings set changes
-    if (listings.length > 0) {
-      const valid = listings.filter((l) => l.longitude && l.latitude);
-      if (valid.length > 0) {
-        const campusLng = WASHU_CAMPUS_CENTER.longitude;
-        const campusLat = WASHU_CAMPUS_CENTER.latitude;
-        // Radius that contains FIT_PERCENTILE of the listings, not all of them.
-        const deltaLng = Math.max(
-          FIT_MIN_DELTA_DEG,
-          percentile(
-            valid.map((l) => Math.abs(l.longitude - campusLng)),
-            FIT_PERCENTILE
-          )
-        );
-        const deltaLat = Math.max(
-          FIT_MIN_DELTA_DEG,
-          percentile(
-            valid.map((l) => Math.abs(l.latitude - campusLat)),
-            FIT_PERCENTILE
-          )
-        );
-        const symBounds = [
-          [campusLng - deltaLng, campusLat - deltaLat],
-          [campusLng + deltaLng, campusLat + deltaLat],
-        ];
-        const doFit = () => {
-          const camera = map.cameraForBounds(symBounds, {
-            padding: 48,
-            maxZoom: 15.5,
-          });
-          map.flyTo({
-            center: [campusLng, campusLat],
-            zoom: camera ? camera.zoom : 13,
-            duration: 1400,
-            essential: true,
-          });
-        };
-        // cameraForBounds/flyTo only need the map transform (container size),
-        // not a loaded style — gating on "load" here used to silently skip the
-        // fit whenever the style resolved after the listings did.
-        doFit();
-      }
+    // Zoom to fit all visible listings whenever the SET of listings changes.
+    // Keyed on the ids, not the array: the feed refetch after first paint hands
+    // back a new array with the same listings, and refitting on that pulled the
+    // camera out from a ?panel= deep link it had just flown to. A real change
+    // (a filter) still refits, panel open or not. Stored on the map so a
+    // recreated map gets its own first fit.
+    const valid = listings.filter((l) => l.longitude && l.latitude);
+    const fitKey = valid
+      .map((l) => String(l._id))
+      .sort()
+      .join(",");
+    if (valid.length > 0 && map._fitKey !== fitKey) {
+      map._fitKey = fitKey;
+      // The fitted view is the new baseline, so closing the panel shouldn't
+      // zoom back to a level picked for results that are no longer shown.
+      preSelectZoomRef.current = null;
+      const campusLng = WASHU_CAMPUS_CENTER.longitude;
+      const campusLat = WASHU_CAMPUS_CENTER.latitude;
+      // Radius that contains FIT_PERCENTILE of the listings, not all of them.
+      const deltaLng = Math.max(
+        FIT_MIN_DELTA_DEG,
+        percentile(
+          valid.map((l) => Math.abs(l.longitude - campusLng)),
+          FIT_PERCENTILE
+        )
+      );
+      const deltaLat = Math.max(
+        FIT_MIN_DELTA_DEG,
+        percentile(
+          valid.map((l) => Math.abs(l.latitude - campusLat)),
+          FIT_PERCENTILE
+        )
+      );
+      const symBounds = [
+        [campusLng - deltaLng, campusLat - deltaLat],
+        [campusLng + deltaLng, campusLat + deltaLat],
+      ];
+      const doFit = () => {
+        const camera = map.cameraForBounds(symBounds, {
+          padding: 48,
+          maxZoom: 15.5,
+        });
+        map.flyTo({
+          center: [campusLng, campusLat],
+          zoom: camera ? camera.zoom : 13,
+          duration: 1400,
+          essential: true,
+        });
+      };
+      // cameraForBounds/flyTo only need the map transform (container size),
+      // not a loaded style — gating on "load" here used to silently skip the
+      // fit whenever the style resolved after the listings did.
+      doFit();
     }
 
     const shuttleGeoJSON = {
@@ -549,11 +571,12 @@ export default function MapView({
     listingsRef.current = listings;
   }, [listings]);
 
-  // When the panel expands/collapses: resize the map canvas on every RAF frame so
-  // it smoothly follows the CSS width transition.
-  // Sets panelIsTransitioningRef = true SYNCHRONOUSLY before any RAF so the
-  // selectedListingId effect (defined below, runs after this one) sees it and
-  // skips its own flyTo. We own the flyTo here, fired once the resize is done.
+  // When the panel expands/collapses, the container ResizeObserver above keeps
+  // the canvas following the CSS width transition. This effect only owns the
+  // camera: it sets panelIsTransitioningRef = true SYNCHRONOUSLY so the
+  // selectedListingId effect (defined below, runs after this one) skips its own
+  // flyTo, then flies once the transition has finished and the map is at its
+  // final size.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -561,38 +584,28 @@ export default function MapView({
     panelIsTransitioningRef.current = true;
 
     const TRANSITION_MS = 300;
-    const start = performance.now();
-    let rafId;
-
-    function tick(now) {
-      map.resize();
-      if (now - start < TRANSITION_MS + 16) {
-        rafId = requestAnimationFrame(tick);
-      } else {
-        // Transition finished — map is at its final dimensions.
-        panelIsTransitioningRef.current = false;
-        // If the panel just expanded with a listing active, fly to it now.
-        if (panelExpanded && selectedListingId) {
-          const listing = listingsRef.current.find(
-            (l) => String(l._id) === String(selectedListingId)
-          );
-          if (listing?.longitude && listing?.latitude) {
-            map.resize(); // one final sync before calculating offset
-            map.flyTo({
-              center: [listing.longitude, listing.latitude],
-              zoom: Math.min(Math.max(map.getZoom(), 15), 16),
-              offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
-              duration: 700,
-              essential: true,
-            });
-          }
+    const timer = setTimeout(() => {
+      panelIsTransitioningRef.current = false;
+      // If the panel just expanded with a listing active, fly to it now.
+      if (panelExpanded && selectedListingId) {
+        const listing = listingsRef.current.find(
+          (l) => String(l._id) === String(selectedListingId)
+        );
+        if (listing?.longitude && listing?.latitude) {
+          map.resize(); // one final sync before calculating offset
+          map.flyTo({
+            center: [listing.longitude, listing.latitude],
+            zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+            offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
+            duration: 700,
+            essential: true,
+          });
         }
       }
-    }
+    }, TRANSITION_MS + 16);
 
-    rafId = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(rafId);
+      clearTimeout(timer);
       panelIsTransitioningRef.current = false;
     };
   }, [panelExpanded]); // eslint-disable-line react-hooks/exhaustive-deps

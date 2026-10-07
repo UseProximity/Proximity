@@ -156,6 +156,9 @@ const config = {
   session: { strategy: "jwt" },
   allowDangerousEmailAccountLinking: true,
   pages: {
+    // Every signIn() without a provider lands on the Proximity login page
+    // (email/password and Google) instead of NextAuth's unstyled default.
+    signIn: "/login",
     error: "/",
   },
   callbacks: {
