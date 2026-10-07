@@ -429,48 +429,59 @@ export default function MapView({
     // Tell the selection effect to repaint: these pins were all built unselected.
     setMarkersVersion((v) => v + 1);
 
-    // Zoom to fit all visible listings whenever the listings set changes
-    if (listings.length > 0) {
-      const valid = listings.filter((l) => l.longitude && l.latitude);
-      if (valid.length > 0) {
-        const campusLng = WASHU_CAMPUS_CENTER.longitude;
-        const campusLat = WASHU_CAMPUS_CENTER.latitude;
-        // Radius that contains FIT_PERCENTILE of the listings, not all of them.
-        const deltaLng = Math.max(
-          FIT_MIN_DELTA_DEG,
-          percentile(
-            valid.map((l) => Math.abs(l.longitude - campusLng)),
-            FIT_PERCENTILE
-          )
-        );
-        const deltaLat = Math.max(
-          FIT_MIN_DELTA_DEG,
-          percentile(
-            valid.map((l) => Math.abs(l.latitude - campusLat)),
-            FIT_PERCENTILE
-          )
-        );
-        const symBounds = [
-          [campusLng - deltaLng, campusLat - deltaLat],
-          [campusLng + deltaLng, campusLat + deltaLat],
-        ];
-        const doFit = () => {
-          const camera = map.cameraForBounds(symBounds, {
-            padding: 48,
-            maxZoom: 15.5,
-          });
-          map.flyTo({
-            center: [campusLng, campusLat],
-            zoom: camera ? camera.zoom : 13,
-            duration: 1400,
-            essential: true,
-          });
-        };
-        // cameraForBounds/flyTo only need the map transform (container size),
-        // not a loaded style — gating on "load" here used to silently skip the
-        // fit whenever the style resolved after the listings did.
-        doFit();
-      }
+    // Zoom to fit all visible listings whenever the SET of listings changes.
+    // Keyed on the ids, not the array: the feed refetch after first paint hands
+    // back a new array with the same listings, and refitting on that pulled the
+    // camera out from a ?panel= deep link it had just flown to. A real change
+    // (a filter) still refits, panel open or not. Stored on the map so a
+    // recreated map gets its own first fit.
+    const valid = listings.filter((l) => l.longitude && l.latitude);
+    const fitKey = valid
+      .map((l) => String(l._id))
+      .sort()
+      .join(",");
+    if (valid.length > 0 && map._fitKey !== fitKey) {
+      map._fitKey = fitKey;
+      // The fitted view is the new baseline, so closing the panel shouldn't
+      // zoom back to a level picked for results that are no longer shown.
+      preSelectZoomRef.current = null;
+      const campusLng = WASHU_CAMPUS_CENTER.longitude;
+      const campusLat = WASHU_CAMPUS_CENTER.latitude;
+      // Radius that contains FIT_PERCENTILE of the listings, not all of them.
+      const deltaLng = Math.max(
+        FIT_MIN_DELTA_DEG,
+        percentile(
+          valid.map((l) => Math.abs(l.longitude - campusLng)),
+          FIT_PERCENTILE
+        )
+      );
+      const deltaLat = Math.max(
+        FIT_MIN_DELTA_DEG,
+        percentile(
+          valid.map((l) => Math.abs(l.latitude - campusLat)),
+          FIT_PERCENTILE
+        )
+      );
+      const symBounds = [
+        [campusLng - deltaLng, campusLat - deltaLat],
+        [campusLng + deltaLng, campusLat + deltaLat],
+      ];
+      const doFit = () => {
+        const camera = map.cameraForBounds(symBounds, {
+          padding: 48,
+          maxZoom: 15.5,
+        });
+        map.flyTo({
+          center: [campusLng, campusLat],
+          zoom: camera ? camera.zoom : 13,
+          duration: 1400,
+          essential: true,
+        });
+      };
+      // cameraForBounds/flyTo only need the map transform (container size),
+      // not a loaded style — gating on "load" here used to silently skip the
+      // fit whenever the style resolved after the listings did.
+      doFit();
     }
 
     const shuttleGeoJSON = {
