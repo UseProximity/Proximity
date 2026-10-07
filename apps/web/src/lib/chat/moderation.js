@@ -309,7 +309,7 @@ function blockMessage(reasons) {
   ) {
     return "This message cannot be sent because it asks for payment through a method Proximity cannot protect. Never send a deposit before signing a lease and seeing the unit.";
   }
-  return "Keep the conversation on Proximity. Phone numbers, email addresses, outside links and social handles cannot be sent in chat, so that every message about this place stays in one place for both of you.";
+  return "Phone numbers, email addresses, outside links and social handles cannot be sent in chat";
 }
 
 /** Attachment captions go through the same screen as a message body. */

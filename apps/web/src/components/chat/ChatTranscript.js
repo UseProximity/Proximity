@@ -176,6 +176,22 @@ export default function ChatTranscript({
   const showLoading = messagesLoading && list.length === 0;
   const listingLabel = thread?.listingTitle || thread?.listingAddress || "";
   const listingLabels = buildListingLabels(list, thread);
+  /*
+   * Every property this conversation has covered, for the header. A thread is one
+   * person, so showing only the current listing left a landlord reading a reply
+   * with no idea the same student had also asked about two other places
+   * (Wyatt, 2026-10-06). Newest inquiry first, matching the inbox row.
+   */
+  const headerListings = Array.isArray(thread?.listings) && thread.listings.length > 0
+    ? thread.listings
+        .map((l) => ({
+          listingId: l?.listingId ?? null,
+          label: l?.title || l?.address || "",
+        }))
+        .filter((l) => l.label)
+    : listingLabel
+      ? [{ listingId: thread?.listingId ?? null, label: listingLabel }]
+      : [];
   const listingRentLabel = formatListingRentLabel(
     thread?.listingMinRent,
     thread?.listingMaxRent
@@ -338,22 +354,31 @@ export default function ChatTranscript({
           <p className="text-sm font-semibold text-gray-900 truncate">
             {thread?.otherUserName || "Conversation"}
           </p>
-          {(listingLabel || listingRentLabel) && (
+          {(headerListings.length > 0 || listingRentLabel) && (
             <div className="flex items-baseline justify-between gap-2 min-w-0">
-              {listingLabel ? (
-                thread?.listingId ? (
-                  <Link
-                    href={`/listings/${thread.listingId}`}
-                    className="text-xs text-gray-400 truncate hover:text-red-600 hover:underline min-w-0"
-                    title={`View ${listingLabel}`}
-                  >
-                    {listingLabel}
-                  </Link>
-                ) : (
-                  <p className="text-xs text-gray-400 truncate min-w-0">
-                    {listingLabel}
-                  </p>
-                )
+              {headerListings.length > 0 ? (
+                <div className="min-w-0 flex flex-wrap items-baseline gap-x-1.5">
+                  {headerListings.map((item, i) => (
+                    <span key={item.listingId ?? item.label} className="min-w-0">
+                      {i > 0 && (
+                        <span className="text-xs text-gray-300" aria-hidden>
+                          {"\u00b7 "}
+                        </span>
+                      )}
+                      {item.listingId ? (
+                        <Link
+                          href={`/listings/${item.listingId}`}
+                          className="text-xs text-gray-400 hover:text-red-600 hover:underline"
+                          title={`View ${item.label}`}
+                        >
+                          {item.label}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-400">{item.label}</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
               ) : (
                 <span className="min-w-0" />
               )}
