@@ -285,6 +285,15 @@ export default function MapView({
 
     window.addEventListener("resize", handleResize);
 
+    // Mapbox only listens for window resizes, so a container that changes size
+    // on its own (the browse panel closing) can leave the canvas at a stale
+    // width. Watch the container itself and resize whenever it settles.
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(handleResize)
+        : null;
+    resizeObserver?.observe(container);
+
     return () => {
       if (!heroMode) {
         delete window.showRouteToCampus;
@@ -297,6 +306,7 @@ export default function MapView({
 
       // Remove resize listener
       window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
 
       // Only remove the map on unmount
       if (mapRef.current) {
