@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-04T14:00:13.170Z",
-  "count": 101,
+  "_generated": "2026-10-07T17:55:22.685Z",
+  "count": 111,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -82,6 +82,42 @@
     {
       "file": "src/lib/availabilityCheck.js",
       "description": "One-click \"still available?\" landlord email."
+    },
+    {
+      "file": "src/lib/chat/accessToken.js",
+      "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
+    },
+    {
+      "file": "src/lib/chat/attachments.js",
+      "description": "Shared allowlist / limits for chat attachments (presign API + client)."
+    },
+    {
+      "file": "src/lib/chat/landlordCanChat.js",
+      "description": "Server-side gate for in-app listing chat: can this landlord be reached?"
+    },
+    {
+      "file": "src/lib/chat/messagesUrl.js",
+      "description": "The messages overlay lives in the URL, the same way the listing modal does"
+    },
+    {
+      "file": "src/lib/chat/moderation.js",
+      "description": "Content screening for in-app chat."
+    },
+    {
+      "file": "src/lib/chat/notifyEmail.js",
+      "description": "Email notification for a new in-app chat message."
+    },
+    {
+      "file": "src/lib/chat/realtime.js",
+      "description": "Supabase Realtime helper for listing chat."
+    },
+    {
+      "file": "src/lib/chat/scanAttachment.js",
+      "description": "Vision screening for chat attachments."
+    },
+    {
+      "file": "src/lib/chat/sendGuards.js",
+      "description": "The two checks every chat send path runs before and around the RPC:"
     },
     {
       "file": "src/lib/contactTracking.js",
@@ -376,6 +412,10 @@
       "description": "How an offering's start date reads to a person."
     },
     {
+      "file": "src/utils/chatThreadGrouping.js",
+      "description": "Inbox ordering for chat threads."
+    },
+    {
       "file": "src/utils/compressImage.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -389,7 +429,7 @@
     },
     {
       "file": "src/utils/listingFormatters.js",
-      "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
+      "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
     },
     {
       "file": "src/utils/unitCounts.js",

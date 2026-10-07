@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
-import { getBaseUrl, sendVerificationEmail } from "@/lib/email";
+import {
+  getBaseUrl,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from "@/lib/email";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { SIGNUP_ROLES } from "@/lib/auth/roles";
@@ -33,7 +37,7 @@ export async function POST(req) {
 
     const { data: existing } = await supabase
       .from("users")
-      .select("id, password_hash, deleted_at")
+      .select("id, name, password_hash, deleted_at, google_account")
       .ilike("email", emailMatchPattern(email))
       .single();
 
@@ -51,15 +55,64 @@ export async function POST(req) {
           { status: 409 }
         );
       }
-      if (!existing.password_hash) {
+      /*
+       * google_account is what makes an account a Google one, NOT the absence
+       * of a password. This used to branch on `!password_hash` and told every
+       * credential-less row to "sign in with Google", which is wrong for the
+       * largest group of them: landlords whose rows the listing importer
+       * created. They have no password AND no Google identity, so the Google
+       * button cannot help them, and many of those addresses are not Google
+       * accounts at all. They were left with no way in.
+       */
+      if (existing.google_account) {
         return NextResponse.json(
           {
             error:
-              "This email is linked to a Google account. Please sign in with Google.",
+              "This email uses Google sign-in. Please continue with Google.",
           },
           { status: 409 }
         );
       }
+
+      /*
+       * A row with neither a password nor Google is claimable: the person it
+       * describes has never signed in. Rather than refuse, email them a
+       * set-password link, which is the same flow and the same token as a
+       * reset. Receiving it is what proves they control the address.
+       *
+       * Deliberately NOT creating a session or setting the password from this
+       * request: anyone can post an email here, and doing either would let a
+       * stranger take over a landlord's account by guessing their address.
+       */
+      if (!existing.password_hash) {
+        const token = crypto.randomUUID();
+        const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+        await supabase
+          .from("users")
+          .update({
+            password_reset_token: token,
+            password_reset_expires_at: expires,
+          })
+          .eq("id", existing.id);
+
+        await sendPasswordResetEmail({
+          email,
+          name: existing.name,
+          token,
+          baseUrl: getBaseUrl(req),
+        });
+
+        return NextResponse.json(
+          {
+            error:
+              "This email is already on Proximity but has no password yet. We have emailed you a link to set one.",
+            code: "SET_PASSWORD_EMAILED",
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         { error: "An account with this email already exists." },
         { status: 409 }
