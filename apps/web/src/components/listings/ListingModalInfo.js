@@ -33,7 +33,7 @@ import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
-import { ChevronLeft, ChevronRight} from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -266,7 +266,10 @@ function PlaceRow({ label, minutes, Icon, loading }) {
       <span className="flex-1 min-w-0 truncate">
         {primary}
         {secondary && (
-          <span className="text-xs text-gray-400 font-normal"> {secondary}</span>
+          <span className="text-xs text-gray-400 font-normal">
+            {" "}
+            {secondary}
+          </span>
         )}
       </span>
       <span className="text-sm text-gray-500 font-medium whitespace-nowrap">
@@ -277,14 +280,24 @@ function PlaceRow({ label, minutes, Icon, loading }) {
   );
 }
 
-function PlaceGroup({ label, items, Icon = Car, loading = false, twoColumn = false }) {
+function PlaceGroup({
+  label,
+  items,
+  Icon = Car,
+  loading = false,
+  twoColumn = false,
+}) {
   if (!items.length) return null;
   return (
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">
         {label}
       </h3>
-      <ul className={twoColumn ? "grid grid-cols-1 sm:grid-cols-2 gap-x-8" : undefined}>
+      <ul
+        className={
+          twoColumn ? "grid grid-cols-1 sm:grid-cols-2 gap-x-8" : undefined
+        }
+      >
         {items.map((it) => (
           <PlaceRow
             key={it.key}
@@ -327,7 +340,10 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
     () =>
       [...WASHU_PLACES]
         .filter((p) => p.name !== "Schnucks (Grocery)")
-        .sort((a, b) => (walkTimes[a.name] ?? Infinity) - (walkTimes[b.name] ?? Infinity))
+        .sort(
+          (a, b) =>
+            (walkTimes[a.name] ?? Infinity) - (walkTimes[b.name] ?? Infinity)
+        )
         .map((p) => ({
           key: p.name,
           label: p.name,
@@ -351,27 +367,42 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
         icon: WalkingPersonIcon,
       },
     ];
-    return items.sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
+    return items.sort(
+      (a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)
+    );
   }, [walkTimes, shuttleWalkMinutes]);
 
   const sortDriveByMinutes = (items) =>
-    [...items].sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
+    [...items].sort(
+      (a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)
+    );
 
   const groceryItems = useMemo(
-    () => sortDriveByMinutes(driveItems.filter((it) => it.category === "grocery")),
+    () =>
+      sortDriveByMinutes(driveItems.filter((it) => it.category === "grocery")),
     [driveItems]
   );
   const attractionItems = useMemo(
-    () => sortDriveByMinutes(driveItems.filter((it) => it.category === "attractions")),
+    () =>
+      sortDriveByMinutes(
+        driveItems.filter((it) => it.category === "attractions")
+      ),
     [driveItems]
   );
   const parkingItems = useMemo(
-    () => sortDriveByMinutes(driveItems.filter((it) => it.category === "parking")),
+    () =>
+      sortDriveByMinutes(driveItems.filter((it) => it.category === "parking")),
     [driveItems]
   );
   const essentialsItems = useMemo(() => {
-    const order = ["gas_station_nearest", "pharmacy_nearest", "Lambert Airport"];
-    return order.map((key) => driveItems.find((it) => it.key === key)).filter(Boolean);
+    const order = [
+      "gas_station_nearest",
+      "pharmacy_nearest",
+      "Lambert Airport",
+    ];
+    return order
+      .map((key) => driveItems.find((it) => it.key === key))
+      .filter(Boolean);
   }, [driveItems]);
 
   const toggleBtn = (value, Icon, text) => (
@@ -379,7 +410,9 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
       type="button"
       onClick={() => setMode(value)}
       className={`flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-        mode === value ? "bg-white text-red-500 shadow-sm" : "text-gray-500 hover:text-gray-700"
+        mode === value
+          ? "bg-white text-red-500 shadow-sm"
+          : "text-gray-500 hover:text-gray-700"
       }`}
     >
       <Icon size={16} /> {text}
@@ -455,15 +488,16 @@ function SignInPrompt({ message }) {
         </p>
       </div>
       <button
-        onClick={() => signIn("google", { callbackUrl: window.location.href })}
-        className="flex items-center gap-3 bg-white border border-gray-200 shadow-sm hover:shadow-md text-gray-700 text-sm font-medium px-5 py-2.5 rounded-lg transition"
+        onClick={() =>
+          window.location.assign(
+            `/login?callbackUrl=${encodeURIComponent(
+              window.location.pathname + window.location.search
+            )}`
+          )
+        }
+        className="bg-red-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-red-800 transition"
       >
-        <img
-          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-          alt="Google"
-          className="w-5 h-5"
-        />
-        Continue with Google
+        Log in or sign up
       </button>
     </div>
   );
@@ -513,7 +547,9 @@ function ReviewsTab({
     (r) => !r.hiddenByBlock && !hiddenReviewIds.has(r._id)
   );
   const blockedHiddenCount = legitimateReviews.length - visibleReviews.length;
-  const displayed = showAllReviews ? visibleReviews : visibleReviews.slice(0, 4);
+  const displayed = showAllReviews
+    ? visibleReviews
+    : visibleReviews.slice(0, 4);
 
   // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
   const [voteOverrides, setVoteOverrides] = useState({});
@@ -570,7 +606,8 @@ function ReviewsTab({
     setHiddenReviewIds((prev) => {
       const next = new Set(prev);
       for (const r of legitimateReviews) {
-        if (r._id === review._id || (authorId && r.reviewer?._id === authorId)) next.add(r._id);
+        if (r._id === review._id || (authorId && r.reviewer?._id === authorId))
+          next.add(r._id);
       }
       return next;
     });
@@ -582,13 +619,16 @@ function ReviewsTab({
       {blockTarget && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
-            <h2 className="text-base font-semibold text-gray-900">Block user?</h2>
+            <h2 className="text-base font-semibold text-gray-900">
+              Block user?
+            </h2>
             <p className="mt-1 text-sm text-gray-600">
               Their reviews will no longer be visible to you. Their star ratings
               still count toward this property&apos;s score.
             </p>
             <p className="mt-3 text-sm text-gray-600">
-              If you want to unblock this user later, contact Proximity support at{" "}
+              If you want to unblock this user later, contact Proximity support
+              at{" "}
               <a
                 href="mailto:info@useproximity.org"
                 className="font-medium text-gray-900 underline"
@@ -791,30 +831,34 @@ function ReviewsTab({
                         </>
                       );
                     })()}
-                    {session?.user && !review.isMine && review.reviewer?._id !== userId && (
-                      <span className="ml-auto flex gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleReport(review)}
-                          className="hover:text-gray-700 transition"
-                        >
-                          Report
-                        </button>
-                        {/* Anonymous reviews have no public author, so only Report applies. */}
-                        {review.reviewer?._id && (
+                    {session?.user &&
+                      !review.isMine &&
+                      review.reviewer?._id !== userId && (
+                        <span className="ml-auto flex gap-3">
                           <button
                             type="button"
-                            onClick={() => setBlockTarget(review)}
+                            onClick={() => handleReport(review)}
                             className="hover:text-gray-700 transition"
                           >
-                            Block
+                            Report
                           </button>
-                        )}
-                      </span>
-                    )}
+                          {/* Anonymous reviews have no public author, so only Report applies. */}
+                          {review.reviewer?._id && (
+                            <button
+                              type="button"
+                              onClick={() => setBlockTarget(review)}
+                              className="hover:text-gray-700 transition"
+                            >
+                              Block
+                            </button>
+                          )}
+                        </span>
+                      )}
                   </div>
                   {reviewActionMsg[review._id] && (
-                    <p className="mt-2 text-xs text-gray-500">{reviewActionMsg[review._id]}</p>
+                    <p className="mt-2 text-xs text-gray-500">
+                      {reviewActionMsg[review._id]}
+                    </p>
                   )}
                 </div>
               );
@@ -1093,7 +1137,14 @@ function ContactTab({
   );
 }
 
-function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted = false }) {
+function GalleryImage({
+  src,
+  index,
+  onImageLoad,
+  onClick,
+  tags = [],
+  highlighted = false,
+}) {
   const [loaded, setLoaded] = useState(false);
   return (
     <div
@@ -1226,10 +1277,18 @@ function FloorPlanViewer({ url, unitName, onClose }) {
           {/* A plan can be a PDF as readily as an image, and an <img> would show
               a broken icon for one. */}
           {/\.pdf($|\?)/i.test(url) ? (
-            <iframe src={url} title="Floor plan" className="h-[70vh] w-full rounded-lg bg-white" />
+            <iframe
+              src={url}
+              title="Floor plan"
+              className="h-[70vh] w-full rounded-lg bg-white"
+            />
           ) : (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={url} alt="Floor plan" className="mx-auto max-h-[70vh] w-auto object-contain" />
+            <img
+              src={url}
+              alt="Floor plan"
+              className="mx-auto max-h-[70vh] w-auto object-contain"
+            />
           )}
         </div>
       </div>
@@ -1255,8 +1314,13 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
   const tabCount = TABS.filter((t) => !excludeTabs.includes(t.id)).length;
 
   return (
-    <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`} aria-busy="true">
-      <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
+    <div
+      className={`bg-gray-50${compact ? "" : " min-h-screen"}`}
+      aria-busy="true"
+    >
+      <div
+        className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
+      >
         <div className="animate-pulse">
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
@@ -1287,7 +1351,10 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
           <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
             <div className="flex w-full">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="flex-1 px-3 py-2.5 border-b-2 border-gray-100">
+                <div
+                  key={i}
+                  className="flex-1 px-3 py-2.5 border-b-2 border-gray-100"
+                >
                   <Bar className="h-4 w-full" />
                 </div>
               ))}
@@ -1298,7 +1365,10 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
             </div>
             <div className="divide-y divide-gray-100">
               {[0, 1].map((i) => (
-                <div key={i} className="flex items-center justify-between gap-4 px-4 py-4">
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-4 px-4 py-4"
+                >
                   <div className="flex-1">
                     <Bar className="h-4 w-28" />
                     <Bar className="h-3 w-40 max-w-full mt-2" />
@@ -1513,7 +1583,9 @@ export default function ListingModalInfo({
     if (!initialUnitId) return;
     let idx = sortedUnits.findIndex((s) => s.unit.id === initialUnitId);
     if (idx < 0) {
-      const target = (listing.unitTypes ?? []).find((u) => u.id === initialUnitId);
+      const target = (listing.unitTypes ?? []).find(
+        (u) => u.id === initialUnitId
+      );
       if (target) {
         idx = sortedUnits.findIndex(
           (s) =>
@@ -1606,7 +1678,9 @@ export default function ListingModalInfo({
    * when the destination isn't configured in this environment, which the server
    * decides for us (see getListing).
    */
-  const waitlist = listing.waitlistLabel ? { label: listing.waitlistLabel } : null;
+  const waitlist = listing.waitlistLabel
+    ? { label: listing.waitlistLabel }
+    : null;
 
   /*
    * Signed-out students are asked for a name first, so the click has to open a
@@ -1721,11 +1795,14 @@ export default function ListingModalInfo({
   ];
   const galleryCount = orderedGallery.length;
   const allGalleryPhotos = orderedGallery.map((item) => item.src);
-  const lightboxSrc = lightboxIndex !== null ? allGalleryPhotos[lightboxIndex] : null;
+  const lightboxSrc =
+    lightboxIndex !== null ? allGalleryPhotos[lightboxIndex] : null;
   const showPrevPhoto = () =>
-      setLightboxIndex((i) => (i - 1 + allGalleryPhotos.length) % allGalleryPhotos.length);
+    setLightboxIndex(
+      (i) => (i - 1 + allGalleryPhotos.length) % allGalleryPhotos.length
+    );
   const showNextPhoto = () =>
-      setLightboxIndex((i) => (i + 1) % allGalleryPhotos.length);
+    setLightboxIndex((i) => (i + 1) % allGalleryPhotos.length);
   const coverImage = images[0] || unitImages[0];
   /*
    * Whether anything renders beside the cover. Keyed on the tiles themselves
@@ -1754,8 +1831,8 @@ export default function ListingModalInfo({
       unitTiles[i]
         ? { src: unitTiles[i], isUnit: true }
         : propertyTile[i]
-          ? { src: propertyTile[i], isUnit: false }
-          : null
+        ? { src: propertyTile[i], isUnit: false }
+        : null
     )
     .filter(Boolean);
 
@@ -1786,15 +1863,20 @@ export default function ListingModalInfo({
    */
   const feedReviewCount = Number(listing.numReviews) || 0;
   const feedRating = Number(listing.rating);
-  const reviewCount = reviewsLoaded ? legitimateReviews.length : feedReviewCount;
+  const reviewCount = reviewsLoaded
+    ? legitimateReviews.length
+    : feedReviewCount;
   const overallAvg = legitimateReviews.length
     ? (
         legitimateReviews.reduce((s, r) => s + r.rating, 0) /
         legitimateReviews.length
       ).toFixed(1)
-    : !reviewsLoaded && feedReviewCount > 0 && Number.isFinite(feedRating) && feedRating > 0
-      ? feedRating.toFixed(1)
-      : null;
+    : !reviewsLoaded &&
+      feedReviewCount > 0 &&
+      Number.isFinite(feedRating) &&
+      feedRating > 0
+    ? feedRating.toFixed(1)
+    : null;
   const starCounts = [5, 4, 3, 2, 1].map((star) => ({
     star,
     count: legitimateReviews.filter((r) => Math.round(r.rating) === star)
@@ -1970,21 +2052,36 @@ export default function ListingModalInfo({
                 </div>
               )}
               {/* Cover badges: live PMS-verified availability + Street View attribution */}
-              {(listing.verifiedLive || (coverImage && listing.imageFromStreetView)) && (
+              {(listing.verifiedLive ||
+                (coverImage && listing.imageFromStreetView)) && (
                 <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-1.5">
                   {listing.verifiedLive && !listing.unavailable && (
                     <div className="flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
-                      <span className="relative flex h-2 w-2" aria-hidden="true">
+                      <span
+                        className="relative flex h-2 w-2"
+                        aria-hidden="true"
+                      >
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                       </span>
-                      <span className="uppercase tracking-wide">Live availability</span>
+                      <span className="uppercase tracking-wide">
+                        Live availability
+                      </span>
                     </div>
                   )}
                   {coverImage && listing.imageFromStreetView && (
                     <div className="flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
-                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       Street View
                     </div>
@@ -2005,42 +2102,42 @@ export default function ListingModalInfo({
             {/* Two stacked thumbnails — fill remaining width, desktop only.
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
             {hasSideTiles && (
-            <motion.div
-              className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
-              initial={compact ? { opacity: 0 } : false}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
-            >
-              {sideTiles.map((tile, i) => (
-                <div
-                  key={`${tile.src}-${i}`}
-                  className={`relative flex-1 cursor-pointer overflow-hidden bg-gray-100 ${
-                    i === 0 ? "rounded-tr-xl" : ""
-                  } ${i === sideTiles.length - 1 ? "rounded-br-xl" : ""}`}
-                  onClick={() => setIsGalleryOpen(true)}
-                >
-                  <Image
-                    src={tile.src}
-                    alt={
-                      tile.isUnit
-                        ? `${selectedUnitName ?? "Unit"} photo`
-                        : `Listing photo ${i + 2}`
-                    }
-                    fill
-                    sizes="(max-width: 768px) 0vw, 35vw"
-                    className="object-cover"
-                  />
-                  {/* Says whose photo this is, so switching tabs reads as a
+              <motion.div
+                className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
+                initial={compact ? { opacity: 0 } : false}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
+              >
+                {sideTiles.map((tile, i) => (
+                  <div
+                    key={`${tile.src}-${i}`}
+                    className={`relative flex-1 cursor-pointer overflow-hidden bg-gray-100 ${
+                      i === 0 ? "rounded-tr-xl" : ""
+                    } ${i === sideTiles.length - 1 ? "rounded-br-xl" : ""}`}
+                    onClick={() => setIsGalleryOpen(true)}
+                  >
+                    <Image
+                      src={tile.src}
+                      alt={
+                        tile.isUnit
+                          ? `${selectedUnitName ?? "Unit"} photo`
+                          : `Listing photo ${i + 2}`
+                      }
+                      fill
+                      sizes="(max-width: 768px) 0vw, 35vw"
+                      className="object-cover"
+                    />
+                    {/* Says whose photo this is, so switching tabs reads as a
                       different apartment rather than the gallery reshuffling.
                       Only on the first unit tile — twice is clutter. */}
-                  {tile.isUnit && selectedUnitName && i === 0 && (
-                    <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
-                      {selectedUnitName}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </motion.div>
+                    {tile.isUnit && selectedUnitName && i === 0 && (
+                      <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
+                        {selectedUnitName}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </motion.div>
             )}
 
             {/* "See all photos": every photo at the property, which is what the
@@ -2071,22 +2168,32 @@ export default function ListingModalInfo({
                 management system, refreshed daily — Proximity's freshness guarantee. */}
             {listing.verifiedLive && (
               <div className="bg-white border border-gray-200 border-l-4 border-l-red-600 rounded-xl px-6 py-3 mb-4 flex items-center gap-2.5 text-sm shadow-sm">
-                <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                <span
+                  className="relative flex h-2 w-2 shrink-0"
+                  aria-hidden="true"
+                >
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
                 </span>
                 <span className="text-gray-900">
-                  Availability comes straight from the landlord&apos;s own system
+                  Availability comes straight from the landlord&apos;s own
+                  system
                   {listing.verifiedAt && (
                     <>
                       {", last synced "}
-                      {new Date(listing.verifiedAt).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {new Date(listing.verifiedAt).toLocaleDateString(
+                        undefined,
+                        {
+                          month: "short",
+                          day: "numeric",
+                        }
+                      )}
                     </>
                   )}
-                  . <span className="text-gray-500">What you see is what&apos;s actually open.</span>
+                  .{" "}
+                  <span className="text-gray-500">
+                    What you see is what&apos;s actually open.
+                  </span>
                 </span>
               </div>
             )}
@@ -2099,15 +2206,15 @@ export default function ListingModalInfo({
                   <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
                 )}
                 {/*
-                  * No property-level "Available <date>" pill here on purpose.
-                  * It used to read from listing.availableFrom, a rollup that
-                  * only the browse feed computes — so opening a listing showed
-                  * the pill for the split second the panel held feed data, then
-                  * dropped it the moment the detail fetch replaced that object.
-                  * A move-in date belongs to one offering anyway, not to the
-                  * building: LeaseOptions shows it per lease, where a renter can
-                  * see which unit the date actually applies to.
-                  */}
+                 * No property-level "Available <date>" pill here on purpose.
+                 * It used to read from listing.availableFrom, a rollup that
+                 * only the browse feed computes — so opening a listing showed
+                 * the pill for the split second the panel held feed data, then
+                 * dropped it the moment the detail fetch replaced that object.
+                 * A move-in date belongs to one offering anyway, not to the
+                 * building: LeaseOptions shows it per lease, where a renter can
+                 * see which unit the date actually applies to.
+                 */}
               </div>
               <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
                 {/* Rating moved up from the removed stats bar. */}
@@ -2135,21 +2242,26 @@ export default function ListingModalInfo({
             {/* ── Unit Selector ── */}
             {sortedUnits.length > 0 && (
               <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div ref={unitTrackRef} className="flex w-full overflow-x-auto scrollbar-hidden">
-                  {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
-                    <button
-                      key={origIdx}
-                      type="button"
-                      onClick={() => setSelectedUnitIdx(sortedIdx)}
-                      className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
-                        selectedUnitIdx === sortedIdx
-                          ? "bg-red-600 text-white border-red-600"
-                          : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                      }`}
-                    >
-                      {unitsScroll ? shortLabel : label}
-                    </button>
-                  ))}
+                <div
+                  ref={unitTrackRef}
+                  className="flex w-full overflow-x-auto scrollbar-hidden"
+                >
+                  {sortedUnits.map(
+                    ({ origIdx, label, shortLabel }, sortedIdx) => (
+                      <button
+                        key={origIdx}
+                        type="button"
+                        onClick={() => setSelectedUnitIdx(sortedIdx)}
+                        className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
+                          selectedUnitIdx === sortedIdx
+                            ? "bg-red-600 text-white border-red-600"
+                            : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                        }`}
+                      >
+                        {unitsScroll ? shortLabel : label}
+                      </button>
+                    )
+                  )}
                 </div>
                 {/* Hidden full-label row used only to measure natural width */}
                 <div
@@ -2290,7 +2402,9 @@ export default function ListingModalInfo({
                     </a>
                   )}
                   {tabBarAction && (
-                    <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
+                    <div className="flex items-center pl-3 pr-8">
+                      {tabBarAction}
+                    </div>
                   )}
                 </div>
               </nav>
