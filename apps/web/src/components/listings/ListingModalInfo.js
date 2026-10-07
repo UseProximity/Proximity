@@ -700,7 +700,7 @@ function ReviewsTab({
         </div>
       ) : (
         <>
-          <div className="columns-1 md:columns-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-4 mb-4">
             {displayed.map((review, i) => {
               const date = review.createdAt
                 ? new Date(review.createdAt).toLocaleDateString("en-US", {
@@ -712,7 +712,7 @@ function ReviewsTab({
               return (
                 <div
                   key={i}
-                  className="border border-gray-100 rounded-xl p-4 shadow-sm mb-4 break-inside-avoid"
+                  className="border border-gray-100 rounded-xl p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
