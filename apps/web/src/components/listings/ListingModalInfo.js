@@ -700,7 +700,7 @@ function ReviewsTab({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-4 mb-4">
             {displayed.map((review, i) => {
               const date = review.createdAt
                 ? new Date(review.createdAt).toLocaleDateString("en-US", {
