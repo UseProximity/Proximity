@@ -14,9 +14,10 @@ export default function ProfileSection({
   cancelEdit,
   saveProfile,
   setIsEditing,
-  // False while an admin is viewing as this landlord: the button deletes the
-  // signed-in account, not the one being viewed.
-  canDeleteAccount = true,
+  // Opt in, so a new caller can't show it by accident. Must stay false while an
+  // admin is viewing as this landlord: the button deletes the signed-in
+  // account, not the one being viewed.
+  canDeleteAccount = false,
 }) {
   if (!user) {
     return (

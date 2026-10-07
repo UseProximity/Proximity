@@ -17,10 +17,10 @@ import { useState } from "react";
 import { signOut } from "next-auth/react";
 import Modal from "@/components/ui/Modal";
 
-// variant "inline" (default) is a plain divided section; "card" is a self-contained
-// danger-zone card for dashboard placement; "card-wide" is the same card laid out
-// for a full-width container (text left, button right on md and up). Behavior is
-// identical in all three.
+// variant "inline" (default) is unframed, for a page that supplies its own
+// layout; "card" is a self-contained danger-zone card for dashboard placement;
+// "card-wide" is the same card laid out for a full-width container (text left,
+// button right on md and up). Behavior is identical in all three.
 export default function DeleteAccountButton({ className = "", variant = "inline" }) {
   const isWide = variant === "card-wide";
   const isCard = variant === "card" || isWide;
@@ -56,7 +56,7 @@ export default function DeleteAccountButton({ className = "", variant = "inline"
                   ? "border-gray-200 md:grid md:grid-cols-[1fr_auto] md:items-center md:gap-x-8"
                   : "border-red-200"
               } ${className}`
-            : `border-t border-gray-200 pt-6 mt-8 ${className}`
+            : className
         }
       >
         {isCard && (
