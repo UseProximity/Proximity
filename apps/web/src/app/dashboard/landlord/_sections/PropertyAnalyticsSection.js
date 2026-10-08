@@ -103,7 +103,7 @@ export default function PropertyAnalyticsSection({
             View as Student
           </button>
           {/* No Edit button. Everything below this header is editable in place
-              now — the old button opened a separate modal over a panel that
+              now, the old button opened a separate modal over a panel that
               already edits itself, which meant two ways to change the same
               record and two chances to disagree about it. */}
         </div>

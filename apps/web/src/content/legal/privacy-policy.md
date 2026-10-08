@@ -116,15 +116,23 @@ or Google.
   contacted a listing, not the message text. We keep that record, with your name and
   email address, for three years after you delete your account (Section 8).
 - **Messages sent through Proximity**: where the Services let you message another user
-  about a listing, we store the conversation. That means the text of each message, the
-  listing it concerns, any file or photo attached to it, who sent it and when, whether it
-  has been read, and any offer made in the conversation. Unlike an inquiry sent through a
-  listing's contact form, these messages are kept in our database so both of you can come
-  back to the conversation. They are visible to the other participant, and to Proximity
+  about a listing, we store the conversation. That means the text of each message, every
+  listing it concerns, any file or photo attached to it, who sent it and when, and whether
+  it has been read. These messages are kept in our database so both of you can come back
+  to the conversation. They are visible to the other participant, and to Proximity
   staff who need to investigate a report of abuse or a dispute, or to confirm that a lease
   was signed. **If one of you deletes their account, we keep the conversation for three
   years afterwards, with the sender's name and email address on it.** Section 8 explains
   why.
+- **Messages we refuse to send, and ones we flag**: messages are checked before they are
+  delivered, to keep contact details and payment requests from moving a conversation off
+  the platform where we cannot help you (Section 1.4 of the Terms). When a message is
+  refused, or is delivered but flagged for review, we record **the first 500 characters
+  of what you typed**, which rule it matched, the time, and your account. For a refused
+  message that is the only copy we keep, because the message itself is never created.
+  Only Proximity staff can see these records, and we use them to find patterns of fraud
+  or abuse rather than to read ordinary conversations. They are kept for **two years**,
+  then deleted. A message that passes the check is not recorded here at all.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
   you are signed in, your name, email address, and role, so we can follow up. Submitting
   the form emails it straight to the Proximity team; the message is not stored in our
@@ -278,7 +286,7 @@ If you believe a minor has created an account, contact us at info@useproximity.o
 
 ## 4. Artificial intelligence
 
-Three Proximity features send information to **Anthropic PBC** (the Claude API), a service
+Four Proximity features send information to **Anthropic PBC** (the Claude API), a service
 provider located in the United States:
 
 - **Matchmaking.** Each conversation sends its transcript, the
@@ -292,6 +300,13 @@ provider located in the United States:
   analysis, as described in Section 1.7.
 - **Listing drafts** (landlords). A property website URL you supply and the public content
   of that page are sent to Anthropic to pre-fill a listing draft.
+- **Message attachment screening.** When you attach a photo or document to a message,
+  the file is sent to Anthropic before the message is delivered, to check whether it is
+  being used to pass on contact details or to ask for payment off the platform
+  (Section 1.4). Only the file is sent, with no name, email address, or account ID
+  attached to it. The result we keep is a yes or no decision and a short reason, not a
+  copy of the file at Anthropic. Files that pass are delivered normally; a file that is
+  refused is never shown to the other person.
 
 Anthropic processes this data solely to return a response to us. We do not use your
 personal information to train our own models, and we do not sell or license your
@@ -386,7 +401,7 @@ and only for the purposes we specify:
 | **Supabase** | All application data described in Section 1 | Managed database hosting |
 | **Vercel** | Requests to the website and API, server logs, aggregate web analytics | Application hosting, scheduled jobs, analytics |
 | **Cloudflare** | Profile photos, listing photos, floor plans; lease documents transiently | Object storage and delivery |
-| **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content | AI features (Section 4) |
+| **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content; photos and documents attached to messages | AI features (Section 4) |
 | **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
 | **Airtable** | New account name, email address, account identifier, sign-up date, and role; new listing details | Internal customer-relationship system for onboarding and support |

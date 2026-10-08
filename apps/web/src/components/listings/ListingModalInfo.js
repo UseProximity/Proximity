@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import {
   Phone,
   Mail,
+  MessageCircle,
   ThumbsUp,
   ThumbsDown,
   Car,
@@ -34,6 +36,20 @@ import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
+import { useMessages } from "@/context/MessagesContext";
+import { withMessages } from "@/lib/chat/messagesUrl";
+
+const CHAT_MAX_BODY = 5000;
+
+// Opening line the chat composer starts with. The usual reason a student doesn't
+// message is not knowing what to say, so the send button is one click away and the
+// text stays editable.
+function defaultListingInquiry(ownerName) {
+  const firstName = ownerName?.trim().split(/\s+/)[0];
+  return firstName
+    ? `Hi ${firstName}, I'm interested in this listing.`
+    : "Hi, I'm interested in this listing.";
+}
 
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
@@ -67,6 +83,18 @@ const TABS = [
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/*
+ * Where to come back to after signing in from a listing tab: the current page,
+ * plus which tab the reader was on, so they land on Reviews or Contact again
+ * rather than the default Overview. Path-relative, because /login only follows
+ * a callbackUrl that is a path on this site.
+ */
+function returnUrlForTab(tab) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("listingTab", tab);
+  return `${window.location.pathname}?${params.toString()}`;
+}
 
 function parseAddress(addressStr) {
   const ci = addressStr?.indexOf(",") ?? -1;
@@ -429,7 +457,7 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 
 // ─── Auth Gate ───────────────────────────────────────────────────────────────
 
-function SignInPrompt({ message }) {
+function SignInPrompt({ message, tab }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-6">
       <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center">
@@ -455,15 +483,11 @@ function SignInPrompt({ message }) {
         </p>
       </div>
       <button
-        onClick={() => signIn("google", { callbackUrl: window.location.href })}
-        className="flex items-center gap-3 bg-white border border-gray-200 shadow-sm hover:shadow-md text-gray-700 text-sm font-medium px-5 py-2.5 rounded-lg transition"
+        type="button"
+        onClick={() => signIn(undefined, { callbackUrl: returnUrlForTab(tab) })}
+        className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
       >
-        <img
-          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-          alt="Google"
-          className="w-5 h-5"
-        />
-        Continue with Google
+        Log in or sign up
       </button>
     </div>
   );
@@ -700,7 +724,7 @@ function ReviewsTab({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-4 mb-4">
             {displayed.map((review, i) => {
               const date = review.createdAt
                 ? new Date(review.createdAt).toLocaleDateString("en-US", {
@@ -910,16 +934,38 @@ function ReviewsTab({
 function ContactTab({
   listing,
   session,
-  contactForm,
-  setContactForm,
-  handleContactSubmit,
-  contactLoading,
-  contactSent,
   selectedLease = null,
+  onOpenThread,
 }) {
+  const { startListingChat } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
     listing.twentyOnePlus ? "loading" : "ok"
   );
+  const [chatSending, setChatSending] = useState(false);
+  const [chatBodyEdited, setChatBodyEdited] = useState(false);
+  const [chatBody, setChatBody] = useState("");
+
+  const userId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  const canMessage = Boolean(
+    session?.user?.id && listing?.owner?.canChat && !isOwnListing
+  );
+
+  /*
+   * Re-prefill when the recipient changes. Picking a different lease changes who
+   * the message goes to, and greeting the previous landlord by name would be
+   * worse than no greeting. Skipped once the user has edited the text, so their
+   * own words are never overwritten.
+   */
+  const recipientName = selectedLease
+    ? selectedLease.landlordName ?? listing?.owner?.name
+    : listing?.owner?.name;
+
+  useEffect(() => {
+    if (chatBodyEdited) return;
+    setChatBody(defaultListingInquiry(recipientName));
+  }, [recipientName, chatBodyEdited]);
 
   useEffect(() => {
     if (!listing.twentyOnePlus) return;
@@ -979,12 +1025,49 @@ function ContactTab({
       }
     : listing.owner;
 
-  const handleChange = (field) => (e) =>
-    setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
+  async function handleStartChat(e) {
+    e.preventDefault();
+    const text = chatBody.trim();
+    if (!text || chatSending || !listing?._id) return;
+    setChatSending(true);
+    try {
+      /*
+       * The lease id is what routes the message. A property can carry competing
+       * leases from different landlords, so sending without it reaches whoever
+       * is primary rather than the person who holds the unit being asked about.
+       */
+      const data = await startListingChat(
+        listing._id,
+        text,
+        selectedLease?.id ?? null
+      );
+      toast.success("Message sent");
+      /*
+       * Same event the old contact form fired. The matchmaking funnel counts
+       * "Contact Submitted" filtered on source, which the chat_* events do not
+       * carry, so without this every matchmaking contact reads as zero.
+       */
+      const source = getListingSource(listing._id);
+      trackEvent("Contact Submitted", {
+        listingId: listing._id,
+        address: listing.address,
+        ...(source ? { source } : {}),
+      });
+      /*
+       * Open the conversation rather than leaving a "sent" receipt behind. The
+       * thread id lands in the URL, so the step from enquiry to conversation is
+       * a real navigation and is attributable (Wyatt, 2026-10-03).
+       */
+      onOpenThread?.(data?.threadId ?? null);
+    } catch (err) {
+      toast.error(err?.message || "Failed to start chat. Please try again.");
+    } finally {
+      setChatSending(false);
+    }
+  }
 
   return (
     <div className="max-w-xl">
-      {/* Landlord info */}
       {owner && (
         <div className="flex items-center gap-4 mb-6">
           <img
@@ -998,7 +1081,7 @@ function ContactTab({
           />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide">
-              Listing by
+              {canMessage ? "Messaging" : "Listing by"}
             </p>
             <span className="text-lg font-semibold text-gray-900">
               {owner.name}
@@ -1007,87 +1090,30 @@ function ContactTab({
         </div>
       )}
 
-      {contactSent ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
-          Your message was sent!
-          {owner ? ` ${owner.name} will be in touch soon.` : ""}
-        </div>
-      ) : (
-        <form onSubmit={handleContactSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                First Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={contactForm.firstName}
-                onChange={handleChange("firstName")}
-                placeholder="Jane"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={contactForm.lastName}
-                onChange={handleChange("lastName")}
-                placeholder="Doe"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Email *
-            </label>
-            <input
-              type="email"
-              required
-              value={contactForm.email}
-              onChange={handleChange("email")}
-              placeholder="jane@example.com"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              value={contactForm.phone}
-              onChange={handleChange("phone")}
-              placeholder="(123) 456-7890"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Message *
-            </label>
+      {canMessage && (
+        <div id="listing-in-app-message" className="mb-8">
+          <form onSubmit={handleStartChat} className="space-y-3">
             <textarea
-              required
-              rows={4}
-              value={contactForm.message}
-              onChange={handleChange("message")}
-              placeholder="I'm interested in touring this location!"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
+              value={chatBody}
+              onChange={(e) => {
+                setChatBodyEdited(true);
+                setChatBody(e.target.value.slice(0, CHAT_MAX_BODY));
+              }}
+              rows={3}
+              disabled={chatSending}
+              placeholder={defaultListingInquiry(recipientName)}
+              aria-label="Message on Proximity"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
             />
-          </div>
-          <button
-            type="submit"
-            disabled={contactLoading}
-            className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {contactLoading ? "Sending..." : "Send Message"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={!chatBody.trim() || chatSending}
+              className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {chatSending ? "Sending..." : "Send message"}
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );
@@ -1372,6 +1398,24 @@ export default function ListingModalInfo({
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
 
+  // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
+  // param so a reload or a shared link opens on Overview as usual.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("listingTab");
+    if (!tab) return;
+    if (TABS.some((t) => t.id === tab) && !excludeTabs.includes(tab)) {
+      setActiveTab(tab);
+    }
+    params.delete("listingTab");
+    const qs = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${qs ? `?${qs}` : ""}`
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {
     if (!isGalleryOpen) return;
@@ -1411,17 +1455,6 @@ export default function ListingModalInfo({
   // Drive times — pre-computed DB values keyed by locations name (incl. *_nearest)
   const storedDriveTimes = listing?.placeDriveMinutes;
   const driveTimes = useMemo(() => storedDriveTimes ?? {}, [storedDriveTimes]);
-
-  // Contact form state
-  const [contactForm, setContactForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    message: "",
-  });
-  const [contactLoading, setContactLoading] = useState(false);
-  const [contactSent, setContactSent] = useState(false);
 
   // Hero image loading state
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
@@ -1552,6 +1585,24 @@ export default function ListingModalInfo({
   const leasesLoading = !!selectedUnit && selectedUnit.leases === undefined;
 
   /*
+   * Sending an enquiry opens the conversation, it does not leave a receipt on
+   * the listing. The thread id goes into the URL (?messages=1&thread=<id>) so
+   * the move from enquiry to conversation is a real navigation: it is
+   * attributable, the back button returns to the listing, and the link can be
+   * shared (Wyatt, 2026-10-03). withMessages drops ?listing= so the two
+   * overlays cannot stack on a phone.
+   */
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const openThread = (threadId) => {
+    router.push(pathname + withMessages(searchParams, threadId), {
+      scroll: false,
+    });
+  };
+
+  /*
    * Which lease the contact form is about. Set by the Contact button on a lease
    * row; falls back to the open unit's first offering when the Contact tab is
    * reached from the tab strip instead.
@@ -1627,15 +1678,11 @@ export default function ListingModalInfo({
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);
     /*
-     * Clicking Contact is an intent to send, so the form comes back even after
-     * a previous enquiry. It used to latch: contactSent was set on the first
-     * submit and never cleared, so every later lease showed "Your message was
-     * sent!" instead of a form — and on a unit with competing offerings, a
-     * renter who wrote to one landlord could not write to the next.
-     * The typed fields are deliberately kept, so asking several landlords about
-     * the same place doesn't mean retyping the same message.
+     * Clicking Contact on a specific lease names that lease's landlord as the
+     * recipient, which is who the message is routed to. On a unit with
+     * competing offerings this is the difference between reaching the person
+     * who holds the unit and reaching whoever happens to be primary.
      */
-    setContactSent(false);
     setActiveTab("contact");
     setTimeout(
       () => scrollIntoContainer(document.getElementById("listing-tabs")),
@@ -1776,6 +1823,10 @@ export default function ListingModalInfo({
    * always sets one.
    */
   const reviewsLoaded = Array.isArray(listing.reviews);
+  const viewerId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === viewerId || listing?.owner?.id === viewerId;
+  // Reviews
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
     .filter((r) => r.legitimacy);
@@ -1818,7 +1869,7 @@ export default function ListingModalInfo({
     if (reviewLoading) return;
 
     if (!session) {
-      signIn(undefined, { callbackUrl: "/browse" });
+      signIn(undefined, { callbackUrl: returnUrlForTab("reviews") });
       return;
     }
     if (!["student", "super"].includes(session.user.role)) {
@@ -1865,53 +1916,6 @@ export default function ListingModalInfo({
       toast.error("Something went wrong. Please try again.");
     } finally {
       setReviewLoading(false);
-    }
-  };
-
-  const handleContactSubmit = async (e) => {
-    e.preventDefault();
-    if (!session) {
-      signIn(undefined, { callbackUrl: window.location.href });
-      return;
-    }
-    setContactLoading(true);
-    try {
-      const res = await fetch("/api/contactLandlord", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...contactForm,
-          listingId: listing._id,
-          // The recipient is resolved server-side from the lease. The names
-          // below are only a fallback for listings whose units carry no lease.
-          leaseId: selectedLease?.id ?? null,
-          landlordEmail: listing.contactEmail ?? listing.owner?.email,
-          landlordName: listing.contactName ?? listing.owner?.name,
-          listingAddress: listing.address,
-        }),
-      });
-      if (res.ok) {
-        fetch("/api/contacted", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing._id }),
-        });
-        setTimeout(() => {
-          const source = getListingSource(listing._id);
-          trackEvent("Contact Submitted", {
-            listingId: listing._id,
-            address: listing.address,
-            ...(source ? { source } : {}),
-          });
-        }, 0);
-        setContactSent(true);
-      } else {
-        toast.error("Failed to send message. Please try again.");
-      }
-    } catch {
-      toast.error("Network error. Please try again.");
-    } finally {
-      setContactLoading(false);
     }
   };
 
@@ -2309,7 +2313,7 @@ export default function ListingModalInfo({
                 />
               )}
               {activeTab === "reviews" && !session && (
-                <SignInPrompt message="Sign in to view and leave reviews." />
+                <SignInPrompt message="Sign in to view and leave reviews." tab="reviews" />
               )}
               {activeTab === "reviews" && session && (
                 <ReviewsTab
@@ -2340,18 +2344,17 @@ export default function ListingModalInfo({
                 />
               )}
               {activeTab === "contact" && !session && (
-                <SignInPrompt message="Sign in to contact the property manager." />
+                <SignInPrompt
+                  message="Sign in to contact the property manager."
+                  tab="contact"
+                />
               )}
               {activeTab === "contact" && session && (
                 <ContactTab
                   listing={listing}
                   session={session}
-                  contactForm={contactForm}
-                  setContactForm={setContactForm}
-                  handleContactSubmit={handleContactSubmit}
-                  contactLoading={contactLoading}
-                  contactSent={contactSent}
                   selectedLease={selectedLease}
+                  onOpenThread={openThread}
                 />
               )}
             </div>

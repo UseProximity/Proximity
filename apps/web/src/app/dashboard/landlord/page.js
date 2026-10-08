@@ -117,6 +117,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
             cancelEdit={cancelEdit}
             saveProfile={saveProfile}
             setIsEditing={setIsEditing}
+            canDeleteAccount={!viewAsId}
           />
         );
     }

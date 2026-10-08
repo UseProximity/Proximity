@@ -26,3 +26,24 @@ export function sanitizeCallbackUrl(raw, fallback = "/dashboard") {
   }
   return raw;
 }
+
+/*
+ * NextAuth hands its sign-in page an ABSOLUTE callbackUrl (it resolves the path
+ * a caller passed to signIn() against the site URL), which sanitizeCallbackUrl
+ * rejects. Reduce one that points at this site back to a path first, so a
+ * reader sent through signIn() returns to where they were instead of to the
+ * fallback. `hosts` are the hosts this site answers on (the request's host and
+ * the configured auth URL). Anything else is returned unchanged and is then
+ * rejected by sanitizeCallbackUrl as before.
+ */
+export function toSameSitePath(raw, hosts) {
+  if (typeof raw !== "string" || raw.startsWith("/")) return raw;
+  try {
+    const url = new URL(raw);
+    if (!["http:", "https:"].includes(url.protocol)) return raw;
+    if (!hosts.filter(Boolean).includes(url.host)) return raw;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return raw;
+  }
+}

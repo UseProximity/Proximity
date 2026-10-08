@@ -16,6 +16,8 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
     ? (listing.address || "")
     : (listing.address || "").replace(/^[^,]+,\s*/, "");
   const imageUrl = listing.images?.[0];
+  const listingId = listing._id || listing.id;
+  const isActive = !listing.unavailable;
 
   return (
     <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 flex flex-col">
@@ -46,16 +48,16 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100 flex-wrap">
           <Link
-            href={`/browse?listing=${listing._id}`}
-            className="flex-1 text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            href={`/browse?listing=${listingId}`}
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
           >
             View
           </Link>
           <button
             onClick={() => onEdit(listing)}
-            className="flex-1 text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
           >
             Edit
           </button>
@@ -64,7 +66,7 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
           <button
             onClick={() => onDelete(listing)}
             disabled={deleting}
-            className="flex-1 text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
           >
             {deleting ? "…" : "Withdraw"}
           </button>
@@ -90,6 +92,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
     phone: user.phone || "",
     description: user.description || "",
     referralSource: user.referralSource || "",
+    emailNotifications:
+      user.emailNotifications ?? user.email_notifications !== false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -294,6 +298,36 @@ function EditProfileModal({ user, onClose, onSaved }) {
             </select>
           </div>
 
+          {/* Email notifications */}
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800">Email notifications</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Get an email when someone messages you about a listing.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.emailNotifications}
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  emailNotifications: !prev.emailNotifications,
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                form.emailNotifications ? "bg-red-600" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                  form.emailNotifications ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
           {error && <p className="text-xs text-red-500">{error}</p>}
 
           <div className="flex gap-3 pt-1">
@@ -306,8 +340,6 @@ function EditProfileModal({ user, onClose, onSaved }) {
               {saving ? "Saving…" : "Save Changes"}
             </button>
           </div>
-
-          <DeleteAccountButton />
         </form>
       </div>
     </div>
@@ -749,6 +781,10 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                 <p className="text-xs text-gray-400 mt-1">Opens in new tab</p>
               </a>
             )}
+
+            {/* Danger zone: not shown while an admin is viewing as another user, since
+                the button deletes the signed-in account, not the one being viewed. */}
+            {!isViewingAs && <DeleteAccountButton variant="card" />}
           </div>
 
           {/* ── RIGHT COLUMN ── */}
