@@ -102,6 +102,13 @@ BEGIN
     SET thread_id = v_keep
     WHERE thread_id = ANY(v_dupes);
 
+    -- Attachments carry their own thread_id, which rpc_get_chat_attachment
+    -- authorises against. Left behind, they would point at a thread with no
+    -- participants and refuse both parties.
+    UPDATE public.chat_attachments
+    SET thread_id = v_keep
+    WHERE thread_id = ANY(v_dupes);
+
     -- Carry the most generous read position across, so merging cannot
     -- resurrect messages the user had already seen as unread.
     UPDATE public.chat_participants keep_p
