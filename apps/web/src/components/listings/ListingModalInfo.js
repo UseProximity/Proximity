@@ -1043,6 +1043,17 @@ function ContactTab({
       );
       toast.success("Message sent");
       /*
+       * Same event the old contact form fired. The matchmaking funnel counts
+       * "Contact Submitted" filtered on source, which the chat_* events do not
+       * carry, so without this every matchmaking contact reads as zero.
+       */
+      const source = getListingSource(listing._id);
+      trackEvent("Contact Submitted", {
+        listingId: listing._id,
+        address: listing.address,
+        ...(source ? { source } : {}),
+      });
+      /*
        * Open the conversation rather than leaving a "sent" receipt behind. The
        * thread id lands in the URL, so the step from enquiry to conversation is
        * a real navigation and is attributable (Wyatt, 2026-10-03).

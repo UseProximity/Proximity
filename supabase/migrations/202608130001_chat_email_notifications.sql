@@ -2,17 +2,17 @@
 -- them open the conversation from that email without signing in.
 --
 -- Adds:
---   * chat_participants.last_notified_at — when we last emailed this participant about
+--   * chat_participants.last_notified_at: when we last emailed this participant about
 --     this thread. Drives the frequency rules in rpc_chat_notification_recipient so a
 --     burst of messages doesn't become a burst of emails.
---   * users.email_notifications — per-account opt-out, honoured by the same RPC.
---   * chat_access_tokens — expiring magic-link tokens scoped to one user and one thread.
+--   * users.email_notifications: per-account opt-out, honoured by the same RPC.
+--   * chat_access_tokens: expiring magic-link tokens scoped to one user and one thread.
 --     Only the SHA-256 hash is stored, so leaking this table yields no usable links.
---   * rpc_chat_notification_recipient — decides whether to email and stamps
+--   * rpc_chat_notification_recipient: decides whether to email and stamps
 --     last_notified_at in the same transaction, so two near-simultaneous messages can't
 --     both decide to send. Notifies whichever side didn't send, and reports which side
 --     that is so the email can be worded for an owner or for a prospective renter.
---   * rpc_consume_chat_access_token — validates a token and burns it if single-use.
+--   * rpc_consume_chat_access_token: validates a token and burns it if single-use.
 --
 -- Idempotent / safe to re-run. Apply to BOTH dev and prod: the weekly prod→dev snapshot
 -- replaces dev's public schema with prod's, so anything missing from prod is destroyed
@@ -62,7 +62,7 @@ ALTER TABLE public.chat_access_tokens ENABLE ROW LEVEL SECURITY;
 -- ============================================================
 -- Returns the participant to email plus everything the template needs, or NULL when no
 -- email should be sent. Stamping last_notified_at here (rather than after a successful
--- send) means a failed send is not retried for a day — deliberate, since a duplicate
+-- send) means a failed send is not retried for a day. This is deliberate, since a duplicate
 -- email is worse than a missed one.
 CREATE OR REPLACE FUNCTION public.rpc_chat_notification_recipient(
   p_thread_id uuid,
@@ -212,7 +212,7 @@ BEGIN
 END;
 $$;
 
--- Only the server key may call these — they hand out identities and message contents.
+-- Only the server key may call these: they hand out identities and message contents.
 DO $$
 DECLARE
   fn          text;

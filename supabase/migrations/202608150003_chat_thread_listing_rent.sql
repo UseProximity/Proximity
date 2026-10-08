@@ -1,5 +1,5 @@
 -- Chat inbox: expose listing min/max rent on each thread for the conversation
--- header (address left, rent right). CREATE OR REPLACE only — apply to BOTH
+-- header (address left, rent right). CREATE OR REPLACE only. Apply to BOTH
 -- dev and prod.
 
 CREATE OR REPLACE FUNCTION rpc_list_chat_threads(

@@ -21,7 +21,7 @@ const SAFE_START_CHAT_ERRORS = new Set([
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// GET /api/chat/threads — inbox for the logged-in user
+// GET /api/chat/threads: inbox for the logged-in user
 export async function GET() {
   try {
     const session = await auth();
@@ -45,7 +45,7 @@ export async function GET() {
   }
 }
 
-// POST /api/chat/threads — start or reuse a listing chat
+// POST /api/chat/threads: start or reuse a listing chat
 export async function POST(req) {
   try {
     const session = await auth();

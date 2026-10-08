@@ -3,14 +3,14 @@
 -- chat_threads / chat_participants / chat_messages exist since migration 0021 but have
 -- never been written to (verified empty before authoring this). This adds what a real
 -- listing inbox needs:
---   * chat_threads.interested_user_id — the prospective renter. The landlord side is
+--   * chat_threads.interested_user_id: the prospective renter. The landlord side is
 --     deliberately NOT stored: it's derived from listing_landlords so it can't go stale
 --     when a listing changes hands.
 --   * a unique partial index on (listing_id, interested_user_id) so one user can't end up
 --     with two live threads about the same listing.
 --   * chat_messages.message_type / metadata so richer messages (e.g. attachments)
 --     don't require another ALTER later.
---   * a trigger bumping chat_threads.updated_at on new messages — inserting a message
+--   * a trigger bumping chat_threads.updated_at on new messages: inserting a message
 --     doesn't touch the thread row, so without this "sort inbox by recent activity" breaks.
 --
 -- Idempotent / safe to re-run. RPCs follow in 202607300002 and 202607300003.

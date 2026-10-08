@@ -220,7 +220,7 @@ const COMPONENT_DESCRIPTIONS = {
   "chat/ChatThreadList.js": "Inbox thread rows + empty state with Browse listings CTA",
   "chat/ChatTranscript.js": "Per-thread message bubbles and composer (5000-char limit, send toasts)",
   "chat/MessagesPanel.js": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)",
-  "chat/chatEvents.js": "openMessages() / messagesHref — navigate to /messages (optional ?thread=)",
+  "chat/chatEvents.js": "openMessages() / messagesHref: navigate to /messages (optional ?thread=)",
   "listings/ListingModalInfo.js": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat",
   "landlord-dashboard/leasing-funnel.js": "Recharts funnel chart showing click → save → contact conversion",
   "landlord-dashboard/market-comparisons.js": "Bar chart comparing landlord's listing metrics vs market average",
@@ -245,7 +245,7 @@ function generateComponents() {
     return {
       name: filepath.split("/").pop().replace(".js", ""),
       file: rel,
-      description: COMPONENT_DESCRIPTIONS[key] ?? "No description — run generate after adding a description above.",
+      description: COMPONENT_DESCRIPTIONS[key] ?? "No description. Run generate after adding a description above.",
     };
   });
 

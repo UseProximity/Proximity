@@ -2,13 +2,13 @@
  * Email notification for a new in-app chat message.
  *
  * Called from the two chat send routes inside next/server's after(), so the sender's request
- * returns as soon as the message is stored — the recipient lookup and SMTP round trip happen
+ * returns as soon as the message is stored. The recipient lookup and SMTP round trip happen
  * afterwards and never slow down or fail the send.
  *
  * Whether an email is warranted at all is decided in the database by
  * rpc_chat_notification_recipient, which enforces the recipient's preference, the
  * actively-reading guard, and the re-notify cooldown, and atomically stamps last_notified_at.
- * A null return means "no email" — that is the normal case, not an error.
+ * A null return means "no email". That is the normal case, not an error.
  */
 import supabase from "@/lib/supabase";
 import { sendChatMessageEmail } from "@/lib/email";

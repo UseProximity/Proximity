@@ -2,7 +2,7 @@
 --
 -- Realtime delivers postgres_changes only for rows the JWT user can SELECT under RLS.
 -- chat_messages_select / chat_threads_select subquery chat_participants, and
--- chat_participants_select also subqueries chat_participants — that recurses and
+-- chat_participants_select also subqueries chat_participants, which recurses and
 -- suppresses Realtime events (and any direct anon/authenticated SELECT).
 --
 -- Fix: SECURITY DEFINER helper that checks membership without going through RLS.

@@ -98,7 +98,7 @@ function normalizeAttachments(raw) {
   return { attachments };
 }
 
-// GET /api/chat/threads/[threadId]/messages — paginated history for a participant
+// GET /api/chat/threads/[threadId]/messages: paginated history for a participant
 export async function GET(req, { params }) {
   try {
     const session = await auth();
@@ -151,7 +151,7 @@ export async function GET(req, { params }) {
   }
 }
 
-// POST /api/chat/threads/[threadId]/messages — reply (text and/or attachments)
+// POST /api/chat/threads/[threadId]/messages: reply (text and/or attachments)
 export async function POST(req, { params }) {
   try {
     const session = await auth();

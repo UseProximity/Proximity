@@ -3,7 +3,7 @@
 -- in both the thread preview row and the conversation header.
 --
 -- Cover = listing_images with the lowest sort_order (0 by convention).
--- CREATE OR REPLACE only — no schema change. Apply to BOTH dev and prod.
+-- CREATE OR REPLACE only, no schema change. Apply to BOTH dev and prod.
 
 CREATE OR REPLACE FUNCTION rpc_list_chat_threads(
   p_user_id uuid

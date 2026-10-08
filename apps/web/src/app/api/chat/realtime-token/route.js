@@ -18,7 +18,7 @@ function getJwtSecret() {
   return secret;
 }
 
-// GET /api/chat/realtime-token — mint a Realtime JWT for the logged-in user
+// GET /api/chat/realtime-token: mint a Realtime JWT for the logged-in user
 export async function GET() {
   try {
     const session = await auth();

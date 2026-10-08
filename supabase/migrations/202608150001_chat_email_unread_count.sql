@@ -3,7 +3,7 @@
 -- unread message in the thread. Count = messages from the other participant after the
 -- recipient's last_read_at (true unread, not "since we last emailed").
 --
--- CREATE OR REPLACE only — no schema change. Apply to BOTH dev and prod.
+-- CREATE OR REPLACE only, no schema change. Apply to BOTH dev and prod.
 
 CREATE OR REPLACE FUNCTION public.rpc_chat_notification_recipient(
   p_thread_id uuid,
