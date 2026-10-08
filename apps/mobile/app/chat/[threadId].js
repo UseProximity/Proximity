@@ -1,10 +1,10 @@
 // Conversation screen. Loads the latest page of messages, marks the thread read,
 // and sends text messages. Older messages load when the user scrolls toward the
 // start of the conversation (the list is inverted, so "end" is the oldest
-// message). No realtime yet: the thread refreshes whenever the screen regains
-// focus and from the refresh button in the header. Attachments are not
-// supported on mobile yet.
-import { useCallback, useRef, useState } from "react";
+// message). New messages arrive over realtime (lib/chatRealtime.js); the REST
+// reload on focus and the refresh button in the header remain as the fallback.
+// Attachments are not supported on mobile yet.
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -26,6 +26,7 @@ import {
 } from "../../src/lib/chatFormat";
 import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
+import { subscribeThread } from "../../src/lib/chatRealtime";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
 import { SendButton } from "../../src/components/ui/SendButton";
 import { colors } from "../../src/theme/tokens";
@@ -47,6 +48,8 @@ export default function ChatThreadScreen() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
   const loadedOnce = useRef(false);
+  const messagesRef = useRef([]);
+  messagesRef.current = messages;
 
   const markRead = useCallback(() => {
     // Best effort: a failed read receipt must never get in the way of reading.
@@ -88,6 +91,50 @@ export default function ChatThreadScreen() {
       loadLatest({ initial });
     }, [user?.id, loadLatest])
   );
+
+  // Tell the store which conversation is open, so the Chat tab badge does not
+  // flicker for messages this screen reads straight away.
+  useEffect(() => {
+    useChatUnreadStore.getState().setActiveThreadId(threadId);
+    return () => useChatUnreadStore.getState().setActiveThreadId(null);
+  }, [threadId]);
+
+  // Realtime enhances the REST loading above; it does not replace it. A new
+  // message is merged in as it arrives (and marked read when it is from the other
+  // person), and every (re)subscribe refetches the latest page so anything missed
+  // while disconnected is recovered. The refresh button and the focus reload still
+  // work if the socket is down.
+  useEffect(() => {
+    if (!user?.id || !threadId) return undefined;
+    return subscribeThread(threadId, {
+      onInsert: (message) => {
+        const last = messagesRef.current.filter((m) => !m.pending).at(-1);
+        setMessages((current) => {
+          // Our own send is already on screen as a pending bubble: replace it
+          // rather than showing the message twice.
+          let rest = current;
+          if (message.isMine) {
+            const pendingIndex = current.findIndex(
+              (m) => m.pending && m.body === message.body
+            );
+            if (pendingIndex !== -1) {
+              rest = current.filter((_, i) => i !== pendingIndex);
+            }
+          }
+          return mergeMessages(rest, [message]);
+        });
+        if (!message.isMine) markRead();
+        // The raw row has no listing title, so fetch the full version when the
+        // conversation moves to another listing.
+        if (message.listingId && message.listingId !== last?.listingId) {
+          loadLatest();
+        }
+      },
+      onSubscribed: () => {
+        loadLatest();
+      },
+    });
+  }, [threadId, user?.id, loadLatest, markRead]);
 
   // The list is oldest-first; scrolling toward the start asks for messages
   // created before the oldest one held.
@@ -135,18 +182,21 @@ export default function ChatThreadScreen() {
 
     try {
       const result = await apiClient.chat.sendMessage(threadId, { body });
-      setMessages((current) =>
-        current.map((m) =>
-          m.id === tempId
-            ? {
-                ...optimistic,
-                id: result?.messageId ?? tempId,
-                listingId: result?.listingId ?? null,
-                pending: false,
-              }
-            : m
-        )
-      );
+      setMessages((current) => {
+        // Realtime may already have delivered the confirmed row and replaced the
+        // pending bubble; then there is nothing left to settle.
+        if (!current.some((m) => m.id === tempId)) return current;
+        const confirmed = {
+          ...optimistic,
+          id: result?.messageId ?? tempId,
+          listingId: result?.listingId ?? null,
+          pending: false,
+        };
+        return mergeMessages(
+          current.filter((m) => m.id !== tempId),
+          [confirmed]
+        );
+      });
       markRead();
     } catch (err) {
       setMessages((current) => current.filter((m) => m.id !== tempId));

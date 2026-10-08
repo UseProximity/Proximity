@@ -23,6 +23,7 @@ import { Building2, Heart, MessageCircle, Search, Sparkles, User } from "lucide-
 import { isLandlord } from "@proximity/auth-core";
 import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
+import { startChatRealtime, stopChatRealtime, subscribeInbox } from "../../src/lib/chatRealtime";
 import { colors } from "../../src/theme/tokens";
 
 const TAB_ICONS = {
@@ -53,6 +54,38 @@ export default function TabsLayout() {
       if (state === "active") refresh();
     });
     return () => subscription.remove();
+  }, [userId]);
+
+  // Realtime: one connection for the signed-in user, opened here so the badge is
+  // live on every tab and closed on sign-out. A new message (or a reconnect,
+  // which may have missed some) triggers a debounced refetch; the REST refresh
+  // above stays as the fallback if the socket is down.
+  useEffect(() => {
+    if (!userId) return undefined;
+    startChatRealtime(userId);
+
+    let timer = null;
+    let lastThreadId;
+    const schedule = (threadId) => {
+      // Several messages in a burst collapse into one refetch; a mix of
+      // threads means "any".
+      lastThreadId = timer && lastThreadId !== threadId ? undefined : threadId;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        useChatUnreadStore.getState().notifyInboxChanged(lastThreadId);
+      }, 400);
+    };
+    const unsubscribe = subscribeInbox({
+      onInsert: (message) => schedule(message.threadId),
+      onSubscribed: () => schedule(undefined),
+    });
+
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+      stopChatRealtime();
+    };
   }, [userId]);
 
   return (

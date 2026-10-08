@@ -2,7 +2,7 @@
 // GET /api/chat/threads. Reloads every time the tab gains focus, since there is
 // no realtime on mobile yet, and supports pull-to-refresh. Tapping a row opens
 // the thread screen at app/chat/[threadId].js.
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -42,11 +42,23 @@ export default function ChatInboxScreen() {
       if (!user?.id) {
         setThreads(null);
         setError(null);
-        return;
+        return undefined;
       }
       load();
+      // While this screen is showing, a realtime message reloads this list
+      // directly (the layout otherwise only refreshes the badge count).
+      useChatUnreadStore.getState().setInboxActive(true);
+      return () => useChatUnreadStore.getState().setInboxActive(false);
     }, [user?.id, load])
   );
+
+  const inboxVersion = useChatUnreadStore((state) => state.inboxVersion);
+  const seenVersion = useRef(inboxVersion);
+  useEffect(() => {
+    if (inboxVersion === seenVersion.current) return;
+    seenVersion.current = inboxVersion;
+    if (user?.id && useChatUnreadStore.getState().inboxActive) load();
+  }, [inboxVersion, user?.id, load]);
 
   const onRefresh = async () => {
     setRefreshing(true);
