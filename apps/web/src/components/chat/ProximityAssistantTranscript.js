@@ -131,7 +131,7 @@ function UpdatePromptCard({ chosen, onChoose }) {
 }
 
 /**
- * Demo-only Proximity Assistant thread. No backend — local interactive state
+ * Demo-only Proximity Assistant thread. No backend: local interactive state
  * for CEO walkthroughs (availability check + update prompts).
  */
 export default function ProximityAssistantTranscript({ onBack = null }) {
@@ -194,7 +194,7 @@ export default function ProximityAssistantTranscript({ onBack = null }) {
         </div>
 
         <Bubble>
-          Hi — I&apos;m the Proximity Assistant. Every two weeks I&apos;ll check
+          Hi, I&apos;m the Proximity Assistant. Every two weeks I&apos;ll check
           in so your listings stay accurate for students.
         </Bubble>
 
@@ -213,7 +213,7 @@ export default function ProximityAssistantTranscript({ onBack = null }) {
           <>
             <Bubble mine>Yes, still available</Bubble>
             <Bubble>
-              Great — we&apos;ll keep it live. Anything you&apos;d like to refresh
+              Great, we&apos;ll keep it live. Anything you&apos;d like to refresh
               while you&apos;re here?
             </Bubble>
             <UpdatePromptCard
@@ -267,7 +267,7 @@ export default function ProximityAssistantTranscript({ onBack = null }) {
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3">
         {showComposerHint ? (
           <p className="text-center text-[11px] text-gray-400 px-2">
-            Reply using the options above — I&apos;ll check in again in two
+            Reply using the options above. I&apos;ll check in again in two
             weeks.
           </p>
         ) : (

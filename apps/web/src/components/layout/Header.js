@@ -359,7 +359,7 @@ export function Header({ session }) {
             )}
           </div>
 
-          {/* Messages — mobile (badge visible without opening the menu) */}
+          {/* Messages: mobile (badge visible without opening the menu) */}
           {session?.user && !searchOpen && (
             <button
               type="button"

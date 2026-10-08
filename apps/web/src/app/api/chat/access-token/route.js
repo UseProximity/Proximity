@@ -1,5 +1,5 @@
 /*
- * GET /api/chat/access-token — peek a magic-link token without consuming it.
+ * GET /api/chat/access-token: peek a magic-link token without consuming it.
  * The /chat-link interstitial uses this to decide same-user vs chooser vs open,
  * without letting Outlook Safe Links burn the single-use row on prefetch.
  */

@@ -265,7 +265,7 @@ END;
 $$;
 
 -- ============================================================
--- rpc_get_chat_attachment — participant-gated lookup for download API
+-- rpc_get_chat_attachment: participant-gated lookup for download API
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION rpc_get_chat_attachment(

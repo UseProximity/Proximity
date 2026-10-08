@@ -61,7 +61,7 @@ export function chatAttachmentUrl(attachmentId, { download = false } = {}) {
 
 /**
  * Canvas-compress large images (and convert HEIC) before chat upload.
- * Browser-only — do not import from server routes.
+ * Browser-only: do not import from server routes.
  */
 export function compressChatImage(file) {
   return new Promise((resolve) => {

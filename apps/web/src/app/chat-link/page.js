@@ -1,5 +1,5 @@
 /*
- * /chat-link — scanner-safe interstitial for chat magic links.
+ * /chat-link: scanner-safe interstitial for chat magic links.
  * Prefetchers (Outlook Safe Links, etc.) hit this page but must not burn the token;
  * only an explicit button click calls signIn("chat-link"), which consumes it.
  */

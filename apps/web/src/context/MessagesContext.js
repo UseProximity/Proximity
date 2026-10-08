@@ -1,7 +1,7 @@
 /*
  * Global listing-chat data/actions (Favorites-style). Owns inbox threads, per-thread
  * message history, and Realtime subscriptions. Writes and history go through
- * /api/chat/*; Supabase Realtime pushes chat_messages INSERTs — inbox-wide for
+ * /api/chat/*; Supabase Realtime pushes chat_messages INSERTs, inbox-wide for
  * badge/preview refresh, and thread-scoped for the open chat. Opening a thread
  * (and receiving live messages while it's open) marks it read via
  * POST /api/chat/threads/[id]/read, but only while the tab is visible.
@@ -88,7 +88,7 @@ export function MessagesProvider({ children }) {
   const [threads, setThreads] = useState([]);
   const [threadsStatus, setThreadsStatus] = useState("idle"); // idle | loading | ready | error
   const [messagesByThread, setMessagesByThread] = useState({});
-  // per thread: loading | ready | error — undefined means never requested
+  // per thread: loading | ready | error. Undefined means never requested
   const [messagesStatusByThread, setMessagesStatusByThread] = useState({});
   const [activeThreadId, setActiveThreadId] = useState(null);
   /*
@@ -218,7 +218,7 @@ export function MessagesProvider({ children }) {
     if (!userIdRef.current || !threadId) return null;
 
     // A hidden tab isn't being read, whatever the thread state says. Without this, a
-    // background /messages tab marks incoming messages read — telling the sender they were
+    // background /messages tab marks incoming messages read, telling the sender they were
     // seen, and suppressing the notification email that should have gone out instead.
     if (typeof document !== "undefined" && document.visibilityState !== "visible") {
       return null;

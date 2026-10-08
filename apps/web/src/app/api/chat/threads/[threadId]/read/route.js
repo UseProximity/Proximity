@@ -7,7 +7,7 @@ const NOT_PARTICIPANT_ERROR = "not a participant in this conversation";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// POST /api/chat/threads/[threadId]/read — mark a thread read for the current user
+// POST /api/chat/threads/[threadId]/read: mark a thread read for the current user
 export async function POST(_req, { params }) {
   try {
     const session = await auth();

@@ -490,7 +490,7 @@ export default function MapView({
         });
       };
       // cameraForBounds/flyTo only need the map transform (container size),
-      // not a loaded style — gating on "load" here used to silently skip the
+      // not a loaded style. Gating on "load" here used to silently skip the
       // fit whenever the style resolved after the listings did.
       doFit();
     }

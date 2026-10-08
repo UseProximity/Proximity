@@ -78,7 +78,7 @@ $$;
 -- rpc_get_chat_messages
 -- ============================================================
 -- p_before: pass the oldest createdAt you already have to page further back.
--- Does not mark the thread read — call rpc_mark_thread_read when the user opens it.
+-- Does not mark the thread read. Call rpc_mark_thread_read when the user opens it.
 CREATE OR REPLACE FUNCTION rpc_get_chat_messages(
   p_user_id   uuid,
   p_thread_id uuid,

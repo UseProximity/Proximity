@@ -131,7 +131,7 @@ export default function ChatLinkClient() {
   }
 
   if (peekStatus === "invalid") {
-    // Already signed in: the link is spent but they don't need it — send them to the inbox
+    // Already signed in: the link is spent but they don't need it, so send them to the inbox
     // rather than a sign-in wall. No thread deep link, since an expired token can't prove
     // which conversation this was or that they belong to it.
     const signedIn = !!session?.user?.id;
@@ -153,7 +153,7 @@ export default function ChatLinkClient() {
     );
   }
 
-  // Different user signed in — chooser
+  // Different user signed in: chooser
   if (session?.user?.id && peek?.userId && session.user.id !== peek.userId) {
     const currentLabel = session.user.email || session.user.name || "another account";
     const linkLabel = peek.email || peek.name || "the link account";
