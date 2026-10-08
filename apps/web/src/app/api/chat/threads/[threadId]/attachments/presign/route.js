@@ -66,7 +66,7 @@ export async function POST(req, { params }) {
           { status: 400 }
         );
       }
-      if (!Number.isFinite(f.size) || f.size <= 0) {
+      if (!Number.isInteger(f.size) || f.size <= 0) {
         return NextResponse.json({ error: "Invalid file size" }, { status: 400 });
       }
       if (f.size > CHAT_ATTACHMENT_MAX_BYTES) {
@@ -111,11 +111,14 @@ export async function POST(req, { params }) {
      * Presigning is rate limited as well as sending. A presign that is never
      * followed by a send still costs an R2 object, so without a ceiling here
      * the attachment limit only governs what lands in a conversation and not
-     * what lands in the bucket.
+     * what lands in the bucket. The send limit counts sent messages, which an
+     * abandoned presign never creates, so presigns are recorded and capped on
+     * their own.
      */
-    const { error: rateError } = await supabase.rpc("fn_chat_assert_send_rate", {
+    const { error: rateError } = await supabase.rpc("fn_chat_reserve_attachment_uploads", {
       p_user_id: session.user.id,
-      p_kind: "attachment",
+      p_thread_id: threadId,
+      p_file_count: files.length,
     });
     if (rateError) {
       if (isChatRateLimitError(rateError)) {
@@ -138,10 +141,14 @@ export async function POST(req, { params }) {
       files.map(async ({ name, type, size }) => {
         const safeName = sanitizeChatAttachmentFileName(name);
         const key = `chat-attachments/${threadId}/${crypto.randomUUID()}-${safeName}`;
+        // ContentLength is signed into the URL, so R2 rejects (403) any upload
+        // that is not exactly the size checked above. Without it the 20MB cap
+        // only applied to what the browser claimed, not to what it sent.
         const command = new PutObjectCommand({
           Bucket: bucket,
           Key: key,
           ContentType: type,
+          ContentLength: size,
         });
         const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 });
         return {
