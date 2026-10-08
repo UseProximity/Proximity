@@ -3,6 +3,7 @@ import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import {
   CHAT_ATTACHMENT_ALLOWED_TYPES,
   CHAT_ATTACHMENT_MAX_BYTES,
@@ -243,6 +244,9 @@ export async function POST(req, { params }) {
           baseUrl,
         })
       );
+      after(() =>
+        notifyNewChatMessagePush({ threadId, senderId: authUser.id, messageId: data?.messageId })
+      );
 
       return NextResponse.json(data);
     }
@@ -304,6 +308,9 @@ export async function POST(req, { params }) {
         senderId: authUser.id,
         baseUrl,
       })
+    );
+    after(() =>
+      notifyNewChatMessagePush({ threadId, senderId: authUser.id, messageId: data?.messageId })
     );
 
     return NextResponse.json(data);

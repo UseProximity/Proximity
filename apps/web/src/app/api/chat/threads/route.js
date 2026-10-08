@@ -3,6 +3,7 @@ import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import {
   screenOutgoingChat,
   assertSenderCanSend,
@@ -158,6 +159,13 @@ export async function POST(req) {
         threadId: data?.threadId,
         senderId: authUser.id,
         baseUrl,
+      })
+    );
+    after(() =>
+      notifyNewChatMessagePush({
+        threadId: data?.threadId,
+        senderId: authUser.id,
+        messageId: data?.messageId,
       })
     );
 
