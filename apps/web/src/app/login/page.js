@@ -1,11 +1,27 @@
 import { auth } from "@/auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import LoginClient from "./LoginClient";
-import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
+import { sanitizeCallbackUrl, toSameSitePath } from "@/lib/auth/callbackUrl";
+
+function configuredAuthHost() {
+  try {
+    return new URL(process.env.AUTH_URL || process.env.NEXTAUTH_URL).host;
+  } catch {
+    return null;
+  }
+}
 
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams;
-  const callbackUrl = sanitizeCallbackUrl(params?.callbackUrl);
+  const h = await headers();
+  const callbackUrl = sanitizeCallbackUrl(
+    toSameSitePath(params?.callbackUrl, [
+      h.get("x-forwarded-host"),
+      h.get("host"),
+      configuredAuthHost(),
+    ])
+  );
   const initialTab = params?.tab === "signup" ? "signup" : "signin";
 
   const session = await auth();

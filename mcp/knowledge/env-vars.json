@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-04T15:03:04.044Z",
-  "count": 69,
+  "_generated": "2026-10-08T10:23:44.958Z",
+  "count": 75,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -9,6 +9,10 @@
     },
     {
       "name": "ANALYTICS_EXTRA_VIEWERS",
+      "public": false
+    },
+    {
+      "name": "ANTHROPIC_API_KEY",
       "public": false
     },
     {
@@ -36,6 +40,10 @@
       "public": false
     },
     {
+      "name": "AUTH_URL",
+      "public": false
+    },
+    {
       "name": "AUTO_UNAVAILABLE_ALERT_EMAIL",
       "public": false
     },
@@ -48,11 +56,19 @@
       "public": false
     },
     {
+      "name": "CHAT_MODERATION_KEY",
+      "public": false
+    },
+    {
       "name": "CLOUDFLARE_ACCOUNT_ID",
       "public": false
     },
     {
       "name": "CRON_SECRET",
+      "public": false
+    },
+    {
+      "name": "DEV_SUPABASE_JWT_SECRET",
       "public": false
     },
     {
@@ -196,6 +212,14 @@
       "public": true
     },
     {
+      "name": "NEXT_PUBLIC_SUPABASE_DEFAULT_KEY",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_SUPABASE_URL",
+      "public": true
+    },
+    {
       "name": "NODE_ENV",
       "public": false
     },
@@ -217,6 +241,10 @@
     },
     {
       "name": "PMS_WATCH_DAYS",
+      "public": false
+    },
+    {
+      "name": "PROD_SUPABASE_JWT_SECRET",
       "public": false
     },
     {
@@ -253,10 +281,6 @@
     },
     {
       "name": "R2_SECRET_ACCESS_KEY",
-      "public": false
-    },
-    {
-      "name": "RESEND_API_KEY",
       "public": false
     },
     {
