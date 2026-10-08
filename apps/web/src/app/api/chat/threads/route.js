@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
@@ -22,15 +22,15 @@ const SAFE_START_CHAT_ERRORS = new Set([
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/chat/threads: inbox for the logged-in user
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { data, error } = await supabase.rpc("rpc_list_chat_threads", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
     });
 
     if (error) {
@@ -48,12 +48,12 @@ export async function GET() {
 // POST /api/chat/threads: start or reuse a listing chat
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const eligibility = await assertSenderCanSend(session.user.id);
+    const eligibility = await assertSenderCanSend(authUser.id);
     if (!eligibility.ok) {
       return NextResponse.json(
         {
@@ -108,7 +108,7 @@ export async function POST(req) {
     }
 
     const screen = await screenOutgoingChat({
-      userId: session.user.id,
+      userId: authUser.id,
       body: trimmedBody,
       listingId: listingId.trim(),
     });
@@ -117,7 +117,7 @@ export async function POST(req) {
     }
 
     const { data, error } = await supabase.rpc("rpc_start_or_get_listing_chat", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_listing_id: listingId.trim(),
       p_body: trimmedBody,
       p_lease_id: leaseIdArg,
@@ -142,7 +142,7 @@ export async function POST(req) {
     after(() =>
       notifyNewChatMessage({
         threadId: data?.threadId,
-        senderId: session.user.id,
+        senderId: authUser.id,
         baseUrl,
       })
     );

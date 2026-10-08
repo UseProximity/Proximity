@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
@@ -101,8 +101,8 @@ function normalizeAttachments(raw) {
 // GET /api/chat/threads/[threadId]/messages: paginated history for a participant
 export async function GET(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -112,7 +112,7 @@ export async function GET(req, { params }) {
     }
 
     const { searchParams } = new URL(req.url);
-    const rpcArgs = { p_user_id: session.user.id, p_thread_id: threadId };
+    const rpcArgs = { p_user_id: authUser.id, p_thread_id: threadId };
 
     const limitParam = searchParams.get("limit");
     if (limitParam !== null) {
@@ -154,8 +154,8 @@ export async function GET(req, { params }) {
 // POST /api/chat/threads/[threadId]/messages: reply (text and/or attachments)
 export async function POST(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -168,7 +168,7 @@ export async function POST(req, { params }) {
      * A magic-link arrival can read this thread without any credentials. Sending
      * is the line: an account with neither a password nor Google has to set one.
      */
-    const eligibility = await assertSenderCanSend(session.user.id);
+    const eligibility = await assertSenderCanSend(authUser.id);
     if (!eligibility.ok) {
       return NextResponse.json(
         {
@@ -208,7 +208,7 @@ export async function POST(req, { params }) {
       }
 
       const screen = await screenOutgoingChat({
-        userId: session.user.id,
+        userId: authUser.id,
         body: bodyText,
         threadId,
       });
@@ -217,7 +217,7 @@ export async function POST(req, { params }) {
       }
 
       const { data, error } = await supabase.rpc("rpc_send_chat_message", {
-        p_user_id: session.user.id,
+        p_user_id: authUser.id,
         p_thread_id: threadId,
         p_body: bodyText,
       });
@@ -231,7 +231,7 @@ export async function POST(req, { params }) {
       after(() =>
         notifyNewChatMessage({
           threadId,
-          senderId: session.user.id,
+          senderId: authUser.id,
           baseUrl,
         })
       );
@@ -248,7 +248,7 @@ export async function POST(req, { params }) {
 
     if (bodyText) {
       const screen = await screenOutgoingChat({
-        userId: session.user.id,
+        userId: authUser.id,
         body: bodyText,
         threadId,
       });
@@ -266,7 +266,7 @@ export async function POST(req, { params }) {
     const scan = await scanChatAttachments({ attachments: normalized.attachments });
     if (scan.reasons.length > 0) {
       await recordAttachmentScan({
-        userId: session.user.id,
+        userId: authUser.id,
         threadId,
         blocked: scan.blocked,
         reasons: scan.reasons,
@@ -278,7 +278,7 @@ export async function POST(req, { params }) {
     }
 
     const { data, error } = await supabase.rpc("rpc_send_chat_attachment_message", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_thread_id: threadId,
       p_body: bodyText || null,
       p_attachments: normalized.attachments,
@@ -293,7 +293,7 @@ export async function POST(req, { params }) {
     after(() =>
       notifyNewChatMessage({
         threadId,
-        senderId: session.user.id,
+        senderId: authUser.id,
         baseUrl,
       })
     );
