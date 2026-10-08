@@ -76,9 +76,12 @@ or Google.
 ### 1.4 Content you create
 
 - **Reports and blocks**: if you report a review, we record which review you reported,
-  who wrote it, and when. If you block a user, we record that you blocked them and when,
-  and hide that user's reviews from you. Neither is shown to the person reported or
-  blocked. To remove a block, email info@useproximity.org.
+  who wrote it, and when. If you report a conversation or a message in chat, we record
+  who you reported, the reason you chose, which conversation it was, and when, plus the
+  first 500 characters of the message if you reported a specific one. If you block a
+  user, we record that you blocked them and when, hide that user's reviews from you, and
+  remove your conversation with them from your inbox. None of this is shown to the person
+  reported or blocked. To remove a block, email info@useproximity.org.
 - **Listings** (landlords and subletters): property title, street address, city, state,
   ZIP code, coordinates, description, rent, bedrooms, bathrooms, area, unit and lease
   details, amenities, utilities, move-in dates, lease terms, and whether the property is

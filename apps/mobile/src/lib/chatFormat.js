@@ -3,6 +3,10 @@
 
 export const CHAT_MAX_BODY = 5000;
 
+// What the server answers when either person has blocked the other (see
+// api/chat/threads). It is neutral on purpose: it does not say who blocked whom.
+export const CONVERSATION_UNAVAILABLE_MESSAGE = "This conversation is unavailable";
+
 // Same opening line the web composer starts with.
 export function defaultListingInquiry(ownerName) {
   const firstName = ownerName?.trim().split(/\s+/)[0];

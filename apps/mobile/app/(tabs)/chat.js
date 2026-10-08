@@ -72,6 +72,8 @@ export default function ChatInboxScreen() {
       params: {
         threadId: thread.threadId,
         name: thread.otherUserName ?? "",
+        image: thread.otherUserImage ?? "",
+        unavailable: thread.unavailable ? "1" : "",
         listingTitle: thread.listingCount > 1 ? "" : thread.listingTitle ?? thread.listingAddress ?? "",
       },
     });

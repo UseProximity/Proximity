@@ -63,6 +63,25 @@ export class ChatResource {
     );
   }
 
+  // Blocks the other person in this conversation. The server works out who that
+  // is from the thread. Their conversation leaves your inbox and neither of you
+  // can send into it afterwards. There is no unblock call yet.
+  blockThread(threadId) {
+    return this.client.request(`/api/chat/threads/${encodeURIComponent(threadId)}/block`, {
+      method: "POST",
+    });
+  }
+
+  // Reports the other person, optionally pointing at one of their messages.
+  // `reason` is one of CHAT_REPORT_REASONS' values (@proximity/shared). Reporting
+  // the same message or conversation twice is a success on the server.
+  reportThread(threadId, { messageId, reason }) {
+    return this.client.request(`/api/chat/threads/${encodeURIComponent(threadId)}/report`, {
+      method: "POST",
+      body: JSON.stringify({ messageId, reason }),
+    });
+  }
+
   // Short-lived Supabase Realtime JWT. Returns { accessToken, expiresAt }.
   getRealtimeToken() {
     return this.client.request("/api/chat/realtime-token");

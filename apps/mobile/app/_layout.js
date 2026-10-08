@@ -21,6 +21,14 @@ import { useFavoritesStore } from "../src/store/favoritesStore";
 import { ProfileCompletionModal } from "../src/components/ProfileCompletionModal";
 import { usePushNotifications } from "../src/hooks/usePushNotifications";
 
+const chatSheetOptions = {
+  presentation: "formSheet",
+  sheetAllowedDetents: "fitToContents",
+  sheetGrabberVisible: true,
+  sheetCornerRadius: 24,
+  contentStyle: { backgroundColor: "#ffffff" },
+};
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     DMSans_400Regular,
@@ -77,7 +85,11 @@ export default function RootLayout() {
     // expo-splash-screen isn't a dependency today, and Google Fonts load
     // quickly enough that a blank white overlay is enough.
     <View className="flex-1 font-sans">
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        {/* Chat Block and Report: native bottom sheets, dragged down to dismiss. */}
+        <Stack.Screen name="chat-sheet/block" options={chatSheetOptions} />
+        <Stack.Screen name="chat-sheet/report" options={chatSheetOptions} />
+      </Stack>
       {!fontsLoaded && <View className="absolute inset-0 bg-white" />}
       {showProfileCompletion && (
         <ProfileCompletionModal

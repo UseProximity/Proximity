@@ -81,6 +81,9 @@ function sendRejectionKind(status) {
   return "error";
 }
 
+// Server wording for a send into a blocked conversation (see api/chat/threads).
+const CONVERSATION_UNAVAILABLE_MESSAGE = "This conversation is unavailable";
+
 export function MessagesProvider({ children }) {
   const { data: session, status: sessionStatus } = useSession();
   const userId = session?.user?.id ?? null;
@@ -248,6 +251,17 @@ export function MessagesProvider({ children }) {
     }
   }, [refreshThreads]);
 
+  /*
+   * The server refuses sends into a conversation either person has blocked, with a
+   * neutral message that does not say who blocked whom. Remember it so the composer
+   * closes instead of letting the user keep trying.
+   */
+  const markThreadUnavailable = useCallback((threadId) => {
+    setThreads((prev) =>
+      prev.map((t) => (t.threadId === threadId ? { ...t, unavailable: true } : t))
+    );
+  }, []);
+
   const sendMessage = useCallback(async (threadId, body, files = []) => {
     if (!userIdRef.current || !threadId) {
       throw new Error("Not signed in");
@@ -288,6 +302,9 @@ export function MessagesProvider({ children }) {
             reason: sendRejectionKind(res.status),
           });
           if (errBody?.code === "PASSWORD_REQUIRED") setNeedsPassword(true);
+          if (res.status === 403 && errBody?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
+            markThreadUnavailable(threadId);
+          }
           throw new Error(errBody?.error || `Failed to send (${res.status})`);
         }
         const data = await res.json();
@@ -419,6 +436,9 @@ export function MessagesProvider({ children }) {
           reason: sendRejectionKind(res.status),
           hasAttachments: true,
         });
+        if (res.status === 403 && errBody?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
+          markThreadUnavailable(threadId);
+        }
         throw new Error(errBody?.error || `Failed to send (${res.status})`);
       }
       trackEvent("chat_message_sent", {
@@ -454,7 +474,7 @@ export function MessagesProvider({ children }) {
       }));
       throw err;
     }
-  }, [refreshThreads, loadMessages]);
+  }, [refreshThreads, loadMessages, markThreadUnavailable]);
 
   const startListingChat = useCallback(
     async (listingId, body, leaseId = null) => {
@@ -491,6 +511,33 @@ export function MessagesProvider({ children }) {
     },
     [refreshThreads]
   );
+
+  // Blocks the other person in a conversation. Their thread leaves this user's
+  // inbox, so close it here as well.
+  const blockThread = useCallback(
+    async (threadId) => {
+      const res = await fetch(`/api/chat/threads/${threadId}/block`, { method: "POST" });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error || `Failed to block (${res.status})`);
+      }
+      setActiveThreadId((current) => (current === threadId ? null : current));
+      await refreshThreads().catch(() => {});
+    },
+    [refreshThreads]
+  );
+
+  const reportThread = useCallback(async (threadId, { reason, messageId } = {}) => {
+    const res = await fetch(`/api/chat/threads/${threadId}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason, messageId }),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null);
+      throw new Error(errBody?.error || `Failed to report (${res.status})`);
+    }
+  }, []);
 
   // Bootstrap inbox on login; clear on logout. Ignore session "loading" so we
   // don't wipe threads (or flash the empty state) before NextAuth hydrates.
@@ -704,6 +751,8 @@ export function MessagesProvider({ children }) {
       startListingChat,
       markThreadRead,
       setActiveThreadId,
+      blockThread,
+      reportThread,
       needsPassword,
       clearNeedsPassword: () => setNeedsPassword(false),
     }),
@@ -720,6 +769,8 @@ export function MessagesProvider({ children }) {
       sendMessage,
       startListingChat,
       markThreadRead,
+      blockThread,
+      reportThread,
       needsPassword,
     ]
   );

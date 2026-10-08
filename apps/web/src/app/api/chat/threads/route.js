@@ -11,6 +11,10 @@ import {
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
 } from "@/lib/chat/sendGuards";
+import {
+  applyBlocksToInbox,
+  assertListingContactNotBlocked,
+} from "@/lib/chat/safety";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -38,7 +42,7 @@ export async function GET(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(await applyBlocksToInbox(authUser.id, data ?? []));
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -105,6 +109,16 @@ export async function POST(req) {
         { error: "Message body exceeds the 5000 character limit" },
         { status: 400 }
       );
+    }
+
+    // Either person has blocked the other: neutral refusal, nothing is sent.
+    const blockCheck = await assertListingContactNotBlocked(
+      authUser.id,
+      listingId.trim(),
+      leaseIdArg
+    );
+    if (!blockCheck.ok) {
+      return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
     }
 
     const screen = await screenOutgoingChat({

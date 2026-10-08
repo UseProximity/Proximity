@@ -18,6 +18,7 @@ import {
   CHAT_RATE_LIMIT_MESSAGE,
 } from "@/lib/chat/sendGuards";
 import { scanChatAttachments } from "@/lib/chat/scanAttachment";
+import { assertThreadNotBlocked } from "@/lib/chat/safety";
 
 // Surfaced to the client as-is; everything else becomes a generic 500.
 const SAFE_SEND_MESSAGE_ERRORS = new Set([
@@ -177,6 +178,13 @@ export async function POST(req, { params }) {
         },
         { status: 403 }
       );
+    }
+
+    // Either person has blocked the other: neutral refusal before anything is
+    // screened, scanned or sent.
+    const blockCheck = await assertThreadNotBlocked(threadId, authUser.id);
+    if (!blockCheck.ok) {
+      return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
     }
 
     let payload;

@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
+import ChatSafetyMenu from "@/components/chat/ChatSafetyMenu";
 import { useMessages } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
@@ -391,6 +392,7 @@ export default function ChatTranscript({
           )}
         </div>
         {headerActions}
+        <ChatSafetyMenu thread={thread} />
       </div>
 
       <div
@@ -537,7 +539,11 @@ export default function ChatTranscript({
         <div ref={bottomRef} />
       </div>
 
-      {needsPassword ? (
+      {thread?.unavailable ? (
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-100 text-center text-sm text-gray-500">
+          This conversation is unavailable
+        </div>
+      ) : needsPassword ? (
         <div className="flex-shrink-0">
           <SetPasswordPrompt onDone={clearNeedsPassword} />
         </div>

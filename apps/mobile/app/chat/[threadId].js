@@ -17,10 +17,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, RefreshCw } from "lucide-react-native";
+import { ChevronLeft, MoreHorizontal, RefreshCw } from "lucide-react-native";
 import apiClient from "../../src/lib/apiClient";
 import {
   CHAT_MAX_BODY,
+  CONVERSATION_UNAVAILABLE_MESSAGE,
   chatErrorMessage,
   mergeMessages,
 } from "../../src/lib/chatFormat";
@@ -28,13 +29,20 @@ import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
 import { subscribeThread } from "../../src/lib/chatRealtime";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
+import { ChatSheets } from "../../src/components/chat/ChatSheets";
 import { SendButton } from "../../src/components/ui/SendButton";
 import { colors } from "../../src/theme/tokens";
 
 const PAGE_SIZE = 30;
 
 export default function ChatThreadScreen() {
-  const { threadId, name, listingTitle } = useLocalSearchParams();
+  const {
+    threadId,
+    name,
+    image,
+    listingTitle,
+    unavailable: unavailableParam,
+  } = useLocalSearchParams();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAuthHydrated = useAuthStore((state) => state.isHydrated);
@@ -47,6 +55,12 @@ export default function ChatThreadScreen() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
+  // Set when the other person has blocked this user: the conversation stays
+  // readable but cannot be written to, and says so neutrally.
+  const [unavailable, setUnavailable] = useState(unavailableParam === "1");
+  // The open popup (see ChatSheets.js): null, { type: "options" } or
+  // { type: "message", message }.
+  const [sheet, setSheet] = useState(null);
   const loadedOnce = useRef(false);
   const messagesRef = useRef([]);
   messagesRef.current = messages;
@@ -200,7 +214,9 @@ export default function ChatThreadScreen() {
       markRead();
     } catch (err) {
       setMessages((current) => current.filter((m) => m.id !== tempId));
-      if (err?.status !== 401) {
+      if (err?.status === 403 && err?.body?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
+        setUnavailable(true);
+      } else if (err?.status !== 401) {
         setText(body); // give the words back so nothing typed is lost
         setSendError(
           chatErrorMessage(err, "Couldn't send your message. Please try again.")
@@ -210,6 +226,43 @@ export default function ChatThreadScreen() {
       setSending(false);
     }
   }, [text, sending, threadId, user?.id, markRead]);
+
+  // Block and Report are native form sheets (app/chat-sheet/). iOS cannot present
+  // one while the options Modal is still dismissing, so the screen closes the Modal
+  // first and runs the navigation from its onDismiss.
+  const afterClose = useRef(null);
+  const runAfterClose = useCallback(() => {
+    const action = afterClose.current;
+    afterClose.current = null;
+    action?.();
+  }, []);
+  const closeThen = useCallback(
+    (action) => {
+      afterClose.current = action;
+      setSheet(null);
+      // Only iOS reports the Modal's dismissal; elsewhere there is nothing to wait for.
+      if (Platform.OS !== "ios") runAfterClose();
+    },
+    [runAfterClose]
+  );
+
+  const openReport = useCallback(
+    (messageId) =>
+      closeThen(() =>
+        router.push({ pathname: "/chat-sheet/report", params: { threadId, messageId: messageId ?? "" } })
+      ),
+    [closeThen, router, threadId]
+  );
+  const openBlock = useCallback(
+    () =>
+      closeThen(() =>
+        router.push({
+          pathname: "/chat-sheet/block",
+          params: { threadId, name: name ?? "", image: image ?? "" },
+        })
+      ),
+    [closeThen, router, threadId, name, image]
+  );
 
   // Newest first for the inverted list.
   const data = [...messages].reverse();
@@ -223,6 +276,11 @@ export default function ChatThreadScreen() {
       <MessageBubble
         message={item}
         senderName={!item.isMine && startsRun ? name || null : null}
+        onLongPress={
+          !item.isMine && !item.pending
+            ? (rect) => setSheet({ type: "message", message: item, rect })
+            : undefined
+        }
         listingLabel={
           listingChanged
             ? item.listingTitle || item.listingAddress || null
@@ -270,6 +328,14 @@ export default function ChatThreadScreen() {
           accessibilityLabel="Refresh"
         >
           <RefreshCw size={18} color={colors.textSecondary} strokeWidth={2} />
+        </Pressable>
+        <Pressable
+          onPress={() => setSheet({ type: "options" })}
+          hitSlop={8}
+          className="p-2"
+          accessibilityLabel="Conversation options"
+        >
+          <MoreHorizontal size={20} color={colors.textSecondary} strokeWidth={2} />
         </Pressable>
       </View>
 
@@ -323,6 +389,11 @@ export default function ChatThreadScreen() {
           <Text className="text-xs text-red-500 px-4 pb-1">{sendError}</Text>
         ) : null}
 
+        {unavailable ? (
+          <View className="border-t border-gray-100 bg-white px-4 py-4 items-center">
+            <Text className="text-sm text-gray-500">{CONVERSATION_UNAVAILABLE_MESSAGE}</Text>
+          </View>
+        ) : (
         <View className="border-t border-gray-100 bg-white px-4 pt-2.5 pb-3 flex-row items-end gap-2">
           <TextInput
             value={text}
@@ -343,7 +414,17 @@ export default function ChatThreadScreen() {
             />
           )}
         </View>
+        )}
       </KeyboardAvoidingView>
+
+      <ChatSheets
+        sheet={sheet}
+        onClose={() => setSheet(null)}
+        onDismissed={runAfterClose}
+        onPickReport={() => openReport(null)}
+        onPickBlock={openBlock}
+        onReportMessage={openReport}
+      />
     </SafeAreaView>
   );
 }
