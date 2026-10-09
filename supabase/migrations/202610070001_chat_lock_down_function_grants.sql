@@ -27,8 +27,8 @@
 -- chat migration by design. Re-run it after any snapshot, restore or schema
 -- reset. It is cheap and idempotent.
 --
--- rpc_mark_thread_read is named explicitly because it has no "chat" in its
--- name, so the pattern alone skipped it. Any new chat function whose name
+-- rpc_mark_thread_read and fn_email_suppressed are named explicitly because they have no "chat" in their
+-- names, so the pattern alone skips them. Any new chat function whose name
 -- lacks "chat" must be added to that list too.
 --
 -- TWO DELIBERATE EXCEPTIONS
@@ -59,7 +59,7 @@ BEGIN
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
       AND (p.proname LIKE '%chat%'
-           OR p.proname IN ('fn_current_user_id', 'rpc_mark_thread_read'))
+           OR p.proname IN ('fn_current_user_id', 'rpc_mark_thread_read', 'fn_email_suppressed'))
   LOOP
     -- PUBLIC first: a function created without an explicit grant carries
     -- EXECUTE for PUBLIC, which anon and authenticated inherit.

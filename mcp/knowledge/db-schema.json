@@ -44,6 +44,37 @@
         ]
       },
       {
+        "table": "chat_email_log",
+        "description": "One row per chat alert email sent (lib/chat/notifyEmail.js): recipient, address used, provider (ses or gmail) and the provider message id. Server only (RLS on, no policies).",
+        "columns": [
+          "id:uuid",
+          "thread_id:uuid",
+          "recipient_id:uuid",
+          "to_email:text",
+          "provider:text",
+          "provider_message_id:text",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "chat_inbound_emails",
+        "description": "Every reply-by-email message SES received and its outcome (posted, spam, auto_reply, unauthenticated, unknown_address, wrong_sender, empty, rejected, error). s3_key is unique and is the dedupe key; notice_sent_at limits not-delivered notices to one per sender per thread per day. Never holds the body. Server only (RLS on, no policies).",
+        "columns": [
+          "id:uuid",
+          "s3_key:text",
+          "message_id_header:text",
+          "from_email:text",
+          "to_address:text",
+          "thread_id:uuid",
+          "user_id:uuid",
+          "status:text",
+          "reason:text",
+          "chat_message_id:uuid",
+          "notice_sent_at:timestamptz",
+          "created_at:timestamptz"
+        ]
+      },
+      {
         "table": "chat_messages",
         "description": "Messages within a chat thread. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
         "columns": [
@@ -57,17 +88,20 @@
       },
       {
         "table": "chat_participants",
-        "description": "Users participating in a chat thread + read state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "description": "Users in a chat thread, with read and alert state. reply_token_hash is the SHA-256 of this person's reply+token address for the thread (lib/chat/replyAddress.js). email_mode is on while they answer by email, which skips the alert holds for them.",
         "columns": [
           "thread_id:uuid",
           "user_id:uuid",
           "joined_at:timestamptz",
-          "last_read_at:timestamptz"
+          "last_read_at:timestamptz",
+          "last_notified_at:timestamptz",
+          "reply_token_hash:text",
+          "email_mode:boolean"
         ]
       },
       {
         "table": "chat_threads",
-        "description": "One conversation per (listing, student), held by the landlord account landlord_id. lease_id is the lease last asked about and picks the lease-level alert address (fn_chat_alert_email).",
+        "description": "One conversation per (listing, landlord, student): the landlord account holding the lease the student asked about owns it, and no other landlord on the listing sees it. lease_id is the lease last asked about and picks the lease-level alert address (fn_chat_alert_email).",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",
@@ -146,6 +180,16 @@
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
           "school_id:uuid"
+        ]
+      },
+      {
+        "table": "email_suppressions",
+        "description": "Addresses that hard-bounced or marked a Proximity email as spam, from SES events via /api/ses/events. Never emailed again (fn_email_suppressed). Server only (RLS on, no policies).",
+        "columns": [
+          "email:text",
+          "reason:text",
+          "detail:jsonb",
+          "created_at:timestamptz"
         ]
       },
       {

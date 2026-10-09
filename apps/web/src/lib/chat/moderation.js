@@ -315,4 +315,75 @@ function blockMessage(reasons) {
 /** Attachment captions go through the same screen as a message body. */
 export const screenChatCaption = screenChatText;
 
+// ─────────────────────────────────────────────────────── redaction (email)
+
+const REDACTED = "[removed]";
+
+// The link pattern plus any path, so the whole URL goes and not just its host.
+const LINK_WITH_PATH =
+  /\b(?:https?:\/\/)?((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop))\b(?:\/[^\s)\]>]*)?/gi;
+
+// Rules where removing the matched words is not enough: the sentence around
+// them is the problem ("send the deposit by gift card before Friday").
+const SENTENCE_RULES = [
+  ...SLURS,
+  ...THREATS,
+  ...RAILS_ALWAYS_BLOCK,
+  ...PHISHING,
+  ...OFF_PLATFORM_REQUEST,
+];
+
+function redactSentences(text, patterns) {
+  return text.replace(/[^.!?\n]+[.!?]*/g, (sentence) => {
+    if (!patterns.some((re) => re.test(sentence))) return sentence;
+    const lead = sentence.match(/^\s*/)[0];
+    return `${lead}${REDACTED}`;
+  });
+}
+
+/**
+ * Remove what screenChatText would block, instead of refusing the message.
+ *
+ * Used for replies that arrive by email (Wyatt, 2026-10-09): the person cannot
+ * be shown an error and asked to edit, and a whole reply should not vanish
+ * because a signature or an aside carried a phone number. Contact details are
+ * cut out where they stand. Abuse, fraud and "let's talk elsewhere" lose the
+ * whole sentence. If the result would still be blocked, nothing of it is kept.
+ *
+ * @returns {{ text: string, reasons: string[] }} reasons is empty when nothing changed
+ */
+export function redactChatText(text) {
+  const original = String(text ?? "");
+  const verdict = screenChatText(original);
+  if (verdict.action !== "block") return { text: original, reasons: [] };
+
+  let out = original;
+
+  if (verdict.reasons.includes("off_platform_payment_request")) {
+    out = redactSentences(out, RAILS_CONDITIONAL);
+  }
+  out = redactSentences(out, SENTENCE_RULES);
+
+  out = out
+    .replace(new RegExp(EMAIL_PLAIN.source, "gi"), REDACTED)
+    .replace(new RegExp(EMAIL_OBFUSCATED.source, "gi"), REDACTED)
+    .replace(new RegExp(PHONE.source, "g"), REDACTED)
+    .replace(LINK_WITH_PATH, (match, host) => {
+      const h = host.toLowerCase();
+      return ALLOWED_LINK_HOSTS.some((ok) => h === ok || h.endsWith(`.${ok}`)) ? match : REDACTED;
+    });
+
+  if (verdict.reasons.includes("social_handle")) {
+    out = out.replace(new RegExp(SOCIAL_HANDLE.source, "gi"), (m) => m.replace(/@\S+/, REDACTED));
+    out = redactSentences(out, [PLATFORMS]);
+  }
+
+  if (screenChatText(out).action === "block") out = REDACTED;
+
+  return {
+    text: out.replace(/(\[removed\][\s,;]*){2,}/g, `${REDACTED} `).trim(),
+    reasons: verdict.reasons,
+  };
+}
+
 export { ALLOWED_LINK_HOSTS };

@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-07T17:55:22.727Z",
-  "count": 66,
+  "_generated": "2026-10-09T21:38:34.783Z",
+  "count": 76,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -40,7 +40,47 @@
       "public": false
     },
     {
+      "name": "AWS_INBOUND_MAIL_BUCKET",
+      "public": false
+    },
+    {
+      "name": "AWS_INBOUND_TOPIC_ARN",
+      "public": false
+    },
+    {
+      "name": "AWS_SES_ACCESS_KEY_ID",
+      "public": false
+    },
+    {
+      "name": "AWS_SES_CONFIGURATION_SET",
+      "public": false
+    },
+    {
+      "name": "AWS_SES_EVENTS_TOPIC_ARN",
+      "public": false
+    },
+    {
+      "name": "AWS_SES_REGION",
+      "public": false
+    },
+    {
+      "name": "AWS_SES_SECRET_ACCESS_KEY",
+      "public": false
+    },
+    {
+      "name": "CHAT_INBOUND_TEST_SENDERS",
+      "public": false
+    },
+    {
       "name": "CHAT_MODERATION_KEY",
+      "public": false
+    },
+    {
+      "name": "CHAT_REPLY_DOMAIN",
+      "public": false
+    },
+    {
+      "name": "CHAT_REPLY_SECRET",
       "public": false
     },
     {
