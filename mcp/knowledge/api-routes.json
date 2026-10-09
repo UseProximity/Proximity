@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-07T19:55:17.128Z",
+  "_generated": "2026-10-09T02:34:14.115Z",
   "count": 104,
   "routes": [
     {
@@ -34,6 +34,7 @@
         "locations",
         "listing_units",
         "unit_leases",
+        "listing_concessions",
         "listing_drive_times",
         "users"
       ],

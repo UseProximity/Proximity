@@ -197,6 +197,7 @@ function generateDbSchema() {
 // ── 3. Components ─────────────────────────────────────────────────────────────
 
 const COMPONENT_DESCRIPTIONS = {
+  "listings/wizard/ImportBatch.js": "Multi-property import workspace: one tab per picked property, read one at a time, each running the add-listing steps; marks properties already on Proximity (yours or someone else's) and publishes every tab together behind a confirmation",
   "AddressSearchInput.js": "Mapbox address autocomplete input — used in add-listing and add-sub-lease forms",
   "admin/ReviewInvitesView.js": "Admin view for review invites: pick students, write one templated message, send it in chunks, and browse the invite ledger",
   "admin/reviewInvites/InviteComposer.js": "Subject and message editor for bulk review invites, with {first_name} / {link} placeholders and a live preview",

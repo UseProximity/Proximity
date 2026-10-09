@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-07T17:55:22.685Z",
-  "count": 111,
+  "_generated": "2026-10-09T02:34:14.136Z",
+  "count": 115,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -184,8 +184,16 @@
       "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
     },
     {
+      "file": "src/lib/listingDraft/floorPlanUnits.js",
+      "description": "Per-apartment availability and pricing, read from a building's own floor-plan"
+    },
+    {
       "file": "src/lib/listingDraft/rateLimit.js",
       "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
+    },
+    {
+      "file": "src/lib/listingDraft/sightmap.js",
+      "description": "SightMap inventory reader."
     },
     {
       "file": "src/lib/listings/filterListings.js",
@@ -366,6 +374,14 @@
     {
       "file": "src/lib/seo/targets.js",
       "description": "The evidence-backed target-query map the measurement engine tracks."
+    },
+    {
+      "file": "src/lib/sourceSync/attach.js",
+      "description": "Attach (or clear) the source URL a listing is monitored against."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.js",
+      "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
     },
     {
       "file": "src/lib/streetview.js",
