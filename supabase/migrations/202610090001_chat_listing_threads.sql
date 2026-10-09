@@ -1,5 +1,5 @@
 -- Chat: re-key conversations from one thread per (landlord, student) pair to one
--- thread per (listing, student).
+-- thread per (listing, landlord, student).
 --
 -- Why this reverses 202610030001:
 --   Listings can now carry their own alert address (a leasing office inbox per
@@ -10,13 +10,21 @@
 --   the listing (Wyatt, 2026-10-09). The inbox heads each row with the listing
 --   and the other person moves into the preview.
 --
+-- Why the landlord stays in the key:
+--   One listing can carry leases held by different landlord accounts. Each
+--   conversation belongs to exactly one landlord, the one holding the lease the
+--   student clicked contact on, and no other landlord on the listing sees it
+--   (Wyatt, 2026-10-09). Asking about a second landlord's lease on the same
+--   listing opens a second conversation with that landlord.
+--
 -- Shape after this migration:
 --   chat_threads.listing_id           the listing this conversation is about.
 --                                     Now part of the identity, not a label.
 --   chat_threads.interested_user_id   the student side
---   chat_threads.landlord_id          the landlord ACCOUNT holding the thread.
---                                     Every listing of one landlord lands in the
---                                     same account inbox, however its alerts route.
+--   chat_threads.landlord_id          the landlord ACCOUNT holding the thread,
+--                                     and the only landlord participant. Every
+--                                     listing of one landlord lands in the same
+--                                     account inbox, however its alerts route.
 --   chat_threads.lease_id             the lease most recently asked about, which
 --                                     decides the lease-level alert address.
 --   chat_messages.listing_id          kept, always equal to the thread's listing
@@ -105,10 +113,11 @@ BEGIN
   END LOOP;
 END $$;
 
--- ─── 4. merge live duplicates for one (listing, student) ─────────────────────
--- Under the pair key a listing that changed hands could hold one thread per
--- landlord for the same student. The new unique index would refuse to build on
--- that, so keep the oldest and fold the rest into it.
+-- ─── 4. merge live duplicates for one (listing, landlord, student) ───────────
+-- The split above can produce a second thread for a key that already had one
+-- (the pair once held a thread opened about that listing too). The new unique
+-- index would refuse to build on that, so keep the oldest and fold the rest
+-- into it. Threads with different landlords are never merged.
 DO $$
 DECLARE
   r record;
@@ -117,14 +126,16 @@ BEGIN
     SELECT t.id AS dup_id, k.keep_id
     FROM public.chat_threads t
     JOIN (
-      SELECT DISTINCT ON (listing_id, interested_user_id)
-             listing_id, interested_user_id, id AS keep_id
+      SELECT DISTINCT ON (listing_id, landlord_id, interested_user_id)
+             listing_id, landlord_id, interested_user_id, id AS keep_id
       FROM public.chat_threads
       WHERE deleted_at IS NULL
         AND listing_id IS NOT NULL
+        AND landlord_id IS NOT NULL
         AND interested_user_id IS NOT NULL
-      ORDER BY listing_id, interested_user_id, created_at, id
+      ORDER BY listing_id, landlord_id, interested_user_id, created_at, id
     ) k ON k.listing_id = t.listing_id
+       AND k.landlord_id = t.landlord_id
        AND k.interested_user_id = t.interested_user_id
     WHERE t.deleted_at IS NULL
       AND t.id <> k.keep_id
@@ -161,10 +172,14 @@ WHERE s.thread_id = t.id
 ALTER TABLE public.chat_threads ENABLE TRIGGER trg_set_updated_at_chat_threads;
 
 -- ─── 6. the new identity ─────────────────────────────────────────────────────
-CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_threads_listing_interested_user
-  ON public.chat_threads (listing_id, interested_user_id)
+-- An earlier draft of this migration keyed on (listing, student) alone.
+DROP INDEX IF EXISTS public.idx_chat_threads_listing_interested_user;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_threads_listing_landlord_interested_user
+  ON public.chat_threads (listing_id, landlord_id, interested_user_id)
   WHERE deleted_at IS NULL
     AND listing_id IS NOT NULL
+    AND landlord_id IS NOT NULL
     AND interested_user_id IS NOT NULL;
 
 -- ─── 7. functions ────────────────────────────────────────────────────────────
@@ -312,30 +327,36 @@ BEGIN
 
   PERFORM set_config('app.current_user_id', p_user_id::text, true);
 
+  -- The landlord holding the clicked lease owns the conversation, so it is
+  -- resolved before the lookup: a different landlord's lease on the same
+  -- listing is a different conversation.
+  v_landlord_id := fn_chat_resolve_landlord(p_listing_id, v_lease_id);
+  IF v_landlord_id IS NULL THEN
+    RAISE EXCEPTION 'listing has no landlord to contact';
+  END IF;
+
+  IF p_user_id = v_landlord_id OR EXISTS (
+    SELECT 1 FROM listing_landlords
+    WHERE listing_id = p_listing_id AND user_id = p_user_id
+  ) THEN
+    RAISE EXCEPTION 'cannot start a chat about your own listing';
+  END IF;
+
   PERFORM pg_advisory_xact_lock(
-    hashtextextended(p_listing_id::text || ':' || p_user_id::text, 0::bigint)
+    hashtextextended(
+      p_listing_id::text || ':' || v_landlord_id::text || ':' || p_user_id::text, 0::bigint
+    )
   );
 
   SELECT id INTO v_thread_id
   FROM chat_threads
   WHERE listing_id = p_listing_id
+    AND landlord_id = v_landlord_id
     AND interested_user_id = p_user_id
     AND deleted_at IS NULL
   LIMIT 1;
 
   IF v_thread_id IS NULL THEN
-    v_landlord_id := fn_chat_resolve_landlord(p_listing_id, v_lease_id);
-    IF v_landlord_id IS NULL THEN
-      RAISE EXCEPTION 'listing has no landlord to contact';
-    END IF;
-
-    IF p_user_id = v_landlord_id OR EXISTS (
-      SELECT 1 FROM listing_landlords
-      WHERE listing_id = p_listing_id AND user_id = p_user_id
-    ) THEN
-      RAISE EXCEPTION 'cannot start a chat about your own listing';
-    END IF;
-
     v_is_new := true;
 
     SELECT COALESCE(NULLIF(btrim(l.title), ''), NULLIF(btrim(l.address), ''))
@@ -356,9 +377,8 @@ BEGIN
     VALUES (v_thread_id, p_user_id), (v_thread_id, v_landlord_id)
     ON CONFLICT (thread_id, user_id) DO NOTHING;
   ELSE
-    SELECT landlord_id INTO v_landlord_id FROM chat_threads WHERE id = v_thread_id;
-
-    -- A later inquiry about a specific lease re-points the lease-level alert.
+    -- A later inquiry about another lease of the same landlord re-points the
+    -- lease-level alert to that lease's contact.
     IF v_lease_id IS NOT NULL THEN
       UPDATE chat_threads SET lease_id = v_lease_id
       WHERE id = v_thread_id AND lease_id IS DISTINCT FROM v_lease_id;
@@ -387,7 +407,7 @@ BEGIN
   WHERE thread_id = v_thread_id AND user_id = p_user_id;
 
   -- isNewListing is kept for the client, which reads it. With one thread per
-  -- listing it is the same thing as isNew.
+  -- listing and landlord it is the same thing as isNew.
   RETURN jsonb_build_object(
     'threadId',     v_thread_id,
     'messageId',    v_message_id,
