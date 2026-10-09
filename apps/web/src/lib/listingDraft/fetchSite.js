@@ -322,7 +322,7 @@ export function extractImageCandidates(html, baseUrl, cap = 40) {
     push(meta.match(/\bcontent="([^"]+)"/i)?.[1], "site cover image");
   }
   for (const m of html.matchAll(
-    /(?:https?:)?\/\/[^\s"'<>\\(),]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\),?]|\/:\/|$)/gi
+    /(?:https?:)?\/\/[^\s"'<>\\()]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\),?]|\/:\/|$)/gi
   )) {
     push(m[0], "");
   }

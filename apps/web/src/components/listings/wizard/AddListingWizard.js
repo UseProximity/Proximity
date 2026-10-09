@@ -1449,6 +1449,13 @@ export default function AddListingWizard({
         if (ownExisting.mine === "owner" && stagedFiles.length && existingProperty?.photoCount === 0) {
           const problem = await uploadStagedPhotos(lid, null);
           if (problem) toast.error(problem, { duration: 8000 });
+          else {
+            // Filed, like the unit photos above: if a later step fails, a
+            // second Publish must not add the whole gallery again.
+            stagedPreviews.forEach((u) => URL.revokeObjectURL(u));
+            setStagedFiles([]);
+            setStagedPreviews([]);
+          }
         }
         // Re-importing a listing records the page it was read from, so the
         // source check knows about it too, not only listings created by import.
