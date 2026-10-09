@@ -3,6 +3,12 @@
 // message itself is the caller's job (apiClient.chat.sendMessage), so a failed upload
 // can never leave a message pointing at a missing file.
 //
+// Image preparation follows web's compressChatImage() (apps/web/src/lib/chat/attachments.js),
+// which is what the server's attachment scanner is built around (it only scans files up
+// to 4 MiB): an image under 1 MiB is sent as it is; one of 1 MiB or more is re-encoded as
+// a JPEG at quality 0.72 with its long edge capped at 1600px, and kept only if that is
+// smaller than the original; HEIC is always converted.
+//
 // The server (chat attachments presign + RPC) accepts JPEG, PNG, WebP and GIF up to
 // 20 MB each, 5 per message. The presigned PUT is signed with the exact Content-Type
 // and byte length given at presign time, so the bytes measured here are the bytes
@@ -15,14 +21,13 @@ import apiClient from "./apiClient";
 export const CHAT_PHOTO_MAX_FILES = 5;
 export const CHAT_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-// Used only when a photo has to be re-encoded (HEIC, or over the size limit). Each
-// attempt re-encodes the original; a later, smaller one is tried only if the previous
-// result is still over the limit.
-const CONVERT_ATTEMPTS = [
-  { maxDimension: 2560, quality: 0.85 },
-  { maxDimension: 1600, quality: 0.6 },
-  { maxDimension: 1024, quality: 0.5 },
-];
+// Web's rules, from compressChatImage(): the size at which an image is re-encoded, and
+// the settings it is re-encoded with.
+const COMPRESS_THRESHOLD_BYTES = 1024 * 1024;
+const WEB_ENCODE = { maxDimension: 1600, quality: 0.72 };
+// Safeguard only, not part of web's rules: reached when the web settings still leave a
+// file over 20 MB, which an ordinary photo never does.
+const FALLBACK_ENCODE = { maxDimension: 1024, quality: 0.5 };
 
 function normalizeMime(mime) {
   const value = (mime ?? "").toLowerCase();
@@ -62,49 +67,69 @@ export async function pickChatPhotos({ limit }) {
   return { status: "ok", assets: result.assets.slice(0, limit) };
 }
 
-// Turns a picked asset into a file the server will accept. A JPEG, PNG, WebP or GIF
-// within the size limit is used exactly as picked. Anything else (HEIC, an unknown
-// type) or anything over 20 MB is re-encoded as a JPEG with expo-image-manipulator.
-// Sizes are always measured from the file's real bytes, never from the picker's
-// reported `fileSize`, and the re-encoded file is measured too. If a photo cannot be
-// brought under 20 MB it is refused here, with a message the UI can show, so an
-// oversize file is never staged or uploaded.
+// Re-encodes the original as a JPEG with its long edge capped at `maxDimension`, as
+// web's canvas does (the other edge keeps the aspect ratio). Resolves to the result
+// with its real dimensions and its measured byte size.
+async function encodeJpeg(asset, { maxDimension, quality }) {
+  const longEdge = Math.max(asset.width ?? 0, asset.height ?? 0);
+  const actions =
+    longEdge > maxDimension
+      ? [{ resize: asset.width >= asset.height ? { width: maxDimension } : { height: maxDimension } }]
+      : [];
+  const out = await manipulateAsync(asset.uri, actions, {
+    compress: quality,
+    format: SaveFormat.JPEG,
+  });
+  return { uri: out.uri, width: out.width, height: out.height, bytes: (await readBlob(out.uri)).size };
+}
+
+// Turns a picked asset into a file the server will accept, following the web rules
+// described at the top of this file. Sizes always come from the file's real bytes,
+// never from the picker's reported `fileSize`, and a re-encoded file is measured too.
+// A photo that cannot be brought to 20 MB or less is refused with a message the UI can
+// show, so an oversize file is never staged or uploaded.
 export async function prepareChatPhoto(asset, index = 0) {
   const mimeType = normalizeMime(asset.mimeType);
-  if (SUPPORTED_TYPES.has(mimeType)) {
-    const bytes = (await readBlob(asset.uri)).size;
-    if (bytes > 0 && bytes <= CHAT_PHOTO_MAX_BYTES) {
-      return {
-        uri: asset.uri,
-        mimeType,
-        fileName: fileNameFor(asset.fileName, mimeType, index),
-        width: asset.width,
-        height: asset.height,
-      };
-    }
+  // HEIC, and any type the server would refuse, must become a JPEG whatever its size.
+  const mustConvert = !SUPPORTED_TYPES.has(mimeType);
+  const originalBytes = (await readBlob(asset.uri)).size;
+  const original = {
+    uri: asset.uri,
+    mimeType,
+    fileName: fileNameFor(asset.fileName, mimeType, index),
+    width: asset.width,
+    height: asset.height,
+  };
+  const originalFits = originalBytes > 0 && originalBytes <= CHAT_PHOTO_MAX_BYTES;
+
+  // Under 1 MiB and already an accepted type: sent as it is.
+  if (!mustConvert && originalBytes > 0 && originalBytes < COMPRESS_THRESHOLD_BYTES) {
+    return original;
   }
 
-  for (const { maxDimension, quality } of CONVERT_ATTEMPTS) {
-    const longEdge = Math.max(asset.width ?? 0, asset.height ?? 0);
-    const actions =
-      longEdge > maxDimension
-        ? [{ resize: asset.width >= asset.height ? { width: maxDimension } : { height: maxDimension } }]
-        : [];
-    const converted = await manipulateAsync(asset.uri, actions, {
-      compress: quality,
-      format: SaveFormat.JPEG,
-    });
-    const bytes = (await readBlob(converted.uri)).size;
-    if (bytes > 0 && bytes <= CHAT_PHOTO_MAX_BYTES) {
-      return {
-        uri: converted.uri,
-        mimeType: "image/jpeg",
-        fileName: fileNameFor(asset.fileName, "image/jpeg", index),
-        width: converted.width,
-        height: converted.height,
-      };
-    }
+  const asJpeg = (encoded) => ({
+    uri: encoded.uri,
+    mimeType: "image/jpeg",
+    fileName: fileNameFor(asset.fileName, "image/jpeg", index),
+    width: encoded.width,
+    height: encoded.height,
+  });
+  const fits = (bytes) => bytes > 0 && bytes <= CHAT_PHOTO_MAX_BYTES;
+
+  const web = await encodeJpeg(asset, WEB_ENCODE);
+  if (mustConvert) {
+    if (fits(web.bytes)) return asJpeg(web);
+  } else if (web.bytes > 0 && web.bytes < originalBytes) {
+    // Smaller than the original: use it (it is also within 20 MB, being smaller than
+    // a file that is itself usually far below that).
+    if (fits(web.bytes)) return asJpeg(web);
+  } else if (originalFits) {
+    // Web's rule: a re-encode that is not smaller is discarded and the original kept.
+    return original;
   }
+
+  const fallback = await encodeJpeg(asset, FALLBACK_ENCODE);
+  if (fits(fallback.bytes)) return asJpeg(fallback);
 
   const error = new Error("A photo is too large to send.");
   error.userFacing = true;
