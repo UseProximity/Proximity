@@ -1,9 +1,14 @@
 // Browse listings tab (home screen).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
-import { DEFAULT_FILTERS, filterListings, countActiveFilters } from "@proximity/shared";
+import { ArrowUp, Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
+import {
+  DEFAULT_FILTERS,
+  filterListings,
+  rankBrowseListings,
+  countActiveFilters,
+} from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
@@ -15,27 +20,8 @@ import { colors, shadows } from "../../src/theme/tokens";
 // a "lifted" pair of controls, the same kind of floating element it's for.
 const FLOATING_SHADOW = shadows.floating;
 
-// Matches apps/web/src/components/listings/BrowseContent.js's sort order:
-// photos-first, then reviewed-first, then rating desc, then review-count desc.
-function sortListings(listings) {
-  return [...listings].sort((a, b) => {
-    const aHasImages = a.images?.length > 0;
-    const bHasImages = b.images?.length > 0;
-    if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
-
-    const aReviews = a.numReviews ?? 0;
-    const bReviews = b.numReviews ?? 0;
-    const aHasReviews = aReviews > 0;
-    const bHasReviews = bReviews > 0;
-    if (aHasReviews !== bHasReviews) return aHasReviews ? -1 : 1;
-
-    if (aHasReviews && bHasReviews) {
-      if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
-      return bReviews - aReviews;
-    }
-    return 0;
-  });
-}
+// How far the list must scroll before the back-to-top button appears.
+const BACK_TO_TOP_OFFSET = 600;
 
 export default function BrowseScreen() {
   const [listings, setListings] = useState([]);
@@ -47,6 +33,13 @@ export default function BrowseScreen() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [view, setView] = useState("list");
+  const listRef = useRef(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  // The list remounts at the top when returning from the map.
+  useEffect(() => {
+    if (view !== "list") setShowBackToTop(false);
+  }, [view]);
 
   async function load() {
     try {
@@ -69,8 +62,8 @@ export default function BrowseScreen() {
   }
 
   const visibleListings = useMemo(() => {
-    const filtered = filterListings(listings, filters, { search });
-    return sortListings(filtered);
+    // Same pipeline as web Browse: filterListings ranks, then unavailable last.
+    return rankBrowseListings(filterListings(listings, { filters, search }));
   }, [listings, filters, search]);
 
   const activeFilterCount = countActiveFilters(filters);
@@ -161,21 +154,38 @@ export default function BrowseScreen() {
       {view === "map" ? (
         <BrowseMapView listings={visibleListings} />
       ) : (
-        <FlatList
-          data={visibleListings}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={{ padding: 16, paddingTop: 0 }}
-          renderItem={({ item }) => <ListingCard listing={item} />}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          ListEmptyComponent={
-            <View className="items-center justify-center mt-20">
-              <View className="mb-3">
-                <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+        <View className="flex-1">
+          <FlatList
+            ref={listRef}
+            data={visibleListings}
+            keyExtractor={(item) => item._id}
+            contentContainerStyle={{ padding: 16, paddingTop: 0 }}
+            renderItem={({ item }) => <ListingCard listing={item} />}
+            onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > BACK_TO_TOP_OFFSET)}
+            scrollEventThrottle={100}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListEmptyComponent={
+              <View className="items-center justify-center mt-20">
+                <View className="mb-3">
+                  <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+                </View>
+                <Text className="text-gray-500">No listings match your search.</Text>
               </View>
-              <Text className="text-gray-500">No listings match your search.</Text>
-            </View>
-          }
-        />
+            }
+          />
+          {showBackToTop ? (
+            <Pressable
+              onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+              accessibilityRole="button"
+              accessibilityLabel="Back to top"
+              hitSlop={8}
+              className="absolute right-4 bottom-4 w-11 h-11 rounded-full bg-white border border-gray-200 items-center justify-center"
+              style={FLOATING_SHADOW}
+            >
+              <ArrowUp size={18} color={colors.textPrimary} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+        </View>
       )}
 
       <FilterSheet
