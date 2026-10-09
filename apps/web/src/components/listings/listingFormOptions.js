@@ -103,6 +103,10 @@ export const emptyUnit = () => ({
   // Photos of this unit (not the building), already uploaded, filed against
   // the unit once the listing exists.
   photos: [],
+  // Photos the import found for a unit that already has photos on Proximity.
+  // Uploaded but held back until the landlord asks for them, because we can't
+  // tell which of them they already put up by hand.
+  heldPhotos: [],
   leases: [emptyLease()],
 });
 
@@ -165,6 +169,7 @@ export function normalizeWizardUnit(u) {
     title: u.title ?? "",
     floorPlanImageUrl: u.floorPlanImageUrl ?? "",
     photos: Array.isArray(u.photos) ? u.photos : [],
+    heldPhotos: Array.isArray(u.heldPhotos) ? u.heldPhotos : [],
   };
   if (Array.isArray(u.leases)) {
     return {
@@ -247,7 +252,10 @@ function normalizeUnitToken(token) {
  *   status "missing"  on Proximity only: kept unless the landlord marks it
  *                     unavailable (`retire`)
  *
- * Units match by bedrooms and bathrooms, the floor plan name breaking a tie.
+ * Units match by bedrooms and bathrooms. Among those, the floor plan name
+ * wins, then the closest size: Rosebury has three 2 bed / 2 bath plans at
+ * 1,220, 1,304 and 1,452 sq ft, and taking the first one paired the wrong
+ * plans and moved one's price onto another.
  * Leases match by rent within a unit; a lease whose rent changed still has to
  * be recognised as the same lease, so what is left over pairs up by a shared
  * lease length, and a unit with a single lease on each side is taken to be
@@ -271,6 +279,7 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
     area: u.area ?? "",
     title: u.title ?? "",
     floorPlanImageUrl: u.floorPlanImageUrl ?? "",
+    photoCount: Number(u.photoCount) || 0,
   });
   const fromLive = (ll, status) => ({
     rent: ll.rent,
@@ -292,7 +301,19 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
         Number(p.u.bedrooms) === Number(w.bedrooms) &&
         Number(p.u.bathrooms) === Number(w.bathrooms)
     );
-    const hit = same.find((p) => name(p.u.title) && name(p.u.title) === name(w.title)) ?? same[0];
+    const gap = (p) => {
+      const a = Number(p.u.area);
+      const b = Number(w.area);
+      return a > 0 && b > 0 ? Math.abs(a - b) / Math.max(a, b) : Infinity;
+    };
+    const hit =
+      same.find((p) => name(p.u.title) && name(p.u.title) === name(w.title)) ??
+      // Closest size, but only a size that could be the same apartment
+      // re-measured. Otherwise the first, as before, when neither side gives one.
+      same.filter((p) => gap(p) <= 0.05).sort((a, b) => gap(a) - gap(b))[0] ??
+      (same.some((p) => gap(p) < Infinity) && Number(w.area) > 0
+        ? same.find((p) => gap(p) === Infinity)
+        : same[0]);
     if (!hit) {
       out.push({ ...w, status: "new", leases: (w.leases ?? []).map((l) => ({ ...l, status: "new" })) });
       continue;
@@ -339,8 +360,17 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
         retire: false,
       };
     });
+    /*
+     * The website's photos of a unit that already has photos on Proximity are
+     * held back rather than added: the landlord may have put the same rooms up
+     * by hand, and two copies of every kitchen is worse than none. They can be
+     * added from the unit with one click.
+     */
+    const hold = live.photoCount > 0;
     out.push({
       ...w,
+      photos: hold ? [] : w.photos ?? [],
+      heldPhotos: hold ? [...(w.heldPhotos ?? []), ...(w.photos ?? [])] : w.heldPhotos ?? [],
       title: w.title || live.title,
       area: w.area !== "" && w.area != null ? w.area : live.area,
       floorPlanImageUrl: w.floorPlanImageUrl || live.floorPlanImageUrl,

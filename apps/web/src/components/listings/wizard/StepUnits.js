@@ -118,7 +118,7 @@ function FloorPlanSlot({ url, uploading, error, onPick, onRemove }) {
  * Photos of this unit: its rooms, as opposed to the building's gallery on the
  * Photos step. Several at once; each can be taken out again.
  */
-function UnitPhotos({ photos, uploading, error, onPick, onRemove }) {
+function UnitPhotos({ photos, held = [], uploading, error, onPick, onRemove, onAddHeld }) {
   return (
     <div>
       <span className="block text-xs font-semibold text-gray-700">Unit photos</span>
@@ -161,6 +161,15 @@ function UnitPhotos({ photos, uploading, error, onPick, onRemove }) {
           />
         </label>
       </div>
+      {held.length > 0 && (
+        <p className="mt-1.5 text-[11px] text-gray-500">
+          Your website has {held.length} photo{held.length === 1 ? "" : "s"} of this unit. It already has
+          photos on Proximity, so they weren&apos;t added in case they&apos;re the same ones.{" "}
+          <button type="button" onClick={onAddHeld} className="font-semibold text-red-600 hover:underline">
+            Add them
+          </button>
+        </p>
+      )}
       {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
     </div>
   );
@@ -730,6 +739,8 @@ export default function StepUnits({ w }) {
                   <div className="min-w-0 flex-1">
                     <UnitPhotos
                       photos={unit.photos ?? []}
+                      held={unit.heldPhotos ?? []}
+                      onAddHeld={() => w.addHeldPhotos(i)}
                       uploading={w.unitPhotoUploading[i] ?? 0}
                       error={w.floorPlanError[`photos${i}`]}
                       onPick={(files) => w.uploadUnitPhotos(i, files)}

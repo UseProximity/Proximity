@@ -683,6 +683,137 @@ export default function AddListingWizard({
     }
   };
 
+  /*
+   * Photos the import tied to one floor plan go onto that unit, the same way a
+   * landlord's own unit photos do: into R2 now, filed against the unit (and so
+   * tagged to it) once it has an id. A unit already on Proximity with photos of
+   * its own gets them held instead; see mergeWithLive.
+   */
+  const importUnitPhotos = async (items) => {
+    const epoch = importEpoch.current;
+    const jobs = items.flatMap(({ index, urls }) =>
+      urls.filter((url) => !stagedPhotoUrls.current.has(url)).map((url) => ({ index, url }))
+    );
+    jobs.forEach(({ url }) => stagedPhotoUrls.current.add(url));
+    if (!jobs.length) return;
+    const aborter = new AbortController();
+    importAborters.current.add(aborter);
+    const results = new Array(jobs.length);
+    let cursor = 0;
+    // Four at a time, like importPhotos.
+    const worker = async () => {
+      for (;;) {
+        const idx = cursor++;
+        if (idx >= jobs.length || aborter.signal.aborted) return;
+        const { index, url } = jobs[idx];
+        try {
+          const res = await fetch(
+            `/api/landlord/listing-draft/image?url=${encodeURIComponent(url)}`,
+            { signal: aborter.signal }
+          );
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          if (!blob.type.startsWith("image/") || blob.size < 15000) continue;
+          const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+          const upload = await compressImage(new File([blob], `unit-${index + 1}-${idx + 1}.${ext}`, { type: blob.type }));
+          if (upload.size > 4 * 1024 * 1024) continue;
+          const fd = new FormData();
+          fd.append("file", upload);
+          fd.append("kind", "unit-photo");
+          const up = await fetch("/api/upload/floor-plan", { method: "POST", body: fd, signal: aborter.signal });
+          const data = await up.json().catch(() => ({}));
+          if (up.ok && data.url) results[idx] = { index, url: data.url };
+        } catch {
+          /* skip this photo */
+        }
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, worker));
+    } finally {
+      importAborters.current.delete(aborter);
+    }
+    if (epoch !== importEpoch.current) return;
+    // Added once, in the site's order, rather than as each one finishes.
+    const byUnit = new Map();
+    for (const r of results.filter(Boolean)) byUnit.set(r.index, [...(byUnit.get(r.index) ?? []), r.url]);
+    if (!byUnit.size) return;
+    setUnits((us) =>
+      us.map((un, i) => {
+        const add = byUnit.get(i);
+        if (!add) return un;
+        return (un.live?.photoCount ?? 0) > 0
+          ? { ...un, heldPhotos: [...(un.heldPhotos ?? []), ...add] }
+          : { ...un, photos: [...(un.photos ?? []), ...add] };
+      })
+    );
+  };
+
+  // The website's photos of a unit that already had some, added on request.
+  const addHeldPhotos = (i) =>
+    setUnits((us) =>
+      us.map((u, idx) =>
+        idx === i ? { ...u, photos: [...(u.photos ?? []), ...(u.heldPhotos ?? [])], heldPhotos: [] } : u
+      )
+    );
+
+  /*
+   * The staged gallery photos, presigned, PUT straight to R2 and confirmed.
+   * Returns an error to show, or null. Shared by a new listing's publish and an
+   * owner's re-import onto a listing that has no photos yet.
+   */
+  const uploadStagedPhotos = async (listingId, photoUnitId) => {
+    const presignRes = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        listingId,
+        unitId: photoUnitId,
+        files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
+      }),
+    });
+    if (!presignRes.ok) {
+      const presignData = await presignRes.json().catch(() => ({}));
+      return `Listing saved, but images failed to upload: ${
+        presignData.error || `server error ${presignRes.status}`
+      }`;
+    } else {
+      const { presigned } = await presignRes.json();
+      const uploadResults = await Promise.allSettled(
+        stagedFiles.map((file, i) =>
+          fetch(presigned[i].uploadUrl, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": file.type },
+          })
+        )
+      );
+      const failed = uploadResults.filter(
+        (r) => r.status === "rejected" || !r.value?.ok
+      );
+      if (failed.length > 0) {
+        return `Listing saved, but ${failed.length} image(s) failed to upload. You can re-add them from your dashboard.`;
+      } else {
+        const confirmRes = await fetch("/api/upload", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listingId,
+            unitId: photoUnitId,
+            urls: presigned.map((p) => p.publicUrl),
+          }),
+        });
+        if (!confirmRes.ok) {
+          const confirmData = await confirmRes.json().catch(() => ({}));
+          return `Listing saved, but images could not be attached: ${
+            confirmData.error || `server error ${confirmRes.status}`
+          }`;
+        }
+      }
+    }
+    return null;
+  };
+
   const requestQueuedDraft = ({ levelUrl, ...target }) =>
     fetch("/api/landlord/listing-draft", {
       method: "POST",
@@ -798,6 +929,7 @@ export default function AddListingWizard({
     }
     let nextUnits = [emptyUnit()];
     const floorPlanImports = [];
+    const unitPhotoImports = [];
     if (Array.isArray(listing.units) && listing.units.length) {
       /*
        * Enough for a real building. Twelve looked generous until One Hundred
@@ -822,6 +954,7 @@ export default function AddListingWizard({
         if ((u.rent != null && u.rent !== "") || (u.leaseTermMonths ?? []).length)
           marked.add(`u${i}:leases`);
         if (u.floorPlanImageUrl) floorPlanImports.push({ index: i, url: u.floorPlanImageUrl });
+        if ((u.photoUrls ?? []).length) unitPhotoImports.push({ index: i, urls: u.photoUrls });
         /*
          * The site's own unit identifiers ("2W", "101", "Madrid") fill in the
          * "which units have this floor plan?" boxes, so each one becomes its
@@ -915,6 +1048,7 @@ export default function AddListingWizard({
     }
     setUnits(nextUnits);
     if (floorPlanImports.length) importFloorPlans(floorPlanImports);
+    if (unitPhotoImports.length) importUnitPhotos(unitPhotoImports);
     setImportedFields(marked);
 
     importSourceUrl.current = sourceUrl ?? null;
@@ -1297,13 +1431,34 @@ export default function AddListingWizard({
             }
           }
           if ((u.photos ?? []).length) {
-            await send(
+            const failed = await send(
               "/api/upload",
               "PUT",
               { listingId: lid, unitId: u.live.id, urls: u.photos },
-              null
+              "failed"
             );
+            // Filed: a second Publish after a later failure must not add them twice.
+            if (!failed) setUnits((prev) => prev.map((pu) => (pu.live?.id === u.live.id ? { ...pu, photos: [] } : pu)));
           }
+        }
+        /*
+         * The building's own photos from the website, on the owner's listing,
+         * only while it has none: with a gallery already up we can't tell which
+         * of these the landlord added by hand, so they stay out.
+         */
+        if (ownExisting.mine === "owner" && stagedFiles.length && existingProperty?.photoCount === 0) {
+          const problem = await uploadStagedPhotos(lid, null);
+          if (problem) toast.error(problem, { duration: 8000 });
+        }
+        // Re-importing a listing records the page it was read from, so the
+        // source check knows about it too, not only listings created by import.
+        if (ownExisting.mine === "owner" && importSourceUrl.current) {
+          await send(
+            `/api/landlord/listings/${lid}/property`,
+            "PATCH",
+            { sourceUrl: importSourceUrl.current, indexUrl: importPastedUrl.current || null },
+            null
+          );
         }
         createUnits = units.filter((x) => !x.live);
         if (!createUnits.length) {
@@ -1531,54 +1686,7 @@ export default function AddListingWizard({
          */
         const photoUnitId = attachingToExistingUnit ? unitSelection.unitId : null;
         if (listingId) {
-          const presignRes = await fetch("/api/upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              listingId,
-              unitId: photoUnitId,
-              files: stagedFiles.map((f) => ({ name: f.name, type: f.type })),
-            }),
-          });
-          if (!presignRes.ok) {
-            const presignData = await presignRes.json().catch(() => ({}));
-            uploadError = `Listing saved, but images failed to upload: ${
-              presignData.error || `server error ${presignRes.status}`
-            }`;
-          } else {
-            const { presigned } = await presignRes.json();
-            const uploadResults = await Promise.allSettled(
-              stagedFiles.map((file, i) =>
-                fetch(presigned[i].uploadUrl, {
-                  method: "PUT",
-                  body: file,
-                  headers: { "Content-Type": file.type },
-                })
-              )
-            );
-            const failed = uploadResults.filter(
-              (r) => r.status === "rejected" || !r.value?.ok
-            );
-            if (failed.length > 0) {
-              uploadError = `Listing saved, but ${failed.length} image(s) failed to upload. You can re-add them from your dashboard.`;
-            } else {
-              const confirmRes = await fetch("/api/upload", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  listingId,
-                  unitId: photoUnitId,
-                  urls: presigned.map((p) => p.publicUrl),
-                }),
-              });
-              if (!confirmRes.ok) {
-                const confirmData = await confirmRes.json().catch(() => ({}));
-                uploadError = `Listing saved, but images could not be attached: ${
-                  confirmData.error || `server error ${confirmRes.status}`
-                }`;
-              }
-            }
-          }
+          uploadError = await uploadStagedPhotos(listingId, photoUnitId);
         } else {
           uploadError =
             "Saved, but your photos could not be attached. You can add them from your dashboard.";
@@ -1760,6 +1868,7 @@ export default function AddListingWizard({
     applyTermsToAll,
     restoreUnits,
     uploadUnitPhotos,
+    addHeldPhotos,
     unitPhotoUploading,
     removeUnitPhoto,
     batchMode: !!batch,

@@ -57,6 +57,7 @@ export async function GET(req) {
     .from("listings")
     .select(
       `id, title, address, latitude, longitude, created_at,
+       listing_images(id, listing_image_units(unit_id)),
        listing_units!listing_id(
          id, unit_designator, unit_number, bedrooms, bathrooms, area, deleted_at,
          title, floor_plan_image_url,
@@ -87,6 +88,18 @@ export async function GET(req) {
 
   const canonical = rows[0];
   const userId = session?.user?.id ?? null;
+
+  /*
+   * How many photos each unit, and the property, already has. An import onto a
+   * listing that has photos holds the website's back instead of adding them, so
+   * a landlord who uploaded their rooms by hand doesn't get every one twice.
+   */
+  const photoCountByUnit = new Map();
+  for (const img of rows.flatMap((row) => row.listing_images ?? [])) {
+    for (const tag of img.listing_image_units ?? []) {
+      photoCountByUnit.set(tag.unit_id, (photoCountByUnit.get(tag.unit_id) ?? 0) + 1);
+    }
+  }
 
   const units = rows
     .flatMap((row) =>
@@ -131,6 +144,7 @@ export async function GET(req) {
         area: unit.area,
         title: unit.title ?? null,
         floorPlanImageUrl: unit.floor_plan_image_url ?? null,
+        photoCount: photoCountByUnit.get(unit.id) ?? 0,
         available: unitIsAvailable(unit),
         leases,
         liveLeaseCount: liveLeases.length,
@@ -170,6 +184,7 @@ export async function GET(req) {
     }
     existing.leases.push(...unit.leases);
     existing.duplicateUnitIds = [...(existing.duplicateUnitIds ?? []), unit.id];
+    existing.photoCount += unit.photoCount;
     existing.liveLeaseCount = existing.leases.filter((l) => l.live).length;
     existing.canAddSublease = existing.liveLeaseCount === 0;
   }
@@ -209,6 +224,7 @@ export async function GET(req) {
       listingRowCount: rows.length,
       ownerCount: ownerIds.size,
       viewerHasLease: mergedUnits.some((u) => u.leases.some((l) => l.isMine)),
+      photoCount: (canonical.listing_images ?? []).length,
       units: mergedUnits,
     },
   });

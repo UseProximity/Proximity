@@ -572,7 +572,9 @@ export async function POST(req) {
 
     const portalPage = isListingPortal(main.finalUrl);
     const brandName = extractSiteBrand(main.html);
-    const imagesWithFeed = spreadAcrossPages(imageMap, 60);
+    // Room for a building's shared shots plus every floor plan's own page: a
+    // unit page alone can carry 25 photos (Rosebury), and 60 cut the second off.
+    const imagesWithFeed = spreadAcrossPages(imageMap, 120);
     let draft = await extractListingDraft({
       pages,
       images: imagesWithFeed,
@@ -600,7 +602,7 @@ export async function POST(req) {
         addImages(structureOf(main), main.finalUrl, 1);
         const rImages = [...imageMap.entries()]
           .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
-          .slice(0, 60);
+          .slice(0, 120);
         draft = await extractListingDraft({
           pages,
           images: rImages,
@@ -629,7 +631,7 @@ export async function POST(req) {
           pages,
           images: [...imageMap.entries()]
             .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
-            .slice(0, 60),
+            .slice(0, 120),
           links,
           targetProperty,
           brandName,
@@ -665,7 +667,7 @@ export async function POST(req) {
           pages,
           images: [...imageMap.entries()]
             .map(([url, v]) => ({ url, alt: v.alt, pages: [...v.pages].sort() }))
-            .slice(0, 60),
+            .slice(0, 120),
           links,
           targetProperty,
           brandName,
@@ -775,6 +777,7 @@ export async function POST(req) {
             ? plan.leaseTermMonths
             : (unit?.leaseTermMonths ?? []),
           leaseTermPrices: [],
+          photoUrls: unit?.photoUrls ?? [],
         };
       };
 
@@ -1048,7 +1051,10 @@ export async function POST(req) {
               id: hit.id,
               title: hit.title ?? null,
               address: hit.address ?? null,
-              mine: own ? owned.get(hit.id) ?? "owner" : null,
+              // Same vocabulary as /api/properties/lookup ("owner" | "lease"),
+              // which the wizard checks for. getOwnedListings says "property",
+              // and an owner whose lookup failed was treated as a lease-holder.
+              mine: own ? (owned.get(hit.id) === "lease" ? "lease" : "owner") : null,
             },
           }
         : p;
