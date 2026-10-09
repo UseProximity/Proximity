@@ -1,23 +1,29 @@
 // Conversation screen. Loads the latest page of messages, marks the thread read,
-// and sends text messages. Older messages load when the user scrolls toward the
+// and sends text and photo messages. Older messages load when the user scrolls toward the
 // start of the conversation (the list is inverted, so "end" is the oldest
 // message). New messages arrive over realtime (lib/chatRealtime.js); the REST
 // reload on focus and the refresh button in the header remain as the fallback.
-// Attachments are not supported on mobile yet.
+// Photos (up to 5, picked from the library) are uploaded through the presign
+// endpoint and sent as one attachment message; other file types are not supported
+// on mobile yet.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, MoreHorizontal, RefreshCw } from "lucide-react-native";
+import { ChevronLeft, ImagePlus, MoreHorizontal, RefreshCw, X } from "lucide-react-native";
 import apiClient from "../../src/lib/apiClient";
 import {
   CHAT_MAX_BODY,
@@ -28,8 +34,15 @@ import {
 import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
 import { subscribeThread } from "../../src/lib/chatRealtime";
+import {
+  CHAT_PHOTO_MAX_FILES,
+  pickChatPhotos,
+  prepareChatPhoto,
+  uploadChatPhotos,
+} from "../../src/lib/chatPhotos";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
 import { ChatSheets } from "../../src/components/chat/ChatSheets";
+import { ChatPhotoViewer } from "../../src/components/chat/ChatPhotoViewer";
 import { SendButton } from "../../src/components/ui/SendButton";
 import { colors } from "../../src/theme/tokens";
 
@@ -61,6 +74,12 @@ export default function ChatThreadScreen() {
   // The open popup (see ChatSheets.js): null, { type: "options" } or
   // { type: "message", message }.
   const [sheet, setSheet] = useState(null);
+  // Photos chosen for the next message (already converted to an accepted type),
+  // the photo viewer ({ photos, index }), and whether photos are being prepared.
+  const [photos, setPhotos] = useState([]);
+  const [viewer, setViewer] = useState(null);
+  const [preparing, setPreparing] = useState(false);
+  const sendingPhotosRef = useRef(false);
   const loadedOnce = useRef(false);
   const messagesRef = useRef([]);
   messagesRef.current = messages;
@@ -172,7 +191,86 @@ export default function ChatThreadScreen() {
     }
   }, [hasMore, loadingOlder, loading, messages, threadId]);
 
+  const addPhotos = useCallback(async () => {
+    if (sending || preparing) return;
+    const remaining = CHAT_PHOTO_MAX_FILES - photos.length;
+    if (remaining <= 0) {
+      Alert.alert(
+        "Photo limit reached",
+        `You can attach up to ${CHAT_PHOTO_MAX_FILES} photos to a message.`
+      );
+      return;
+    }
+    setSendError(null);
+    try {
+      const picked = await pickChatPhotos({ limit: remaining });
+      if (picked.status === "denied") {
+        Alert.alert("Photo access is off", "Allow Proximity to access your photos in Settings to attach them.", [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ]);
+        return;
+      }
+      if (picked.status !== "ok") return;
+
+      setPreparing(true);
+      const results = await Promise.allSettled(
+        picked.assets.map((asset, i) => prepareChatPhoto(asset, photos.length + i))
+      );
+      const stamp = Date.now();
+      const ready = results
+        .map((result, i) =>
+          result.status === "fulfilled" ? { id: `${stamp}-${i}`, ...result.value } : null
+        )
+        .filter(Boolean);
+      if (ready.length < results.length) {
+        const refused = results.find((r) => r.status === "rejected" && r.reason?.userFacing);
+        setSendError(refused ? refused.reason.message : "Some photos couldn't be added.");
+      }
+      setPhotos((current) => [...current, ...ready].slice(0, CHAT_PHOTO_MAX_FILES));
+    } catch {
+      setSendError("Couldn't open your photos. Please try again.");
+    } finally {
+      setPreparing(false);
+    }
+  }, [sending, preparing, photos.length]);
+
+  // Uploads the staged photos, then sends them (with the typed text as the caption)
+  // as one message. If anything fails before the send, no message exists and the
+  // photos and caption stay in the composer for another try. The message itself
+  // arrives over realtime; the reload is the fallback if the socket is down.
+  const sendPhotos = useCallback(async () => {
+    // The ref is checked synchronously: two quick taps can both see the old `sending`
+    // state before React re-renders, but not the same ref.
+    if (sendingPhotosRef.current || sending || preparing || photos.length === 0) return;
+    sendingPhotosRef.current = true;
+    const caption = text.trim();
+    setSending(true);
+    setSendError(null);
+    try {
+      const attachments = await uploadChatPhotos(threadId, photos);
+      await apiClient.chat.sendMessage(threadId, { body: caption || undefined, attachments });
+      // Keep anything typed while the upload was running.
+      setText((current) => (current.trim() === caption ? "" : current));
+      setPhotos([]);
+      loadLatest();
+    } catch (err) {
+      if (err?.status === 403 && err?.body?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
+        setUnavailable(true);
+      } else if (err?.status !== 401) {
+        setSendError(chatErrorMessage(err, "Couldn't send your photos. Please try again."));
+      }
+    } finally {
+      sendingPhotosRef.current = false;
+      setSending(false);
+    }
+  }, [sending, preparing, photos, text, threadId, loadLatest]);
+
   const handleSend = useCallback(async () => {
+    if (photos.length > 0) {
+      await sendPhotos();
+      return;
+    }
     const body = text.trim();
     if (!body || sending) return;
 
@@ -225,7 +323,7 @@ export default function ChatThreadScreen() {
     } finally {
       setSending(false);
     }
-  }, [text, sending, threadId, user?.id, markRead]);
+  }, [text, sending, photos.length, sendPhotos, threadId, user?.id, markRead]);
 
   // Block and Report are native form sheets (app/chat-sheet/). iOS cannot present
   // one while the options Modal is still dismissing, so the screen closes the Modal
@@ -276,6 +374,7 @@ export default function ChatThreadScreen() {
       <MessageBubble
         message={item}
         senderName={!item.isMine && startsRun ? name || null : null}
+        onOpenPhotos={(list, index) => setViewer({ photos: list, index })}
         onLongPress={
           !item.isMine && !item.pending
             ? (rect) => setSheet({ type: "message", message: item, rect })
@@ -394,28 +493,82 @@ export default function ChatThreadScreen() {
             <Text className="text-sm text-gray-500">{CONVERSATION_UNAVAILABLE_MESSAGE}</Text>
           </View>
         ) : (
-        <View className="border-t border-gray-100 bg-white px-4 pt-2.5 pb-3 flex-row items-end gap-2">
-          <TextInput
-            value={text}
-            onChangeText={(value) => setText(value.slice(0, CHAT_MAX_BODY))}
-            placeholder="Write a message"
-            multiline
-            editable={!loading}
-            className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 max-h-28"
-          />
-          {sending ? (
-            <View className="w-9 h-9 items-center justify-center">
-              <ActivityIndicator />
-            </View>
-          ) : (
-            <SendButton
-              onPress={handleSend}
-              disabled={!text.trim() || loading}
+        <View className="border-t border-gray-100 bg-white">
+          {photos.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, gap: 8 }}
+            >
+              {photos.map((photo) => (
+                <View key={photo.id} style={{ width: 64, height: 64 }}>
+                  <Image
+                    source={{ uri: photo.uri }}
+                    alt="Selected photo"
+                    style={{ width: 64, height: 64, borderRadius: 10 }}
+                    className="bg-gray-100"
+                  />
+                  {!sending ? (
+                    <Pressable
+                      onPress={() => setPhotos((current) => current.filter((p) => p.id !== photo.id))}
+                      hitSlop={8}
+                      accessibilityLabel="Remove photo"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-800 items-center justify-center"
+                    >
+                      <X size={12} color="#ffffff" strokeWidth={3} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
+          <View className="px-4 pt-2.5 pb-3 flex-row items-end gap-2">
+            <Pressable
+              onPress={addPhotos}
+              disabled={sending || preparing || loading}
+              hitSlop={6}
+              accessibilityLabel="Attach photos"
+              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
+            >
+              {preparing ? (
+                <ActivityIndicator size="small" />
+              ) : (
+                <ImagePlus
+                  size={18}
+                  color={sending || loading ? colors.textMuted : colors.textPrimary}
+                  strokeWidth={2}
+                />
+              )}
+            </Pressable>
+            <TextInput
+              value={text}
+              onChangeText={(value) => setText(value.slice(0, CHAT_MAX_BODY))}
+              placeholder={photos.length > 0 ? "Add a caption" : "Write a message"}
+              multiline
+              editable={!loading}
+              className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 max-h-28"
             />
-          )}
+            {sending ? (
+              <View className="w-9 h-9 items-center justify-center">
+                <ActivityIndicator />
+              </View>
+            ) : (
+              <SendButton
+                onPress={handleSend}
+                disabled={(!text.trim() && photos.length === 0) || loading || preparing}
+              />
+            )}
+          </View>
         </View>
         )}
       </KeyboardAvoidingView>
+
+      <ChatPhotoViewer
+        photos={viewer?.photos}
+        index={viewer?.index ?? 0}
+        onClose={() => setViewer(null)}
+      />
 
       <ChatSheets
         sheet={sheet}

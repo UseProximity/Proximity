@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Flag } from "lucide-react-native";
 import { formatMessageTime } from "../../lib/chatFormat";
+import { ChatAttachmentImages, isImageAttachment } from "./ChatAttachmentImages";
 
 // The chat screen's two small popups, in the style of Instagram's: the
 // conversation options menu and the long-press menu on a received message. They
@@ -96,6 +97,12 @@ function MessagePanel({ message, rect, onReport, onClose }) {
   const insets = useSafeAreaInsets();
   const time = formatMessageTime(message?.createdAt);
   const isAttachment = message?.messageType === "attachment";
+  const attachments =
+    isAttachment && Array.isArray(message?.metadata?.attachments) ? message.metadata.attachments : [];
+  const photos = attachments.filter(isImageAttachment);
+  const otherFiles = attachments.filter((attachment) => !isImageAttachment(attachment));
+  const caption =
+    typeof message?.metadata?.caption === "string" ? message.metadata.caption.trim() : "";
   const cardH = CARD_ROW_HEIGHT + (time ? CARD_TIME_HEIGHT : 0);
 
   const bubbleTop = rect.y;
@@ -114,17 +121,35 @@ function MessagePanel({ message, rect, onReport, onClose }) {
     <>
       <Pressable
         onPress={onClose}
-        className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5"
+        className={`bg-gray-100 rounded-2xl rounded-tl-sm ${
+          photos.length > 0 ? "p-1" : "px-3.5 py-2.5"
+        }`}
         style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.width }}
       >
-        <Text className="text-sm text-gray-900">
-          {message?.body || (isAttachment ? "Sent a file" : "")}
-        </Text>
-        {isAttachment ? (
-          <Text className="text-[11px] mt-1 text-gray-500">
-            Attachments can&apos;t be viewed in the app yet
+        {attachments.length > 0 ? (
+          <>
+            <ChatAttachmentImages attachments={photos} />
+            {otherFiles.map((file, index) => (
+              <Text key={file.id ?? `${file.fileName}-${index}`} numberOfLines={1} className="text-sm text-gray-900">
+                {file.fileName || "File"}
+              </Text>
+            ))}
+            {otherFiles.length > 0 ? (
+              <Text className="text-[11px] mt-1 text-gray-500">
+                Files other than photos can&apos;t be opened in the app yet
+              </Text>
+            ) : null}
+            {caption ? (
+              <Text className={`text-sm text-gray-900 ${photos.length > 0 ? "px-2.5 pt-1.5 pb-1" : "mt-1"}`}>
+                {caption}
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <Text className="text-sm text-gray-900">
+            {message?.body || (isAttachment ? "Sent a file" : "")}
           </Text>
-        ) : null}
+        )}
       </Pressable>
       <View
         className="bg-white rounded-2xl overflow-hidden"
