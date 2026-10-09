@@ -252,6 +252,10 @@ export function htmlToText(html) {
 function normalizeImageUrl(u) {
   const wix = u.match(/^(https:\/\/static\.wixstatic\.com\/media\/[^/]+)\/v1\//);
   if (wix) return wix[1];
+  // GoDaddy (wsimg) puts its crop and resize after "/:/", usually a 600px
+  // thumbnail. Ask for one 1600px rendition so every size of a photo is one URL.
+  const wsimg = u.match(/^(https:\/\/img\d*\.wsimg\.com\/isteam\/ip\/[^/]+\/[^/]+?\.(?:jpe?g|png|webp))(?:\/:\/.*)?$/i);
+  if (wsimg) return `${wsimg[1]}/:/rs=w:1600`;
   if (/(cdn\.shopify\.com|\/cdn\/shop\/)/.test(u) && !/[?&]width=/.test(u)) {
     return u + (u.includes("?") ? "&" : "?") + "width=1600";
   }
@@ -289,10 +293,26 @@ export function extractImageCandidates(html, baseUrl, cap = 40) {
     out.push({ url: abs, alt });
   };
 
+  /*
+   * Lazy-loading sites leave a 1x1 placeholder in src and park the real photo in
+   * an attribute of their own: GoDaddy uses data-srclazy, WordPress plugins
+   * data-lazy-src or data-original. Rosebury's unit pages had 25 photos and
+   * only the building's cover came through until these were read.
+   */
+  const attr = (tag, name) =>
+    tag.match(new RegExp(`\\s${name}="([^"]+)"`, "i"))?.[1] ?? null;
+  // The first (usually largest listed) URL of a srcset, for tags that only have one.
+  const firstOfSrcset = (v) => (v ? v.split(",")[0].trim().split(/\s+/)[0] : null);
   for (const tag of html.match(/<img[^>]+>/gi) ?? []) {
+    const src = attr(tag, "src");
     push(
-      tag.match(/\bdata-src="([^"]+)"/i)?.[1] ?? tag.match(/\bsrc="([^"]+)"/i)?.[1],
-      decodeEntities(tag.match(/\balt="([^"]*)"/i)?.[1] ?? "")
+      attr(tag, "data-srclazy") ??
+        attr(tag, "data-lazy-src") ??
+        attr(tag, "data-src") ??
+        attr(tag, "data-original") ??
+        (src && !src.startsWith("data:") ? src : null) ??
+        firstOfSrcset(attr(tag, "data-srcsetlazy") ?? attr(tag, "data-srcset") ?? attr(tag, "srcset")),
+      decodeEntities(attr(tag, "alt") ?? "")
     );
   }
   for (const meta of html.match(
@@ -301,7 +321,7 @@ export function extractImageCandidates(html, baseUrl, cap = 40) {
     push(meta.match(/\bcontent="([^"]+)"/i)?.[1], "site cover image");
   }
   for (const m of html.matchAll(
-    /https?:\/\/[^\s"'<>\\()]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\)?]|$)/gi
+    /(?:https?:)?\/\/[^\s"'<>\\(),]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\),?]|\/:\/|$)/gi
   )) {
     push(m[0], "");
   }
