@@ -58,6 +58,7 @@ import {
   describeFloorPlanUnits,
 } from "@/lib/listingDraft/floorPlanUnits";
 import { extractListingDraft } from "@/lib/listingDraft/extract";
+import { assignPhotosToUnits } from "@/lib/listingDraft/assignPhotos";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
 
 // Friendly, detail-free messages per DraftFetchError code (CLAUDE.md security:
@@ -112,6 +113,16 @@ const FLOORPLAN_LINK_RE =
  */
 const INVENTORY_LINK_RE =
   /search\s*(listing|apartment|rental|propert|home)|\b(all|our|available|browse)\s+(propert|listing|rental|apartment|communit|home)|find\s+(a\s+|your\s+)?(home|apartment|rental)|\bvacanc/i;
+
+/*
+ * A page per apartment. Small landlords rarely have a "Floor Plans" page: they
+ * have one page for each unit, linked from the front page, and that is where
+ * the rent, the size and every photo are. Rosebury Rentals is four of them
+ * ("6219-rosebury-ave,-n-unit"), and reading only the front page imported four
+ * floor plans with no price, no size and no photos.
+ */
+const UNIT_PAGE_LINK_RE = /\b(unit|apt|apartment|suite|residence|flat)s?\b|floor[\s_-]*plan|\b\d\s*(bed|br|bd)\b/i;
+const UNIT_PAGE_CAP = 6;
 
 // How many links the model is shown. Raised from the old same-site 40: a
 // company inventory page carries well over a hundred building links and the
@@ -434,6 +445,29 @@ export async function POST(req) {
         triedFloorPlans = true;
         floorPlanIndex = fpPage;
       }
+    }
+    /*
+     * The site's own unit pages, when there is no property page of its own to
+     * start from. For a picked property only the ones carrying its street
+     * number are read: "6221 E Unit" is not part of 6219.
+     */
+    if (!targetProperty?.url || targetProperty.url === main.finalUrl) {
+      const readable = (l) => {
+        try {
+          return `${l.text} ${decodeURIComponent(l.url)}`;
+        } catch {
+          return `${l.text} ${l.url}`;
+        }
+      };
+      const seen = new Set(pages.map((p) => p.url));
+      let unitLinks = links.filter(
+        (l) => l.internal && l.url !== main.finalUrl && !seen.has(l.url) && UNIT_PAGE_LINK_RE.test(readable(l))
+      );
+      const number = targetProperty
+        ? `${targetProperty.address ?? ""} ${targetProperty.name ?? ""}`.match(/\b\d{2,6}\b/)?.[0]
+        : null;
+      if (number) unitLinks = unitLinks.filter((l) => new RegExp(`\\b${number}\\b`).test(readable(l)));
+      for (const l of unitLinks.slice(0, UNIT_PAGE_CAP)) await followBestEffort(l.url);
     }
     if (!targetProperty && pages.length === 1 && pages[0].text.length < THIN_TEXT_CHARS) {
       const followUrls = [];
@@ -777,7 +811,6 @@ export async function POST(req) {
             ? plan.leaseTermMonths
             : (unit?.leaseTermMonths ?? []),
           leaseTermPrices: [],
-          photoUrls: unit?.photoUrls ?? [],
         };
       };
 
@@ -964,6 +997,29 @@ export async function POST(req) {
       }
       if (notes.length) {
         draft.listing.sourceNotes = [...notes, ...(draft.listing.sourceNotes ?? [])];
+      }
+
+      /*
+       * Each floor plan's own photos, so they are tagged to it on publish and a
+       * student who picks the plan sees its rooms first. A second, small call:
+       * see assignPhotos.js for why it can't ride in the extraction itself.
+       * The floor-plan diagrams already have their own slot and are left out.
+       */
+      const diagrams = new Set(units.map((u) => u.floorPlanImageUrl).filter(Boolean));
+      const candidates = spreadAcrossPages(imageMap, 120).filter((im) => !diagrams.has(im.url));
+      const sorted = await assignPhotosToUnits({ units, images: candidates, pages });
+      if (sorted) {
+        units.forEach((u, i) => {
+          u.photoUrls = sorted.byUnit[i] ?? [];
+        });
+        // The gallery keeps the building: shots now filed under a unit leave it,
+        // and the shared ones the sort found fill in behind what the draft chose.
+        const onUnits = new Set(sorted.byUnit.flat());
+        draft.listing.imageUrls = [
+          ...new Set([...(draft.listing.imageUrls ?? []), ...sorted.shared]),
+        ]
+          .filter((url) => !onUnits.has(url))
+          .slice(0, 12);
       }
     }
 

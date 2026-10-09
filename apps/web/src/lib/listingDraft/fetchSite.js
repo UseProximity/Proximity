@@ -254,8 +254,9 @@ function normalizeImageUrl(u) {
   if (wix) return wix[1];
   // GoDaddy (wsimg) puts its crop and resize after "/:/", usually a 600px
   // thumbnail. Ask for one 1600px rendition so every size of a photo is one URL.
-  const wsimg = u.match(/^(https:\/\/img\d*\.wsimg\.com\/isteam\/ip\/[^/]+\/[^/]+?\.(?:jpe?g|png|webp))(?:\/:\/.*)?$/i);
-  if (wsimg) return `${wsimg[1]}/:/rs=w:1600`;
+  // Some pages also link the same photo over http.
+  const wsimg = u.match(/^https?:\/\/(img\d*\.wsimg\.com\/isteam\/ip\/[^/]+\/[^/]+?\.(?:jpe?g|png|webp))(?:\/:\/.*)?$/i);
+  if (wsimg) return `https://${wsimg[1]}/:/rs=w:1600`;
   if (/(cdn\.shopify\.com|\/cdn\/shop\/)/.test(u) && !/[?&]width=/.test(u)) {
     return u + (u.includes("?") ? "&" : "?") + "width=1600";
   }
