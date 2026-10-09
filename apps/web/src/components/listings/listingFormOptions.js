@@ -306,11 +306,20 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
       const b = Number(w.area);
       return a > 0 && b > 0 ? Math.abs(a - b) / Math.max(a, b) : Infinity;
     };
+    // One plan of this layout on each side is the same plan, whatever sizes
+    // they give: a placeholder "1,000 sq ft" is still that apartment.
+    const onlyOne =
+      same.length === 1 &&
+      liveUnits.filter((u) => Number(u.bedrooms) === Number(w.bedrooms) && Number(u.bathrooms) === Number(w.bathrooms)).length === 1 &&
+      websiteUnits.filter((x) => Number(x.bedrooms) === Number(w.bedrooms) && Number(x.bathrooms) === Number(w.bathrooms)).length === 1;
     const hit =
       same.find((p) => name(p.u.title) && name(p.u.title) === name(w.title)) ??
       // Closest size, but only a size that could be the same apartment
-      // re-measured. Otherwise the first, as before, when neither side gives one.
+      // re-measured. With several of one layout, a size further off than that
+      // is a different plan, and pairing it would move one plan's price onto
+      // another. Without sizes to go on, the first, as before.
       same.filter((p) => gap(p) <= 0.05).sort((a, b) => gap(a) - gap(b))[0] ??
+      (onlyOne ? same[0] : null) ??
       (same.some((p) => gap(p) < Infinity) && Number(w.area) > 0
         ? same.find((p) => gap(p) === Infinity)
         : same[0]);
