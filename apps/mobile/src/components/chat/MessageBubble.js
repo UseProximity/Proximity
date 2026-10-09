@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { formatMessageTime } from "../../lib/chatFormat";
 import { ChatAttachmentImages, isImageAttachment } from "./ChatAttachmentImages";
+import { ChatPdfRow, isPdfAttachment } from "./ChatPdfRow";
 
 // One chat message. Sent messages sit on the right in brand red, received ones
 // on the left in gray. `senderName` is shown above the first received bubble of
@@ -10,8 +11,7 @@ import { ChatAttachmentImages, isImageAttachment } from "./ChatAttachmentImages"
 // the report flow for that message; it receives the bubble's position in the
 // window ({ x, y, width, height }) so the popup can redraw the bubble in place.
 // Photos in an attachment message are drawn inline; `onOpenPhotos(photos, index)`
-// is called when one is tapped. Files other than photos (PDFs sent from the web)
-// are listed by name and cannot be opened here yet.
+// is called when one is tapped. PDFs are drawn as rows that download and open the file.
 export function MessageBubble({ message, senderName, listingLabel, onLongPress, onOpenPhotos }) {
   const mine = !!message.isMine;
   const isAttachment = message.messageType === "attachment";
@@ -19,7 +19,10 @@ export function MessageBubble({ message, senderName, listingLabel, onLongPress, 
     ? message.metadata.attachments
     : [];
   const photos = attachments.filter(isImageAttachment);
-  const otherFiles = attachments.filter((attachment) => !isImageAttachment(attachment));
+  const pdfs = attachments.filter(isPdfAttachment);
+  const otherFiles = attachments.filter(
+    (attachment) => !isImageAttachment(attachment) && !isPdfAttachment(attachment)
+  );
   const hasAttachmentContent = attachments.length > 0;
   const caption =
     typeof message.metadata?.caption === "string" ? message.metadata.caption.trim() : "";
@@ -49,7 +52,7 @@ export function MessageBubble({ message, senderName, listingLabel, onLongPress, 
           delayLongPress={350}
           disabled={!onLongPress}
           className={`max-w-[85%] rounded-2xl ${
-            hasAttachmentContent && photos.length > 0 ? "p-1" : "px-3.5 py-2.5"
+            hasAttachmentContent && (photos.length > 0 || pdfs.length > 0) ? "p-1" : "px-3.5 py-2.5"
           } ${mine ? "bg-red-600 rounded-tr-sm" : "bg-gray-100 rounded-tl-sm"} ${
             message.pending ? "opacity-60" : ""
           }`}
@@ -63,6 +66,11 @@ export function MessageBubble({ message, senderName, listingLabel, onLongPress, 
                   onLongPress={handleLongPress}
                 />
               ) : null}
+              {pdfs.map((file, index) => (
+                <View key={file.id ?? `${file.fileName}-${index}`} className={photos.length > 0 || index > 0 ? "mt-1" : ""}>
+                  <ChatPdfRow attachment={file} mine={mine} onLongPress={handleLongPress} />
+                </View>
+              ))}
               {otherFiles.map((file, index) => (
                 <Text
                   key={file.id ?? `${file.fileName}-${index}`}
@@ -72,14 +80,9 @@ export function MessageBubble({ message, senderName, listingLabel, onLongPress, 
                   {file.fileName || "File"}
                 </Text>
               ))}
-              {otherFiles.length > 0 ? (
-                <Text className={`text-[11px] mt-1 ${mine ? "text-red-100" : "text-gray-500"}`}>
-                  Files other than photos can&apos;t be opened in the app yet
-                </Text>
-              ) : null}
               {caption ? (
                 <Text
-                  className={`text-sm ${photos.length > 0 ? "px-2.5 pt-1.5 pb-1" : "mt-1"} ${
+                  className={`text-sm ${photos.length > 0 || pdfs.length > 0 ? "px-2.5 pt-1.5 pb-1" : "mt-1"} ${
                     mine ? "text-white" : "text-gray-900"
                   }`}
                 >

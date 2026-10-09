@@ -3,12 +3,12 @@
 // start of the conversation (the list is inverted, so "end" is the oldest
 // message). New messages arrive over realtime (lib/chatRealtime.js); the REST
 // reload on focus and the refresh button in the header remain as the fallback.
-// Photos (up to 5, picked from the library) are uploaded through the presign
-// endpoint and sent as one attachment message; other file types are not supported
-// on mobile yet.
+// Photos (from the library) and PDFs, up to 5 together, are uploaded through the
+// presign endpoint and sent as one attachment message.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  ActionSheetIOS,
   Alert,
   FlatList,
   Image,
@@ -23,12 +23,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, ImagePlus, MoreHorizontal, RefreshCw, X } from "lucide-react-native";
+import { ChevronLeft, FileText, MoreHorizontal, Paperclip, RefreshCw, X } from "lucide-react-native";
 import apiClient from "../../src/lib/apiClient";
 import {
   CHAT_MAX_BODY,
   CONVERSATION_UNAVAILABLE_MESSAGE,
   chatErrorMessage,
+  formatFileSize,
   mergeMessages,
 } from "../../src/lib/chatFormat";
 import { useAuthStore } from "../../src/store/authStore";
@@ -38,8 +39,9 @@ import {
   CHAT_PHOTO_MAX_FILES,
   pickChatPhotos,
   prepareChatPhoto,
-  uploadChatPhotos,
+  uploadChatAttachments,
 } from "../../src/lib/chatPhotos";
+import { pickChatPdfs } from "../../src/lib/chatPdf";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
 import { ChatSheets } from "../../src/components/chat/ChatSheets";
 import { ChatPhotoViewer } from "../../src/components/chat/ChatPhotoViewer";
@@ -74,9 +76,10 @@ export default function ChatThreadScreen() {
   // The open popup (see ChatSheets.js): null, { type: "options" } or
   // { type: "message", message }.
   const [sheet, setSheet] = useState(null);
-  // Photos chosen for the next message (already converted to an accepted type),
-  // the photo viewer ({ photos, index }), and whether photos are being prepared.
-  const [photos, setPhotos] = useState([]);
+  // Attachments chosen for the next message, photos (already converted to an accepted
+  // type) and PDFs together: { id, kind: "photo" | "pdf", uri, mimeType, fileName, ... }.
+  // Also the photo viewer ({ photos, index }) and whether files are being prepared.
+  const [staged, setStaged] = useState([]);
   const [viewer, setViewer] = useState(null);
   const [preparing, setPreparing] = useState(false);
   const sendingPhotosRef = useRef(false);
@@ -193,11 +196,11 @@ export default function ChatThreadScreen() {
 
   const addPhotos = useCallback(async () => {
     if (sending || preparing) return;
-    const remaining = CHAT_PHOTO_MAX_FILES - photos.length;
+    const remaining = CHAT_PHOTO_MAX_FILES - staged.length;
     if (remaining <= 0) {
       Alert.alert(
         "Photo limit reached",
-        `You can attach up to ${CHAT_PHOTO_MAX_FILES} photos to a message.`
+        `You can attach up to ${CHAT_PHOTO_MAX_FILES} files to a message.`
       );
       return;
     }
@@ -215,59 +218,106 @@ export default function ChatThreadScreen() {
 
       setPreparing(true);
       const results = await Promise.allSettled(
-        picked.assets.map((asset, i) => prepareChatPhoto(asset, photos.length + i))
+        picked.assets.map((asset, i) => prepareChatPhoto(asset, staged.length + i))
       );
       const stamp = Date.now();
       const ready = results
         .map((result, i) =>
-          result.status === "fulfilled" ? { id: `${stamp}-${i}`, ...result.value } : null
+          result.status === "fulfilled" ? { id: `${stamp}-${i}`, kind: "photo", ...result.value } : null
         )
         .filter(Boolean);
       if (ready.length < results.length) {
         const refused = results.find((r) => r.status === "rejected" && r.reason?.userFacing);
         setSendError(refused ? refused.reason.message : "Some photos couldn't be added.");
       }
-      setPhotos((current) => [...current, ...ready].slice(0, CHAT_PHOTO_MAX_FILES));
+      setStaged((current) => [...current, ...ready].slice(0, CHAT_PHOTO_MAX_FILES));
     } catch {
       setSendError("Couldn't open your photos. Please try again.");
     } finally {
       setPreparing(false);
     }
-  }, [sending, preparing, photos.length]);
+  }, [sending, preparing, staged.length]);
 
-  // Uploads the staged photos, then sends them (with the typed text as the caption)
+  const addPdfs = useCallback(async () => {
+    if (sending || preparing) return;
+    const remaining = CHAT_PHOTO_MAX_FILES - staged.length;
+    if (remaining <= 0) {
+      Alert.alert(
+        "Attachment limit reached",
+        `You can attach up to ${CHAT_PHOTO_MAX_FILES} files to a message.`
+      );
+      return;
+    }
+    setSendError(null);
+    setPreparing(true);
+    try {
+      const picked = await pickChatPdfs({ limit: remaining });
+      if (picked.status !== "ok") return;
+      const stamp = Date.now();
+      const ready = picked.pdfs.map((pdf, i) => ({ id: `${stamp}-${i}`, kind: "pdf", ...pdf }));
+      if (picked.errors.length > 0) setSendError(picked.errors[0]);
+      else if (picked.skipped > 0) setSendError(`Only ${CHAT_PHOTO_MAX_FILES} files fit in one message.`);
+      setStaged((current) => [...current, ...ready].slice(0, CHAT_PHOTO_MAX_FILES));
+    } catch {
+      setSendError("Couldn't open your files. Please try again.");
+    } finally {
+      setPreparing(false);
+    }
+  }, [sending, preparing, staged.length]);
+
+  // One attach button: a native menu to choose photos or PDFs.
+  const openAttachMenu = useCallback(() => {
+    if (sending || preparing) return;
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ["Photos", "PDF", "Cancel"], cancelButtonIndex: 2 },
+        (index) => {
+          if (index === 0) addPhotos();
+          else if (index === 1) addPdfs();
+        }
+      );
+      return;
+    }
+    Alert.alert("Attach", undefined, [
+      { text: "Photos", onPress: addPhotos },
+      { text: "PDF", onPress: addPdfs },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [sending, preparing, addPhotos, addPdfs]);
+
+  // Uploads the staged files, then sends them (with the typed text as the caption)
   // as one message. If anything fails before the send, no message exists and the
-  // photos and caption stay in the composer for another try. The message itself
+  // files and caption stay in the composer for another try. The message itself
   // arrives over realtime; the reload is the fallback if the socket is down.
   const sendPhotos = useCallback(async () => {
     // The ref is checked synchronously: two quick taps can both see the old `sending`
     // state before React re-renders, but not the same ref.
-    if (sendingPhotosRef.current || sending || preparing || photos.length === 0) return;
+    if (sendingPhotosRef.current || sending || preparing || staged.length === 0) return;
     sendingPhotosRef.current = true;
     const caption = text.trim();
     setSending(true);
     setSendError(null);
     try {
-      const attachments = await uploadChatPhotos(threadId, photos);
+      const attachments = await uploadChatAttachments(threadId, staged);
       await apiClient.chat.sendMessage(threadId, { body: caption || undefined, attachments });
       // Keep anything typed while the upload was running.
       setText((current) => (current.trim() === caption ? "" : current));
-      setPhotos([]);
+      setStaged([]);
       loadLatest();
     } catch (err) {
       if (err?.status === 403 && err?.body?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
         setUnavailable(true);
       } else if (err?.status !== 401) {
-        setSendError(chatErrorMessage(err, "Couldn't send your photos. Please try again."));
+        setSendError(chatErrorMessage(err, "Couldn't send your attachments. Please try again."));
       }
     } finally {
       sendingPhotosRef.current = false;
       setSending(false);
     }
-  }, [sending, preparing, photos, text, threadId, loadLatest]);
+  }, [sending, preparing, staged, text, threadId, loadLatest]);
 
   const handleSend = useCallback(async () => {
-    if (photos.length > 0) {
+    if (staged.length > 0) {
       await sendPhotos();
       return;
     }
@@ -323,7 +373,7 @@ export default function ChatThreadScreen() {
     } finally {
       setSending(false);
     }
-  }, [text, sending, photos.length, sendPhotos, threadId, user?.id, markRead]);
+  }, [text, sending, staged.length, sendPhotos, threadId, user?.id, markRead]);
 
   // Block and Report are native form sheets (app/chat-sheet/). iOS cannot present
   // one while the options Modal is still dismissing, so the screen closes the Modal
@@ -494,26 +544,43 @@ export default function ChatThreadScreen() {
           </View>
         ) : (
         <View className="border-t border-gray-100 bg-white">
-          {photos.length > 0 ? (
+          {staged.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, gap: 8 }}
             >
-              {photos.map((photo) => (
-                <View key={photo.id} style={{ width: 64, height: 64 }}>
-                  <Image
-                    source={{ uri: photo.uri }}
-                    alt="Selected photo"
-                    style={{ width: 64, height: 64, borderRadius: 10 }}
-                    className="bg-gray-100"
-                  />
+              {staged.map((item) => (
+                <View key={item.id} style={{ height: 64 }}>
+                  {item.kind === "pdf" ? (
+                    <View
+                      className="h-16 flex-row items-center rounded-xl bg-gray-100 px-2.5"
+                      style={{ width: 168, gap: 8 }}
+                    >
+                      <FileText size={20} color="#4b5563" strokeWidth={1.8} />
+                      <View className="flex-1">
+                        <Text numberOfLines={1} className="text-xs font-medium text-gray-900">
+                          {item.fileName}
+                        </Text>
+                        <Text className="text-[11px] text-gray-500">
+                          {["PDF", formatFileSize(item.sizeBytes)].filter(Boolean).join(" · ")}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <Image
+                      source={{ uri: item.uri }}
+                      alt="Selected photo"
+                      style={{ width: 64, height: 64, borderRadius: 10 }}
+                      className="bg-gray-100"
+                    />
+                  )}
                   {!sending ? (
                     <Pressable
-                      onPress={() => setPhotos((current) => current.filter((p) => p.id !== photo.id))}
+                      onPress={() => setStaged((current) => current.filter((p) => p.id !== item.id))}
                       hitSlop={8}
-                      accessibilityLabel="Remove photo"
+                      accessibilityLabel={item.kind === "pdf" ? "Remove PDF" : "Remove photo"}
                       className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-800 items-center justify-center"
                     >
                       <X size={12} color="#ffffff" strokeWidth={3} />
@@ -525,16 +592,16 @@ export default function ChatThreadScreen() {
           ) : null}
           <View className="px-4 pt-2.5 pb-3 flex-row items-end gap-2">
             <Pressable
-              onPress={addPhotos}
+              onPress={openAttachMenu}
               disabled={sending || preparing || loading}
               hitSlop={6}
-              accessibilityLabel="Attach photos"
+              accessibilityLabel="Attach photos or PDFs"
               className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
             >
               {preparing ? (
                 <ActivityIndicator size="small" />
               ) : (
-                <ImagePlus
+                <Paperclip
                   size={18}
                   color={sending || loading ? colors.textMuted : colors.textPrimary}
                   strokeWidth={2}
@@ -544,7 +611,7 @@ export default function ChatThreadScreen() {
             <TextInput
               value={text}
               onChangeText={(value) => setText(value.slice(0, CHAT_MAX_BODY))}
-              placeholder={photos.length > 0 ? "Add a caption" : "Write a message"}
+              placeholder={staged.length > 0 ? "Add a caption" : "Write a message"}
               multiline
               editable={!loading}
               className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 max-h-28"
@@ -556,7 +623,7 @@ export default function ChatThreadScreen() {
             ) : (
               <SendButton
                 onPress={handleSend}
-                disabled={(!text.trim() && photos.length === 0) || loading || preparing}
+                disabled={(!text.trim() && staged.length === 0) || loading || preparing}
               />
             )}
           </View>

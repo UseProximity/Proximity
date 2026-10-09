@@ -77,3 +77,12 @@ export function leaseForChat(listing) {
 export function chatErrorMessage(err, fallback) {
   return err?.body?.error ?? err?.message ?? fallback;
 }
+
+// "1.2 MB" style size for file rows, the same format web's formatFileSize uses.
+export function formatFileSize(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}

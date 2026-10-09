@@ -136,15 +136,16 @@ export async function prepareChatPhoto(asset, index = 0) {
   throw error;
 }
 
-// Presigns and uploads the prepared photos. Resolves to the attachment list for
+// Presigns and uploads prepared attachments (photos from prepareChatPhoto, PDFs from
+// lib/chatPdf.js: each is { uri, mimeType, fileName }). Resolves to the attachment list for
 // apiClient.chat.sendMessage ({ key, fileName, contentType, sizeBytes } each) and
 // throws, without anything having been sent, if any step fails.
-export async function uploadChatPhotos(threadId, photos) {
+export async function uploadChatAttachments(threadId, photos) {
   // One read per file; its size is both what is presigned and what is uploaded.
   const blobs = await Promise.all(photos.map((photo) => readBlob(photo.uri)));
   blobs.forEach((blob) => {
-    if (!blob.size) throw new Error("One of the photos is empty.");
-    if (blob.size > CHAT_PHOTO_MAX_BYTES) throw new Error("Each photo must be 20MB or smaller.");
+    if (!blob.size) throw new Error("One of the files is empty.");
+    if (blob.size > CHAT_PHOTO_MAX_BYTES) throw new Error("Each file must be 20MB or smaller.");
   });
 
   const { presigned } = await apiClient.chat.presignAttachments(
@@ -162,7 +163,7 @@ export async function uploadChatPhotos(threadId, photos) {
         headers: { "Content-Type": photos[i].mimeType },
         body: blobs[i],
       });
-      if (!response.ok) throw new Error("Couldn't upload a photo. Please try again.");
+      if (!response.ok) throw new Error("Couldn't upload a file. Please try again.");
     })
   );
 
