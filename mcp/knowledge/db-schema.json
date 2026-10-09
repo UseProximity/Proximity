@@ -67,7 +67,7 @@
       },
       {
         "table": "chat_threads",
-        "description": "Chat threads, optionally tied to a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "description": "One conversation per (listing, student), held by the landlord account landlord_id. lease_id is the lease last asked about and picks the lease-level alert address (fn_chat_alert_email).",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",
@@ -75,7 +75,24 @@
           "subject:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "deleted_at:timestamptz"
+          "deleted_at:timestamptz",
+          "landlord_id:uuid",
+          "interested_user_id:uuid",
+          "lease_id:uuid"
+        ]
+      },
+      {
+        "table": "contact_email_verifications",
+        "description": "One-click confirmations that let a landlord account's listing or lease contact email receive chat alerts. Unique per (landlord_id, email); only rows with verified_at route (fn_chat_contact_confirmed). Server only (RLS on, no policies).",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "email:text",
+          "token_hash:text",
+          "requested_at:timestamptz",
+          "expires_at:timestamptz",
+          "verified_at:timestamptz",
+          "created_at:timestamptz"
         ]
       },
       {
@@ -993,7 +1010,8 @@
           "payment_method:text",
           "payment_handle:text",
           "profile_setup_token:text",
-          "profile_setup_expires_at:timestamptz"
+          "profile_setup_expires_at:timestamptz",
+          "company_name:text"
         ]
       },
       {

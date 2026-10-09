@@ -61,6 +61,9 @@ export default function ProfileSection({
                   </Badge>
                 )}
               </div>
+              {user.company_name && (
+                <p className="text-gray-600 text-base sm:text-lg">{user.company_name}</p>
+              )}
               {user.numReviews === 0 ? (
                 <p className="text-gray-500 text-sm italic">No ratings yet</p>
               ) : (
@@ -113,6 +116,22 @@ export default function ProfileSection({
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Your name"
                 />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Company
+                </label>
+                <input
+                  name="companyName"
+                  value={form.companyName}
+                  onChange={onChange}
+                  maxLength={100}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="e.g. Keeley Properties"
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Shown next to your name when you message students.
+                </p>
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">

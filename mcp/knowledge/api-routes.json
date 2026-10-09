@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-07T19:55:17.128Z",
-  "count": 104,
+  "_generated": "2026-10-09T19:35:19.327Z",
+  "count": 106,
   "routes": [
     {
       "path": "/api/account",
@@ -464,6 +464,18 @@
       "file": "src/app/api/chat/threads/[threadId]/read/route.js"
     },
     {
+      "path": "/api/contact-verify",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/contact-verify/route.js"
+    },
+    {
       "path": "/api/contacted",
       "methods": [
         "POST"
@@ -788,6 +800,24 @@
       },
       "tables": [],
       "file": "src/app/api/getUser/route.js"
+    },
+    {
+      "path": "/api/landlord/contact-emails",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [
+        "unit_leases",
+        "listing_landlords",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/contact-emails/route.js"
     },
     {
       "path": "/api/landlord/listing-draft",

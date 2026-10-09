@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-07T17:55:22.685Z",
-  "count": 111,
+  "_generated": "2026-10-09T19:35:19.357Z",
+  "count": 112,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -90,6 +90,10 @@
     {
       "file": "src/lib/chat/attachments.js",
       "description": "Shared allowlist / limits for chat attachments (presign API + client)."
+    },
+    {
+      "file": "src/lib/chat/contactVerification.js",
+      "description": "One-click confirmation for per-listing alert addresses."
     },
     {
       "file": "src/lib/chat/landlordCanChat.js",

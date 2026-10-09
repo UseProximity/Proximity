@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-08T04:16:02.234Z",
-  "count": 122,
+  "_generated": "2026-10-09T19:35:19.334Z",
+  "count": 123,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -406,6 +406,11 @@
     {
       "name": "lookupPlace",
       "file": "src/components/listings/add/lookupPlace.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ContactEmailStatus",
+      "file": "src/components/listings/editor/ContactEmailStatus.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

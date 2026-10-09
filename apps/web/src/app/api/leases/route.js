@@ -1,5 +1,8 @@
+import { after } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 
@@ -118,6 +121,17 @@ export async function POST(req) {
     listingId: unit.listing_id,
     sublease: !!sublease,
   });
+
+  // The lease's contact address only receives message alerts once confirmed.
+  // A lease's conversations are held by its owner, which is the caller.
+  const baseUrl = getBaseUrl(req);
+  after(() =>
+    requestContactVerification({
+      landlordId: session.user.id,
+      email: contactEmail,
+      baseUrl,
+    })
+  );
 
   return Response.json(
     {

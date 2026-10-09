@@ -18,6 +18,7 @@ import toast from "react-hot-toast";
 import { Plus, Trash2 } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
+import ContactEmailStatus from "@/components/listings/editor/ContactEmailStatus";
 import { UnitFloorPlan } from "./EditorImageRows";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
@@ -217,6 +218,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
           <input type="email" required className={`mt-1 w-full ${field}`} value={draft.contactEmail}
             onChange={(e) => set({ contactEmail: e.target.value })} />
+          <ContactEmailStatus savedEmail={lease.contactEmail} draftEmail={draft.contactEmail} />
         </label>
       </div>
 

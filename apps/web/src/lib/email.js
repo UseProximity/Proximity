@@ -277,6 +277,44 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next 
   });
 }
 
+/*
+ * One-click confirmation for a per-listing alert address. Until someone at this
+ * address clicks through, chat alerts for the listing keep going to the
+ * landlord account's own email, see fn_chat_alert_email.
+ *
+ * Says plainly what the address is being signed up for, and that the
+ * conversations stay in the landlord's account, so a leasing office that never
+ * asked for this can tell what it is and ignore it.
+ */
+export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl }) {
+  const landlord = escapeHtml(landlordName || "A landlord");
+  const listing = listingLabel ? escapeHtml(listingLabel) : "";
+  const subject = listingLabel
+    ? `Confirm message alerts for ${listingLabel}`
+    : "Confirm this address for Proximity message alerts";
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111">Confirm this address for message alerts</h2>
+        <p><strong>${landlord}</strong> wants students&#39; messages${listing ? ` about <strong>${listing}</strong>` : ""} sent to this address.</p>
+        <p>Once you confirm, each new message arrives here as an email. You can reply in the Proximity app or directly to the email. Either way, the conversation stays in ${landlord}&#39;s Proximity inbox.</p>
+        <a href="${confirmUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Confirm this address
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${confirmUrl}</p>
+        <p style="color:#999;font-size:12px">If you don&#39;t recognize this, ignore it. Nothing will be sent here unless you confirm. The link expires in 7 days.</p>
+        ${emailFooter({
+          reason: "You are receiving this because a landlord on Proximity entered this address as the contact for one of their listings.",
+        })}
+      </div>
+    `,
+  });
+}
+
 // One email per PMS sync run, only when a human should look: errored or
 // guard-held connections, suppressed delists, and dry-run connections with
 // intended changes waiting for review. Sent to PMS_ALERT_EMAIL or all supers.
