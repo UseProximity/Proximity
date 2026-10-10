@@ -84,6 +84,9 @@ export default function ChatThreadScreen() {
   const [preparing, setPreparing] = useState(false);
   const sendingPhotosRef = useRef(false);
   const loadedOnce = useRef(false);
+  // Set by the first successful page load, whichever call made it, so pagination
+  // is initialised even when the first attempt failed.
+  const paginationReady = useRef(false);
   const messagesRef = useRef([]);
   messagesRef.current = messages;
 
@@ -105,7 +108,10 @@ export default function ChatThreadScreen() {
           limit: PAGE_SIZE,
         });
         setMessages((current) => mergeMessages(current, page));
-        if (initial) setHasMore(page.length >= PAGE_SIZE);
+        if (initial || !paginationReady.current) {
+          setHasMore(page.length >= PAGE_SIZE);
+          paginationReady.current = true;
+        }
         setError(null);
         markRead();
       } catch (err) {
