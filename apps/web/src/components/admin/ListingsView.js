@@ -42,7 +42,7 @@ function hasListedRent(listing) {
 }
 
 function unitLabel(u) {
-  return u.title || `${u.bedrooms ?? "?"} BR / ${u.bathrooms ?? "?"} BA`;
+  return u.name || `${u.bedrooms ?? "?"} BR / ${u.bathrooms ?? "?"} BA`;
 }
 
 // ─── Toggle-able chip grid for listing_amenities / listing_utilities ─────────

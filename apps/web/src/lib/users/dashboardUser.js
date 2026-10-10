@@ -1,5 +1,4 @@
 import supabase from "@/lib/supabase";
-import { unitIdentityLabel } from "@/lib/listings/getListing";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
 import { isLiveLease, unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
@@ -78,7 +77,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
           .map((lease) => ({
             id: lease.id,
             unitId: u.id,
-            unitLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
+            unitLabel: u.name ?? null,
             bedrooms: u.bedrooms ?? null,
             bathrooms: u.bathrooms ?? null,
             rent: lease.rent != null ? Number(lease.rent) : null,
@@ -124,8 +123,7 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-        title: u.title ?? null,
-        identityLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
+        name: u.name ?? null,
         floorPlanImageUrl: u.floor_plan_image_url ?? null,
         leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
           ? activeLease.lease_term_months.map(Number)

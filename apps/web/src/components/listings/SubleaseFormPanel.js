@@ -56,7 +56,7 @@ const emptyUnit = () => ({
   rent: "",
   area: "",
   available: true,
-  title: "",
+  name: "",
   floorPlanImageUrl: "",
   leaseTermMonths: [], // months a unit can be leased for (multi-select)
 });
@@ -104,7 +104,7 @@ export default function SubleaseFormPanel({
           rent: u.rent ?? "",
           area: u.area ?? "",
           available: u.available ?? true,
-          title: u.title ?? "",
+          name: u.name ?? "",
           floorPlanImageUrl: u.floorPlanImageUrl ?? u.floor_plan_image_url ?? "",
           leaseTermMonths: Array.isArray(u.leaseTermMonths)
             ? u.leaseTermMonths.map(Number)
@@ -382,7 +382,7 @@ export default function SubleaseFormPanel({
         rent: u.rent !== "" ? Number(u.rent) : null,
         area: u.area !== "" ? Number(u.area) : null,
         available: u.available !== false,
-        title: (u.title ?? "").trim() || null,
+        name: (u.name ?? "").trim() || null,
         floorPlanImageUrl: u.floorPlanImageUrl || null,
         leaseTermMonths: Array.isArray(u.leaseTermMonths)
           ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
@@ -785,13 +785,13 @@ export default function SubleaseFormPanel({
                     ))}
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Unit / Floor Plan Name
+                        Unit name
                       </label>
                       <input
                         type="text"
-                        value={unit.title ?? ""}
-                        onChange={(e) => updateUnit(i, "title", e.target.value)}
-                        placeholder='e.g. "The Loft" or "Penthouse A" (shown instead of "2 Bed / 1 Bath")'
+                        value={unit.name ?? ""}
+                        onChange={(e) => updateUnit(i, "name", e.target.value)}
+                        placeholder='e.g. "Apt 2W" or "The Loft" (shown instead of "2 Bed / 1 Bath")'
                         className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>

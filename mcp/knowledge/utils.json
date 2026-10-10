@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-07T17:55:22.685Z",
-  "count": 111,
+  "_generated": "2026-10-10T01:53:55.037Z",
+  "count": 113,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -236,6 +236,10 @@
       "description": "Is this unit something a renter can actually take?"
     },
     {
+      "file": "src/lib/listings/unitNames.js",
+      "description": "One apartment, one row. Two live units at the same property both called"
+    },
+    {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -434,6 +438,10 @@
     {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/unitName.js",
+      "description": "A unit's name: \"Apt 2W\", \"Unit D1\", \"The Loft\", \"Whole property\"."
     },
     {
       "file": "src/utils/uploadImagesToR2.js",
