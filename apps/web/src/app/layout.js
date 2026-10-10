@@ -5,7 +5,7 @@
  * toast notifications, the site Header, the profile completion gate modal, and the
  * URL-driven GlobalListingModal that can open any listing from any page via ?listing=.
  * Also mounts FeedbackWidget (bottom-left). Messages live at /messages (header entry).
- * Also mounts the Vercel Analytics beacon and Google Analytics (GA4) tag. All client
+ * Also mounts the Vercel Analytics and Speed Insights beacons and Google Analytics (GA4) tag. All client
  * state providers (SessionProvider, FavoritesProvider, MessagesProvider) are composed
  * inside Providers.
  * Defines the site-wide <title> and <description> used for SEO.
@@ -25,6 +25,7 @@ import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import Providers from "@/components/layout/Providers";
 import { serializeJsonLd } from "@/lib/jsonLd";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -107,6 +108,7 @@ export default async function RootLayout({ children }) {
           <FeedbackWidget />
           {children}
           <Analytics />
+          <SpeedInsights />
           {/* GA only on the real site — staging/preview/local sessions would land in
               the same property and skew the funnels. Vercel Analytics separates
               environments on its own, so it stays mounted everywhere. */}
