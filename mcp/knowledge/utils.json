@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-10T03:10:45.265Z",
-  "count": 114,
+  "_generated": "2026-10-10T19:06:56.552Z",
+  "count": 119,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -176,6 +176,10 @@
       "description": "Loader for the published legal documents (/privacy, /terms)."
     },
     {
+      "file": "src/lib/listingDraft/assignPhotos.js",
+      "description": "Second pass of the paste-your-website draft: which photos show which floor"
+    },
+    {
       "file": "src/lib/listingDraft/extract.js",
       "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
     },
@@ -184,8 +188,16 @@
       "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
     },
     {
+      "file": "src/lib/listingDraft/floorPlanUnits.js",
+      "description": "Per-apartment availability and pricing, read from a building's own floor-plan"
+    },
+    {
       "file": "src/lib/listingDraft/rateLimit.js",
       "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
+    },
+    {
+      "file": "src/lib/listingDraft/sightmap.js",
+      "description": "SightMap inventory reader."
     },
     {
       "file": "src/lib/listings/filterListings.js",
@@ -370,6 +382,14 @@
     {
       "file": "src/lib/seo/targets.js",
       "description": "The evidence-backed target-query map the measurement engine tracks."
+    },
+    {
+      "file": "src/lib/sourceSync/attach.js",
+      "description": "Attach (or clear) the source URL a listing is monitored against."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.js",
+      "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
     },
     {
       "file": "src/lib/streetview.js",

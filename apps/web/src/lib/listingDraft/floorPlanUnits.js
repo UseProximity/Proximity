@@ -1,0 +1,543 @@
+/*
+ * Per-apartment availability and pricing, read from a building's own floor-plan
+ * pages.
+ *
+ * A floor plan is not an apartment. One Hundred Above the Park publishes plan
+ * 100N101A with two apartments behind it, #1501 at $3,080 and #2701 at $3,095,
+ * both available now; plan 100N101C has #1301 free on 9 November and #901 not
+ * until 7 January, at different rents again. Reading only the floor-plans index
+ * gets a plan name and one "starting at" price, and throws away which
+ * apartments exist, when each is free and what each costs. For a marketplace
+ * that syncs availability back on a timer, that is the data.
+ *
+ * None of it needs a private API. Each plan has an ordinary page, one level
+ * below the floor-plans index, and the apartments are in its text:
+ *
+ *     Apartment: # 1301
+ *     Date Available: 11/9/2026
+ *     Starting at: $2,945.00
+ *
+ * So: find the index's child pages, read them, and parse the blocks. The shape
+ * above is RentCafe's, which is most of the student-housing market, and the
+ * parser is loose enough to survive the wording drifting a little.
+ *
+ * These pages are usually bot-blocked (liveat100.com answers our plain fetch
+ * with a 403), so each one costs a render. That is why this is capped and only
+ * runs for a single property the landlord has already committed to.
+ */
+import {
+  fetchPageSmart,
+  htmlToText,
+  extractAllLinks,
+  extractImageCandidates,
+  sameSite,
+} from "@/lib/listingDraft/fetchSite";
+
+/*
+ * How many plan pages we open. Not how many floor plans exist.
+ *
+ * One Hundred Above the Park has THIRTY-SIX floor plans, and a cap of twelve
+ * took the first twelve in page order, which are all its one-bedrooms: the
+ * studios sit at the end of the list and the two- and three-beds in the middle,
+ * so the building imported as a one-bedroom building. The plans we do not open
+ * still become units from the index page; this only limits how many get their
+ * individual apartments read.
+ */
+const MAX_PLANS = 16;
+/*
+ * How many plan pages we read at once.
+ *
+ * Two, and MEASURED at two rather than assumed.
+ *
+ * Six at a time all come back 200 on the current plan, so the obvious move is
+ * to open six plan pages at once. It does not work. Tried across the whole
+ * acceptance suite, six made the largest building SLOWER — One Hundred Above
+ * the Park went from 119 seconds to 250, which is close enough to the
+ * platform's 300-second limit to fail in production — while saving twenty or
+ * thirty seconds on the smaller ones. The extra requests do not run in
+ * parallel so much as queue on their side, and a queue behind a slow page
+ * costs more than it saves.
+ *
+ * So the drill is not the thing to tune for speed. If this is raised again,
+ * raise it against the acceptance suite and read the times, not against a
+ * burst of scrapes that all return 200.
+ */
+const CONCURRENCY = 2;
+
+/*
+ * Pages one level below the floor-plans index on the same site.
+ * /floorplans -> /floorplans/100n101a, and nothing shallower or sideways.
+ */
+export function findFloorPlanPages(html, indexUrl, cap = Infinity) {
+  let basePath;
+  try {
+    basePath = new URL(indexUrl).pathname.replace(/\/+$/, "");
+  } catch {
+    return [];
+  }
+  if (!basePath || basePath === "/") return [];
+  /*
+   * The plans are usually children of the index — /floorplans then
+   * /floorplans/100n101a — but not always. Vivienne lists its twenty-three
+   * plans at /floor-plan/eden while the index is /floor-plans, one letter
+   * apart, and insisting on the child path found none of them at all. So a
+   * sibling whose last segment is the same word singular or plural counts too.
+   */
+  const bases = new Set([basePath]);
+  const last = basePath.slice(basePath.lastIndexOf("/") + 1);
+  const stem = basePath.slice(0, basePath.lastIndexOf("/") + 1);
+  if (last.endsWith("s")) bases.add(`${stem}${last.slice(0, -1)}`);
+  else bases.add(`${stem}${last}s`);
+
+  const out = [];
+  const seen = new Set();
+  for (const l of extractAllLinks(html, indexUrl, 300)) {
+    if (!l.internal || !sameSite(l.url, indexUrl)) continue;
+    let path;
+    try {
+      path = new URL(l.url).pathname.replace(/\/+$/, "");
+    } catch {
+      continue;
+    }
+    const base = [...bases].find((b) => path.startsWith(`${b}/`));
+    if (!base) continue;
+    // exactly one segment deeper, and not an anchor back to the index
+    if (path.slice(base.length + 1).includes("/")) continue;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    out.push(l.url);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/*
+ * The apartments listed on one floor-plan page.
+ *
+ * Anchored on the apartment number, then the two facts that follow it. Both
+ * orders appear in the wild, and a plan can list "Available Now" for one
+ * apartment and a date for the next, so each is matched independently within a
+ * short window rather than as one rigid block.
+ */
+/*
+ * "Apartment: #1508" is RentCafe's wording. Vivienne writes "Unit 311 Starting
+ * From $2,300 /month Available Now", and reading only the first spelling meant
+ * a building with six priced apartments on a plan imported with none of them. A
+ * match still has to be followed by a price or a date to count, which is what
+ * keeps this from picking up "Unit" in a sentence.
+ */
+const APARTMENT_RE =
+  /(?:Apartment|Unit|Apt|Suite|Home)\s*:?\s*#?\s*([A-Za-z]?\d{1,5}[A-Za-z]?)\b/gi;
+const AVAIL_NOW_RE = /\bAvailable\s+Now\b/i;
+const AVAIL_DATE_RE = /\b(?:Date\s+Available|Available)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i;
+const PRICE_RE =
+  /(?:Starting\s+(?:at|from)|Rent|Price|From)\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)/i;
+
+/*
+ * A plan you cannot rent today, however politely it says so. Vivienne's Aloe
+ * reads "Pricing Call For Details  Waitlist  Join Waitlist" and has no price
+ * and no apartments, which is not the same as a plan we failed to read.
+ */
+const WAITLIST_RE = /\bjoin\s+(?:the\s+)?wait\s?list\b|\bwait\s?list\b|\bcall\s+for\s+(?:details|pricing)\b/i;
+
+const toIsoDate = (mdy) => {
+  const m = mdy?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return null;
+  const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+  return `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+};
+
+export function parseFloorPlanPage(text, url) {
+  const apartments = [];
+  const seen = new Set();
+  for (const m of text.matchAll(APARTMENT_RE)) {
+    const number = m[1];
+    if (seen.has(number)) continue;
+    // Everything up to the next apartment heading, capped, is this one's block.
+    const rest = text.slice(m.index + m[0].length, m.index + m[0].length + 260);
+    const block = rest.split(/(?:Apartment|Unit|Apt|Suite|Home)\s*:?\s*#?\s*[A-Za-z]?\d/i)[0];
+    const price = block.match(PRICE_RE)?.[1]?.replace(/,/g, "");
+    const dated = block.match(AVAIL_DATE_RE)?.[1];
+    const now = AVAIL_NOW_RE.test(block);
+    if (!price && !dated && !now) continue; // a stray number, not a listing
+    seen.add(number);
+    apartments.push({
+      number,
+      rent: price ? Math.round(Number(price)) : null,
+      availableOn: dated ? toIsoDate(dated) : now ? "now" : null,
+    });
+  }
+  /*
+   * The slug is the plan's name on these sites (/floorplans/100n101a is plan
+   * 100N101A) and is the only reliable source: reading the first all-caps line
+   * of the page instead named nine of twelve plans "CONTACT US".
+   */
+  const slug = decodeURIComponent((url.split("?")[0].split("/").filter(Boolean).pop() ?? ""));
+  const name = /[a-z]/i.test(slug) ? slug.toUpperCase().replace(/-/g, " ") : null;
+  /*
+   * Bed and bath counts are written half a dozen ways across these pages
+   * ("1 Bed", "1 bd", "1 Bedroom", "1 BR", "Studio", "1 Bed / 1 Bath"), and a
+   * plan whose page used a spelling the old pattern missed published with the
+   * bedroom and bathroom boxes blank.
+   */
+  /*
+   * Both spellings: the count before the word ("1 Bedroom") and after it
+   * ("Bedrooms: 1"). Only the first was read, and a plan whose render used the
+   * other came back with no bed count — which was then filled in by the model,
+   * and the model has been caught taking the number out of an image file name.
+   * Whatever this reads off the page beats a guess, so it is worth being
+   * generous about the wording.
+   */
+  /*
+   * The plan's own summary, found by its name.
+   *
+   * Lofts at Euclid puts a filter widget on every floor-plan page reading
+   * "Bedrooms  Bedroom options  Studio  1 Bedroom  2 Bedrooms  Clear Done", and
+   * it sits ABOVE the plan's own line. Reading the first bed-ish words on the
+   * page therefore described the filter, not the apartment: the word "studio"
+   * turned all seven plans into studios, and preferring the first number would
+   * have turned all seven into one-beds, which is just as wrong. The plan's own
+   * line names itself first — "Lindell II 2 Bedrooms | 2 Bathrooms" — so that
+   * is what we look for, and the beds and baths have to be part of the same
+   * line to count. The name and its numbers often sit on separate lines, so
+   * line breaks are allowed inside that window.
+   *
+   * Everything below stays as a fallback for pages that carry no such line.
+   */
+  const escaped = String(name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const summary = escaped
+    ? text.match(
+        new RegExp(
+          `${escaped}[\\s\\S]{0,60}?\\b(\\d+|studio)\\s*(?:-|\\s)?\\s*(?:bed(?:room)?s?|bd|br)\\b[\\s\\S]{0,60}?\\b(\\d+(?:\\.\\d)?)\\s*(?:-|\\s)?\\s*(?:bath(?:room)?s?|ba)\\b`,
+          "i"
+        )
+      )
+    : null;
+  const summaryBeds = summary ? (/studio/i.test(summary[1]) ? "0" : summary[1]) : null;
+
+  const beds = summaryBeds ?? (/\bstudio\b/i.test(text)
+    ? "0"
+    : text.match(/(\d+)\s*(?:-|\s)?\s*(?:bed(?:room)?s?|bd|br)\b/i)?.[1] ??
+      text.match(/\bbed(?:room)?s?\s*[:\-]?\s*(\d+)\b/i)?.[1]);
+  const baths =
+    summary?.[2] ??
+    text.match(/(\d+(?:\.\d)?)\s*(?:-|\s)?\s*(?:bath(?:room)?s?|ba)\b/i)?.[1] ??
+    text.match(/\bbath(?:room)?s?\s*[:\-]?\s*(\d+(?:\.\d)?)\b/i)?.[1];
+  /*
+   * Square footage, written either way round: "826 Sq.Ft." and "Sq. Ft.: 1,211"
+   * are both common. Reading only the first meant a page that labels its
+   * columns ("Apartment: #309  Sq. Ft.: 1,211") took the apartment NUMBER as
+   * the floor area, so a 1,211 square foot two-bedroom imported as 309 square
+   * feet. The labelled form is checked first because a page that uses it also
+   * contains the other shape, in the header of the same table.
+   */
+  const area = (
+    text.match(/sq\.?\s*(?:uare)?\s*(?:ft|feet)\.?\s*[:\-]\s*([\d,]{3,6})/i)?.[1] ??
+    text.match(/(?:Up to\s*)?([\d,]{3,6})\s*Sq\.?\s*Ft/i)?.[1]
+  )?.replace(/,/g, "");
+  /*
+   * Concessions sit on these pages and are worth as much as the rent: Dorchester
+   * runs "1 MONTH FREE RENT. Must sign lease on/before September 30th, 2026.
+   * Lease term must be 10+ months." That is a price, a deadline and a minimum
+   * term in one sentence, and a student comparing rents cannot see any of it.
+   */
+  const specials = findSpecial(text);
+  return {
+    specials,
+    leaseTermMonths: findLeaseTerms(text),
+    // No price and no apartments because they are not letting it yet, rather
+    // than because we could not read the page.
+    waitlist: apartments.length === 0 && WAITLIST_RE.test(text),
+    url,
+    name,
+    bedrooms: beds != null ? Number(beds) : null,
+    bathrooms: baths != null ? Number(baths) : null,
+    area: area != null ? Number(area) : null,
+    apartments,
+  };
+}
+
+// Reads up to MAX_PLANS floor-plan pages. Failures are skipped, never fatal:
+// a plan we cannot read costs that plan's detail, not the whole import.
+/*
+ * The lease-term range, which lives only on the leasing application page.
+ *
+ * Dorchester's floor plans publish one rent and no terms; the apply page says
+ * "we offer flexible lease terms ranging from 3 to 24 months" and that the rate
+ * shown is for a qualifying term. That is a range they will discuss, not a
+ * price list, so it is recorded as a note rather than turned into per-term
+ * prices we would be inventing. Fetched once per property, not per apartment.
+ */
+/*
+ * The same page reaches us in two different formats, and the parsers only ever
+ * saw one of them.
+ *
+ * A page we can fetch directly arrives as HTML and comes out of htmlToText as
+ * plain prose. The same page fetched through Firecrawl arrives as MARKDOWN, so
+ * the numbers we are looking for are wrapped in emphasis: "lease terms ranging
+ * from **6 to 24 months.**" Every regex here expected a digit where the render
+ * put an asterisk, which is why the lease terms parsed perfectly in a direct
+ * test and came back empty through the importer every time. Emphasis becomes a
+ * space before anything is matched, so both renders read the same.
+ */
+function stripMarkdown(text) {
+  return text
+    .replace(/\*\*|__|~~/g, " ")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/[ \t]{2,}/g, " ");
+}
+
+/*
+ * A rent special, wherever the sentence lands. One Hundred Above the Park does
+ * not print its offer on the floor-plan pages at all; it appears on the leasing
+ * application, which we already open for the lease terms, so reading it there
+ * costs nothing.
+ */
+/*
+ * The floor plan's own diagram — and nothing else.
+ *
+ * This was wrong twice before it was right, both times by trusting a label
+ * instead of the picture. RentCafe puts alt="Floor Plan 100N101a" on the FIRST
+ * IMAGE OF THE CAROUSEL, which is a photo of the kitchen, and names its assets
+ * "...-1101-kitchen1-thumbnail_2_fp.jpg" — so the alt says floor plan, the file
+ * ends _fp, and what a landlord saw in the floor plan box was a photograph of
+ * an oven. The actual diagram opens in a dialog and is not a plain image on the
+ * page at all, so on those pages there is nothing here to find.
+ *
+ * Hence: the FILE has to say it is a plan, and must not name a room. A blank
+ * floor plan box is honest. A kitchen in it is not, and the landlord has to
+ * notice and undo it.
+ */
+const ROOM_WORD_RE =
+  /kitchen|living|bedroom|bathroom|\bbath\b|\bbed\b|closet|laundry|dining|patio|balcony|exterior|interior|lobby|pool|gym|amenity|clubhouse|courtyard|banner|logo|hero|thumbnail/i;
+const PLAN_FILE_RE = /floor[-_]?plan|floorplan|site[-_]?plan|[-_]fp\d*\.(png|jpe?g|gif|webp|svg)/i;
+
+function findPlanImage(html, finalUrl, name) {
+  let images;
+  try {
+    images = extractImageCandidates(html, finalUrl);
+  } catch {
+    return null;
+  }
+  const slug = String(name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const looksLikeAPlan = (im) => {
+    const file = decodeURIComponent(im.url.split("/").pop() ?? "");
+    // A room in the name settles it, whatever the label claims.
+    if (ROOM_WORD_RE.test(file)) return false;
+    return PLAN_FILE_RE.test(file) || /floor\s*plan/i.test(im.alt ?? "");
+  };
+  const namesThisPlan = (im) =>
+    !!slug && im.url.toLowerCase().replace(/[^a-z0-9]/g, "").includes(slug);
+
+  const candidates = images.filter(looksLikeAPlan);
+  return candidates.find(namesThisPlan)?.url ?? candidates[0]?.url ?? null;
+}
+
+/*
+ * The lease lengths a page states, in months.
+ *
+ * These were only ever read off the leasing application page, which many sites
+ * do not publish — so a building that says "12 month lease" on every floor plan
+ * still handed the landlord four empty chip rows to fill in by hand. Anything
+ * we have already fetched is worth reading for it.
+ *
+ * A RANGE ("terms ranging from 3 to 24 months") is deliberately not read here:
+ * that is the lengths a leasing office will discuss, not lengths on offer at
+ * the published rent, and turning it into chips would put twenty-two lease
+ * options on a card. fetchLeaseTermRange still records it as a note.
+ */
+export function findLeaseTerms(text) {
+  if (!text) return [];
+  const months = new Set();
+  // "Lease Terms: 7, 9 or 12 months"
+  const listed = text.match(
+    /lease\s*terms?\s*(?:available|offered)?\s*[:\-]\s*((?:\d{1,2}\s*(?:,|\/|&|and|or)\s*)*\d{1,2})\s*months?/i
+  );
+  for (const n of listed?.[1]?.match(/\d{1,2}/g) ?? []) months.add(Number(n));
+  // "12-month lease", "9 month leases"
+  for (const m of text.matchAll(/(\d{1,2})\s*[-\u2013]?\s*month\s+leases?\b/gi)) {
+    months.add(Number(m[1]));
+  }
+  // "Lease Term 12 months", the label RentCafe pages use beside the rent
+  for (const m of text.matchAll(/lease\s*term\s*:?\s*(\d{1,2})\s*months?/gi)) {
+    months.add(Number(m[1]));
+  }
+  return [...months].filter((m) => m >= 1 && m <= 24).sort((a, b) => a - b);
+}
+
+function findSpecial(text) {
+  const hit =
+    text.match(/([^\n]*\b(?:MONTH|WEEKS?)\s+FREE\b[^\n]*)/i)?.[1]?.trim() ??
+    text.match(/([^\n]*\b(?:special|concession|look and lease|waived)\b[^\n]*)/i)?.[1]?.trim() ??
+    null;
+  return hit && hit.length < 300 ? hit : null;
+}
+
+async function fetchLeaseTermRange(applyUrl) {
+  if (!applyUrl) {
+    console.log("[listing-draft] lease terms: no application link on any floor-plan page");
+    return null;
+  }
+  try {
+    const page = await fetchPageSmart(applyUrl);
+    const text = stripMarkdown(htmlToText(page.html));
+    const special = findSpecial(text);
+    const offered = findLeaseTerms(text);
+    /*
+     * The term the quoted rent belongs to, which the page states outright:
+     * "Lease Term 12 months / Rent $3,095.00". Worth having on its own even
+     * when the property publishes no range, because it is the number that
+     * fills the lease-length chips.
+     */
+    const reflects =
+      /Lease\s+Term\s*:?\s*(\d{1,2})\s*months?/i.exec(text)?.[1] ??
+      /displayed[^.]*?(\d{1,2})[- ]month/i.exec(text)?.[1] ??
+      null;
+    const m = text.match(
+      /lease terms?[^.]{0,60}?rang\w*\s+from\s*(\d{1,2})\s*(?:to|-|–|through|and)\s*(\d{1,2})\s*months/i
+    );
+    if (!m) {
+      console.log(
+        `[listing-draft] lease terms: read ${text.length} chars from ${applyUrl.slice(0, 120)} ` +
+          `but found no range${/lease\s*term/i.test(text) ? ' (the page does mention a lease term)' : ''}`
+      );
+      return reflects || special || offered.length
+        ? { reflects, special, offered }
+        : null;
+    }
+    /*
+     * The page states the term its quoted rent assumes, in as many words:
+     * "Lease Term 12 months / Rent $2,395.00". That is the number the rent
+     * belongs on; the 3-to-24 range is only what they will discuss.
+     */
+    console.log(`[listing-draft] lease terms: ${m[1]}-${m[2]} months, rate reflects ${reflects ?? "?"}`);
+    return { min: Number(m[1]), max: Number(m[2]), reflects, special, offered };
+  } catch (err) {
+    console.log(`[listing-draft] lease terms: ${applyUrl.slice(0, 120)} failed — ${err.message}`);
+    return null;
+  }
+}
+
+/*
+ * Spread the budget across the list instead of taking the first N.
+ *
+ * The plans are in page order, which groups them by bedroom count, so the first
+ * sixteen of thirty-six are all one-bedrooms. Taking an even spread means every
+ * size gets some of its apartments read, and the plans in between still appear
+ * from the index.
+ */
+export function chooseFloorPlansToRead(urls, budget = MAX_PLANS) {
+  if (urls.length <= budget) return urls;
+  const step = urls.length / budget;
+  const picked = [];
+  for (let i = 0; i < budget; i++) picked.push(urls[Math.floor(i * step)]);
+  return [...new Set(picked)];
+}
+
+export async function fetchFloorPlanUnits(urls) {
+  const plans = [];
+  let applyUrl = null;
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const url = urls[cursor++];
+      if (!url) return;
+      try {
+        const page = await fetchPageSmart(url);
+        const text = stripMarkdown(htmlToText(page.html));
+        const plan = parseFloorPlanPage(text, page.finalUrl);
+        plan.image = findPlanImage(page.linkHtml ?? page.html, page.finalUrl, plan.name);
+        if (!applyUrl) {
+          /*
+           * The leasing application, not the resident portal: a
+           * .../residentservices/userlogin is a sign-in wall with no lease
+           * information on it at all.
+           *
+           * Matching only "oleapplication" found nothing on any RentCafe site,
+           * which is Keeley's entire portfolio — so every Keeley building
+           * imported with four empty lease-term rows and the note saying the
+           * site doesn't publish its lengths. It does. Each plan page carries a
+           * "Lease now" link to /onlineleasing/.../floorplans/<id>, which
+           * renders nothing until its JS runs, and a rental-options link,
+           * /onlineleasing/.../rentaloptions/<unit>/<plan>, which states
+           * "Lease term 12 months" beside the rent. Prefer the page with the
+           * answer on it.
+           */
+          const links = extractAllLinks(page.html, page.finalUrl, 200)
+            .map((l) => l.url)
+            .filter((u) => !/residentservices|userlogin/i.test(u));
+          applyUrl =
+            links.find((u) => /rentaloptions/i.test(u)) ??
+            links.find((u) => /oleapplication/i.test(u)) ??
+            links.find((u) => /onlineleasing|securecafeapplicant/i.test(u)) ??
+            null;
+        }
+        // A waitlisted plan has no apartments BECAUSE it is waitlisted, which is
+        // worth keeping; a plan with neither is one we simply could not read.
+        if (plan.apartments.length || plan.waitlist) plans.push(plan);
+      } catch {
+        /* skip this plan */
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker)
+  );
+  const termRange = plans.length ? await fetchLeaseTermRange(applyUrl) : null;
+  return { plans, termRange };
+}
+
+/*
+ * The authoritative block for the extraction prompt. Same contract as the
+ * SightMap feed: read off the property's own pages, so it outranks anything in
+ * the marketing copy.
+ */
+export function describeFloorPlanUnits(result) {
+  const plans = Array.isArray(result) ? result : result?.plans;
+  const termRange = Array.isArray(result) ? null : result?.termRange;
+  if (!plans?.length) return null;
+  const lines = [];
+  for (const p of plans) {
+    const head = [
+      p.name ? `"${p.name}"` : "(floor plan)",
+      p.bedrooms === 0 ? "studio" : p.bedrooms != null ? `${p.bedrooms} bed` : null,
+      p.bathrooms != null ? `${p.bathrooms} bath` : null,
+      p.area ? `up to ${p.area} sq ft` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const rents = p.apartments.map((a) => a.rent).filter(Boolean);
+    lines.push(`FLOOR PLAN ${head}`);
+    if (rents.length) {
+      lines.push(
+        `  asking rent for this floor plan: $${Math.min(
+          ...rents
+        )} per month for the whole unit (the lowest of its available apartments; use this as the floor plan's rent)`
+      );
+    }
+    if (p.specials) lines.push(`  special offer: ${p.specials}`);
+    for (const a of p.apartments) {
+      lines.push(
+        `  apartment ${a.number}: ` +
+          (a.rent ? `$${a.rent}/mo` : "price not shown") +
+          (a.availableOn === "now"
+            ? ", available now"
+            : a.availableOn
+            ? `, available ${a.availableOn}`
+            : "")
+      );
+    }
+  }
+  if (termRange) {
+    lines.push(
+      `LEASE TERMS: this property offers terms from ${termRange.min} to ${termRange.max} months, and the rents above are the rate for a qualifying term` +
+        (termRange.reflects ? `, normally ${termRange.reflects} months` : "") +
+        `. That is a range they will discuss, NOT a price per term: put the rent on ${
+          termRange.reflects ?? 12
+        } months, leave leaseTermPrices empty, and add a sourceNote saying terms run ${termRange.min} to ${termRange.max} months and only the displayed rate is published.`
+    );
+  }
+  return `AVAILABLE APARTMENTS (read from this property's own floor-plan pages — these apartment numbers, rents and dates are authoritative; list every apartment number under its floor plan in unitNames, with its date in unitAvailability, and never contradict them):\n${lines.join(
+    "\n"
+  )}`;
+}

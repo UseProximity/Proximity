@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
+import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import {
   findPropertyNameConflict,
   propertyNameTakenResponse,
@@ -179,6 +180,21 @@ export async function PATCH(req, { params }) {
         .from("listing_custom_amenities")
         .insert(labels.map((label) => ({ listing_id: listingId, label })));
     }
+  }
+
+  /*
+   * The page an import read this property from. Set here when an owner
+   * re-imports a listing that already exists, so the source check covers it
+   * as well as the listings an import created. Never fails the save.
+   */
+  if (typeof body.sourceUrl === "string" && body.sourceUrl.trim()) {
+    const attached = await attachSourceUrl({
+      listingId,
+      rawUrl: body.sourceUrl.trim(),
+      indexUrl: typeof body.indexUrl === "string" ? body.indexUrl.trim() || null : null,
+      userId: session.user.id,
+    });
+    if (!attached.ok) console.warn("[listings/property] source not attached:", attached.reason);
   }
 
   return NextResponse.json({ message: "Property updated" });
