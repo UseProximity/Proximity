@@ -22,3 +22,17 @@ export async function findUnitNamed(listingId, name, { excludeId = null } = {}) 
   const clash = (data ?? []).find((u) => u.id !== excludeId && unitNameKey(u.name) === key);
   return clash?.id ?? null;
 }
+
+// Where a unit added now goes: after every unit already at the property, so a
+// landlord's arrangement is never reshuffled by an addition.
+export async function nextUnitSortOrder(listingId) {
+  const { data } = await supabase
+    .from("listing_units")
+    .select("sort_order")
+    .eq("listing_id", listingId)
+    .is("deleted_at", null)
+    .not("sort_order", "is", null)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  return (data?.[0]?.sort_order ?? -1) + 1;
+}

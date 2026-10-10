@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { LEASE_TERM_PRESETS } from "@/components/listings/listingFormOptions";
-import { parseUnitNames } from "@/utils/unitName";
+import { parseUnitNames, UNIT_NAME_LABEL, UNIT_NAMES_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 import {
   StepFrame,
   Chip,
@@ -163,12 +164,15 @@ export default function StepUnits({ w }) {
                 w.attachingToExistingUnit ? " hidden" : ""
               }`}
             >
-              <p className="mb-1.5 text-xs font-medium text-gray-600">Unit names</p>
+              <p className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
+                {UNIT_NAME_LABEL}s
+                <InfoTip label="How to name these">{UNIT_NAMES_HELP}</InfoTip>
+              </p>
               <input
                 type="text"
                 value={unit.unitNames ?? ""}
                 onChange={(e) => w.updateUnit(i, "unitNames", e.target.value)}
-                placeholder="Apt 2W, Apt 2E, or Apt 101-104"
+                placeholder="1W, 1E, 2W, 2E  or  The Aspen"
                 className={`${inputCls} w-full sm:w-80${
                   w.importedFields.has(`u${i}:unitNames`) ? importedInputCls : ""
                 }`}
@@ -178,7 +182,7 @@ export default function StepUnits({ w }) {
                   ? `Creates ${parsedCounts[i]} ${
                       parsedCounts[i] === 1 ? "unit" : "units"
                     }, each with its own lease: ${parsedUnitLists[i]}`
-                  : "Separate several identical units with commas. For a single-family house, something like “Whole house”."}
+                  : "Separate units with commas, or use one floor plan name for many identical apartments. Ranges work too: Apt 101-104."}
               </p>
             </div>
           </div>

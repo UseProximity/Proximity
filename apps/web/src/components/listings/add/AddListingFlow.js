@@ -42,7 +42,8 @@ import {
   loadPendingDraft,
   savePendingDraft,
 } from "@/lib/listings/pendingDraft";
-import { UNIT_NAME_MAX } from "@/utils/unitName";
+import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 
 const emptyNewUnit = { name: "", bedrooms: "", bathrooms: "", area: "" };
 
@@ -448,11 +449,14 @@ export default function AddListingFlow({ user }) {
           {unitMode === "new" && (
             <div className={`grid gap-3 sm:grid-cols-3 ${isKnownProperty ? "mt-4 border-t border-gray-100 pt-4" : ""}`}>
               <label className="block sm:col-span-2">
-                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Unit name</span>
+                <span className="mb-1.5 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {UNIT_NAME_LABEL}
+                  <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+                </span>
                 <input className={field}
                   value={newUnit.name}
                   maxLength={UNIT_NAME_MAX}
-                  placeholder="Apt 2W, The Loft, Whole house"
+                  placeholder="2W, or a floor plan like The Aspen"
                   onChange={(e) => setNewUnit({ ...newUnit, name: e.target.value })} />
               </label>
               <label className="block">

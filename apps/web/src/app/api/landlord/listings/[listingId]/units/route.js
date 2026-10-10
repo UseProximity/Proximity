@@ -5,7 +5,7 @@ import supabase from "@/lib/supabase";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { isWholeCount } from "@/utils/unitCounts";
 import { cleanUnitName } from "@/utils/unitName";
-import { findUnitNamed } from "@/lib/listings/unitNames";
+import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 /*
  * Add a unit to a property.
@@ -106,6 +106,7 @@ export async function POST(req, { params }) {
       bathrooms,
       area: num(body.area),
       name,
+      sort_order: await nextUnitSortOrder(listingId),
     })
     .select("id")
     .single();

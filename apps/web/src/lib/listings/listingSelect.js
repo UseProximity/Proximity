@@ -20,7 +20,7 @@ export const LISTING_SELECT = `
   twenty_one_plus, unavailable, created_at,
   home_types!home_type_id(label),
   listing_units!listing_id(id, bedrooms, bathrooms, area, deleted_at,
-    name, floor_plan_image_url,
+    name, sort_order, floor_plan_image_url,
     unit_leases!unit_id(id, rent, is_active, unavailable, sublease,
       available_from, lease_term_months, furnished, owner_id, rent_is_per_person,
       description, contact_email, contact_phone, contact_name, deleted_at)),

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-10T01:53:55.037Z",
-  "count": 113,
+  "_generated": "2026-10-10T03:10:45.265Z",
+  "count": 114,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -442,6 +442,10 @@
     {
       "file": "src/utils/unitName.js",
       "description": "A unit's name: \"Apt 2W\", \"Unit D1\", \"The Loft\", \"Whole property\"."
+    },
+    {
+      "file": "src/utils/unitOrder.js",
+      "description": "The order units appear in, everywhere: the landlord's own order first"
     },
     {
       "file": "src/utils/uploadImagesToR2.js",

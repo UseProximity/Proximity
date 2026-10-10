@@ -10,6 +10,7 @@ import {
   InlineToggle, InlineNumber, usePending,
 } from "@/components/admin/adminShared";
 import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import { sortUnits } from "@/utils/unitOrder";
 
 const AMENITY_COLS = ["air_conditioning","dishwasher","gym","laundry","mailroom","microwave","oven","parking","pets_allowed","pool","refrigerator","rooftop","storage","stove","study_room"];
 const UTILITY_COLS = ["electric","gas","heat","water","internet","trash","cable","sewer","cooling"];
@@ -410,7 +411,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
   const [addingUnit, setAddingUnit] = useState(false);
   const [addingLeaseFor, setAddingLeaseFor] = useState(null);
 
-  const units = [...(listing.listing_units || [])].sort((a, b) => (a.bedrooms ?? 0) - (b.bedrooms ?? 0));
+  const units = sortUnits(listing.listing_units || []);
   const images = sortedImages(listing);
   const reviews = [...(listing.listing_reviews || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const amenities = oneRow(listing.listing_amenities);
