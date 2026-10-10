@@ -22,7 +22,8 @@ import { UnitFloorPlan } from "./EditorImageRows";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
-import { UNIT_NAME_MAX } from "@/utils/unitName";
+import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 
 
 // Heading for a group of offerings inside a unit.
@@ -377,9 +378,12 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           {/* The unit's one name. Whatever is typed here is what every screen
               calls this unit, students' and landlords' alike. */}
           <label className="block sm:col-span-3">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Unit name</span>
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              {UNIT_NAME_LABEL}
+              <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+            </span>
             <input className={`mt-1 w-full ${field}`} value={draft.name}
-              maxLength={UNIT_NAME_MAX} placeholder="Apt 2W, The Loft"
+              maxLength={UNIT_NAME_MAX} placeholder="2W, or a floor plan like The Aspen"
               onChange={(e) => set({ name: e.target.value })} />
           </label>
           <label className="block">
@@ -564,9 +568,12 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
 
       <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
         <label className="block sm:col-span-3">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Unit name</span>
+          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            {UNIT_NAME_LABEL}
+            <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+          </span>
           <input className={`mt-1 w-full ${field}`} value={draft.name}
-            maxLength={UNIT_NAME_MAX} placeholder="Apt 2W, The Loft"
+            maxLength={UNIT_NAME_MAX} placeholder="2W, or a floor plan like The Aspen"
             onChange={(e) => set({ name: e.target.value })} />
         </label>
         <label className="block">

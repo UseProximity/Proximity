@@ -8,6 +8,22 @@
 
 export const UNIT_NAME_MAX = 80;
 
+/*
+ * What landlords see. A row can be one apartment ("2W") or one floor plan that
+ * many apartments share ("The Aspen"): a small walk-up wants the first, a
+ * 44-unit building with four layouts wants the second, and one row per layout
+ * keeps it from being listed as 44 near-identical units.
+ */
+export const UNIT_NAME_LABEL = "Floor plan / unit name";
+
+// The single-row forms: one name per row.
+export const UNIT_NAME_HELP =
+  "Small building? Use the unit number, like 2W. Big building where many apartments share a layout? Use the floor plan name instead, like “The Aspen”, so one entry covers every apartment with that layout.";
+
+// The add-listing card, which can create several rows from a list.
+export const UNIT_NAMES_HELP =
+  "Small building? List each unit, separated by commas: 1W, 1E, 2W, 2E. Each becomes its own listing. Big building with a few repeated layouts? Name the floor plan instead, like “The Aspen”, and add one card per floor plan rather than one per apartment.";
+
 // What gets stored: trimmed, inner whitespace collapsed, capped. Empty is null,
 // which every screen renders as a beds/baths description instead of a name.
 export function cleanUnitName(value) {

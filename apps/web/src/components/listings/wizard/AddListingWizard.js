@@ -645,7 +645,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       // aren't creating anything that needs naming.
       if (!attachingToExistingUnit) {
         if (units.some((u) => parseUnitNames(u.unitNames).length === 0))
-          return "Name the units on each card, e.g. Apt 2W, Apt 2E (or “Whole house”).";
+          return "Add a floor plan or unit name to each card, e.g. 2W, 2E or “The Aspen”.";
         // Two cards claiming the same unit would create duplicate units at the
         // property, exactly the collision this model exists to prevent.
         const seen = new Set();
