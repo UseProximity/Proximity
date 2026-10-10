@@ -2,6 +2,8 @@ import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { unitIsAvailable } from "@/lib/listings/unitAvailability";
 import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
+import { unitNameKey } from "@/utils/unitName";
+import { sortUnits } from "@/utils/unitOrder";
 
 // Look up whether a property already exists at an address, and if so return its
 // units and the live leases on each. This drives the address -> unit -> lease
@@ -51,7 +53,7 @@ export async function GET(req) {
     .select(
       `id, title, address, latitude, longitude, created_at,
        listing_units!listing_id(
-         id, unit_designator, unit_number, bedrooms, bathrooms, area, deleted_at,
+         id, name, sort_order, bedrooms, bathrooms, area, deleted_at,
          unit_leases!unit_id(id, rent, sublease, is_active, unavailable, owner_id, contact_name)
        )`
     )
@@ -71,8 +73,7 @@ export async function GET(req) {
 
   const units = rows
     .flatMap((row) =>
-      (row.listing_units ?? [])
-        .filter((unit) => !unit.deleted_at)
+      sortUnits((row.listing_units ?? []).filter((unit) => !unit.deleted_at))
         .map((unit) => ({ unit, listingId: row.id }))
     )
     .map(({ unit, listingId }) => {
@@ -92,16 +93,10 @@ export async function GET(req) {
       return {
         id: unit.id,
         listingId,
-        designator: unit.unit_designator,
-        number: unit.unit_number,
-        // Legacy units carry no identity — the client must render these as
+        // Unnamed units carry no identity: the client must render these as
         // "unlabelled" rather than pretending they are distinguishable.
-        identified: !!unit.unit_designator,
-        label: unit.unit_designator
-          ? unit.unit_designator === "Whole"
-            ? "Whole property"
-            : `${unit.unit_designator} ${unit.unit_number}`
-          : null,
+        identified: !!unit.name,
+        label: unit.name ?? null,
         bedrooms: unit.bedrooms,
         bathrooms: unit.bathrooms,
         area: unit.area,
@@ -121,11 +116,11 @@ export async function GET(req) {
   // Duplicate listing rows at one address routinely describe the SAME physical
   // unit — three landlords each listing "729 Westgate" produce three separate
   // "Whole property" units. Presenting those as three choices is meaningless, so
-  // identified units sharing a designator+number are merged into one option with
+  // named units sharing a name are merged into one option with
   // their leases pooled. This is the same collapse the database merge performs,
   // applied at read time so the picker is correct before that merge has run.
   //
-  // Unidentified units are never merged: with no identity there is nothing to
+  // Unnamed units are never merged: with no name there is nothing to
   // match on, and merging on bed/bath alone would fuse genuinely distinct units.
   const mergedUnits = [];
   const byIdentity = new Map();
@@ -135,7 +130,7 @@ export async function GET(req) {
       mergedUnits.push(unit);
       continue;
     }
-    const identityKey = `${unit.designator}|${unit.number ?? ""}`;
+    const identityKey = unitNameKey(unit.label);
     const existing = byIdentity.get(identityKey);
     if (!existing) {
       byIdentity.set(identityKey, unit);

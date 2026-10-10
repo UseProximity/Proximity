@@ -15,6 +15,8 @@ import {
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
+import { cleanUnitName } from "@/utils/unitName";
+import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -404,7 +406,7 @@ export async function POST(req) {
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
       rent: unit.rent ?? null,
-      title: unit.title ?? null,
+      name: cleanUnitName(unit.name),
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
       // A unit can be offered for several lease durations (months).
       leaseTermMonths: Array.isArray(unit.leaseTermMonths)
@@ -420,10 +422,6 @@ export async function POST(req) {
       // own; whether one is available is read back off its offerings.
       available: unit.available !== false,
       sublease: isSublease,
-      // Unit identity. 'Whole' covers the entire property and carries no number
-      // (enforced by listing_units_number_check).
-      designator: unit.designator ?? null,
-      number: unit.designator === "Whole" ? null : unit.number ?? null,
     }));
 
     // listings.lease_availability is derived from the union of the units' lease terms.
@@ -553,6 +551,8 @@ export async function POST(req) {
      * is what lets the client scope the upload instead of guessing.
      */
     const createdUnitIds = [];
+    // In the order the landlord entered them, after any units already there.
+    let sortOrder = await nextUnitSortOrder(listingId);
     for (const unit of unitData) {
       const { data: insertedUnit, error: unitError } = await supabase
         .from("listing_units")
@@ -561,10 +561,9 @@ export async function POST(req) {
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms,
           area: unit.area,
-          title: unit.title,
+          name: unit.name,
+          sort_order: sortOrder++,
           floor_plan_image_url: unit.floorPlanImageUrl,
-          unit_designator: unit.designator,
-          unit_number: unit.number,
         })
         .select("id")
         .single();

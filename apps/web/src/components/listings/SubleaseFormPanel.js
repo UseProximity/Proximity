@@ -7,6 +7,8 @@ import { clampCount } from "@/utils/unitCounts";
 import { compressImage } from "@/utils/compressImage";
 import { checkListingDescription } from "@/lib/contentRules";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
+import { UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 
 // Values are the exact boolean column names on `listing_amenities` / `listing_utilities`.
 const AMENITY_OPTIONS = [
@@ -56,7 +58,7 @@ const emptyUnit = () => ({
   rent: "",
   area: "",
   available: true,
-  title: "",
+  name: "",
   floorPlanImageUrl: "",
   leaseTermMonths: [], // months a unit can be leased for (multi-select)
 });
@@ -104,7 +106,7 @@ export default function SubleaseFormPanel({
           rent: u.rent ?? "",
           area: u.area ?? "",
           available: u.available ?? true,
-          title: u.title ?? "",
+          name: u.name ?? "",
           floorPlanImageUrl: u.floorPlanImageUrl ?? u.floor_plan_image_url ?? "",
           leaseTermMonths: Array.isArray(u.leaseTermMonths)
             ? u.leaseTermMonths.map(Number)
@@ -382,7 +384,7 @@ export default function SubleaseFormPanel({
         rent: u.rent !== "" ? Number(u.rent) : null,
         area: u.area !== "" ? Number(u.area) : null,
         available: u.available !== false,
-        title: (u.title ?? "").trim() || null,
+        name: (u.name ?? "").trim() || null,
         floorPlanImageUrl: u.floorPlanImageUrl || null,
         leaseTermMonths: Array.isArray(u.leaseTermMonths)
           ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
@@ -784,14 +786,15 @@ export default function SubleaseFormPanel({
                       </div>
                     ))}
                     <div className="sm:col-span-4">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Unit / Floor Plan Name
+                      <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">
+                        {UNIT_NAME_LABEL}
+                        <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
                       </label>
                       <input
                         type="text"
-                        value={unit.title ?? ""}
-                        onChange={(e) => updateUnit(i, "title", e.target.value)}
-                        placeholder='e.g. "The Loft" or "Penthouse A" (shown instead of "2 Bed / 1 Bath")'
+                        value={unit.name ?? ""}
+                        onChange={(e) => updateUnit(i, "name", e.target.value)}
+                        placeholder='e.g. "2W" or a floor plan like "The Aspen" (shown instead of "2 Bed / 1 Bath")'
                         className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>

@@ -633,7 +633,7 @@
       },
       {
         "table": "listing_units",
-        "description": "Physical units within a listing (beds/baths/area). title = landlord-named unit/floor plan (shown instead of '2 Bed / 1 Bath'); floor_plan_image_url = downloadable floor plan (R2). [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED — a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.]",
+        "description": "Physical units within a listing (beds/baths/area). name = THE unit's name ('Apt 617', 'The Loft'), the single source of truth every screen reads and every form writes; NULL renders as a beds/baths description. floor_plan_image_url = downloadable floor plan (R2). [2026-10-09: title, unit_designator and unit_number RETIRED in favour of name (backfilled: identity label first, else title; 202610090001_listing_units_name.sql). Kept in the table, never read or written by the app. Duplicate names at one property are refused (case/space-insensitive, lib/listings/unitNames.js). rpc_create_listing / rpc_edit_listing write name from the unit payload's 'name' key, falling back to 'title' (202610090002).] [2026-10-10: sort_order = the landlord's order for the property's units, set by dragging the editor tabs (PUT /api/landlord/listings/[listingId]/units/order, owner-only). Every view sorts with utils/unitOrder.js: sort_order asc, NULL last, then beds, baths. Seeded from beds/baths order (202610100001).] [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED — a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -646,7 +646,9 @@
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
           "unit_designator:text",
-          "unit_number:text"
+          "unit_number:text",
+          "name:text",
+          "sort_order:integer"
         ]
       },
       {

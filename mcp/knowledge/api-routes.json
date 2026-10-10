@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-07T19:55:17.128Z",
-  "count": 104,
+  "_generated": "2026-10-10T03:10:45.242Z",
+  "count": 105,
   "routes": [
     {
       "path": "/api/account",
@@ -891,8 +891,8 @@
         "PATCH": "any"
       },
       "tables": [
-        "home_types",
         "listings",
+        "home_types",
         "listing_amenities",
         "listing_utilities",
         "listing_custom_amenities"
@@ -930,6 +930,20 @@
         "unit_leases"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/units/[unitId]/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/units/order",
+      "methods": [
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PUT": "any"
+      },
+      "tables": [
+        "listing_units"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/units/order/route.js"
     },
     {
       "path": "/api/landlord/metrics",

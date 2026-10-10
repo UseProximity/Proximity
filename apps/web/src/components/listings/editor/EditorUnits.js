@@ -22,8 +22,9 @@ import { UnitFloorPlan } from "./EditorImageRows";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
+import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 
-const DESIGNATORS = ["Apt", "Unit", "Suite", "Floor", "Room", "Whole"];
 
 // Heading for a group of offerings inside a unit.
 function SectionLabel({ children, hint }) {
@@ -282,12 +283,10 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
 function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged }) {
   const listingId = listing?._id || listing?.id;
   const [draft, setDraft] = useState({
-    designator: unit.designator ?? (unit.identityLabel ? "Apt" : ""),
-    number: unit.number ?? "",
+    name: unit.name ?? "",
     bedrooms: unit.bedrooms ?? "",
     bathrooms: unit.bathrooms ?? "",
     area: unit.area ?? "",
-    title: unit.title ?? "",
   });
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -323,7 +322,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
    */
   const removeUnit = async () => {
     const n = (unit.leases ?? []).length;
-    const name = unit.identityLabel ?? unit.title ?? "this unit";
+    const name = unit.name ?? "this unit";
     const extra = n
       ? ` Its ${n} ${n === 1 ? "listing is" : "listings are"} taken down with it.`
       : "";
@@ -348,7 +347,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
     <div className="rounded-xl border border-gray-200 bg-white">
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
         <h4 className="text-sm font-semibold text-gray-900">
-          {unit.identityLabel ?? unit.title ?? `${unit.bedrooms ?? "?"} bed · ${unit.bathrooms ?? "?"} bath`}
+          {unit.name ?? `${unit.bedrooms ?? "?"} bed · ${unit.bathrooms ?? "?"} bath`}
         </h4>
         <span className="text-xs text-gray-500">
           {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
@@ -376,19 +375,16 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
 
       {isPropertyOwner ? (
         <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
-          <label className="block">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Type</span>
-            <select className={`mt-1 w-full ${field}`} value={draft.designator}
-              onChange={(e) => set({ designator: e.target.value })}>
-              <option value="">—</option>
-              {DESIGNATORS.map((d) => <option key={d} value={d}>{d === "Whole" ? "Whole property" : d}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Number</span>
-            <input className={`mt-1 w-full ${field}`} value={draft.number}
-              disabled={!draft.designator || draft.designator === "Whole"}
-              onChange={(e) => set({ number: e.target.value })} />
+          {/* The unit's one name. Whatever is typed here is what every screen
+              calls this unit, students' and landlords' alike. */}
+          <label className="block sm:col-span-3">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              {UNIT_NAME_LABEL}
+              <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+            </span>
+            <input className={`mt-1 w-full ${field}`} value={draft.name}
+              maxLength={UNIT_NAME_MAX} placeholder="2W, or a floor plan like The Aspen"
+              onChange={(e) => set({ name: e.target.value })} />
           </label>
           <label className="block">
             <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Beds</span>
@@ -404,11 +400,6 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Sq ft</span>
             <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
               onChange={(e) => set({ area: clampCount(e.target.value) })} />
-          </label>
-          <label className="block">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Floor plan name</span>
-            <input className={`mt-1 w-full ${field}`} value={draft.title}
-              onChange={(e) => set({ title: e.target.value })} />
           </label>
         </div>
       ) : (
@@ -544,7 +535,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
  */
 function NewUnitPanel({ saving, onCancel, onCreate }) {
   const [draft, setDraft] = useState({
-    designator: "", number: "", bedrooms: "", bathrooms: "", area: "", title: "",
+    name: "", bedrooms: "", bathrooms: "", area: "",
   });
   const [attempted, setAttempted] = useState(false);
   const set = (p) => setDraft((d) => ({ ...d, ...p }));
@@ -552,9 +543,6 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
   const missing = [];
   if (draft.bedrooms === "") missing.push({ key: "bedrooms", label: "Bedrooms" });
   if (draft.bathrooms === "") missing.push({ key: "bathrooms", label: "Bathrooms" });
-  if (draft.designator && draft.designator !== "Whole" && !draft.number.trim()) {
-    missing.push({ key: "number", label: "Unit number" });
-  }
   const missingKeys = new Set(missing.map((m) => m.key));
   const bad = (key) =>
     attempted && missingKeys.has(key) ? "border-red-400 ring-1 ring-red-200" : "";
@@ -562,12 +550,10 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
   const submit = () => {
     if (missing.length) return setAttempted(true);
     onCreate({
-      designator: draft.designator || null,
-      number: draft.designator && draft.designator !== "Whole" ? draft.number : null,
+      name: draft.name,
       bedrooms: draft.bedrooms,
       bathrooms: draft.bathrooms,
       area: draft.area,
-      title: draft.title,
     });
   };
 
@@ -581,20 +567,14 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
       </div>
 
       <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Type</span>
-          <select className={`mt-1 w-full ${field}`} value={draft.designator}
-            onChange={(e) => set({ designator: e.target.value })}>
-            <option value="">—</option>
-            {DESIGNATORS.map((d) => <option key={d} value={d}>{d === "Whole" ? "Whole property" : d}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Number</span>
-          <input className={`mt-1 w-full ${field} ${bad("number")}`} value={draft.number}
-            disabled={!draft.designator || draft.designator === "Whole"}
-            placeholder="2W"
-            onChange={(e) => set({ number: e.target.value })} />
+        <label className="block sm:col-span-3">
+          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            {UNIT_NAME_LABEL}
+            <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+          </span>
+          <input className={`mt-1 w-full ${field}`} value={draft.name}
+            maxLength={UNIT_NAME_MAX} placeholder="2W, or a floor plan like The Aspen"
+            onChange={(e) => set({ name: e.target.value })} />
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
@@ -615,11 +595,6 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Sq ft</span>
           <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
             onChange={(e) => set({ area: clampCount(e.target.value) })} />
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Floor plan name</span>
-          <input className={`mt-1 w-full ${field}`} value={draft.title}
-            onChange={(e) => set({ title: e.target.value })} />
         </label>
       </div>
 
@@ -642,13 +617,11 @@ function NewUnitPanel({ saving, onCancel, onCreate }) {
   );
 }
 
-// The tab's name for a unit: its real identity first, then the landlord's own
-// name for the floor plan, and only then a description of it. Mirrors the
-// student-facing selector, which is the point — a landlord editing Apt 2W
-// should be looking at the same label a renter sees.
+// The tab's name for a unit: its name, and only then a description of it.
+// Mirrors the student-facing selector, which is the point: a landlord editing
+// Apt 2W should be looking at the same label a renter sees.
 function unitTabLabel(unit) {
-  if (unit.identityLabel) return unit.identityLabel;
-  if (unit.title) return unit.title;
+  if (unit.name) return unit.name;
   if ((unit.bedrooms ?? 0) === 0 && unit.bedrooms != null) return "Studio";
   return `${unit.bedrooms ?? "?"} bd · ${unit.bathrooms ?? "?"} ba`;
 }
@@ -668,12 +641,63 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
    * it, and the panel insisted nothing had happened while the row sat in the
    * database.
    */
-  const visible = isPropertyOwner
+  const listed = isPropertyOwner
     ? units
     : units.filter(
         (u) => myUnitIds.has(u.id) || !(u.leases ?? []).some((l) => !l.unavailable)
       );
   const listingId = listing?._id || listing?.id;
+
+  /*
+   * Dragging a tab reorders the units for every view (utils/unitOrder). The new
+   * order shows the moment it is dropped and is saved behind it; until that
+   * save lands the tabs go gray and hold still, so the next drag starts from
+   * an order that is really stored. A failed save snaps back. Owner-only, like
+   * the rest of the unit, and pointless with one tab.
+   */
+  const [localOrder, setLocalOrder] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const canReorder = isPropertyOwner && listed.length > 1 && !savingOrder;
+  const visible = localOrder
+    ? localOrder.map((id) => listed.find((u) => u.id === id)).filter(Boolean)
+    : listed;
+
+  const saveOrder = async (ids) => {
+    setLocalOrder(ids);
+    setSavingOrder(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/units/order`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLocalOrder(null);
+        return toast.error(data.error || "Couldn't save the new order.");
+      }
+      await onChanged();
+      setLocalOrder(null);
+    } catch {
+      setLocalOrder(null);
+      toast.error("Network error.");
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const dropOn = (targetId) => {
+    const from = dragId;
+    setDragId(null);
+    setOverId(null);
+    if (!from || from === targetId) return;
+    const ids = visible.map((u) => u.id);
+    ids.splice(ids.indexOf(from), 1);
+    ids.splice(ids.indexOf(targetId), 0, from);
+    saveOrder(ids);
+  };
 
   /*
    * One unit open at a time, selected by id rather than index so adding or
@@ -744,7 +768,7 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
 
   const addButton = (
     <button
-      type="button" onClick={() => setDrafting(true)}
+      type="button" onClick={() => setDrafting(true)} disabled={savingOrder}
       title="Add a unit to this property"
       aria-label="Add a unit to this property"
       className={`flex shrink-0 items-center gap-1 border-b-2 px-3 py-2.5 text-sm font-semibold transition ${
@@ -794,11 +818,33 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
           <button
             key={u.id} type="button"
             onClick={() => { setOpenId(u.id); setDrafting(false); }}
+            draggable={canReorder}
+            disabled={savingOrder}
+            onDragStart={(e) => {
+              setDragId(u.id);
+              e.dataTransfer.effectAllowed = "move";
+              // Firefox will not start a drag without data.
+              try { e.dataTransfer.setData("text/plain", u.id); } catch {}
+            }}
+            onDragOver={(e) => {
+              if (!dragId) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (overId !== u.id) setOverId(u.id);
+            }}
+            onDrop={(e) => { e.preventDefault(); dropOn(u.id); }}
+            onDragEnd={() => { setDragId(null); setOverId(null); }}
             className={`flex-1 whitespace-nowrap border-b-2 px-3 py-2.5 text-center text-sm font-semibold transition ${
-              openUnit.id === u.id && !drafting
+              savingOrder
+                ? openUnit.id === u.id && !drafting
+                  ? "cursor-wait border-gray-400 bg-gray-400 text-white"
+                  : "cursor-wait border-gray-200 bg-gray-100 text-gray-400"
+                : openUnit.id === u.id && !drafting
                 ? "border-red-600 bg-red-600 text-white"
                 : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-            }`}
+            }${canReorder ? " cursor-grab active:cursor-grabbing" : ""}${
+              dragId === u.id ? " opacity-40" : ""
+            }${overId === u.id && dragId !== u.id ? " ring-2 ring-inset ring-red-300" : ""}`}
           >
             {unitTabLabel(u)}
             {/* A unit with nothing on offer still gets a tab — it is the only
@@ -813,6 +859,18 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
         ))}
         {addButton}
       </div>
+      {isPropertyOwner && listed.length > 1 && (
+        <p className="-mt-1 flex items-center gap-1.5 px-1 text-[11px] text-gray-400">
+          {savingOrder ? (
+            <>
+              <span className="h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-gray-500" />
+              Saving order…
+            </>
+          ) : (
+            "Drag the tabs to change the order students see."
+          )}
+        </p>
+      )}
 
       {drafting ? (
         <NewUnitPanel

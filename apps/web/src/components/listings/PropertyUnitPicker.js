@@ -12,16 +12,6 @@
 // submit. A unit that already has a live lease cannot take a sublease, because a
 // sublease means someone is already living there under that lease.
 
-export const UNIT_DESIGNATORS = ["Apt", "Unit", "Suite", "Floor", "Room", "Whole"];
-
-// Mirrors listing_units_number_check: 'Whole' covers the entire property and
-// carries no number; every other designator is meaningless without one.
-export function isUnitIdentityValid(unit) {
-  if (!unit?.designator) return false;
-  if (unit.designator === "Whole") return true;
-  return !!String(unit.number ?? "").trim();
-}
-
 function unitSummary(unit) {
   const beds = unit.bedrooms === 0 ? "Studio" : `${unit.bedrooms} bed`;
   return `${beds} · ${unit.bathrooms} bath${unit.area ? ` · ${unit.area} sq ft` : ""}`;
@@ -97,10 +87,10 @@ export default function PropertyUnitPicker({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-gray-900">
-                    {unit.label ?? "Unlabelled unit"}
+                    {unit.label ?? "Unnamed unit"}
                     {!unit.identified && (
                       <span className="ml-1.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
-                        needs a label
+                        needs a name
                       </span>
                     )}
                   </span>
@@ -144,8 +134,8 @@ export default function PropertyUnitPicker({
 
       {property && units.length > 0 && units.every((u) => !u.identified) && (
         <p className="text-xs text-gray-500">
-          These units were added before unit numbers were collected, so they can&rsquo;t be
-          told apart yet. If none of them is clearly yours, add a new unit.
+          These units have no names yet, so they can&rsquo;t be
+          told apart. If none of them is clearly yours, add a new unit.
         </p>
       )}
 
