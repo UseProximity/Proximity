@@ -16,6 +16,7 @@ import {
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
 import { cleanUnitName } from "@/utils/unitName";
+import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -550,6 +551,8 @@ export async function POST(req) {
      * is what lets the client scope the upload instead of guessing.
      */
     const createdUnitIds = [];
+    // In the order the landlord entered them, after any units already there.
+    let sortOrder = await nextUnitSortOrder(listingId);
     for (const unit of unitData) {
       const { data: insertedUnit, error: unitError } = await supabase
         .from("listing_units")
@@ -559,6 +562,7 @@ export async function POST(req) {
           bathrooms: unit.bathrooms,
           area: unit.area,
           name: unit.name,
+          sort_order: sortOrder++,
           floor_plan_image_url: unit.floorPlanImageUrl,
         })
         .select("id")

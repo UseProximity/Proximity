@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { unitIsAvailable } from "@/lib/listings/unitAvailability";
 import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
 import { unitNameKey } from "@/utils/unitName";
+import { sortUnits } from "@/utils/unitOrder";
 
 // Look up whether a property already exists at an address, and if so return its
 // units and the live leases on each. This drives the address -> unit -> lease
@@ -52,7 +53,7 @@ export async function GET(req) {
     .select(
       `id, title, address, latitude, longitude, created_at,
        listing_units!listing_id(
-         id, name, bedrooms, bathrooms, area, deleted_at,
+         id, name, sort_order, bedrooms, bathrooms, area, deleted_at,
          unit_leases!unit_id(id, rent, sublease, is_active, unavailable, owner_id, contact_name)
        )`
     )
@@ -72,8 +73,7 @@ export async function GET(req) {
 
   const units = rows
     .flatMap((row) =>
-      (row.listing_units ?? [])
-        .filter((unit) => !unit.deleted_at)
+      sortUnits((row.listing_units ?? []).filter((unit) => !unit.deleted_at))
         .map((unit) => ({ unit, listingId: row.id }))
     )
     .map(({ unit, listingId }) => {

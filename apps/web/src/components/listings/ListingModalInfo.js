@@ -38,6 +38,7 @@ import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
 import { useMessages } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
+import { compareUnits } from "@/utils/unitOrder";
 
 const CHAT_MAX_BODY = 5000;
 
@@ -1469,9 +1470,9 @@ export default function ListingModalInfo({
   const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
   const [floorPlanOpen, setFloorPlanOpen] = useState(false);
 
-  // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
-  // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
-  // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
+  // sortedUnits: [{origIdx, label}] in the landlord's order (see utils/unitOrder),
+  // falling back to beds then baths for units never placed, then dup number.
+  // Studios (0 beds) are labelled "Studio".
   const sortedUnits = useMemo(() => {
     const units = (listing.unitTypes ?? []).filter(
       (u) => u.available !== false
@@ -1522,15 +1523,7 @@ export default function ListingModalInfo({
     });
     return deduped
       .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
-      .sort((a, b) => {
-        const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
-        if (bedDiff !== 0) return bedDiff;
-        // Studios: don't sort by baths, only by dup number
-        if (isStudio(a.unit)) return a.num - b.num;
-        const bathDiff = (a.unit.bathrooms ?? 0) - (b.unit.bathrooms ?? 0);
-        if (bathDiff !== 0) return bathDiff;
-        return a.num - b.num;
-      });
+      .sort((a, b) => compareUnits(a.unit, b.unit) || a.num - b.num);
   }, [listing.unitTypes]);
 
   /*
