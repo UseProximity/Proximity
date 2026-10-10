@@ -1,36 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { ImageOff } from "lucide-react-native";
-import apiClient from "../../lib/apiClient";
+import { getChatImageUri } from "../../lib/chatImageCache";
 
 export function isImageAttachment(attachment) {
   return typeof attachment?.contentType === "string" && attachment.contentType.startsWith("image/");
 }
 
-// What an <Image> needs to show a chat attachment. Sent photos are fetched from
-// /api/chat/attachments/<id>, which needs the bearer token, so the source carries it
-// as a header (apiClient.chat.getAttachmentSource). A photo that is still on this
-// device (an attachment with `localUri`) is shown directly.
+// What an <Image> needs to show a chat attachment: a local file. Sent photos are
+// downloaded through the authenticated attachment route and cached on the device
+// (lib/chatImageCache.js), so the token is renewed and the request retried the same
+// way as any other api call, and the <Image> itself needs no credentials. A photo
+// that is still on this device (an attachment with `localUri`) is shown directly.
 //
-// `retry` refreshes the source. The access token lasts 15 minutes and is only
-// renewed by an API call, so a photo that fails to load first makes one cheap
-// authenticated call, which renews it, then reads the token again. `failed` is true
-// when the source itself could not be built.
+// `retry` fetches the photo again, discarding the cached file. `failed` is true when
+// the download itself did not succeed. Callers key this component by the attachment
+// (id or localUri), so one mounted instance only ever shows one attachment.
 export function useAttachmentSource(attachment) {
   const localUri = attachment?.localUri;
   const id = attachment?.id;
+  const contentType = attachment?.contentType;
   const [source, setSource] = useState(localUri ? { uri: localUri } : null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Set by `retry`, consumed by the next load: that load must not reuse the cache.
+  const freshRef = useRef(false);
 
   useEffect(() => {
     if (localUri || !id) return undefined;
     let cancelled = false;
+    const fresh = freshRef.current;
+    freshRef.current = false;
     setFailed(false);
-    apiClient.chat
-      .getAttachmentSource(id)
-      .then((next) => {
-        if (!cancelled) setSource(next);
+    getChatImageUri({ id, contentType }, { fresh })
+      .then((uri) => {
+        if (!cancelled) setSource({ uri });
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -38,11 +42,13 @@ export function useAttachmentSource(attachment) {
     return () => {
       cancelled = true;
     };
-  }, [id, localUri, attempt]);
+  }, [id, contentType, localUri, attempt]);
 
-  const retry = useCallback(async () => {
-    await apiClient.chat.getRealtimeToken().catch(() => {});
-    if (!localUri) setSource(null);
+  const retry = useCallback(() => {
+    if (!localUri) {
+      freshRef.current = true;
+      setSource(null);
+    }
     setAttempt((value) => value + 1);
   }, [localUri]);
 
@@ -50,8 +56,8 @@ export function useAttachmentSource(attachment) {
 }
 
 // Loading state for one attachment image, shared by the inline tiles and the
-// full-screen viewer. A load failure triggers exactly one silent retry (with a
-// refreshed token); a second failure puts it in the "error" state, from which only
+// full-screen viewer. A load failure triggers exactly one silent retry (a fresh
+// download); a second failure puts it in the "error" state, from which only
 // `retryNow` (the user tapping) tries again, so it can never loop or stay blank.
 // `status` is "loading", "loaded" or "error".
 export function useAttachmentImage(attachment) {
