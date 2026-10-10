@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
-import { emptyUnit, parseUnitNumbers } from "@/components/listings/listingFormOptions";
+import { emptyUnit } from "@/components/listings/listingFormOptions";
+import { parseUnitNames, unitNameKey } from "@/utils/unitName";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";
@@ -503,9 +504,12 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     const floorPlanImports = [];
     if (Array.isArray(listing.units) && listing.units.length) {
       nextUnits = listing.units.slice(0, 12).map((u, i) => {
-        for (const fld of ["bedrooms", "bathrooms", "rent", "area", "title"]) {
+        for (const fld of ["bedrooms", "bathrooms", "rent", "area"]) {
           if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
         }
+        // The source site's name for the unit or layout is the best starting
+        // point for its name here; the landlord can rename it before publishing.
+        if (u.title) marked.add(`u${i}:unitNames`);
         if (u.floorPlanImageUrl) floorPlanImports.push({ index: i, url: u.floorPlanImageUrl });
         return {
           bedrooms: u.bedrooms ?? "",
@@ -513,9 +517,10 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           rent: u.rent ?? "",
           area: u.area ?? "",
           available: true,
-          title: u.title ?? "",
           floorPlanImageUrl: "",
           leaseTermMonths: [],
+          // Commas would split it into several units, so they are dropped.
+          unitNames: String(u.title ?? "").replace(/,/g, " "),
         };
       });
     }
@@ -636,21 +641,18 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       if (attachingToExistingUnit && units.length > 1) {
         return "You're adding your listing to one existing unit, so keep a single unit here. Choose “add a new unit” to list several.";
       }
-      // Attaching to an existing unit reuses that unit's identity, so the
-      // floor-plan cards aren't creating anything that needs identifying.
+      // Attaching to an existing unit reuses that unit's name, so the cards
+      // aren't creating anything that needs naming.
       if (!attachingToExistingUnit) {
-        if (units.some((u) => !u.designator))
-          return "Pick a unit type for each floor plan (or “Whole property” for a house).";
-        if (units.some((u) => parseUnitNumbers(u.designator, u.unitNumbers).length === 0))
-          return "List the unit numbers for each floor plan, e.g. 2W, 2E.";
+        if (units.some((u) => parseUnitNames(u.unitNames).length === 0))
+          return "Name the units on each card, e.g. Apt 2W, Apt 2E (or “Whole house”).";
         // Two cards claiming the same unit would create duplicate units at the
-        // property — exactly the collision this model exists to prevent.
+        // property, exactly the collision this model exists to prevent.
         const seen = new Set();
         for (const u of units) {
-          for (const n of parseUnitNumbers(u.designator, u.unitNumbers)) {
-            const key = `${u.designator}|${n ?? ""}`;
-            if (seen.has(key))
-              return `Unit ${u.designator} ${n ?? ""} is listed on more than one floor plan.`;
+          for (const name of parseUnitNames(u.unitNames)) {
+            const key = unitNameKey(name);
+            if (seen.has(key)) return `${name} is listed on more than one card.`;
             seen.add(key);
           }
         }
@@ -704,22 +706,20 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setSubmitting(true);
     setError(null);
     try {
-      // A card is a FLOOR PLAN; expand it into one payload row per physical unit
-      // sharing it, so each gets its own identity and its own lease.
+      // A card describes identical units; expand it into one payload row per
+      // named unit, so each gets its own name and its own lease.
       const unitPayload = units.flatMap((u) =>
-        parseUnitNumbers(u.designator, u.unitNumbers).map((number) => ({
+        parseUnitNames(u.unitNames).map((name) => ({
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
           rent: u.rent !== "" ? Number(u.rent) : null,
           area: u.area !== "" ? Number(u.area) : null,
           available: u.available !== false,
-          title: (u.title ?? "").trim() || null,
+          name,
           floorPlanImageUrl: u.floorPlanImageUrl || null,
           leaseTermMonths: Array.isArray(u.leaseTermMonths)
             ? u.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
             : [],
-          designator: u.designator || null,
-          number,
         }))
       );
 

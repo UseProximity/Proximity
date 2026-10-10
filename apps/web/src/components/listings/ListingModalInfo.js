@@ -1494,8 +1494,8 @@ export default function ListingModalInfo({
     // Each entry has a full label ("2 Bed / 1 Bath") and a short label
     // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
     const baseLabelOf = deduped.map((u) => {
-      // Landlord-named units/floor plans display their custom title instead of "2 Bed / 1 Bath".
-      if (u.title) return { full: u.title, short: u.title };
+      // Named units display their name instead of "2 Bed / 1 Bath".
+      if (u.name) return { full: u.name, short: u.name };
       if (isStudio(u)) return { full: "Studio", short: "Studio" };
       const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
       const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
@@ -1620,15 +1620,11 @@ export default function ListingModalInfo({
     selectedUnitLeases.find((l) => l.id === selectedLeaseId) ?? null;
 
   /*
-   * Name of the open unit. Prefers its real identity, then the landlord's floor
-   * plan name, and only then a generated description — a unit that predates unit
-   * identity gets no invented label. Mirrors unitIdentityLabel in getListing.
+   * Name of the open unit, or null when it has none: an unnamed unit gets no
+   * invented label. The specs line is promoted to the heading in that case
+   * rather than restating the bed/bath count twice.
    */
-  // Null when the unit predates unit identity and the landlord never named it —
-  // 60% of rows. The specs line is promoted to the heading in that case rather
-  // than restating the bed/bath count twice.
-  const selectedUnitName =
-    selectedUnit?.identityLabel ?? selectedUnit?.title ?? null;
+  const selectedUnitName = selectedUnit?.name ?? null;
 
   const selectedUnitSpecs = [
     (selectedUnit?.bedrooms ?? 0) === 0
@@ -1745,8 +1741,7 @@ export default function ListingModalInfo({
   const unitLabelById = new Map(
     (listing?.unitTypes ?? []).map((u) => [
       u.id,
-      u.identityLabel ??
-        u.title ??
+      u.name ??
         ((u.bedrooms ?? 0) === 0 && u.bedrooms != null
           ? "Studio"
           : `${u.bedrooms ?? "?"} bd · ${u.bathrooms ?? "?"} ba`),

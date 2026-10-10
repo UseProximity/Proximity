@@ -84,19 +84,6 @@ function driveTimesToMap(driveTimes) {
 }
 
 /**
- * Human label for a unit's identity ("Apt 2W", "Whole property"), or null when
- * the unit predates unit identity and has nothing to label it with. Callers must
- * fall back to the floor-plan description rather than inventing a name — 60% of
- * existing units are unidentified, and a made-up label would be indistinguishable
- * from a real one.
- */
-export function unitIdentityLabel(designator, number) {
-  if (!designator) return null;
-  if (designator === "Whole") return "Whole property";
-  return `${designator} ${number ?? ""}`.trim();
-}
-
-/**
  * Shape a unit's lease rows into the offering list the UI renders beneath it.
  *
  * One lease = one owner's offering on that unit, so these are competing options
@@ -220,11 +207,10 @@ function buildListing(row, owner = null, reviews = []) {
         area: u.area != null ? Number(u.area) : null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-        title: u.title ?? null,
+        // The unit's one name, or null when it has none. Callers fall back to a
+        // beds/baths description rather than inventing a name.
+        name: u.name ?? null,
         floorPlanImageUrl: u.floor_plan_image_url ?? null,
-        designator: u.unit_designator ?? null,
-        number: u.unit_number ?? null,
-        identityLabel: unitIdentityLabel(u.unit_designator, u.unit_number),
         leases,
         leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
           ? activeLease.lease_term_months.map(Number)
@@ -319,8 +305,7 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(
-        id, bedrooms, bathrooms, area, deleted_at, title, floor_plan_image_url,
-        unit_designator, unit_number,
+        id, bedrooms, bathrooms, area, deleted_at, name, floor_plan_image_url,
         unit_leases(
           id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
           unavailable, description, furnished, owner_id,

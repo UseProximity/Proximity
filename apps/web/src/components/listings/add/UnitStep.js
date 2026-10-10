@@ -50,7 +50,7 @@ export default function UnitStep({ property, units, selectedUnitId, onSelectUnit
                     {(u.bedrooms ?? 0) === 0 ? "Studio" : `${u.bedrooms} bed`} ·{" "}
                     {u.bathrooms ?? "?"} bath
                     {u.area ? ` · ${Number(u.area).toLocaleString()} sq ft` : ""}
-                    {!u.identified && " · no unit number on file"}
+                    {!u.identified && " · no unit name on file"}
                   </span>
                 </span>
                 <span className="shrink-0 text-right text-xs">
