@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-09T02:34:14.118Z",
-  "count": 123,
+  "_generated": "2026-10-10T19:06:56.533Z",
+  "count": 124,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -571,6 +571,11 @@
     {
       "name": "HeartIcon",
       "file": "src/components/ui/HeartIcon.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "InfoTip",
+      "file": "src/components/ui/InfoTip.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

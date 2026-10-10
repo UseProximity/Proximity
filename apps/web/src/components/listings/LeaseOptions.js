@@ -10,7 +10,7 @@
  * selection state here: every row is independently actionable.
  */
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 
@@ -110,6 +110,45 @@ function DurationCell({ leaseTermMonths }) {
   );
 }
 
+/*
+ * How a renter can order a unit's offerings. Each puts unknowns (no price, no
+ * start date, no stated term) last: an offering that hasn't said is not the
+ * cheapest, soonest or shortest. Ties keep the order the leases arrived in,
+ * which is cheapest first.
+ */
+const lastIfNull = (fn) => (a, b) => {
+  const x = fn(a);
+  const y = fn(b);
+  if (x == null && y == null) return 0;
+  if (x == null) return 1;
+  if (y == null) return -1;
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
+const SORTS = {
+  price: { label: "Price", compare: lastIfNull((l) => l.rent) },
+  availability: {
+    label: "Availability",
+    // A date already past reads as "Now", so it sorts as today.
+    compare: lastIfNull((l) => {
+      if (!l.availableFrom) return null;
+      const day = String(l.availableFrom).slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      return day < today ? today : day;
+    }),
+  },
+  duration: {
+    label: "Lease length",
+    // Shortest term on offer first; a lease flexible down to 4 months suits a
+    // renter looking for 4, whatever else it also allows.
+    compare: lastIfNull((l) => leaseTermList(l.leaseTermMonths)[0] ?? null),
+  },
+};
+
+// A long list of offerings pushes the rest of the listing out of reach, so it
+// opens on the first few and grows on request.
+const PAGE = 5;
+
 function Cell({ label, children, className = "" }) {
   return (
     <div className={`min-w-0 ${className}`}>
@@ -145,12 +184,79 @@ export default function LeaseOptions({ leases = [], loading = false, onContact }
     );
   }
 
+  return <LeaseList leases={leases} onContact={onContact} />;
+}
+
+function LeaseList({ leases, onContact }) {
+  const [sortBy, setSortBy] = useState("price");
+  const [shown, setShown] = useState(PAGE);
+
+  // A different unit's tab is a different list: start it from the top.
+  useEffect(() => setShown(PAGE), [leases]);
+
+  const sorted = useMemo(
+    () =>
+      leases
+        .map((lease, i) => ({ lease, i }))
+        .sort((a, b) => SORTS[sortBy].compare(a.lease, b.lease) || a.i - b.i)
+        .map(({ lease }) => lease),
+    [leases, sortBy]
+  );
+  const visible = sorted.slice(0, shown);
+  const remaining = sorted.length - visible.length;
+
   return (
-    <ul className="divide-y divide-gray-100">
-      {leases.map((lease) => (
-        <LeaseRow key={lease.id} lease={lease} onContact={onContact} />
-      ))}
-    </ul>
+    <div>
+      {leases.length > 1 && (
+        <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs text-gray-500">
+          <span>{leases.length} lease options</span>
+          <label className="flex items-center gap-1.5">
+            <span>Sort by</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="rounded-md border border-gray-200 bg-white px-1.5 py-1 text-xs font-medium text-gray-700 focus:border-red-400 focus:outline-none"
+            >
+              {Object.entries(SORTS).map(([key, s]) => (
+                <option key={key} value={key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      <ul className="divide-y divide-gray-100">
+        {visible.map((lease) => (
+          <LeaseRow key={lease.id} lease={lease} onContact={onContact} />
+        ))}
+      </ul>
+
+      {sorted.length > PAGE && (
+        <div className="flex items-center justify-center gap-4 border-t border-gray-100 px-4 py-2.5">
+          {remaining > 0 && (
+            <button
+              type="button"
+              onClick={() => setShown((n) => n + PAGE)}
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Show {Math.min(PAGE, remaining)} more
+              <span className="font-normal text-gray-400"> ({remaining} left)</span>
+            </button>
+          )}
+          {shown > PAGE && (
+            <button
+              type="button"
+              onClick={() => setShown(PAGE)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Show less
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

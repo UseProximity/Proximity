@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { isWholeCount } from "@/utils/unitCounts";
+import { cleanUnitName } from "@/utils/unitName";
+import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 /*
  * Add a unit to a property.
@@ -84,44 +86,16 @@ export async function POST(req, { params }) {
     );
   }
 
-  // "Whole" covers the entire property and carries no number, which
-  // listing_units_number_check enforces at the column level too.
-  const designator =
-    typeof body.designator === "string" ? body.designator.trim() || null : null;
-  const number =
-    !designator || designator === "Whole"
-      ? null
-      : (typeof body.number === "string" ? body.number.trim() : "") || null;
+  const name = cleanUnitName(body.name);
 
-  /*
-   * One apartment, one row. Two units at the same address both called "Unit 2E"
-   * are not two apartments, and a landlord who clicks Add twice because the
-   * first one didn't appear should get their unit back — not a duplicate of it.
-   * Only identified units can be checked: a unit with no designator has nothing
-   * to be the same as.
-   */
-  if (designator) {
-    const { data: clash } = await supabase
-      .from("listing_units")
-      .select("id")
-      .eq("listing_id", listingId)
-      .eq("unit_designator", designator)
-      .is("deleted_at", null)
-      [number === null ? "is" : "eq"]("unit_number", number)
-      // limit(1) rather than maybeSingle(): duplicates already exist from before
-      // this guard, and erroring on "more than one row" would be the guard
-      // failing precisely where it is most needed.
-      .limit(1);
-
-    if (clash?.length) {
-      return NextResponse.json(
-        {
-          error: "That unit already exists at this property.",
-          unit: { id: clash[0].id },
-        },
-        { status: 409 }
-      );
-    }
+  // One apartment, one row: a landlord who clicks Add twice because the first
+  // one didn't appear should get their unit back, not a duplicate of it.
+  const clashId = await findUnitNamed(listingId, name);
+  if (clashId) {
+    return NextResponse.json(
+      { error: "That unit already exists at this property.", unit: { id: clashId } },
+      { status: 409 }
+    );
   }
 
   const { data: unit, error } = await supabase
@@ -131,20 +105,13 @@ export async function POST(req, { params }) {
       bedrooms,
       bathrooms,
       area: num(body.area),
-      title: typeof body.title === "string" ? body.title.trim() || null : null,
-      unit_designator: designator,
-      unit_number: number,
+      name,
+      sort_order: await nextUnitSortOrder(listingId),
     })
     .select("id")
     .single();
 
   if (error) {
-    if (error.code === "23514") {
-      return NextResponse.json(
-        { error: "A numbered unit needs a number, and “Whole property” can't have one." },
-        { status: 400 }
-      );
-    }
     // A missing required column is the caller's omission, not a server fault,
     // and saying so beats the bare 500 this used to return.
     if (error.code === "23502") {

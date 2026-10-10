@@ -38,6 +38,7 @@ import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
 import { useMessages } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
+import { compareUnits } from "@/utils/unitOrder";
 
 const CHAT_MAX_BODY = 5000;
 
@@ -1469,9 +1470,9 @@ export default function ListingModalInfo({
   const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
   const [floorPlanOpen, setFloorPlanOpen] = useState(false);
 
-  // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
-  // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
-  // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
+  // sortedUnits: [{origIdx, label}] in the landlord's order (see utils/unitOrder),
+  // falling back to beds then baths for units never placed, then dup number.
+  // Studios (0 beds) are labelled "Studio".
   const sortedUnits = useMemo(() => {
     const units = (listing.unitTypes ?? []).filter(
       (u) => u.available !== false
@@ -1494,8 +1495,8 @@ export default function ListingModalInfo({
     // Each entry has a full label ("2 Bed / 1 Bath") and a short label
     // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
     const baseLabelOf = deduped.map((u) => {
-      // Landlord-named units/floor plans display their custom title instead of "2 Bed / 1 Bath".
-      if (u.title) return { full: u.title, short: u.title };
+      // Named units display their name instead of "2 Bed / 1 Bath".
+      if (u.name) return { full: u.name, short: u.name };
       if (isStudio(u)) return { full: "Studio", short: "Studio" };
       const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
       const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
@@ -1522,15 +1523,7 @@ export default function ListingModalInfo({
     });
     return deduped
       .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
-      .sort((a, b) => {
-        const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
-        if (bedDiff !== 0) return bedDiff;
-        // Studios: don't sort by baths, only by dup number
-        if (isStudio(a.unit)) return a.num - b.num;
-        const bathDiff = (a.unit.bathrooms ?? 0) - (b.unit.bathrooms ?? 0);
-        if (bathDiff !== 0) return bathDiff;
-        return a.num - b.num;
-      });
+      .sort((a, b) => compareUnits(a.unit, b.unit) || a.num - b.num);
   }, [listing.unitTypes]);
 
   /*
@@ -1620,15 +1613,11 @@ export default function ListingModalInfo({
     selectedUnitLeases.find((l) => l.id === selectedLeaseId) ?? null;
 
   /*
-   * Name of the open unit. Prefers its real identity, then the landlord's floor
-   * plan name, and only then a generated description — a unit that predates unit
-   * identity gets no invented label. Mirrors unitIdentityLabel in getListing.
+   * Name of the open unit, or null when it has none: an unnamed unit gets no
+   * invented label. The specs line is promoted to the heading in that case
+   * rather than restating the bed/bath count twice.
    */
-  // Null when the unit predates unit identity and the landlord never named it —
-  // 60% of rows. The specs line is promoted to the heading in that case rather
-  // than restating the bed/bath count twice.
-  const selectedUnitName =
-    selectedUnit?.identityLabel ?? selectedUnit?.title ?? null;
+  const selectedUnitName = selectedUnit?.name ?? null;
 
   const selectedUnitSpecs = [
     (selectedUnit?.bedrooms ?? 0) === 0
@@ -1745,8 +1734,7 @@ export default function ListingModalInfo({
   const unitLabelById = new Map(
     (listing?.unitTypes ?? []).map((u) => [
       u.id,
-      u.identityLabel ??
-        u.title ??
+      u.name ??
         ((u.bedrooms ?? 0) === 0 && u.bedrooms != null
           ? "Studio"
           : `${u.bedrooms ?? "?"} bd · ${u.bathrooms ?? "?"} ba`),

@@ -98,8 +98,13 @@ export const emptyUnit = () => ({
   area: "",
   // False for a waitlist-only plan: kept with the listing, not offered.
   available: true,
-  title: "",
   floorPlanImageUrl: "",
+  /*
+   * What the unit is called: one apartment ("2W") or one floor plan many
+   * apartments share ("The Aspen"). A comma list ("1W, 1E") makes one unit per
+   * name, each with these leases. See utils/unitName.js.
+   */
+  unitNames: "",
   // Photos of this unit (not the building), already uploaded, filed against
   // the unit once the listing exists.
   photos: [],
@@ -130,6 +135,7 @@ export function mergeLeasesByRent(offers = []) {
     const key = rent === "" || !Number.isFinite(rent) ? "" : rent;
     const terms = (o.leaseTermMonths ?? []).map(Number).filter((m) => Number.isFinite(m) && m > 0);
     const date = ISO_DATE.test(o.availableFrom ?? "") ? o.availableFrom : "";
+    const apartments = (o.apartments ?? []).filter(Boolean);
     const g = groups.get(key);
     if (!g) {
       groups.set(key, {
@@ -137,10 +143,13 @@ export function mergeLeasesByRent(offers = []) {
         rentIsPerPerson: !!o.rentIsPerPerson,
         availableFrom: date,
         leaseTermMonths: [...new Set(terms)].sort((a, b) => a - b),
+        // Which apartments this price is for ("Apts 07C, 11C" on publish).
+        apartments: [...new Set(apartments)],
       });
       continue;
     }
     g.leaseTermMonths = [...new Set([...g.leaseTermMonths, ...terms])].sort((a, b) => a - b);
+    g.apartments = [...new Set([...g.apartments, ...apartments])];
     // Blank is "now", which beats any date.
     if (g.availableFrom && (!date || date < g.availableFrom)) g.availableFrom = date;
   }
@@ -166,7 +175,8 @@ export function normalizeWizardUnit(u) {
     bathrooms: u.bathrooms ?? "",
     area: u.area ?? "",
     available: u.available !== false,
-    title: u.title ?? "",
+    // Drafts saved before units had one name kept the floor plan name as title.
+    unitNames: u.unitNames ?? u.title ?? "",
     floorPlanImageUrl: u.floorPlanImageUrl ?? "",
     photos: Array.isArray(u.photos) ? u.photos : [],
     heldPhotos: Array.isArray(u.heldPhotos) ? u.heldPhotos : [],
@@ -184,6 +194,7 @@ export function normalizeWizardUnit(u) {
     rent: u.unitRents?.[n] ?? u.rent ?? "",
     availableFrom: u.unitAvailability?.[n] || planDate,
     leaseTermMonths: terms,
+    apartments: n ? [n] : [],
   }));
   const offers = apartmentOffers.length
     ? apartmentOffers
@@ -193,12 +204,18 @@ export function normalizeWizardUnit(u) {
     : offers.map((o) => o.availableFrom).sort()[0] ?? "";
   for (const extra of u.extraLeases ?? []) {
     if (extra?.rent === "" || extra?.rent == null) continue;
-    offers.push({ rent: extra.rent, availableFrom: soonest, leaseTermMonths: extra.leaseTermMonths ?? [] });
+    offers.push({
+      rent: extra.rent,
+      availableFrom: soonest,
+      leaseTermMonths: extra.leaseTermMonths ?? [],
+      apartments: names.filter(Boolean),
+    });
   }
   return { ...base, leases: mergeLeasesByRent(offers) };
 }
 
-// Unit designators, matching listing_units_designator_check.
+// Unit types a REVIEWER picks from (listing_reviews.unit_designator). Listing
+// units are named freely instead; see utils/unitName.js.
 export const UNIT_DESIGNATORS = ["Apt", "Unit", "Suite", "Floor", "Room", "Whole"];
 
 /*
@@ -252,7 +269,7 @@ function normalizeUnitToken(token) {
  *   status "missing"  on Proximity only: kept unless the landlord marks it
  *                     unavailable (`retire`)
  *
- * Units match by bedrooms and bathrooms. Among those, the floor plan name
+ * Units match by bedrooms and bathrooms. Among those, the unit's name
  * wins, then the closest size: Rosebury has three 2 bed / 2 bath plans at
  * 1,220, 1,304 and 1,452 sq ft, and taking the first one paired the wrong
  * plans and moved one's price onto another.
@@ -277,7 +294,7 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
     bedrooms: u.bedrooms ?? "",
     bathrooms: u.bathrooms ?? "",
     area: u.area ?? "",
-    title: u.title ?? "",
+    unitNames: u.name ?? "",
     floorPlanImageUrl: u.floorPlanImageUrl ?? "",
     photoCount: Number(u.photoCount) || 0,
   });
@@ -313,7 +330,7 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
       liveUnits.filter((u) => Number(u.bedrooms) === Number(w.bedrooms) && Number(u.bathrooms) === Number(w.bathrooms)).length === 1 &&
       websiteUnits.filter((x) => Number(x.bedrooms) === Number(w.bedrooms) && Number(x.bathrooms) === Number(w.bathrooms)).length === 1;
     const hit =
-      same.find((p) => name(p.u.title) && name(p.u.title) === name(w.title)) ??
+      same.find((p) => name(p.u.name) && name(p.u.name) === name(w.unitNames)) ??
       // Closest size, but only a size that could be the same apartment
       // re-measured. With several of one layout, a size further off than that
       // is a different plan, and pairing it would move one plan's price onto
@@ -380,7 +397,7 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
       ...w,
       photos: hold ? [] : w.photos ?? [],
       heldPhotos: hold ? [...(w.heldPhotos ?? []), ...(w.photos ?? [])] : w.heldPhotos ?? [],
-      title: w.title || live.title,
+      unitNames: w.unitNames || live.unitNames,
       area: w.area !== "" && w.area != null ? w.area : live.area,
       floorPlanImageUrl: w.floorPlanImageUrl || live.floorPlanImageUrl,
       live,
@@ -397,7 +414,7 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
       bedrooms: live.bedrooms,
       bathrooms: live.bathrooms,
       area: live.area,
-      title: live.title,
+      unitNames: live.unitNames,
       floorPlanImageUrl: live.floorPlanImageUrl,
       live,
       status: "missing",

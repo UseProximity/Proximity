@@ -8,6 +8,7 @@ import {
   mergeWithLive,
   normalizeWizardUnit,
 } from "@/components/listings/listingFormOptions";
+import { apartmentsLabel, cleanUnitName, parseUnitNames, unitNameKey } from "@/utils/unitName";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";
@@ -68,6 +69,30 @@ const blankForm = (user) => ({
  * `existing` is set when the property is already on Proximity: the landlord adds
  * units to that listing and edits the leases they already hold there.
  */
+/*
+ * The name an imported floor plan arrives with. The importer is told to name
+ * each unit the way the tooltip asks a landlord to: the floor plan's own name
+ * for a building of shared layouts ("Pershing"), the apartment for a small
+ * building ("6219 S"). Where the site names neither, the layout stands in for
+ * it, as landlords write it themselves ("2 Bed 1 Bath"), with the size added
+ * when two plans would otherwise share a name. Commas would split one floor
+ * plan into several units, so they become spaces.
+ */
+function importedUnitName(u, all) {
+  const own = cleanUnitName(String(u.title ?? "").replace(/,/g, " "));
+  if (own) return own;
+  const layout = (x) =>
+    x.bedrooms == null
+      ? ""
+      : `${Number(x.bedrooms) === 0 ? "Studio" : `${x.bedrooms} Bed`}${
+          x.bathrooms != null ? ` ${x.bathrooms} Bath` : ""
+        }`;
+  const base = layout(u);
+  if (!base) return "";
+  const twins = all.filter((x) => !cleanUnitName(x.title) && layout(x) === base).length;
+  return twins > 1 && u.area ? `${base} (${Number(u.area).toLocaleString()} sq ft)` : base;
+}
+
 export default function AddListingWizard({
   user,
   onClose,
@@ -948,9 +973,11 @@ export default function AddListingWizard({
        */
       const namesApartments = listing.units.some((u) => (u.unitNames ?? []).length);
       nextUnits = listing.units.slice(0, 40).map((u, i) => {
-        for (const fld of ["bedrooms", "bathrooms", "area", "title"]) {
+        for (const fld of ["bedrooms", "bathrooms", "area"]) {
           if (u[fld] != null && u[fld] !== "") marked.add(`u${i}:${fld}`);
         }
+        // Highlighted so the landlord checks the name the site gave the unit.
+        if (importedUnitName(u, listing.units)) marked.add(`u${i}:unitNames`);
         if ((u.rent != null && u.rent !== "") || (u.leaseTermMonths ?? []).length)
           marked.add(`u${i}:leases`);
         if (u.floorPlanImageUrl) floorPlanImports.push({ index: i, url: u.floorPlanImageUrl });
@@ -1017,7 +1044,7 @@ export default function AddListingWizard({
           area: u.area ?? "",
           // A waitlist-only plan comes in switched off; everything else is on.
           available: u.available !== false,
-          title: u.title ?? "",
+          unitNames: importedUnitName(u, listing.units),
           floorPlanImageUrl: "",
           leaseTermMonths: cheapest ? cheapest.leaseTermMonths : terms,
           /*
@@ -1211,7 +1238,7 @@ export default function AddListingWizard({
       } else if (units.length === 0) return "Add at least one unit.";
       if (units.some((u) => u.bedrooms === "" || u.bathrooms === ""))
         return "Each unit needs bedrooms and bathrooms.";
-      const unitName = (u, i) => u.title?.trim() || `Unit ${i + 1}`;
+      const unitName = (u, i) => parseUnitNames(u.unitNames)[0] || `Unit ${i + 1}`;
       for (const [i, u] of units.entries()) {
         if (u.available === false || u.retire) continue;
         // Anything being marked unavailable is not being offered, so it needs
@@ -1240,6 +1267,24 @@ export default function AddListingWizard({
        */
       if (attachingToExistingUnit && units.length > 1) {
         return "You're adding your listing to one existing unit, so keep a single unit here. Choose “add a new unit” to list several.";
+      }
+      /*
+       * Every card needs a name, and no two cards may claim the same one: two
+       * rows with one name are the duplicate units this model exists to stop.
+       * Attaching to an existing unit reuses that unit's name, and a unit
+       * already on Proximity keeps the name it has, even an empty one.
+       */
+      if (!attachingToExistingUnit) {
+        if (units.some((u) => !u.live && parseUnitNames(u.unitNames).length === 0))
+          return "Add a floor plan or unit name to each card, e.g. 2W, 2E or “The Aspen”.";
+        const seen = new Set();
+        for (const u of units) {
+          for (const name of parseUnitNames(u.unitNames)) {
+            const key = unitNameKey(name);
+            if (seen.has(key)) return `${name} is listed on more than one card.`;
+            seen.add(key);
+          }
+        }
       }
     }
     if (id === "description") {
@@ -1333,11 +1378,14 @@ export default function AddListingWizard({
           JSON.stringify([...(a ?? [])].map(Number).sort()) ===
           JSON.stringify([...(b ?? [])].map(Number).sort());
         for (const u of units.filter((x) => x.live)) {
-          const label = u.title || "a unit";
+          const label = parseUnitNames(u.unitNames)[0] || "a unit";
           if (ownExisting.mine === "owner") {
             const patch = {};
-            for (const f of ["bedrooms", "bathrooms", "area", "title", "floorPlanImageUrl"])
+            for (const f of ["bedrooms", "bathrooms", "area", "floorPlanImageUrl"])
               if (String(u[f] ?? "") !== String(u.live[f] ?? "")) patch[f] = u[f];
+            // A unit already on Proximity is one row, so it keeps one name.
+            if (cleanUnitName(u.unitNames) !== cleanUnitName(u.live.unitNames))
+              patch.name = cleanUnitName(u.unitNames);
             if (Object.keys(patch).length) {
               const problem = await send(
                 `/api/landlord/listings/${lid}/units/${u.live.id}`,
@@ -1384,7 +1432,7 @@ export default function AddListingWizard({
                   availableFrom: l.availableFrom || null,
                   sublease: String(form.lease_type).toLowerCase() === "sublease",
                   available: !off,
-                  description: form.description,
+                  description: apartmentsLabel(l.apartments) || form.description,
                   furnished: form.furnished,
                   contactEmail: form.contact_email || null,
                   contactPhone: form.contact_phone || null,
@@ -1525,41 +1573,43 @@ export default function AddListingWizard({
           return { ok: true, listingId: existingProperty.id, unitPayload: [], diff: null };
         }
       }
-
-      /*
-       * One unit per floor plan, with its leases underneath. A house typed in
-       * as a single unit is the whole property; anything else goes in with no
-       * unit number, which listing_units allows.
-       */
-      const wholeProperty = createUnits.length === 1 && form.home_type !== "apartment";
       const termsOf = (l) =>
         (l.leaseTermMonths ?? []).map(Number).filter((m) => Number.isFinite(m) && m > 0);
-      const unitPayload = createUnits.map((u) => {
+      /*
+       * A card is one unit per name: "The Aspen" is one row, "1W, 1E" is two,
+       * each with the card's leases. cardOf maps each payload row back to its
+       * card, which is how the photos below find the unit they belong to.
+       */
+      const cardOf = [];
+      const unitPayload = createUnits.flatMap((u, card) => {
+        const names = attachingToExistingUnit ? [null] : parseUnitNames(u.unitNames);
         const leases = (u.leases ?? []).map((l) => ({
           rent: l.rent !== "" && l.rent != null ? Number(l.rent) : null,
           rentIsPerPerson: !!l.rentIsPerPerson,
           leaseTermMonths: termsOf(l),
           availableFrom: l.availableFrom || null,
+          apartments: l.apartments ?? [],
         }));
         const priced = leases.map((l) => l.rent).filter((r) => r != null);
         const dates = leases.map((l) => l.availableFrom);
-        return {
-          bedrooms: Number(u.bedrooms),
-          bathrooms: Number(u.bathrooms),
-          rent: priced.length ? Math.min(...priced) : null,
-          area: u.area !== "" ? Number(u.area) : null,
-          available: u.available !== false,
-          title: (u.title ?? "").trim() || null,
-          floorPlanImageUrl: u.floorPlanImageUrl || null,
-          // Every length offered on this unit, for the listing's summary.
-          leaseTermMonths: [...new Set(leases.flatMap((l) => l.leaseTermMonths))].sort(
-            (a, b) => a - b
-          ),
-          leases,
-          designator: wholeProperty ? "Whole" : null,
-          number: null,
-          leaseAvailability: dates.some((d) => !d) ? null : dates.sort()[0] ?? null,
-        };
+        return names.map((name) => {
+          cardOf.push(card);
+          return {
+            bedrooms: Number(u.bedrooms),
+            bathrooms: Number(u.bathrooms),
+            rent: priced.length ? Math.min(...priced) : null,
+            area: u.area !== "" ? Number(u.area) : null,
+            available: u.available !== false,
+            name,
+            floorPlanImageUrl: u.floorPlanImageUrl || null,
+            // Every length offered on this unit, for the listing's summary.
+            leaseTermMonths: [...new Set(leases.flatMap((l) => l.leaseTermMonths))].sort(
+              (a, b) => a - b
+            ),
+            leases,
+            leaseAvailability: dates.some((d) => !d) ? null : dates.sort()[0] ?? null,
+          };
+        });
       });
 
       // The property and unit both already exist — only the caller's own lease
@@ -1705,11 +1755,15 @@ export default function AddListingWizard({
       /*
        * Unit photos, already uploaded, filed against the units that were just
        * created. /api/addListing returns their ids in the order the units were
-       * sent, which is the order of `units`.
+       * sent, and cardOf says which card each of those came from.
        */
       const newUnitIds = data.listing?.unitIds ?? [];
       const publishedId = data.listing?.id ?? data.lease?.listingId ?? null;
-      for (const [i, u] of createUnits.entries()) {
+      for (const [i, card] of cardOf.entries()) {
+        // A card that made several units files its photos once, on the first:
+        // filing them again would put every picture in the gallery twice.
+        if (i > 0 && cardOf[i - 1] === card) continue;
+        const u = createUnits[card];
         const urls = u.photos ?? [];
         const unitId = attachingToExistingUnit ? unitSelection.unitId : newUnitIds[i];
         if (!urls.length || !unitId || !publishedId) continue;
@@ -1720,7 +1774,7 @@ export default function AddListingWizard({
         }).catch(() => null);
         if (!res?.ok)
           uploadError = `Listing saved, but the photos for ${
-            u.title || `unit ${i + 1}`
+            unitPayload[i]?.name || `unit ${i + 1}`
           } could not be attached. You can add them from your dashboard.`;
       }
 

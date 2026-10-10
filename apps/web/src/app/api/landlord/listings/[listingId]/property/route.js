@@ -5,6 +5,10 @@ import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
+import {
+  findPropertyNameConflict,
+  propertyNameTakenResponse,
+} from "@/lib/listings/propertyName";
 
 /*
  * Edit the PROPERTY record and nothing else.
@@ -99,6 +103,31 @@ export async function PATCH(req, { params }) {
     if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   }
 
+  /*
+   * Names are unique per school (listings_unique_property_name_per_school).
+   * Without this check a taken name reached the index and came back as a 500
+   * "Could not save those details", with nothing telling the landlord the name
+   * was the problem. Same check, and same 409, as the parent route's PATCH.
+   */
+  if (patch.title) {
+    const { data: current, error: currentError } = await supabase
+      .from("listings")
+      .select("school_id")
+      .eq("id", listingId)
+      .maybeSingle();
+    if (currentError) {
+      console.error("[listings/property] school lookup failed:", currentError.message);
+      return NextResponse.json({ error: "Could not save those details." }, { status: 500 });
+    }
+    const conflict = await findPropertyNameConflict(patch.title, {
+      schoolId: current?.school_id ?? null,
+      excludeListingId: listingId,
+    });
+    if (conflict) {
+      return NextResponse.json(propertyNameTakenResponse(conflict), { status: 409 });
+    }
+  }
+
   // home_type arrives as a label and is stored as an FK.
   if (typeof body.homeType === "string" && body.homeType.trim()) {
     const { data: ht } = await supabase
@@ -112,6 +141,10 @@ export async function PATCH(req, { params }) {
   if (Object.keys(patch).length) {
     const { error } = await supabase.from("listings").update(patch).eq("id", listingId);
     if (error) {
+      // The lookup above can lose a race with another save; the index still wins.
+      if (error.code === "23505" && patch.title) {
+        return NextResponse.json(propertyNameTakenResponse(null), { status: 409 });
+      }
       console.error("[listings/property] update failed:", error.message);
       return NextResponse.json({ error: "Could not save those details." }, { status: 500 });
     }

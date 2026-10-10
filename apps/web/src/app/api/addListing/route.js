@@ -17,6 +17,8 @@ import {
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
+import { apartmentsLabel, cleanUnitName } from "@/utils/unitName";
+import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -493,7 +495,7 @@ export async function POST(req) {
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
       rent: unit.rent ?? null,
-      title: unit.title ?? null,
+      name: cleanUnitName(unit.name),
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
       /*
        * Several priced offerings on one unit, cheapest-first on the listing
@@ -513,6 +515,14 @@ export async function POST(req) {
                   ? l.availableFrom
                   : null,
               rentIsPerPerson: l.rentIsPerPerson == null ? null : !!l.rentIsPerPerson,
+              // Apartment numbers behind a floor plan's price, written to the
+              // lease's description. Short strings only, and not many of them.
+              apartments: Array.isArray(l.apartments)
+                ? l.apartments
+                    .filter((a) => typeof a === "string" && a.trim())
+                    .map((a) => a.trim().slice(0, 20))
+                    .slice(0, 40)
+                : [],
             }))
         : null,
       // A unit can be offered for several lease durations (months).
@@ -529,22 +539,6 @@ export async function POST(req) {
       // own; whether one is available is read back off its offerings.
       available: unit.available !== false,
       sublease: isSublease,
-      // Unit identity. 'Whole' covers the entire property and carries no number
-      // (enforced by listing_units_number_check).
-      /*
-       * listing_units allows a word in front only alongside a number ("Unit
-       * 1508"), or "Whole" with no number, or neither. A word with no number is
-       * refused outright, and the landlord gets "could not save a unit", which
-       * tells them nothing they can act on and, before the listing was rolled
-       * back, blocked the retry as a duplicate address. A unit with nothing to
-       * call it is a real thing — a floor plan whose apartments the site never
-       * published — so drop the word rather than the unit.
-       */
-      designator:
-        unit.designator === "Whole" || String(unit.number ?? "").trim()
-          ? unit.designator ?? null
-          : null,
-      number: unit.designator === "Whole" ? null : unit.number ?? null,
     }));
 
     // listings.lease_availability is derived from the union of the units' lease terms.
@@ -697,6 +691,8 @@ export async function POST(req) {
      * now includes the person who just created the property. Returning the ids
      * is what lets the client scope the upload instead of guessing.
      */
+    // In the order the landlord entered them, after any units already there.
+    const firstSortOrder = await nextUnitSortOrder(listingId);
     /*
      * All the units in one insert, then all their leases in one more.
      *
@@ -714,15 +710,14 @@ export async function POST(req) {
     const { data: insertedUnits, error: unitError } = await supabase
       .from("listing_units")
       .insert(
-        unitData.map((unit) => ({
+        unitData.map((unit, i) => ({
           listing_id: listingId,
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms,
           area: unit.area,
-          title: unit.title,
+          name: unit.name,
+          sort_order: firstSortOrder + i,
           floor_plan_image_url: unit.floorPlanImageUrl,
-          unit_designator: unit.designator,
-          unit_number: unit.number,
         }))
       )
       .select("id");
@@ -776,7 +771,9 @@ export async function POST(req) {
           sublease: unit.sublease,
           is_active: true,
           unavailable: !unit.available,
-          description: leaseBlurb,
+          // The apartments a floor plan's price is for, when the site said:
+          // "Apts 07C, 11C". Otherwise the listing's own words, as before.
+          description: apartmentsLabel(lease.apartments) ?? leaseBlurb,
           furnished: furnished ?? null,
           contact_email: contactEmail ?? null,
           contact_phone: contactPhone ?? null,

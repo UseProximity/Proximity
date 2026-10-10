@@ -13,6 +13,8 @@ import {
   X,
 } from "lucide-react";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
+import { parseUnitNames, UNIT_NAME_LABEL, UNIT_NAMES_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 import {
   StepFrame,
   Stepper,
@@ -631,7 +633,7 @@ export default function StepUnits({ w }) {
           const summary = (
             <>
               <span className="text-sm font-semibold text-gray-900">
-                {unit.title || `Unit ${i + 1}`}
+                {parseUnitNames(unit.unitNames).join(", ") || `Unit ${i + 1}`}
               </span>
               <span className="text-sm text-gray-500">{planLabel(unit)}</span>
               {rentRange(leases) && (
@@ -774,23 +776,32 @@ export default function StepUnits({ w }) {
                     lockedUnit ? " pointer-events-none opacity-60" : ""
                   }`}
                 >
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-gray-600">
-                      Floor plan name <span className="text-gray-400">(optional)</span>
+                  {/* What this card is called. One apartment ("2W") or one floor
+                      plan many apartments share ("The Aspen"); a comma list
+                      makes one unit per name. */}
+                  <div className="block">
+                    <span className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
+                      {UNIT_NAME_LABEL}
+                      <InfoTip label="How to name this">{UNIT_NAMES_HELP}</InfoTip>
                     </span>
                     <input
                       type="text"
-                      value={unit.title ?? ""}
-                      onChange={(e) => w.updateUnit(i, "title", e.target.value)}
-                      placeholder='e.g. "The Loft"'
-                      className={`w-52 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
-                        w.importedFields.has(`u${i}:title`) ? importedInputCls : ""
+                      value={unit.unitNames ?? ""}
+                      onChange={(e) => w.updateUnit(i, "unitNames", e.target.value)}
+                      placeholder="2W, or a floor plan like The Aspen"
+                      className={`w-60 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500${
+                        w.importedFields.has(`u${i}:unitNames`) ? importedInputCls : ""
                       }`}
                     />
-                    {unit.live && String(unit.title ?? "") !== String(unit.live.title ?? "") && (
-                      <Was value={unit.live.title} onUndo={() => w.revertUnitField(i, "title")} />
+                    {!unit.live && parseUnitNames(unit.unitNames).length > 1 && (
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Creates {parseUnitNames(unit.unitNames).length} units, each with these leases.
+                      </p>
                     )}
-                  </label>
+                    {unit.live && String(unit.unitNames ?? "") !== String(unit.live.unitNames ?? "") && (
+                      <Was value={unit.live.unitNames} onUndo={() => w.revertUnitField(i, "unitNames")} />
+                    )}
+                  </div>
                   <div>
                     <p className="mb-1.5 text-xs font-medium text-gray-600">Bedrooms</p>
                     <Stepper
