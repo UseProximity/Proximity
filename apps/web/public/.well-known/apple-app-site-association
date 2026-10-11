@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["KU975HTP7L.com.proximityllc.proximity"],
+        "components": [
+          { "/": "/chat-link" },
+          { "/": "/messages" }
+        ]
+      }
+    ]
+  }
+}
