@@ -37,6 +37,21 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
       ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
       : `${baseUrl}/messages?thread=${data.threadId}`;
 
+    // The flat payload carries messageBody/messageType. The newer function returns a
+    // messages array (oldest to newest) instead, so quote the last item when the flat
+    // body is absent.
+    let messageBody = data.messageBody;
+    let messageType = data.messageType;
+    if (
+      (messageBody === undefined || messageBody === null) &&
+      Array.isArray(data.messages) &&
+      data.messages.length > 0
+    ) {
+      const latest = data.messages[data.messages.length - 1];
+      messageBody = latest?.body;
+      messageType = latest?.messageType;
+    }
+
     await sendChatMessageEmail({
       to: data.recipientEmail,
       recipientName: data.recipientName,
@@ -44,8 +59,8 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl }) {
       // The listing is the thread's identity for both sides; subject is the fallback for
       // threads with no listing attached.
       listingLabel: data.listingTitle || data.listingAddress || data.subject,
-      messageBody: data.messageBody,
-      messageType: data.messageType,
+      messageBody,
+      messageType,
       recipientIsInterestedUser: data.recipientIsInterestedUser,
       unreadCount: data.unreadCount,
       threadUrl,
