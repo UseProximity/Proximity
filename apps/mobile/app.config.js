@@ -53,6 +53,11 @@ module.exports = {
     ios: {
       supportsTablet: false,
       bundleIdentifier: "com.proximityllc.proximity",
+      // Universal Links: https://useproximity.org/chat-link and /messages open the app.
+      // The matching paths are listed in the site's
+      // /.well-known/apple-app-site-association (apps/web/public/.well-known). www is
+      // left out because it redirects to the apex domain.
+      associatedDomains: ["applinks:useproximity.org"],
       // Only standard HTTPS (system TLS) is used, which is exempt from US export
       // rules. Sets ITSAppUsesNonExemptEncryption=false so App Store Connect
       // stops asking the export-compliance question on every upload.

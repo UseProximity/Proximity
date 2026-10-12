@@ -6,6 +6,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { Check } from "lucide-react-native";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
+import { useAuthStore } from "../../src/store/authStore";
 import { isAppleSignInAvailable } from "../../src/lib/appleAuth";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
@@ -41,8 +42,7 @@ export default function LoginScreen() {
     setResendSuccess(false);
     try {
       await login(email, password);
-      // Login successful - navigate to main app
-      router.replace("/(tabs)");
+      // Signed in: (auth)/_layout.js navigates on, to the pending conversation if any.
     } catch (err) {
       const errorCode = err?.body?.error;
       if (errorCode === EMAIL_NOT_VERIFIED) {
@@ -74,8 +74,10 @@ export default function LoginScreen() {
     setNeedsVerification(false);
     try {
       await signInWithGoogle();
-      // Login successful - navigate to main app
-      router.replace("/(tabs)");
+      // Signed in: (auth)/_layout.js navigates on, to the pending conversation if any.
+      // A dismissed Google prompt resolves with nobody signed in; that case still goes
+      // to the tabs, as before.
+      if (!useAuthStore.getState().user) router.replace("/(tabs)");
     } catch (err) {
       setError(err?.body?.error ?? err?.message ?? "Google sign in failed. Please try again.");
     }
@@ -86,8 +88,9 @@ export default function LoginScreen() {
     setError(null);
     setNeedsVerification(false);
     try {
-      // false means the user dismissed the Apple sheet: stay on this screen.
-      if (await signInWithApple()) router.replace("/(tabs)");
+      // false means the user dismissed the Apple sheet: stay on this screen. On true,
+      // (auth)/_layout.js navigates on, to the pending conversation if any.
+      await signInWithApple();
     } catch (err) {
       const code = err?.body?.error;
       setError(APPLE_ERRORS[code] ?? code ?? err?.message ?? "Apple sign in failed. Please try again.");

@@ -453,7 +453,12 @@ export default function ChatThreadScreen() {
         <Text className="text-gray-500 text-center mb-4">
           Sign in to view this conversation.
         </Text>
-        <Pressable onPress={() => router.replace("/(auth)/login")} hitSlop={8}>
+        <Pressable
+          onPress={() =>
+            router.replace({ pathname: "/(auth)/login", params: { next: `/chat/${threadId}` } })
+          }
+          hitSlop={8}
+        >
           <Text className="text-red-600 font-semibold">Sign in</Text>
         </Pressable>
       </SafeAreaView>
@@ -463,7 +468,16 @@ export default function ChatThreadScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
       <View className="flex-row items-center px-2 py-2.5 border-b border-gray-100">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="p-2">
+        <Pressable
+          onPress={() => {
+            // Opened straight from a link there is nothing behind this screen, so go to
+            // the Chat tab instead of dispatching a back action nothing can handle.
+            if (router.canGoBack()) router.back();
+            else router.replace("/(tabs)/chat");
+          }}
+          hitSlop={8}
+          className="p-2"
+        >
           <ChevronLeft size={24} color={colors.textPrimary} strokeWidth={2} />
         </Pressable>
         <View className="flex-1 mx-1">
