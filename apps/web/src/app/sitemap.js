@@ -72,8 +72,11 @@ async function fetchListingEntries() {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from("listings")
-      .select("id, updated_at, unavailable, listing_units(unit_leases(is_active, unavailable))")
+      .select(
+        "id, updated_at, unavailable, listing_units(deleted_at, published_at, unit_leases(is_active, unavailable, published_at))"
+      )
       .is("deleted_at", null)
+      .not("published_at", "is", null)
       .eq("unavailable", false)
       .order("id")
       .range(from, from + PAGE_SIZE - 1);

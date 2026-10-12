@@ -1,6 +1,6 @@
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
-import { unitIsAvailable } from "@/lib/listings/unitAvailability";
+import { unitIsAvailable, isLiveLease, isPublished } from "@/lib/listings/unitAvailability";
 import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
 import { unitNameKey } from "@/utils/unitName";
 import { sortUnits } from "@/utils/unitOrder";
@@ -51,10 +51,11 @@ export async function GET(req) {
   const { data: rows, error } = await supabase
     .from("listings")
     .select(
-      `id, title, address, latitude, longitude, created_at,
+      `id, title, address, latitude, longitude, created_at, published_at,
+       listing_landlords!listing_id(user_id),
        listing_units!listing_id(
-         id, name, sort_order, bedrooms, bathrooms, area, deleted_at,
-         unit_leases!unit_id(id, rent, sublease, is_active, unavailable, owner_id, contact_name)
+         id, name, sort_order, bedrooms, bathrooms, area, deleted_at, published_at,
+         unit_leases!unit_id(id, rent, sublease, is_active, unavailable, owner_id, contact_name, published_at)
        )`
     )
     .eq("property_key", propertyKey)
@@ -66,12 +67,44 @@ export async function GET(req) {
     return Response.json({ error: "Could not look up that address." }, { status: 500 });
   }
 
-  if (!rows?.length) return Response.json({ propertyKey, property: null });
-
-  const canonical = rows[0];
   const userId = session?.user?.id ?? null;
 
-  const units = rows
+  /*
+   * Drafts are visible to the people who own them and nobody else. Another
+   * landlord at the same address sees the property as it stands on the site:
+   * a draft property is not there yet, and neither is a draft unit or offering
+   * on a live one. Owners of the property see its draft units; a lease-holder
+   * sees their own draft offerings.
+   */
+  const ownsRow = (row) =>
+    !!userId && (row.listing_landlords ?? []).some((l) => l.user_id === userId);
+  const visibleRows = (rows ?? [])
+    .filter((row) => isPublished(row) || ownsRow(row))
+    .map((row) => {
+      const owner = ownsRow(row);
+      return {
+        ...row,
+        listing_units: (row.listing_units ?? [])
+          .map((unit) => ({
+            ...unit,
+            unit_leases: (unit.unit_leases ?? []).filter(
+              (lease) => isPublished(lease) || (!!userId && lease.owner_id === userId)
+            ),
+          }))
+          .filter(
+            (unit) =>
+              isPublished(unit) ||
+              owner ||
+              unit.unit_leases.some((lease) => lease.owner_id === userId)
+          ),
+      };
+    });
+
+  if (!visibleRows.length) return Response.json({ propertyKey, property: null });
+
+  const canonical = visibleRows[0];
+
+  const units = visibleRows
     .flatMap((row) =>
       sortUnits((row.listing_units ?? []).filter((unit) => !unit.deleted_at))
         .map((unit) => ({ unit, listingId: row.id }))
@@ -82,7 +115,7 @@ export async function GET(req) {
         rent: lease.rent,
         sublease: !!lease.sublease,
         // Whether a renter could take this offering today.
-        live: !!lease.is_active && !lease.unavailable,
+        live: isLiveLease(lease),
         ownerId: lease.owner_id,
         contactName: lease.contact_name,
         isMine: !!lease.owner_id && lease.owner_id === userId,
@@ -164,7 +197,7 @@ export async function GET(req) {
       latitude: canonical.latitude,
       longitude: canonical.longitude,
       // >1 means the duplicate rows behind this key have not been merged yet.
-      listingRowCount: rows.length,
+      listingRowCount: visibleRows.length,
       ownerCount: ownerIds.size,
       viewerHasLease: mergedUnits.some((u) => u.leases.some((l) => l.isMine)),
       units: mergedUnits,

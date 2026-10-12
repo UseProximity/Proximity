@@ -104,6 +104,9 @@ export async function POST(req) {
       contact_email: contactEmail.trim(),
       contact_phone: contactPhone || null,
       contact_name: contactName || null,
+      // An offering added to a live unit from the editor starts as a draft, so
+      // students never see it half filled in (see 202610100002).
+      ...(body.draft === true ? { published_at: null } : {}),
     })
     .select("id")
     .single();

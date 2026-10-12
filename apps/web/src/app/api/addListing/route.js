@@ -137,6 +137,14 @@ export async function POST(req) {
       attachToListingId,
     } = body;
 
+    /*
+     * Save as a draft instead of publishing (see 202610100002). A new property
+     * is born a draft, which hides everything under it. Attached to a property
+     * that is already live, the new units are the drafts instead, so the
+     * building students can see is left exactly as it was.
+     */
+    const draft = body.draft === true;
+
     // The add forms hold their state in snake_case and spread it straight into
     // the body, so any field this route read only in camelCase never arrived:
     // home type silently fell back to "Other", utilities came out empty and
@@ -508,6 +516,7 @@ export async function POST(req) {
           lease_availability: leaseAvailabilityArr,
           unavailable: false,
           deleted_at: null,
+          draft,
         },
         p_amenities: amenityObj,
         p_utilities: utilityObj,
@@ -564,6 +573,9 @@ export async function POST(req) {
           name: unit.name,
           sort_order: sortOrder++,
           floor_plan_image_url: unit.floorPlanImageUrl,
+          // A draft property already hides its units; on a live one the unit
+          // itself is the draft.
+          ...(draft && attachToListingId ? { published_at: null } : {}),
         })
         .select("id")
         .single();
@@ -663,8 +675,8 @@ export async function POST(req) {
       }
     }
 
-    // Notify landlord of their new listing
-    if (ownerId) {
+    // Notify landlord of their new listing. A draft is not one yet.
+    if (ownerId && !draft) {
       try {
         const { data: landlordUsers } = await supabase
           .from("users")
@@ -682,8 +694,8 @@ export async function POST(req) {
 
     return NextResponse.json(
       {
-        message: "Listing created successfully",
-        listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty },
+        message: draft ? "Draft saved" : "Listing created successfully",
+        listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft },
       },
       { status: 201 }
     );

@@ -633,7 +633,7 @@
       },
       {
         "table": "listing_units",
-        "description": "Physical units within a listing (beds/baths/area). name = THE unit's name ('Apt 617', 'The Loft'), the single source of truth every screen reads and every form writes; NULL renders as a beds/baths description. floor_plan_image_url = downloadable floor plan (R2). [2026-10-09: title, unit_designator and unit_number RETIRED in favour of name (backfilled: identity label first, else title; 202610090001_listing_units_name.sql). Kept in the table, never read or written by the app. Duplicate names at one property are refused (case/space-insensitive, lib/listings/unitNames.js). rpc_create_listing / rpc_edit_listing write name from the unit payload's 'name' key, falling back to 'title' (202610090002).] [2026-10-10: sort_order = the landlord's order for the property's units, set by dragging the editor tabs (PUT /api/landlord/listings/[listingId]/units/order, owner-only). Every view sorts with utils/unitOrder.js: sort_order asc, NULL last, then beds, baths. Seeded from beds/baths order (202610100001).] [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED — a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.]",
+        "description": "Physical units within a listing (beds/baths/area). name = THE unit's name ('Apt 617', 'The Loft'), the single source of truth every screen reads and every form writes; NULL renders as a beds/baths description. floor_plan_image_url = downloadable floor plan (R2). [2026-10-09: title, unit_designator and unit_number RETIRED in favour of name (backfilled: identity label first, else title; 202610090001_listing_units_name.sql). Kept in the table, never read or written by the app. Duplicate names at one property are refused (case/space-insensitive, lib/listings/unitNames.js). rpc_create_listing / rpc_edit_listing write name from the unit payload's 'name' key, falling back to 'title' (202610090002).] [2026-10-10: sort_order = the landlord's order for the property's units, set by dragging the editor tabs (PUT /api/landlord/listings/[listingId]/units/order, owner-only). Every view sorts with utils/unitOrder.js: sort_order asc, NULL last, then beds, baths. Seeded from beds/baths order (202610100001).] [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED — a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.] [2026-10-10: published_at = NULL means a draft unit on a live property; hidden from students with its leases until published. One-way (trg_keep_published). See lib/listings/unitAvailability.js publicUnits/isPublished.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -648,7 +648,8 @@
           "unit_designator:text",
           "unit_number:text",
           "name:text",
-          "sort_order:integer"
+          "sort_order:integer",
+          "published_at:timestamptz"
         ]
       },
       {
@@ -692,7 +693,7 @@
       },
       {
         "table": "listings",
-        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent] [2026-08-12: a listing row is the PROPERTY, shared across owners (address, coordinates, walk/drive times, reviews, building amenities). Owner-specific content moved down to unit_leases. property_key = normalized street-line|zip from normalize_property_key(address), trigger-maintained, used to detect that a listing already exists at this address. Index is NOT unique yet — duplicate properties must be merged first.] [2026-08-31: title (display name) is UNIQUE per school — unique index listings_unique_property_name_per_school on (coalesce(school_id, all-zero uuid), normalize_property_name(title)) where deleted_at is null and the normalized title is not null. normalize_property_name() lowercases, collapses whitespace and trims, returning NULL for blank; blank-titled and soft-deleted rows are exempt, and NULL school_id is ONE shared bucket (Postgres would otherwise treat each NULL as distinct and exempt every unschooled row). Since rpc_create_listing does not set school_id, new listings land in that shared bucket, so the rule is effectively global for them today. The API returns 409 {error,field:'title'} before the index is reached — see lib/listings/propertyName.js.]",
+        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent] [2026-08-12: a listing row is the PROPERTY, shared across owners (address, coordinates, walk/drive times, reviews, building amenities). Owner-specific content moved down to unit_leases. property_key = normalized street-line|zip from normalize_property_key(address), trigger-maintained, used to detect that a listing already exists at this address. Index is NOT unique yet — duplicate properties must be merged first.] [2026-08-31: title (display name) is UNIQUE per school — unique index listings_unique_property_name_per_school on (coalesce(school_id, all-zero uuid), normalize_property_name(title)) where deleted_at is null and the normalized title is not null. normalize_property_name() lowercases, collapses whitespace and trims, returning NULL for blank; blank-titled and soft-deleted rows are exempt, and NULL school_id is ONE shared bucket (Postgres would otherwise treat each NULL as distinct and exempt every unschooled row). Since rpc_create_listing does not set school_id, new listings land in that shared bucket, so the rule is effectively global for them today. The API returns 409 {error,field:'title'} before the index is reached — see lib/listings/propertyName.js.] [2026-10-10: published_at = NULL means a DRAFT, visible only to its owners on the dashboard (Properties > Drafts); set once on publish (POST /api/landlord/publish) and never cleared, enforced by trigger trg_keep_published. Public reads filter .not('published_at','is',null). rpc_create_listing creates a draft when p_listing_data.draft = true. 202610100002.]",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -737,7 +738,8 @@
           "pms_connection_id:uuid",
           "pms_stale_flagged_at:timestamptz",
           "availability_email_sent_at:timestamptz",
-          "property_key:text"
+          "property_key:text",
+          "published_at:timestamptz"
         ]
       },
       {
@@ -930,7 +932,7 @@
       },
       {
         "table": "unit_leases",
-        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle.",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle. [2026-10-10: published_at = NULL means a draft offering; isLiveLease requires it set. One-way (trg_keep_published).]",
         "columns": [
           "id:uuid",
           "unit_id:uuid",
@@ -949,7 +951,8 @@
           "description:text",
           "furnished:boolean",
           "unavailable:boolean",
-          "deleted_at:timestamptz"
+          "deleted_at:timestamptz",
+          "published_at:timestamptz"
         ]
       },
       {

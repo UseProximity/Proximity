@@ -32,16 +32,31 @@
  * sitemap, the landlord dashboard, admin and Proxy cannot disagree again.
  */
 
-/** A live offering: it exists and its owner has not withdrawn it. */
-export const isLiveLease = (lease) => !!lease?.is_active && !lease?.unavailable;
+/*
+ * Drafts. A property, unit or lease with a null published_at exists only on its
+ * owner's dashboard (see 202610100002). A row selected without the column reads
+ * as published, so a select that forgets it shows a draft rather than hiding a
+ * whole live building: every public select includes published_at at each level.
+ */
+export const isPublished = (row) => row?.published_at !== null;
+
+/** The units a student may see: not retired, and not still a draft. */
+export function publicUnits(units) {
+  return (units ?? []).filter((u) => !u.deleted_at && isPublished(u));
+}
+
+/** A live offering: it exists, it is published, and its owner has not withdrawn it. */
+export const isLiveLease = (lease) =>
+  !!lease?.is_active && !lease?.unavailable && isPublished(lease);
 
 /** Every offering on this unit a renter could actually take. */
 export function liveLeasesOf(unit) {
+  if (!isPublished(unit)) return [];
   return (unit?.unit_leases ?? []).filter(isLiveLease);
 }
 
 export function unitIsAvailable(unit) {
-  return (unit?.unit_leases ?? []).some(isLiveLease);
+  return isPublished(unit) && (unit?.unit_leases ?? []).some(isLiveLease);
 }
 
 /**

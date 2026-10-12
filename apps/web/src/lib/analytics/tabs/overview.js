@@ -12,7 +12,7 @@ export default async function loadOverview(period) {
     fetchAll("users", "id, created_at, role_id, google_account, apple_account", (q) =>
       q.gte("created_at", period.prevStart)
     ),
-    countRows("listings", (q) => q.is("deleted_at", null).eq("unavailable", false).is("paused_at", null)),
+    countRows("listings", (q) => q.is("deleted_at", null).not("published_at", "is", null).eq("unavailable", false).is("paused_at", null)),
     countRows("listing_reviews", (q) => q.is("deleted_at", null)),
     countRows("dorm_reviews", (q) => q.is("deleted_at", null)),
   ]);
