@@ -206,23 +206,11 @@ export function chatListingLabel({ listingTitle, listingAddress, subject }) {
   return street || String(subject ?? "").trim() || "your conversation";
 }
 
-function chatTime(iso) {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: CHAT_TIME_ZONE,
-      weekday: "short",
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return "";
-  }
-}
-
 function chatMessageText(m) {
   const body = String(m?.body ?? "").trim();
   if (m?.messageType === "attachment") {
-    return body ? `${body}\n[Sent a photo or document]` : "[Sent a photo or document]";
+    const note = "(Attached a photo or document. Open the conversation on Proximity to see it.)";
+    return body ? `${body}\n${note}` : note;
   }
   return body;
 }
@@ -246,12 +234,87 @@ function chatMessageHtml(m) {
  * answered directly. Without one, or when it falls back to Gmail, it only
  * points to the app, since a reply would land in the shared inbox instead.
  *
- * Every message since the last alert is quoted in full: an email conversation
- * should read like a text thread, not a teaser for the app.
+ * The email reads like one the other person wrote, not a notification about
+ * one (Wyatt, 2026-10-12): their words first, in plain paragraphs, then a short
+ * signature with their name, company and the listing, then the small print.
+ * No greeting from us, no "X sent you a message" narration, no button. The
+ * "reply above this line" marker stays, in the faintest text, because inbound
+ * parsing cuts the quoted alert there.
  */
+export function buildChatMessageEmail({
+  senderName,
+  senderCompany,
+  listingTitle,
+  listingAddress,
+  subject: threadSubject,
+  messages,
+  earlierCount = 0,
+  recipientIsInterestedUser,
+  threadUrl,
+  canReply,
+}) {
+  const named = displayName(senderName, "");
+  const other = named || "Someone";
+  const otherFirst = other.split(/\s+/)[0];
+  const company = displayName(senderCompany, "");
+  const listingLabel = chatListingLabel({ listingTitle, listingAddress, subject: threadSubject });
+  const subject = ["Proximity Inquiry", listingLabel, named].filter(Boolean).join(" · ");
+  const fromName = named ? `${otherFirst} via Proximity` : "Proximity";
+  const list = Array.isArray(messages) && messages.length > 0 ? messages : [];
+  const street = String(listingAddress ?? "").split(",")[0].trim();
+  const about = street && street !== listingLabel ? `${listingLabel}, ${street}` : listingLabel;
+
+  const how = canReply
+    ? `Reply to this email and ${escapeHtml(otherFirst)} will see it on Proximity, or <a href="${threadUrl}" style="color:#9ca3af">open the conversation</a>.`
+    : `<a href="${threadUrl}" style="color:#9ca3af">Open the conversation on Proximity</a> to reply.`;
+  const earlier = earlierCount > 0
+    ? `There ${earlierCount === 1 ? "is 1 earlier message" : `are ${earlierCount} earlier messages`} in the conversation.`
+    : "";
+  const reason = recipientIsInterestedUser
+    ? "You are receiving this because you messaged a landlord on Proximity. You can turn off message emails in your account settings."
+    : "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.";
+
+  const small = (line) => `<p style="margin:0 0 6px">${line}</p>`;
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
+      ${canReply ? `<p style="color:#c4c8cf;font-size:11px;margin:0 0 20px">Reply above this line to message ${escapeHtml(other)}.</p>` : ""}
+      ${list.map((m) => `<p style="margin:0 0 14px">${chatMessageHtml(m)}</p>`).join("")}
+      <p style="margin:24px 0 0;color:#6b7280;font-size:14px;line-height:1.5">
+        <span style="color:#111827;font-weight:600">${escapeHtml(other)}</span>${company ? `<br>${escapeHtml(company)}` : ""}<br>
+        About <a href="${threadUrl}" style="color:#6b7280">${escapeHtml(about)}</a>
+      </p>
+      <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
+        ${small(how)}
+        ${earlier ? small(earlier) : ""}
+        ${small(reason)}
+        <p style="margin:0">${POSTAL_ADDRESS}</p>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    canReply ? `Reply above this line to message ${other}.\n` : null,
+    ...list.map((m) => `${chatMessageText(m)}\n`),
+    other,
+    company || null,
+    `About ${about}`,
+    threadUrl,
+    "",
+    canReply
+      ? `Reply to this email and ${otherFirst} will see it on Proximity, or open the conversation: ${threadUrl}`
+      : `Open the conversation on Proximity to reply: ${threadUrl}`,
+    earlier || null,
+    reason,
+    POSTAL_ADDRESS,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+
+  return { subject, fromName, html, text };
+}
+
 export async function sendChatMessageEmail({
   to,
-  recipientName,
   senderName,
   senderCompany,
   listingTitle,
@@ -264,93 +327,39 @@ export async function sendChatMessageEmail({
   replyTo,
   threadRef,
 }) {
-  const named = displayName(senderName, "");
-  const other = named || "Someone";
-  const listingLabel = chatListingLabel({ listingTitle, listingAddress, subject: threadSubject });
-  const subject = ["Proximity Inquiry", listingLabel, named].filter(Boolean).join(" · ");
-  const firstName = recipientName ? String(recipientName).trim().split(/\s+/)[0] : "";
-  const otherFirst = other.split(/\s+/)[0];
-  const senderLine = senderCompany ? `${other} · ${String(senderCompany).trim()}` : other;
-  const list = Array.isArray(messages) && messages.length > 0 ? messages : [];
-  const many = list.length > 1;
-  const street = String(listingAddress ?? "").trim();
-  const showStreet = street && street !== listingLabel;
-
-  const build = (canReply) => {
-    const intro = `${escapeHtml(senderLine)} sent you ${many ? `${list.length} messages` : "a message"} about <strong>${escapeHtml(listingLabel)}</strong>${showStreet ? ` (${escapeHtml(street.split(",")[0])})` : ""}.`;
-    const earlier = earlierCount > 0
-      ? `<p style="color:#6b7280;font-size:13px;margin:0 0 12px">Plus ${earlierCount} earlier message${earlierCount === 1 ? "" : "s"} in the conversation.</p>`
-      : "";
-    const quoted = list
-      .map((m) => `
-        <div style="margin:0 0 12px;padding:10px 14px;border-left:3px solid #ef4444;background:#f9fafb;border-radius:4px">
-          ${many ? `<div style="color:#9ca3af;font-size:12px;margin-bottom:4px">${escapeHtml(chatTime(m.createdAt))}</div>` : ""}
-          <div style="white-space:pre-wrap;color:#111827;font-size:15px;line-height:1.5">${chatMessageHtml(m)}</div>
-        </div>`)
-      .join("");
-    const how = canReply
-      ? `Reply to this email to answer ${escapeHtml(otherFirst)}, or open the conversation on Proximity. Either way it all stays in one conversation.`
-      : "Open the conversation on Proximity to reply.";
-    const reason = recipientIsInterestedUser
-      ? "You are receiving this because you messaged a landlord on Proximity. You can turn off message emails in your account settings."
-      : "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.";
-
-    const html = `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#111827">
-        ${canReply ? `<p style="color:#9ca3af;font-size:12px;margin:0 0 16px">Reply above this line to message ${escapeHtml(other)}.</p>` : ""}
-        <p>Hi ${escapeHtml(firstName || "there")},</p>
-        <p>${intro}</p>
-        ${earlier}
-        ${quoted}
-        <p style="margin:16px 0 8px">${how}</p>
-        <a href="${threadUrl}"
-           style="display:inline-block;margin:8px 0 16px;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Open conversation
-        </a>
-        ${emailFooter({ reason })}
-      </div>
-    `;
-
-    const text = [
-      canReply ? `Reply above this line to message ${other}.\n` : "",
-      `Hi ${firstName || "there"},`,
-      "",
-      `${senderLine} sent you ${many ? `${list.length} messages` : "a message"} about ${listingLabel}${showStreet ? ` (${street.split(",")[0]})` : ""}.`,
-      earlierCount > 0 ? `Plus ${earlierCount} earlier message${earlierCount === 1 ? "" : "s"} in the conversation.` : "",
-      "",
-      ...list.map((m) => `${many ? `[${chatTime(m.createdAt)}]\n` : ""}${chatMessageText(m)}\n`),
-      canReply
-        ? `Reply to this email to answer ${otherFirst}, or open the conversation on Proximity:`
-        : "Open the conversation on Proximity to reply:",
+  const build = (canReply) =>
+    buildChatMessageEmail({
+      senderName,
+      senderCompany,
+      listingTitle,
+      listingAddress,
+      subject: threadSubject,
+      messages,
+      earlierCount,
+      recipientIsInterestedUser,
       threadUrl,
-      "",
-      reason,
-      POSTAL_ADDRESS,
-    ]
-      .filter((line) => line !== null)
-      .join("\n");
-
-    return { html, text };
-  };
+      canReply,
+    });
+  const { subject, fromName } = build(false);
 
   // A stable reference per (thread, recipient) groups the alerts in Apple Mail
   // and Outlook. SES replaces Message-ID, so this is a reference only.
   const headers = threadRef
     ? { References: `<${threadRef}@useproximity.org>`, "In-Reply-To": `<${threadRef}@useproximity.org>` }
     : undefined;
-  // First name only, so the inbox reads "Angela via Proximity" (Wyatt, 2026-10-12).
-  const fromName = named ? `${otherFirst} via Proximity` : "Proximity";
   const from = { name: fromName, address: CHAT_FROM_ADDRESS };
 
   if (sesTransporter && replyTo) {
     try {
+      const { html, text } = build(true);
       const info = await sendMailSafe(sesTransporter, {
         from,
         to,
         replyTo,
         subject,
         headers,
-        ...build(true),
+        html,
+        text,
         ses: SES_SEND_OPTIONS,
       });
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
@@ -359,12 +368,14 @@ export async function sendChatMessageEmail({
     }
   }
 
+  const { html, text } = build(false);
   const info = await sendMailSafe(transporter, {
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
     subject,
     headers,
-    ...build(false),
+    html,
+    text,
   });
   return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed) };
 }
