@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canAddUnitPhotos } from "@/lib/listings/ownership";
+import { cleanUnitName } from "@/utils/unitName";
+import { findUnitNamed } from "@/lib/listings/unitNames";
 
 /*
  * Edit ONE unit's physical facts.
@@ -21,14 +23,14 @@ const EDITABLE = {
   bedrooms: (v) => (v === "" || v == null ? null : Number(v)),
   bathrooms: (v) => (v === "" || v == null ? null : Number(v)),
   area: (v) => (v === "" || v == null ? null : Number(v)),
-  title: (v) => (typeof v === "string" ? v.trim() || null : null),
+  name: cleanUnitName,
   floor_plan_image_url: (v) => (typeof v === "string" ? v.trim() || null : null),
 };
 const BODY_TO_COLUMN = {
   bedrooms: "bedrooms",
   bathrooms: "bathrooms",
   area: "area",
-  title: "title",
+  name: "name",
   floorPlanImageUrl: "floor_plan_image_url",
 };
 
@@ -138,15 +140,13 @@ export async function PATCH(req, { params }) {
     if (key in body) patch[column] = EDITABLE[column](body[key]);
   }
 
-  // Unit identity: "Whole" means the whole property and carries no number, which
-  // the listing_units_number_check constraint enforces.
-  if ("designator" in body) {
-    const d = typeof body.designator === "string" ? body.designator.trim() : "";
-    patch.unit_designator = d || null;
-    patch.unit_number =
-      !d || d === "Whole"
-        ? null
-        : (typeof body.number === "string" ? body.number.trim() : "") || null;
+  // A rename onto another live unit's name would leave two rows for one
+  // apartment, the same thing adding a unit refuses.
+  if (patch.name && (await findUnitNamed(listingId, patch.name, { excludeId: unitId }))) {
+    return NextResponse.json(
+      { error: "Another unit at this property already has that name." },
+      { status: 409 }
+    );
   }
 
   // Room counts are physical facts, so a negative is a slipped spinner click

@@ -42,8 +42,10 @@ import {
   loadPendingDraft,
   savePendingDraft,
 } from "@/lib/listings/pendingDraft";
+import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 
-const emptyNewUnit = { designator: "", number: "", bedrooms: "", bathrooms: "", area: "" };
+const emptyNewUnit = { name: "", bedrooms: "", bathrooms: "", area: "" };
 
 const emptyLease = (email) => ({
   rent: "",
@@ -258,9 +260,6 @@ export default function AddListingFlow({ user }) {
   if (unitMode === "new") {
     if (newUnit.bedrooms === "") missing.push({ key: "bedrooms", label: "Bedrooms" });
     if (newUnit.bathrooms === "") missing.push({ key: "bathrooms", label: "Bathrooms" });
-    if (newUnit.designator && newUnit.designator !== "Whole" && !newUnit.number.trim()) {
-      missing.push({ key: "number", label: "Unit number" });
-    }
   }
   if (!lease.contactEmail.trim()) missing.push({ key: "contactEmail", label: "Contact email" });
   if (!lease.leaseTermMonths.length) missing.push({ key: "leaseTermMonths", label: "Lease length" });
@@ -371,8 +370,7 @@ export default function AddListingFlow({ user }) {
               // shape addListing writes leases from.
               leaseAvailability: lease.availableFrom || null,
               available: true,
-              designator: newUnit.designator || null,
-              number: newUnit.designator && newUnit.designator !== "Whole" ? newUnit.number : null,
+              name: newUnit.name,
               leaseTermMonths: lease.leaseTermMonths,
               sublease: lease.sublease,
             }],
@@ -450,23 +448,16 @@ export default function AddListingFlow({ user }) {
 
           {unitMode === "new" && (
             <div className={`grid gap-3 sm:grid-cols-3 ${isKnownProperty ? "mt-4 border-t border-gray-100 pt-4" : ""}`}>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Unit type</span>
-                <select className={field} value={newUnit.designator}
-                  onChange={(e) => setNewUnit({ ...newUnit, designator: e.target.value })}>
-                  <option value="">—</option>
-                  {["Apt", "Unit", "Suite", "Floor", "Room", "Whole"].map((d) =>
-                    <option key={d} value={d}>{d === "Whole" ? "Whole property" : d}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Number</span>
-                <input className={`${field} ${flag("number")}`}
-                  data-invalid={attempted && missingKeys.has("number")}
-                  value={newUnit.number}
-                  disabled={!newUnit.designator || newUnit.designator === "Whole"}
-                  placeholder="2W"
-                  onChange={(e) => setNewUnit({ ...newUnit, number: e.target.value })} />
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {UNIT_NAME_LABEL}
+                  <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+                </span>
+                <input className={field}
+                  value={newUnit.name}
+                  maxLength={UNIT_NAME_MAX}
+                  placeholder="2W, or a floor plan like The Aspen"
+                  onChange={(e) => setNewUnit({ ...newUnit, name: e.target.value })} />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Sq ft</span>

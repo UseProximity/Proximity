@@ -81,42 +81,14 @@ export const emptyUnit = () => ({
   rent: "",
   area: "",
   available: true,
-  title: "",
   floorPlanImageUrl: "",
   leaseTermMonths: [], // months a unit can be leased for (multi-select)
-  // A card describes a FLOOR PLAN; these say which physical units share it.
-  // designator + each number becomes one listing_units row with its own lease,
-  // which is what lets a second landlord attach to the right unit later.
-  designator: "",
-  unitNumbers: "",
+  // A card describes units that share one layout and one set of terms. Each
+  // name here becomes one listing_units row with its own lease, which is what
+  // lets a second landlord attach to the right unit later. See parseUnitNames.
+  unitNames: "",
 });
 
-// Unit designators, matching listing_units_designator_check.
+// Unit types a REVIEWER picks from (listing_reviews.unit_designator). Listing
+// units are named freely instead; see utils/unitName.js.
 export const UNIT_DESIGNATORS = ["Apt", "Unit", "Suite", "Floor", "Room", "Whole"];
-
-/*
- * Parse the "which units?" field into a de-duplicated list of unit numbers.
- * Accepts commas, whitespace and hyphen ranges over trailing integers, so
- * "2W, 3W" and "1-4" both work. "Whole" covers the entire property and has no
- * numbers, so it always yields a single unnumbered unit.
- */
-export function parseUnitNumbers(designator, raw) {
-  if (designator === "Whole") return [null];
-  const text = String(raw ?? "").trim();
-  if (!text) return [];
-
-  const out = [];
-  for (const token of text.split(/[,\s]+/).filter(Boolean)) {
-    const range = token.match(/^(\d+)-(\d+)$/);
-    if (range) {
-      const [from, to] = [Number(range[1]), Number(range[2])];
-      // Guard against a typo like "1-9999" silently creating thousands of units.
-      if (from <= to && to - from < 200) {
-        for (let n = from; n <= to; n++) out.push(String(n));
-        continue;
-      }
-    }
-    out.push(token.toUpperCase());
-  }
-  return Array.from(new Set(out));
-}

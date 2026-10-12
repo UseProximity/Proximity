@@ -6,6 +6,7 @@ import {
   LEASE_TERM_PRESETS,
 } from "@/components/listings/listingFormOptions";
 import { StepFrame } from "@/components/listings/wizard/wizardShared";
+import { parseUnitNames } from "@/utils/unitName";
 
 const termLabel = (m) =>
   LEASE_TERM_PRESETS.find((p) => p.months === m)?.label ?? `${m}-Month`;
@@ -49,7 +50,7 @@ export default function StepReview({ w }) {
     const terms = (u.leaseTermMonths ?? []).map(termLabel).join(", ");
     return (
       <p key={i}>
-        {u.title ? `${u.title}: ` : ""}
+        {u.unitNames?.trim() ? `${parseUnitNames(u.unitNames).join(", ")}: ` : ""}
         {bits.join(" · ")}
         {terms ? ` · ${terms}` : ""}
         {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
