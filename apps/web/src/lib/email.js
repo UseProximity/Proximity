@@ -379,6 +379,8 @@ const NOT_DELIVERED_REASONS = {
     "We could not find a new message in your reply. Type your message above the quoted email and send it again.",
   rejected:
     "The conversation is no longer available, or too many messages were sent in a short time. Please try again in a few minutes.",
+  attachments_removed:
+    "The attached file could not be posted. Files that share contact details or ask for payment are not allowed in Proximity conversations.",
 };
 
 /*

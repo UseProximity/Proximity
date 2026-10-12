@@ -101,7 +101,7 @@
       },
       {
         "table": "chat_threads",
-        "description": "One conversation per (listing, landlord, student): the landlord account holding the lease the student asked about owns it, and no other landlord on the listing sees it. lease_id is the lease last asked about and picks the lease-level alert address (fn_chat_alert_email).",
+        "description": "One conversation per (listing, landlord, student): the landlord account holding the lease the student asked about owns it, and no other landlord on the listing sees it. lease_id is the lease last asked about and picks the lease-level alert address (fn_chat_alert_email, a wrapper over fn_landlord_contact_email, which the matchmaking contact flow shares).",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",

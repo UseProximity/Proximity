@@ -16,27 +16,46 @@
  *      conversation emails them at, or another mailbox at the same company
  *      domain (never a free mail domain or wustl.edu, where sharing a domain
  *      proves nothing). Forwards are refused (Wyatt, 2026-10-09).
- *   6. Something is left once the quoted email and signature are removed.
+ *   6. Something is left once the quoted email and signature are removed, or
+ *      a photo or PDF is attached.
  * Then contact details and the like are redacted rather than refused, and the
  * text goes in through rpc_send_chat_message like any in-app message, so it is
  * stored, rate limited and delivered exactly the same way.
+ *
+ * Attached photos and PDFs are copied into R2 under the conversation and
+ * screened by the same vision scan as in-app uploads. Signature logos and
+ * tracking pixels (inline images under a few KB) are dropped; a blocked file
+ * is dropped and logged, and the text still posts.
  *
  * Spam, automatic mail and unauthenticated mail are dropped silently. The others
  * get a short "not delivered" email, at most one per sender per conversation per
  * day, and only when the sender was authenticated so we never mail a forged
  * address. Every message received is recorded in chat_inbound_emails.
  */
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { randomUUID } from "node:crypto";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { simpleParser } from "mailparser";
 import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
 import { getBaseUrl, sendReplyNotDeliveredEmail } from "@/lib/email";
+import { r2, getBucket } from "@/lib/r2";
+import {
+  CHAT_ATTACHMENT_ALLOWED_TYPES,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_FILES,
+  sanitizeChatAttachmentFileName,
+} from "@/lib/chat/attachments";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
 import { redactChatText } from "@/lib/chat/moderation";
 import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { scanChatAttachments } from "@/lib/chat/scanAttachment";
+import { recordAttachmentScan } from "@/lib/chat/sendGuards";
 
 const MAX_BODY = 5000;
+// An inline image this small is a signature logo, a social icon or a tracking
+// pixel. A pasted photo or screenshot is far larger and is kept.
+const INLINE_LOGO_MAX_BYTES = 40 * 1024;
 const NOTICE_EVERY_MS = 24 * 60 * 60 * 1000;
 
 // Sharing one of these domains says nothing about being the same business.
@@ -138,6 +157,46 @@ export function findReplyToken(parsed, recipients = []) {
   return null;
 }
 
+const EXT_BY_TYPE = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "application/pdf": "pdf",
+};
+
+/** The files a person meant to send: photos and PDFs, minus signature art. */
+export function emailAttachments(parsed) {
+  const out = [];
+  for (const a of parsed.attachments ?? []) {
+    const contentType = String(a.contentType ?? "").toLowerCase();
+    if (!CHAT_ATTACHMENT_ALLOWED_TYPES.has(contentType)) continue;
+    const sizeBytes = Number(a.size ?? a.content?.length ?? 0);
+    if (!(sizeBytes > 0) || sizeBytes > CHAT_ATTACHMENT_MAX_BYTES) continue;
+    const inline = Boolean(a.related) || /inline/i.test(String(a.contentDisposition ?? ""));
+    if (inline && contentType.startsWith("image/") && sizeBytes < INLINE_LOGO_MAX_BYTES) continue;
+    const fileName = String(a.filename ?? "").trim() || `attachment.${EXT_BY_TYPE[contentType]}`;
+    out.push({ content: a.content, contentType, fileName: fileName.slice(0, 200), sizeBytes });
+    if (out.length >= CHAT_ATTACHMENT_MAX_FILES) break;
+  }
+  return out;
+}
+
+// Same key shape as the in-app presign route, which the send RPC checks.
+async function storeAttachments(threadId, files) {
+  const bucket = getBucket();
+  if (!bucket) throw new Error("R2 bucket env missing");
+  const stored = [];
+  for (const f of files) {
+    const key = `chat-attachments/${threadId}/${randomUUID()}-${sanitizeChatAttachmentFileName(f.fileName)}`;
+    await r2.send(
+      new PutObjectCommand({ Bucket: bucket, Key: key, Body: f.content, ContentType: f.contentType })
+    );
+    stored.push({ key, fileName: f.fileName, contentType: f.contentType, sizeBytes: f.sizeBytes });
+  }
+  return stored;
+}
+
 async function finish(id, fields) {
   const { error } = await supabase.from("chat_inbound_emails").update(fields).eq("id", id);
   if (error) console.error("inbound email: log update failed:", error);
@@ -205,9 +264,9 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
     }
 
     const found = findReplyToken(parsed, recipients);
-    const notice = async (status, reason, threadId = null) => {
+    const notice = async (status, reason, threadId = null, why = status) => {
       await finish(logId, { ...base, status, reason, thread_id: threadId });
-      await maybeSendNotice({ logId, fromEmail, threadId, reason: status });
+      await maybeSendNotice({ logId, fromEmail, threadId, reason: why });
       return { status, reason };
     };
 
@@ -262,25 +321,59 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
       fromName: parsed.from?.value?.[0]?.name,
     });
     const { text: redacted, reasons } = redactChatText(extracted);
-    let body = redacted.trim();
-    if (!body || body === "[removed]") {
+    // Text that was removed in full is nothing to post; a photo sent with it still is.
+    let body = redacted.trim() === "[removed]" ? "" : redacted.trim();
+    const files = emailAttachments(parsed);
+    if (!body && files.length === 0) {
       return notice("empty", reasons.length ? "only removed content" : "no new text", threadId);
     }
     if (body.length > MAX_BODY) body = `${body.slice(0, MAX_BODY - 1)}…`;
 
-    const { data: sent, error: sendError } = await supabase.rpc("rpc_send_chat_message", {
-      p_user_id: userId,
-      p_thread_id: threadId,
-      p_body: body,
-    });
+    let attachments = [];
+    if (files.length > 0) {
+      attachments = await storeAttachments(threadId, files);
+      const scan = await scanChatAttachments({ attachments });
+      if (scan.reasons.length > 0) {
+        await recordAttachmentScan({
+          userId,
+          threadId,
+          blocked: scan.blocked,
+          reasons: [...scan.reasons, "from_email"],
+          fileNames: files.map((f) => f.fileName),
+        });
+      }
+      if (scan.blocked) {
+        if (!body) return notice("empty", "attachments blocked", threadId, "attachments_removed");
+        attachments = [];
+      }
+    }
+
+    const { data: sent, error: sendError } = attachments.length > 0
+      ? await supabase.rpc("rpc_send_chat_attachment_message", {
+          p_user_id: userId,
+          p_thread_id: threadId,
+          p_body: body || null,
+          p_attachments: attachments,
+        })
+      : await supabase.rpc("rpc_send_chat_message", {
+          p_user_id: userId,
+          p_thread_id: threadId,
+          p_body: body,
+        });
     if (sendError || !sent?.messageId) {
       console.error("inbound email: send rpc refused:", sendError);
       return notice("rejected", sendError?.message?.slice(0, 200) ?? "send failed", threadId);
     }
 
+    // Attachment messages already carry metadata (caption, file list); add to it.
+    const { data: existing } = await supabase
+      .from("chat_messages")
+      .select("metadata")
+      .eq("id", sent.messageId)
+      .single();
     await supabase
       .from("chat_messages")
-      .update({ metadata: { via: "email" } })
+      .update({ metadata: { ...(existing?.metadata ?? {}), via: "email" } })
       .eq("id", sent.messageId);
 
     if (reasons.length > 0) {
