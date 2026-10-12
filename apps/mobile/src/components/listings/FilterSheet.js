@@ -8,7 +8,18 @@
 // every field/key/option list is untouched, only how they're grouped and
 // styled changed.
 import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   X,
   DollarSign,
@@ -147,6 +158,7 @@ function ToggleRow({ label, value, onValueChange }) {
 
 export function FilterSheet({ visible, filters, onApply, onClose }) {
   const [draft, setDraft] = useState(filters);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) setDraft(filters);
@@ -158,7 +170,11 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 bg-white pt-14">
+      {/* The footer rides above the keyboard (iOS); Android resizes the window. */}
+      <KeyboardAvoidingView
+        className="flex-1 bg-white pt-14"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <View className="flex-row items-center justify-between px-4 pb-3 border-b border-gray-100">
           <Text className="text-lg font-bold text-gray-900">Filters</Text>
           <Pressable
@@ -171,7 +187,12 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <ScrollView
+          contentContainerStyle={{ padding: 16 }}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           <View className="bg-gray-50 rounded-2xl p-4 mb-4">
             <SectionHeader icon={DollarSign} title="Budget & Size" />
             <View className="mb-3">
@@ -319,7 +340,11 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
           </View>
         </ScrollView>
 
-        <View className="flex-row gap-3 p-4 border-t border-gray-100">
+        {/* Keep the buttons clear of the home indicator. */}
+        <View
+          className="flex-row gap-3 p-4 border-t border-gray-100"
+          style={{ paddingBottom: Math.max(16, insets.bottom) }}
+        >
           <Button variant="secondary" onPress={() => setDraft(DEFAULT_FILTERS)}>
             Reset
           </Button>
@@ -327,7 +352,7 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
             <Button onPress={() => onApply(draft)}>Apply Filters</Button>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

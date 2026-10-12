@@ -9,14 +9,38 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import apiClient from "./apiClient";
+import { useChatUnreadStore } from "../store/chatUnreadStore";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The thread a chat notification opens, or null when the payload is not a
+// well-formed chat notification. The server sends { threadId, route: "/chat/<threadId>" };
+// both must be present and agree, so a payload cannot point the app anywhere but
+// the chat screen of a real-looking thread id.
+export function chatThreadIdFromNotificationData(data) {
+  const threadId = data?.threadId;
+  if (typeof threadId !== "string" || !UUID_RE.test(threadId)) return null;
+  if (data.route !== `/chat/${threadId}`) return null;
+  return threadId.toLowerCase();
+}
+
+// A chat notification for the conversation that is open on screen would only repeat
+// what the user is looking at (the message arrives over realtime), so it is not
+// shown while the app is in the foreground. Every other notification, including
+// chat ones for other conversations, shows as before.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const threadId = chatThreadIdFromNotificationData(notification.request.content.data);
+    const activeThreadId = useChatUnreadStore.getState().activeThreadId;
+    const viewingThread =
+      !!threadId && typeof activeThreadId === "string" && activeThreadId.toLowerCase() === threadId;
+    return {
+      shouldShowBanner: !viewingThread,
+      shouldShowList: !viewingThread,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 // Cached so logout can unregister the exact token that was registered,

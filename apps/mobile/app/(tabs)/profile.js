@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
+import Constants from "expo-constants";
 import { ChevronRight, FileText, LogOut, Lock, Pencil, ShieldCheck, Info, Trash2, User } from "lucide-react-native";
 import { isLandlord } from "@proximity/auth-core";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -25,9 +26,11 @@ function ProfileSection({ title, children }) {
   );
 }
 
+// Without an onPress the row is informational: a plain View with no chevron.
 function MenuItem({ label, icon: Icon, onPress, destructive = false, showBorder = true }) {
+  const Container = onPress ? Pressable : View;
   return (
-    <Pressable
+    <Container
       onPress={onPress}
       className={`flex-row items-center justify-between px-4 py-3.5 ${showBorder ? "border-b border-gray-100" : ""}`}
     >
@@ -37,8 +40,8 @@ function MenuItem({ label, icon: Icon, onPress, destructive = false, showBorder 
           {label}
         </Text>
       </View>
-      <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-    </Pressable>
+      {onPress ? <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} /> : null}
+    </Container>
   );
 }
 
@@ -193,9 +196,8 @@ export default function ProfileScreen() {
           <MenuItem label="Terms of Service" icon={FileText} onPress={() => openLegalLink(TERMS_URL)} />
           <MenuItem label="Privacy Policy" icon={ShieldCheck} onPress={() => openLegalLink(PRIVACY_URL)} />
           <MenuItem
-            label="Version 1.0.0"
+            label={`Version ${Constants.expoConfig?.version ?? "Unknown"}`}
             icon={Info}
-            onPress={() => {}}
             showBorder={false}
           />
         </ProfileSection>

@@ -37,6 +37,18 @@ module.exports = {
       // `requireAuthentication`, so the Face ID string would be unused. The
       // matching Android biometric permissions are blocked below.
       ["expo-secure-store", { faceIDPermission: false }],
+      // Launch screen: the red Proximity mark centred on white. SDK 56 has no
+      // built-in splash handling, so this plugin is what applies the image on
+      // both platforms at prebuild time.
+      [
+        "expo-splash-screen",
+        {
+          backgroundColor: "#ffffff",
+          image: "./assets/splash-icon.png",
+          imageWidth: 240,
+          resizeMode: "contain",
+        },
+      ],
     ],
     ios: {
       supportsTablet: false,
@@ -70,7 +82,7 @@ module.exports = {
         "android.permission.USE_FINGERPRINT",
       ],
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
+        backgroundColor: "#e23a2f",
         foregroundImage: "./assets/android-icon-foreground.png",
         backgroundImage: "./assets/android-icon-background.png",
         monochromeImage: "./assets/android-icon-monochrome.png",

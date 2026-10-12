@@ -40,6 +40,7 @@ import {
   Alert,
   Animated,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -73,6 +74,9 @@ import {
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
 import { Badge } from "../../src/components/ui/Badge";
+import { Button } from "../../src/components/ui/Button";
+import { ChatAvatar } from "../../src/components/chat/ChatAvatar";
+import { CHAT_MAX_BODY, chatErrorMessage, defaultListingInquiry, leaseForChat } from "../../src/lib/chatFormat";
 import { StarRating } from "../../src/components/ui/StarRating";
 import { SectionHeader } from "../../src/components/ui/SectionHeader";
 import { FieldLabel } from "../../src/components/ui/FieldLabel";
@@ -170,10 +174,26 @@ export default function ListingDetailScreen() {
   const isSaved = useFavoritesStore((state) => state.isSaved(id));
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
 
-  const [contactForm, setContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", message: "" });
+  // In-app message to the landlord. The text is prefilled with the same opening
+  // line as web and stays editable; `messageEdited` stops a re-render from
+  // overwriting words the user has typed.
+  const [messageText, setMessageText] = useState("");
+  const [messageEdited, setMessageEdited] = useState(false);
   const [sending, setSending] = useState(false);
-  const [contactError, setContactError] = useState(null);
-  const [contactSent, setContactSent] = useState(false);
+  const [messageError, setMessageError] = useState(null);
+
+  // Keeps the message box in view when the keyboard opens. The page is a single
+  // ScrollView inside a KeyboardAvoidingView, which shrinks the visible area but
+  // does not scroll to the focused field, so once the keyboard has finished
+  // appearing the page scrolls to its end, where the Message card sits.
+  const scrollRef = useRef(null);
+  const messageFocused = useRef(false);
+  useEffect(() => {
+    const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      if (messageFocused.current) scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     apiClient.listings
@@ -222,21 +242,48 @@ export default function ListingDetailScreen() {
     );
   }
 
-  async function handleContactSubmit() {
+  // Recipient name shown on the Message card. Comes from the listing owner; the
+  // server resolves the real recipient (and any lease) when the chat starts.
+  const ownerName = listing?.owner?.name ?? null;
+  useEffect(() => {
+    if (messageEdited) return;
+    setMessageText(defaultListingInquiry(ownerName));
+  }, [ownerName, messageEdited]);
+
+  async function handleStartChat() {
     if (!listing) return;
+    const body = messageText.trim();
+    if (!body || sending) return;
+
+    if (!user) {
+      Alert.alert("Sign in required", "Sign in to message the landlord.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign In", onPress: () => router.push("/(auth)/login") },
+      ]);
+      return;
+    }
+
     setSending(true);
-    setContactError(null);
+    setMessageError(null);
     try {
-      await apiClient.contactLandlord.contactLandlord({
-        ...contactForm,
+      const lease = leaseForChat(listing);
+      const result = await apiClient.chat.startListingChat({
         listingId: listing._id,
-        landlordEmail: listing.contactEmail ?? listing.owner?.email,
-        landlordName: listing.contactName ?? listing.owner?.name,
-        listingAddress: listing.address,
+        body,
+        leaseId: lease?.id,
       });
-      setContactSent(true);
+      setMessageEdited(false);
+      router.push({
+        pathname: "/chat/[threadId]",
+        params: {
+          threadId: result.threadId,
+          name: lease?.landlordName ?? ownerName ?? "",
+          listingTitle: listing.title ?? listing.address ?? "",
+        },
+      });
     } catch (err) {
-      setContactError(err.message ?? "Failed to send message. Please try again.");
+      if (err?.status === 401) return; // session expired: the api client already signed out
+      setMessageError(chatErrorMessage(err, "Couldn't send your message. Please try again."));
     } finally {
       setSending(false);
     }
@@ -293,6 +340,11 @@ export default function ListingDetailScreen() {
   // author's review stays in the score, only its text is hidden.
   const visibleReviews = reviews.filter((r) => !r.hiddenByBlock);
   const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / reviews.length : 0;
+  // The landlord can be messaged in-app (server-computed), and it isn't the
+  // signed-in user's own listing. owner._id is null when the listing only has a
+  // contact address and no landlord account yet; that is never "mine".
+  const isOwnListing = !!user?.id && listing.owner?._id === user.id;
+  const canMessage = listing.owner?.canChat === true && !isOwnListing;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -324,6 +376,8 @@ export default function ListingDetailScreen() {
         </View>
 
         <Animated.ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 40 }}
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
           scrollEventThrottle={16}
@@ -499,77 +553,46 @@ export default function ListingDetailScreen() {
               )}
             </DetailCard>
 
-            <DetailCard>
-              <SectionHeader icon={Mail} title="Contact landlord" />
+            {canMessage ? (
+              <DetailCard>
+                <SectionHeader icon={Mail} title="Message the landlord" />
 
-              {contactSent ? (
-                <View className="bg-green-50 rounded-lg p-4">
-                  <Text className="text-green-700 text-sm font-medium">
-                    Message sent! The landlord will reach out to you directly.
-                  </Text>
-                </View>
-              ) : (
                 <View className="gap-2.5">
-                  <View className="flex-row gap-2.5">
-                    <TextInput
-                      className="flex-1 h-11 border border-gray-200 rounded-xl px-3 text-sm bg-white"
-                      placeholder="First name"
-                      value={contactForm.firstName}
-                      onChangeText={(v) => setContactForm((f) => ({ ...f, firstName: v }))}
-                      editable={!sending}
-                    />
-                    <TextInput
-                      className="flex-1 h-11 border border-gray-200 rounded-xl px-3 text-sm bg-white"
-                      placeholder="Last name"
-                      value={contactForm.lastName}
-                      onChangeText={(v) => setContactForm((f) => ({ ...f, lastName: v }))}
-                      editable={!sending}
-                    />
+                  <View className="flex-row items-center gap-2.5">
+                    <ChatAvatar name={ownerName} image={listing.owner?.image} size={36} />
+                    <Text className="flex-1 text-sm font-semibold text-gray-900" numberOfLines={1}>
+                      {ownerName ?? "Property manager"}
+                    </Text>
                   </View>
-                  <TextInput
-                    className="h-11 border border-gray-200 rounded-xl px-3 text-sm bg-white"
-                    placeholder="Email"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={contactForm.email}
-                    onChangeText={(v) => setContactForm((f) => ({ ...f, email: v }))}
-                    editable={!sending}
-                  />
-                  <TextInput
-                    className="h-11 border border-gray-200 rounded-xl px-3 text-sm bg-white"
-                    placeholder="Phone (optional)"
-                    keyboardType="phone-pad"
-                    value={contactForm.phone}
-                    onChangeText={(v) => setContactForm((f) => ({ ...f, phone: v }))}
-                    editable={!sending}
-                  />
+
                   <TextInput
                     className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"
-                    placeholder="Message"
+                    placeholder={defaultListingInquiry(ownerName)}
                     multiline
                     numberOfLines={4}
-                    value={contactForm.message}
-                    onChangeText={(v) => setContactForm((f) => ({ ...f, message: v }))}
+                    value={messageText}
+                    onChangeText={(value) => {
+                      setMessageEdited(true);
+                      setMessageText(value.slice(0, CHAT_MAX_BODY));
+                    }}
                     editable={!sending}
-                    style={{ minHeight: 90, textAlignVertical: "top" }}
+                    onFocus={() => {
+                      messageFocused.current = true;
+                    }}
+                    onBlur={() => {
+                      messageFocused.current = false;
+                    }}
+                    style={{ minHeight: 90, maxHeight: 160, textAlignVertical: "top" }}
                   />
 
-                  {contactError ? <Text className="text-red-500 text-xs">{contactError}</Text> : null}
+                  {messageError ? <Text className="text-red-500 text-xs">{messageError}</Text> : null}
 
-                  <Pressable
-                    onPress={handleContactSubmit}
-                    disabled={sending}
-                    className={`h-11 rounded-xl items-center justify-center mt-1 ${sending ? "bg-gray-300" : "bg-red-600"}`}
-                  >
-                    {sending ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text className="text-white font-semibold text-sm">Send message</Text>
-                    )}
-                  </Pressable>
+                  <Button onPress={handleStartChat} loading={sending} disabled={!messageText.trim()}>
+                    Send message
+                  </Button>
                 </View>
-              )}
-            </DetailCard>
+              </DetailCard>
+            ) : null}
           </View>
         </Animated.ScrollView>
       </KeyboardAvoidingView>

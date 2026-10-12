@@ -58,6 +58,15 @@ export class AuthResource {
     });
   }
 
+  // First password for an account that has none. The server refuses (409) when
+  // one already exists; changing a known password goes through changePassword.
+  setPassword(password) {
+    return this.client.request("/api/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
+  }
+
   changePassword(currentPassword, newPassword) {
     return this.client.request("/api/auth/change-password", {
       method: "POST",

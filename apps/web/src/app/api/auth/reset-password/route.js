@@ -24,10 +24,22 @@ export async function POST(req) {
 
     const password_hash = await bcrypt.hash(password, 12);
 
+    /*
+     * Setting email_verified here is the point, not a side effect. The token
+     * was emailed to this address and nothing else can produce it, so using it
+     * proves control of the inbox, which is all verification ever meant.
+     *
+     * Without this, an account that had no password (a landlord row created by
+     * the listing importer, or one provisioned from a listing contact address)
+     * could set a password through this flow and still be refused at sign-in,
+     * because auth.js throws EmailNotVerified on an unverified credentials
+     * login. They would be stuck in a loop with no way out.
+     */
     await supabase
       .from("users")
       .update({
         password_hash,
+        email_verified: true,
         password_reset_token: null,
         password_reset_expires_at: null,
       })

@@ -1,8 +1,7 @@
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "../constants/places.js";
 
-// Ported verbatim from apps/web/src/components/listings/BrowseContent.js's
-// filteredListings predicate. savedOnly is kept in the shape for parity, but
-// mobile has no favorites UI yet (Phase 6) — pass savedIds when that lands.
+// Browse filter defaults. Keep in step with DEFAULT_FILTERS in
+// apps/web/src/lib/listings/filterListings.js.
 export const DEFAULT_FILTERS = {
   minRent: "",
   maxRent: "",
@@ -25,7 +24,7 @@ export const DEFAULT_FILTERS = {
 };
 
 // Canonical filter-chip amenity values are a distinct, smaller vocabulary
-// from packages/shared's AMENITY_OPTIONS (which mirrors the DB columns) —
+// from packages/shared's AMENITY_OPTIONS (which mirrors the DB columns) -
 // this mirrors a pre-existing inconsistency in web itself between its
 // filter UI and its listing-form UI, not something to unify here.
 export const FILTER_AMENITY_OPTIONS = [
@@ -56,20 +55,6 @@ export const FILTER_AMENITY_LABELS = {
   gym: "Gym",
 };
 
-const AMENITY_ALIASES = {
-  dishwasher: ["dishwasher", "DISHWASHER"],
-  in_unit_laundry: ["in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
-  ac_heating: ["ac_heating"],
-  mailroom: ["mailroom", "MAILROOM"],
-  pets_allowed: ["pets_allowed", "PETS ALLOWED"],
-  extra_storage: ["extra_storage", "EXTRA STORAGE"],
-  fireplace: ["fireplace", "FIREPLACE"],
-  private_parking: ["private_parking", "FREE PARKING"],
-  pool: ["pool", "POOL"],
-  study_room: ["study_room", "STUDY ROOMS"],
-  gym: ["gym", "GYM"],
-};
-
 export const HOME_TYPE_FILTER_OPTIONS = ["house", "apartment", "condo", "townhouse", "singleBedroom"];
 export const HOME_TYPE_FILTER_LABELS = {
   house: "House",
@@ -87,151 +72,376 @@ export const LEASE_AVAILABILITY_FILTER_LABELS = {
   "12-month": "12-Month",
 };
 
-export function filterListings(listings, filters, { search = "", savedIds = [] } = {}) {
-  return listings.filter((listing) => {
-    const lt = listing?.homeType?.toLowerCase() || "";
-    const desc = listing?.description?.toLowerCase() || "";
-    const amenitiesText = (listing?.amenities || []).join(" ").toLowerCase();
-    const combined = desc + " " + amenitiesText;
+/*
+ * Everything from here to countActiveFilters is a copy of the web Browse logic
+ * in apps/web/src/lib/listings/filterListings.js (the source of truth). Keep the
+ * two in step. Only differences: filterListings defaults `campusMinutes` to the
+ * shared place list, and rankBrowseListings adds the final step web applies in
+ * AvailableListings.js.
+ */
 
-    const q = search.toLowerCase();
-    const matchSearch =
-      !q || listing?.address?.toLowerCase().includes(q) || listing?.title?.toLowerCase().includes(q);
+// Minimum walk minutes to campus, with the same place set as web's BrowseContent
+// (grocery + Med Campus excluded via NON_CAMPUS_WALK_PLACES).
+export function defaultCampusMinutes(listing) {
+  const pwm = listing?.placeWalkMinutes;
+  const mins = WASHU_PLACES.filter((p) => !NON_CAMPUS_WALK_PLACES.includes(p.name))
+    .map((p) => pwm?.[p.name])
+    .filter((m) => m != null);
+  return mins.length ? Math.min(...mins) : null;
+}
 
-    const matchMinRent = !filters.minRent || listing?.maxRent >= Number(filters.minRent);
-    const matchMaxRent = !filters.maxRent || listing?.minRent <= Number(filters.maxRent);
+const num = (v) => (v === "" || v == null ? null : Number(v));
 
-    const matchBeds =
-      (!filters.bedrooms || listing?.maxBedrooms >= Number(filters.bedrooms)) &&
-      (!filters.maxBedrooms || listing?.minBedrooms <= Number(filters.maxBedrooms));
-    const matchBaths =
-      (!filters.bathrooms || listing?.maxBathrooms >= Number(filters.bathrooms)) &&
-      (!filters.maxBathrooms || listing?.minBathrooms <= Number(filters.maxBathrooms));
+/*
+ * Lease-length buckets, matched against unit_leases.lease_term_months, the
+ * array of every term a landlord will accept, so [4,5,10,12] is one flexible
+ * offering that satisfies "semester", "10-month" AND "12-month".
+ */
+const TERM_BUCKETS = {
+  summer: (m) => m <= 3,
+  semester: (m) => m >= 4 && m <= 6,
+  "10-month": (m) => m === 10,
+  "12-month": (m) => m === 12,
+};
 
-    let matchDistance = true;
-    if (filters.distance) {
-      const maxMinutes = parseFloat(filters.distance);
-      const pwm = listing.placeWalkMinutes;
-      const campusMins = WASHU_PLACES.filter((p) => !NON_CAMPUS_WALK_PLACES.includes(p.name))
-        .map((p) => pwm?.[p.name])
-        .filter((m) => m != null);
-      matchDistance = campusMins.length > 0 && Math.min(...campusMins) <= maxMinutes;
-    }
+// ---------------------------------------------------------------------------
+// Lease scope
+// ---------------------------------------------------------------------------
 
-    let matchShuttle = true;
-    if (filters.distanceToShuttle) {
-      const maxMinutes = parseFloat(filters.distanceToShuttle);
-      matchShuttle = listing.shuttleWalkMinutes != null && listing.shuttleWalkMinutes <= maxMinutes;
-    }
+/** True when this single offering satisfies every lease-scoped filter. */
+export function leaseMatches(lease, filters) {
+  // Price. A null rent is "ask the landlord", not "free" and not "expensive" -
+  // it can't contradict the range, so it passes and is demoted in the sort.
+  if (lease.rent != null) {
+    const min = num(filters.minRent);
+    const max = num(filters.maxRent);
+    if (min != null && lease.rent < min) return false;
+    if (max != null && lease.rent > max) return false;
+  }
 
-    let matchHomeType = true;
-    if (filters.homeType && filters.homeType.length > 0) {
-      matchHomeType = filters.homeType.some((type) => {
-        switch (type) {
-          case "house":
-            return lt.includes("house");
-          case "apartment":
-            return lt.includes("apartment");
-          case "condo":
-            return lt.includes("condo");
-          case "townhouse":
-            return lt.includes("townhouse");
-          case "singleBedroom":
-            return listing?.minBedrooms === 1;
-          default:
-            return true;
-        }
+  // Furnishing is per-offering: the same unit can be let furnished by one
+  // landlord and bare by another.
+  if (filters.furnished === "furnished" && lease.furnished === false) return false;
+  if (filters.furnished === "unfurnished" && lease.furnished === true) return false;
+
+  if (filters.leaseAvailability?.length) {
+    const months = lease.leaseTermMonths ?? [];
+    if (months.length) {
+      const ok = filters.leaseAvailability.some((key) => {
+        const inBucket = TERM_BUCKETS[key];
+        return inBucket ? months.some(inBucket) : true;
       });
+      if (!ok) return false;
     }
+  }
 
-    let matchLeaseAvail = true;
-    if (filters.leaseAvailability && filters.leaseAvailability.length > 0) {
-      const la = Array.isArray(listing?.leaseAvailability) ? listing.leaseAvailability : [];
-      matchLeaseAvail = filters.leaseAvailability.some((avail) => {
-        switch (avail) {
-          case "semester":
-            return la.includes("semester") || desc.includes("semester");
-          case "10-month":
-            return la.includes("10-month") || desc.includes("10 month") || desc.includes("10-month");
-          case "12-month":
-            return la.includes("12-month") || desc.includes("12 month") || desc.includes("12-month");
-          case "summer":
-            return la.includes("summer") || desc.includes("summer");
-          default:
-            return true;
-        }
-      });
-    }
+  if (filters.subleaseOnly && !lease.sublease) return false;
 
-    let matchAmenities = true;
-    if (filters.amenities && filters.amenities.length > 0) {
-      const arr = listing.amenities || [];
-      matchAmenities = filters.amenities.every((amenity) => {
-        const aliases = AMENITY_ALIASES[amenity] ?? [amenity];
-        return aliases.some((v) => arr.includes(v));
-      });
-    }
+  // "Move in by X": the offering must open on or before that date. Most leases
+  // carry no available_from yet, and an unstated date is not a late one.
+  if (filters.moveInDate && lease.availableFrom) {
+    if (new Date(lease.availableFrom) > new Date(filters.moveInDate)) return false;
+  }
 
-    let matchFurnished = true;
-    if (filters.furnished === "furnished") {
-      matchFurnished = listing?.furnished === true || (combined.includes("furnished") && !combined.includes("unfurnished"));
-    } else if (filters.furnished === "unfurnished") {
-      matchFurnished = listing?.furnished === false || combined.includes("unfurnished") || !combined.includes("furnished");
-    }
+  return true;
+}
 
-    let matchUtilities = true;
-    if (filters.utilitiesIncluded?.length > 0) {
-      const listingUtils = Array.isArray(listing?.utilitiesIncluded) ? listing.utilitiesIncluded : [];
-      matchUtilities = filters.utilitiesIncluded.every((u) => listingUtils.includes(u));
-    }
+/** Any lease-scoped filter engaged? Decides how unit-less listings are treated. */
+function leaseFiltersActive(filters) {
+  return !!(filters.minRent || filters.maxRent || categoricalLeaseFilters(filters));
+}
 
-    let matchSublease = true;
-    if (filters.subleaseFriendly) {
-      matchSublease = listing?.subleaseFriendly === true || desc.includes("subleas") || desc.includes("subletting allowed");
-    }
+/*
+ * Lease filters a unit cannot answer without an actual offering. Price is
+ * deliberately absent: an unpriced unit is still a real answer to "under
+ * $1,500", it just can't prove it. A unit with no offering at all, on the other
+ * hand, has nothing to say about furnishing, lease length, sublease status or
+ * move-in, so it is not a match for those.
+ */
+function categoricalLeaseFilters(filters) {
+  return !!(
+    filters.furnished ||
+    filters.subleaseOnly ||
+    filters.moveInDate ||
+    filters.leaseAvailability?.length
+  );
+}
 
-    let matchSubleaseOnly = true;
-    if (filters.subleaseOnly) {
-      matchSubleaseOnly = String(listing?.leaseType ?? "").toLowerCase() === "sublease";
-    }
+function unitFiltersActive(filters) {
+  return !!(
+    filters.bedrooms ||
+    filters.maxBedrooms ||
+    filters.bathrooms ||
+    filters.maxBathrooms
+  );
+}
 
-    let matchLeaseStructure = true;
-    if (filters.leaseStructure === "individual") {
-      matchLeaseStructure =
-        listing?.leaseStructure === "individual" || desc.includes("individual lease") || desc.includes("by the room");
-    } else if (filters.leaseStructure === "joint") {
-      matchLeaseStructure = listing?.leaseStructure === "joint" || desc.includes("joint lease") || desc.includes("whole unit");
-    }
+// ---------------------------------------------------------------------------
+// Unit scope
+// ---------------------------------------------------------------------------
 
-    const matchSaved = !filters.savedOnly || savedIds.includes(String(listing._id));
+/**
+ * The units a renter could actually take. Falls back to every unit when none is
+ * marked available, so a fully-let building still matches its own bed/bath
+ * shape instead of vanishing, browse has never hidden those.
+ */
+function unitPool(listing) {
+  const units = listing.unitTypes ?? [];
+  const open = units.filter((u) => u.available !== false);
+  return open.length ? open : units;
+}
 
-    let matchMoveInDate = true;
-    if (filters.moveInDate) {
-      const desiredDate = new Date(filters.moveInDate);
-      const listingMoveInDate = new Date(listing.moveInDate);
-      matchMoveInDate = isNaN(listingMoveInDate.getTime()) || listingMoveInDate <= desiredDate;
-    }
+/**
+ * Match one unit and pick the offering a renter would land on.
+ * Returns { unit, lease, priceKnown } or null.
+ */
+export function unitMatch(unit, filters) {
+  // Beds/baths are structural, not pending data: a unit that never recorded its
+  // bedroom count cannot be shown as an answer to "3 bedrooms".
+  const minBeds = num(filters.bedrooms);
+  const maxBeds = num(filters.maxBedrooms);
+  if (minBeds != null || maxBeds != null) {
+    if (unit.bedrooms == null) return null;
+    if (minBeds != null && unit.bedrooms < minBeds) return null;
+    if (maxBeds != null && unit.bedrooms > maxBeds) return null;
+  }
 
-    return (
-      matchSearch &&
-      matchMinRent &&
-      matchMaxRent &&
-      matchBeds &&
-      matchBaths &&
-      matchDistance &&
-      matchShuttle &&
-      matchHomeType &&
-      matchLeaseAvail &&
-      matchAmenities &&
-      matchFurnished &&
-      matchUtilities &&
-      matchSublease &&
-      matchSubleaseOnly &&
-      matchLeaseStructure &&
-      matchMoveInDate &&
-      matchSaved
+  const minBaths = num(filters.bathrooms);
+  const maxBaths = num(filters.maxBathrooms);
+  if (minBaths != null || maxBaths != null) {
+    if (unit.bathrooms == null) return null;
+    if (minBaths != null && unit.bathrooms < minBaths) return null;
+    if (maxBaths != null && unit.bathrooms > maxBaths) return null;
+  }
+
+  const leases = unit.leases ?? [];
+
+  // No live offering at all, the unit is real, its terms simply aren't
+  // published. Keep it (flagged unpriced) for a price question, drop it for one
+  // it has no way to answer.
+  if (!leases.length) {
+    return categoricalLeaseFilters(filters)
+      ? null
+      : { unit, lease: null, priceKnown: false };
+  }
+
+  const passing = leases.filter((l) => leaseMatches(l, filters));
+  if (!passing.length) return null;
+
+  // shapeLeases() already sorts cheapest-first with unpriced sunk, so the first
+  // priced survivor is the cheapest offering that fits.
+  const best = passing.find((l) => l.rent != null) ?? passing[0];
+  return { unit, lease: best, priceKnown: best.rent != null };
+}
+
+// ---------------------------------------------------------------------------
+// Property scope
+// ---------------------------------------------------------------------------
+
+// Canonical filter value → every DB value that means it (snake_case + legacy ALL_CAPS)
+const AMENITY_ALIASES = {
+  dishwasher: ["dishwasher", "DISHWASHER"],
+  in_unit_laundry: ["in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
+  ac_heating: ["ac_heating"],
+  mailroom: ["mailroom", "MAILROOM"],
+  pets_allowed: ["pets_allowed", "PETS ALLOWED"],
+  extra_storage: ["extra_storage", "EXTRA STORAGE"],
+  fireplace: ["fireplace", "FIREPLACE"],
+  private_parking: ["private_parking", "FREE PARKING"],
+  pool: ["pool", "POOL"],
+  study_room: ["study_room", "STUDY ROOMS"],
+  gym: ["gym", "GYM"],
+};
+
+function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) {
+  const lt = listing?.homeType?.toLowerCase() || "";
+  const desc = listing?.description?.toLowerCase() || "";
+
+  const q = search.trim().toLowerCase();
+  if (
+    q &&
+    !listing?.address?.toLowerCase().includes(q) &&
+    !listing?.title?.toLowerCase().includes(q)
+  ) {
+    return false;
+  }
+
+  if (filters.distance) {
+    const mins = campusMinutes(listing);
+    if (mins == null || mins > parseFloat(filters.distance)) return false;
+  }
+
+  if (filters.distanceToShuttle) {
+    const m = listing.shuttleWalkMinutes;
+    if (m == null || m > parseFloat(filters.distanceToShuttle)) return false;
+  }
+
+  if (filters.homeType?.length) {
+    const ok = filters.homeType.some((type) => {
+      switch (type) {
+        case "house":
+          return lt.includes("house");
+        case "apartment":
+          return lt.includes("apartment");
+        case "condo":
+          return lt.includes("condo");
+        case "townhouse":
+          return lt.includes("townhouse");
+        // A shape question rather than a building type, answered from the
+        // units themselves now that they are available here.
+        case "singleBedroom":
+          return unitPool(listing).some((u) => u.bedrooms === 1);
+        default:
+          return true;
+      }
+    });
+    if (!ok) return false;
+  }
+
+  if (filters.amenities?.length) {
+    const arr = listing.amenities || [];
+    const ok = filters.amenities.every((amenity) =>
+      (AMENITY_ALIASES[amenity] ?? [amenity]).some((v) => arr.includes(v))
     );
-  });
+    if (!ok) return false;
+  }
+
+  if (filters.utilitiesIncluded?.length) {
+    const incl = Array.isArray(listing?.utilitiesIncluded)
+      ? listing.utilitiesIncluded
+      : [];
+    if (!filters.utilitiesIncluded.every((u) => incl.includes(u))) return false;
+  }
+
+  // "Allows subletting", a property policy, unlike subleaseOnly which asks
+  // whether a specific offering IS a sublease.
+  if (filters.subleaseFriendly) {
+    const ok =
+      listing?.subleaseFriendly === true ||
+      desc.includes("subleas") ||
+      desc.includes("subletting allowed");
+    if (!ok) return false;
+  }
+
+  if (filters.leaseStructure === "individual") {
+    const ok =
+      listing?.leaseStructure === "individual" ||
+      desc.includes("individual lease") ||
+      desc.includes("by the room");
+    if (!ok) return false;
+  } else if (filters.leaseStructure === "joint") {
+    const ok =
+      listing?.leaseStructure === "joint" ||
+      desc.includes("joint lease") ||
+      desc.includes("whole unit");
+    if (!ok) return false;
+  }
+
+  if (filters.savedOnly && !savedIds.includes(String(listing._id))) return false;
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Listing scope
+// ---------------------------------------------------------------------------
+
+/**
+ * Match one listing and resolve which unit satisfied the filters.
+ * Returns the listing annotated with matchedUnitId, or null.
+ */
+export function matchListing(listing, ctx) {
+  if (!propertyMatches(listing, ctx)) return null;
+
+  const { filters } = ctx;
+  const narrowed = unitFiltersActive(filters) || leaseFiltersActive(filters);
+  const units = unitPool(listing);
+
+  // Imported listings that never had their units broken out. Nothing to test a
+  // bed/bath or price question against, so they answer only the property ones.
+  if (!units.length) {
+    if (narrowed) return null;
+    return { ...listing, matchedUnitId: null, priceUnknown: true };
+  }
+
+  const matches = units.map((u) => unitMatch(u, filters)).filter(Boolean);
+  if (!matches.length) return null;
+
+  // The unit the panel should open on: cheapest fitting offering wins, and a
+  // real number always beats an unpriced one.
+  const priced = matches.filter((m) => m.priceKnown);
+  const best = priced.length
+    ? priced.reduce((a, b) => (b.lease.rent < a.lease.rent ? b : a))
+    : matches[0];
+
+  return {
+    ...listing,
+    /*
+     * Only claim a match when the renter actually narrowed something. With no
+     * filters on, every unit "matches" and the cheapest would win, which would
+     * silently override the panel's own smallest-unit-first tab order for plain
+     * browsing.
+     */
+    matchedUnitId: narrowed ? best.unit.id ?? null : null,
+    priceUnknown: !best.priceKnown,
+  };
+}
+
+/**
+ * Filter and rank the browse feed.
+ *
+ * `campusMinutes(listing)` is injected rather than imported so this module stays
+ * free of the WashU place list and can be unit-tested on plain objects.
+ */
+export function filterListings(
+  listings,
+  { filters, search = "", savedIds = [], campusMinutes = defaultCampusMinutes }
+) {
+  const ctx = { filters, search, savedIds, campusMinutes };
+  const priceFilterOn = !!(filters.minRent || filters.maxRent);
+
+  return listings
+    .map((l) => matchListing(l, ctx))
+    .filter(Boolean)
+    .sort((a, b) => {
+      // 0) Only while a price filter is engaged: listings whose price is simply
+      //    unpublished sink below the ones that provably fit the range. They are
+      //    still shown, a renter can ask, just never ahead of a real match.
+      if (priceFilterOn && !!a.priceUnknown !== !!b.priceUnknown) {
+        return a.priceUnknown ? 1 : -1;
+      }
+
+      // 1) Listings with photos rank above photoless ones.
+      const aHasImages = a.images?.length > 0;
+      const bHasImages = b.images?.length > 0;
+      if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
+
+      // 2) Reviewed listings rank first. A future availableFrom is deliberately
+      //    NOT a demotion: a pre-leased listing still shows in full colour with
+      //    an "Available Aug 1" badge, and it is inventory a renter can sign
+      //    today for a later move-in. It competes on the same footing as one
+      //    open now. Only `unavailable` sinks, and that happens in
+      //    AvailableListings where the greyed-out cards are collected.
+      const aReviews = a.numReviews ?? 0;
+      const bReviews = b.numReviews ?? 0;
+      if (aReviews > 0 !== bReviews > 0) return aReviews > 0 ? -1 : 1;
+
+      // 3) Among reviewed listings, higher rating wins, then more reviews.
+      if (aReviews > 0 && bReviews > 0) {
+        if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
+        return bReviews - aReviews;
+      }
+      return 0;
+    });
+}
+
+/**
+ * Final Browse ordering, as web's AvailableListings does it: unavailable
+ * (greyed-out) listings last, everything else keeps the order filterListings
+ * ranked it in. Array.prototype.sort is stable, so ties are untouched.
+ */
+export function rankBrowseListings(listings) {
+  return [...listings].sort((a, b) => (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0));
 }
 
 export function countActiveFilters(filters) {
