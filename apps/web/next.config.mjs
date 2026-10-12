@@ -33,6 +33,10 @@ const nextConfig = {
       { source: "/api/auth/signup", headers: corsHeaders },
       { source: "/api/auth/forgot-password", headers: corsHeaders },
       {
+        source: "/.well-known/apple-app-site-association",
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
