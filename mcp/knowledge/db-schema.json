@@ -45,7 +45,7 @@
       },
       {
         "table": "chat_email_log",
-        "description": "One row per chat alert email sent (lib/chat/notifyEmail.js): recipient, address used, provider (ses or gmail) and the provider message id. Server only (RLS on, no policies).",
+        "description": "One row per chat alert email sent (lib/chat/notifyEmail.js): recipient, address used, provider (ses or gmail) and the provider message id. The next alert to the same recipient in the same thread puts those ids in References and In-Reply-To so mail clients keep one email thread. Server only (RLS on, no policies).",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -88,7 +88,7 @@
       },
       {
         "table": "chat_participants",
-        "description": "Users in a chat thread, with read and alert state. reply_token_hash is the SHA-256 of this person's reply+token address for the thread (lib/chat/replyAddress.js). email_mode is on while they answer by email, which skips the alert holds for them.",
+        "description": "Users in a chat thread, with read and alert state. reply_token_hash is the SHA-256 of this person's reply+token address for the thread (lib/chat/replyAddress.js). email_mode is on while they answer by email (recorded only: since 202610120002 every message is emailed unless users.email_notifications is off, with no actively-reading or 24h hold).",
         "columns": [
           "thread_id:uuid",
           "user_id:uuid",

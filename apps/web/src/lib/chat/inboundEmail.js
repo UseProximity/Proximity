@@ -18,9 +18,13 @@
  *      proves nothing). Forwards are refused (Wyatt, 2026-10-09).
  *   6. Something is left once the quoted email and signature are removed, or
  *      a photo or PDF is attached.
- * Then contact details and the like are redacted rather than refused, and the
- * text goes in through rpc_send_chat_message like any in-app message, so it is
- * stored, rate limited and delivered exactly the same way.
+ * Then the text goes in through rpc_send_chat_message like any in-app message,
+ * so it is stored, rate limited and delivered exactly the same way. Contact
+ * details (phone, email, outside link, handle, "let's talk elsewhere") are
+ * delivered as written, flagged, and answered with a short email telling the
+ * sender what the reply contained and that replying to these emails already
+ * keeps the conversation on Proximity (Wyatt, 2026-10-12). Abuse, fraud and
+ * phishing still lose the offending sentence before posting.
  *
  * Attached photos and PDFs are copied into R2 under the conversation and
  * screened by the same vision scan as in-app uploads. Signature logos and
@@ -37,7 +41,7 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3
 import { simpleParser } from "mailparser";
 import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
-import { getBaseUrl, sendReplyNotDeliveredEmail } from "@/lib/email";
+import { getBaseUrl, sendReplyGuidelinesEmail, sendReplyNotDeliveredEmail } from "@/lib/email";
 import { r2, getBucket } from "@/lib/r2";
 import {
   CHAT_ATTACHMENT_ALLOWED_TYPES,
@@ -46,7 +50,7 @@ import {
   sanitizeChatAttachmentFileName,
 } from "@/lib/chat/attachments";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
-import { redactChatText } from "@/lib/chat/moderation";
+import { CONTACT_REASONS, redactChatText, screenChatText } from "@/lib/chat/moderation";
 import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { scanChatAttachments } from "@/lib/chat/scanAttachment";
@@ -274,7 +278,7 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
 
     const { data: participant } = await supabase
       .from("chat_participants")
-      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at)")
+      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at, landlord_id, interested_user_id)")
       .eq("reply_token_hash", hashReplyToken(found.token))
       .maybeSingle();
     if (!participant || participant.users?.deleted_at) {
@@ -320,9 +324,20 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
       senderCompany: participant.users?.company_name,
       fromName: parsed.from?.value?.[0]?.name,
     });
-    const { text: redacted, reasons } = redactChatText(extracted);
-    // Text that was removed in full is nothing to post; a photo sent with it still is.
-    let body = redacted.trim() === "[removed]" ? "" : redacted.trim();
+    /*
+     * Contact details are delivered as written and the sender is emailed about
+     * it (Wyatt, 2026-10-12). Abuse, fraud and phishing still lose the sentence.
+     * Text that was removed in full is nothing to post; a photo sent with it
+     * still is.
+     */
+    const verdict = screenChatText(extracted);
+    const reasons = verdict.action === "block" ? verdict.reasons : [];
+    const removed = reasons.some((r) => !CONTACT_REASONS.has(r));
+    let body = extracted.trim();
+    if (removed) {
+      const { text: redacted } = redactChatText(extracted);
+      body = redacted.trim() === "[removed]" ? "" : redacted.trim();
+    }
     const files = emailAttachments(parsed);
     if (!body && files.length === 0) {
       return notice("empty", reasons.length ? "only removed content" : "no new text", threadId);
@@ -380,12 +395,29 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
       await supabase.rpc("rpc_log_chat_moderation_event", {
         p_user_id: userId,
         p_action: "flag",
-        p_reasons: [...reasons, "redacted_from_email"],
+        p_reasons: [...reasons, removed ? "redacted_from_email" : "delivered_from_email"],
         p_body: extracted,
         p_thread_id: threadId,
         p_message_id: sent.messageId,
         p_listing_id: sent.listingId ?? null,
       });
+      // Straight away, every time. The sender is authenticated by this point.
+      try {
+        const t = participant.chat_threads ?? {};
+        const otherId = t.landlord_id === userId ? t.interested_user_id : t.landlord_id;
+        const { data: other } = otherId
+          ? await supabase.from("users").select("name").eq("id", otherId).maybeSingle()
+          : { data: null };
+        await sendReplyGuidelinesEmail({
+          to: fromEmail,
+          otherFirst: String(other?.name ?? "").trim().split(/\s+/)[0],
+          reasons,
+          removed,
+          baseUrl: getBaseUrl(),
+        });
+      } catch (err) {
+        console.error("inbound email: guidelines notice failed:", err);
+      }
     }
 
     await finish(logId, { ...base, status: "posted", thread_id: threadId, chat_message_id: sent.messageId });

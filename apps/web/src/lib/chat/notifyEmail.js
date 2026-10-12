@@ -6,20 +6,53 @@
  * afterwards and never slow down or fail the send.
  *
  * Whether an email is warranted at all is decided in the database by
- * rpc_chat_notification_recipient, which enforces the recipient's preference, the
- * actively-reading guard and the re-notify cooldown (both skipped while the recipient is
- * in email mode), skips suppressed addresses, and atomically stamps last_notified_at.
- * A null return means "no email". That is the normal case, not an error.
+ * rpc_chat_notification_recipient: every new message is emailed unless the recipient has
+ * message emails turned off or their address is suppressed (Wyatt, 2026-10-12). It batches
+ * everything unread since the last alert and atomically stamps last_notified_at. A null
+ * return means "no email".
  *
- * `via` is how the sender wrote: "app" (the default) or "email". It sets the sender's own
- * email mode, so answering in the app goes back to normal batched alerts.
+ * `via` is how the sender wrote: "app" (the default) or "email". It is recorded on the
+ * sender's participant row as email_mode.
  *
- * Every send is logged to chat_email_log with the provider's message id.
+ * Every send is logged to chat_email_log with the provider's message id. The next alert
+ * in the same thread, to the same person, carries those ids as References and In-Reply-To,
+ * so Gmail, Outlook and Apple Mail stack the whole conversation in one email thread. SES
+ * assigns its own Message-ID (<id@email.amazonses.com>), which is why the ids are read
+ * back from the log instead of being chosen here.
  */
 import supabase from "@/lib/supabase";
 import { sendChatMessageEmail } from "@/lib/email";
 import { mintChatAccessToken } from "@/lib/chat/accessToken";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
+
+const SES_MESSAGE_ID_DOMAIN = "email.amazonses.com";
+const MAX_REFERENCES = 20;
+
+function messageIdHeader(provider, id) {
+  const raw = String(id ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("<")) return raw;
+  return provider === "ses" ? `<${raw}@${SES_MESSAGE_ID_DOMAIN}>` : `<${raw}>`;
+}
+
+/** Message-IDs of the alerts already sent to this person in this thread, oldest first. */
+async function earlierAlertIds({ threadId, recipientId }) {
+  const { data, error } = await supabase
+    .from("chat_email_log")
+    .select("provider, provider_message_id")
+    .eq("thread_id", threadId)
+    .eq("recipient_id", recipientId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_REFERENCES);
+  if (error) {
+    console.error("notifyNewChatMessage: email log lookup failed:", error);
+    return [];
+  }
+  return (data ?? [])
+    .map((row) => messageIdHeader(row.provider, row.provider_message_id))
+    .filter(Boolean)
+    .reverse();
+}
 
 export async function notifyNewChatMessage({ threadId, senderId, baseUrl, via = "app" }) {
   try {
@@ -45,14 +78,13 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl, via = 
       ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
       : `${baseUrl}/messages?thread=${data.threadId}`;
 
-    const replyTo = await ensureReplyAddress({
-      threadId: data.threadId,
-      userId: data.recipientId,
-    });
+    const [replyTo, references] = await Promise.all([
+      ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
+      earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
+    ]);
 
     const sent = await sendChatMessageEmail({
       to: data.recipientEmail,
-      recipientName: data.recipientName,
       senderName: data.senderName,
       senderCompany: data.senderCompany,
       listingTitle: data.listingTitle,
@@ -64,6 +96,7 @@ export async function notifyNewChatMessage({ threadId, senderId, baseUrl, via = 
       threadUrl,
       replyTo,
       threadRef: `thread.${data.threadId}.${data.recipientId}`,
+      references,
     });
 
     if (sent && !sent.suppressed) {

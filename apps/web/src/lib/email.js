@@ -326,6 +326,7 @@ export async function sendChatMessageEmail({
   threadUrl,
   replyTo,
   threadRef,
+  references = [],
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -342,10 +343,14 @@ export async function sendChatMessageEmail({
     });
   const { subject, fromName } = build(false);
 
-  // A stable reference per (thread, recipient) groups the alerts in Apple Mail
-  // and Outlook. SES replaces Message-ID, so this is a reference only.
-  const headers = threadRef
-    ? { References: `<${threadRef}@useproximity.org>`, "In-Reply-To": `<${threadRef}@useproximity.org>` }
+  // Threading: the real Message-IDs of the earlier alerts to this person in this
+  // thread (oldest first), so every mail client stacks them as one conversation.
+  // Before the first one there is nothing to reference, so a stable synthetic
+  // root per (thread, recipient) stands in. SES assigns its own Message-ID.
+  const root = threadRef ? `<${threadRef}@useproximity.org>` : null;
+  const chain = [root, ...references].filter(Boolean);
+  const headers = chain.length > 0
+    ? { References: chain.join(" "), "In-Reply-To": chain[chain.length - 1] }
     : undefined;
   const from = { name: fromName, address: CHAT_FROM_ADDRESS };
 
@@ -428,6 +433,75 @@ export async function sendReplyNotDeliveredEmail({ to, reason, baseUrl }) {
       return;
     } catch (err) {
       console.error("sendReplyNotDeliveredEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+}
+
+// What an emailed reply contained, in words the sender recognises. Keyed by
+// the reasons from lib/chat/moderation.js.
+const GUIDELINE_REASONS = {
+  contact_email: "an email address",
+  contact_phone: "a phone number",
+  external_link: "a link to an outside website",
+  social_handle: "a social media handle",
+  off_platform_request: "a request to continue outside Proximity",
+  irreversible_payment_rail: "a request for payment through gift cards, wire or cryptocurrency",
+  off_platform_payment_request: "a request for payment through an app Proximity cannot protect",
+  credential_phishing: "a request for login details",
+  slur: "abusive language",
+  threat: "a threat",
+};
+
+function listReasons(reasons) {
+  const parts = [...new Set(reasons.map((r) => GUIDELINE_REASONS[r]).filter(Boolean))];
+  if (parts.length === 0) return "contact details";
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/*
+ * Sent right after an emailed reply that broke the conversation rules was
+ * posted (Wyatt, 2026-10-12): by email the message is delivered and flagged,
+ * not blocked, and the sender is told what it contained and why to keep the
+ * conversation on Proximity. `removed` is true when part of the message was
+ * cut (abuse, fraud or phishing) rather than delivered in full. Marked
+ * Auto-Submitted so an out-of-office does not answer it.
+ */
+export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, removed, baseUrl }) {
+  const who = displayName(otherFirst, "the other person");
+  const what = listReasons(reasons);
+  const inboxUrl = `${baseUrl}/messages`;
+  const delivered = removed
+    ? `Your reply to ${who} was delivered, but part of it was removed because it contained ${what}.`
+    : `Your reply to ${who} was delivered. It contained ${what}, which Proximity conversations are meant to keep out.`;
+  const why = "Keeping the conversation on Proximity protects both of you: there is a record of what was agreed, and students are shielded from deposit scams that start by moving to text or another app.";
+  const how = `You do not have to leave your inbox to do that. Reply to the message emails from Proximity the way you would reply to ${who} directly, and your words land in the conversation. Replies that keep including contact details may stop being delivered.`;
+  const message = {
+    from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: "A note about your reply",
+    headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" },
+    text: `${delivered}\n\n${why}\n\n${how}\n\nThe conversation on Proximity:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
+    html: `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
+        <p style="margin:0 0 14px">${escapeHtml(delivered)}</p>
+        <p style="margin:0 0 14px">${escapeHtml(why)}</p>
+        <p style="margin:0 0 14px">${escapeHtml(how)}</p>
+        <p style="margin:0 0 14px"><a href="${inboxUrl}" style="color:#6b7280">The conversation on Proximity</a></p>
+        <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
+          <p style="margin:0 0 6px">You are receiving this because you replied to a Proximity message alert.</p>
+          <p style="margin:0">${POSTAL_ADDRESS}</p>
+        </div>
+      </div>
+    `,
+  };
+  if (sesTransporter) {
+    try {
+      await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+      return;
+    } catch (err) {
+      console.error("sendReplyGuidelinesEmail: SES send failed, falling back to Gmail:", err);
     }
   }
   await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });

@@ -309,8 +309,21 @@ function blockMessage(reasons) {
   ) {
     return "This message cannot be sent because it asks for payment through a method Proximity cannot protect. Never send a deposit before signing a lease and seeing the unit.";
   }
-  return "Phone numbers, email addresses, outside links and social handles cannot be sent in chat";
+  return "Phone numbers, email addresses, outside links and social handles cannot be sent in chat. If you would rather use email, reply to the message emails from Proximity: your reply goes straight to the other person and stays in this conversation.";
 }
+
+/*
+ * The reasons that are about moving the conversation elsewhere, as opposed to
+ * abuse, fraud or phishing. By email these are delivered in full and the sender
+ * is told why to stop (Wyatt, 2026-10-12); the others still lose the sentence.
+ */
+export const CONTACT_REASONS = new Set([
+  "contact_email",
+  "contact_phone",
+  "external_link",
+  "social_handle",
+  "off_platform_request",
+]);
 
 /** Attachment captions go through the same screen as a message body. */
 export const screenChatCaption = screenChatText;
@@ -344,11 +357,13 @@ function redactSentences(text, patterns) {
 /**
  * Remove what screenChatText would block, instead of refusing the message.
  *
- * Used for replies that arrive by email (Wyatt, 2026-10-09): the person cannot
- * be shown an error and asked to edit, and a whole reply should not vanish
- * because a signature or an aside carried a phone number. Contact details are
- * cut out where they stand. Abuse, fraud and "let's talk elsewhere" lose the
- * whole sentence. If the result would still be blocked, nothing of it is kept.
+ * Used for replies that arrive by email (Wyatt, 2026-10-09) when they carry
+ * abuse, fraud or phishing: the person cannot be shown an error and asked to
+ * edit, and a whole reply should not vanish because of one sentence. Contact
+ * details are cut out where they stand, and the offending sentences go. If the
+ * result would still be blocked, nothing of it is kept. A reply whose only
+ * problem is contact details is delivered as written and the sender is emailed
+ * about it instead (CONTACT_REASONS, Wyatt, 2026-10-12).
  *
  * @returns {{ text: string, reasons: string[] }} reasons is empty when nothing changed
  */
