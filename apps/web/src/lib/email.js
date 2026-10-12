@@ -338,7 +338,8 @@ export async function sendChatMessageEmail({
   const headers = threadRef
     ? { References: `<${threadRef}@useproximity.org>`, "In-Reply-To": `<${threadRef}@useproximity.org>` }
     : undefined;
-  const fromName = named ? `${named} via Proximity` : "Proximity";
+  // First name only, so the inbox reads "Angela via Proximity" (Wyatt, 2026-10-12).
+  const fromName = named ? `${otherFirst} via Proximity` : "Proximity";
   const from = { name: fromName, address: CHAT_FROM_ADDRESS };
 
   if (sesTransporter && replyTo) {
