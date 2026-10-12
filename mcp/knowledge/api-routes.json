@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-08T10:23:44.935Z",
-  "count": 110,
+  "_generated": "2026-10-12T17:27:06.294Z",
+  "count": 113,
   "routes": [
     {
       "path": "/api/account",
@@ -511,6 +511,20 @@
       "file": "src/app/api/chat/threads/[threadId]/attachments/presign/route.js"
     },
     {
+      "path": "/api/chat/threads/[threadId]/block",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "user_blocks"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/block/route.js"
+    },
+    {
       "path": "/api/chat/threads/[threadId]/messages",
       "methods": [
         "GET",
@@ -535,6 +549,21 @@
       },
       "tables": [],
       "file": "src/app/api/chat/threads/[threadId]/read/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/report",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "chat_messages",
+        "chat_reports"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/report/route.js"
     },
     {
       "path": "/api/contacted",
@@ -661,6 +690,7 @@
         "device_push_tokens",
         "user_blocks",
         "review_reports",
+        "chat_reports",
         "review_invites",
         "users"
       ],
@@ -980,8 +1010,8 @@
         "PATCH": "any"
       },
       "tables": [
-        "home_types",
         "listings",
+        "home_types",
         "listing_amenities",
         "listing_utilities",
         "listing_custom_amenities"
@@ -1019,6 +1049,20 @@
         "unit_leases"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/units/[unitId]/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/units/order",
+      "methods": [
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PUT": "any"
+      },
+      "tables": [
+        "listing_units"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/units/order/route.js"
     },
     {
       "path": "/api/landlord/metrics",

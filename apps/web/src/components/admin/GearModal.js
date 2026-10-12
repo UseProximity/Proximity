@@ -28,6 +28,12 @@ const FLAGGED_COLUMNS = {
     max_area: "derived",
     lease_availability: "derived",
   },
+  // Retired 2026-10-09: a unit's name lives in listing_units.name now.
+  listing_units: {
+    title: "unused",
+    unit_designator: "unused",
+    unit_number: "unused",
+  },
   listing_reviews: {
     mongo_id: "unused",
     reviewer_email: "unused",

@@ -198,7 +198,8 @@ export function normalizeWizardUnit(u) {
   return { ...base, leases: mergeLeasesByRent(offers) };
 }
 
-// Unit designators, matching listing_units_designator_check.
+// Unit types a REVIEWER picks from (listing_reviews.unit_designator). Listing
+// units are named freely instead; see apps/web/src/utils/unitName.js.
 export const UNIT_DESIGNATORS = ["Apt", "Unit", "Suite", "Floor", "Room", "Whole"];
 
 /*
@@ -274,7 +275,8 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
     bedrooms: u.bedrooms ?? "",
     bathrooms: u.bathrooms ?? "",
     area: u.area ?? "",
-    title: u.title ?? "",
+    // A live unit's one name now comes from the lookup as `name`.
+    title: u.name ?? u.title ?? "",
     floorPlanImageUrl: u.floorPlanImageUrl ?? "",
   });
   const fromLive = (ll, status) => ({
@@ -297,7 +299,8 @@ export function mergeWithLive(websiteUnits = [], liveUnits = []) {
         Number(p.u.bedrooms) === Number(w.bedrooms) &&
         Number(p.u.bathrooms) === Number(w.bathrooms)
     );
-    const hit = same.find((p) => name(p.u.title) && name(p.u.title) === name(w.title)) ?? same[0];
+    const liveName = (p) => name(p.u.name ?? p.u.title);
+    const hit = same.find((p) => liveName(p) && liveName(p) === name(w.title)) ?? same[0];
     if (!hit) {
       out.push({ ...w, status: "new", leases: (w.leases ?? []).map((l) => ({ ...l, status: "new" })) });
       continue;

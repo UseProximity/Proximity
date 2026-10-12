@@ -257,11 +257,10 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
   );
 }
 
-// What a unit is called on a tag: its identity, then the landlord's name for
-// the floor plan, then its shape. Same order as the unit tabs.
+// What a unit is called on a tag: its name, then its shape. Same as the unit
+// tabs.
 function unitLabel(unit) {
-  if (unit.identityLabel) return unit.identityLabel;
-  if (unit.title) return unit.title;
+  if (unit.name) return unit.name;
   if ((unit.bedrooms ?? 0) === 0 && unit.bedrooms != null) return "Studio";
   return `${unit.bedrooms ?? "?"} bd · ${unit.bathrooms ?? "?"} ba`;
 }

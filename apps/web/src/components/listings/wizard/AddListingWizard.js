@@ -8,6 +8,7 @@ import {
   mergeWithLive,
   normalizeWizardUnit,
 } from "@proximity/shared";
+import { findDuplicateUnitName } from "@/utils/unitName";
 import StepStart from "@/components/listings/wizard/StepStart";
 import StepAddress from "@/components/listings/wizard/StepAddress";
 import StepBasics from "@/components/listings/wizard/StepBasics";
@@ -1107,6 +1108,20 @@ export default function AddListingWizard({
       if (attachingToExistingUnit && units.length > 1) {
         return "You're adding your listing to one existing unit, so keep a single unit here. Choose “add a new unit” to list several.";
       }
+      /*
+       * Two units at one property cannot share a name: the dashboard refuses a
+       * unit added or renamed onto another's, so the wizard refuses it too.
+       * Units that already exist and keep their name stand as they are.
+       */
+      if (!attachingToExistingUnit) {
+        const keeps = (u) => u.live && String(u.title ?? "") === String(u.live.title ?? "");
+        const duplicate = findDuplicateUnitName(
+          units.filter((u) => !keeps(u)).map((u) => u.title),
+          units.filter(keeps).map((u) => u.title)
+        );
+        if (duplicate)
+          return `${duplicate} is listed on more than one unit. Give each floor plan or unit its own name.`;
+      }
     }
     if (id === "description") {
       if (!form.description.trim()) return "A short description is required.";
@@ -1203,7 +1218,8 @@ export default function AddListingWizard({
           if (ownExisting.mine === "owner") {
             const patch = {};
             for (const f of ["bedrooms", "bathrooms", "area", "title", "floorPlanImageUrl"])
-              if (String(u[f] ?? "") !== String(u.live[f] ?? "")) patch[f] = u[f];
+              if (String(u[f] ?? "") !== String(u.live[f] ?? ""))
+                patch[f === "title" ? "name" : f] = u[f];
             if (Object.keys(patch).length) {
               const problem = await send(
                 `/api/landlord/listings/${lid}/units/${u.live.id}`,
@@ -1387,15 +1403,14 @@ export default function AddListingWizard({
           rent: priced.length ? Math.min(...priced) : null,
           area: u.area !== "" ? Number(u.area) : null,
           available: u.available !== false,
-          title: (u.title ?? "").trim() || null,
+          // The unit's one name. A lone house with no name typed is the whole property.
+          name: (u.title ?? "").trim() || (wholeProperty ? "Whole property" : null),
           floorPlanImageUrl: u.floorPlanImageUrl || null,
           // Every length offered on this unit, for the listing's summary.
           leaseTermMonths: [...new Set(leases.flatMap((l) => l.leaseTermMonths))].sort(
             (a, b) => a - b
           ),
           leases,
-          designator: wholeProperty ? "Whole" : null,
-          number: null,
           leaseAvailability: dates.some((d) => !d) ? null : dates.sort()[0] ?? null,
         };
       });

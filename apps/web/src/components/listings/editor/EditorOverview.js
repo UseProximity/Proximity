@@ -96,7 +96,14 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
         body: JSON.stringify(draft),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Couldn't save those details.");
+      if (!res.ok) {
+        // A taken name says whose it is, so the landlord can tell a duplicate
+        // listing from a sibling building that needs its own name.
+        const takenBy = data.field === "title" ? data.conflict?.address : null;
+        return toast.error(
+          takenBy ? `${data.error} by ${takenBy}.` : data.error || "Couldn't save those details."
+        );
+      }
       toast.success("Property details saved.");
       setDirty(false);
       await onChanged();

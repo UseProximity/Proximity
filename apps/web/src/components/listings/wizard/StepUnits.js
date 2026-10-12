@@ -13,6 +13,8 @@ import {
   X,
 } from "lucide-react";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
+import { UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
 import {
   StepFrame,
   Stepper,
@@ -764,8 +766,9 @@ export default function StepUnits({ w }) {
                   }`}
                 >
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-gray-600">
-                      Floor plan name <span className="text-gray-400">(optional)</span>
+                    <span className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
+                      {UNIT_NAME_LABEL} <span className="text-gray-400">(optional)</span>
+                      <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
                     </span>
                     <input
                       type="text"

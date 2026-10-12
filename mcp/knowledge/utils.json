@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-08T10:23:44.944Z",
-  "count": 119,
+  "_generated": "2026-10-12T17:27:06.303Z",
+  "count": 124,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -116,8 +116,16 @@
       "description": "Email notification for a new in-app chat message."
     },
     {
+      "file": "src/lib/chat/notifyPush.js",
+      "description": "Push notification for a new in-app chat message."
+    },
+    {
       "file": "src/lib/chat/realtime.js",
       "description": "Supabase Realtime helper for listing chat."
+    },
+    {
+      "file": "src/lib/chat/safety.js",
+      "description": "Chat block and report support, kept out of the chat RPCs on purpose."
     },
     {
       "file": "src/lib/chat/scanAttachment.js",
@@ -254,6 +262,10 @@
     {
       "file": "src/lib/listings/unitAvailability.js",
       "description": "Is this unit something a renter can actually take?"
+    },
+    {
+      "file": "src/lib/listings/unitNames.js",
+      "description": "One apartment, one row. Two live units at the same property both called"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
@@ -466,6 +478,14 @@
     {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/unitName.js",
+      "description": "A unit's name: \"Apt 2W\", \"Unit D1\", \"The Loft\", \"Whole property\"."
+    },
+    {
+      "file": "src/utils/unitOrder.js",
+      "description": "The order units appear in, everywhere: the landlord's own order first"
     },
     {
       "file": "src/utils/uploadImagesToR2.js",

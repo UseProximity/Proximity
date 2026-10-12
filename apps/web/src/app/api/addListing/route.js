@@ -17,6 +17,8 @@ import {
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
+import { cleanUnitName } from "@/utils/unitName";
+import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 const _emailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -493,7 +495,8 @@ export async function POST(req) {
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
       rent: unit.rent ?? null,
-      title: unit.title ?? null,
+      // `title` is what builds released before the single unit name sent.
+      name: cleanUnitName(unit.name ?? unit.title),
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
       /*
        * Several priced offerings on one unit, cheapest-first on the listing
@@ -529,22 +532,6 @@ export async function POST(req) {
       // own; whether one is available is read back off its offerings.
       available: unit.available !== false,
       sublease: isSublease,
-      // Unit identity. 'Whole' covers the entire property and carries no number
-      // (enforced by listing_units_number_check).
-      /*
-       * listing_units allows a word in front only alongside a number ("Unit
-       * 1508"), or "Whole" with no number, or neither. A word with no number is
-       * refused outright, and the landlord gets "could not save a unit", which
-       * tells them nothing they can act on and, before the listing was rolled
-       * back, blocked the retry as a duplicate address. A unit with nothing to
-       * call it is a real thing — a floor plan whose apartments the site never
-       * published — so drop the word rather than the unit.
-       */
-      designator:
-        unit.designator === "Whole" || String(unit.number ?? "").trim()
-          ? unit.designator ?? null
-          : null,
-      number: unit.designator === "Whole" ? null : unit.number ?? null,
     }));
 
     // listings.lease_availability is derived from the union of the units' lease terms.
@@ -711,18 +698,19 @@ export async function POST(req) {
      * sent, which is what lets the leases below be matched back to their unit
      * by position. The count is checked rather than assumed.
      */
+    // In the order the landlord entered them, after any units already there.
+    const firstSortOrder = await nextUnitSortOrder(listingId);
     const { data: insertedUnits, error: unitError } = await supabase
       .from("listing_units")
       .insert(
-        unitData.map((unit) => ({
+        unitData.map((unit, i) => ({
           listing_id: listingId,
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms,
           area: unit.area,
-          title: unit.title,
+          name: unit.name,
+          sort_order: firstSortOrder + i,
           floor_plan_image_url: unit.floorPlanImageUrl,
-          unit_designator: unit.designator,
-          unit_number: unit.number,
         }))
       )
       .select("id");
