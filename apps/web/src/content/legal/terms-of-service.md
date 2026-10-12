@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** October 1, 2026
+**Last updated:** October 12, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -51,9 +51,9 @@ that you have authority to bind that organization, and "you" means both you and 
 
 ## 3. Your account
 
-You can create an account with Google or with an email address and password. If you sign up
-with an email address and password, you must verify your email address before you can sign
-in.
+You can create an account with Google, with Sign in with Apple (in the iOS app), or with an
+email address and password. If you sign up with an email address and password, you must
+verify your email address before you can sign in.
 
 You agree to:
 
@@ -133,10 +133,12 @@ students can see who they are dealing with. The contact email address and phone 
 give are not shown on the listing: we use them to route inquiries to you.
 
 Everything else you write is published exactly as you type it: we never rewrite your words.
-We do refuse to save a description containing an email address, a phone number, a link, or a
-social handle, and ask you to edit it instead, because those belong in the contact fields
-above. Anything that does save is public and search engines may index it, so do not write
-anything into a description that you are not willing to make public.
+We do refuse to save a description containing an email address, a phone number, a link, a
+social media handle or account, a line sending students to contact you somewhere else, or the
+name of an individual person, and ask you to edit it instead. Contact details belong in the
+contact fields above, and a role such as "the leasing office" can replace a name. Anything
+that does save is public and search engines may index it, so do not write anything into a
+description that you are not willing to make public.
 
 **Building a listing from your own web page.** Rather than typing everything in, you can give
 us the address of your own property website or an existing listing of yours. We fetch the
@@ -206,7 +208,10 @@ that exceed a limit we have applied.
 **What a review must be.** A review must describe your own first-hand experience of living
 at, or dealing with, the property or landlord in question. You may not post a review in
 exchange for anything, post about a property you have never dealt with, review your own
-property, or ask anyone else to do any of those things.
+property, or ask anyone else to do any of those things. Reviews of off-campus listings, and
+landlords' replies to them, may not name individual people. Describe the role instead, for
+example "the landlord" or "the property manager". We refuse to save text that appears to name
+a person and ask you to edit it.
 
 **Anonymity.** You can post a review anonymously. When you do, we do not store a display
 name against it, and your name is not shown. Anonymity is from other users, not from us:
@@ -266,15 +271,15 @@ keep only the output. See Privacy Policy §1.7 for exactly what is and is not re
 
 ## 11. Contacting landlords
 
-When you send an inquiry through a listing, Proximity delivers it by email to the person
-renting that property. Your name, email address, phone number if you gave one, and your
-message go to them, and **your email address is set as the reply-to** so they can respond to
-you directly. We send you a confirmation copy. If we cannot deliver your inquiry, we tell
-you so, so you can try again.
+When you message someone about a listing, Proximity delivers your message to them inside
+the Services, and may also notify them by email or push notification. When you ask the
+matchmaking assistant to contact an owner for you, Proximity emails the owner your name,
+your email address and the message you approved, **with your email address as the
+reply-to** so they can respond to you directly, and sends you a copy.
 
 We do not guarantee that anyone will reply, that a listing is still available, or that the
-recipient is who they say they are. Once your message is delivered, it is in their inbox and
-outside our control: we cannot recall it, including if you later delete your account. We
+recipient is who they say they are. Once an email is delivered, it is in the recipient's
+inbox and outside our control: we cannot recall it, including if you later delete your account. We
 also keep a record that you sent the inquiry (which listing, to whom, and when) for three
 years, including after you delete your account.
 
@@ -293,6 +298,23 @@ dealings with the other participant: they rely on them in the same way they woul
 an email you sent them, and we may need them to resolve a dispute, investigate abuse, or
 confirm a lease. This, together with the inquiry records above, is the exception to the
 erasure timetable described in Section 17A. Privacy Policy §§8 and 9 set it out in full.
+
+**Checks on messages and files.** We use automated checks on messages and attached files
+sent through the Services, and we refuse those that contain contact details (such as email
+addresses and phone numbers), links to most outside websites, social media handles,
+requests to continue the conversation elsewhere, requests for payment outside Proximity,
+requests for passwords, login details or one-time codes, threats, or slurs. Photos and
+documents are refused if their purpose is to share contact details or ask for payment, or
+if they contain a QR code or barcode. We may record refused and flagged messages and files,
+as Privacy Policy §1.4 explains. If a check cannot be completed, a message or file may still
+be delivered. We do not guarantee that every message or file will be checked or that every
+violation will be caught.
+
+**Reporting and blocking.** You can report a review of a listing or a conversation, and
+block another user, from within the Services. We may act on a report as these Terms
+allow, but we do not promise a response time or outcome. Blocking changes what you can
+see and send in relation to that person; it does not remove content that is already
+published. To undo a block, email info@useproximity.org.
 
 ## 12. Acceptable use
 

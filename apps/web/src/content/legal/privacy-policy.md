@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** October 2, 2026
+**Last updated:** October 12, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -40,6 +40,12 @@ When you create an account, we collect:
   link deletes its token. A token that is never used stops working when it expires, but it
   stays on your account record until a newer one replaces it or your account is erased
   (Section 8).
+- **Conversation links**: when we email you about a new message, the email contains a
+  one-time link that opens the conversation and signs you in without a password. We store
+  only a scrambled (hashed) form of the link's code, together with your account, the
+  conversation, and when it expires and was used. A link is valid for 14 days and works
+  once. Do not forward these emails: whoever opens the link first is signed in as you.
+  These records are deleted automatically about 30 days after the link expires.
 - **Account role**: student or landlord.
 - **Your school**: derived from the domain of your email address (for example,
   `wustl.edu` identifies a Washington University in St. Louis account). We record it when
@@ -69,9 +75,11 @@ to, any other Google service on your behalf.
 
 If you sign in with Apple, Apple provides your name and an email address, which may be a
 private relay address that forwards to your real one. We never receive your Apple
-password, and we record only that your account is linked to an Apple identity. Sign in
-with Apple is offered on the Proximity mobile apps; the website offers email and password
-or Google.
+password. We record that your account is linked to an Apple identity, Apple's identifier
+for you in our app, and a token Apple gives us at sign-in, which we keep only so that we
+can disconnect your account from Apple when you delete it. These are erased when your
+account is erased. Sign in with Apple is offered in the iOS app; the website and the
+Android app offer email and password or Google.
 
 ### 1.4 Content you create
 
@@ -92,8 +100,10 @@ or Google.
   are not included in the listing page or in the data our website and apps receive.
 - **What you write in a listing**: the title, the description, and any other free text you
   enter are published exactly as you write them. We never rewrite your words. We do refuse
-  to save a description that contains an email address, a phone number, a link, or a social
-  handle, and ask you to edit it, because those belong in the contact fields above.
+  to save a description that contains an email address, a phone number, a link, a social
+  media handle or account, a line sending students to contact you somewhere else, or the
+  name of an individual person, and ask you to edit it. Contact details belong in the
+  contact fields above.
   **Anything that does save is public**, and search engines may index it.
 - **Photos and floor plans** you upload for a listing.
 - **Reviews** of off-campus listings and on-campus dorms: star ratings, category ratings,
@@ -111,13 +121,14 @@ or Google.
   generated for you. We keep these as a record of what you asked for and why we showed you
   the properties we did, including for three years after you delete your account
   (Section 8).
-- **Inquiries to landlords**: the first name, last name, email address, phone number, and
-  message you submit through a listing's contact form. We deliver this by email to the
-  landlord, with your email address as the reply-to, and send a confirmation copy to you.
+- **Inquiries sent by the matchmaking assistant**: when you ask the matchmaking assistant
+  to contact an owner for you, we email the owner your name, your email address, and the
+  message you approved, with your email address as the reply-to, and send you a copy.
   Both emails are sent from our own account, so **a copy of each stays in that account**,
-  as it would in any mailbox you send from. In our database we record only *that* you
-  contacted a listing, not the message text. We keep that record, with your name and
-  email address, for three years after you delete your account (Section 8).
+  as it would in any mailbox you send from. In our database, the record that you
+  contacted a listing does not include the message text. We keep that record, with your
+  name and email address, for three years after you delete your account (Section 8). The
+  draft you approved is saved as part of your matchmaking conversation, described above.
 - **Messages sent through Proximity**: where the Services let you message another user
   about a listing, we store the conversation. That means the text of each message, every
   listing it concerns, any file or photo attached to it, who sent it and when, and whether
@@ -126,13 +137,15 @@ or Google.
   staff who need to investigate a report of abuse or a dispute, or to confirm that a lease
   was signed. **If one of you deletes their account, we keep the conversation for three
   years afterwards, with the sender's name and email address on it.** Section 8 explains
-  why.
+  why. When you send a message, we may notify the other participant by email or push
+  notification; the notification can show your name and the beginning of your message.
 - **Messages we refuse to send, and ones we flag**: messages are checked before they are
   delivered, to keep contact details and payment requests from moving a conversation off
-  the platform where we cannot help you (Section 1.4 of the Terms). When a message is
+  the platform where we cannot help you (Terms §11). When a message is
   refused, or is delivered but flagged for review, we record **the first 500 characters
-  of what you typed**, which rule it matched, the time, and your account. For a refused
-  message that is the only copy we keep, because the message itself is never created.
+  of what you typed**, which rule it matched, the time, and your account. For a refused or
+  flagged file we record the file's name instead of text. For a refused message that is
+  the only copy we keep, because the message itself is never created.
   Only Proximity staff can see these records, and we use them to find patterns of fraud
   or abuse rather than to read ordinary conversations. They are kept for **two years**,
   then deleted. A message that passes the check is not recorded here at all.
@@ -144,8 +157,8 @@ or Google.
 - **Waitlist requests**: when you join the waitlist for a listing that is not currently
   available, we record the listing, the time, the page you came from, and your name, email
   address, and phone number, so we can let you know if it frees up. We keep this ourselves
-  and do not pass it to the owner. If you want to reach the owner, we direct you to the
-  listing's contact form, which works as described above.
+  and do not pass it to the owner. If you want to reach the owner, we direct you to message
+  the owner through the listing, as described above.
 - **Lease Check uploads**: see Section 1.7.
 
 ### 1.5 Usage and technical information
@@ -179,8 +192,8 @@ or Google.
   neither uses it. Map features use property coordinates, which are attributes of a listing, not of
   you.
 - **Your contacts, calendar, or microphone.** Camera and microphone access are explicitly
-  disabled in the mobile apps. The apps request photo-library access only when a landlord
-  adds listing photos, and read only the images you select.
+  disabled in the mobile apps. The apps request photo-library access only when you choose
+  to add photos, to a listing or to a conversation, and read only the images you select.
 - **Advertising identifiers.** The mobile apps contain no advertising, attribution, or
   crash-reporting code, and no third-party analytics beyond what is described in Section
   5.
@@ -256,7 +269,7 @@ another, replying to say so is enough.
 |---|---|
 | **Provide the Services** | Create and authenticate your account; display listings; save favorites; publish your listings; display reviews and replies. |
 | **Match you to housing** | Operate the matchmaking assistant; store your preferences so you can resume where you left off; rank and explain listings against those preferences. |
-| **Connect students and landlords** | Deliver contact-form messages by email; send inquiry emails on your behalf when you ask the matchmaking assistant to; send you a confirmation copy. |
+| **Connect students and landlords** | Deliver your messages and notify the other person by email or push notification; send inquiry emails on your behalf when you ask the matchmaking assistant to; send you a copy of those emails. |
 | **Account and transactional email** | Verify your email address; reset your password; ask landlords to confirm whether a listing is still available; remind new landlords who have not yet posted. |
 | **Collect reviews** | Email students at the universities we serve to invite them to review a place they have lived, using a single-use link. |
 | **Analyze a lease you upload** | Produce the Lease Check flags and summary. |
@@ -313,9 +326,12 @@ provider located in the United States:
   the file is sent to Anthropic before the message is delivered, to check whether it is
   being used to pass on contact details or to ask for payment off the platform
   (Section 1.4). Only the file is sent, with no name, email address, or account ID
-  attached to it. The result we keep is a yes or no decision and a short reason, not a
-  copy of the file at Anthropic. Files that pass are delivered normally; a file that is
-  refused is never shown to the other person.
+  attached to it. In the moderation records described in Section 1.4, if a file is refused,
+  or is delivered but flagged for review, we keep the rule it matched and the file's name,
+  not the file's contents. This describes those records only; it does not mean the
+  uploaded file has been removed from our storage. If the check cannot be completed, the
+  file may be delivered and flagged for review. Files that pass are delivered normally; a
+  file that is refused is never shown to the other person.
 
 Anthropic processes this data solely to return a response to us. We do not use your
 personal information to train our own models, and we do not sell or license your
@@ -337,6 +353,12 @@ always the one who decides whether to rent to you.
 Your session is kept alive by an authentication cookie that keeps you signed in and
 protects against cross-site request forgery. It is cleared when you sign out.
 
+**Visitor identifier cookie**
+
+If you use an external waitlist button on a listing, we set a cookie that recognizes
+repeat clicks from the same browser. Page scripts cannot read it, and it expires after
+one year.
+
 **Functional: stored in your browser**
 
 We also use your browser's local storage to make the site more convenient to use:
@@ -346,6 +368,9 @@ We also use your browser's local storage to make the site more convenient to use
 | Your in-progress matchmaking conversation | So a page refresh does not lose it. |
 | An in-progress listing you are drafting | So you do not lose your work if you leave the page. |
 | The page you navigated from | So an action on a listing can be attributed to its source. That source label is included in the analytics events described below. This is cleared when you close the tab. |
+| A lease you selected before signing in | So you do not have to choose it again after signing in or up. It stays in your browser, not on our servers, for up to 24 hours. |
+| A one-time code for finishing an account created from a review | So you can finish setting up the account after verifying. It stays in your browser until that setup is finished or cleared. |
+| A multi-property import you are working on (landlords) | So a reload does not lose your progress. |
 
 **Analytics**
 
@@ -361,14 +386,15 @@ strictly necessary cookie will sign you out.
 
 ### 5.2 Mobile apps
 
-The mobile apps do not use cookies. They store the following **on your device only**, in
-your device's secure, encrypted storage:
+The mobile apps do not use cookies. They store the following **on your device only**. The
+first two items are kept in your device's secure, encrypted storage:
 
 | What | Why |
 |---|---|
 | A short-lived sign-in credential and a longer-lived one used to renew it | Keeps you signed in without re-entering your password. |
-| A copy of your basic profile (name, email address, role, photo URL) | Shows your profile immediately at launch. |
-| Photos you select for a listing, held temporarily | Compressed and uploaded, then discarded. |
+| A copy of your basic profile (account identifier, name, email address, role, photo URL, and whether your profile is complete) | Shows your profile immediately at launch. |
+| Photos you select for a listing, held temporarily | Compressed and uploaded when you publish the listing. Temporary files created during photo selection and compression may remain on your device until cleared. |
+| Photos and PDFs from your conversations, after you view or open them | So they can be shown again without downloading them each time. They are kept in the app's temporary storage until the system clears it or you delete the app, including after you sign out. |
 
 Signing out deletes your credentials and cached profile from the device. The mobile apps do
 not store your matchmaking conversation on the device. They contain no analytics,
@@ -400,11 +426,11 @@ control.
 
 ### 6.2 With other users, to connect you
 
-- When you send a message through a listing's contact form, we email your **name, email
-  address, phone number (if provided), and message** to that landlord and set your email
-  address as the reply-to.
+- When you message someone about a listing through Proximity, they see your message in
+  the Services, and we may notify them by email or push notification. A notification can
+  include your name and the beginning of your message.
 - When you ask the matchmaking assistant to contact an owner for you, we email your
-  **first name and email address** together with your inquiry.
+  **name and email address** together with your inquiry.
 
 ### 6.3 With service providers
 
@@ -415,7 +441,7 @@ and only for the purposes we specify:
 |---|---|---|
 | **Supabase** | All application data described in Section 1 | Managed database hosting |
 | **Vercel** | Requests to the website and API, server logs, aggregate web analytics | Application hosting, scheduled jobs, analytics |
-| **Cloudflare** | Profile photos, listing photos, floor plans; lease documents transiently | Object storage and delivery |
+| **Cloudflare** | Profile photos, listing photos, floor plans; photos and PDFs attached to messages; lease documents transiently | Object storage and delivery |
 | **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content; photos and documents attached to messages | AI features (Section 4) |
 | **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Expo, Apple, and Google (Firebase Cloud Messaging)** | Your device's push token, your device platform, and the content of any notification we send you. Expo's push service forwards notifications to Apple's push notification service (iOS) or Google's Firebase Cloud Messaging (Android). | Delivering push notifications to the mobile apps |
@@ -488,8 +514,9 @@ deletes the account itself, so it also ends access on any other platform you use
 ### 30 days later
 
 Thirty days after deletion, an automated job permanently erases your personal data, except
-the records the table below marks as kept for three years, which are erased at the end of
-that period instead:
+the records the table below marks as kept for a different period, such as three years or,
+for conversation-link records, about 30 days after the link expires, which are erased at
+the end of that period instead:
 
 | Data | What we do |
 |---|---|
@@ -500,6 +527,7 @@ that period instead:
 | Inquiries you sent to landlords, and leases a landlord told us you signed | **Kept for three years, with your name and email address.** The record of which listing you contacted and when, and any lease recorded under Section 1.9, are retained for three years after deletion as a record of the introductions we make, and then erased. See Terms §17A. |
 | Saved listings, review votes | Permanently deleted. |
 | Push notification tokens | Permanently deleted. |
+| Conversation-link records | Not removed at the 30-day erasure. Deleted automatically about 30 days after each link expires (Section 1.1). They contain no name or email address. |
 | Blocks you set, and reports you filed | Permanently deleted. |
 | Matchmaking conversations, and the housing preferences derived from them | **Kept for three years.** The transcript, the preferences you gave, and the recommendations we made are retained for three years after deletion as a record of which properties we showed you and why, and then erased. They are never published and are visible only to Proximity staff who need them. See Terms §17A. |
 | Lease Check results | Permanently deleted. |
@@ -532,6 +560,7 @@ that period instead:
 |---|---|
 | Account and profile data | While your account is active, then as described in Section 8. |
 | Push notification tokens | Until you sign out of the app or delete your account, then erased (Section 8). |
+| Conversation-link records | Until about 30 days after the link expires (Section 1.1). |
 | Listings | While published. A listing you delete is removed from the marketplace and retained in hidden form as marketplace history, together with its reviews and inquiry records. On account deletion, sole-owned listings are withdrawn in the same way and keep the owner's name and email address for three years after deletion, after which those details are erased (Section 8). |
 | Reviews | Indefinitely; anonymized on account deletion (Section 8). |
 | Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
@@ -542,7 +571,7 @@ that period instead:
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
 | Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
-| Email sent through the Services | The message body is not retained in our database. Because we send from our own email account, a copy of each message stays in that account, and a copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
+| Email sent through the Services | The message body is not retained in our database, except for the matchmaking inquiry draft described in Section 1.4. Because we send from our own email account, a copy of each message stays in that account, and a copy remains in the recipient's mailbox. Feedback and bug reports are emailed to the Proximity team and stay in our inboxes. |
 | Aggregate listing metrics | Retained indefinitely in aggregate, non-identifying form. |
 | Internal change history | Retained for security and audit purposes. Personal data inside an entry is erased on account deletion. |
 | Database backups | Retained for a limited period and then expire (Section 7). |
@@ -562,8 +591,11 @@ that period instead:
 - **Choose what you publish.** You decide what goes into your profile, your listings, and
   your reviews, and you can post reviews anonymously.
 - **Withdraw device permissions.** You can revoke the mobile app's photo-library access in
-  your device settings at any time. This affects only the ability to add listing photos.
-  You can likewise turn off notifications for the app in your device settings at any time.
+  your device settings at any time. This affects only the ability to add photos from your
+  library, to a listing or to a conversation. You can likewise turn off notifications for
+  the app in your device settings at any time.
+- **Email notifications.** On the website you can turn off emails about new messages in
+  your profile settings. The mobile apps do not have this setting.
 - **Decline the AI features.** Matchmaking and Lease Check are optional. Nothing is sent to
   Anthropic unless you choose to use them.
 - **Request a copy of your data.** Email info@useproximity.org from the address on your
