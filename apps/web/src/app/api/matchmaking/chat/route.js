@@ -12,8 +12,10 @@ import { recordListingContact } from "@/lib/contactTracking";
 const GUEST_EMAIL = "guest@proximity.test";
 
 // Resolve a listing's primary-landlord contact (server-side, never trusting the
-// client) for the "have Proxy contact the owner" flow. Falls back to the listing's
-// own contact_email when there's no linked landlord account.
+// client) for the "have Proxy contact the owner" flow. The address follows the
+// same rule as chat alerts (fn_landlord_contact_email): the listing's confirmed
+// contact email first, else the account email. Falls back to the listing's own
+// contact_email when there's no linked landlord account.
 async function resolveOwnerForListing(listingId) {
   const { data: row } = await supabase
     .from("listings")
@@ -24,11 +26,18 @@ async function resolveOwnerForListing(listingId) {
   const links = row.listing_landlords ?? [];
   const primary = links.find((l) => l.is_primary) ?? links[0];
   let owner = null;
+  let routed = null;
   if (primary?.user_id) {
     const { data: u } = await supabase.from("users").select("name, email").eq("id", primary.user_id).single();
     owner = u;
+    const { data: route } = await supabase.rpc("fn_landlord_contact_email", {
+      p_landlord_id: primary.user_id,
+      p_listing_id: listingId,
+      p_lease_id: null,
+    });
+    routed = typeof route === "string" ? route.trim() : "";
   }
-  const email = owner?.email || row.contact_email || null;
+  const email = routed || owner?.email || row.contact_email || null;
   if (!email) return null;
   return { email, name: owner?.name || row.contact_name || null, address: row.address, title: row.title };
 }

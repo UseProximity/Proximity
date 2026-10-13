@@ -15,7 +15,16 @@ import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 
-export default function LeaseStep({ unit, existingLeases = [], value, onChange, invalid = null }) {
+export default function LeaseStep({
+  unit,
+  existingLeases = [],
+  value,
+  onChange,
+  invalid = null,
+  // True when the landlord already lists at this property: their contact there
+  // is set once for all their leases, so it is shown, not asked.
+  lockedContact = false,
+}) {
   // `invalid` is a Set of field keys the parent found missing on publish, or
   // null before they have tried. Marking a field they have not reached yet
   // would be scolding them for not having finished.
@@ -123,12 +132,15 @@ export default function LeaseStep({ unit, existingLeases = [], value, onChange, 
             Contact email <span className="text-red-500">*</span>
           </span>
           <input type="email" required
-            className={`${field} ${bad("contactEmail")}`}
+            className={`${field} ${bad("contactEmail")} disabled:bg-gray-50 disabled:text-gray-500`}
             data-invalid={!!invalid?.has("contactEmail")}
             value={value.contactEmail}
+            disabled={lockedContact}
             onChange={(e) => set({ contactEmail: e.target.value })} />
           <span className="mt-1 block text-xs text-gray-400">
-            Where student enquiries about this apartment go.
+            {lockedContact
+              ? "Your contact at this property, shared by all your listings here. Change it from your dashboard."
+              : "Where student enquiries about this apartment go."}
           </span>
         </label>
         <label className="block">

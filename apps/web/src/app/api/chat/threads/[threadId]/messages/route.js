@@ -16,6 +16,8 @@ import {
   CHAT_PASSWORD_REQUIRED_MESSAGE,
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
+  CHAT_CONFIRM_SEND_CODE,
+  recordFlaggedSend,
 } from "@/lib/chat/sendGuards";
 import { scanChatAttachments } from "@/lib/chat/scanAttachment";
 
@@ -188,6 +190,11 @@ export async function POST(req, { params }) {
 
     const rawBody = payload?.body;
     const bodyText = typeof rawBody === "string" ? rawBody.trim() : "";
+    // Set when the composer re-sends after the "send anyway?" prompt.
+    const confirmed = payload?.confirmed === true;
+    // Which "keep it on Proximity" reasons the prompt gives: scams for students,
+    // the dated record for landlords.
+    const audience = session.user.role === "landlord" ? "landlord" : "student";
     const normalized = normalizeAttachments(payload?.attachments);
 
     if (normalized?.error) {
@@ -211,9 +218,17 @@ export async function POST(req, { params }) {
         userId: session.user.id,
         body: bodyText,
         threadId,
+        confirmed,
+        audience,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
+      if (screen.needsConfirmation) {
+        return NextResponse.json(
+          { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+          { status: 409 }
+        );
       }
 
       const { data, error } = await supabase.rpc("rpc_send_chat_message", {
@@ -227,11 +242,23 @@ export async function POST(req, { params }) {
         return mapChatRpcError(error);
       }
 
+      if (screen.flagged) {
+        await recordFlaggedSend({
+          userId: session.user.id,
+          threadId,
+          messageId: data?.messageId ?? null,
+          listingId: data?.listingId ?? null,
+          reasons: screen.reasons,
+          body: bodyText,
+        });
+      }
+
       const baseUrl = getBaseUrl(req);
       after(() =>
         notifyNewChatMessage({
           threadId,
           senderId: session.user.id,
+          messageId: data?.messageId ?? null,
           baseUrl,
         })
       );
@@ -246,14 +273,23 @@ export async function POST(req, { params }) {
       );
     }
 
+    let screen = null;
     if (bodyText) {
-      const screen = await screenOutgoingChat({
+      screen = await screenOutgoingChat({
         userId: session.user.id,
         body: bodyText,
         threadId,
+        confirmed,
+        audience,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
+      if (screen.needsConfirmation) {
+        return NextResponse.json(
+          { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+          { status: 409 }
+        );
       }
     }
 
@@ -289,11 +325,23 @@ export async function POST(req, { params }) {
       return mapChatRpcError(error);
     }
 
+    if (screen?.flagged) {
+      await recordFlaggedSend({
+        userId: session.user.id,
+        threadId,
+        messageId: data?.messageId ?? null,
+        listingId: data?.listingId ?? null,
+        reasons: screen.reasons,
+        body: bodyText,
+      });
+    }
+
     const baseUrl = getBaseUrl(req);
     after(() =>
       notifyNewChatMessage({
         threadId,
         senderId: session.user.id,
+        messageId: data?.messageId ?? null,
         baseUrl,
       })
     );

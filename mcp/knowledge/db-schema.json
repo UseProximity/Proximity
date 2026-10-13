@@ -1,11 +1,113 @@
 {
-  "_description": "Supabase (PostgreSQL) public schema snapshot. Columns are \"name:type\". Generated from the dev DB; refresh by re-querying information_schema. Descriptions are hand-maintained.",
-  "_generated": "2026-06-01T04:48:18Z",
+  "_description": "Supabase (PostgreSQL) public schema for Proximity, with what each table is for, who reads and writes it, keys and constraints, RPC functions, triggers, webhooks, the edge function, RLS and environment drift. Columns are \"name:type\" using Postgres udt_name (int4, int8, int2, numeric, bool, text, uuid, jsonb, date, timestamptz; a leading underscore means an array: _text = text[], _int4 = integer[]). Column order is the physical order on the dev DB.",
+  "_generated": "2026-10-12T00:00:00Z",
+  "_source": {
+    "schema": "dev DB information_schema + pg_catalog on 2026-10-12",
+    "verified_against_prod": "2026-10-12 (every table and column compared; differences are listed under supabase.environments)",
+    "usage": "grep of apps/web/src on origin/staging at b32dd6c plus api-routes.json route-to-table map, DB function bodies, and every remote branch for tables with no staging code",
+    "observed_counts": "prod row counts and last write dates on 2026-10-12 (a snapshot, not maintained)"
+  },
+  "_status_vocabulary": {
+    "active": "read or written by app code on staging",
+    "active_via_sql": "only reached through DB functions or triggers, never selected directly",
+    "reference": "lookup rows joined by FK; seeded, rarely edited",
+    "ops_curated": "data is maintained by hand or by ops tooling, but no app code on staging reads or writes it",
+    "external_writer": "written by something outside this repo (edge function, other repo)",
+    "unreleased": "belongs to a branch not yet merged to staging; may exist on both DBs",
+    "dev_only": "exists only on the dev DB",
+    "legacy": "superseded model, data kept for history",
+    "unused": "no code on any branch references it; retirement pending confirmation",
+    "retired": "no longer written; kept only for history"
+  },
+  "_how_to_refresh": "Hand-maintained; generate-knowledge.mjs does not touch this file. To refresh: query information_schema.columns (udt_name) on dev for columns, pg_constraint / pg_indexes for keys, pg_proc for functions, pg_trigger for triggers; compare against prod; then edit descriptions and statuses in place. Add a new table here in the same PR as its migration.",
   "supabase": {
+    "environments": {
+      "prod": "the real site. Supabase project used when isProdData() is true. Has the two webhooks and the edge function; no app_metadata table.",
+      "dev": "refreshed from prod by scripts/snapshot-prod-to-dev.sh (stamps app_metadata.snapshot_taken_at; snapshot_preserve keeps dev-only partner data). Used by staging and all Vercel previews (APP_ENV=staging) and by localhost.",
+      "dev_only_tables": [
+        "app_metadata",
+        "chat_email_log",
+        "chat_inbound_emails",
+        "contact_email_verifications",
+        "email_suppressions",
+        "rent_history"
+      ],
+      "dev_only_columns": {
+        "chat_participants": [
+          "reply_token_hash",
+          "email_mode"
+        ],
+        "chat_threads": [
+          "lease_id"
+        ],
+        "unit_leases": [
+          "published_at"
+        ],
+        "users": [
+          "apple_refresh_token",
+          "company_name"
+        ]
+      },
+      "dev_only_functions_and_triggers": [
+        {
+          "name": "fn_chat_alert_email",
+          "touches": "users, chat_threads",
+          "branch": "feat/email-reply-relay"
+        },
+        {
+          "name": "fn_chat_contact_confirmed",
+          "touches": "contact_email_verifications, users",
+          "branch": "feat/email-reply-relay"
+        },
+        {
+          "name": "fn_chat_user_is_listing_landlord",
+          "touches": "listing_landlords, listings",
+          "branch": "feat/email-reply-relay"
+        },
+        {
+          "name": "fn_email_suppressed",
+          "touches": "email_suppressions",
+          "branch": "feat/email-reply-relay"
+        },
+        {
+          "name": "fn_landlord_contact_email",
+          "touches": "listing_units, listings, unit_leases, users",
+          "branch": "feat/email-reply-relay"
+        },
+        {
+          "name": "keep_published (trigger trg_keep_published on unit_leases)",
+          "touches": "unit_leases.published_at",
+          "branch": "feat/listing-drafts"
+        },
+        {
+          "name": "log_rent_change (trigger on unit_leases, writes rent_history)",
+          "touches": "rent_history, listing_units",
+          "branch": "none (orphan, dev migration rent_history 2026-08-09)"
+        }
+      ],
+      "dev_only_migrations_not_in_prod": [
+        "rent_history",
+        "backfill_listing_zipcodes",
+        "product_lessons_rank",
+        "chat_discount_offers + chat_offer_email_message_type (later dropped)",
+        "waitlist_clicks_lead_columns",
+        "student_roster_invite_state (+drop)",
+        "chat_listing_threads",
+        "chat_contact_alert_routes",
+        "chat_email_relay_outbound",
+        "chat_email_relay_inbound",
+        "listing_drafts_published_at",
+        "listing_drafts_aggregates",
+        "landlord_contact_email_shared",
+        "several *_reapply / restore_* fixes after snapshots"
+      ],
+      "rule": "Schema migrations go to BOTH dev and prod (CLAUDE.md). A dev-only object means a branch is in flight or a snapshot repair; check the branch before assuming prod has it. The prod to dev snapshot can drop inbound FKs; the script reconciles them and exits 1 on drift."
+    },
     "tables": [
       {
         "table": "action_log",
-        "description": "Audit trail of row changes (table, record, event, actor, before/after).",
+        "status": "active",
+        "description": "Audit trail of row changes (table, record, event, actor, before/after). Written by the fn_action_log trigger on 43 tables (see triggers). Read only by /api/cron/purge-accounts. RLS on, no policies: service role only. Written by the fn_action_log trigger on 43 tables (see triggers). Read only by /api/cron/purge-accounts. RLS on, no policies: service role only.",
         "columns": [
           "id:uuid",
           "table_name:text",
@@ -17,11 +119,33 @@
           "new_data:jsonb",
           "changed_fields:jsonb",
           "changed_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk changed_by_id->users.id (set null); check changed_by_source in (user,system,migration,trigger) | event_type in (INSERT,UPDATE,DELETE); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 64269,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "app_metadata",
+        "status": "dev_only",
+        "description": "Key/value store that exists ONLY on the dev DB. scripts/snapshot-prod-to-dev.sh writes snapshot_taken_at after each prod to dev clone; StagingBanner and lib/analytics/db.js read it to show when the sandbox data was taken. Never create it on prod.",
+        "columns": [
+          "key:text",
+          "value:text",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=dev_only; EXISTS ON DEV ONLY; pk key; rls: off (dev-only table)",
+        "observed_2026_10_12": {
+          "dev_rows": 1,
+          "dev_last_write": null,
+          "prod": "table absent"
+        }
       },
       {
         "table": "auto_unavailable_actions",
-        "description": "Audit/queue for automated hides driven by landlord \"leased\" reports from the email check-in system (see src/lib/autoUnavailable.js + /api/cron/auto-unavailable). One row per actioned report, with before/after state, the post-write verification against the public listings API, and undo tracking. Unique on (listing_id, coalesce(reported_at,'epoch')) so a single landlord report is actioned at most once — an undo is never re-hidden by the same report. Migration 20260808_auto_unavailable_actions; applied to BOTH dev and prod.",
+        "status": "active",
+        "description": "Audit/queue for automated hides driven by landlord \"leased\" reports from the email check-in system (see src/lib/autoUnavailable.js + /api/cron/auto-unavailable). One row per actioned report, with before/after state, the post-write verification against the public listings API, and undo tracking. Unique on (listing_id, coalesce(reported_at,'epoch')) so a single landlord report is actioned at most once: an undo is never re-hidden by the same report. Migration 20260808_auto_unavailable_actions; applied to BOTH dev and prod. [Audit 2026-10-12: 0 rows in prod; the cron (/api/cron/auto-unavailable) has been paused, see chore/pause-auto-unavailable-cron.] [Audit 2026-10-12: 0 rows in prod; the cron (/api/cron/auto-unavailable) has been paused, see chore/pause-auto-unavailable-cron.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -41,33 +165,212 @@
           "undo_verify_result:text",
           "undo_digest_sent_at:timestamptz",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); unique (listing_id, coalesce(reported_at, epoch)); check status in (applied,failed,undone); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "chat_access_tokens",
+        "status": "active",
+        "description": "Hashed one-time or reusable tokens for email links into chat (purpose thread_access opens a thread from a notification email; unsubscribe opts a user out). token_hash is SHA-256 of the emailed token. Redeemed by rpc_consume_chat_access_token (called from auth.js), which serialises redemptions with FOR UPDATE so a single-use token cannot be spent twice. Expired rows are purged by /api/cron/chat-retention. Service role only.",
+        "columns": [
+          "id:uuid",
+          "token_hash:text",
+          "user_id:uuid",
+          "thread_id:uuid",
+          "purpose:text",
+          "single_use:bool",
+          "expires_at:timestamptz",
+          "used_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); thread_id->chat_threads.id (cascade); unique (token_hash); check purpose in (thread_access,unsubscribe); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 26,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "chat_attachment_presigns",
+        "status": "active_via_sql",
+        "description": "Rate-limit ledger for chat attachment uploads: one row per presign request with the file count. fn_chat_reserve_attachment_uploads (called by /api/chat/threads/[threadId]/attachments/presign) checks and records in one transaction so two concurrent presigns cannot both pass the ceiling (40 files per user per hour, twice the 20/hour send limit). Service role only.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "thread_id:uuid",
+          "file_count:int4",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active_via_sql; pk id; fk user_id->users.id (cascade); thread_id->chat_threads.id (cascade); check file_count > 0; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "chat_attachments",
+        "status": "active_via_sql",
+        "description": "Files attached to chat messages, stored in Cloudflare R2 under r2_key (unique). Written only by rpc_send_chat_attachment_message, read only by rpc_get_chat_attachment (participant-gated download via /api/chat/attachments/[attachmentId]). Not touched directly from app code. Service role only.",
+        "columns": [
+          "id:uuid",
+          "message_id:uuid",
+          "thread_id:uuid",
+          "uploader_id:uuid",
+          "r2_key:text",
+          "file_name:text",
+          "content_type:text",
+          "size_bytes:int8",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active_via_sql; pk id; fk message_id->chat_messages.id (cascade); thread_id->chat_threads.id (cascade); uploader_id->users.id (set null); unique (r2_key); check size_bytes > 0; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "chat_email_log",
+        "status": "unreleased",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Outbound chat alert emails sent through SES or Gmail, with the provider message id. The next alert to the same person in the same thread carries these ids as References/In-Reply-To so mail clients stack them as one thread (lib/chat/notifyEmail.js).",
+        "columns": [
+          "id:uuid",
+          "thread_id:uuid",
+          "recipient_id:uuid",
+          "to_email:text",
+          "provider:text",
+          "provider_message_id:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk thread_id->chat_threads.id (cascade); recipient_id->users.id (set null); check provider in (ses,gmail); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "dev_rows": 4,
+          "dev_last_write": "2026-10-12",
+          "prod": "table absent"
+        }
+      },
+      {
+        "table": "chat_inbound_emails",
+        "status": "unreleased",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. One row per email received by the SES inbound pipeline (s3_key unique). status records how it was handled (posted = became a chat message via chat_message_id; spam, auto_reply, unauthenticated, unknown_address, wrong_sender, empty, rejected, error). Migration chat_email_relay_inbound (2026-10-09, dev).",
+        "columns": [
+          "id:uuid",
+          "s3_key:text",
+          "message_id_header:text",
+          "from_email:text",
+          "to_address:text",
+          "thread_id:uuid",
+          "user_id:uuid",
+          "status:text",
+          "reason:text",
+          "chat_message_id:uuid",
+          "notice_sent_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk thread_id->chat_threads.id (set null); user_id->users.id (set null); chat_message_id->chat_messages.id (set null); unique (s3_key); check status in (processing,posted,spam,auto_reply,unauthenticated,unknown_address,wrong_sender,empty,rejected,error); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "dev_rows": 3,
+          "dev_last_write": "2026-10-12",
+          "prod": "table absent"
+        }
       },
       {
         "table": "chat_messages",
-        "description": "Messages within a chat thread. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "active",
+        "description": "Messages in a chat thread. Written ONLY through rpc_send_chat_message / rpc_send_chat_attachment_message (rate limited by fn_chat_assert_send_rate, body <= 5000 chars), read through rpc_get_chat_messages; app code never selects the table directly except Supabase Realtime, which pushes INSERTs to MessagesContext.js. listing_id = the property this message is about (a thread can move between properties; fn_chat_current_listing_id picks the latest). message_type text|attachment; metadata jsonb carries attachment previews. deleted_at = soft delete. trg_bump_chat_thread_on_message bumps chat_threads.updated_at. RLS policies allow participants to select and insert, but the app goes through the service role. Live in prod since 2026-10-07 (migrations 202607300001 to 202610070003).",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
           "sender_id:uuid",
           "body:text",
           "created_at:timestamptz",
-          "deleted_at:timestamptz"
-        ]
+          "deleted_at:timestamptz",
+          "message_type:text",
+          "metadata:jsonb",
+          "listing_id:uuid"
+        ],
+        "column_notes": {
+          "listing_id": "property this message is about; a thread can move between properties",
+          "metadata": "jsonb, attachment previews for message_type=attachment"
+        },
+        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); sender_id->users.id (set null); listing_id->listings.id (set null); check message_type in (text,attachment) | char_length(body) <= 5000; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 37,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "chat_moderation_events",
+        "status": "active",
+        "description": "(no description yet)",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "listing_id:uuid",
+          "action:text",
+          "reasons:_text",
+          "body_excerpt:text",
+          "created_at:timestamptz",
+          "reviewed_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (set null); thread_id->chat_threads.id (set null); message_id->chat_messages.id (set null); listing_id->listings.id (set null); check action in (block,flag) | body_excerpt <= 500 chars; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 19,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "chat_participants",
-        "description": "Users participating in a chat thread + read state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "active",
+        "description": "Membership of a chat thread (PK thread_id, user_id) plus read state (last_read_at, set by rpc_mark_thread_read) and alert state. Since 202610120002 there is no actively-reading or 24h hold: every message alerts unless users.email_notifications is off. Since 202610120003 each alert repeats everything unread since last_read_at (sending counts as reading); since 202610120004 the app waits a 30s quiet window per message and the RPC declines when a newer message or a read has happened, so a burst is one email. last_notified_at is stamped for the record. reply_token_hash is the SHA-256 of the person's reply+token address (lib/chat/replyAddress.js); email_mode is on while they answer by email (recorded only). On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown.",
         "columns": [
           "thread_id:uuid",
           "user_id:uuid",
           "joined_at:timestamptz",
-          "last_read_at:timestamptz"
-        ]
+          "last_read_at:timestamptz",
+          "last_notified_at:timestamptz",
+          "reply_token_hash:text",
+          "email_mode:bool"
+        ],
+        "dev_only_columns": [
+          "reply_token_hash",
+          "email_mode"
+        ],
+        "notes": "status=active; pk (thread_id, user_id); fk thread_id->chat_threads.id (cascade); user_id->users.id (cascade); unique (reply_token_hash) where not null [dev only]; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 18,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "chat_reports",
+        "status": "unreleased",
+        "description": "User reports of a chat thread or message (reason harassment|scam_or_fraud|spam|inappropriate_content|other). No app code on staging or prod references it; only the mobile branch does. Created outside the repo migrations (no CREATE TABLE in supabase/migrations). 0 rows in prod. Service role only.",
+        "columns": [
+          "id:uuid",
+          "reporter_id:uuid",
+          "reported_user_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "reason:text",
+          "message_excerpt:text",
+          "created_at:timestamptz",
+          "reviewed_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk reporter_id->users.id (cascade); reported_user_id->users.id (set null); thread_id->chat_threads.id (cascade); message_id->chat_messages.id (set null); unique (reporter_id, thread_id, coalesce(message_id, zero-uuid)); check reason in (harassment,scam_or_fraud,spam,inappropriate_content,other) | message_excerpt <= 500 chars; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "chat_threads",
-        "description": "Chat threads, optionally tied to a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "active",
+        "description": "One conversation. Since 202610030001 (chat_pair_threads) a thread is the PAIR (listing_id, landlord_id, interested_user_id): partial unique index on those three for live threads, so a student has one thread per landlord per property. thread_type_id -> thread_types (fn_chat_direct_type_id). landlord_id is resolved by fn_chat_resolve_landlord (lease owner first, then primary landlord, never the info@ house account). lease_id exists ONLY on dev. updated_at is bumped on every message and orders the inbox (rpc_list_chat_threads). deleted_at = soft delete. Live in prod since 2026-10-07.",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",
@@ -75,27 +378,111 @@
           "subject:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "deleted_at:timestamptz"
-        ]
+          "deleted_at:timestamptz",
+          "interested_user_id:uuid",
+          "landlord_id:uuid",
+          "lease_id:uuid"
+        ],
+        "dev_only_columns": [
+          "lease_id"
+        ],
+        "column_notes": {
+          "subject": "display label",
+          "interested_user_id/landlord_id": "the pair; unique per listing while live",
+          "lease_id": "DEV ONLY"
+        },
+        "notes": "status=active; pk id; fk thread_type_id->thread_types.id; listing_id->listings.id (set null); interested_user_id->users.id (set null); landlord_id->users.id (set null); lease_id->unit_leases.id (set null) [dev only]; unique (listing_id, landlord_id, interested_user_id) where live and all three set; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 9,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "checkin_response_events",
+        "status": "external_writer",
+        "description": "Append-only audit of landlord answers to the property check-in emails. Written by the PROD Supabase edge function property-status-respond (source is NOT in this repo, see edge_functions), one row per submission with the choice (available | leased_via_proximity | leased_elsewhere) or the multi-unit totals delta. submission_id UNIQUE is the idempotency gate against double submits. Read by lib/autoUnavailable.js and lib/analytics/tabs/landlords.js. listing_id has no FK. Created outside the repo migrations. Service role only.",
+        "columns": [
+          "id:uuid",
+          "submission_id:text",
+          "listing_id:uuid",
+          "contact_email:text",
+          "mode:text",
+          "choice:text",
+          "leased_elsewhere_detail:text",
+          "unit_type_delta:jsonb",
+          "unit_type_status_after:jsonb",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=external_writer; pk id; unique (submission_id); listing_id has NO foreign key (written by the edge function with the service key); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 166,
+          "prod_last_write": "2026-09-21"
+        }
+      },
+      {
+        "table": "contact_email_verifications",
+        "status": "unreleased",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Proves a landlord controls a contact address before chat alerts are routed to it (fn_chat_contact_confirmed). Unique per (landlord_id, email).",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "email:text",
+          "token_hash:text",
+          "requested_at:timestamptz",
+          "expires_at:timestamptz",
+          "verified_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk landlord_id->users.id (cascade); unique (token_hash) where not null | (landlord_id, email); check email is lower(trim(email)) and contains @; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "dev_rows": 1,
+          "dev_last_write": "2026-10-09",
+          "prod": "table absent"
+        }
+      },
+      {
+        "table": "device_push_tokens",
+        "status": "unreleased",
+        "description": "Expo push tokens for the mobile app (platform ios|android). Migration 20260822090000 exists on both DBs but only the mobile branch writes it; staging only deletes rows in /api/cron/purge-accounts. 0 rows in prod.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "expo_push_token:text",
+          "platform:text",
+          "created_at:timestamptz",
+          "last_seen_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk user_id->users.id (cascade); unique (expo_push_token); check platform in (ios,android); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "dorm_review_tags",
+        "status": "active",
         "description": "Join: dorm review ↔ tag.",
         "columns": [
           "review_id:uuid",
           "tag_id:uuid",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk (review_id, tag_id); fk review_id->dorm_reviews.id (cascade); tag_id->tags.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 144,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "dorm_reviews",
+        "status": "active",
         "description": "Reviews of on-campus dorms. Written by the Campus Hub's inline form (unattributed, reviewer_name only) and by the on-campus branch of /review (user_id set; the signed-out QR path creates the account first). Tags live in dorm_review_tags, NOT on this table. source = the ?src= campaign tag off a printed QR code.",
         "columns": [
           "id:uuid",
           "mongo_id:text",
           "dorm_id:uuid",
           "reviewer_name:text",
-          "class_year:integer",
+          "class_year:int4",
           "rating:numeric",
           "dorm_type:text",
           "content:text",
@@ -103,37 +490,73 @@
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
           "user_id:uuid",
-          "source:text"
-        ]
+          "source:text",
+          "confirmation_sent_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk dorm_id->dorms.id (cascade); user_id->users.id (set null); unique (mongo_id); check rating between 1 and 5; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 73,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "dorm_room_types",
-        "description": "Room types available in a dorm.",
+        "status": "unused",
+        "description": "Room types available in a dorm. Seeded from the MongoDB migration (42 rows, April 2026). No app code reads or writes it. Seeded from the MongoDB migration (42 rows, April 2026). No app code reads or writes it.",
         "columns": [
           "dorm_id:uuid",
           "room_type:text",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk (dorm_id, room_type); fk dorm_id->dorms.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 42,
+          "prod_last_write": "2026-04-20"
+        }
       },
       {
         "table": "dorms",
+        "status": "active",
         "description": "On-campus dorm buildings.",
         "columns": [
           "id:uuid",
           "mongo_id:text",
           "name:text",
           "description:text",
-          "tags:ARRAY",
+          "tags:_text",
           "image:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
           "school_id:uuid"
-        ]
+        ],
+        "notes": "status=active; pk id; fk school_id->schools.id (set null); unique (name) | (mongo_id); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 26,
+          "prod_last_write": "2026-04-14"
+        }
+      },
+      {
+        "table": "email_suppressions",
+        "status": "unreleased",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. SES bounce and complaint list (reason bounce|complaint), checked by fn_email_suppressed before sending.",
+        "columns": [
+          "email:text",
+          "reason:text",
+          "detail:jsonb",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk email; check email normalized | reason in (bounce,complaint); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "dev_rows": 0,
+          "dev_last_write": null,
+          "prod": "table absent"
+        }
       },
       {
         "table": "events",
-        "description": "Analytics events (page views, custom events).",
+        "status": "retired",
+        "description": "First-party analytics events (page_view, listing_click, session_end, contact_submit, matchmaking_submit). 9,530 rows, last written 2026-05-26; no app code reads or writes it since analytics moved to Google Analytics. Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -142,11 +565,17 @@
           "page:text",
           "metadata:jsonb",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=retired; pk id; fk user_id->users.id (set null); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 9530,
+          "prod_last_write": "2026-05-26"
+        }
       },
       {
         "table": "executed_lease_tenants",
-        "description": "Tenants/signers on an executed lease (Documenso integration). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Tenants/signers on an executed lease (Documenso integration). Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "executed_lease_id:uuid",
@@ -161,11 +590,17 @@
           "signature_audit_data:jsonb",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk executed_lease_id->executed_leases.id (cascade); user_id->users.id (set null); check role in (tenant,cosigner,guarantor); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "executed_leases",
-        "description": "Lease documents through draft → signature lifecycle. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Lease documents through draft → signature lifecycle. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "template_id:uuid",
@@ -188,73 +623,258 @@
           "attribution_metadata:jsonb",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk template_id->lease_templates.id (set null); listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (set null); chat_thread_id->chat_threads.id (set null); unique (documenso_document_id); check status in (draft,landlord_reviewing,landlord_approved,sent_to_tenant,tenant_signed,landlord_countersigned,fully_executed,cancelled,rejected) | attribution_source in (matchmaking,browse,direct,admin_manual); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "fee_types",
-        "description": "Reference: categories of listing fees. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "reference",
+        "description": "Lookup for listing_fees.fee_type_id (17 seeded rows; category one_time|recurring|penalty|refundable_deposit, display_label, sort_order). Read by nothing in the app today; kept because listing_fees references it.",
         "columns": [
           "id:uuid",
           "name:text",
           "category:text",
           "display_label:text",
-          "sort_order:integer",
+          "sort_order:int4",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=reference; pk id; unique (name); check category in (one_time,recurring,penalty,refundable_deposit); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 17,
+          "prod_last_write": "2026-05-08"
+        }
       },
       {
         "table": "furnishing_partners",
-        "description": "Third-party furnishing providers. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Third-party furnishing providers. 3 seeded rows. Part of the unbuilt May 2026 lease pipeline. Retirement pending confirmation. 3 seeded rows. Part of the unbuilt May 2026 lease pipeline. Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "name:text",
           "contact_email:text",
           "contact_phone:text",
           "website_url:text",
-          "active:boolean",
+          "active:bool",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 3,
+          "prod_last_write": "2026-05-08"
+        }
       },
       {
         "table": "home_types",
+        "status": "reference",
         "description": "Reference: apartment/house/studio/etc. ('Other' is the fallback.).",
         "columns": [
           "id:uuid",
           "label:text",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=reference; pk id; unique (label); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 5,
+          "prod_last_write": "2026-04-20"
+        }
       },
       {
         "table": "interaction_types",
+        "status": "reference",
         "description": "Reference: kinds of user↔listing interactions.",
         "columns": [
           "id:uuid",
           "name:text",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 3,
+          "prod_last_write": "2026-04-20"
+        }
+      },
+      {
+        "table": "lead_calls",
+        "status": "unused",
+        "description": "Lead-generation CRM (landlord outreach): call log per company. Zero rows in both DBs, no code on any branch, no migration in the repo (created directly in the DB, 2026). Service role only. Retirement pending confirmation.",
+        "columns": [
+          "id:uuid",
+          "company_id:uuid",
+          "called_at:timestamptz",
+          "outcome:text",
+          "notes:text",
+          "called_by:text",
+          "verbal_yes_at:timestamptz",
+          "followup_due_at:timestamptz",
+          "followup_done_at:timestamptz",
+          "followup_notified_at:timestamptz",
+          "sheet_row_ref:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unused; pk id; fk company_id->lead_companies.id (cascade); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "lead_companies",
+        "status": "unused",
+        "description": "Lead-generation CRM: a property-management company clustered from scraped properties (cluster_key unique, priority_tier A|B|C, relationship cold|existing_landlord|account_no_listing|do_not_call|fully_listed, proximity_user_id once they sign up). Zero rows, no code on any branch, no repo migration. Retirement pending confirmation.",
+        "columns": [
+          "id:uuid",
+          "display_name:text",
+          "canonical_phone:text",
+          "canonical_phone_norm:text",
+          "canonical_email:text",
+          "website:text",
+          "pms_provider:text",
+          "property_count:int4",
+          "nearest_drive_minutes:int4",
+          "nearest_miles:numeric",
+          "priority_tier:text",
+          "self_posted:bool",
+          "proximity_user_id:uuid",
+          "listed_on_proximity_at:timestamptz",
+          "cluster_key:text",
+          "first_seen_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "relationship:text",
+          "relationship_reason:text",
+          "unlisted_count:int4",
+          "existing_listing_count:int4"
+        ],
+        "notes": "status=unused; pk id; fk proximity_user_id->users.id (set null); unique (cluster_key); check priority_tier in (A,B,C) | relationship in (cold,existing_landlord,account_no_listing,do_not_call,fully_listed) or null; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "lead_observations",
+        "status": "unused",
+        "description": "Lead-generation CRM: raw scrape payload per property per run. Zero rows, no code, no repo migration.",
+        "columns": [
+          "id:uuid",
+          "property_id:uuid",
+          "run_id:uuid",
+          "payload:jsonb",
+          "observed_at:timestamptz"
+        ],
+        "notes": "status=unused; pk id; fk property_id->lead_properties.id (cascade); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "lead_properties",
+        "status": "unused",
+        "description": "Lead-generation CRM: a scraped rental property (unique on source, source_key) with distance to campus, contact details, and matched_listing_id when it already exists on Proximity. Zero rows, no code, no repo migration.",
+        "columns": [
+          "id:uuid",
+          "company_id:uuid",
+          "source:text",
+          "source_key:text",
+          "source_url:text",
+          "name:text",
+          "street:text",
+          "city:text",
+          "state:text",
+          "zip:text",
+          "latitude:float8",
+          "longitude:float8",
+          "miles_to_campus:numeric",
+          "drive_minutes_to_campus:int4",
+          "phone:text",
+          "phone_norm:text",
+          "email:text",
+          "contact_name:text",
+          "website:text",
+          "pms_provider:text",
+          "beds:text",
+          "price:text",
+          "is_sublet:bool",
+          "self_posted:bool",
+          "matched_listing_id:uuid",
+          "match_reason:text",
+          "content_hash:text",
+          "source_last_updated:timestamptz",
+          "first_seen_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unused; pk id; fk company_id->lead_companies.id (set null); matched_listing_id->listings.id (set null); unique (source, source_key); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "lead_runs",
+        "status": "unused",
+        "description": "Lead-generation CRM: one row per scraper run with counters (properties_seen, companies_callable, companies_for_ben, ...). Zero rows, no code, no repo migration.",
+        "columns": [
+          "id:uuid",
+          "started_at:timestamptz",
+          "finished_at:timestamptz",
+          "status:text",
+          "sources:_text",
+          "properties_seen:int4",
+          "properties_new:int4",
+          "companies_total:int4",
+          "skipped_already_listed:int4",
+          "dropped_out_of_range:int4",
+          "site_fetches:int4",
+          "truncated_reason:text",
+          "error:text",
+          "companies_callable:int4",
+          "companies_for_ben:int4",
+          "enrichment_failures:int4"
+        ],
+        "notes": "status=unused; pk id; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "lease_checks",
-        "description": "Student lease-check results (feat/lease-check). Stores ONLY the analysis output — never the lease file, extracted address, rent, or landlord name (liability/retention decision; matched_listing_id points at public data instead). Migration 20260716090000; must exist on BOTH dev and prod.",
+        "status": "active",
+        "description": "Student lease-check results (feat/lease-check). Stores ONLY the analysis output: never the lease file, extracted address, rent, or landlord name (liability/retention decision; matched_listing_id points at public data instead). Migration 20260716090000; must exist on BOTH dev and prod. 1 row in prod. 1 row in prod.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
           "file_name:text",
           "file_type:text",
-          "page_count:integer",
+          "page_count:int4",
           "matched_listing_id:uuid",
           "match_confidence:text",
           "flags:jsonb",
           "summary:text",
-          "unreadable_pages:ARRAY",
+          "unreadable_pages:_int4",
           "model:text",
           "created_at:timestamptz",
           "deleted_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); matched_listing_id->listings.id (set null); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 1,
+          "prod_last_write": "2026-09-12"
+        }
       },
       {
         "table": "lease_extraction_runs",
-        "description": "AI lease-field extraction run metadata. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "AI lease-field extraction run metadata. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "template_id:uuid",
@@ -263,19 +883,25 @@
           "run_type:text",
           "prompt_version:text",
           "model_used:text",
-          "duration_ms:integer",
-          "fields_extracted_count:integer",
+          "duration_ms:int4",
+          "fields_extracted_count:int4",
           "avg_confidence:numeric",
           "per_field_confidence:jsonb",
           "status:text",
           "error_message:text",
           "ran_at:timestamptz",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk template_id->lease_templates.id (cascade); listing_id->listings.id (cascade); executed_lease_id->executed_leases.id (cascade); check run_type in (template_initial_extraction,image_amenity_extraction,chat_redline_proposal,private_listing_link_scrape) | status in (success,partial,failed); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 1,
+          "prod_last_write": "2026-05-09"
+        }
       },
       {
         "table": "lease_redlines",
-        "description": "Suggested lease edits with rationale + approval state. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Suggested lease edits with rationale + approval state. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "executed_lease_id:uuid",
@@ -294,42 +920,60 @@
           "extraction_run_id:uuid",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk executed_lease_id->executed_leases.id (cascade); rationale_chat_message_id->chat_messages.id (set null); approved_by->users.id (set null); extraction_run_id->lease_extraction_runs.id (set null); check status in (pending,approved,edited,rejected); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "lease_structures",
-        "description": "Reference: lease term structures (e.g. 12-Month).",
+        "status": "reference",
+        "description": "Lookup of lease term labels (4 rows: e.g. 12-Month). Referenced by unit_leases.lease_structure_id and listing_leases.lease_structure_id, but unit_leases.lease_structure_id is NULL on every row (lease_term_months replaced it). Only the admin ReferenceView lists it. Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "label:text",
-          "duration_months:integer",
+          "duration_months:int4",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=reference; pk id; unique (label); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 4,
+          "prod_last_write": "2026-04-20"
+        }
       },
       {
         "table": "lease_templates",
-        "description": "Landlord lease PDF templates + extracted variable fields. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Landlord lease PDF templates + extracted variable fields. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
           "listing_id:uuid",
-          "version:integer",
+          "version:int4",
           "display_name:text",
           "template_pdf_url:text",
           "template_pdf_text:text",
           "extracted_fields:jsonb",
           "variable_fields:jsonb",
-          "is_active:boolean",
+          "is_active:bool",
           "uploaded_at:timestamptz",
           "uploaded_by:uuid",
           "last_verified_at:timestamptz",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk landlord_id->users.id (cascade); listing_id->listings.id (set null); uploaded_by->users.id (set null); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 6,
+          "prod_last_write": "2026-05-09"
+        }
       },
       {
         "table": "listing_active_conversations",
-        "description": "Active student↔listing leasing conversations. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Active student↔listing leasing conversations. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -344,35 +988,47 @@
           "notes:text",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (set null); student_user_id->users.id (cascade); chat_thread_id->chat_threads.id (set null); check state in (inquired,tour_requested,tour_completed,application_pending,lease_pending,leased,declined,stale); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "listing_amenities",
-        "description": "One boolean row per listing — amenity flags.",
+        "status": "active",
+        "description": "One boolean row per listing: amenity flags.",
         "columns": [
           "listing_id:uuid",
-          "air_conditioning:boolean",
-          "dishwasher:boolean",
-          "gym:boolean",
-          "laundry:boolean",
-          "mailroom:boolean",
-          "microwave:boolean",
-          "oven:boolean",
-          "parking:boolean",
-          "pets_allowed:boolean",
-          "pool:boolean",
-          "refrigerator:boolean",
-          "rooftop:boolean",
-          "storage:boolean",
-          "stove:boolean",
-          "study_room:boolean",
+          "air_conditioning:bool",
+          "dishwasher:bool",
+          "gym:bool",
+          "laundry:bool",
+          "mailroom:bool",
+          "microwave:bool",
+          "oven:bool",
+          "parking:bool",
+          "pets_allowed:bool",
+          "pool:bool",
+          "refrigerator:bool",
+          "rooftop:bool",
+          "storage:bool",
+          "stove:bool",
+          "study_room:bool",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk listing_id; fk listing_id->listings.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 274,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_concessions",
-        "description": "Promotional concessions on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "ops_curated",
+        "description": "Promotional concessions per listing (amount_type flat|percentage|months_free, valid_from/valid_until, active). NOT read or written by any app code on staging; rows are curated by hand during property review sessions (last_verified_source holds the sources, e.g. RentCafe rental options pages) and by the unmerged importer branches (feat/listing-import-url, feat/import-match-sync). 35 rows in prod, still being updated as of 2026-10-12. Product decision pending: build a UI for it or stop curating.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -383,27 +1039,55 @@
           "conditions:text",
           "valid_from:date",
           "valid_until:date",
-          "active:boolean",
+          "active:bool",
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "last_verified_at:timestamptz",
           "last_verified_source:text"
-        ]
+        ],
+        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (cascade); check amount_type in (flat,percentage,months_free); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 35,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "listing_custom_amenities",
+        "status": "active",
+        "description": "Free-text 'other' amenities a landlord adds to a listing (one row per label).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "label:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 677,
+          "prod_last_write": "2026-10-09"
+        }
       },
       {
         "table": "listing_drive_times",
-        "description": "Precomputed drive minutes from a listing to each location — the driving counterpart of listing_walk_times, joined into /api/listings. Applied to BOTH dev and prod 2026-07-07.",
+        "status": "active",
+        "description": "Precomputed drive minutes from a listing to each location: the driving counterpart of listing_walk_times, joined into /api/listings. Applied to BOTH dev and prod 2026-07-07.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
           "location_id:uuid",
-          "minutes:integer",
+          "minutes:int4",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); location_id->locations.id (cascade); unique (listing_id, location_id); check minutes >= 0; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 3836,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_faqs",
-        "description": "Per-listing FAQ entries (often sourced from chat). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Per-listing FAQ entries (often sourced from chat). Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -413,15 +1097,21 @@
           "source_chat_message_id:uuid",
           "approved_by:uuid",
           "approved_at:timestamptz",
-          "is_public:boolean",
-          "sort_order:integer",
+          "is_public:bool",
+          "sort_order:int4",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk listing_id->listings.id (cascade); source_chat_message_id->chat_messages.id (set null); approved_by->users.id (set null); check source in (landlord_authored,ai_from_chat,ai_from_lease,admin); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "listing_fees",
-        "description": "Itemized fees on a listing/lease. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "ops_curated",
+        "description": "Itemised fees per listing (fee_type_id -> fee_types; basis flat|per_person|per_bed|per_unit|per_day|per_bedroom_per_month|percentage; refundable). NOT read or written by any app code on staging; 196 rows in prod curated by hand during property reviews (last_verified_source records where each number came from) and by the importer branches. Product decision pending: build a UI for it or stop curating.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -430,17 +1120,23 @@
           "amount:numeric",
           "basis:text",
           "conditions:text",
-          "refundable:boolean",
+          "refundable:bool",
           "notes:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "last_verified_at:timestamptz",
           "last_verified_source:text"
-        ]
+        ],
+        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (cascade); fee_type_id->fee_types.id; check basis in (flat,per_person,per_bed,per_unit,per_day,per_bedroom_per_month,percentage); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 196,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_field_states",
-        "description": "Per-field verification/confidence state for listing data. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Per-field verification/confidence state for listing data. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -456,11 +1152,17 @@
           "changed_by:uuid",
           "extraction_run_id:uuid",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk listing_id->listings.id (cascade); changed_by->users.id (set null); extraction_run_id->lease_extraction_runs.id (set null); unique (table_name, record_id, field_name); check state in (confirmed,ai_suggested,empty,rejected); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "listing_furnishing",
-        "description": "Furnishing status/package for a listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Furnishing status/package for a listing. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "listing_id:uuid",
           "status:text",
@@ -472,67 +1174,98 @@
           "last_verified_source:text",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
-      },
-      {
-        "table": "listing_images",
-        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover. [2026-08-12: owner_id = whose photography this is; NULL = property-level (Street View/exterior) shown on every offering. Stops one landlords photos being inherited by someone who later attaches a lease.] One gallery per property; units are tags in listing_image_units. unit_id is RETIRED (no longer read or written; old values backfilled as tags in 202609250001).",
-        "columns": [
-          "id:uuid",
-          "listing_id:uuid",
-          "url:text",
-          "sort_order:integer",
-          "alt_text:text",
-          "media_type:text",
-          "created_at:timestamptz",
-          "updated_at:timestamptz",
-          "source:text",
-          "owner_id:uuid"
-        ]
+        ],
+        "notes": "status=unused; pk listing_id; fk listing_id->listings.id (cascade); partner_id->furnishing_partners.id; check status in (unfurnished,partial,fully_furnished_native,via_partner); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "listing_image_units",
+        "status": "active",
         "description": "Unit tags on photos: which units a listing_images row shows (many-to-many). Owner tags any photo; a lease holder tags only their own photos with units they lease (canTagPhoto). Trigger enforces same property.",
         "columns": [
           "image_id:uuid",
           "unit_id:uuid",
           "created_by:uuid",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk (image_id, unit_id); fk image_id->listing_images.id (cascade); unit_id->listing_units.id (cascade); created_by->users.id (set null); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 222,
+          "prod_last_write": "2026-10-08"
+        }
+      },
+      {
+        "table": "listing_images",
+        "status": "active",
+        "description": "Listing photos (URLs in Cloudflare R2). source: null = user upload, 'street_view' = auto-fetched from Google Street View. sort_order 0 = cover. [2026-08-12: owner_id = whose photography this is; NULL = property-level (Street View/exterior) shown on every offering. Stops one landlords photos being inherited by someone who later attaches a lease.] One gallery per property; units are tags in listing_image_units. unit_id is RETIRED (no longer read or written; old values backfilled as tags in 202609250001).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "url:text",
+          "sort_order:int4",
+          "alt_text:text",
+          "media_type:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "source:text",
+          "owner_id:uuid",
+          "unit_id:uuid"
+        ],
+        "column_notes": {
+          "owner_id": "whose photography; NULL = property-level (Street View)",
+          "unit_id": "retired, replaced by listing_image_units tags",
+          "source": "null = upload, street_view = auto-fetched",
+          "sort_order": "0 = cover"
+        },
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); owner_id->users.id; unit_id->listing_units.id (set null); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 3215,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_landlords",
+        "status": "active",
         "description": "Join: listing ↔ landlord user (is_primary flags the owner).",
         "columns": [
           "listing_id:uuid",
           "user_id:uuid",
+          "is_primary:bool",
           "created_at:timestamptz",
-          "is_primary:boolean",
           "id:uuid"
-        ]
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); user_id->users.id (cascade); unique (listing_id, user_id); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 267,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_leases",
-        "description": "Lease/unit-group rows for a listing (rent, beds, baths, term). [AUDIT 2026-07-11: UNUSED — old lease model superseded by listing_units + unit_leases; still holds ~214 rows; cleanup-migration candidate]",
+        "status": "legacy",
+        "description": "The pre-2026-06 lease model (one row per unit group with rent, beds, baths, term). Superseded by listing_units + unit_leases; 212 rows untouched since 2026-05-08. lib/listings/unitAvailability.js explains that some older listings only ever had rows here (rent=0 means unknown). rpc_edit_listing and rpc_create_listing_v2 still carry a write path for it (p_leases) that the app never passes. Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
-          "bedrooms:integer",
+          "bedrooms:int4",
           "bathrooms:numeric",
           "area:numeric",
           "unit_group_label:text",
           "floor_plan_image_url:text",
           "pricing_basis:text",
           "rent:numeric",
-          "beds_in_lease:integer",
+          "beds_in_lease:int4",
           "lease_structure_id:uuid",
-          "lease_term_months:integer",
+          "lease_term_months:int4",
           "available_from:date",
-          "summer_only:boolean",
-          "semester_only:boolean",
-          "is_active:boolean",
+          "summer_only:bool",
+          "semester_only:bool",
+          "is_active:bool",
           "disabled_reason:text",
-          "sublease:boolean",
+          "sublease:bool",
           "concession_id:uuid",
           "created_at:timestamptz",
           "updated_at:timestamptz",
@@ -540,24 +1273,55 @@
           "last_verified_at:timestamptz",
           "last_verified_source:text",
           "price_locked_until:timestamptz",
-          "total_bedrooms:integer",
+          "total_bedrooms:int4",
           "total_bathrooms:numeric"
-        ]
+        ],
+        "notes": "status=legacy; pk id; fk listing_id->listings.id (cascade); lease_structure_id->lease_structures.id; concession_id->listing_concessions.id (set null); check pricing_basis in (per_unit,per_bed); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 212,
+          "prod_last_write": "2026-05-08"
+        }
       },
       {
         "table": "listing_metrics_daily",
-        "description": "Daily per-listing metric counts (views/saves/etc.).",
+        "status": "active",
+        "description": "Daily per-listing metric counts (views/saves/etc.). Written by increment_listing_metric (favorites) and read through fn_get_listing_aggregates; the metric_type rows are view/favorite/contact. Written by increment_listing_metric (favorites) and read through fn_get_listing_aggregates; the metric_type rows are view/favorite/contact.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
           "recorded_date:date",
-          "count:integer",
+          "count:int4",
           "metric_type_id:uuid"
-        ]
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); metric_type_id->metric_types.id; unique (listing_id, metric_type_id, recorded_date); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 4274,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "listing_notification_events",
+        "status": "active_via_sql",
+        "description": "Outbox for push and email notifications about a listing: price_drop, unavailable, deleted. Written by trigger trg_queue_listing_notification_events on listings (fn_queue_listing_notification_events); processed_at is stamped by a consumer that lives on the mobile branch, so on staging rows accumulate unread (130 in prod). Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "event_type:text",
+          "old_value:jsonb",
+          "new_value:jsonb",
+          "created_at:timestamptz",
+          "processed_at:timestamptz"
+        ],
+        "notes": "status=active_via_sql; pk id; fk listing_id->listings.id (cascade); check event_type in (price_drop,unavailable,deleted); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 130,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_pet_policies",
-        "description": "Free-text pet policy for a listing. [AUDIT 2026-07-11: ORPHANED — ~81 rows of real data but no app code reads or writes it]",
+        "status": "ops_curated",
+        "description": "Free-text pet policy per listing (PK listing_id). 116 rows in prod: 79 from landlords in May 2026 (last_verified_source landlord_self) and the rest curated by hand in Oct 2026. rpc_edit_listing / rpc_create_listing_v2 accept p_pet_policy but no app code passes it, and nothing displays it. Product decision pending.",
         "columns": [
           "listing_id:uuid",
           "policy_text:text",
@@ -565,11 +1329,17 @@
           "updated_at:timestamptz",
           "last_verified_at:timestamptz",
           "last_verified_source:text"
-        ]
+        ],
+        "notes": "status=ops_curated; pk listing_id; fk listing_id->listings.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 116,
+          "prod_last_write": "2026-10-09"
+        }
       },
       {
         "table": "listing_review_replies",
-        "description": "Landlord replies to reviews.",
+        "status": "active",
+        "description": "Landlord replies to reviews. 0 rows in prod so far. 0 rows in prod so far.",
         "columns": [
           "id:uuid",
           "review_id:uuid",
@@ -578,11 +1348,17 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk review_id->listing_reviews.id (cascade); user_id->users.id (cascade); unique (review_id); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "listing_reviews",
-        "description": "Student reviews of listings. legitimacy gates display; referrer_id ties to the ambassador referral flow. Max 2 per user. Written by BOTH a signed-in student and a signed-out one (the QR flow at /review), which creates the author's account first, so user_id is always set for new rows. unit_designator/unit_number mirror listing_units' vocabulary ('Whole' carries no number, DB CHECK). source = the ?src= campaign tag off a printed QR code. [AUDIT 2026-07-11: reviewer_email dead; landlord_name/email/phone, unit_number, no_landlord_contact are write-only (collected, never displayed)]",
+        "status": "active",
+        "description": "Student reviews of listings. legitimacy gates display; referrer_id ties to the ambassador referral flow. Max 2 per user. Written by BOTH a signed-in student and a signed-out one (the QR flow at /review), which creates the author's account first, so user_id is always set for new rows. unit_designator/unit_number mirror listing_units' vocabulary ('Whole' carries no number, DB CHECK). source = the ?src= campaign tag off a printed QR code. Write-only columns (collected, never displayed): landlord_name/landlord_email/landlord_phone, no_landlord_contact, reviewer_email. [Audit 2026-10-12: reviewer_email 5 rows, landlord_email 16 rows, mongo_id never populated.] [Audit 2026-10-12: reviewer_email 5 rows, landlord_email 16 rows, mongo_id never populated.]",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -590,109 +1366,222 @@
           "listing_id:uuid",
           "rating:numeric",
           "comment:text",
-          "legitimacy:boolean",
+          "legitimacy:bool",
           "communication_rating:numeric",
           "location_rating:numeric",
           "value_rating:numeric",
+          "name:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "name:text",
           "deleted_at:timestamptz",
           "referrer_id:uuid",
           "reviewer_email:text",
-          "unit_designator:text",
           "unit_number:text",
           "landlord_name:text",
           "landlord_email:text",
           "landlord_phone:text",
-          "no_landlord_contact:boolean",
-          "anonymous:boolean",
-          "source:text"
-        ]
+          "no_landlord_contact:bool",
+          "anonymous:bool",
+          "unit_designator:text",
+          "source:text",
+          "confirmation_sent_at:timestamptz"
+        ],
+        "column_notes": {
+          "legitimacy": "admin approval gate; false rows are hidden",
+          "anonymous": "hide the author name",
+          "referrer_id": "ambassador who referred the reviewer",
+          "source": "?src= campaign tag from a printed QR code",
+          "confirmation_sent_at": "batched confirmation email (cron review-confirmations)"
+        },
+        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 147,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_screening_criteria",
-        "description": "Tenant screening requirements per listing. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Tenant screening requirements per listing. 1 row in prod (2026-08-13). Retirement pending confirmation. 1 row in prod (2026-08-13). Retirement pending confirmation.",
         "columns": [
           "listing_id:uuid",
           "income_multiplier:numeric",
-          "credit_score_minimum:integer",
-          "cosigner_accepted:boolean",
-          "cosigner_required:boolean",
-          "international_student_friendly:boolean",
+          "credit_score_minimum:int4",
+          "cosigner_accepted:bool",
+          "cosigner_required:bool",
+          "international_student_friendly:bool",
           "international_student_requirements:text",
-          "eviction_history_disqualifying:boolean",
-          "background_check_required:boolean",
+          "eviction_history_disqualifying:bool",
+          "background_check_required:bool",
           "application_fee_per_person:numeric",
           "notes:text",
           "last_verified_at:timestamptz",
           "last_verified_source:text",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk listing_id; fk listing_id->listings.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 1,
+          "prod_last_write": "2026-08-13"
+        }
+      },
+      {
+        "table": "listing_source_events",
+        "status": "unreleased",
+        "description": "Listing source monitor (unmerged importer branches feat/listing-import-url and feat/import-match-sync): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows; table exists on both DBs but was created outside the repo migrations. Service role only.",
+        "columns": [
+          "id:uuid",
+          "monitor_id:uuid",
+          "listing_id:uuid",
+          "kind:text",
+          "unit_key:text",
+          "field:text",
+          "old_value:jsonb",
+          "new_value:jsonb",
+          "confidence:text",
+          "status:text",
+          "applied:bool",
+          "verdict:text",
+          "verdict_by:uuid",
+          "verdict_at:timestamptz",
+          "detail:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk monitor_id->listing_source_monitors.id (cascade); listing_id->listings.id (cascade); verdict_by->users.id (set null); unique (monitor_id, kind, unit_key, field) where status=open; check kind in (rent_change,unit_delisted,unit_relisted,availability_change,listing_gone,rent_divergence,missing_unit,availability_divergence,spec_mismatch) | status in (open,applied,rejected,muted) | confidence in (high,low) | verdict in (accepted,rejected); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "listing_source_monitors",
+        "status": "unreleased",
+        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff). Zero rows; created outside the repo migrations. Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "source_url:text",
+          "source_kind:text",
+          "enabled:bool",
+          "auto_apply:bool",
+          "last_checked_at:timestamptz",
+          "last_status:text",
+          "last_error:text",
+          "consecutive_failures:int4",
+          "muted_until:timestamptz",
+          "last_fingerprint:text",
+          "last_extracted_at:timestamptz",
+          "check_interval_days:int4",
+          "next_check_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "index_url:text"
+        ],
+        "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unique (listing_id); check source_kind in (own_site,portal) | last_status in (ok,unchanged,changed,fetch_failed,parse_failed,suppressed,skipped,gone,url_stale); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "listing_source_snapshots",
+        "status": "unreleased",
+        "description": "Listing source monitor: the normalized extraction from each fetch (normalized, rollup jsonb). Zero rows; created outside the repo migrations.",
+        "columns": [
+          "id:uuid",
+          "monitor_id:uuid",
+          "fetched_at:timestamptz",
+          "ok:bool",
+          "normalized:jsonb",
+          "rollup:jsonb",
+          "unit_count:int4",
+          "error:text"
+        ],
+        "notes": "status=unreleased; pk id; fk monitor_id->listing_source_monitors.id (cascade); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "listing_units",
-        "description": "Physical units within a listing (beds/baths/area). name = THE unit's name ('Apt 617', 'The Loft'), the single source of truth every screen reads and every form writes; NULL renders as a beds/baths description. floor_plan_image_url = downloadable floor plan (R2). [2026-10-09: title, unit_designator and unit_number RETIRED in favour of name (backfilled: identity label first, else title; 202610090001_listing_units_name.sql). Kept in the table, never read or written by the app. Duplicate names at one property are refused (case/space-insensitive, lib/listings/unitNames.js). rpc_create_listing / rpc_edit_listing write name from the unit payload's 'name' key, falling back to 'title' (202610090002).] [2026-10-10: sort_order = the landlord's order for the property's units, set by dragging the editor tabs (PUT /api/landlord/listings/[listingId]/units/order, owner-only). Every view sorts with utils/unitOrder.js: sort_order asc, NULL last, then beds, baths. Seeded from beds/baths order (202610100001).] [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev) — must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED — a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.]",
+        "status": "active",
+        "description": "Physical units within a listing (beds/baths/area). name = THE unit's name ('Apt 617', 'The Loft'), the single source of truth every screen reads and every form writes; NULL renders as a beds/baths description. floor_plan_image_url = downloadable floor plan (R2). [2026-10-09: title, unit_designator and unit_number RETIRED in favour of name (backfilled: identity label first, else title; 202610090001_listing_units_name.sql). Kept in the table, never read or written by the app. Duplicate names at one property are refused (case/space-insensitive, lib/listings/unitNames.js). rpc_create_listing / rpc_edit_listing write name from the unit payload's 'name' key, falling back to 'title' (202610090002).] [2026-10-10: sort_order = the landlord's order for the property's units, set by dragging the editor tabs (PUT /api/landlord/listings/[listingId]/units/order, owner-only). Every view sorts with utils/unitOrder.js: sort_order asc, NULL last, then beds, baths. Seeded from beds/baths order (202610100001).] [2026-08-12: unit_designator (Apt|Unit|Suite|Floor|Room|Whole) + unit_number identify the unit so a second landlord at the same property can tell units apart. Whole = entire property, NULL number. NULL designator = legacy unit with no recoverable identity (190 of 303 in dev): must be labelled before it can be safely picked.] [2026-09-02: `available` column RETIRED: a unit's availability is derived from its unit_leases (live offering, or no offering at all = unknown/available); see lib/listings/unitAvailability.js.]",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
-          "bedrooms:integer",
+          "bedrooms:int4",
           "bathrooms:numeric",
           "area:numeric",
-          "title:text",
-          "floor_plan_image_url:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
+          "title:text",
+          "floor_plan_image_url:text",
           "unit_designator:text",
           "unit_number:text",
           "name:text",
-          "sort_order:integer"
-        ]
-      },
-      {
-        "table": "listing_custom_amenities",
-        "description": "Free-text 'other' amenities a landlord adds to a listing (one row per label).",
-        "columns": [
-          "id:uuid",
-          "listing_id:uuid",
-          "label:text",
-          "created_at:timestamptz"
-        ]
+          "sort_order:int4"
+        ],
+        "column_notes": {
+          "name": "the only unit label the app reads or writes",
+          "title/unit_designator/unit_number": "retired, kept for history",
+          "sort_order": "landlord's drag order, NULL last",
+          "floor_plan_image_url": "R2 URL of a downloadable floor plan"
+        },
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 1083,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_utilities",
-        "description": "One boolean row per listing — utilities-included flags.",
+        "status": "active",
+        "description": "One boolean row per listing: utilities-included flags.",
         "columns": [
           "listing_id:uuid",
-          "electric:boolean",
-          "gas:boolean",
-          "heat:boolean",
-          "water:boolean",
-          "internet:boolean",
-          "trash:boolean",
-          "cable:boolean",
-          "sewer:boolean",
-          "cooling:boolean",
+          "electric:bool",
+          "gas:bool",
+          "heat:bool",
+          "water:bool",
+          "internet:bool",
+          "trash:bool",
+          "cable:bool",
+          "sewer:bool",
+          "cooling:bool",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk listing_id; fk listing_id->listings.id (cascade); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 274,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listing_walk_times",
+        "status": "active",
         "description": "Precomputed walk minutes from a listing to each location.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
           "location_id:uuid",
-          "minutes:integer",
+          "minutes:int4",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); location_id->locations.id (cascade); unique (listing_id, location_id); check minutes >= 0; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 2166,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "listings",
-        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id — set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [AUDIT 2026-07-11: dead columns — mongo_id, paused_at, demoted_at, last_verified_*, primary_landlord_id (code uses listing_landlords.is_primary). Availability = unavailable override OR all units available=false; leases only gate displayed rent] [2026-08-12: a listing row is the PROPERTY, shared across owners (address, coordinates, walk/drive times, reviews, building amenities). Owner-specific content moved down to unit_leases. property_key = normalized street-line|zip from normalize_property_key(address), trigger-maintained, used to detect that a listing already exists at this address. Index is NOT unique yet — duplicate properties must be merged first.] [2026-08-31: title (display name) is UNIQUE per school — unique index listings_unique_property_name_per_school on (coalesce(school_id, all-zero uuid), normalize_property_name(title)) where deleted_at is null and the normalized title is not null. normalize_property_name() lowercases, collapses whitespace and trims, returning NULL for blank; blank-titled and soft-deleted rows are exempt, and NULL school_id is ONE shared bucket (Postgres would otherwise treat each NULL as distinct and exempt every unschooled row). Since rpc_create_listing does not set school_id, new listings land in that shared bucket, so the rule is effectively global for them today. The API returns 409 {error,field:'title'} before the index is reached — see lib/listings/propertyName.js.]",
+        "status": "active",
+        "description": "Core listing row. school_id = the campus a listing serves (all pre-2026-08 rows backfilled to WashU; review-created stubs stamped with the reviewer school). NOTE: rpc_create_listing does NOT insert school_id: set it in a follow-up update. Aggregate min/max columns are trigger-maintained. unavailable hides from availability; deleted_at = soft delete. [2026-08-12: a listing row is the PROPERTY, shared across owners (address, coordinates, walk/drive times, reviews, building amenities). Owner-specific content moved down to unit_leases. property_key = normalized street-line|zip from normalize_property_key(address), trigger-maintained, used to detect that a listing already exists at this address. Index is NOT unique yet: duplicate properties must be merged first.] [2026-08-31: title (display name) is UNIQUE per school: unique index listings_unique_property_name_per_school on (coalesce(school_id, all-zero uuid), normalize_property_name(title)) where deleted_at is null and the normalized title is not null. normalize_property_name() lowercases, collapses whitespace and trims, returning NULL for blank; blank-titled and soft-deleted rows are exempt, and NULL school_id is ONE shared bucket (Postgres would otherwise treat each NULL as distinct and exempt every unschooled row). Since rpc_create_listing does not set school_id, new listings land in that shared bucket, so the rule is effectively global for them today. The API returns 409 {error,field:'title'} before the index is reached: see lib/listings/propertyName.js.] [Audit 2026-10-12: columns with no app code on staging: expected_available_from/_confirmed_at/_asked_at/_ask_count (no data, no branch), pms_stale_flagged_at (no data), source_url/source_kind/source_added_by/source_added_at (36 rows, written by the importer branches; CHECK keeps url and kind in step), checkin_count/last_checkin_sent_at/pending_owner_review/checkin_response_choice/leased_elsewhere_detail/unit_type_status/multi_unit_override are owned by the check-in edge function and the auto-unavailable cron, not by the forms. lease_type is NOT NULL legacy text that every insert must still supply. mongo_id (35 rows), move_in_date (39), lease_structure (79) are MongoDB-era leftovers.] [Audit 2026-10-12: primary_landlord_id is legacy (code uses listing_landlords.is_primary; chat falls back to it last); paused_at/demoted_at have no data and no code; last_verified_at/_by/_source ARE live (check-in edge function, PMS sync, importer). Columns with no app code on staging: expected_available_from/_confirmed_at/_asked_at/_ask_count (no data, no branch), pms_stale_flagged_at (no data), source_url/source_kind/source_added_by/source_added_at (36 rows, written by the importer branches; CHECK keeps url and kind in step), checkin_count/last_checkin_sent_at/pending_owner_review/checkin_response_choice/leased_elsewhere_detail/unit_type_status/multi_unit_override are owned by the check-in edge function and the auto-unavailable cron, not by the forms. lease_type is NOT NULL legacy text that every insert must still supply. mongo_id (35 rows), move_in_date (39), lease_structure (79) are MongoDB-era leftovers.]",
         "columns": [
           "id:uuid",
           "mongo_id:text",
@@ -702,29 +1591,29 @@
           "latitude:numeric",
           "description:text",
           "lease_type:text",
-          "furnished:boolean",
-          "lease_structure:text",
-          "move_in_date:text",
-          "sublease_friendly:boolean",
-          "unavailable:boolean",
           "contact_email:text",
           "contact_phone:text",
           "contact_name:text",
           "min_rent:numeric",
           "max_rent:numeric",
-          "min_bedrooms:integer",
-          "max_bedrooms:integer",
+          "min_bedrooms:int4",
+          "max_bedrooms:int4",
           "min_bathrooms:numeric",
           "max_bathrooms:numeric",
           "min_area:numeric",
           "max_area:numeric",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "lease_availability:ARRAY",
-          "twenty_one_plus:boolean",
+          "furnished:bool",
+          "lease_structure:text",
+          "move_in_date:text",
+          "sublease_friendly:bool",
+          "unavailable:bool",
+          "lease_availability:_text",
+          "twenty_one_plus:bool",
+          "home_type_id:uuid",
           "school_id:uuid",
           "primary_landlord_id:uuid",
-          "home_type_id:uuid",
           "city:text",
           "state:text",
           "zipcode:text",
@@ -734,23 +1623,62 @@
           "last_verified_source:text",
           "paused_at:timestamptz",
           "demoted_at:timestamptz",
+          "checkin_count:int4",
+          "last_checkin_sent_at:timestamptz",
+          "pending_owner_review:bool",
+          "leased_elsewhere_detail:text",
+          "last_notified_at:timestamptz",
+          "multi_unit_override:bool",
+          "unit_type_status:jsonb",
+          "checkin_response_choice:text",
           "pms_connection_id:uuid",
           "pms_stale_flagged_at:timestamptz",
           "availability_email_sent_at:timestamptz",
-          "property_key:text"
-        ]
+          "source_url:text",
+          "source_kind:text",
+          "source_added_by:uuid",
+          "source_added_at:timestamptz",
+          "property_key:text",
+          "expected_available_from:date",
+          "expected_available_confirmed_at:timestamptz",
+          "expected_available_asked_at:timestamptz",
+          "expected_available_ask_count:int4"
+        ],
+        "column_notes": {
+          "unit_type_status": "jsonb {bedroomCount: {available, leased_via_proximity}} written by the check-in edge function for multi-unit complexes",
+          "checkin_response_choice": "available | leased_via_proximity | leased_elsewhere, the last answer from the check-in email",
+          "last_verified_source": "e.g. owner_email_checkin, pms:<provider>, import; paired with last_verified_at/last_verified_by",
+          "property_key": "trigger-maintained normalize_property_key(address); detects an existing listing at the same address (index not unique yet)",
+          "lease_availability": "text[] derived from unit_leases.lease_term_months across the listing",
+          "min_rent/max_rent/min_bedrooms/...": "aggregate columns maintained by trigger sync_listing_aggregates from listing_units + active unit_leases",
+          "source_url/source_kind": "importer provenance (own_site | portal); both null or both set",
+          "expected_available_*": "no code anywhere, no data; retirement pending",
+          "pms_connection_id/pms_stale_flagged_at": "set by rpc_pms_ingest_listing / the PMS sync; no data yet"
+        },
+        "notes": "status=active; pk id; fk home_type_id->home_types.id; school_id->schools.id (set null); primary_landlord_id->users.id (set null); last_verified_by->users.id (set null); pms_connection_id->pms_connections.id (set null); source_added_by->users.id (set null); unique (mongo_id) | (coalesce(school_id, zero-uuid), normalize_property_name(title)) where deleted_at is null and normalized title not null; check lease_structure in (individual,joint) | source_kind in (own_site,portal) or null | source_url and source_kind are both null or both set; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 281,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "location_types",
-        "description": "Reference: kinds of locations (campus, grocery, shuttle). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "reference",
+        "description": "Lookup for locations.location_type_id (5 rows: campus, grocery, shuttle, ...). Only reached through the FK; no app code reads it.",
         "columns": [
           "id:uuid",
           "name:text",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 5,
+          "prod_last_write": "2026-07-07"
+        }
       },
       {
         "table": "locations",
+        "status": "active",
         "description": "Named points (WashU places, shuttle stops) used for walk times.",
         "columns": [
           "id:uuid",
@@ -760,11 +1688,17 @@
           "longitude:numeric",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk location_type_id->location_types.id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 84,
+          "prod_last_write": "2026-07-07"
+        }
       },
       {
         "table": "matchmaking_chat_sessions",
-        "description": "Roommate/listing matchmaking chat sessions + AI state. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]",
+        "status": "active",
+        "description": "Proxy matchmaking chat (/api/matchmaking/chat): transcript, extracted preferences, weights, candidate set and recommendations as jsonb, status in_progress|swiping|recommendations_ready|abandoned. Owner-only RLS policy. 100 rows in prod, written daily.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -776,11 +1710,17 @@
           "recommendations:jsonb",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); check status in (in_progress,swiping,recommendations_ready,abandoned); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 100,
+          "prod_last_write": "2026-10-12"
+        }
       },
       {
         "table": "matchmaking_preferences",
-        "description": "User housing/roommate preferences.",
+        "status": "legacy",
+        "description": "The original (v1) matchmaking form: budget, move-in window, lease_term, furnished, group_size, student_type, area, notes, open_to_roommates, weights. 77 rows, last written 2026-07-16; the chat flow stores preferences inside matchmaking_chat_sessions instead. On staging only /api/cron/purge-accounts touches it. Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -789,236 +1729,60 @@
           "move_in_date_earliest:date",
           "move_in_date_latest:date",
           "lease_term:text",
-          "furnished:boolean",
-          "group_size:integer",
+          "furnished:bool",
+          "group_size:int4",
           "student_type:text",
           "area:text",
           "notes:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "move_out_date:date",
-          "open_to_roommates:boolean",
+          "open_to_roommates:bool",
           "weights:jsonb"
-        ]
+        ],
+        "notes": "status=legacy; pk id; fk user_id->users.id (cascade); unique (user_id); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 77,
+          "prod_last_write": "2026-07-16"
+        }
       },
       {
         "table": "matchmaking_priority_mappings",
-        "description": "Ranked priority weights per preference set. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
+        "status": "unused",
+        "description": "Ranked priority weights per preference set. Zero rows. Retirement pending confirmation. Zero rows. Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "preference_id:uuid",
           "priority_type_id:uuid",
-          "rank:integer",
+          "rank:int4",
           "weight:numeric",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; fk preference_id->matchmaking_preferences.id (cascade); priority_type_id->priority_types.id; unique (preference_id, priority_type_id); check rank > 0 | weight between 0 and 10; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "metric_types",
+        "status": "reference",
         "description": "Reference: listing metric kinds.",
         "columns": [
           "id:uuid",
           "name:text",
           "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "priority_types",
-        "description": "Reference: matchmaking priority categories. [AUDIT 2026-07-11: used only by the proxy-chat branch, not staging/main — do NOT drop]",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "review_incentive_partners",
-        "description": "Partners offering discounts for leaving reviews. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "contact_email:text",
-          "discount_description:text",
-          "discount_value_usd:numeric",
-          "redemption_method:text",
-          "active:boolean",
-          "created_at:timestamptz",
-          "updated_at:timestamptz"
-        ]
-      },
-      {
-        "table": "review_incentive_redemptions",
-        "description": "Issued/redeemed review-incentive codes. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
-        "columns": [
-          "id:uuid",
-          "user_id:uuid",
-          "partner_id:uuid",
-          "review_id:uuid",
-          "code_issued:text",
-          "issued_at:timestamptz",
-          "redeemed_at:timestamptz",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "review_votes",
-        "description": "Helpful/unhelpful votes on reviews.",
-        "columns": [
-          "id:uuid",
-          "review_id:uuid",
-          "user_id:uuid",
-          "vote:text",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "roles",
-        "description": "Reference: user roles (student/landlord/super).",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "schools",
-        "description": "Universities served: WashU, SLU, UMSL. short_name is the join key to apps/web/src/lib/schools.js, which maps email domains to schools and gates who can leave reviews; it is uniquely indexed. Adding a campus = a row here + a row there.",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "short_name:text",
-          "city:text",
-          "state:text",
-          "latitude:numeric",
-          "longitude:numeric",
-          "website:text",
-          "created_at:timestamptz",
-          "updated_at:timestamptz"
-        ]
-      },
-      {
-        "table": "tags",
-        "description": "Reference: tags (e.g. dorm review tags).",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "testimonials",
-        "description": "Marketing testimonials shown on the site.",
-        "columns": [
-          "id:uuid",
-          "mongo_id:text",
-          "text:text",
-          "author:text",
-          "rating:numeric",
-          "created_at:timestamptz",
-          "updated_at:timestamptz"
-        ]
-      },
-      {
-        "table": "thread_types",
-        "description": "Reference: chat thread kinds. [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "description:text",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "unit_leases",
-        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle.",
-        "columns": [
-          "id:uuid",
-          "unit_id:uuid",
-          "lease_structure_id:uuid",
-          "rent:numeric",
-          "available_from:date",
-          "is_active:boolean",
-          "created_at:timestamptz",
-          "updated_at:timestamptz",
-          "sublease:boolean",
-          "lease_term_months:ARRAY",
-          "owner_id:uuid",
-          "contact_name:text",
-          "contact_email:text",
-          "contact_phone:text",
-          "description:text",
-          "furnished:boolean",
-          "unavailable:boolean",
-          "deleted_at:timestamptz"
-        ]
-      },
-      {
-        "table": "user_listing_interactions",
-        "description": "Log of user↔listing interactions (clicks, saves, contacts).",
-        "columns": [
-          "id:uuid",
-          "user_id:uuid",
-          "listing_id:uuid",
-          "interaction_type_id:uuid",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "users",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [AUDIT 2026-07-11: mongo_id dead]",
-        "columns": [
-          "id:uuid",
-          "name:text",
-          "email:text",
-          "image:text",
-          "birthday:timestamptz",
-          "description:text",
-          "gender:text",
-          "phone:text",
-          "profile_complete:boolean",
-          "referral_source:text",
-          "created_at:timestamptz",
-          "updated_at:timestamptz",
-          "graduation_year:integer",
-          "graduation_month:integer",
-          "school_id:uuid",
-          "role_id:uuid",
-          "is_system:boolean",
-          "deleted_at:timestamptz",
-          "password_hash:text",
-          "email_verified:boolean",
-          "email_verification_token:text",
-          "email_verification_expires_at:timestamptz",
-          "password_reset_token:text",
-          "password_reset_expires_at:timestamptz",
-          "google_account:boolean",
-          "payment_method:text",
-          "payment_handle:text",
-          "profile_setup_token:text",
-          "profile_setup_expires_at:timestamptz"
-        ]
-      },
-      {
-        "table": "verified_residencies",
-        "description": "Proof a user lived at a listing (via lease/verification). [AUDIT 2026-07-11: UNUSED — no app code references; cleanup-migration candidate]",
-        "columns": [
-          "id:uuid",
-          "user_id:uuid",
-          "listing_id:uuid",
-          "verified_via:text",
-          "verified_at:timestamptz",
-          "lease_template_id:uuid",
-          "executed_lease_id:uuid",
-          "residency_start_date:date",
-          "residency_end_date:date",
-          "notes:text",
-          "created_at:timestamptz",
-          "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 3,
+          "prod_last_write": "2026-04-20"
+        }
       },
       {
         "table": "pms_connections",
-        "description": "PMS freshness integration (feat/pms-integration): one row per landlord × provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token — the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000) — nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod.",
+        "status": "active",
+        "description": "PMS freshness integration (feat/pms-integration): one row per landlord × provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token: the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000): nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -1026,26 +1790,48 @@
           "nango_connection_id:text",
           "status:text",
           "credential_meta:jsonb",
-          "credential_mode:text",
-          "cred_ciphertext:text",
-          "cred_iv:text",
-          "cred_tag:text",
-          "cred_key_version:text",
-          "cred_fingerprint:text",
           "radius_auto_include_km:numeric",
-          "sync_price:boolean",
-          "auto_apply:boolean",
+          "sync_price:bool",
+          "auto_apply:bool",
           "last_sync_at:timestamptz",
           "last_sync_status:text",
           "last_sync_error:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "deleted_at:timestamptz"
-        ]
+          "deleted_at:timestamptz",
+          "credential_mode:text",
+          "cred_ciphertext:text",
+          "cred_iv:text",
+          "cred_tag:text",
+          "cred_key_version:text",
+          "cred_fingerprint:text"
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); unique (user_id, provider) where deleted_at is null; check provider in (buildium,appfolio,doorloop,rentec,rentmanager,resman,scrape,aggregator) | status in (pending,active,error,disconnected) | provider=scrape forces auto_apply=false; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "pms_integration_requests",
+        "status": "active",
+        "description": "Landlord requests for unsupported PMS connectors, fed by the dashboard PMS Sync section (migration 20260722100000; BOTH dev and prod). One row per landlord per system name (case-insensitive unique). Used to prioritize connector work. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "provider_name:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); unique (user_id, lower(provider_name)); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "pms_links",
-        "description": "Canonical PMS-ID ↔ Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique → listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present → apply; missing → delist.",
+        "status": "active",
+        "description": "Canonical PMS-ID ↔ Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique → listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present → apply; missing → delist. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
@@ -1055,26 +1841,22 @@
           "external_label:text",
           "listing_id:uuid",
           "listing_unit_id:uuid",
-          "include:boolean",
+          "include:bool",
           "origin:text",
           "link_status:text",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
-      },
-      {
-        "table": "pms_integration_requests",
-        "description": "Landlord requests for unsupported PMS connectors, fed by the dashboard PMS Sync section (migration 20260722100000; BOTH dev and prod). One row per landlord per system name (case-insensitive unique). Used to prioritize connector work.",
-        "columns": [
-          "id:uuid",
-          "user_id:uuid",
-          "provider_name:text",
-          "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk connection_id->pms_connections.id (cascade); listing_id->listings.id (set null); listing_unit_id->listing_units.id (set null); unique (connection_id, external_property_id, coalesce(external_unit_id), coalesce(external_bed_id)); check origin in (ingested,linked) | link_status in (pending,confirmed,rejected); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "pms_review_queue",
-        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>±20% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link.",
+        "status": "active",
+        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>±20% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
@@ -1088,55 +1870,137 @@
           "resolved_at:timestamptz",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk connection_id->pms_connections.id (cascade); pms_link_id->pms_links.id (cascade); listing_id->listings.id (cascade); resolved_by->users.id (set null); unique (pms_link_id) where status=open; check reason in (scrape_unavailable,swing_guard_hold,ambiguous_dedupe) | status in (open,resolved_hidden,resolved_kept,dismissed,approved); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "pms_sync_events",
-        "description": "Append-only PMS sync audit trail (result: created|updated|delisted|relisted|flagged|held|skipped|error). Watch this after enabling a new connection.",
+        "status": "active",
+        "description": "Append-only PMS sync audit trail (result: created|updated|delisted|relisted|flagged|held|skipped|error). Watch this after enabling a new connection. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
           "pms_link_id:uuid",
           "listing_id:uuid",
           "external_unit_id:text",
-          "observed_available:boolean",
+          "observed_available:bool",
           "observed_rent:numeric",
-          "applied:boolean",
+          "applied:bool",
           "result:text",
           "detail:jsonb",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk connection_id->pms_connections.id (cascade); pms_link_id->pms_links.id (set null); check result in (created,updated,delisted,relisted,flagged,held,skipped,error,observed); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
-        "table": "seo_query_metrics",
-        "description": "Weekly Search Console snapshots written by the seo-report cron (service role only; RLS enabled, no policies). One row per (captured_on, page, query).",
-        "columns": [
-          "id:bigint",
-          "captured_on:date",
-          "page:text",
-          "query:text",
-          "clicks:integer",
-          "impressions:integer",
-          "ctr:numeric",
-          "position:numeric",
-          "created_at:timestamptz"
-        ]
-      },
-      {
-        "table": "student_roster",
-        "description": "Imported class rosters (email, name, class year) used to recognize a real student and to prefill an emailed review invite. Bulk PII for people with no Proximity account: RLS on with NO policies, service-role only.",
+        "table": "priority_types",
+        "status": "reference",
+        "description": "Reference: matchmaking priority categories. Read only by the matchmaking v2 branches; do NOT drop while those are in flight. 15 seeded rows, read by the matchmaking v2 branches only. 15 seeded rows, read by the matchmaking v2 branches only.",
         "columns": [
           "id:uuid",
-          "email:text",
-          "first_name:text",
-          "last_name:text",
-          "class_year:smallint",
+          "name:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 15,
+          "prod_last_write": "2026-04-20"
+        }
+      },
+      {
+        "table": "product_lessons",
+        "status": "unreleased",
+        "description": "Weekly product lessons ledger for the product-tutor experiment (feat/product-tutor): date + rank PK, evidence, lesson, proposed change, success_metric, status proposed|accepted|modified|rejected|shipped|evaluated. Zero rows. Migration applied to both DBs but the file is not in the repo.",
+        "columns": [
+          "date:timestamptz",
+          "rank:int2",
+          "evidence:text",
+          "lesson:text",
+          "change:text",
+          "success_metric:text",
+          "status:text",
+          "decision_notes:text"
+        ],
+        "notes": "status=unreleased; pk (date, rank); check status in (proposed,accepted,modified,rejected,shipped,evaluated); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "rent_history",
+        "status": "dev_only",
+        "description": "DEV ONLY and orphaned: rent change log filled by trigger log_rent_change on unit_leases (44 rows). Migration rent_history (2026-08-09) was applied to dev only and no branch references the table. Retirement pending confirmation.",
+        "columns": [
+          "id:uuid",
+          "lease_id:uuid",
+          "unit_id:uuid",
+          "listing_id:uuid",
+          "old_rent:numeric",
+          "new_rent:numeric",
+          "change_kind:text",
+          "source:text",
+          "changed_at:timestamptz"
+        ],
+        "notes": "status=dev_only; EXISTS ON DEV ONLY; pk id; check change_kind in (insert,update,delete); no foreign keys; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "dev_rows": 44,
+          "dev_last_write": null,
+          "prod": "table absent"
+        }
+      },
+      {
+        "table": "review_incentive_partners",
+        "status": "unused",
+        "description": "Partners offering discounts for leaving reviews. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "contact_email:text",
+          "discount_description:text",
+          "discount_value_usd:numeric",
+          "redemption_method:text",
+          "active:bool",
           "created_at:timestamptz",
           "updated_at:timestamptz"
-        ]
+        ],
+        "notes": "status=unused; pk id; unique (name); check redemption_method in (unique_code,email_intro,show_badge); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "review_incentive_redemptions",
+        "status": "unused",
+        "description": "Issued/redeemed review-incentive codes. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "partner_id:uuid",
+          "review_id:uuid",
+          "code_issued:text",
+          "issued_at:timestamptz",
+          "redeemed_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unused; pk id; fk user_id->users.id (cascade); partner_id->review_incentive_partners.id; review_id->listing_reviews.id (set null); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "review_invites",
+        "status": "active",
         "description": "One row per tokenized review invite. token_hash is the SHA-256 of the emailed token, never the token, and is minted at send time so an unsent token never exists. Opening the link proves control of invited_email, which is then used for the review instead of anything the browser posts. A ledger rather than a status column on student_roster, so re-imports cannot clobber campaign state and one person can be invited more than once. review_id/review_kind are polymorphic (listing_reviews or dorm_reviews) and deliberately carry no FK. sent_via ('app' | 'export') records how the link left us: 'app' means this system mailed it and saw the SMTP result, 'export' means the link was downloaded as a CSV and mailed by an admin from their own address, so sent_at is when we lost sight of it rather than a delivery we can vouch for. RLS on with NO policies, service-role only.",
         "columns": [
           "id:uuid",
@@ -1146,32 +2010,366 @@
           "listing_id:uuid",
           "invited_by:uuid",
           "sent_at:timestamptz",
-          "sent_via:text",
           "expires_at:timestamptz",
           "used_at:timestamptz",
           "review_id:uuid",
           "review_kind:text",
+          "created_at:timestamptz",
+          "sent_via:text"
+        ],
+        "column_notes": {
+          "token_hash": "SHA-256 of the emailed token, minted at send time",
+          "sent_via": "app = we mailed it, export = admin mailed a CSV link"
+        },
+        "notes": "status=active; pk id; fk roster_id->student_roster.id (set null); listing_id->listings.id (set null); invited_by->users.id (set null); unique (token_hash); check review_kind in (listing,dorm) | sent_via in (app,export); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 1879,
+          "prod_last_write": "2026-09-23"
+        }
+      },
+      {
+        "table": "review_reports",
+        "status": "active",
+        "description": "A user reporting a listing review (unique per reporter and review). Written by /api/reviewReport, cleaned by /api/cron/purge-accounts. Migration 202610020001. 0 rows in prod so far. Service role only.",
+        "columns": [
+          "id:uuid",
+          "reporter_id:uuid",
+          "review_id:uuid",
+          "reported_user_id:uuid",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk reporter_id->users.id (cascade); review_id->listing_reviews.id (cascade); reported_user_id->users.id (set null); unique (reporter_id, review_id); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "review_votes",
+        "status": "active",
+        "description": "Helpful/unhelpful votes on reviews. 0 rows in prod. 0 rows in prod.",
+        "columns": [
+          "id:uuid",
+          "review_id:uuid",
+          "user_id:uuid",
+          "vote:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk review_id->listing_reviews.id (cascade); user_id->users.id (cascade); unique (review_id, user_id); check vote in (up,down); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "roles",
+        "status": "reference",
+        "description": "Reference: user roles (student/landlord/super).",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 7,
+          "prod_last_write": "2026-05-22"
+        }
+      },
+      {
+        "table": "schools",
+        "status": "reference",
+        "description": "Universities served: WashU, SLU, UMSL. short_name is the join key to apps/web/src/lib/schools.js, which maps email domains to schools and gates who can leave reviews; it is uniquely indexed. Adding a campus = a row here + a row there.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "short_name:text",
+          "city:text",
+          "state:text",
+          "latitude:numeric",
+          "longitude:numeric",
+          "website:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=reference; pk id; unique (short_name) where not null; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 3,
+          "prod_last_write": "2026-08-02"
+        }
+      },
+      {
+        "table": "seo_query_metrics",
+        "status": "active",
+        "description": "Weekly Search Console snapshots written by the seo-report cron (service role only; RLS enabled, no policies). One row per (captured_on, page, query).",
+        "columns": [
+          "id:int8",
+          "captured_on:date",
+          "page:text",
+          "query:text",
+          "clicks:int4",
+          "impressions:int4",
+          "ctr:numeric",
+          "position:numeric",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; unique (captured_on, page, query); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 765,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "student_roster",
+        "status": "active",
+        "description": "Imported class rosters (email, name, class year) used to recognize a real student and to prefill an emailed review invite. Bulk PII for people with no Proximity account: RLS on with NO policies, service-role only.",
+        "columns": [
+          "id:uuid",
+          "email:text",
+          "first_name:text",
+          "last_name:text",
+          "class_year:int2",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; unique (lower(email)); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 6595,
+          "prod_last_write": "2026-09-03"
+        }
       },
       {
         "table": "student_roster_invite_status (view)",
+        "status": "active",
         "description": "Read-only view: student_roster left-joined to each student's MOST RECENT review_invites row. Adds has_first_name (blank and NULL both count as missing), invited, last_invited_at, review_written_at, invite_expires_at. Backs the admin bulk-send picker so \"already asked\" is derived from the ledger rather than stored on the roster, where a re-import would reset it. Created WITH (security_invoker = true) so it inherits the base tables' RLS instead of bypassing it, and anon/authenticated are revoked: service-role only.",
         "columns": [
           "id:uuid",
           "email:text",
           "first_name:text",
           "last_name:text",
-          "class_year:smallint",
-          "has_first_name:boolean",
-          "invited:boolean",
+          "class_year:int2",
+          "has_first_name:bool",
+          "invited:bool",
           "last_invited_at:timestamptz",
           "review_written_at:timestamptz",
           "invite_expires_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; VIEW over student_roster + latest review_invites; security_invoker; rls: view, security_invoker",
+        "observed_2026_10_12": {
+          "prod_rows": null,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "tags",
+        "status": "reference",
+        "description": "Reference: tags (e.g. dorm review tags).",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 25,
+          "prod_last_write": "2026-08-31"
+        }
+      },
+      {
+        "table": "testimonials",
+        "status": "active",
+        "description": "Marketing testimonials shown on the site.",
+        "columns": [
+          "id:uuid",
+          "mongo_id:text",
+          "text:text",
+          "author:text",
+          "rating:numeric",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; unique (mongo_id); check rating between 1 and 5; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 10,
+          "prod_last_write": "2026-07-30"
+        }
+      },
+      {
+        "table": "thread_types",
+        "status": "reference",
+        "description": "Lookup for chat_threads.thread_type_id (2 rows). fn_chat_direct_type_id resolves the direct type; no app code reads it.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "description:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=reference; pk id; unique (name); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 2,
+          "prod_last_write": "2026-04-20"
+        }
+      },
+      {
+        "table": "unit_leases",
+        "status": "active",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle. [2026-10-12: contact_* are ONE BLOCK PER LANDLORD PER PROPERTY for owned leases. PUT /api/landlord/listings/[listingId]/contact writes name/email/phone to every lease the caller owns at the property, POST /api/leases copies that block onto a new lease (body contact only seeds a landlord's first lease there), and the editor no longer edits contact per lease (EditorContact). The columns stay the storage: imported owner_id NULL leases are reached only through them. Browse groups a unit's leases into one card per landlord by contact email (getListing landlordKeyer, an opaque key; the email never reaches the browser). Backfilled by 202610120001: most-used email per landlord per property, name/phone from the newest lease with it.]",
+        "columns": [
+          "id:uuid",
+          "unit_id:uuid",
+          "lease_structure_id:uuid",
+          "rent:numeric",
+          "available_from:date",
+          "is_active:bool",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "sublease:bool",
+          "lease_term_months:_int4",
+          "owner_id:uuid",
+          "contact_name:text",
+          "contact_email:text",
+          "contact_phone:text",
+          "description:text",
+          "furnished:bool",
+          "unavailable:bool",
+          "rent_is_per_person:bool",
+          "deleted_at:timestamptz",
+          "published_at:timestamptz"
+        ],
+        "dev_only_columns": [
+          "published_at"
+        ],
+        "column_notes": {
+          "owner_id": "the landlord whose offering this is; NULL = unclaimed import",
+          "lease_term_months": "int4[] of offered terms (Semester=5, Summer=4, 10, 12, custom)",
+          "rent_is_per_person": "true per person, false whole unit, NULL inferred by lib/listings/rentBasis.js",
+          "is_active/unavailable/deleted_at": "withdraw toggle, per-offering unavailability, landlord delete (kept for enquiries)",
+          "published_at": "DEV ONLY (listing drafts)",
+          "lease_structure_id": "NULL on every row; legacy"
+        },
+        "notes": "status=active; pk id; fk unit_id->listing_units.id (cascade); lease_structure_id->lease_structures.id; owner_id->users.id; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 4102,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "user_blocks",
+        "status": "active",
+        "description": "One user blocking another (PK blocker_id, blocked_id; no self block). Written by /api/userBlock, respected by lib/listings/getListing.js, cleaned by /api/cron/purge-accounts. Migration 202610020001. Service role only.",
+        "columns": [
+          "blocker_id:uuid",
+          "blocked_id:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk (blocker_id, blocked_id); fk blocker_id->users.id (cascade); blocked_id->users.id (cascade); check blocker_id <> blocked_id; rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
+      },
+      {
+        "table": "user_listing_interactions",
+        "status": "active",
+        "description": "Log of user↔listing interactions (clicks, saves, contacts).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "interaction_type_id:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); listing_id->listings.id (cascade); interaction_type_id->interaction_types.id; unique (user_id, listing_id, interaction_type_id); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 290,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "users",
+        "status": "active",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.]",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "email:text",
+          "image:text",
+          "birthday:timestamptz",
+          "description:text",
+          "gender:text",
+          "phone:text",
+          "profile_complete:bool",
+          "referral_source:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "graduation_year:int4",
+          "graduation_month:int4",
+          "role_id:uuid",
+          "school_id:uuid",
+          "is_system:bool",
+          "deleted_at:timestamptz",
+          "password_reset_token:text",
+          "password_reset_expires_at:timestamptz",
+          "password_hash:text",
+          "email_verified:bool",
+          "email_verification_token:text",
+          "email_verification_expires_at:timestamptz",
+          "google_account:bool",
+          "payment_method:text",
+          "payment_handle:text",
+          "email_notifications:bool",
+          "apple_sub:text",
+          "apple_account:bool",
+          "profile_setup_token:text",
+          "profile_setup_expires_at:timestamptz",
+          "apple_refresh_token:text",
+          "company_name:text"
+        ],
+        "dev_only_columns": [
+          "apple_refresh_token",
+          "company_name"
+        ],
+        "column_notes": {
+          "role_id": "-> roles (student | landlord | super | admin ...)",
+          "email_verified/email_verification_token": "email+password signup flow; google_account / apple_account mark OAuth accounts",
+          "profile_setup_token/_expires_at": "7-day credential-less profile completion after a QR review",
+          "email_notifications": "chat email opt-out (unsubscribe token flips it to false)",
+          "is_system": "house accounts such as guest@proximity.test and info@; never treated as a landlord",
+          "apple_refresh_token/company_name": "DEV ONLY columns"
+        },
+        "notes": "status=active; pk id; fk role_id->roles.id; school_id->schools.id (set null); unique (email) | (apple_sub) where not null; check payment_method in (zelle,venmo) or null; rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 537,
+          "prod_last_write": "2026-10-12"
+        }
+      },
+      {
+        "table": "verified_residencies",
+        "status": "unused",
+        "description": "Proof a user lived at a listing (via lease/verification). Zero rows. Trigger trg_create_verified_residencies on executed_leases would populate it. Retirement pending confirmation. Zero rows. Trigger trg_create_verified_residencies on executed_leases would populate it. Retirement pending confirmation.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "verified_via:text",
+          "verified_at:timestamptz",
+          "lease_template_id:uuid",
+          "executed_lease_id:uuid",
+          "residency_start_date:date",
+          "residency_end_date:date",
+          "notes:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unused; pk id; fk user_id->users.id (cascade); listing_id->listings.id (cascade); lease_template_id->lease_templates.id (set null); executed_lease_id->executed_leases.id (set null); unique (user_id, listing_id, coalesce(executed_lease_id, zero-uuid)); check verified_via in (lease_vault,landlord_attestation,admin_manual); rls: on, with policies (app uses the service role anyway)",
+        "observed_2026_10_12": {
+          "prod_rows": 0,
+          "prod_last_write": null
+        }
       },
       {
         "table": "waitlist_clicks",
+        "status": "active",
         "description": "One row per click on a property's external waitlist button (LOCAL on Delmar's is a Google Form). We are paid commission on students who arrive from here, so this is our own record of who we sent. It CANNOT prove a signup: the form is on Google's domain, so a row means \"this person left for the waitlist\", never \"this person joined it\". Reconcile against the landlord's own response sheet before invoicing. name/email/phone are denormalized copies of what we actually sent (from the profile for a signed-in click, from the interstitial for a signed-out one) so the table reads standalone and a later profile edit cannot rewrite history. visitor_id is the prx_vid cookie, collapsing repeat clicks from one signed-out browser. nudge_sent_at is stamped on every row for a user once the \"finish your account\" email has been considered, so each person is mailed at most once. No unique constraint: a ledger of clicks, not of people. RLS enabled with NO policies: service-role only, since it joins a named user to an off-site action.",
         "columns": [
           "id:uuid",
@@ -1184,8 +2382,650 @@
           "referrer:text",
           "nudge_sent_at:timestamptz",
           "created_at:timestamptz"
-        ]
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); user_id->users.id (set null); rls: service role only (no policies)",
+        "observed_2026_10_12": {
+          "prod_rows": 33,
+          "prod_last_write": "2026-09-19"
+        }
       }
-    ]
+    ],
+    "functions": [
+      {
+        "name": "rpc_create_listing",
+        "kind": "rpc",
+        "args": "p_user_id, p_listing_data jsonb, p_amenities, p_utilities, p_walk_times, p_drive_times, p_units, p_lease_availability, p_custom_amenities, p_claim_property bool",
+        "touches": "listings, listing_units, unit_leases, listing_amenities, listing_utilities, listing_walk_times, listing_drive_times, listing_landlords, listing_custom_amenities",
+        "called_from": "app/api/addListing/route.js, app/api/reviewReferral/route.js (review-created stub listings)",
+        "defined_in": "supabase/migrations/202608300002_create_listing_claim.sql (last full definition; 202610090002 patches the unit-name handling in place via pg_get_functiondef)",
+        "description": "Creates a property plus its units, offerings, amenities and distances in one transaction. SECURITY DEFINER. p_claim_property=false inserts the listing without a listing_landlords row. Does NOT set school_id; callers update it afterwards."
+      },
+      {
+        "name": "rpc_edit_listing",
+        "kind": "rpc",
+        "args": "p_user_id, p_listing_id, p_listing_updates jsonb, p_amenities, p_utilities, p_images_keep text[], p_units jsonb, p_lease_availability, p_leases, p_pet_policy, p_custom_amenities",
+        "touches": "listings, listing_units, unit_leases, listing_amenities, listing_utilities, listing_images, listing_custom_amenities, listing_leases, listing_pet_policies",
+        "called_from": "app/api/landlord/listings/[listingId]/route.js",
+        "defined_in": "supabase/migrations/202606100004_listing_rpcs_term_array.sql (202610090002 patches the unit-name handling in place)",
+        "description": "Owner-gated full edit of a listing. Units are matched by id first, then by shape. p_leases and p_pet_policy write the legacy listing_leases / listing_pet_policies tables and are never passed by the app."
+      },
+      {
+        "name": "rpc_create_listing_v2",
+        "kind": "rpc",
+        "args": "p_user_id, p_listing_data, p_amenities, p_utilities, p_walk_times, p_leases, p_pet_policy",
+        "touches": "listings, listing_leases, listing_pet_policies, ...",
+        "called_from": "not called",
+        "defined_in": "NOT in the repo (prod migration rpc_write_listing_leases, 2026-05-08)",
+        "description": "Old lease-model create. Unused; drop candidate together with listing_leases."
+      },
+      {
+        "name": "rpc_insert_as_user",
+        "kind": "rpc",
+        "args": "p_user_id, p_table, p_data jsonb",
+        "touches": "allow-listed tables only: users, listings, listing_units, unit_leases, listing_reviews, listing_amenities, listing_utilities, listing_landlords, listing_images, review_votes, user_listing_interactions",
+        "called_from": "lib/supabaseWithUser.js",
+        "defined_in": "supabase/migrations/202604240001_write_as_user_rpcs.sql",
+        "description": "Generic single-row INSERT that stamps action_log with the acting user. The allowlist inside the function is the only way to add a table to it."
+      },
+      {
+        "name": "rpc_insert_batch_as_user",
+        "kind": "rpc",
+        "args": "p_user_id, p_table, p_rows jsonb",
+        "touches": "same allowlist",
+        "called_from": "lib/supabaseWithUser.js",
+        "defined_in": "202604240001_write_as_user_rpcs.sql",
+        "description": "Multi-row INSERT, all rows same columns."
+      },
+      {
+        "name": "rpc_update_as_user",
+        "kind": "rpc",
+        "args": "p_user_id, p_table, p_data, p_row_id | p_match jsonb",
+        "touches": "same allowlist",
+        "called_from": "lib/supabaseWithUser.js",
+        "defined_in": "202604240001_write_as_user_rpcs.sql",
+        "description": "UPDATE by id or by match object."
+      },
+      {
+        "name": "rpc_upsert_as_user",
+        "kind": "rpc",
+        "args": "p_user_id, p_table, p_data, p_conflict_cols text[], p_ignore_conflicts",
+        "touches": "same allowlist",
+        "called_from": "lib/supabaseWithUser.js",
+        "defined_in": "202604240001_write_as_user_rpcs.sql",
+        "description": "INSERT ... ON CONFLICT DO UPDATE / DO NOTHING."
+      },
+      {
+        "name": "rpc_delete_as_user",
+        "kind": "rpc",
+        "args": "p_user_id, p_table, p_row_id | p_match",
+        "touches": "same allowlist",
+        "called_from": "lib/supabaseWithUser.js",
+        "defined_in": "202604240001_write_as_user_rpcs.sql",
+        "description": "DELETE by id or by match object."
+      },
+      {
+        "name": "rpc_start_or_get_listing_chat",
+        "kind": "rpc",
+        "args": "p_user_id, p_listing_id, p_body, p_lease_id",
+        "touches": "chat_threads, chat_participants, chat_messages, listing_landlords, user_listing_interactions, users, listings",
+        "called_from": "app/api/chat/threads/route.js",
+        "defined_in": "202610030006_chat_lease_aware_routing.sql",
+        "description": "Finds or creates the (listing, landlord, student) pair thread, resolving the landlord from the lease owner first, posts the first message and logs a contact interaction."
+      },
+      {
+        "name": "rpc_send_chat_message",
+        "kind": "rpc",
+        "args": "p_user_id, p_thread_id, p_body",
+        "touches": "chat_messages, chat_threads, chat_participants",
+        "called_from": "app/api/chat/threads/[threadId]/messages/route.js",
+        "defined_in": "202610030003_chat_pair_rpcs.sql",
+        "description": "Participant-gated send with rate limiting (fn_chat_assert_send_rate)."
+      },
+      {
+        "name": "rpc_send_chat_attachment_message",
+        "kind": "rpc",
+        "args": "p_user_id, p_thread_id, p_body, p_attachments jsonb",
+        "touches": "chat_messages, chat_attachments, chat_threads, chat_participants",
+        "called_from": "app/api/chat/threads/[threadId]/messages/route.js",
+        "defined_in": "202610030004_chat_attachment_notify_listing.sql",
+        "description": "Send with attachments already uploaded to R2."
+      },
+      {
+        "name": "rpc_get_chat_messages",
+        "kind": "rpc",
+        "args": "p_user_id, p_thread_id, p_limit=50, p_before timestamptz",
+        "touches": "chat_messages, listings",
+        "called_from": "app/api/chat/threads/[threadId]/messages/route.js",
+        "defined_in": "202610030003_chat_pair_rpcs.sql",
+        "description": "Paged transcript; each message carries its listing so the UI can draw a property divider."
+      },
+      {
+        "name": "rpc_list_chat_threads",
+        "kind": "rpc",
+        "args": "p_user_id",
+        "touches": "chat_threads, chat_participants, chat_messages, users, listings, listing_images",
+        "called_from": "app/api/chat/threads/route.js",
+        "defined_in": "202610030006_chat_lease_aware_routing.sql",
+        "description": "Inbox: every thread the user is in, with unread count, last message and every property the thread has covered."
+      },
+      {
+        "name": "rpc_mark_thread_read",
+        "kind": "rpc",
+        "args": "p_user_id, p_thread_id",
+        "touches": "chat_participants",
+        "called_from": "app/api/chat/threads/[threadId]/read/route.js",
+        "defined_in": "202607300002_chat_write_rpcs.sql",
+        "description": "Stamps last_read_at."
+      },
+      {
+        "name": "rpc_get_chat_attachment",
+        "kind": "rpc",
+        "args": "p_user_id, p_attachment_id",
+        "touches": "chat_attachments",
+        "called_from": "app/api/chat/attachments/[attachmentId]/route.js",
+        "defined_in": "202608150006_chat_attachments.sql",
+        "description": "Participant-gated lookup used by the download route."
+      },
+      {
+        "name": "rpc_chat_notification_recipient",
+        "kind": "rpc",
+        "args": "p_thread_id, p_sender_id, p_sender_via=app, p_message_id=null",
+        "touches": "chat_threads, chat_participants, chat_messages, users, listings",
+        "called_from": "lib/chat/notifyEmail.js",
+        "defined_in": "202610120004_chat_alert_quiet_window.sql (dev; prod pending, see PR #289)",
+        "description": "Decides who (if anyone) gets the email for a new message. No holds: only users.email_notifications and fn_email_suppressed gate it. Returns everything the recipient has not read since last_read_at (max 10, oldest first, plus earlierCount). With p_message_id it returns NULL when the sender has posted something newer (that message's own 30s wait will send) or the recipient has read since, which is how a burst becomes one email. Records p_sender_via on the sender as email_mode."
+      },
+      {
+        "name": "rpc_consume_chat_access_token",
+        "kind": "rpc",
+        "args": "p_token_hash, p_purpose=thread_access",
+        "touches": "chat_access_tokens, users",
+        "called_from": "auth.js",
+        "defined_in": "202608130001_chat_email_notifications.sql",
+        "description": "Redeems an email link token under FOR UPDATE; returns {userId, threadId} or NULL."
+      },
+      {
+        "name": "rpc_log_chat_moderation_event",
+        "kind": "rpc",
+        "args": "p_user_id, p_action, p_reasons text[], p_body, p_thread_id, p_message_id, p_listing_id",
+        "touches": "chat_moderation_events",
+        "called_from": "lib/chat/sendGuards.js",
+        "defined_in": "202610030005_chat_moderation_log.sql",
+        "description": "Records a blocked or flagged send; neither participant can see it."
+      },
+      {
+        "name": "fn_chat_reserve_attachment_uploads",
+        "kind": "helper",
+        "args": "p_user_id, p_thread_id, p_file_count",
+        "touches": "chat_attachment_presigns",
+        "called_from": "app/api/chat/threads/[threadId]/attachments/presign/route.js",
+        "defined_in": "202610070003_chat_review_fixes.sql",
+        "description": "Check-and-record presign quota in one transaction (40 files per user per hour)."
+      },
+      {
+        "name": "rpc_pms_ingest_listing",
+        "kind": "rpc",
+        "args": "p_user_id, p_connection_id, p_listing_data, ..., p_source=pms",
+        "touches": "listings (+ rpc_create_listing)",
+        "called_from": "lib/pms/ingest.js",
+        "defined_in": "20260721090000_create_pms_tables.sql",
+        "description": "Creates a listing from PMS data and stamps pms_connection_id + verification in one transaction."
+      },
+      {
+        "name": "rpc_pms_apply",
+        "kind": "rpc",
+        "args": "p_user_id, p_listing_id, p_listing_updates, p_unit_updates, p_lease_updates, p_owner_id",
+        "touches": "listings, listing_units, unit_leases",
+        "called_from": "app/api/landlord/pms/confirm/route.js",
+        "defined_in": "202609020003_retire_listing_unit_available.sql",
+        "description": "Applies a PMS snapshot (availability, rent) to the owner's offerings only; relist restores exactly the lease_ids it withdrew."
+      },
+      {
+        "name": "rpc_pms_mark_verified",
+        "kind": "rpc",
+        "args": "p_user_id, p_listing_id, p_source",
+        "touches": "listings",
+        "called_from": "app/api/landlord/pms/confirm/route.js",
+        "defined_in": "20260721090000_create_pms_tables.sql",
+        "description": "Stamps last_verified_at/_source (e.g. pms:buildium)."
+      },
+      {
+        "name": "fn_get_listing_aggregates",
+        "kind": "rpc",
+        "args": "p_listing_ids uuid[]",
+        "touches": "listing_reviews, listing_metrics_daily, user_listing_interactions, metric_types, interaction_types",
+        "called_from": "lib/leaseCheck/propertyContext.js",
+        "defined_in": "202604200001_fix_aggregate_interaction_and_metric_names.sql",
+        "description": "avg_rating, review_count, favorite_count, contacted_count, view_count per listing."
+      },
+      {
+        "name": "increment_listing_metric",
+        "kind": "rpc",
+        "args": "p_listing_id, p_metric_name",
+        "touches": "listing_metrics_daily, metric_types",
+        "called_from": "app/api/favorites/route.js, app/api/listing/[listingId]/route.js (view), lib/contactTracking.js (contact)",
+        "defined_in": "202604170023_create_aggregate_functions.sql",
+        "description": "Upserts today's counter. An older overload (p_landlord_id, p_metric_type, p_date) still exists in the DB and is unused."
+      },
+      {
+        "name": "normalize_property_key",
+        "kind": "helper",
+        "args": "p_address",
+        "touches": "-",
+        "called_from": "app/api/addListing/route.js (duplicate check) and trigger trg_listings_set_property_key",
+        "defined_in": "202608120001_property_identity.sql",
+        "description": "street line | zip, suffixes expanded; the duplicate-property key."
+      },
+      {
+        "name": "normalize_property_name",
+        "kind": "helper",
+        "args": "p_title",
+        "touches": "-",
+        "called_from": "unique index on listings",
+        "defined_in": "202608310001_unique_property_name.sql",
+        "description": "lower, collapse whitespace, trim; blank -> NULL."
+      },
+      {
+        "name": "extract_unit_from_address",
+        "kind": "helper",
+        "args": "p_address",
+        "touches": "-",
+        "called_from": "migration backfill only",
+        "defined_in": "202608120002_unit_identity.sql",
+        "description": "Pulls {designator, number} out of a free-text address."
+      },
+      {
+        "name": "fn_chat_resolve_landlord",
+        "kind": "helper",
+        "args": "p_listing_id, p_lease_id",
+        "touches": "unit_leases, listing_units, listings, users",
+        "called_from": "rpc_start_or_get_listing_chat",
+        "defined_in": "202610030006_chat_lease_aware_routing.sql",
+        "description": "Lease owner, else primary landlord, else earliest landlord; never the info@ house account."
+      },
+      {
+        "name": "fn_chat_find_or_create_contact_user",
+        "kind": "helper",
+        "args": "p_email, p_name",
+        "touches": "users, roles",
+        "called_from": "chat RPCs",
+        "defined_in": "202610030006_chat_lease_aware_routing.sql",
+        "description": "Shell landlord account for a contact address with no user row; a magic link later proves control."
+      },
+      {
+        "name": "fn_chat_primary_landlord_id",
+        "kind": "helper",
+        "args": "p_listing_id",
+        "touches": "listing_landlords, listings",
+        "called_from": "chat RPCs",
+        "defined_in": "202607300002_chat_write_rpcs.sql",
+        "description": "Primary landlord, else earliest, else listings.primary_landlord_id."
+      },
+      {
+        "name": "fn_chat_current_listing_id",
+        "kind": "helper",
+        "args": "p_thread_id",
+        "touches": "chat_messages, chat_threads",
+        "called_from": "chat RPCs",
+        "defined_in": "202610030003_chat_pair_rpcs.sql",
+        "description": "The listing the thread is currently about."
+      },
+      {
+        "name": "fn_chat_assert_participant / fn_is_chat_participant",
+        "kind": "helper",
+        "args": "user, thread",
+        "touches": "chat_participants",
+        "called_from": "chat RPCs and RLS policies",
+        "defined_in": "202607300002 / 202608030002",
+        "description": "Membership checks (the latter is SECURITY DEFINER so RLS can call it)."
+      },
+      {
+        "name": "fn_chat_assert_send_rate",
+        "kind": "helper",
+        "args": "p_user_id, p_kind",
+        "touches": "chat_messages, chat_threads",
+        "called_from": "send RPCs",
+        "defined_in": "202610030002_chat_rate_limits.sql",
+        "description": "Abuse ceiling on sends and new threads per user per hour."
+      },
+      {
+        "name": "fn_chat_direct_type_id",
+        "kind": "helper",
+        "args": "-",
+        "touches": "thread_types",
+        "called_from": "chat RPCs",
+        "defined_in": "202607300002_chat_write_rpcs.sql",
+        "description": "Id of the direct thread type."
+      },
+      {
+        "name": "fn_chat_attachment_preview_body",
+        "kind": "helper",
+        "args": "p_caption, p_attachments",
+        "touches": "-",
+        "called_from": "chat RPCs",
+        "defined_in": "202608150006_chat_attachments.sql",
+        "description": "Inbox and email preview text for an attachment message."
+      },
+      {
+        "name": "fn_current_user_id / fn_current_user_role",
+        "kind": "helper",
+        "args": "-",
+        "touches": "users, roles",
+        "called_from": "RLS policies",
+        "defined_in": "202608030002 / 202604170027",
+        "description": "auth.uid() fallbacks used by the RLS policies."
+      },
+      {
+        "name": "sync_listing_aggregates",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "listings, listing_units, unit_leases",
+        "called_from": "triggers on listing_units and unit_leases",
+        "defined_in": "202604220003_fix_sync_listing_aggregates_rent.sql",
+        "description": "Recomputes listings.min/max rent, bedrooms, bathrooms, area from units and ACTIVE offerings."
+      },
+      {
+        "name": "fn_action_log",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "action_log",
+        "called_from": "trg_action_log_* on 43 tables",
+        "defined_in": "202604220004_action_log_use_real_pk.sql",
+        "description": "Row-level audit with real PK, before/after jsonb and changed_fields."
+      },
+      {
+        "name": "fn_set_updated_at / set_updated_at",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "-",
+        "called_from": "updated_at triggers",
+        "defined_in": "202604170024 / outside repo (set_updated_at)",
+        "description": "Stamp updated_at = now(). Two copies exist; new tables should use fn_set_updated_at."
+      },
+      {
+        "name": "fn_handle_user_soft_delete",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "listings, listing_landlords",
+        "called_from": "trg_user_soft_delete on users",
+        "defined_in": "202604170024_create_trigger_functions.sql",
+        "description": "Setting users.deleted_at soft-deletes the listings that user owns."
+      },
+      {
+        "name": "fn_queue_listing_notification_events",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "listing_notification_events",
+        "called_from": "trg_queue_listing_notification_events on listings",
+        "defined_in": "20260822090001_create_listing_notification_events.sql",
+        "description": "Queues price_drop / unavailable / deleted events."
+      },
+      {
+        "name": "fn_bump_chat_thread_on_message",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "chat_threads",
+        "called_from": "trg_bump_chat_thread_on_message on chat_messages",
+        "defined_in": "202607300001_chat_listing_schema.sql",
+        "description": "Bumps chat_threads.updated_at."
+      },
+      {
+        "name": "trg_listings_set_property_key",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "-",
+        "called_from": "listings_set_property_key on listings",
+        "defined_in": "202608120001_property_identity.sql",
+        "description": "Keeps listings.property_key in step with address."
+      },
+      {
+        "name": "trg_listing_images_unit_matches_listing / trg_listing_image_units_same_listing",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "listing_units, listing_images",
+        "called_from": "listing_images, listing_image_units",
+        "defined_in": "202608240001 / 202609250001",
+        "description": "A photo or tag may only point at a unit of its own property."
+      },
+      {
+        "name": "create_verified_residencies_from_executed_lease",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "executed_lease_tenants, verified_residencies",
+        "called_from": "trg_create_verified_residencies on executed_leases",
+        "defined_in": "NOT in the repo",
+        "description": "Unused lease-pipeline trigger. Drop with the suite."
+      },
+      {
+        "name": "upsert_field_state",
+        "kind": "rpc",
+        "args": "p_listing_id, p_table_name, p_record_id, p_field_name, p_state, ...",
+        "touches": "listing_field_states",
+        "called_from": "not called",
+        "defined_in": "NOT in the repo",
+        "description": "Unused lease-pipeline helper. Drop with the suite."
+      }
+    ],
+    "triggers": {
+      "audit (fn_action_log, AFTER INSERT/UPDATE/DELETE -> action_log)": [
+        "chat_messages",
+        "chat_participants",
+        "chat_threads",
+        "dorm_review_tags",
+        "dorm_reviews",
+        "dorm_room_types",
+        "dorms",
+        "home_types",
+        "interaction_types",
+        "lease_structures",
+        "listing_amenities",
+        "listing_drive_times",
+        "listing_image_units",
+        "listing_images",
+        "listing_landlords",
+        "listing_metrics_daily",
+        "listing_reviews",
+        "listing_source_events",
+        "listing_source_monitors",
+        "listing_units",
+        "listing_utilities",
+        "listing_walk_times",
+        "listings",
+        "location_types",
+        "locations",
+        "matchmaking_preferences",
+        "matchmaking_priority_mappings",
+        "metric_types",
+        "pms_connections",
+        "pms_links",
+        "pms_review_queue",
+        "priority_types",
+        "review_votes",
+        "roles",
+        "schools",
+        "tags",
+        "thread_types",
+        "unit_leases",
+        "user_listing_interactions",
+        "users"
+      ],
+      "updated_at stamps (fn_set_updated_at or set_updated_at)": [
+        "chat_threads",
+        "dorm_reviews",
+        "dorms",
+        "executed_lease_tenants",
+        "executed_leases",
+        "lease_redlines",
+        "lease_templates",
+        "listing_active_conversations",
+        "listing_amenities",
+        "listing_concessions",
+        "listing_faqs",
+        "listing_fees",
+        "listing_furnishing",
+        "listing_images",
+        "listing_leases",
+        "listing_pet_policies",
+        "listing_review_replies",
+        "listing_reviews",
+        "listing_screening_criteria",
+        "listing_source_events",
+        "listing_source_monitors",
+        "listing_units",
+        "listing_utilities",
+        "listings",
+        "matchmaking_chat_sessions",
+        "matchmaking_preferences",
+        "pms_connections",
+        "pms_links",
+        "pms_review_queue",
+        "review_incentive_partners",
+        "testimonials",
+        "unit_leases",
+        "users",
+        "verified_residencies"
+      ],
+      "aggregates (sync_listing_aggregates -> listings.min/max columns)": [
+        "listing_units",
+        "unit_leases"
+      ],
+      "other": {
+        "listings": [
+          "listings_set_property_key (property_key)",
+          "trg_queue_listing_notification_events (listing_notification_events)",
+          "listing_hook (webhook, see webhooks)"
+        ],
+        "users": [
+          "trg_user_soft_delete (cascade soft delete to listings)",
+          "user_hook (webhook, see webhooks)"
+        ],
+        "chat_messages": [
+          "trg_bump_chat_thread_on_message"
+        ],
+        "listing_images": [
+          "listing_images_unit_matches_listing"
+        ],
+        "listing_image_units": [
+          "listing_image_units_same_listing"
+        ],
+        "executed_leases": [
+          "trg_create_verified_residencies (unused suite)"
+        ],
+        "unit_leases (dev only)": [
+          "trg_keep_published"
+        ]
+      },
+      "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."
+    },
+    "webhooks": [
+      {
+        "trigger": "user_hook AFTER INSERT ON users",
+        "target": "https://proximity-livid.vercel.app/api/webhooks/new-user",
+        "handler": "apps/web/src/app/api/webhooks/new-user/route.js (Airtable CRM sync of new students and landlords)",
+        "auth": "x-webhook-secret header must equal WEBHOOK_SECRET on the receiving deployment",
+        "warning": "Defined on the PROD database but points at the STAGING deployment (proximity-livid.vercel.app), where outreachEnabled() is false. The secret is hardcoded in the trigger definition (supabase_functions.http_request); rotate it there and in Vercel together. Verify the intended target before relying on the Airtable sync."
+      },
+      {
+        "trigger": "listing_hook AFTER INSERT ON listings",
+        "target": "https://proximity-livid.vercel.app/api/webhooks/new-listing",
+        "handler": "apps/web/src/app/api/webhooks/new-listing/route.js",
+        "auth": "same header",
+        "warning": "same as user_hook"
+      }
+    ],
+    "edge_functions": [
+      {
+        "name": "property-status-respond",
+        "env": "prod only (dev has no edge functions)",
+        "source": "NOT in this repo. Deployed from a separate checkout (its header references /tmp/proximity-checkin-site for the static check-in pages on Vercel and tools/checkin_link_signer.py, tools/notify_pending_checkin_responses.py, tools/listing_display.py run from GitHub Actions). Pull the current source with the Supabase MCP get_edge_function or the Supabase CLI before changing it.",
+        "what": "JSON API behind the landlord check-in emails. Verifies HMAC-signed links (LINK_SIGNING_SECRET), reads listings, and writes listings.checkin_response_choice / leased_elsewhere_detail / unit_type_status / multi_unit_override / checkin_count / pending_owner_review / last_verified_at / last_verified_source plus one checkin_response_events row per submission. REPORT-ONLY since 2026-07-10: it never sets listings.unavailable; hiding is a manual decision (or the paused auto-unavailable cron).",
+        "secrets": "LINK_SIGNING_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY",
+        "verify_jwt": false
+      }
+    ],
+    "rls": {
+      "summary": "Every public table has RLS enabled on both DBs except app_metadata (dev only) and the student_roster_invite_status view (security_invoker). The Next.js app talks to Postgres with the SERVICE ROLE key (lib/supabase.js), so RLS policies never apply to app traffic; authorization is enforced in route code and inside SECURITY DEFINER RPCs. Policies matter only for the anon key (Supabase Realtime on chat_messages/chat_threads/chat_participants) and for any future direct client access.",
+      "service_role_only_tables (RLS on, no policies)": [
+        "action_log",
+        "auto_unavailable_actions",
+        "chat_access_tokens",
+        "chat_attachment_presigns",
+        "chat_attachments",
+        "chat_email_log",
+        "chat_inbound_emails",
+        "chat_moderation_events",
+        "chat_reports",
+        "checkin_response_events",
+        "contact_email_verifications",
+        "email_suppressions",
+        "events",
+        "lead_calls",
+        "lead_companies",
+        "lead_observations",
+        "lead_properties",
+        "lead_runs",
+        "lease_checks",
+        "listing_metrics_daily",
+        "listing_notification_events",
+        "listing_source_events",
+        "listing_source_monitors",
+        "listing_source_snapshots",
+        "pms_connections",
+        "pms_integration_requests",
+        "pms_links",
+        "pms_review_queue",
+        "pms_sync_events",
+        "product_lessons",
+        "rent_history",
+        "review_invites",
+        "review_reports",
+        "seo_query_metrics",
+        "student_roster",
+        "user_blocks",
+        "waitlist_clicks"
+      ],
+      "realtime": "chat_messages, chat_threads, chat_participants have select (and insert) policies based on fn_is_chat_participant so the browser Realtime subscription in lib/chat/realtime.js can receive INSERTs. Re-apply 202608030002 after a prod to dev snapshot if Realtime stops delivering.",
+      "reference_tables": "roles, schools, tags, home_types, interaction_types, lease_structures, location_types, metric_types, priority_types, thread_types: public select, write limited to super."
+    },
+    "migrations": {
+      "location": "supabase/migrations/*.sql (118 files). Two naming styles coexist: 2026MMDDNNNN_name.sql and 2026MMDDHHMMSS_name.sql. Supabase records them by version+name, so prod history names do not always match the file names.",
+      "applied_to_prod_with_no_file_in_repo": [
+        "add_auth_columns_and_google_account",
+        "add_move_out_date_and_open_to_roommates",
+        "add_review_aggregates",
+        "remove_stored_review_aggregates",
+        "add_source_of_truth_columns",
+        "chat_sessions_swiping_status",
+        "drop_dev_stub_tables",
+        "drop_old_rpc_edit_listing_overload",
+        "enable_rls_on_new_tables",
+        "enable_rls_remaining_tables",
+        "pms_onboarding_ledger",
+        "product_lessons",
+        "rpc_write_listing_leases",
+        "the May 2026 lease pipeline: create_listing_leases, create_listing_pet_policies, create_fee_types_and_listing_fees, seed_fee_types, create_listing_concessions, create_listing_field_states, create_listing_active_conversations, create_lease_templates, create_executed_leases, create_executed_lease_tenants, create_lease_redlines, create_lease_extraction_runs, create_listing_faqs, furnishing_partners, listing_screening_criteria, verified_residencies, review_incentive_partners, listing_leases_total_beds_baths"
+      ],
+      "tables_with_no_migration_record_anywhere": [
+        "checkin_response_events",
+        "chat_reports",
+        "lead_calls",
+        "lead_companies",
+        "lead_observations",
+        "lead_properties",
+        "lead_runs",
+        "listing_source_events",
+        "listing_source_monitors",
+        "listing_source_snapshots"
+      ],
+      "in_repo_but_never_recorded_on_prod": [
+        "202605230001_add_unit_available (column since retired)",
+        "202605230002_update_listing_rpcs_available",
+        "202605230003_fix_rpc_edit_listing_available",
+        "202607090002_patch_costco_olivette",
+        "202607300004_drop_overloaded_rpc_create_listing",
+        "202609080001_review_invites_sent_via (column IS present on prod, applied by hand)"
+      ],
+      "how_to_apply": "Use the Supabase MCP apply_migration (dev then prod) or the Supabase SQL editor; commit the .sql file in the same PR. See memory: a migration committed to the repo is not applied until someone runs it on both DBs."
+    }
   }
 }
