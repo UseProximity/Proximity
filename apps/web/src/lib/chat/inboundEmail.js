@@ -225,9 +225,46 @@ async function maybeSendNotice({ logId, fromEmail, threadId, reason }) {
   }
 }
 
+/** A claim this old that never finished belongs to a run that died (timeout, cold kill). */
+const STALE_CLAIM_MS = 5 * 60_000;
+
 /**
- * Process one stored message. Safe to call twice for the same key: the second
- * call returns { status: "duplicate" } without doing anything.
+ * Take over an existing row for this key, if its run failed before posting
+ * anything. An "error" row, or a "processing" row older than STALE_CLAIM_MS,
+ * is reclaimed so an SNS retry or a manual re-run actually reprocesses it; any
+ * other outcome is final. The update is conditional on the row still being in
+ * the state we read, so two retries racing for the same row cannot both win.
+ * created_at doubles as the claim time and is reset on reclaim.
+ *
+ * @returns {Promise<string|null>} the row id when reclaimed, otherwise null
+ */
+async function reclaim(key) {
+  const { data: row, error } = await supabase
+    .from("chat_inbound_emails")
+    .select("id, status, created_at, chat_message_id")
+    .eq("s3_key", key)
+    .maybeSingle();
+  if (error || !row || row.chat_message_id) return null;
+  const stale = row.status === "processing" && Date.now() - Date.parse(row.created_at) > STALE_CLAIM_MS;
+  if (row.status !== "error" && !stale) return null;
+
+  const { data: taken } = await supabase
+    .from("chat_inbound_emails")
+    .update({ status: "processing", reason: null, created_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .eq("status", row.status)
+    .eq("created_at", row.created_at)
+    .is("chat_message_id", null)
+    .select("id")
+    .maybeSingle();
+  return taken?.id ?? null;
+}
+
+/**
+ * Process one stored message. Safe to call twice for the same key: once a
+ * message has an outcome, the second call returns { status: "duplicate" }
+ * without doing anything. A run that failed before posting is retried instead
+ * (see reclaim), so the route's 500 really does lead to a second attempt.
  *
  * @param {{ bucket: string, key: string, recipients?: string[] }} input
  */
@@ -237,12 +274,15 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
     .insert({ s3_key: key, status: "processing" })
     .select("id")
     .single();
+  let logId = claimed?.id;
   if (claimError) {
-    if (claimError.code === "23505") return { status: "duplicate" };
-    console.error("inbound email: claim failed:", claimError);
-    return { status: "error" };
+    if (claimError.code !== "23505") {
+      console.error("inbound email: claim failed:", claimError);
+      return { status: "error" };
+    }
+    logId = await reclaim(key);
+    if (!logId) return { status: "duplicate" };
   }
-  const logId = claimed.id;
 
   try {
     const object = await mailBucketClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -379,6 +419,9 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
       console.error("inbound email: send rpc refused:", sendError);
       return notice("rejected", sendError?.message?.slice(0, 200) ?? "send failed", threadId);
     }
+    // Pin the message to the claim at once, so a failure from here on is never
+    // reclaimed and posted a second time.
+    await finish(logId, { chat_message_id: sent.messageId });
 
     // Attachment messages already carry metadata (caption, file list); add to it.
     const { data: existing } = await supabase
@@ -391,16 +434,21 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
       .update({ metadata: { ...(existing?.metadata ?? {}), via: "email" } })
       .eq("id", sent.messageId);
 
-    if (reasons.length > 0) {
+    // Flag-tier signals (a scam narrative, an SSN request) are recorded as they
+    // are in the app, whether or not something was also removed.
+    const flagReasons = verdict.action === "block" ? verdict.flags ?? [] : verdict.action === "flag" ? verdict.reasons : [];
+    if (reasons.length > 0 || flagReasons.length > 0) {
       await supabase.rpc("rpc_log_chat_moderation_event", {
         p_user_id: userId,
         p_action: "flag",
-        p_reasons: [...reasons, removed ? "redacted_from_email" : "delivered_from_email"],
+        p_reasons: [...reasons, ...flagReasons, removed ? "redacted_from_email" : "delivered_from_email"],
         p_body: extracted,
         p_thread_id: threadId,
         p_message_id: sent.messageId,
         p_listing_id: sent.listingId ?? null,
       });
+    }
+    if (reasons.length > 0) {
       // Straight away, every time. The sender is authenticated by this point.
       try {
         const t = participant.chat_threads ?? {};
