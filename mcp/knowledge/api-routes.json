@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-12T23:38:43.759Z",
-  "count": 110,
+  "_generated": "2026-10-13T01:56:29.797Z",
+  "count": 112,
   "routes": [
     {
       "path": "/api/account",
@@ -60,6 +60,43 @@
         "users"
       ],
       "file": "src/app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/chat/threads",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [
+        "chat_threads",
+        "users",
+        "listings",
+        "chat_messages",
+        "chat_moderation_events"
+      ],
+      "file": "src/app/api/admin/chat/threads/route.js"
+    },
+    {
+      "path": "/api/admin/chat/threads/[threadId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [
+        "chat_threads",
+        "chat_participants",
+        "chat_messages",
+        "chat_attachments",
+        "chat_moderation_events",
+        "users"
+      ],
+      "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
     },
     {
       "path": "/api/admin/db-env",

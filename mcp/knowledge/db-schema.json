@@ -83,7 +83,10 @@
           "sender_id:uuid",
           "body:text",
           "created_at:timestamptz",
-          "deleted_at:timestamptz"
+          "deleted_at:timestamptz",
+          "message_type:text",
+          "metadata:jsonb",
+          "listing_id:uuid"
         ]
       },
       {
@@ -1246,6 +1249,37 @@
           "referrer:text",
           "nudge_sent_at:timestamptz",
           "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "chat_attachments",
+        "description": "Files attached to a chat message, stored in R2 under r2_key. Read by the admin Conversations view by file name only.",
+        "columns": [
+          "id:uuid",
+          "message_id:uuid",
+          "thread_id:uuid",
+          "uploader_id:uuid",
+          "r2_key:text",
+          "file_name:text",
+          "content_type:text",
+          "size_bytes:bigint",
+          "created_at:timestamptz"
+        ]
+      },
+      {
+        "table": "chat_moderation_events",
+        "description": "One row per moderation decision on chat text or attachments (lib/chat/moderation.js, inboundEmail.js, scanAttachment.js). action is block or flag; reasons holds keys like contact_phone, slur, delivered_from_email. message_id is set when the message was posted (a flag) and null when it was blocked before posting, with body_excerpt keeping what was attempted. reviewed_at is reserved for admin review. Shown per message in the admin Conversations view (/dashboard/admin).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "listing_id:uuid",
+          "action:text",
+          "reasons:text[]",
+          "body_excerpt:text",
+          "created_at:timestamptz",
+          "reviewed_at:timestamptz"
         ]
       }
     ]
