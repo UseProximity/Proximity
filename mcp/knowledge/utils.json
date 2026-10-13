@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-12T23:38:43.779Z",
-  "count": 119,
+  "_generated": "2026-10-13T22:11:06.163Z",
+  "count": 121,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -94,6 +94,14 @@
     {
       "file": "src/lib/chat/attachments.js",
       "description": "Shared allowlist / limits for chat attachments (presign API + client)."
+    },
+    {
+      "file": "src/lib/chat/checkin.js",
+      "description": "Internal chat check-in (Wyatt, 2026-10-13)."
+    },
+    {
+      "file": "src/lib/chat/checkinReport.js",
+      "description": "Weekly chat check-in report (Wyatt, 2026-10-13)."
     },
     {
       "file": "src/lib/chat/contactVerification.js",
