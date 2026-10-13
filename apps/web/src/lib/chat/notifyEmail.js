@@ -5,12 +5,20 @@
  * returns as soon as the message is stored. The recipient lookup and the send happen
  * afterwards and never slow down or fail the send.
  *
+ * One email per burst (Wyatt, 2026-10-12): each message waits ALERT_QUIET_MS for follow-ups
+ * before asking for an alert, and passes its own id. The database then declines if the sender
+ * has posted something newer (that message's own wait will send, covering the whole run) or
+ * if the recipient has read the thread in the meantime. Three quick messages start three
+ * waits and produce one email listing all three. Email replies pass quietMs 0: a reply is a
+ * complete thought and should relay at once. Vercel keeps the function alive for after()
+ * well past 30 seconds, so the wait costs idle time only.
+ *
  * Whether an email is warranted at all is decided in the database by
  * rpc_chat_notification_recipient: every new message is emailed unless the recipient has
- * message emails turned off or their address is suppressed (Wyatt, 2026-10-12). Every alert carries
- * everything the recipient has not read yet (sending counts as reading, so this is the run
- * of messages they have not answered), and stamps last_notified_at for the record. A null
- * return means "no email".
+ * message emails turned off or their address is suppressed. Every alert carries everything
+ * the recipient has not read yet (sending counts as reading, so this is the run of messages
+ * they have not answered), and stamps last_notified_at for the record. A null return means
+ * "no email".
  *
  * `via` is how the sender wrote: "app" (the default) or "email". It is recorded on the
  * sender's participant row as email_mode.
@@ -55,12 +63,28 @@ async function earlierAlertIds({ threadId, recipientId }) {
     .reverse();
 }
 
-export async function notifyNewChatMessage({ threadId, senderId, baseUrl, via = "app" }) {
+/** How long a message waits for follow-ups before its alert goes out. */
+export const ALERT_QUIET_MS = 30_000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function notifyNewChatMessage({
+  threadId,
+  senderId,
+  messageId = null,
+  baseUrl,
+  via = "app",
+  quietMs = ALERT_QUIET_MS,
+}) {
   try {
+    // Without a message id there is nothing to dedupe against, so no wait.
+    if (messageId && quietMs > 0) await sleep(quietMs);
+
     const { data, error } = await supabase.rpc("rpc_chat_notification_recipient", {
       p_thread_id: threadId,
       p_sender_id: senderId,
       p_sender_via: via,
+      p_message_id: messageId,
     });
 
     if (error) {

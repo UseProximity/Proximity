@@ -422,7 +422,15 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
 
     await finish(logId, { ...base, status: "posted", thread_id: threadId, chat_message_id: sent.messageId });
 
-    await notifyNewChatMessage({ threadId, senderId: userId, baseUrl: getBaseUrl(), via: "email" });
+    // A reply is a complete thought: relay it at once, no quiet window.
+    await notifyNewChatMessage({
+      threadId,
+      senderId: userId,
+      messageId: sent.messageId ?? null,
+      baseUrl: getBaseUrl(),
+      via: "email",
+      quietMs: 0,
+    });
     return { status: "posted", threadId, messageId: sent.messageId };
   } catch (err) {
     console.error("inbound email: processing failed:", err);

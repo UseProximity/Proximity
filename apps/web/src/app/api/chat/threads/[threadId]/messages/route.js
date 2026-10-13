@@ -232,6 +232,7 @@ export async function POST(req, { params }) {
         notifyNewChatMessage({
           threadId,
           senderId: session.user.id,
+          messageId: data?.messageId ?? null,
           baseUrl,
         })
       );
@@ -294,6 +295,7 @@ export async function POST(req, { params }) {
       notifyNewChatMessage({
         threadId,
         senderId: session.user.id,
+        messageId: data?.messageId ?? null,
         baseUrl,
       })
     );

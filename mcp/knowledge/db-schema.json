@@ -88,7 +88,7 @@
       },
       {
         "table": "chat_participants",
-        "description": "Users in a chat thread, with read and alert state. reply_token_hash is the SHA-256 of this person's reply+token address for the thread (lib/chat/replyAddress.js). email_mode is on while they answer by email (recorded only: since 202610120002 every message is emailed unless users.email_notifications is off, with no actively-reading or 24h hold). Each alert repeats every message the recipient has not read since last_read_at (202610120003), so a run of messages arrives as one growing email thread.",
+        "description": "Users in a chat thread, with read and alert state. reply_token_hash is the SHA-256 of this person's reply+token address for the thread (lib/chat/replyAddress.js). email_mode is on while they answer by email (recorded only: since 202610120002 every message is emailed unless users.email_notifications is off, with no actively-reading or 24h hold). Each alert repeats every message the recipient has not read since last_read_at (202610120003), so a run of messages arrives as one email. Since 202610120004 the app waits a 30s quiet window per message (lib/chat/notifyEmail.js ALERT_QUIET_MS) and the RPC takes p_message_id, declining when the sender has posted something newer or the recipient has read since, so a burst produces one email listing every message with a time label.",
         "columns": [
           "thread_id:uuid",
           "user_id:uuid",

@@ -221,6 +221,25 @@ function chatMessageHtml(m) {
   return escapeHtml(chatMessageText(m)).replace(/\r\n|\r|\n/g, "<br>");
 }
 
+// A small time above each message, only when the email carries more than one,
+// so a burst reads as separate messages rather than one long one: "8:21 PM",
+// or "Oct 12, 8:21 PM" when the batch spans more than a day. Empty strings
+// when there is nothing to label.
+function chatTimeLabels(list) {
+  if (list.length < 2) return list.map(() => "");
+  const dates = list.map((m) => new Date(m?.createdAt ?? NaN));
+  if (dates.some((d) => Number.isNaN(d.getTime()))) return list.map(() => "");
+  const dayOf = new Intl.DateTimeFormat("en-US", { timeZone: CHAT_TIME_ZONE, dateStyle: "medium" });
+  const sameDay = new Set(dates.map((d) => dayOf.format(d))).size === 1;
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: CHAT_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+  });
+  return dates.map((d) => fmt.format(d));
+}
+
 /*
  * Alert for new chat messages, one email per batch of unread messages.
  *
@@ -261,6 +280,7 @@ export function buildChatMessageEmail({
   const subject = ["Proximity Inquiry", listingLabel, named].filter(Boolean).join(" · ");
   const fromName = named ? `${otherFirst} via Proximity` : "Proximity";
   const list = Array.isArray(messages) && messages.length > 0 ? messages : [];
+  const labels = chatTimeLabels(list);
   const street = String(listingAddress ?? "").split(",")[0].trim();
   const about = street && street !== listingLabel ? `${listingLabel}, ${street}` : listingLabel;
 
@@ -278,7 +298,13 @@ export function buildChatMessageEmail({
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
       ${canReply ? `<p style="color:#c4c8cf;font-size:11px;margin:0 0 20px">Reply above this line to message ${escapeHtml(other)}.</p>` : ""}
-      ${list.map((m) => `<p style="margin:0 0 14px">${chatMessageHtml(m)}</p>`).join("")}
+      ${list
+        .map((m, i) =>
+          labels[i]
+            ? `<p style="margin:0 0 2px;color:#9ca3af;font-size:12px">${escapeHtml(labels[i])}</p><p style="margin:0 0 18px">${chatMessageHtml(m)}</p>`
+            : `<p style="margin:0 0 14px">${chatMessageHtml(m)}</p>`
+        )
+        .join("")}
       <p style="margin:24px 0 0;color:#6b7280;font-size:14px;line-height:1.5">
         <span style="color:#111827;font-weight:600">${escapeHtml(other)}</span>${company ? `<br>${escapeHtml(company)}` : ""}<br>
         About <a href="${threadUrl}" style="color:#6b7280">${escapeHtml(about)}</a>
@@ -294,7 +320,7 @@ export function buildChatMessageEmail({
 
   const text = [
     canReply ? `Reply above this line to message ${other}.\n` : null,
-    ...list.map((m) => `${chatMessageText(m)}\n`),
+    ...list.map((m, i) => `${labels[i] ? `${labels[i]}\n` : ""}${chatMessageText(m)}\n`),
     other,
     company || null,
     `About ${about}`,
