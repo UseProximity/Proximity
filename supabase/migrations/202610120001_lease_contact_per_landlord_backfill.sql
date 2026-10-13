@@ -16,7 +16,7 @@
 -- Unclaimed leases (owner_id NULL, imported) are untouched: they have no
 -- landlord to be consistent with and are reached only through these columns.
 --
--- Applied: dev 2026-10-12, prod (pending PR approval).
+-- Applied: dev 2026-10-12 (8 rows), prod 2026-10-12 (10 rows).
 
 with mine as (
   select l.id, l.owner_id, u.listing_id,
