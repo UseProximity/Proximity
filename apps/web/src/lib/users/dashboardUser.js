@@ -163,6 +163,9 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
             description: lease.description ?? "",
             mine: !!currentUserId && lease.owner_id === currentUserId,
+            // An imported offering with no account behind it. Its contact can be
+            // fixed by the property's owner (api/leases/[leaseId]/contact).
+            ownerless: !lease.owner_id,
             landlordName: lease.contact_name ?? l.contact_name ?? null,
           }))
           .sort((a, b) => {

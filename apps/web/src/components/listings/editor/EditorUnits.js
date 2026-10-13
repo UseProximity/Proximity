@@ -59,7 +59,51 @@ const leaseDraft = (lease) => ({
   description: lease.description ?? "",
 });
 
-function LeaseRow({ lease, listingId, onChanged }) {
+/*
+ * The contact on an imported offering nobody owns. The property's owner is the
+ * only one who can correct it, and only this: the rest of the offering stays
+ * read-only. Saved straight away, no confirmation email.
+ */
+function OwnerlessContact({ lease, onChanged }) {
+  const [email, setEmail] = useState(lease.contactEmail ?? "");
+  const [saving, setSaving] = useState(false);
+  const dirty = email.trim() !== (lease.contactEmail ?? "").trim();
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}/contact`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactEmail: email, contactName: lease.landlordName ?? null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't save that contact.");
+      toast.success("Contact updated.");
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
+      <input type="email" className={`min-w-0 flex-1 ${field}`} value={email}
+        onChange={(e) => setEmail(e.target.value)} />
+      {dirty && (
+        <button onClick={save} disabled={saving} type="button"
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+          {saving ? "Saving…" : "Save"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
   const [draft, setDraft] = useState(() => leaseDraft(lease));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -144,6 +188,7 @@ function LeaseRow({ lease, listingId, onChanged }) {
             Withdrawn
           </span>
         )}
+        {isPropertyOwner && lease.ownerless && <OwnerlessContact lease={lease} onChanged={onChanged} />}
       </li>
     );
   }
@@ -441,7 +486,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             </SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {otherLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
+                  isPropertyOwner={isPropertyOwner} onChanged={onChanged} />
               ))}
             </ul>
           </>
