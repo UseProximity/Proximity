@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** September 24, 2026
+**Last updated:** October 12, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -125,14 +125,27 @@ or Google.
   years afterwards, with the sender's name and email address on it.** Section 8 explains
   why.
 - **Messages we refuse to send, and ones we flag**: messages are checked before they are
-  delivered, to keep contact details and payment requests from moving a conversation off
-  the platform where we cannot help you (Section 1.4 of the Terms). When a message is
-  refused, or is delivered but flagged for review, we record **the first 500 characters
-  of what you typed**, which rule it matched, the time, and your account. For a refused
-  message that is the only copy we keep, because the message itself is never created.
-  Only Proximity staff can see these records, and we use them to find patterns of fraud
-  or abuse rather than to read ordinary conversations. They are kept for **two years**,
-  then deleted. A message that passes the check is not recorded here at all.
+  delivered, to protect you from fraud and abuse and to keep conversations on the platform
+  where we can help you (Terms §12). A message that threatens or abuses someone, asks for
+  login details, or asks for payment through a method we cannot protect (such as gift
+  cards, wire transfers, or cryptocurrency) is refused. A message that shares an email
+  address, phone number, outside link, or social handle, or asks to continue the
+  conversation elsewhere, is not refused: in the app we ask you to confirm before it is
+  sent, and it is then delivered and flagged for review. When a message is refused, or is
+  delivered but flagged, we record **the first 500 characters of what you typed**, which
+  rule it matched, the time, and your account. For a refused message that is the only copy
+  we keep, because the message itself is never created. Only Proximity staff can see these
+  records, and we use them to find patterns of fraud or abuse rather than to read ordinary
+  conversations. They are kept for **two years**, then deleted. A message that passes the
+  check is not recorded here at all.
+- **Replies by email**: when we email you a new message, you can answer by replying to that
+  email, and your reply is posted to the conversation. We remove quoted text and your
+  signature before posting it. A reply is checked like any other message: **sentences that
+  threaten or abuse someone, ask for login details, or ask for payment through a method we
+  cannot protect are removed and marked as removed**, and the rest of your reply is
+  delivered. Contact details in a reply are delivered as you wrote them. In either case the
+  reply is flagged, we record it as described above (including any part we removed), and
+  we email you a short note explaining why.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
   you are signed in, your name, email address, and role, so we can follow up. Submitting
   the form emails it straight to the Proximity team; the message is not stored in our
@@ -405,7 +418,8 @@ and only for the purposes we specify:
 | **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
 | **Airtable** | New account name, email address, account identifier, sign-up date, and role; new listing details | Internal customer-relationship system for onboarding and support |
-| **Google Workspace** | Recipient email addresses and message content | Sending transactional and inquiry email |
+| **Google Workspace** | Recipient email addresses and message content | Sending other transactional and inquiry email, and as a fallback for message alerts |
+| **Amazon Web Services** (Simple Email Service, S3, SNS) | Email addresses of the people we send message alerts and related notices to, and the full text of those alerts; the complete content of email replies sent to a Proximity reply address, including headers and attachments, which is stored for 30 days and then deleted; delivery, bounce, and complaint reports | Sending message alerts and verification emails, receiving replies by email, and handling bounces |
 | **Nango**, and the property-management system a landlord connects (Buildium, AppFolio, DoorLoop, Rentec Direct) | Landlord-authorized property and unit availability, rent, and lease-end dates. Nango holds the property-management credentials; we store only a reference to the connection, never the credential itself. We do not import tenant records. | Optional landlord listing sync |
 | **Firecrawl, Jina, Tavily** | Public web pages at landlord-supplied URLs | Pre-filling a listing draft from a property website |
 

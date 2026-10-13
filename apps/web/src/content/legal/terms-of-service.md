@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** September 24, 2026
+**Last updated:** October 12, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -284,7 +284,10 @@ both of you can come back to it. The other participant can always see what you s
 Proximity staff can read a conversation where they need to investigate a report of abuse or
 a dispute, or to confirm that a lease was signed. The rules in Section 12 apply to messages
 exactly as they apply to listings and reviews, and we may remove a message or withdraw
-access to messaging for a breach of them.
+access to messaging for a breach of them. Messages that threaten or abuse someone, ask for
+login details, or ask for payment through a method we cannot protect are refused. If a
+reply you send by email contains something we would refuse in the app, we remove the
+sentences concerned, mark them as removed, deliver the rest, and tell you by email.
 
 A message you have sent cannot be unsent. If you delete your account, we keep your
 conversations for three years afterwards, with your name and email address as the only
@@ -310,6 +313,10 @@ You agree not to:
 - work around rate limits, access controls, authentication, or any other technical measure,
   or access parts of the Services you are not authorized to reach;
 - use the Services to send spam or unsolicited commercial messages;
+- use Proximity messaging to move a conversation to another channel before you have agreed
+  terms, or share contact details, links, or social handles in messages for that purpose.
+  We may flag, remove, or stop delivering messages that do this, and may limit your access
+  to messaging if it continues;
 - harass, threaten, stalk, or endanger anyone;
 - upload malware, or interfere with or overload the Services; or
 - use the Services for anything unlawful, or to help anyone else do any of the above.
