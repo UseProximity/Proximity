@@ -121,7 +121,11 @@ or Google.
   it has been read. These messages are kept in our database so both of you can come back
   to the conversation. They are visible to the other participant, and to Proximity
   staff who need to investigate a report of abuse or a dispute, or to confirm that a lease
-  was signed. **If one of you deletes their account, we keep the conversation for three
+  was signed. We also email new messages to the other participant (Section 6.2). A
+  landlord may have chosen to receive these at a business address, such as a leasing
+  office, instead of their account email, so **anyone with access to that inbox can read
+  your messages**. Copies in email inboxes are outside our control and are not removed when
+  we erase a conversation. **If one of you deletes their account, we keep the conversation for three
   years afterwards, with the sender's name and email address on it.** Section 8 explains
   why.
 - **Messages we refuse to send, and ones we flag**: messages are checked before they are
@@ -403,6 +407,11 @@ control.
   address as the reply-to.
 - When you ask the matchmaking assistant to contact an owner for you, we email your
   **first name and email address** together with your inquiry.
+- When someone messages you on Proximity, or you message them, we email the new messages
+  **in full, with the sender's name** (and, for landlords, company name) to the other
+  person: to their account email or, for a landlord, to an alert address they have
+  confirmed for that listing or lease, such as a leasing office. Your own email address is
+  not shown: replies go through a private Proximity reply address.
 
 ### 6.3 With service providers
 
@@ -509,7 +518,9 @@ Thirty days after deletion, an automated job permanently erases your personal da
   within 30 days and we will do what we can, but we cannot promise recovery, and after 30
   days it is irreversible.
 - **Emails already sent cannot be recalled.** A message you sent to a landlord is already
-  in that landlord's inbox and is outside our control.
+  in that landlord's inbox and is outside our control. This includes the alert emails we
+  send for Proximity messages: the three-year erasure applies to our copy of a
+  conversation, not to alert emails already delivered to the other person's inbox.
 - **Messages and inquiry records are kept for three years, with your name and email
   address.** These are the parts of your account that deletion does not reach straight
   away. We keep them, with you named as the sender, as a record of your dealings with the

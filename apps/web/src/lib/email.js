@@ -595,7 +595,7 @@ export async function sendContactVerificationEmail({ to, landlordName, listingLa
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
         <h2 style="color:#111">Confirm this address for message alerts</h2>
         <p><strong>${landlord}</strong> wants students&#39; messages${listing ? ` about <strong>${listing}</strong>` : ""} sent to this address.</p>
-        <p>Once you confirm, each new message arrives here as an email. You can reply in the Proximity app or directly to the email. Either way, the conversation stays in ${landlord}&#39;s Proximity inbox.</p>
+        <p>Once you confirm, each new message arrives here as an email, with the full text of the message and the sender&#39;s name. Reply directly to the email and your reply is posted to the conversation in ${landlord}&#39;s Proximity account. Copies of these emails stay in this inbox, so anyone who can read it can read the messages.</p>
         <a href="${confirmUrl}"
            style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
           Confirm this address
