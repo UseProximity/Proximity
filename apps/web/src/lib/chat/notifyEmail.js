@@ -63,6 +63,17 @@ async function earlierAlertIds({ threadId, recipientId }) {
     .reverse();
 }
 
+/** Is this alert going to the recipient's own account email (not a routed contact)? */
+async function isAccountInbox(userId, email) {
+  const { data, error } = await supabase.from("users").select("email").eq("id", userId).maybeSingle();
+  if (error) {
+    console.error("notifyNewChatMessage: account email lookup failed:", error);
+    return false;
+  }
+  const norm = (v) => String(v ?? "").trim().toLowerCase();
+  return Boolean(data?.email) && norm(data.email) === norm(email);
+}
+
 /** How long a message waits for follow-ups before its alert goes out. */
 export const ALERT_QUIET_MS = 30_000;
 
@@ -95,10 +106,14 @@ export async function notifyNewChatMessage({
 
     // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
     // /messages deep link so the notification still arrives.
-    const rawToken = await mintChatAccessToken({
-      userId: data.recipientId,
-      threadId: data.threadId,
-    });
+    //
+    // Only the account's own inbox gets one. A magic link signs in as the account, so an
+    // alert routed to a lease or listing contact (a shared leasing office inbox, say) would
+    // hand everyone reading that inbox the landlord's whole account. Contact addresses are
+    // alert routes, never accounts: they get the login-gated link and can reply by email.
+    const rawToken = (await isAccountInbox(data.recipientId, data.recipientEmail))
+      ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
+      : null;
     const threadUrl = rawToken
       ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
       : `${baseUrl}/messages?thread=${data.threadId}`;
