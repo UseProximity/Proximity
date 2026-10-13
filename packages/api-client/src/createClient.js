@@ -102,21 +102,34 @@ class ApiClient {
     if (res.status === 401 && token) {
       const refreshToken = this.getRefreshToken();
       if (refreshToken) {
+        let accessToken;
         try {
-          const { accessToken } = await this.auth.refresh(refreshToken, { signal: fetchOptions.signal });
+          ({ accessToken } = await this.auth.refresh(refreshToken, { signal: fetchOptions.signal }));
+          // A success without a usable token (e.g. a proxy answering 200 with other
+          // JSON) says nothing about the credential: fail this request, keep the
+          // session and store nothing. No status, so it is not read as a 401 below.
+          if (typeof accessToken !== "string" || !accessToken) {
+            throw new Error("Refresh response did not include an access token");
+          }
           // The caller gave up (e.g. logout timed out): don't write a late token
           // back into the store or report the session as expired.
           if (fetchOptions.signal?.aborted) throw new Error("Request aborted");
           if (this.onTokenRefreshed) await this.onTokenRefreshed(accessToken);
-          const retryHeaders = { ...headers, Authorization: `Bearer ${accessToken}` };
-          res = await fetch(url, { ...fetchOptions, headers: retryHeaders });
         } catch (refreshErr) {
           if (fetchOptions.signal?.aborted) throw refreshErr;
+          // Only the server saying the refresh credential itself is no good (401:
+          // invalid, expired, wrong type or deleted account) ends the session. A
+          // network error, a timeout or a 5xx says nothing about the credential, so
+          // the user stays signed in and the original request fails like any other.
+          if (refreshErr?.status !== 401) throw refreshErr;
           await this.onTokenExpired();
           const err = new Error("Session expired");
           err.status = 401;
           throw err;
         }
+
+        const retryHeaders = { ...headers, Authorization: `Bearer ${accessToken}` };
+        res = await fetch(url, { ...fetchOptions, headers: retryHeaders });
 
         if (res.status === 401) {
           await this.onTokenExpired();

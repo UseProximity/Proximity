@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { getRequestUser } from "@/lib/getRequestUser";
+import { getRequestUser, RequestUserLookupError } from "@/lib/getRequestUser";
 import { handleTurn, computeRecommendations, continueRelaxedSearch, rewindToTradeoff } from "@/lib/matchmaking/chatOrchestrator";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
@@ -76,6 +76,11 @@ export async function GET(request) {
     return NextResponse.json({ session: chatSession ?? null });
   } catch (err) {
     console.error("[matchmaking/chat GET]", err);
+    // A failed user lookup is not "no session": answering 200 with null would make the
+    // app start a fresh conversation over the one it could not load.
+    if (err instanceof RequestUserLookupError) {
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
     return NextResponse.json({ session: null });
   }
 }
