@@ -25,7 +25,7 @@
  * behind it still refuse a request with no session.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Check, Loader2 } from "lucide-react";
@@ -409,6 +409,22 @@ export default function AddListingFlow({ user }) {
   const contact = lease.contactEmail.trim().toLowerCase();
   const emailMismatch = !!accountEmail && !!contact && contact !== accountEmail.toLowerCase();
 
+  /*
+   * A landlord who already lists at this property has one contact block there,
+   * and the server copies it onto any new lease of theirs (api/leases) whatever
+   * this form sends. So the form shows that address and does not pretend it can
+   * be changed here; the place to change it is the property's editor.
+   */
+  const inheritedContact = useMemo(() => {
+    const units = place?.units ?? place?.property?.units ?? [];
+    const mine = units.flatMap((u) => u.leases ?? []).find((l) => l.isMine && l.contactEmail);
+    return mine?.contactEmail ?? null;
+  }, [place]);
+  useEffect(() => {
+    if (!inheritedContact) return;
+    setLease((l) => (l.contactEmail === inheritedContact ? l : { ...l, contactEmail: inheritedContact }));
+  }, [inheritedContact]);
+
   if (restoring) {
     return (
       <div className="flex justify-center py-20">
@@ -496,6 +512,7 @@ export default function AddListingFlow({ user }) {
             value={lease}
             onChange={setLease}
             invalid={attempted ? missingKeys : null}
+            lockedContact={!!inheritedContact}
           />
           {!published && resumed && (
             <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
@@ -507,7 +524,7 @@ export default function AddListingFlow({ user }) {
               </button>
             </div>
           )}
-          {!published && resumed && signedIn && emailMismatch && (
+          {!published && resumed && signedIn && emailMismatch && !inheritedContact && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               Students will contact <span className="font-medium">{lease.contactEmail.trim()}</span>,
               but you are signed in as <span className="font-medium">{accountEmail}</span>. That is

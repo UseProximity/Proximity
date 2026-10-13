@@ -2223,8 +2223,8 @@ export default function ListingModalInfo({
                   )}
                 </div>
 
-                {/* Lease options for the unit on the open tab. Each row is one
-                    landlord's offering and carries its own Contact. */}
+                {/* Lease options for the unit on the open tab: one card per
+                    landlord, their offerings inside it, one Contact for all. */}
                 <div>
                   <LeaseOptions
                     leases={selectedUnitLeases}

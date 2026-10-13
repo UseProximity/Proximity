@@ -60,16 +60,6 @@ export async function POST(req) {
     );
   }
 
-  // A renter has to be able to reach someone. An offering with no contact is
-  // unanswerable, so it is not one we accept — the client pre-fills the
-  // landlord's own address, which makes this a guard rather than a chore.
-  if (!contactEmail?.trim()) {
-    return Response.json(
-      { error: "A contact email is required so students can reach you." },
-      { status: 400 }
-    );
-  }
-
   // Confirm the unit exists and is live before writing against it.
   const { data: unit, error: unitError } = await supabase
     .from("listing_units")
@@ -83,6 +73,33 @@ export async function POST(req) {
   }
   if (!unit || unit.deleted_at) {
     return Response.json({ error: "That unit no longer exists." }, { status: 404 });
+  }
+
+  /*
+   * One contact per landlord per property. A landlord who already lists here
+   * has set theirs (api/landlord/listings/[listingId]/contact writes it to
+   * every lease they own at the property), so a new offering takes that block
+   * rather than whatever the client sent. The form behind this request may be
+   * the add flow, prefilled from the same block, or the editor's bare "add
+   * another listing" button, which only knows the login email. Either way the
+   * right answer is the address students already reach them at. Their first
+   * lease at a property is where the block is born, from the body.
+   */
+  const inherited = await inheritedContact(session.user.id, unit.listing_id);
+  const contact = inherited ?? {
+    contact_email: contactEmail?.trim() || null,
+    contact_phone: contactPhone || null,
+    contact_name: contactName || null,
+  };
+
+  // A renter has to be able to reach someone. An offering with no contact is
+  // unanswerable, so it is not one we accept — the client pre-fills the
+  // landlord's own address, which makes this a guard rather than a chore.
+  if (!contact.contact_email) {
+    return Response.json(
+      { error: "A contact email is required so students can reach you." },
+      { status: 400 }
+    );
   }
 
   const terms = Array.isArray(leaseTermMonths)
@@ -104,9 +121,7 @@ export async function POST(req) {
       available_from: availableFrom || null,
       description: shortDescription(description),
       furnished: furnished ?? null,
-      contact_email: contactEmail.trim(),
-      contact_phone: contactPhone || null,
-      contact_name: contactName || null,
+      ...contact,
     })
     .select("id")
     .single();
@@ -141,4 +156,30 @@ export async function POST(req) {
     },
     { status: 201 }
   );
+}
+
+// The caller's contact block at this property, off the lease of theirs that was
+// edited most recently. Null when they have no lease here yet, or none with an
+// email (legacy rows that only ever had the property's contact).
+async function inheritedContact(userId, listingId) {
+  const { data, error } = await supabase
+    .from("unit_leases")
+    .select("contact_name, contact_email, contact_phone, listing_units!unit_id!inner(listing_id)")
+    .eq("owner_id", userId)
+    .eq("listing_units.listing_id", listingId)
+    .is("deleted_at", null)
+    .not("contact_email", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[leases] Contact lookup failed:", error.message);
+    return null;
+  }
+  if (!data?.contact_email?.trim()) return null;
+  return {
+    contact_email: data.contact_email.trim(),
+    contact_phone: data.contact_phone || null,
+    contact_name: data.contact_name || null,
+  };
 }
