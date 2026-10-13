@@ -132,12 +132,42 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
       const res = await fetch(`/api/leases/${lease.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, availableFrom: draft.availableFrom || null }),
+        body: JSON.stringify({
+          ...draft,
+          availableFrom: draft.availableFrom || null,
+          // The Withdrawn box is the same toggle as the dashboard's Withdraw
+          // and Publish again buttons, which set is_active and unavailable
+          // together. Sending unavailable alone left is_active false on an
+          // offering withdrawn from the dashboard, so unticking the box here
+          // looked like a relist and changed nothing students could see.
+          isActive: !draft.unavailable,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't save that listing.");
       toast.success("Your listing was updated.");
       setDirty(false);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // One click back onto the market, the inverse of the dashboard's Withdraw.
+  const republish = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't publish that listing.");
+      toast.success("Published. Students can see this listing again.");
+      setDraft((d) => ({ ...d, unavailable: false }));
       await onChanged();
     } catch {
       toast.error("Network error.");
@@ -206,6 +236,14 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
           <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
             Withdrawn
           </span>
+        )}
+        {/* Offered on the saved offering, not the draft: a box unticked but not
+            yet saved is still withdrawn as far as students are concerned. */}
+        {lease.unavailable && !dirty && (
+          <button onClick={republish} disabled={saving} type="button"
+            className="rounded-lg border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60">
+            {saving ? "Publishing…" : "Publish again"}
+          </button>
         )}
         <span className="flex-1" />
         {dirty && (
@@ -553,7 +591,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           <span className="text-xs text-gray-500">
             {unit.available
               ? "On the market — students can see this unit."
-              : "Hidden from students: every offering on this unit has been withdrawn. Restore one above, or add a new one, to relist it."}
+              : "Hidden from students: every offering on this unit has been withdrawn. Publish one again above, or add a new one, to relist it."}
           </span>
         </div>
       )}
