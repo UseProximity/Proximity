@@ -11,6 +11,10 @@
  * Unavailable units are shown rather than hidden. The renter-facing panel drops
  * them, which meant a landlord who marked a unit unavailable had no way to find
  * it again and turn it back on.
+ *
+ * Contact is not edited here. It is one block per landlord per property
+ * (EditorContact), copied onto every lease they own, so an offering's form has
+ * nothing to say about who to reach.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -44,7 +48,7 @@ const field =
 // The saved state of an offering, as the form holds it. Shared by the initial
 // draft and by Discard, so "back to how it was" cannot drift from "how it
 // opened".
-const leaseDraft = (lease, fallbackEmail) => ({
+const leaseDraft = (lease) => ({
   rent: lease.rent ?? "",
   rentIsPerPerson: lease.rentIsPerPerson ?? false,
   leaseTermMonths: lease.leaseTermMonths ?? [],
@@ -52,19 +56,11 @@ const leaseDraft = (lease, fallbackEmail) => ({
   furnished: !!lease.furnished,
   availableFrom: lease.availableFrom ? String(lease.availableFrom).slice(0, 10) : "",
   unavailable: !!lease.unavailable,
-  /*
-   * Offerings from before the contact moved down to the lease have nothing here
-   * and nothing at the property either. Opening the form on the landlord's own
-   * address means saving fills the gap instead of being refused for a field
-   * they were never asked.
-   */
-  contactEmail: lease.contactEmail || fallbackEmail || "",
-  contactPhone: lease.contactPhone ?? "",
   description: lease.description ?? "",
 });
 
-function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
-  const [draft, setDraft] = useState(() => leaseDraft(lease, currentUserEmail));
+function LeaseRow({ lease, listingId, onChanged }) {
+  const [draft, setDraft] = useState(() => leaseDraft(lease));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
@@ -75,16 +71,11 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
   const needsRightsConfirmation = draft.sublease && !lease.sublease;
 
   const discard = () => {
-    setDraft(leaseDraft(lease, currentUserEmail));
+    setDraft(leaseDraft(lease));
     setDirty(false);
   };
 
   const save = async () => {
-    // A renter has to be able to reach someone. The property contact still backs
-    // legacy offerings, but a landlord editing their own can't leave it blank.
-    if (!draft.contactEmail.trim()) {
-      return toast.error("Add a contact email so students can reach you.");
-    }
     if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
       return toast.error("Please confirm you have the right to sublet this place.");
     }
@@ -189,7 +180,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Rent / month</span>
           <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent}
@@ -213,11 +204,6 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
             A date in the past shows{" "}
             <span className="font-semibold text-green-600">Now</span>.
           </span>
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
-          <input type="email" required className={`mt-1 w-full ${field}`} value={draft.contactEmail}
-            onChange={(e) => set({ contactEmail: e.target.value })} />
         </label>
       </div>
 
@@ -440,8 +426,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <SectionLabel>Your listings on this unit</SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {myLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  currentUserEmail={currentUserEmail} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged} />
               ))}
             </ul>
           </>
@@ -456,8 +441,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             </SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {otherLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  currentUserEmail={currentUserEmail} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged} />
               ))}
             </ul>
           </>
@@ -483,6 +467,9 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
                     unitId: unit.id,
                     leaseTermMonths: [12],
                     available: true,
+                    // Only read for a landlord's FIRST lease at the property.
+                    // After that the server copies the contact block they set
+                    // in EditorContact onto every new one.
                     contactEmail: currentUserEmail ?? null,
                   }),
                 });
