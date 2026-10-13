@@ -41,7 +41,11 @@ export const MIN_INVENTORY = 5;
 
 function matchesPageFilter(listing, filter) {
   if (filter.sublease) {
-    return listing.leaseType === "Sublease";
+    // Any live sublease offering qualifies. The card badge is stricter (a
+    // standard lease trumps it), so a property with both still belongs here.
+    return (listing.unitTypes ?? []).some(
+      (u) => u.available !== false && (u.leases ?? []).some((l) => l.sublease)
+    );
   }
   if (filter.bedrooms != null) {
     // `u.bedrooms != null` first: buildListing emits null for an unsized unit,

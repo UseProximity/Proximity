@@ -250,12 +250,13 @@ function buildListing(row, owner = null, reviews = []) {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
         us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
-      // Decide the listing's label from its AVAILABLE units when it has any, so an
-      // available sublease surfaces as "Sublease" even alongside an unavailable
-      // standard lease (and an unavailable sublease no longer forces the badge).
+      // Decide the listing's label from its AVAILABLE units when it has any, so
+      // an unavailable sublease never forces the badge. Within that pool a
+      // standard lease trumps: the card says "Sublease" only when every offering
+      // is one (Wyatt, 2026-10-12), matching isSubleaseListing in matchmaking.
       const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
-      return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
+      return pool.length && pool.every((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
     images: coverPool.map((img) => img.url),
     // Every photo at this property with the units it is tagged with, so the
