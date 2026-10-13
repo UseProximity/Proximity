@@ -88,7 +88,11 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             sublease: !!lease.sublease,
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
+            // The contact block (EditorContact) is read off these: one per
+            // landlord per property, so every lease here carries the same one.
+            contactName: lease.contact_name ?? l.contact_name ?? "",
             contactEmail: lease.contact_email ?? l.contact_email ?? "",
+            contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
             description: lease.description ?? "",
             isActive: !!lease.is_active,
             unavailable: !!lease.unavailable,
