@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 
 /*
@@ -15,8 +17,11 @@ import { isPropertyOwner } from "@/lib/listings/ownership";
  * Owner-held leases stay out of reach: another landlord's offering is theirs
  * to edit, and redirecting it would redirect their enquiries.
  *
- * No confirmation email (Wyatt, 2026-10-12): there are only a few of these,
- * all from the old import.
+ * Messages about an ownerless offering reach the property's owner
+ * (fn_chat_resolve_landlord), and its contact address is one of their alert
+ * routes, so a NEW address is confirmed like any other, for that owner. The
+ * address the import left on it is not touched and never asked to confirm
+ * (Wyatt, 2026-10-12): only an address someone types in here is.
  *
  * @auth user
  */
@@ -50,7 +55,7 @@ export async function PUT(req, { params }) {
 
   const { data: lease, error } = await supabase
     .from("unit_leases")
-    .select("id, owner_id, deleted_at, listing_units!unit_id(listing_id, deleted_at)")
+    .select("id, owner_id, contact_email, deleted_at, listing_units!unit_id(listing_id, deleted_at)")
     .eq("id", leaseId)
     .maybeSingle();
   if (error) {
@@ -74,5 +79,12 @@ export async function PUT(req, { params }) {
     return NextResponse.json({ error: "Could not save that contact." }, { status: 500 });
   }
 
-  return NextResponse.json({ message: "Contact saved" });
+  // Awaited rather than deferred so the editor can say whether a link went out:
+  // the owner's own address, or one already confirmed for them, needs none.
+  const isNew = contactEmail.toLowerCase() !== String(lease.contact_email ?? "").trim().toLowerCase();
+  const verification = isNew
+    ? await requestContactVerification({ landlordId: session.user.id, email: contactEmail, baseUrl: getBaseUrl(req) })
+    : "unchanged";
+
+  return NextResponse.json({ message: "Contact saved", verificationSent: verification === "sent" });
 }

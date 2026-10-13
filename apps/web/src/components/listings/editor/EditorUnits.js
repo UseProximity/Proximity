@@ -62,7 +62,7 @@ const leaseDraft = (lease) => ({
 /*
  * The contact on an imported offering nobody owns. The property's owner is the
  * only one who can correct it, and only this: the rest of the offering stays
- * read-only. Saved straight away, no confirmation email.
+ * read-only. A new address gets a confirmation email before alerts go there.
  */
 function OwnerlessContact({ lease, onChanged }) {
   const [email, setEmail] = useState(lease.contactEmail ?? "");
@@ -79,7 +79,11 @@ function OwnerlessContact({ lease, onChanged }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't save that contact.");
-      toast.success("Contact updated.");
+      toast.success(
+        data.verificationSent
+          ? "Contact updated. We emailed that address a link to confirm it for message alerts."
+          : "Contact updated."
+      );
       await onChanged();
     } catch {
       toast.error("Network error.");
