@@ -12,8 +12,10 @@
  *   1. Deposit fraud. Someone who does not hold the property collects money
  *      through a rail that cannot be reversed, usually before any viewing.
  *   2. Taking the conversation off Proximity (Wyatt, 2026-10-03). Contact
- *      details are blocked rather than logged, in text and in attachments, so
- *      an inquiry cannot be moved to a channel the product cannot see.
+ *      details in text are no longer refused outright (Wyatt, 2026-10-12): in
+ *      the app the sender confirms first ("Send anyway"), by email the reply is
+ *      delivered as written, and either way the message is flagged. See
+ *      CONTACT_REASONS and lib/chat/sendGuards.js.
  *
  * Harassment and violent threats are blocked for the obvious reason.
  *
@@ -276,17 +278,22 @@ export function screenChatText(text) {
 
   if (matchesAny(OFF_PLATFORM_REQUEST, body)) reasons.push("off_platform_request");
 
+  // ── flags ─────────────────────────────────────────────────────────────────
+  // Worked out before the block check so a block verdict can carry them too: a
+  // contact-details message sent anyway is posted, and its flag record has to
+  // show a scam narrative or an SSN request riding along with it.
+  const flags = [];
+  if (conditionalRail) flags.push("payment_rail_mentioned");
+  if (scamNarrative) flags.push("scam_narrative");
+  if (hasPlatform) flags.push("platform_mentioned");
+  if (SSN_REQUEST.test(body)) flags.push("ssn_mentioned");
+
   const blocking = reasons.filter((r) => BLOCKING_REASONS.has(r));
   if (blocking.length > 0) {
-    return { action: "block", reasons: blocking, message: blockMessage(blocking) };
+    return { action: "block", reasons: blocking, flags, message: blockMessage(blocking) };
   }
 
-  // ── flags ─────────────────────────────────────────────────────────────────
-  if (conditionalRail) reasons.push("payment_rail_mentioned");
-  if (scamNarrative) reasons.push("scam_narrative");
-  if (hasPlatform) reasons.push("platform_mentioned");
-  if (SSN_REQUEST.test(body)) reasons.push("ssn_mentioned");
-
+  reasons.push(...flags);
   if (reasons.length > 0) return { action: "flag", reasons, message: null };
   return { action: "allow", reasons: [], message: null };
 }

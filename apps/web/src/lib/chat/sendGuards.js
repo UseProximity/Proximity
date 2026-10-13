@@ -86,7 +86,11 @@ export async function screenOutgoingChat({
           message: confirmMessage(verdict.reasons, audience),
         };
       }
-      return { blocked: false, flagged: true, reasons: [...verdict.reasons, CONFIRMED_REASON] };
+      return {
+        blocked: false,
+        flagged: true,
+        reasons: [...verdict.reasons, ...(verdict.flags ?? []), CONFIRMED_REASON],
+      };
     }
     await logModeration({
       userId,
