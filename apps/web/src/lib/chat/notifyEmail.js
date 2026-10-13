@@ -7,8 +7,9 @@
  *
  * Whether an email is warranted at all is decided in the database by
  * rpc_chat_notification_recipient: every new message is emailed unless the recipient has
- * message emails turned off or their address is suppressed (Wyatt, 2026-10-12). It batches
- * everything unread since the last alert and atomically stamps last_notified_at. A null
+ * message emails turned off or their address is suppressed (Wyatt, 2026-10-12). Every alert carries
+ * everything the recipient has not read yet (sending counts as reading, so this is the run
+ * of messages they have not answered), and stamps last_notified_at for the record. A null
  * return means "no email".
  *
  * `via` is how the sender wrote: "app" (the default) or "email". It is recorded on the
