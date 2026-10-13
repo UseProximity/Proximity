@@ -383,8 +383,8 @@ function LandlordCard({ group, onContact }) {
 
 /*
  * One offering. The four columns are what a renter compares across offerings;
- * everything that is true of only this one — the landlord's own note, whether
- * they furnish it — lives behind the chevron. Who is offering it is said once,
+ * everything that is true of only this one (the landlord's own note, whether
+ * they furnish it) lives behind the chevron. Who is offering it is said once,
  * on the card above, and so is how to reach them.
  */
 function LeaseRow({ lease, inset = false }) {

@@ -93,7 +93,7 @@ export async function POST(req) {
   };
 
   // A renter has to be able to reach someone. An offering with no contact is
-  // unanswerable, so it is not one we accept — the client pre-fills the
+  // unanswerable, so it is not one we accept. The client pre-fills the
   // landlord's own address, which makes this a guard rather than a chore.
   if (!contact.contact_email) {
     return Response.json(
@@ -138,12 +138,14 @@ export async function POST(req) {
   });
 
   // The lease's contact address only receives message alerts once confirmed.
-  // A lease's conversations are held by its owner, which is the caller.
+  // A lease's conversations are held by its owner, which is the caller. Confirm
+  // the address the lease was saved with (the inherited block when there is
+  // one), never the raw body value, which may not be stored anywhere.
   const baseUrl = getBaseUrl(req);
   after(() =>
     requestContactVerification({
       landlordId: session.user.id,
-      email: contactEmail,
+      email: contact.contact_email,
       baseUrl,
     })
   );
