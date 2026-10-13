@@ -57,6 +57,14 @@
       "status": "active",
       "context": "Branch feat/chat, worktree /Users/wogle/Developer/Proximity-worktrees/chat, 3 commits ahead of staging (74 files, +9065). Build and lint clean (0 errors, warnings pre-existing). Dev server on :3000 from that worktree. Not pushed. Anonymous route checks pass: /api/chat/threads and /api/chat/realtime-token 401, /api/chat/access-token 404 on a bad token, /messages 307 to login. Blocked on JWT secrets before Realtime can be tested end to end. Note: PR #214 (legal pages) already merged to staging on 2026-09-19 and release PR #221 (staging to main) is OPEN, which would ship the TOS to production without chat.",
       "created": "2026-09-19T22:26:12.769Z"
+    },
+    {
+      "id": "decision-1791855124602",
+      "title": "One contact per landlord per property; standard lease trumps sublease on the card badge",
+      "description": "unit_leases.contact_name/email/phone stay the storage, but a landlord with an account now sets them once per property (EditorContact, PUT /api/landlord/listings/[listingId]/contact) and every lease they own there carries the same block; POST /api/leases inherits the landlord's existing contact at that property. Students see one card per landlord under a unit (grouped by an opaque landlordKey derived from contact email, falling back to owner id) with one Contact button and the landlord's leases folded inside. Imported leases (owner_id NULL) keep working off the lease columns. No schema change; data backfill 202610120001 picked each landlord's most-used email per property and kept the most-used non-blank name and phone (dev 8 rows, prod 10 rows, 2026-10-12). Separately, the listing card badge says Sublease only when every live offering at the property is one, matching matchmaking's isSubleaseListing; /washu/sublease checks offerings directly so mixed properties still appear there.",
+      "status": "resolved",
+      "context": "PR #290 (feat/landlord-contact-grouping into staging). Files: components/listings/editor/EditorContact.js, components/listings/LeaseOptions.js, lib/listings/getListing.js (landlordKeyer), api/leases/route.js, api/listings/route.js, lib/listings/queryListings.js.",
+      "created": "2026-10-13T01:32:04.602Z"
     }
   ],
   "bugs": [],
