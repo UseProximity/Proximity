@@ -309,10 +309,142 @@ function blockMessage(reasons) {
   ) {
     return "This message cannot be sent because it asks for payment through a method Proximity cannot protect. Never send a deposit before signing a lease and seeing the unit.";
   }
-  return "Phone numbers, email addresses, outside links and social handles cannot be sent in chat";
+  return "Phone numbers, email addresses, outside links and social handles cannot be sent in chat. If you would rather use email, reply to the message emails from Proximity: your reply goes straight to the other person and stays in this conversation.";
+}
+
+/*
+ * The reasons that are about moving the conversation elsewhere, as opposed to
+ * abuse, fraud or phishing. By email these are delivered in full and the sender
+ * is told why to stop (Wyatt, 2026-10-12); the others still lose the sentence.
+ * In the app they are not blocked either: the composer asks the sender to
+ * confirm, and a confirmed send goes through flagged (Wyatt, 2026-10-12).
+ */
+export const CONTACT_REASONS = new Set([
+  "contact_email",
+  "contact_phone",
+  "external_link",
+  "social_handle",
+  "off_platform_request",
+]);
+
+const CONTACT_LABELS = {
+  contact_email: "an email address",
+  contact_phone: "a phone number",
+  external_link: "a link to an outside website",
+  social_handle: "a social media handle",
+  off_platform_request: "a request to continue outside Proximity",
+};
+
+function listLabels(items) {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/*
+ * Why the conversation should stay on Proximity, in the terms that matter to
+ * the person being asked (Wyatt, 2026-10-12). A student is protected from
+ * deposit scams, which almost always begin with a move to text or personal
+ * email. A landlord gets a dated record of every offer and agreement, which
+ * is what counts in a dispute, with every inquiry in one place. Used by the
+ * in-app "send anyway?" prompt and the emailed note after an email reply.
+ */
+export function stayOnProximityNote(audience, channel = "app") {
+  const landlord = audience === "landlord";
+  if (channel === "email") {
+    return landlord
+      ? "Keeping the conversation in Proximity protects both you and Proximity. It helps us keep a record of which conversations drive leases and the app is built out to allow you to converse without leaving your inbox."
+      : "Keeping the conversation in Proximity protects both you and Proximity. It helps us keep a record of every conversation and helps you avoid deposit scams.";
+  }
+  return landlord
+    ? "Keeping the conversation on Proximity protects both you and Proximity. It allows us to track conversations, keep every offer and agreement on record if a dispute ever comes up, and all your inquiries stay in one place."
+    : "Keeping the conversation on Proximity protects both you and Proximity. It allows us to track conversations and helps you avoid deposit scams.";
+}
+
+/*
+ * The "send anyway?" prompt for a message that only contains contact details.
+ * Names what was found, says why staying here matters to this sender, and
+ * leaves the choice with them.
+ */
+export function confirmMessage(reasons, audience = "student") {
+  const found = listLabels([...new Set(reasons.map((r) => CONTACT_LABELS[r]).filter(Boolean))]);
+  const what = found ? `This message includes ${found}.` : "This message includes contact details.";
+  return `${what} ${stayOnProximityNote(audience, "app")} You can also reply to the message emails from Proximity; those replies stay in this conversation. Send it anyway?`;
 }
 
 /** Attachment captions go through the same screen as a message body. */
 export const screenChatCaption = screenChatText;
+
+// ─────────────────────────────────────────────────────── redaction (email)
+
+const REDACTED = "[removed]";
+
+// The link pattern plus any path, so the whole URL goes and not just its host.
+const LINK_WITH_PATH =
+  /\b(?:https?:\/\/)?((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop))\b(?:\/[^\s)\]>]*)?/gi;
+
+// Rules where removing the matched words is not enough: the sentence around
+// them is the problem ("send the deposit by gift card before Friday").
+const SENTENCE_RULES = [
+  ...SLURS,
+  ...THREATS,
+  ...RAILS_ALWAYS_BLOCK,
+  ...PHISHING,
+  ...OFF_PLATFORM_REQUEST,
+];
+
+function redactSentences(text, patterns) {
+  return text.replace(/[^.!?\n]+[.!?]*/g, (sentence) => {
+    if (!patterns.some((re) => re.test(sentence))) return sentence;
+    const lead = sentence.match(/^\s*/)[0];
+    return `${lead}${REDACTED}`;
+  });
+}
+
+/**
+ * Remove what screenChatText would block, instead of refusing the message.
+ *
+ * Used for replies that arrive by email (Wyatt, 2026-10-09) when they carry
+ * abuse, fraud or phishing: the person cannot be shown an error and asked to
+ * edit, and a whole reply should not vanish because of one sentence. Contact
+ * details are cut out where they stand, and the offending sentences go. If the
+ * result would still be blocked, nothing of it is kept. A reply whose only
+ * problem is contact details is delivered as written and the sender is emailed
+ * about it instead (CONTACT_REASONS, Wyatt, 2026-10-12).
+ *
+ * @returns {{ text: string, reasons: string[] }} reasons is empty when nothing changed
+ */
+export function redactChatText(text) {
+  const original = String(text ?? "");
+  const verdict = screenChatText(original);
+  if (verdict.action !== "block") return { text: original, reasons: [] };
+
+  let out = original;
+
+  if (verdict.reasons.includes("off_platform_payment_request")) {
+    out = redactSentences(out, RAILS_CONDITIONAL);
+  }
+  out = redactSentences(out, SENTENCE_RULES);
+
+  out = out
+    .replace(new RegExp(EMAIL_PLAIN.source, "gi"), REDACTED)
+    .replace(new RegExp(EMAIL_OBFUSCATED.source, "gi"), REDACTED)
+    .replace(new RegExp(PHONE.source, "g"), REDACTED)
+    .replace(LINK_WITH_PATH, (match, host) => {
+      const h = host.toLowerCase();
+      return ALLOWED_LINK_HOSTS.some((ok) => h === ok || h.endsWith(`.${ok}`)) ? match : REDACTED;
+    });
+
+  if (verdict.reasons.includes("social_handle")) {
+    out = out.replace(new RegExp(SOCIAL_HANDLE.source, "gi"), (m) => m.replace(/@\S+/, REDACTED));
+    out = redactSentences(out, [PLATFORMS]);
+  }
+
+  if (screenChatText(out).action === "block") out = REDACTED;
+
+  return {
+    text: out.replace(/(\[removed\][\s,;]*){2,}/g, `${REDACTED} `).trim(),
+    reasons: verdict.reasons,
+  };
+}
 
 export { ALLOWED_LINK_HOSTS };

@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
-import { useMessages } from "@/context/MessagesContext";
+import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -72,39 +72,25 @@ function formatSessionDivider(iso) {
 }
 
 /*
- * A thread covers one landlord and one student, not one property, so a
- * conversation can move from "412 Delmar" to "6633 Kingsbury" partway down.
- * Without a marker the landlord's "it is still available" reads as an answer
- * about whichever listing the reader had in mind. Shown on the first message
- * and wherever the listing changes, never on every message.
+ * Who sent each message, shown above it (Wyatt, 2026-10-09). Once per run of
+ * messages from the same person, and again after a time divider, so a burst of
+ * short messages is not a stack of repeated names.
+ *
+ * A message loaded through rpc_get_chat_messages carries its sender's account
+ * name and company. One that arrived over Realtime is the raw row with only the
+ * sender id, so it falls back to the thread's other participant, which is the
+ * only other sender a two-person thread can have.
  */
-function shouldShowListingDivider(prev, msg) {
-  if (!msg?.listingId) return false;
-  if (!prev) return true;
-  return prev.listingId !== msg.listingId;
+function senderLabel(msg, thread) {
+  if (msg.isMine) return "You";
+  const name = msg.senderName || thread?.otherUserName || "";
+  const company = msg.senderCompany;
+  return company && company !== name ? `${name} \u00b7 ${company}` : name;
 }
 
-/*
- * listingId to label, for drawing the dividers.
- *
- * A message loaded through rpc_get_chat_messages carries its own listing title
- * and address, but one that arrived over Realtime is the raw table row and has
- * only the id. Collecting every label the thread has seen means a live message
- * about an already-discussed listing is labelled immediately, and the thread's
- * current listing covers the first message about a new one.
- */
-function buildListingLabels(list, thread) {
-  const labels = new Map();
-  for (const msg of list) {
-    if (!msg?.listingId || labels.has(msg.listingId)) continue;
-    const label = msg.listingTitle || msg.listingAddress;
-    if (label) labels.set(msg.listingId, label);
-  }
-  const threadLabel = thread?.listingTitle || thread?.listingAddress;
-  if (thread?.listingId && threadLabel && !labels.has(thread.listingId)) {
-    labels.set(thread.listingId, threadLabel);
-  }
-  return labels;
+function shouldShowSender(prev, msg, startsSession) {
+  if (!prev || startsSession) return true;
+  return prev.senderId !== msg.senderId || Boolean(prev.isMine) !== Boolean(msg.isMine);
 }
 
 function shouldShowSessionDivider(prev, msg) {
@@ -154,6 +140,7 @@ export default function ChatTranscript({
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
+  const [confirmPrompt, setConfirmPrompt] = useState(null);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
@@ -174,24 +161,16 @@ export default function ChatTranscript({
   );
   const readReceiptTime = formatMessageTime(thread?.otherUserLastReadAt);
   const showLoading = messagesLoading && list.length === 0;
-  const listingLabel = thread?.listingTitle || thread?.listingAddress || "";
-  const listingLabels = buildListingLabels(list, thread);
   /*
-   * Every property this conversation has covered, for the header. A thread is one
-   * person, so showing only the current listing left a landlord reading a reply
-   * with no idea the same student had also asked about two other places
-   * (Wyatt, 2026-10-06). Newest inquiry first, matching the inbox row.
+   * The conversation is about one listing, so the header is that listing: its
+   * name, with its address underneath, as in the listing panel.
    */
-  const headerListings = Array.isArray(thread?.listings) && thread.listings.length > 0
-    ? thread.listings
-        .map((l) => ({
-          listingId: l?.listingId ?? null,
-          label: l?.title || l?.address || "",
-        }))
-        .filter((l) => l.label)
-    : listingLabel
-      ? [{ listingId: thread?.listingId ?? null, label: listingLabel }]
-      : [];
+  const headerTitle =
+    thread?.listingTitle?.trim() || thread?.listingAddress?.trim() || thread?.otherUserName || "Conversation";
+  const headerAddress =
+    thread?.listingTitle?.trim() && thread?.listingAddress?.trim() !== thread?.listingTitle?.trim()
+      ? thread?.listingAddress?.trim() || ""
+      : "";
   const listingRentLabel = formatListingRentLabel(
     thread?.listingMinRent,
     thread?.listingMaxRent
@@ -261,19 +240,30 @@ export default function ChatTranscript({
     };
   }, []);
 
-  async function handleSend() {
+  /*
+   * A message with contact details in it comes back as CONFIRM_SEND rather
+   * than an error. The draft is put back and a "send anyway?" prompt appears
+   * above the composer; Send anyway re-sends the same draft with confirmed set,
+   * Edit just dismisses the prompt and leaves the draft in the box.
+   */
+  async function handleSend(confirmed = false) {
     const text = input.trim();
     const files = pendingFiles;
     if ((!text && files.length === 0) || sending || !thread?.threadId) return;
     setSending(true);
+    setConfirmPrompt(null);
     setInput("");
     setPendingFiles([]);
     try {
-      await onSend(thread.threadId, text, files);
+      await onSend(thread.threadId, text, files, { confirmed });
     } catch (err) {
       setInput(text);
       setPendingFiles(files);
-      toast.error(err?.message || "Failed to send message. Please try again.");
+      if (err?.code === CHAT_CONFIRM_SEND_CODE) {
+        setConfirmPrompt(err.message);
+      } else {
+        toast.error(err?.message || "Failed to send message. Please try again.");
+      }
     } finally {
       setSending(false);
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -351,37 +341,20 @@ export default function ChatTranscript({
           shape={thread?.listingImage ? "square" : "circle"}
         />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">
-            {thread?.otherUserName || "Conversation"}
-          </p>
-          {(headerListings.length > 0 || listingRentLabel) && (
+          {thread?.listingId ? (
+            <Link
+              href={`/listings/${thread.listingId}`}
+              className="block text-sm font-semibold text-gray-900 truncate hover:text-red-600 hover:underline"
+              title={`View ${headerTitle}`}
+            >
+              {headerTitle}
+            </Link>
+          ) : (
+            <p className="text-sm font-semibold text-gray-900 truncate">{headerTitle}</p>
+          )}
+          {(headerAddress || listingRentLabel) && (
             <div className="flex items-baseline justify-between gap-2 min-w-0">
-              {headerListings.length > 0 ? (
-                <div className="min-w-0 flex flex-wrap items-baseline gap-x-1.5">
-                  {headerListings.map((item, i) => (
-                    <span key={item.listingId ?? item.label} className="min-w-0">
-                      {i > 0 && (
-                        <span className="text-xs text-gray-300" aria-hidden>
-                          {"\u00b7 "}
-                        </span>
-                      )}
-                      {item.listingId ? (
-                        <Link
-                          href={`/listings/${item.listingId}`}
-                          className="text-xs text-gray-400 hover:text-red-600 hover:underline"
-                          title={`View ${item.label}`}
-                        >
-                          {item.label}
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-gray-400">{item.label}</span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="min-w-0" />
-              )}
+              <p className="text-xs text-gray-400 truncate min-w-0">{headerAddress}</p>
               {listingRentLabel ? (
                 <p className="text-xs font-medium text-gray-600 tabular-nums flex-shrink-0">
                   {listingRentLabel}
@@ -416,10 +389,9 @@ export default function ChatTranscript({
             const timeLabel = formatMessageTime(msg.createdAt);
             const sessionLabel = formatSessionDivider(msg.createdAt);
             const isAttachment = msg.messageType === "attachment";
-            const showListing = shouldShowListingDivider(prev, msg);
-            const listingContext = showListing
-              ? listingLabels.get(msg.listingId) ?? null
-              : null;
+            const sender = shouldShowSender(prev, msg, showSession)
+              ? senderLabel(msg, thread)
+              : "";
 
             return (
               <div key={msg.id} className="space-y-2">
@@ -428,24 +400,14 @@ export default function ChatTranscript({
                     {sessionLabel}
                   </p>
                 )}
-                {listingContext && (
-                  <div className="flex items-center gap-2 py-2 select-none">
-                    <span className="h-px flex-1 bg-gray-200" />
-                    {msg.listingId ? (
-                      <Link
-                        href={`/listings/${msg.listingId}`}
-                        className="text-[11px] font-medium text-gray-500 hover:text-red-600 hover:underline max-w-[70%] truncate"
-                        title={`View ${listingContext}`}
-                      >
-                        about {listingContext}
-                      </Link>
-                    ) : (
-                      <span className="text-[11px] font-medium text-gray-500 max-w-[70%] truncate">
-                        about {listingContext}
-                      </span>
-                    )}
-                    <span className="h-px flex-1 bg-gray-200" />
-                  </div>
+                {sender && (
+                  <p
+                    className={`text-[11px] font-medium text-gray-500 select-none truncate ${
+                      msg.isMine ? "text-right pr-1" : "pl-10"
+                    }`}
+                  >
+                    {sender}
+                  </p>
                 )}
                 <div className="group relative">
                   <div
@@ -543,6 +505,36 @@ export default function ChatTranscript({
         </div>
       ) : (
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
+        {confirmPrompt && (
+          <div
+            role="alertdialog"
+            aria-live="polite"
+            className="mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] leading-5 text-amber-900"
+          >
+            <p>{confirmPrompt}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSend(true)}
+                disabled={sending}
+                className="px-3 py-1 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+              >
+                Send anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmPrompt(null);
+                  requestAnimationFrame(() => inputRef.current?.focus());
+                }}
+                disabled={sending}
+                className="px-3 py-1 text-xs font-semibold rounded-lg border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                Edit message
+              </button>
+            </div>
+          </div>
+        )}
         {pendingFiles.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {pendingFiles.map((file, i) => (
@@ -627,7 +619,7 @@ export default function ChatTranscript({
             />
             <button
               type="button"
-              onClick={handleSend}
+              onClick={() => handleSend(false)}
               disabled={!canSend}
               className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
               aria-label="Send message"

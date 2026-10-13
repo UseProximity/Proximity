@@ -7,7 +7,10 @@
  * reply and attachment paths cannot drift apart on policy.
  */
 import supabase from "@/lib/supabase";
-import { screenChatText } from "@/lib/chat/moderation";
+import { screenChatText, confirmMessage, CONTACT_REASONS } from "@/lib/chat/moderation";
+
+export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
+const CONFIRMED_REASON = "confirmed_in_app";
 
 /*
  * Log the decision. Never allowed to break a send: a screening record is
@@ -41,21 +44,50 @@ async function logModeration({
 /**
  * Screen a body before sending.
  *
- * A block is recorded and refused. A flag is recorded and allowed through, and
- * the sender is told nothing: the whole point of the flag tier is that someone
- * probing for what gets through learns nothing from the response.
+ * Three outcomes:
  *
- * @returns {Promise<{blocked: true, message: string} | {blocked: false, flagged: boolean, reasons: string[]}>}
+ * - blocked: abuse, fraud or phishing. Recorded here (there will be no message
+ *   row) and refused with copy for the sender.
+ * - needsConfirmation: only contact details or a move-elsewhere request
+ *   (CONTACT_REASONS) and the sender has not yet confirmed. Not recorded, since
+ *   nothing was sent; the route answers 409 CONFIRM_SEND and the composer asks
+ *   "send anyway?" (Wyatt, 2026-10-12). The same message sent again with
+ *   confirmed: true comes back as flagged with "confirmed_in_app" added.
+ * - flagged (or clean): allowed through. The sender is told nothing about a
+ *   flag, so someone probing for what gets through learns nothing. Flags are
+ *   NOT recorded here: the route calls recordFlaggedSend after the post so the
+ *   event carries the message id and the admin Conversations view can pin it
+ *   to the message.
+ *
+ * @returns {Promise<
+ *   {blocked: true, message: string}
+ *   | {blocked: false, needsConfirmation: true, reasons: string[], message: string}
+ *   | {blocked: false, flagged: boolean, reasons: string[]}
+ * >}
  */
 export async function screenOutgoingChat({
   userId,
   body,
   threadId = null,
   listingId = null,
+  confirmed = false,
+  audience = "student",
 }) {
   const verdict = screenChatText(body);
 
   if (verdict.action === "block") {
+    const contactOnly = verdict.reasons.every((r) => CONTACT_REASONS.has(r));
+    if (contactOnly) {
+      if (!confirmed) {
+        return {
+          blocked: false,
+          needsConfirmation: true,
+          reasons: verdict.reasons,
+          message: confirmMessage(verdict.reasons, audience),
+        };
+      }
+      return { blocked: false, flagged: true, reasons: [...verdict.reasons, CONFIRMED_REASON] };
+    }
     await logModeration({
       userId,
       action: "block",
@@ -68,18 +100,27 @@ export async function screenOutgoingChat({
   }
 
   if (verdict.action === "flag") {
-    await logModeration({
-      userId,
-      action: "flag",
-      reasons: verdict.reasons,
-      body,
-      threadId,
-      listingId,
-    });
     return { blocked: false, flagged: true, reasons: verdict.reasons };
   }
 
   return { blocked: false, flagged: false, reasons: [] };
+}
+
+/**
+ * Record a flag on a message that was posted. Called by the send routes after
+ * the RPC returns the message id, for both the silent flag tier and the
+ * confirmed contact-details case.
+ */
+export async function recordFlaggedSend({ userId, threadId, messageId, listingId = null, reasons, body }) {
+  await logModeration({
+    userId,
+    action: "flag",
+    reasons,
+    body,
+    threadId,
+    messageId,
+    listingId,
+  });
 }
 
 /**

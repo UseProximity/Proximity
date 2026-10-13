@@ -234,7 +234,7 @@
       {
         "table": "chat_email_log",
         "status": "unreleased",
-        "description": "DEV ONLY (feat/email-reply-relay, not on staging or prod). Outbound chat notification emails sent through SES or Gmail, with the provider message id so inbound replies can be threaded back. Migration chat_email_relay_outbound (2026-10-09, dev).",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Outbound chat alert emails sent through SES or Gmail, with the provider message id. The next alert to the same person in the same thread carries these ids as References/In-Reply-To so mail clients stack them as one thread (lib/chat/notifyEmail.js).",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -254,7 +254,7 @@
       {
         "table": "chat_inbound_emails",
         "status": "unreleased",
-        "description": "DEV ONLY (feat/email-reply-relay). One row per email received by the SES inbound pipeline (s3_key unique). status records how it was handled (posted = became a chat message via chat_message_id; spam, auto_reply, unauthenticated, unknown_address, wrong_sender, empty, rejected, error). Migration chat_email_relay_inbound (2026-10-09, dev).",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. One row per email received by the SES inbound pipeline (s3_key unique). status records how it was handled (posted = became a chat message via chat_message_id; spam, auto_reply, unauthenticated, unknown_address, wrong_sender, empty, rejected, error). Migration chat_email_relay_inbound (2026-10-09, dev).",
         "columns": [
           "id:uuid",
           "s3_key:text",
@@ -326,7 +326,7 @@
       {
         "table": "chat_participants",
         "status": "active",
-        "description": "Membership of a chat thread (PK thread_id, user_id) plus read state (last_read_at, set by rpc_mark_thread_read) and email notification state (last_notified_at, 24h cooldown in rpc_chat_notification_recipient). reply_token_hash and email_mode exist ONLY on dev (feat/email-reply-relay). Live in prod since 2026-10-07.",
+        "description": "Membership of a chat thread (PK thread_id, user_id) plus read state (last_read_at, set by rpc_mark_thread_read) and alert state. Since 202610120002 there is no actively-reading or 24h hold: every message alerts unless users.email_notifications is off. Since 202610120003 each alert repeats everything unread since last_read_at (sending counts as reading); since 202610120004 the app waits a 30s quiet window per message and the RPC declines when a newer message or a read has happened, so a burst is one email. last_notified_at is stamped for the record. reply_token_hash is the SHA-256 of the person's reply+token address (lib/chat/replyAddress.js); email_mode is on while they answer by email (recorded only). On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown.",
         "columns": [
           "thread_id:uuid",
           "user_id:uuid",
@@ -422,7 +422,7 @@
       {
         "table": "contact_email_verifications",
         "status": "unreleased",
-        "description": "DEV ONLY (feat/email-reply-relay). Proves a landlord controls a contact address before chat alerts are routed to it (fn_chat_contact_confirmed). Unique per (landlord_id, email).",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Proves a landlord controls a contact address before chat alerts are routed to it (fn_chat_contact_confirmed). Unique per (landlord_id, email).",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
@@ -539,7 +539,7 @@
       {
         "table": "email_suppressions",
         "status": "unreleased",
-        "description": "DEV ONLY (feat/email-reply-relay). SES bounce and complaint list (reason bounce|complaint), checked by fn_email_suppressed before sending.",
+        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. SES bounce and complaint list (reason bounce|complaint), checked by fn_email_suppressed before sending.",
         "columns": [
           "email:text",
           "reason:text",
@@ -2529,11 +2529,11 @@
       {
         "name": "rpc_chat_notification_recipient",
         "kind": "rpc",
-        "args": "p_thread_id, p_sender_id",
+        "args": "p_thread_id, p_sender_id, p_sender_via=app, p_message_id=null",
         "touches": "chat_threads, chat_participants, chat_messages, users, listings",
         "called_from": "lib/chat/notifyEmail.js",
-        "defined_in": "202610030004_chat_attachment_notify_listing.sql",
-        "description": "Decides who (if anyone) gets the email for a new message: 2 minute active-reading window, 24h per-participant cooldown, email_notifications opt-out."
+        "defined_in": "202610120004_chat_alert_quiet_window.sql (dev; prod pending, see PR #289)",
+        "description": "Decides who (if anyone) gets the email for a new message. No holds: only users.email_notifications and fn_email_suppressed gate it. Returns everything the recipient has not read since last_read_at (max 10, oldest first, plus earlierCount). With p_message_id it returns NULL when the sender has posted something newer (that message's own 30s wait will send) or the recipient has read since, which is how a burst becomes one email. Records p_sender_via on the sender as email_mode."
       },
       {
         "name": "rpc_consume_chat_access_token",

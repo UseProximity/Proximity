@@ -36,7 +36,7 @@ import ReviewReplySection from "./ReviewReplySection";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
-import { useMessages } from "@/context/MessagesContext";
+import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
 
@@ -943,6 +943,8 @@ function ContactTab({
     listing.twentyOnePlus ? "loading" : "ok"
   );
   const [chatSending, setChatSending] = useState(false);
+  // "Send anyway?" copy from the server when the message holds contact details.
+  const [chatConfirm, setChatConfirm] = useState(null);
   const [chatBodyEdited, setChatBodyEdited] = useState(false);
   const [chatBody, setChatBody] = useState("");
 
@@ -1026,11 +1028,12 @@ function ContactTab({
       }
     : listing.owner;
 
-  async function handleStartChat(e) {
-    e.preventDefault();
+  async function handleStartChat(e, confirmed = false) {
+    e?.preventDefault?.();
     const text = chatBody.trim();
     if (!text || chatSending || !listing?._id) return;
     setChatSending(true);
+    setChatConfirm(null);
     try {
       /*
        * The lease id is what routes the message. A property can carry competing
@@ -1040,7 +1043,8 @@ function ContactTab({
       const data = await startListingChat(
         listing._id,
         text,
-        selectedLease?.id ?? null
+        selectedLease?.id ?? null,
+        { confirmed }
       );
       toast.success("Message sent");
       /*
@@ -1061,7 +1065,11 @@ function ContactTab({
        */
       onOpenThread?.(data?.threadId ?? null);
     } catch (err) {
-      toast.error(err?.message || "Failed to start chat. Please try again.");
+      if (err?.code === CHAT_CONFIRM_SEND_CODE) {
+        setChatConfirm(err.message);
+      } else {
+        toast.error(err?.message || "Failed to start chat. Please try again.");
+      }
     } finally {
       setChatSending(false);
     }
@@ -1106,6 +1114,33 @@ function ContactTab({
               aria-label="Message on Proximity"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
             />
+            {chatConfirm && (
+              <div
+                role="alertdialog"
+                aria-live="polite"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] leading-5 text-amber-900"
+              >
+                <p>{chatConfirm}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleStartChat(null, true)}
+                    disabled={chatSending}
+                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+                  >
+                    Send anyway
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChatConfirm(null)}
+                    disabled={chatSending}
+                    className="px-3 py-1 text-xs font-semibold rounded-lg border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Edit message
+                  </button>
+                </div>
+              </div>
+            )}
             <button
               type="submit"
               disabled={!chatBody.trim() || chatSending}

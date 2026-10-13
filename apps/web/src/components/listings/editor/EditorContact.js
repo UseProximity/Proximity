@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import ContactEmailStatus from "@/components/listings/editor/ContactEmailStatus";
 
 const field =
   "mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-red-400 focus:outline-none";
@@ -120,6 +121,7 @@ export default function EditorContact({ listing, onChanged }) {
           </span>
           <input type="email" required className={field} value={draft.contactEmail}
             onChange={(e) => set({ contactEmail: e.target.value })} />
+          <ContactEmailStatus savedEmail={savedContact(listing).contactEmail} draftEmail={draft.contactEmail} />
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Phone</span>

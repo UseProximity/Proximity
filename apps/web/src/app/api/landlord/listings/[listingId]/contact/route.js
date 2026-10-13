@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
 
 /*
  * One contact per landlord per property.
@@ -85,6 +87,18 @@ export async function PUT(req, { params }) {
   if (!updated?.length) {
     return NextResponse.json({ error: "You don't have a listing at this property." }, { status: 404 });
   }
+
+  // The address only receives message alerts once someone at it confirms
+  // (lib/chat/contactVerification). Until then alerts stay on the account
+  // email. Same step the per-lease create route takes.
+  const baseUrl = getBaseUrl(req);
+  after(() =>
+    requestContactVerification({
+      landlordId: session.user.id,
+      email: contact.contact_email,
+      baseUrl,
+    })
+  );
 
   return NextResponse.json({ message: "Contact saved", updated: updated.length });
 }
