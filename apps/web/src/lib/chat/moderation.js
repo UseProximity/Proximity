@@ -341,14 +341,30 @@ function listLabels(items) {
 }
 
 /*
- * The "send anyway?" prompt for a message that only contains contact details.
- * Names what was found, says why staying here matters, and leaves the choice
- * with the sender.
+ * Why the conversation should stay on Proximity, in the terms that matter to
+ * the person being asked (Wyatt, 2026-10-12). A student is protected from
+ * deposit scams, which almost always begin with a move to text or personal
+ * email. A landlord gets a dated record of every offer and agreement, which
+ * is what counts in a dispute, with every inquiry in one place. Used by the
+ * in-app "send anyway?" prompt and the emailed note after an email reply.
  */
-export function confirmMessage(reasons) {
+export function stayOnProximityNote(audience) {
+  const why =
+    audience === "landlord"
+      ? "every offer and agreement is dated and on record if a dispute ever comes up, and all your inquiries stay in one place"
+      : "there is a record of what was agreed, and deposit scams almost always start with a move to text or personal email";
+  return `Please keep the conversation on Proximity. It protects you: ${why}.`;
+}
+
+/*
+ * The "send anyway?" prompt for a message that only contains contact details.
+ * Names what was found, says why staying here matters to this sender, and
+ * leaves the choice with them.
+ */
+export function confirmMessage(reasons, audience = "student") {
   const found = listLabels([...new Set(reasons.map((r) => CONTACT_LABELS[r]).filter(Boolean))]);
   const what = found ? `This message includes ${found}.` : "This message includes contact details.";
-  return `${what} Conversations that stay on Proximity keep a record you can both rely on and protect you from deposit scams. You can also reply to the message emails from Proximity instead. Send it anyway?`;
+  return `${what} ${stayOnProximityNote(audience)} You can also reply to the message emails from Proximity; those replies stay in this conversation. Send it anyway?`;
 }
 
 /** Attachment captions go through the same screen as a message body. */

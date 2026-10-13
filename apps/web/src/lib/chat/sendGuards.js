@@ -71,6 +71,7 @@ export async function screenOutgoingChat({
   threadId = null,
   listingId = null,
   confirmed = false,
+  audience = "student",
 }) {
   const verdict = screenChatText(body);
 
@@ -82,7 +83,7 @@ export async function screenOutgoingChat({
           blocked: false,
           needsConfirmation: true,
           reasons: verdict.reasons,
-          message: confirmMessage(verdict.reasons),
+          message: confirmMessage(verdict.reasons, audience),
         };
       }
       return { blocked: false, flagged: true, reasons: [...verdict.reasons, CONFIRMED_REASON] };

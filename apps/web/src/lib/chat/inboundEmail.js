@@ -410,6 +410,7 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
           : { data: null };
         await sendReplyGuidelinesEmail({
           to: fromEmail,
+          audience: t.landlord_id === userId ? "landlord" : "student",
           otherFirst: String(other?.name ?? "").trim().split(/\s+/)[0],
           reasons,
           removed,

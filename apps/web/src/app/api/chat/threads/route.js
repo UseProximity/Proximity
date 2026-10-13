@@ -114,6 +114,7 @@ export async function POST(req) {
       body: trimmedBody,
       listingId: listingId.trim(),
       confirmed: payload?.confirmed === true,
+      audience: session.user.role === "landlord" ? "landlord" : "student",
     });
     if (screen.blocked) {
       return NextResponse.json({ error: screen.message }, { status: 422 });

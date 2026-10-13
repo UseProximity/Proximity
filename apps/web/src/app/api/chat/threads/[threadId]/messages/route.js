@@ -192,6 +192,9 @@ export async function POST(req, { params }) {
     const bodyText = typeof rawBody === "string" ? rawBody.trim() : "";
     // Set when the composer re-sends after the "send anyway?" prompt.
     const confirmed = payload?.confirmed === true;
+    // Which "keep it on Proximity" reasons the prompt gives: scams for students,
+    // the dated record for landlords.
+    const audience = session.user.role === "landlord" ? "landlord" : "student";
     const normalized = normalizeAttachments(payload?.attachments);
 
     if (normalized?.error) {
@@ -216,6 +219,7 @@ export async function POST(req, { params }) {
         body: bodyText,
         threadId,
         confirmed,
+        audience,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
@@ -276,6 +280,7 @@ export async function POST(req, { params }) {
         body: bodyText,
         threadId,
         confirmed,
+        audience,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
