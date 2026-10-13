@@ -87,19 +87,22 @@ function driveTimesToMap(driveTimes) {
 /*
  * Which landlord an offering belongs to, as far as a renter is concerned.
  *
- * Contact email is the identity: a landlord sets one block per property and
- * every lease they own there carries it (api/landlord/listings/[id]/contact),
- * and an imported lease with no account has nothing else to be known by. The
- * browser gets a per-response stand-in ("landlord-1", "landlord-2") rather
- * than the address itself, which never leaves the server; grouping needs
- * equality, not the value. One keyer per listing, so the same landlord on two
- * units of the building gets the same key.
+ * The owning account is the identity, because that is who a conversation
+ * reaches: Contact on a card opens a thread with the owner of the lease it
+ * names (fn_chat_resolve_landlord). Keying on the contact email instead merged
+ * two owners who share a leasing address, or who both fall back to the
+ * listing's, into one card whose Contact reached only the first of them.
+ * An imported lease with no account has only its contact email to be known
+ * by, so that is its identity. The browser gets a per-response stand-in
+ * ("landlord-1", "landlord-2") rather than the address or id itself; grouping
+ * needs equality, not the value. One keyer per listing, so the same landlord
+ * on two units of the building gets the same key.
  */
 export function landlordKeyer() {
   const keys = new Map();
   return (lease, listingRow) => {
     const email = (lease.contact_email ?? listingRow?.contact_email ?? "").trim().toLowerCase();
-    const identity = email ? `e:${email}` : lease.owner_id ? `o:${lease.owner_id}` : `l:${lease.id}`;
+    const identity = lease.owner_id ? `o:${lease.owner_id}` : email ? `e:${email}` : `l:${lease.id}`;
     if (!keys.has(identity)) keys.set(identity, `landlord-${keys.size + 1}`);
     return keys.get(identity);
   };

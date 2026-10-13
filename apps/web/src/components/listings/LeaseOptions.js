@@ -11,7 +11,8 @@
  * buttons that all reach the same inbox.
  *
  * Who counts as "one landlord" is decided server-side (landlordKey, standing
- * in for the contact email, which never reaches the browser). There is no
+ * in for the owning account, or the contact email of an imported lease with no
+ * account, neither of which reaches the browser). There is no
  * selection state here: every card is independently actionable.
  */
 
