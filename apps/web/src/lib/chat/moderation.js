@@ -348,12 +348,16 @@ function listLabels(items) {
  * is what counts in a dispute, with every inquiry in one place. Used by the
  * in-app "send anyway?" prompt and the emailed note after an email reply.
  */
-export function stayOnProximityNote(audience) {
-  const why =
-    audience === "landlord"
-      ? "every offer and agreement is dated and on record if a dispute ever comes up, and all your inquiries stay in one place"
-      : "there is a record of what was agreed, and deposit scams almost always start with a move to text or personal email";
-  return `Please keep the conversation on Proximity. It protects you: ${why}.`;
+export function stayOnProximityNote(audience, channel = "app") {
+  const landlord = audience === "landlord";
+  if (channel === "email") {
+    return landlord
+      ? "Keeping the conversation in Proximity protects both you and Proximity. It helps us keep a record of which conversations drive leases and the app is built out to allow you to converse without leaving your inbox."
+      : "Keeping the conversation in Proximity protects both you and Proximity. It helps us keep a record of every conversation and helps you avoid deposit scams.";
+  }
+  return landlord
+    ? "Keeping the conversation on Proximity protects both you and Proximity. It allows us to track conversations, keep every offer and agreement on record if a dispute ever comes up, and all your inquiries stay in one place."
+    : "Keeping the conversation on Proximity protects both you and Proximity. It allows us to track conversations and helps you avoid deposit scams.";
 }
 
 /*
@@ -364,7 +368,7 @@ export function stayOnProximityNote(audience) {
 export function confirmMessage(reasons, audience = "student") {
   const found = listLabels([...new Set(reasons.map((r) => CONTACT_LABELS[r]).filter(Boolean))]);
   const what = found ? `This message includes ${found}.` : "This message includes contact details.";
-  return `${what} ${stayOnProximityNote(audience)} You can also reply to the message emails from Proximity; those replies stay in this conversation. Send it anyway?`;
+  return `${what} ${stayOnProximityNote(audience, "app")} You can also reply to the message emails from Proximity; those replies stay in this conversation. Send it anyway?`;
 }
 
 /** Attachment captions go through the same screen as a message body. */

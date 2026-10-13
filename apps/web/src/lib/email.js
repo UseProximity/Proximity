@@ -499,11 +499,12 @@ export function buildReplyGuidelinesEmail({ otherFirst, reasons, removed, baseUr
   const who = displayName(otherFirst, "the other person");
   const what = listReasons(reasons);
   const inboxUrl = `${baseUrl}/messages`;
+  const future = "In the future, please refrain from taking conversations outside of Proximity, unless it is to finalize a deal.";
   const delivered = removed
-    ? `Your reply to ${who} was delivered, but part of it was removed because it contained ${what}.`
-    : `Your reply to ${who} was delivered. It contained ${what}, which Proximity conversations are meant to keep out.`;
-  const why = stayOnProximityNote(audience);
-  const how = `You do not have to leave your inbox to do that. Reply to the message emails from Proximity the way you would reply to ${who} directly, and your words land in the conversation. Replies that keep including contact details may stop being delivered.`;
+    ? `Your reply to ${who} was delivered, but part of it was removed because it contained ${what}. ${future}`
+    : `Your reply to ${who} was delivered. It contained ${what}, which Proximity conversations are meant to keep out. ${future}`;
+  const why = stayOnProximityNote(audience, "email");
+  const how = `Please reply to the message emails from Proximity the way you would reply to ${who} directly, and your words land in the conversation. Replies that keep including contact details may stop being delivered.`;
   return {
     subject: "A note about your reply",
     text: `${delivered}\n\n${why}\n\n${how}\n\nThe conversation on Proximity:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
