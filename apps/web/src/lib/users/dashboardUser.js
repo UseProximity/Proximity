@@ -49,6 +49,17 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
   const primaryLandlord = landlords.find((x) => x.is_primary) ?? landlords[0] ?? null;
   const owner = primaryLandlord?.user_id ?? null;
 
+  /*
+   * Contact details stay with the people they belong to. The same serializer
+   * builds a student's saved and contacted listings (no currentUserId), and the
+   * Privacy Policy promises a listing's contact email and phone never reach the
+   * browser there. A landlord gets their own, plus the imported ownerless
+   * offerings on a property they own, which only they can fix.
+   */
+  const ownsProperty = !!currentUserId && landlords.some((x) => x.user_id === currentUserId);
+  const showLeaseContact = (lease) =>
+    !!currentUserId && (lease.owner_id === currentUserId || (!lease.owner_id && ownsProperty));
+
   const coOwners = landlords
     .filter((x) => x.user_id !== currentUserId)
     .map((x) => ({
@@ -159,8 +170,12 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             // property's for leases that predate them. The editor opens on
             // these, so leaving them unselected showed a landlord an empty
             // contact box and lost the value on the next save.
-            contactEmail: lease.contact_email ?? l.contact_email ?? "",
-            contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
+            ...(showLeaseContact(lease)
+              ? {
+                  contactEmail: lease.contact_email ?? l.contact_email ?? "",
+                  contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
+                }
+              : {}),
             description: lease.description ?? "",
             mine: !!currentUserId && lease.owner_id === currentUserId,
             // An imported offering with no account behind it. Its contact can be
@@ -230,8 +245,11 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     numReviews,
     numClicks: metricsMap[l.id] ?? 0,
     numSaves: 0,
-    contactEmail: l.contact_email ?? null,
-    contactPhone: l.contact_phone ?? null,
+    // Only on the viewer's own listings (see showLeaseContact). The name is
+    // public on the listing page, so it stays.
+    ...(currentUserId
+      ? { contactEmail: l.contact_email ?? null, contactPhone: l.contact_phone ?? null }
+      : {}),
     contactName: l.contact_name ?? null,
     owner,
     coOwners,
