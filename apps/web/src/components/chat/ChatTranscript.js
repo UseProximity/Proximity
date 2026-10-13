@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
-import { useMessages } from "@/context/MessagesContext";
+import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -140,6 +140,7 @@ export default function ChatTranscript({
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
+  const [confirmPrompt, setConfirmPrompt] = useState(null);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
@@ -239,19 +240,30 @@ export default function ChatTranscript({
     };
   }, []);
 
-  async function handleSend() {
+  /*
+   * A message with contact details in it comes back as CONFIRM_SEND rather
+   * than an error. The draft is put back and a "send anyway?" prompt appears
+   * above the composer; Send anyway re-sends the same draft with confirmed set,
+   * Edit just dismisses the prompt and leaves the draft in the box.
+   */
+  async function handleSend(confirmed = false) {
     const text = input.trim();
     const files = pendingFiles;
     if ((!text && files.length === 0) || sending || !thread?.threadId) return;
     setSending(true);
+    setConfirmPrompt(null);
     setInput("");
     setPendingFiles([]);
     try {
-      await onSend(thread.threadId, text, files);
+      await onSend(thread.threadId, text, files, { confirmed });
     } catch (err) {
       setInput(text);
       setPendingFiles(files);
-      toast.error(err?.message || "Failed to send message. Please try again.");
+      if (err?.code === CHAT_CONFIRM_SEND_CODE) {
+        setConfirmPrompt(err.message);
+      } else {
+        toast.error(err?.message || "Failed to send message. Please try again.");
+      }
     } finally {
       setSending(false);
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -493,6 +505,36 @@ export default function ChatTranscript({
         </div>
       ) : (
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
+        {confirmPrompt && (
+          <div
+            role="alertdialog"
+            aria-live="polite"
+            className="mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] leading-5 text-amber-900"
+          >
+            <p>{confirmPrompt}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSend(true)}
+                disabled={sending}
+                className="px-3 py-1 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+              >
+                Send anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmPrompt(null);
+                  requestAnimationFrame(() => inputRef.current?.focus());
+                }}
+                disabled={sending}
+                className="px-3 py-1 text-xs font-semibold rounded-lg border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                Edit message
+              </button>
+            </div>
+          </div>
+        )}
         {pendingFiles.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {pendingFiles.map((file, i) => (
@@ -577,7 +619,7 @@ export default function ChatTranscript({
             />
             <button
               type="button"
-              onClick={handleSend}
+              onClick={() => handleSend(false)}
               disabled={!canSend}
               className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
               aria-label="Send message"

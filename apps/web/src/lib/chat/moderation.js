@@ -316,6 +316,8 @@ function blockMessage(reasons) {
  * The reasons that are about moving the conversation elsewhere, as opposed to
  * abuse, fraud or phishing. By email these are delivered in full and the sender
  * is told why to stop (Wyatt, 2026-10-12); the others still lose the sentence.
+ * In the app they are not blocked either: the composer asks the sender to
+ * confirm, and a confirmed send goes through flagged (Wyatt, 2026-10-12).
  */
 export const CONTACT_REASONS = new Set([
   "contact_email",
@@ -324,6 +326,30 @@ export const CONTACT_REASONS = new Set([
   "social_handle",
   "off_platform_request",
 ]);
+
+const CONTACT_LABELS = {
+  contact_email: "an email address",
+  contact_phone: "a phone number",
+  external_link: "a link to an outside website",
+  social_handle: "a social media handle",
+  off_platform_request: "a request to continue outside Proximity",
+};
+
+function listLabels(items) {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/*
+ * The "send anyway?" prompt for a message that only contains contact details.
+ * Names what was found, says why staying here matters, and leaves the choice
+ * with the sender.
+ */
+export function confirmMessage(reasons) {
+  const found = listLabels([...new Set(reasons.map((r) => CONTACT_LABELS[r]).filter(Boolean))]);
+  const what = found ? `This message includes ${found}.` : "This message includes contact details.";
+  return `${what} Conversations that stay on Proximity keep a record you can both rely on and protect you from deposit scams. You can also reply to the message emails from Proximity instead. Send it anyway?`;
+}
 
 /** Attachment captions go through the same screen as a message body. */
 export const screenChatCaption = screenChatText;

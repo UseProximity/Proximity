@@ -38,6 +38,7 @@ const REASON_LABELS = {
   ssn_mentioned: "SSN mentioned",
   delivered_from_email: "delivered as written (email reply)",
   redacted_from_email: "sentence removed (email reply)",
+  confirmed_in_app: "sent after confirming",
   from_email: "email reply",
   attachments_removed: "attachments removed",
   attachment_scan_unavailable: "attachment not scanned",
@@ -47,7 +48,13 @@ const REASON_LABELS = {
 
 // Reasons that describe how the message was handled rather than what was in
 // it. They are shown in grey so the red ones stand out.
-const HANDLING_REASONS = new Set(["delivered_from_email", "redacted_from_email", "from_email", "attachments_removed"]);
+const HANDLING_REASONS = new Set([
+  "delivered_from_email",
+  "redacted_from_email",
+  "confirmed_in_app",
+  "from_email",
+  "attachments_removed",
+]);
 
 function reasonLabel(key) {
   return REASON_LABELS[key] || String(key ?? "").replace(/_/g, " ");
@@ -161,7 +168,9 @@ function BlockedAttempt({ e, sender }) {
       <div className="flex items-center gap-2 flex-wrap text-[11px] text-amber-800">
         <span className="font-semibold">{personLabel(sender)}</span>
         <span>{fmtWhen(e.createdAt)}</span>
-        <span className="font-semibold">Blocked before sending</span>
+        <span className="font-semibold">
+          {e.action === "block" ? "Blocked before sending" : "Flagged (message not linked)"}
+        </span>
       </div>
       {e.excerpt ? (
         <p className="mt-1 text-sm text-amber-900 whitespace-pre-wrap break-words">{e.excerpt}</p>
