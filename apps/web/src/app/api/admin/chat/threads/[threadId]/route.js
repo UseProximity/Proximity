@@ -18,6 +18,20 @@ import { getSupabaseClient } from "@/lib/supabase";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const PAGE = 1000;
+
+// PostgREST caps a response at 1000 rows whatever the range, so the messages
+// are walked in pages. Same shape as a single query's result.
+async function fetchAllRows(query) {
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await query.range(from, from + PAGE - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) return { data: rows, error: null };
+  }
+}
+
 function getDbTarget(req) {
   const header = req.headers.get("x-db-target");
   return header === "prod" || header === "dev" ? header : undefined;
@@ -48,12 +62,14 @@ export async function GET(req, { params }) {
           .from("chat_participants")
           .select("user_id, joined_at, last_read_at, last_notified_at, email_mode, user:users!user_id(id, name, email, roles!role_id(name))")
           .eq("thread_id", threadId),
-        supabase
-          .from("chat_messages")
-          .select("id, sender_id, body, message_type, metadata, created_at, deleted_at")
-          .eq("thread_id", threadId)
-          .order("created_at", { ascending: true })
-          .range(0, 4999),
+        fetchAllRows(
+          supabase
+            .from("chat_messages")
+            .select("id, sender_id, body, message_type, metadata, created_at, deleted_at")
+            .eq("thread_id", threadId)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+        ),
         supabase
           .from("chat_attachments")
           .select("message_id, file_name, content_type, size_bytes")
