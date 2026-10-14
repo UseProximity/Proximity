@@ -1,3 +1,28 @@
+const { distributableEnvProblems } = require("./src/lib/envGuard");
+
+// EAS sets EAS_BUILD_PROFILE on the machine that builds. A preview, testflight or
+// production build must not start from the local development environment
+// (apps/mobile/.env.local is read here too), so fail the build before it can bundle
+// a LAN URL, an insecure URL, a test-email override or a missing value. Development
+// builds and plain `expo start` are not checked.
+if (["preview", "testflight", "production"].includes(process.env.EAS_BUILD_PROFILE)) {
+  const problems = distributableEnvProblems({
+    apiUrl: process.env.EXPO_PUBLIC_API_URL,
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+    supabaseKey: process.env.EXPO_PUBLIC_SUPABASE_DEFAULT_KEY,
+    googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    googleAndroidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    mapboxToken: process.env.EXPO_PUBLIC_MAPBOX_TOKEN,
+    testEmailTo: process.env.EXPO_PUBLIC_TEST_EMAIL_TO,
+  });
+  if (problems.length > 0) {
+    throw new Error(
+      `The "${process.env.EAS_BUILD_PROFILE}" build environment is not fit to ship:\n- ${problems.join("\n- ")}\n` +
+        "Set these in the matching Expo environment (see eas.json) and make sure apps/mobile/.env.local is not part of the upload."
+    );
+  }
+}
+
 module.exports = {
   expo: {
     name: "Proximity",
@@ -58,6 +83,13 @@ module.exports = {
       // /.well-known/apple-app-site-association (apps/web/public/.well-known). www is
       // left out because it redirects to the apex domain.
       associatedDomains: ["applinks:useproximity.org"],
+      infoPlist: {
+        // The Mapbox map library links Apple's location APIs, so App Store Connect
+        // warns (ITMS-90683) when this string is missing. The app never requests
+        // location permission, so iOS never shows this text to a user.
+        NSLocationWhenInUseUsageDescription:
+          "Location access would allow Proximity to show your current position on a map. Proximity does not currently use your device location.",
+      },
       // Only standard HTTPS (system TLS) is used, which is exempt from US export
       // rules. Sets ITSAppUsesNonExemptEncryption=false so App Store Connect
       // stops asking the export-compliance question on every upload.
