@@ -1,5 +1,5 @@
 export const dynamic = "force-dynamic";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
@@ -9,6 +9,8 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { checkListingDescription } from "@/lib/contentRules";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
 
 // listing_amenities / listing_utilities store one boolean column per option.
 // The frontend sends an array of those column names; we flip the matching
@@ -260,6 +262,27 @@ export async function PATCH(req, { params }) {
     )
     .eq("id", listingId)
     .single();
+
+  /*
+   * A new contact address only receives message alerts once someone at it
+   * confirms, see lib/chat/contactVerification. The confirmation belongs to the
+   * account that holds this listing's conversations, which is the primary
+   * landlord, not necessarily whoever pressed Save.
+   */
+  if (typeof safeUpdates.contact_email === "string" && safeUpdates.contact_email.trim()) {
+    const baseUrl = getBaseUrl(req);
+    after(async () => {
+      const { data: holderId } = await supabase.rpc("fn_chat_primary_landlord_id", {
+        p_listing_id: listingId,
+      });
+      await requestContactVerification({
+        landlordId: holderId || check.user.id,
+        email: safeUpdates.contact_email,
+        listingLabel: updated?.title || updated?.address || null,
+        baseUrl,
+      });
+    });
+  }
 
   return NextResponse.json(updated);
 }

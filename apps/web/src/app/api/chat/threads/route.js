@@ -11,6 +11,8 @@ import {
   CHAT_PASSWORD_REQUIRED_MESSAGE,
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
+  CHAT_CONFIRM_SEND_CODE,
+  recordFlaggedSend,
 } from "@/lib/chat/sendGuards";
 import {
   applyBlocksToInbox,
@@ -126,9 +128,17 @@ export async function POST(req) {
       userId: authUser.id,
       body: trimmedBody,
       listingId: listingId.trim(),
+      confirmed: payload?.confirmed === true,
+      audience: authUser.role === "landlord" ? "landlord" : "student",
     });
     if (screen.blocked) {
       return NextResponse.json({ error: screen.message }, { status: 422 });
+    }
+    if (screen.needsConfirmation) {
+      return NextResponse.json(
+        { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+        { status: 409 }
+      );
     }
 
     const { data, error } = await supabase.rpc("rpc_start_or_get_listing_chat", {
@@ -152,12 +162,24 @@ export async function POST(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
+    if (screen.flagged) {
+      await recordFlaggedSend({
+        userId: authUser.id,
+        threadId: data?.threadId ?? null,
+        messageId: data?.messageId ?? null,
+        listingId: listingId.trim(),
+        reasons: screen.reasons,
+        body: trimmedBody,
+      });
+    }
+
     // Read the request headers here: after() runs once the response is on its way.
     const baseUrl = getBaseUrl(req);
     after(() =>
       notifyNewChatMessage({
         threadId: data?.threadId,
         senderId: authUser.id,
+        messageId: data?.messageId ?? null,
         baseUrl,
       })
     );

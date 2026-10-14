@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-12T17:27:06.294Z",
-  "count": 113,
+  "_generated": "2026-10-14T11:51:18.897Z",
+  "count": 124,
   "routes": [
     {
       "path": "/api/account",
@@ -61,6 +61,43 @@
         "users"
       ],
       "file": "src/app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/chat/threads",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [
+        "chat_threads",
+        "users",
+        "listings",
+        "chat_messages",
+        "chat_moderation_events"
+      ],
+      "file": "src/app/api/admin/chat/threads/route.js"
+    },
+    {
+      "path": "/api/admin/chat/threads/[threadId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [
+        "chat_threads",
+        "chat_participants",
+        "chat_messages",
+        "chat_attachments",
+        "chat_moderation_events",
+        "users"
+      ],
+      "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
     },
     {
       "path": "/api/admin/db-env",
@@ -470,6 +507,18 @@
       "file": "src/app/api/chat/attachments/[attachmentId]/route.js"
     },
     {
+      "path": "/api/chat/inbound-email",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/inbound-email/route.js"
+    },
+    {
       "path": "/api/chat/realtime-token",
       "methods": [
         "GET"
@@ -487,10 +536,10 @@
         "GET",
         "POST"
       ],
-      "auth": "any",
+      "auth": "landlord+",
       "methodAuth": {
         "GET": "any",
-        "POST": "any"
+        "POST": "landlord+"
       },
       "tables": [],
       "file": "src/app/api/chat/threads/route.js"
@@ -530,10 +579,10 @@
         "GET",
         "POST"
       ],
-      "auth": "any",
+      "auth": "landlord+",
       "methodAuth": {
         "GET": "any",
-        "POST": "any"
+        "POST": "landlord+"
       },
       "tables": [],
       "file": "src/app/api/chat/threads/[threadId]/messages/route.js"
@@ -564,6 +613,18 @@
         "chat_reports"
       ],
       "file": "src/app/api/chat/threads/[threadId]/report/route.js"
+    },
+    {
+      "path": "/api/contact-verify",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/contact-verify/route.js"
     },
     {
       "path": "/api/contacted",
@@ -606,6 +667,35 @@
         "users"
       ],
       "file": "src/app/api/cron/availability-check/route.js"
+    },
+    {
+      "path": "/api/cron/chat-checkin",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "chat_checkin_alerts",
+        "chat_checkin_runs"
+      ],
+      "file": "src/app/api/cron/chat-checkin/route.js"
+    },
+    {
+      "path": "/api/cron/chat-checkin-report",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "chat_checkin_runs"
+      ],
+      "file": "src/app/api/cron/chat-checkin-report/route.js"
     },
     {
       "path": "/api/cron/chat-retention",
@@ -733,6 +823,18 @@
       },
       "tables": [],
       "file": "src/app/api/cron/waitlist-nudge/route.js"
+    },
+    {
+      "path": "/api/dev/inbound-email",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/dev/inbound-email/route.js"
     },
     {
       "path": "/api/dev/matchmaking-edgecases",
@@ -909,6 +1011,24 @@
       "file": "src/app/api/getUser/route.js"
     },
     {
+      "path": "/api/landlord/contact-emails",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [
+        "unit_leases",
+        "listing_landlords",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/contact-emails/route.js"
+    },
+    {
       "path": "/api/landlord/listing-draft",
       "methods": [
         "POST"
@@ -964,6 +1084,21 @@
         "home_types"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/contact",
+      "methods": [
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PUT": "any"
+      },
+      "tables": [
+        "listing_units",
+        "unit_leases"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/contact/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/images",
@@ -1284,6 +1419,20 @@
       "file": "src/app/api/leases/[leaseId]/route.js"
     },
     {
+      "path": "/api/leases/[leaseId]/contact",
+      "methods": [
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "PUT": "any"
+      },
+      "tables": [
+        "unit_leases"
+      ],
+      "file": "src/app/api/leases/[leaseId]/contact/route.js"
+    },
+    {
       "path": "/api/listing/[listingId]",
       "methods": [
         "GET"
@@ -1566,6 +1715,20 @@
       },
       "tables": [],
       "file": "src/app/api/seo/opportunities/route.js"
+    },
+    {
+      "path": "/api/ses/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "email_suppressions"
+      ],
+      "file": "src/app/api/ses/events/route.js"
     },
     {
       "path": "/api/streetview/preview",

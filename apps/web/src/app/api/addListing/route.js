@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
@@ -9,6 +9,8 @@ import { shortDescription } from "@/lib/listings/leaseDescription";
 import { isValidCount, isWholeCount } from "@/utils/unitCounts";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
 import {
   findPropertyNameConflict,
   listingsAtAddress,
@@ -901,6 +903,15 @@ export async function POST(req) {
       } catch (emailErr) {
         console.error("[addListing] Failed to send landlord notification:", emailErr?.message);
       }
+    }
+
+    // A contact address typed into the add form only receives message alerts
+    // once someone at it confirms, the same as one set later in the editor.
+    // The importer is left alone: its addresses come from the source site and
+    // have no landlord on our side to confirm them for.
+    if (!isImportRequest && ownerId && contactEmail) {
+      const baseUrl = getBaseUrl(req);
+      after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl }));
     }
 
     return NextResponse.json(

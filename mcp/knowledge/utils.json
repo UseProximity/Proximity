@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-12T17:27:06.303Z",
-  "count": 124,
+  "_generated": "2026-10-14T11:51:18.908Z",
+  "count": 131,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -92,12 +92,36 @@
       "description": "One-click \"still available?\" landlord email."
     },
     {
+      "file": "src/lib/aws/snsVerify.js",
+      "description": "Verify that a message posted to one of our endpoints really came from Amazon SNS."
+    },
+    {
       "file": "src/lib/chat/accessToken.js",
       "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
     },
     {
       "file": "src/lib/chat/attachments.js",
       "description": "Shared allowlist / limits for chat attachments (presign API + client)."
+    },
+    {
+      "file": "src/lib/chat/checkin.js",
+      "description": "Internal chat check-in (Wyatt, 2026-10-13)."
+    },
+    {
+      "file": "src/lib/chat/checkinReport.js",
+      "description": "Weekly chat check-in report (Wyatt, 2026-10-13)."
+    },
+    {
+      "file": "src/lib/chat/contactVerification.js",
+      "description": "One-click confirmation for per-listing alert addresses."
+    },
+    {
+      "file": "src/lib/chat/emailReplyText.js",
+      "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
+    },
+    {
+      "file": "src/lib/chat/inboundEmail.js",
+      "description": "Post an emailed reply into its chat conversation."
     },
     {
       "file": "src/lib/chat/landlordCanChat.js",
@@ -122,6 +146,10 @@
     {
       "file": "src/lib/chat/realtime.js",
       "description": "Supabase Realtime helper for listing chat."
+    },
+    {
+      "file": "src/lib/chat/replyAddress.js",
+      "description": "Private reply addresses for chat alert emails."
     },
     {
       "file": "src/lib/chat/safety.js",
@@ -157,7 +185,7 @@
     },
     {
       "file": "src/lib/getRequestUser.js",
-      "description": "Resolves the current request's user via the NextAuth session (web) first,"
+      "description": "Thrown when the user lookup itself fails (the database or network, not a missing"
     },
     {
       "file": "src/lib/google/serviceAccount.js",

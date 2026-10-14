@@ -48,6 +48,12 @@ export async function PATCH(req) {
     if (body.name !== undefined) allowedFields.name = body.name;
     if (body.birthday !== undefined) allowedFields.birthday = body.birthday || null;
     if (body.phone !== undefined) allowedFields.phone = body.phone;
+    // The business a landlord account represents ("Keeley Properties"). Shown
+    // next to their name in chat and in message alert emails.
+    if (body.companyName !== undefined) {
+      const company = typeof body.companyName === "string" ? body.companyName.trim().slice(0, 100) : "";
+      allowedFields.company_name = company || null;
+    }
     if (body.description !== undefined) allowedFields.description = body.description;
     if (body.gender !== undefined) allowedFields.gender = body.gender;
     if (body.profileComplete !== undefined) allowedFields.profile_complete = body.profileComplete;
@@ -109,7 +115,7 @@ export async function PATCH(req) {
 
     const { data: updated, error: fetchError } = await supabase
       .from("users")
-      .select("name, birthday, gender, phone, description, roles!role_id(name)")
+      .select("name, company_name, birthday, gender, phone, description, roles!role_id(name)")
       .eq("id", supabaseId)
       .single();
 

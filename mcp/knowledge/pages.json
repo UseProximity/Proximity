@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-10-07T17:55:22.669Z",
-  "count": 42,
+  "_generated": "2026-10-09T19:35:19.340Z",
+  "count": 43,
   "pages": [
     {
       "path": "/",
@@ -58,6 +58,10 @@
     {
       "path": "/chat-link",
       "file": "src/app/chat-link/page.js"
+    },
+    {
+      "path": "/contact-verify",
+      "file": "src/app/contact-verify/page.js"
     },
     {
       "path": "/dashboard",

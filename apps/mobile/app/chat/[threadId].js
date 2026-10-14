@@ -30,8 +30,10 @@ import {
   CONVERSATION_UNAVAILABLE_MESSAGE,
   chatErrorMessage,
   formatFileSize,
+  isConfirmSend,
   mergeMessages,
 } from "../../src/lib/chatFormat";
+import { confirmSendAnyway } from "../../src/lib/chatConfirm";
 import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
 import { subscribeThread } from "../../src/lib/chatRealtime";
@@ -83,6 +85,10 @@ export default function ChatThreadScreen() {
   const [viewer, setViewer] = useState(null);
   const [preparing, setPreparing] = useState(false);
   const sendingPhotosRef = useRef(false);
+  // Attachment keys already uploaded for the staged files, so a "Send anyway" retry
+  // sends the same objects instead of uploading the files a second time. Only reused
+  // while the staged files are exactly the same ones (see sendPhotos).
+  const uploadedRef = useRef(null);
   const loadedOnce = useRef(false);
   // Set by the first successful page load, whichever call made it, so pagination
   // is initialised even when the first attempt failed.
@@ -295,17 +301,29 @@ export default function ChatThreadScreen() {
   // as one message. If anything fails before the send, no message exists and the
   // files and caption stay in the composer for another try. The message itself
   // arrives over realtime; the reload is the fallback if the socket is down.
-  const sendPhotos = useCallback(async () => {
+  const sendPhotos = useCallback(async (confirmed = false) => {
     // The ref is checked synchronously: two quick taps can both see the old `sending`
     // state before React re-renders, but not the same ref.
     if (sendingPhotosRef.current || sending || preparing || staged.length === 0) return;
     sendingPhotosRef.current = true;
     const caption = text.trim();
+    const signature = `${threadId}|${staged.map((photo) => photo.id).join(",")}`;
+    let confirmMessage = null;
     setSending(true);
     setSendError(null);
     try {
-      const attachments = await uploadChatAttachments(threadId, staged);
-      await apiClient.chat.sendMessage(threadId, { body: caption || undefined, attachments });
+      let attachments =
+        uploadedRef.current?.signature === signature ? uploadedRef.current.attachments : null;
+      if (!attachments) {
+        attachments = await uploadChatAttachments(threadId, staged);
+        uploadedRef.current = { signature, attachments };
+      }
+      await apiClient.chat.sendMessage(threadId, {
+        body: caption || undefined,
+        attachments,
+        confirmed: confirmed === true,
+      });
+      uploadedRef.current = null;
       // Keep anything typed while the upload was running.
       setText((current) => (current.trim() === caption ? "" : current));
       setStaged([]);
@@ -313,6 +331,9 @@ export default function ChatThreadScreen() {
     } catch (err) {
       if (err?.status === 403 && err?.body?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
         setUnavailable(true);
+      } else if (isConfirmSend(err)) {
+        // Nothing was sent; the files and caption stay in the composer.
+        confirmMessage = err.body.error;
       } else if (err?.status !== 401) {
         setSendError(chatErrorMessage(err, "Couldn't send your attachments. Please try again."));
       }
@@ -320,11 +341,14 @@ export default function ChatThreadScreen() {
       sendingPhotosRef.current = false;
       setSending(false);
     }
+    if (confirmMessage && (await confirmSendAnyway(confirmMessage))) {
+      await sendPhotos(true);
+    }
   }, [sending, preparing, staged, text, threadId, loadLatest]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (confirmed = false) => {
     if (staged.length > 0) {
-      await sendPhotos();
+      await sendPhotos(confirmed);
       return;
     }
     const body = text.trim();
@@ -343,13 +367,14 @@ export default function ChatThreadScreen() {
       pending: true,
     };
 
+    let confirmMessage = null;
     setSending(true);
     setSendError(null);
     setText("");
     setMessages((current) => [...current, optimistic]);
 
     try {
-      const result = await apiClient.chat.sendMessage(threadId, { body });
+      const result = await apiClient.chat.sendMessage(threadId, { body, confirmed: confirmed === true });
       setMessages((current) => {
         // Realtime may already have delivered the confirmed row and replaced the
         // pending bubble; then there is nothing left to settle.
@@ -370,6 +395,9 @@ export default function ChatThreadScreen() {
       setMessages((current) => current.filter((m) => m.id !== tempId));
       if (err?.status === 403 && err?.body?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
         setUnavailable(true);
+      } else if (isConfirmSend(err)) {
+        setText(body); // nothing was sent; the draft stays for Edit
+        confirmMessage = err.body.error;
       } else if (err?.status !== 401) {
         setText(body); // give the words back so nothing typed is lost
         setSendError(
@@ -378,6 +406,9 @@ export default function ChatThreadScreen() {
       }
     } finally {
       setSending(false);
+    }
+    if (confirmMessage && (await confirmSendAnyway(confirmMessage))) {
+      await handleSend(true);
     }
   }, [text, sending, staged.length, sendPhotos, threadId, user?.id, markRead]);
 
@@ -642,7 +673,7 @@ export default function ChatThreadScreen() {
               </View>
             ) : (
               <SendButton
-                onPress={handleSend}
+                onPress={() => handleSend()}
                 disabled={(!text.trim() && staged.length === 0) || loading || preparing}
               />
             )}

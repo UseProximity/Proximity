@@ -135,20 +135,38 @@ Android app offer email and password or Google.
   it has been read. These messages are kept in our database so both of you can come back
   to the conversation. They are visible to the other participant, and to Proximity
   staff who need to investigate a report of abuse or a dispute, or to confirm that a lease
-  was signed. **If one of you deletes their account, we keep the conversation for three
+  was signed. We also email new messages to the other participant (Section 6.2). A
+  landlord may have chosen to receive these at a business address, such as a leasing
+  office, instead of their account email, so **anyone with access to that inbox can read
+  your messages**. Copies in email inboxes are outside our control and are not removed when
+  we erase a conversation. **If one of you deletes their account, we keep the conversation for three
   years afterwards, with the sender's name and email address on it.** Section 8 explains
   why. When you send a message, we may notify the other participant by email or push
-  notification; the notification can show your name and the beginning of your message.
+  notification. A push notification can show your name and the beginning of your message;
+  an email alert contains the new messages in full (Section 6.2).
 - **Messages we refuse to send, and ones we flag**: messages are checked before they are
-  delivered, to keep contact details and payment requests from moving a conversation off
-  the platform where we cannot help you (Terms §11). When a message is
-  refused, or is delivered but flagged for review, we record **the first 500 characters
-  of what you typed**, which rule it matched, the time, and your account. For a refused or
-  flagged file we record the file's name instead of text. For a refused message that is
-  the only copy we keep, because the message itself is never created.
-  Only Proximity staff can see these records, and we use them to find patterns of fraud
-  or abuse rather than to read ordinary conversations. They are kept for **two years**,
-  then deleted. A message that passes the check is not recorded here at all.
+  delivered, to protect you from fraud and abuse and to keep conversations on the platform
+  where we can help you (Terms §11 and §12). A message that threatens or abuses someone
+  (including with slurs), asks for login details, or asks for payment through a method we
+  cannot protect (such as gift cards, wire transfers, or cryptocurrency) is refused. A
+  message that shares an email address, phone number, outside link, or social handle, or
+  asks to continue the conversation elsewhere, is not refused: in the app we ask you to
+  confirm before it is sent, and it is then delivered and flagged for review. When a message
+  is refused, or is delivered but flagged, we record **the first 500 characters of what you
+  typed**, which rule it matched, the time, and your account. For a refused or flagged file
+  we record the file's name instead of text. For a refused message that is the only copy we
+  keep, because the message itself is never created. Only Proximity staff can see these
+  records, and we use them to find patterns of fraud or abuse rather than to read ordinary
+  conversations. They are kept for **two years**, then deleted. A message that passes the
+  check is not recorded here at all.
+- **Replies by email**: when we email you a new message, you can answer by replying to that
+  email, and your reply is posted to the conversation. We remove quoted text and your
+  signature before posting it. A reply is checked like any other message: **sentences that
+  threaten or abuse someone, ask for login details, or ask for payment through a method we
+  cannot protect are removed and marked as removed**, and the rest of your reply is
+  delivered. Contact details in a reply are delivered as you wrote them. In either case the
+  reply is flagged, we record it as described above (including any part we removed, and the
+  name of any file attached to it), and we email you a short note explaining why.
 - **Feedback and bug reports**: the message you send, the page you sent it from, and, if
   you are signed in, your name, email address, and role, so we can follow up. Submitting
   the form emails it straight to the Proximity team; the message is not stored in our
@@ -431,6 +449,11 @@ control.
   include your name and the beginning of your message.
 - When you ask the matchmaking assistant to contact an owner for you, we email your
   **name and email address** together with your inquiry.
+- When someone messages you on Proximity, or you message them, we email the new messages
+  **in full, with the sender's name** (and, for landlords, company name) to the other
+  person: to their account email or, for a landlord, to an alert address they have
+  confirmed for that listing or lease, such as a leasing office. Your own email address is
+  not shown: replies go through a private Proximity reply address.
 
 ### 6.3 With service providers
 
@@ -447,7 +470,8 @@ and only for the purposes we specify:
 | **Expo, Apple, and Google (Firebase Cloud Messaging)** | Your device's push token, your device platform, and the content of any notification we send you. Expo's push service forwards notifications to Apple's push notification service (iOS) or Google's Firebase Cloud Messaging (Android). | Delivering push notifications to the mobile apps |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
 | **Airtable** | New account name, email address, account identifier, sign-up date, and role; new listing details | Internal customer-relationship system for onboarding and support |
-| **Google Workspace** | Recipient email addresses and message content | Sending transactional and inquiry email |
+| **Google Workspace** | Recipient email addresses and message content | Sending other transactional and inquiry email, and as a fallback for message alerts |
+| **Amazon Web Services** (Simple Email Service, S3, SNS) | Email addresses of the people we send message alerts and related notices to, and the full text of those alerts; the complete content of email replies sent to a Proximity reply address, including headers and attachments, which is stored for 30 days and then deleted; delivery, bounce, and complaint reports | Sending message alerts and verification emails, receiving replies by email, and handling bounces |
 | **Nango**, and the property-management system a landlord connects (Buildium, AppFolio, DoorLoop, Rentec Direct) | Landlord-authorized property and unit availability, rent, and lease-end dates. Nango holds the property-management credentials; we store only a reference to the connection, never the credential itself. We do not import tenant records. | Optional landlord listing sync |
 | **Firecrawl, Jina, Tavily** | Public web pages at landlord-supplied URLs | Pre-filling a listing draft from a property website |
 
@@ -542,7 +566,9 @@ the end of that period instead:
   within 30 days and we will do what we can, but we cannot promise recovery, and after 30
   days it is irreversible.
 - **Emails already sent cannot be recalled.** A message you sent to a landlord is already
-  in that landlord's inbox and is outside our control.
+  in that landlord's inbox and is outside our control. This includes the alert emails we
+  send for Proximity messages: the three-year erasure applies to our copy of a
+  conversation, not to alert emails already delivered to the other person's inbox.
 - **Messages and inquiry records are kept for three years, with your name and email
   address.** These are the parts of your account that deletion does not reach straight
   away. We keep them, with you named as the sender, as a record of your dealings with the

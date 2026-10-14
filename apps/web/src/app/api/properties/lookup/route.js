@@ -64,7 +64,7 @@ export async function GET(req) {
          floor_plan_image_url,
          unit_leases!unit_id(
            id, rent, rent_is_per_person, lease_term_months, available_from,
-           sublease, is_active, unavailable, owner_id, contact_name
+           sublease, is_active, unavailable, owner_id, contact_name, contact_email
          )
        )`
     )
@@ -96,21 +96,28 @@ export async function GET(req) {
         .map((unit) => ({ unit, listingId: row.id }))
     )
     .map(({ unit, listingId }) => {
-      const leases = (unit.unit_leases ?? []).map((lease) => ({
-        id: lease.id,
-        rent: lease.rent,
-        // What the landlord needs to edit an offering of their own in place.
-        rentIsPerPerson: !!lease.rent_is_per_person,
-        leaseTermMonths: lease.lease_term_months ?? [],
-        availableFrom: lease.available_from ?? null,
-        unavailable: !!lease.unavailable,
-        sublease: !!lease.sublease,
-        // Whether a renter could take this offering today.
-        live: !!lease.is_active && !lease.unavailable,
-        ownerId: lease.owner_id,
-        contactName: lease.contact_name,
-        isMine: !!lease.owner_id && lease.owner_id === userId,
-      }));
+      const leases = (unit.unit_leases ?? []).map((lease) => {
+        const isMine = !!lease.owner_id && lease.owner_id === userId;
+        return {
+          id: lease.id,
+          rent: lease.rent,
+          // What the landlord needs to edit an offering of their own in place.
+          rentIsPerPerson: !!lease.rent_is_per_person,
+          leaseTermMonths: lease.lease_term_months ?? [],
+          availableFrom: lease.available_from ?? null,
+          unavailable: !!lease.unavailable,
+          sublease: !!lease.sublease,
+          // Whether a renter could take this offering today.
+          live: !!lease.is_active && !lease.unavailable,
+          ownerId: lease.owner_id,
+          contactName: lease.contact_name,
+          isMine,
+          // The caller's own contact at this property, which a new lease here
+          // inherits (api/leases), so the add flow can show it rather than ask
+          // again. Nobody else's email leaves the server.
+          ...(isMine ? { contactEmail: lease.contact_email ?? null } : {}),
+        };
+      });
 
       const liveLeases = leases.filter((l) => l.live);
 

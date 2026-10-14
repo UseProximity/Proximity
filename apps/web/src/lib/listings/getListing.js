@@ -84,6 +84,30 @@ function driveTimesToMap(driveTimes) {
   return map;
 }
 
+/*
+ * Which landlord an offering belongs to, as far as a renter is concerned.
+ *
+ * The owning account is the identity, because that is who a conversation
+ * reaches: Contact on a card opens a thread with the owner of the lease it
+ * names (fn_chat_resolve_landlord). Keying on the contact email instead merged
+ * two owners who share a leasing address, or who both fall back to the
+ * listing's, into one card whose Contact reached only the first of them.
+ * An imported lease with no account has only its contact email to be known
+ * by, so that is its identity. The browser gets a per-response stand-in
+ * ("landlord-1", "landlord-2") rather than the address or id itself; grouping
+ * needs equality, not the value. One keyer per listing, so the same landlord
+ * on two units of the building gets the same key.
+ */
+export function landlordKeyer() {
+  const keys = new Map();
+  return (lease, listingRow) => {
+    const email = (lease.contact_email ?? listingRow?.contact_email ?? "").trim().toLowerCase();
+    const identity = lease.owner_id ? `o:${lease.owner_id}` : email ? `e:${email}` : `l:${lease.id}`;
+    if (!keys.has(identity)) keys.set(identity, `landlord-${keys.size + 1}`);
+    return keys.get(identity);
+  };
+}
+
 /**
  * Shape a unit's lease rows into the offering list the UI renders beneath it.
  *
@@ -95,11 +119,13 @@ function driveTimesToMap(driveTimes) {
  * Contact falls back to the listing row because pre-migration leases carry the
  * property-level contact; once a lease has its own, that wins.
  */
-export function shapeLeases(unitLeases, listingRow) {
+export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
   return (unitLeases ?? [])
     .filter((l) => l.is_active && !l.unavailable)
     .map((l) => ({
       id: l.id,
+      // Which landlord this is, for grouping. Opaque on purpose: see landlordKeyer.
+      landlordKey: keyFor(l, listingRow),
       rent: l.rent != null ? Number(l.rent) : null,
       // null = the landlord never said; rentBasis falls back to inference.
       rentIsPerPerson: l.rent_is_per_person ?? null,
@@ -130,6 +156,7 @@ function buildListing(row, owner = null, reviews = []) {
   // Retired units are not part of the property any more — see the note in
   // api/listings/route.js; PostgREST can't filter an embedded resource.
   row = { ...row, listing_units: sortUnits((row.listing_units ?? []).filter((u) => !u.deleted_at)) };
+  const keyFor = landlordKeyer();
 
   /*
    * A property has one gallery, and units are tags on its photos
@@ -197,7 +224,7 @@ function buildListing(row, owner = null, reviews = []) {
       // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
       // above stay as the first-active-lease summary so existing callers (cards,
       // filters, matchmaking) keep working unchanged.
-      const leases = shapeLeases(u.unit_leases, row);
+      const leases = shapeLeases(u.unit_leases, row, keyFor);
       return {
         id: u.id,
         // The photos tagged with this unit, in gallery order.
@@ -226,12 +253,13 @@ function buildListing(row, owner = null, reviews = []) {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
         us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
-      // Decide the listing's label from its AVAILABLE units when it has any, so an
-      // available sublease surfaces as "Sublease" even alongside an unavailable
-      // standard lease (and an unavailable sublease no longer forces the badge).
+      // Decide the listing's label from its AVAILABLE units when it has any, so
+      // an unavailable sublease never forces the badge. Within that pool a
+      // standard lease trumps: the card says "Sublease" only when every offering
+      // is one (Wyatt, 2026-10-12), matching isSubleaseListing in matchmaking.
       const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
-      return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
+      return pool.length && pool.every((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
     images: coverPool.map((img) => img.url),
     /*

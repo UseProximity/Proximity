@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { canManageLease } from "@/lib/listings/ownership";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 
@@ -119,6 +121,18 @@ export async function PATCH(req, { params }) {
   if (error) {
     console.error("[leases/:id] Update failed:", error.message);
     return NextResponse.json({ error: "Could not update that lease." }, { status: 500 });
+  }
+
+  // A changed contact address only receives message alerts once confirmed.
+  if (typeof patch.contact_email === "string" && patch.contact_email) {
+    const baseUrl = getBaseUrl(req);
+    after(() =>
+      requestContactVerification({
+        landlordId: session.user.id,
+        email: patch.contact_email,
+        baseUrl,
+      })
+    );
   }
 
   return NextResponse.json({ message: "Lease updated", listingId: check.listingId });

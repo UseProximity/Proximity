@@ -74,6 +74,12 @@ export function leaseForChat(listing) {
   return owners.size === 1 ? leases[0] : null;
 }
 
+// The send routes answer 409 { code: "CONFIRM_SEND", error } when a message holds
+// contact details and has not been confirmed yet. Nothing was sent.
+export function isConfirmSend(err) {
+  return err?.status === 409 && err?.body?.code === "CONFIRM_SEND";
+}
+
 export function chatErrorMessage(err, fallback) {
   return err?.body?.error ?? err?.message ?? fallback;
 }

@@ -289,7 +289,8 @@ both of you can come back to it. The other participant can always see what you s
 Proximity staff can read a conversation where they need to investigate a report of abuse or
 a dispute, or to confirm that a lease was signed. The rules in Section 12 apply to messages
 exactly as they apply to listings and reviews, and we may remove a message or withdraw
-access to messaging for a breach of them.
+access to messaging for a breach of them. The paragraph headed "Checks on messages and files" below
+says which messages are refused.
 
 A message you have sent cannot be unsent. If you delete your account, we keep your
 conversations for three years afterwards, with your name and email address as the only
@@ -300,15 +301,20 @@ confirm a lease. This, together with the inquiry records above, is the exception
 erasure timetable described in Section 17A. Privacy Policy §§8 and 9 set it out in full.
 
 **Checks on messages and files.** We use automated checks on messages and attached files
-sent through the Services, and we refuse those that contain contact details (such as email
-addresses and phone numbers), links to most outside websites, social media handles,
-requests to continue the conversation elsewhere, requests for payment outside Proximity,
-requests for passwords, login details or one-time codes, threats, or slurs. Photos and
-documents are refused if their purpose is to share contact details or ask for payment, or
-if they contain a QR code or barcode. We may record refused and flagged messages and files,
-as Privacy Policy §1.4 explains. If a check cannot be completed, a message or file may still
-be delivered. We do not guarantee that every message or file will be checked or that every
-violation will be caught.
+sent through the Services. A message is refused if it threatens or abuses someone
+(including with slurs), asks for passwords, login details or one-time codes, or asks for
+payment through a method we cannot protect, such as gift cards, wire transfers or
+cryptocurrency. A message that shares an email address, a phone number, a link to an
+outside website or a social media handle, or that asks to continue the conversation
+elsewhere, is not refused: in the app we ask you to confirm before it is sent, and it is
+then delivered and flagged for review (Section 12 explains when this is a breach of these
+Terms). In a reply sent by email, the sentences we would refuse are removed and marked as
+removed, the rest is delivered, and you are told by email. Photos and documents are refused
+if their main purpose is to share contact details or ask for payment, or if they contain a
+QR code or barcode. We may record refused and flagged messages and files, as Privacy Policy
+§1.4 explains. If a check cannot be completed, a message or file may still be delivered. We
+do not guarantee that every message or file will be checked or that every violation will be
+caught.
 
 **Reporting and blocking.** You can report a review of a listing or a conversation, and
 block another user, from within the Services. We may act on a report as these Terms
@@ -332,6 +338,10 @@ You agree not to:
 - work around rate limits, access controls, authentication, or any other technical measure,
   or access parts of the Services you are not authorized to reach;
 - use the Services to send spam or unsolicited commercial messages;
+- use Proximity messaging to move a conversation to another channel before you have agreed
+  terms, or share contact details, links, or social handles in messages for that purpose.
+  We may flag, remove, or stop delivering messages that do this, and may limit your access
+  to messaging if it continues;
 - harass, threaten, stalk, or endanger anyone;
 - upload malware, or interfere with or overload the Services; or
 - use the Services for anything unlawful, or to help anyone else do any of the above.

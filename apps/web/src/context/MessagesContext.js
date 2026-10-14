@@ -74,8 +74,24 @@ function patchMessage(list, message) {
  * without them "messages sent" and "messages attempted" look identical and
  * there is no way to tell a moderation false positive from a quiet user.
  */
+/*
+ * A 409 CONFIRM_SEND response means the server wants the sender to confirm a
+ * message with contact details in it. It is surfaced as an error carrying the
+ * code so the composer can show "send anyway?" instead of a failure toast, and
+ * re-send with confirmed: true.
+ */
+export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
+
+function rejectionError(errBody, fallback) {
+  const err = new Error(errBody?.error || fallback);
+  if (errBody?.code) err.code = errBody.code;
+  if (Array.isArray(errBody?.reasons)) err.reasons = errBody.reasons;
+  return err;
+}
+
 function sendRejectionKind(status) {
   if (status === 422) return "blocked";
+  if (status === 409) return "needs_confirmation";
   if (status === 429) return "rate_limited";
   if (status === 403) return "password_required";
   return "error";
@@ -262,12 +278,13 @@ export function MessagesProvider({ children }) {
     );
   }, []);
 
-  const sendMessage = useCallback(async (threadId, body, files = []) => {
+  const sendMessage = useCallback(async (threadId, body, files = [], options = {}) => {
     if (!userIdRef.current || !threadId) {
       throw new Error("Not signed in");
     }
     const trimmed = typeof body === "string" ? body.trim() : "";
     const rawFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const confirmedSend = options?.confirmed === true;
 
     if (rawFiles.length === 0) {
       if (!trimmed) throw new Error("Message body required");
@@ -293,7 +310,7 @@ export function MessagesProvider({ children }) {
         const res = await fetch(`/api/chat/threads/${threadId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body: trimmed }),
+          body: JSON.stringify({ body: trimmed, confirmed: confirmedSend }),
         });
         if (!res.ok) {
           const errBody = await res.json().catch(() => null);
@@ -305,7 +322,7 @@ export function MessagesProvider({ children }) {
           if (res.status === 403 && errBody?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
             markThreadUnavailable(threadId);
           }
-          throw new Error(errBody?.error || `Failed to send (${res.status})`);
+          throw rejectionError(errBody, `Failed to send (${res.status})`);
         }
         const data = await res.json();
         trackEvent("chat_message_sent", { threadId, hasAttachments: false });
@@ -421,6 +438,7 @@ export function MessagesProvider({ children }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           body: trimmed || undefined,
+          confirmed: confirmedSend,
           attachments: presigned.map((slot) => ({
             key: slot.key,
             fileName: slot.fileName,
@@ -439,7 +457,7 @@ export function MessagesProvider({ children }) {
         if (res.status === 403 && errBody?.error === CONVERSATION_UNAVAILABLE_MESSAGE) {
           markThreadUnavailable(threadId);
         }
-        throw new Error(errBody?.error || `Failed to send (${res.status})`);
+        throw rejectionError(errBody, `Failed to send (${res.status})`);
       }
       trackEvent("chat_message_sent", {
         threadId,
@@ -477,7 +495,7 @@ export function MessagesProvider({ children }) {
   }, [refreshThreads, loadMessages, markThreadUnavailable]);
 
   const startListingChat = useCallback(
-    async (listingId, body, leaseId = null) => {
+    async (listingId, body, leaseId = null, options = {}) => {
       if (!userIdRef.current) throw new Error("Not signed in");
       const trimmed = typeof body === "string" ? body.trim() : "";
       if (!trimmed) throw new Error("Message body required");
@@ -486,7 +504,12 @@ export function MessagesProvider({ children }) {
       const res = await fetch("/api/chat/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, body: trimmed, leaseId }),
+        body: JSON.stringify({
+          listingId,
+          body: trimmed,
+          leaseId,
+          confirmed: options?.confirmed === true,
+        }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
@@ -495,7 +518,7 @@ export function MessagesProvider({ children }) {
           reason: sendRejectionKind(res.status),
         });
         if (errBody?.code === "PASSWORD_REQUIRED") setNeedsPassword(true);
-        throw new Error(errBody?.error || `Failed to start chat (${res.status})`);
+        throw rejectionError(errBody, `Failed to start chat (${res.status})`);
       }
       const data = await res.json();
       trackEvent("chat_conversation_started", {

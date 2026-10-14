@@ -18,10 +18,12 @@ export class ChatResource {
   // Starts, or continues, the single conversation between this user and the
   // listing's landlord. `leaseId` is optional: it only decides the recipient on a
   // property with competing leases. Returns { threadId, ... }.
-  startListingChat({ listingId, body, leaseId }) {
+  // `confirmed` is sent only as true, after the person has agreed to a 409
+  // CONFIRM_SEND prompt (the message holds contact details); see the send route.
+  startListingChat({ listingId, body, leaseId, confirmed }) {
     return this.client.request("/api/chat/threads", {
       method: "POST",
-      body: JSON.stringify({ listingId, body, leaseId }),
+      body: JSON.stringify({ listingId, body, leaseId, ...(confirmed === true ? { confirmed: true } : {}) }),
     });
   }
 
@@ -37,10 +39,12 @@ export class ChatResource {
   // Text and/or attachments. `attachments` is the list returned by
   // presignAttachments (after the bytes were uploaded), each
   // { key, fileName, contentType, sizeBytes }. Omit it for a text-only message.
-  sendMessage(threadId, { body, attachments } = {}) {
+  // `confirmed` is sent only as true, after the person has agreed to a 409
+  // CONFIRM_SEND prompt (the text or caption holds contact details).
+  sendMessage(threadId, { body, attachments, confirmed } = {}) {
     return this.client.request(`/api/chat/threads/${encodeURIComponent(threadId)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ body, attachments }),
+      body: JSON.stringify({ body, attachments, ...(confirmed === true ? { confirmed: true } : {}) }),
     });
   }
 

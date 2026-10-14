@@ -76,7 +76,8 @@ import apiClient from "../../src/lib/apiClient";
 import { Badge } from "../../src/components/ui/Badge";
 import { Button } from "../../src/components/ui/Button";
 import { ChatAvatar } from "../../src/components/chat/ChatAvatar";
-import { CHAT_MAX_BODY, chatErrorMessage, defaultListingInquiry, leaseForChat } from "../../src/lib/chatFormat";
+import { CHAT_MAX_BODY, chatErrorMessage, defaultListingInquiry, isConfirmSend, leaseForChat } from "../../src/lib/chatFormat";
+import { confirmSendAnyway } from "../../src/lib/chatConfirm";
 import { StarRating } from "../../src/components/ui/StarRating";
 import { SectionHeader } from "../../src/components/ui/SectionHeader";
 import { FieldLabel } from "../../src/components/ui/FieldLabel";
@@ -250,7 +251,7 @@ export default function ListingDetailScreen() {
     setMessageText(defaultListingInquiry(ownerName));
   }, [ownerName, messageEdited]);
 
-  async function handleStartChat() {
+  async function handleStartChat(confirmed = false) {
     if (!listing) return;
     const body = messageText.trim();
     if (!body || sending) return;
@@ -263,6 +264,7 @@ export default function ListingDetailScreen() {
       return;
     }
 
+    let confirmMessage = null;
     setSending(true);
     setMessageError(null);
     try {
@@ -271,6 +273,7 @@ export default function ListingDetailScreen() {
         listingId: listing._id,
         body,
         leaseId: lease?.id,
+        confirmed: confirmed === true,
       });
       setMessageEdited(false);
       router.push({
@@ -283,9 +286,16 @@ export default function ListingDetailScreen() {
       });
     } catch (err) {
       if (err?.status === 401) return; // session expired: the api client already signed out
-      setMessageError(chatErrorMessage(err, "Couldn't send your message. Please try again."));
+      if (isConfirmSend(err)) {
+        confirmMessage = err.body.error; // nothing was sent; the draft stays for Edit
+      } else {
+        setMessageError(chatErrorMessage(err, "Couldn't send your message. Please try again."));
+      }
     } finally {
       setSending(false);
+    }
+    if (confirmMessage && (await confirmSendAnyway(confirmMessage))) {
+      await handleStartChat(true);
     }
   }
 
@@ -587,7 +597,7 @@ export default function ListingDetailScreen() {
 
                   {messageError ? <Text className="text-red-500 text-xs">{messageError}</Text> : null}
 
-                  <Button onPress={handleStartChat} loading={sending} disabled={!messageText.trim()}>
+                  <Button onPress={() => handleStartChat()} loading={sending} disabled={!messageText.trim()}>
                     Send message
                   </Button>
                 </View>
