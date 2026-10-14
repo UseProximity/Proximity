@@ -8,13 +8,13 @@
  * behalf. Callers never touch tokens, platforms, or Expo/APNs/FCM directly.
  *
  * Uses the service-role client (@/lib/supabase), same as the registration
- * route (see api/devices/push-token/route.js) — this is a trusted server
+ * route (see api/devices/push-token/route.js). This is a trusted server
  * context reading across all of a user's devices, not a single row a client
  * is allowed to see under RLS.
  *
  * No outreachEnabled()-style staging gate, unlike email (see outreach.js). A
  * push token can only exist in an environment's device_push_tokens table
- * because some device registered against THAT environment's API — staging
+ * because some device registered against THAT environment's API: staging
  * points at the dev DB (appEnv.js), so a token sent from staging can never
  * belong to a real production user. The DB split is already the safety
  * boundary; a second gate here would be redundant.

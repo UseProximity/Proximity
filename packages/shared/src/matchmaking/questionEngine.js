@@ -1,4 +1,4 @@
-// Ported verbatim from apps/web/src/lib/matchmaking/questionEngine.js — pure,
+// Ported verbatim from apps/web/src/lib/matchmaking/questionEngine.js. Pure,
 // deterministic question-flow engine with NO supabase/Anthropic/DOM imports,
 // so the exact same optimistic-update logic web uses client-side (before the
 // POST round-trip lands) can drive the mobile chat store too.
@@ -107,7 +107,7 @@ export function applyAnswer(preferences, weights, answer) {
           delete prefs._priorities_unsure;
         }
         // A stale headline anchor (picked earlier, then removed from the
-        // priorities set) must not survive — dropping it re-asks top_priority.
+        // priorities set) must not survive: dropping it re-asks top_priority.
         if (prefs.top_priority && !(prefs.priorities ?? []).includes(prefs.top_priority)) {
           delete prefs.top_priority;
         }
@@ -128,7 +128,7 @@ export function applyAnswer(preferences, weights, answer) {
       prefs[field] = unsure ? "No preference" : value;
   }
 
-  // Med students orient around the MEDICAL campus, not the Danforth campus — seed
+  // Med students orient around the MEDICAL campus, not the Danforth campus: seed
   // that proximity target so their very first ranking already accounts for it.
   if (answer.questionId === "program" && value === "Med") {
     prefs.proximity_targets = [...new Set([...(prefs.proximity_targets ?? []), "med_campus"])];
@@ -138,7 +138,7 @@ export function applyAnswer(preferences, weights, answer) {
   // "Unsure" answers impose no constraint and add no weight. Everything else is
   // BINARY: any stated preference weighs 1. Which dimension the ranking leans
   // hardest on is decided downstream by the top_priority anchor and the ranking
-  // LLM — never by tap order or hand-tuned magnitudes.
+  // LLM, never by tap order or hand-tuned magnitudes.
   if (!unsure) {
     const direct = WEIGHT_MAP[answer.questionId];
     if (direct) {
@@ -165,7 +165,7 @@ function reconstructAnswer(q, p) {
     case "budget":
       return { ...base, value: p._budget_unsure ? UNSURE : p.budget_max };
     case "priorities":
-      // Replay the stored set (order carries no meaning under binary weights —
+      // Replay the stored set (order carries no meaning under binary weights:
       // every stated priority rebuilds to weight 1).
       return { ...base, kind: "rank", value: p._priorities_unsure ? UNSURE : p.priorities ?? [] };
     case "extras":
@@ -182,7 +182,7 @@ function reconstructAnswer(q, p) {
 }
 
 // Rebuild preferences + weights as if only the questions BEFORE `questionId`
-// had been answered — i.e. rewind the flow to re-ask from that question.
+// had been answered, i.e. rewind the flow to re-ask from that question.
 export function rewindTo(preferences, questionId) {
   const idx = QUESTION_PLAN.findIndex((q) => q.id === questionId);
   if (idx < 0) return { preferences: { ...(preferences ?? {}) }, weights: {} };
@@ -217,7 +217,7 @@ export function recomputeFromPreferences(preferences) {
     weights = applied.weights;
   }
   // proximity_targets isn't driven by a question (it's set by med-year seeding or
-  // a "close to the med campus / groceries" refinement), so carry it forward —
+  // a "close to the med campus / groceries" refinement), so carry it forward;
   // otherwise a panel re-rank would silently drop where the student wants to be near.
   if (p.proximity_targets?.length) prefs.proximity_targets = [...p.proximity_targets];
   // Same reasoning for the rejected-listing set: it's set during a refine turn,

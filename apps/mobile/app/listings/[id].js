@@ -1,4 +1,4 @@
-// Listing Detail. Single scrolling screen (not web's 5-tab sticky layout —
+// Listing Detail. Single scrolling screen (not web's 5-tab sticky layout;
 // scoped down for mobile v1). Reviews shown to everyone per the plan's
 // decision (API is public/soft-auth); review voting/submission and driving
 // times are deferred (auth / large separate feature).
@@ -8,15 +8,15 @@
 // carousel, and the carousel gained a "1 / N" pagination pill.
 //
 // Second polish pass: the content block below the hero is now a stack of
-// white DetailCards on a light gray page background — Quick facts /
+// white DetailCards on a light gray page background: Quick facts /
 // Description / Amenities & Utilities / Location / Reviews / Contact
-// landlord each get their own card — rather than one continuous page
+// landlord each get their own card, rather than one continuous page
 // separated only by hairlines. Headline (title/address/price/rating) stays
 // uncarded, directly on the page background, since it's the page's own
 // title, not a content section.
 //
 // Third polish pass: `listing.leaseAvailability` was already the correct
-// per-listing field (traced through getListing.js/deriveLeaseAvailability —
+// per-listing field (traced through getListing.js/deriveLeaseAvailability:
 // it's a real server-derived union of that listing's own unit lease terms,
 // not the static filter-options list), but it was rendered unlabeled
 // ("summer" instead of "Summer") and mixed into the same badge pool as
@@ -26,14 +26,14 @@
 //
 // Fourth polish pass: the back button moved out of the hero into a
 // persistent header (transparent over the hero, crossfades to a solid app
-// bar on scroll — see `scrollY`/`heroPhase`/`solidPhase` below) so it's
+// bar on scroll; see `scrollY`/`heroPhase`/`solidPhase` below) so it's
 // reachable at any scroll position, not just at the very top. The lease/
 // walk-times row from the third pass was de-emphasized from tinted pills
 // (`HighlightPill`, removed) to plain "Label · Value" text (`LabeledFact`),
-// matching the visual weight of the beds/baths/sqft facts above it — still
+// matching the visual weight of the beds/baths/sqft facts above it. It's still
 // the same underlying data, just no longer reading as its own special
 // category. All data, fetching, and handlers below are unchanged across
-// every pass — only how they're grouped, labeled, and rendered.
+// every pass; only how they're grouped, labeled, and rendered.
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -108,7 +108,7 @@ function QuickFact({ icon: Icon, value, label }) {
   );
 }
 
-// Plain "Label · Value" secondary fact — lease type/terms and walk times.
+// Plain "Label · Value" secondary fact: lease type/terms and walk times.
 // Deliberately not a tinted pill (an earlier pass tried that and it read as
 // its own special category); this sits at the same small, muted visual
 // weight as the rest of the app's secondary captions, differentiated only
@@ -123,11 +123,11 @@ function LabeledFact({ label, value }) {
   );
 }
 
-// The screen's single card treatment — white surface, container radius,
+// The screen's single card treatment: white surface, container radius,
 // a soft near-page-color border, the lighter `shadows.subtle` tier, generous
-// padding — used for every major section below (Quick facts, Description,
+// padding. It's used for every major section below (Quick facts, Description,
 // Amenities & Utilities, Location, Reviews, Contact landlord). Deliberately
-// not used for smaller sub-pieces (e.g. a single walk-time row) — the goal
+// not used for smaller sub-pieces (e.g. a single walk-time row); the goal
 // is a handful of substantial, gently-lifted cards, not a screen full of
 // heavy nested boxes.
 function DetailCard({ children }) {
@@ -148,13 +148,13 @@ export default function ListingDetailScreen() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   // Drives the persistent header's crossfade from transparent (over the
-  // hero) to a solid app bar as the user scrolls — measured against the
+  // hero) to a solid app bar as the user scrolls, measured against the
   // hero's real rendered height (via onLayout below) rather than a guessed
   // constant, so it adapts to different screen widths/aspect ratios. Two
   // opacity values (rather than interpolating color strings into the
   // third-party back icon) drive everything: `heroPhase` fades out the
   // hero-style chrome (translucent backdrop + white icon), `solidPhase`
-  // fades in the app-bar chrome (white background + border + dark icon) —
+  // fades in the app-bar chrome (white background + border + dark icon);
   // both are plain `opacity` on `Animated.View`, the simplest and most
   // robust Animated primitive, no custom-component wrapping needed.
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -359,7 +359,7 @@ export default function ListingDetailScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        {/* Persistent header — transparent over the hero at rest, crossfades
+        {/* Persistent header: transparent over the hero at rest, crossfades
             into a solid app bar as the page scrolls, so back navigation
             never scrolls out of reach. Sits outside the ScrollView so it
             never moves; the mainstream "collapsing header" pattern (Airbnb/
@@ -392,7 +392,7 @@ export default function ListingDetailScreen() {
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
           scrollEventThrottle={16}
         >
-          {/* Hero — its own visual area, carousel with floating heart overlay + pagination pill */}
+          {/* Hero: its own visual area, a carousel with floating heart overlay + pagination pill */}
           <View className="relative" onLayout={(e) => setHeroHeight(e.nativeEvent.layout.height)}>
             {listing.images?.length > 0 ? (
               <ScrollView
@@ -419,7 +419,7 @@ export default function ListingDetailScreen() {
               </View>
             )}
 
-            {/* No background container behind the heart — same thick white
+            {/* No background container behind the heart: same thick white
                 outline as ListingCard, sitting directly on the photo, with
                 fill (not the outline) distinguishing saved from unsaved.
                 HeartIcon's own Pressable still carries the 44x44 touch
@@ -437,7 +437,7 @@ export default function ListingDetailScreen() {
             )}
           </View>
 
-          {/* Headline — not a card, sits directly on the page background as the screen's own title */}
+          {/* Headline: not a card, sits directly on the page background as the screen's own title */}
           <View className="px-4 pt-4 pb-2">
             <Text className="text-xl font-bold text-gray-900">{listing.title || listing.address}</Text>
             <Text className="text-sm text-gray-500 mt-1">{listing.address}</Text>
@@ -456,7 +456,7 @@ export default function ListingDetailScreen() {
             </View>
           </View>
 
-          {/* Card stack — each major section is its own white, shadowed card on the light page background */}
+          {/* Card stack: each major section is its own white, shadowed card on the light page background */}
           <View className="px-4 pb-4 gap-4">
             <DetailCard>
               <View className="flex-row items-center">

@@ -1,5 +1,5 @@
 // Renders one matchmaking recommendation: an "intention" pill, the shared
-// ListingCard (fetched in full — the chat response only carries a slim
+// ListingCard (fetched in full, since the chat response only carries a slim
 // card_data preview + listing_id, same as web's RecommendationCards.js), and
 // the one-line reason. Tapping the card navigates to the listing detail
 // screen via ListingCard's own built-in router.push.
@@ -8,7 +8,7 @@ import { ActivityIndicator, Text, View } from "react-native";
 import apiClient from "../../lib/apiClient";
 import { ListingCard } from "../listings/ListingCard";
 
-// Full class strings (not interpolated) — NativeWind, like Tailwind, only
+// Full class strings (not interpolated), because NativeWind, like Tailwind, only
 // picks up class names it can see literally in source.
 const INTENTION_COLORS = {
   "Best overall match": { bg: "bg-red-100", text: "text-red-700" },

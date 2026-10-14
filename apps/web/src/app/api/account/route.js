@@ -4,7 +4,7 @@
  * Required by Apple App Store Guideline 5.1.1(v) and Google Play's data-deletion
  * policy for any app that offers account creation, and by the CCPA right to
  * delete. Works for web (NextAuth session) and mobile (Bearer token) alike via
- * getRequestUser — never `auth()` alone, which would silently 401 every mobile
+ * getRequestUser; never `auth()` alone, which would silently 401 every mobile
  * caller.
  *
  * Two-stage by design (30-day grace period):

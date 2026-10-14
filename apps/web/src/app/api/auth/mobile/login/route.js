@@ -19,8 +19,8 @@ export async function POST(req) {
       .ilike("email", emailMatchPattern(email))
       .single();
 
-    // A deleted account fails identically to a wrong password — same status,
-    // same message — so the response never confirms the address was registered.
+    // A deleted account fails identically to a wrong password: same status,
+    // same message, so the response never confirms the address was registered.
     if (!user || !user.password_hash || user.deleted_at) {
       return Response.json({ error: AUTH_ERRORS.INVALID_CREDENTIALS }, { status: 401 });
     }

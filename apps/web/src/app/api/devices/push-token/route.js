@@ -1,7 +1,7 @@
 /*
  * Registers/unregisters a device's Expo push token for the authenticated
  * user. Always goes through this service-role route rather than a direct
- * client write — expo_push_token is globally unique (one physical device,
+ * client write, because expo_push_token is globally unique (one physical device,
  * not one user), so reassigning a shared/re-logged-in device from one user
  * to another needs the service-role client to bypass RLS (see the
  * device_push_tokens migration's own comment for why).

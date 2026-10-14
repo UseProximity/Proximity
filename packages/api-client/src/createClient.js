@@ -10,14 +10,14 @@ import { UploadsResource } from "./resources/uploads.js";
 import { DevicesResource } from "./resources/devices.js";
 import { ChatResource } from "./resources/chat.js";
 
-// No web equivalent to port — web calls its own API routes directly via
+// No web equivalent to port: web calls its own API routes directly via
 // same-origin fetch under a cookie session (NextAuth). Mobile needs an
 // explicit base URL + bearer-token attachment instead, since it's a separate
 // app hitting the Next.js API cross-origin.
 //
 // getToken/getRefreshToken/onTokenExpired/onTokenRefreshed stay pluggable:
 // when there's no logged-in user, getToken()/getRefreshToken() return null
-// and requests just go out unauthenticated (used by every public resource —
+// and requests just go out unauthenticated (used by every public resource:
 // listings, dormReviews, testimonials, matchmaking).
 //
 // testEmailTo is the mobile equivalent of web's `staging_email_to` cookie

@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react-native";
 
 // Shared circular submit-affordance for matchmaking's typed-answer controls
 // (ChoiceChips, MultiChoiceChips, BudgetInput, ConfirmOrReplace,
-// OpenTextInput) — each previously hand-rolled this exact Pressable
+// OpenTextInput); each previously hand-rolled this exact Pressable
 // (design-system/pages/chat.md). A distinct component from ui/Chip.js: this
 // is a submit action, not an option picker, even though both are
 // pill/circle shapes sharing the same red/gray coloring. `className` lets

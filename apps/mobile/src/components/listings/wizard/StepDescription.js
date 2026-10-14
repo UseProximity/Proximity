@@ -43,7 +43,7 @@ function draftDescription(form, units, customAmenities) {
 }
 
 export default function StepDescription({ w }) {
-  // Draft once, only into an empty box, and remember we did — so a landlord
+  // Draft once, only into an empty box, and remember we did, so a landlord
   // who deletes the draft on purpose doesn't get it forced back.
   const draftedRef = useRef(false);
   useEffect(() => {

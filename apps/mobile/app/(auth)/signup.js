@@ -25,7 +25,7 @@ export default function SignupScreen() {
   const [role, setRole] = useState("student");
   const [error, setError] = useState(null);
   // The email the server confirmed it sent to, not the (possibly stale) form
-  // field — mirrors web's AuthCard, which displays `data.email` from the
+  // field. This mirrors web's AuthCard, which displays `data.email` from the
   // response rather than its own local input state.
   const [verifiedEmail, setVerifiedEmail] = useState(null);
   const [resending, setResending] = useState(false);

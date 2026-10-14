@@ -21,9 +21,9 @@ export class RequestUserLookupError extends Error {
  * Resolves the current request's user via the NextAuth session (web) first,
  * falling back to a mobile Bearer token. Always returns { id, email, role }
  * (or null) regardless of which auth path matched, so callers don't need to
- * special-case web vs mobile. `role` comes for free on both paths — the
+ * special-case web vs mobile. `role` comes for free on both paths: the
  * session already carries it (auth.js's JWT callback) and so does the mobile
- * JWT payload (authMobile.js's buildUserPayload) — no extra DB lookup.
+ * JWT payload (authMobile.js's buildUserPayload); no extra DB lookup.
  */
 export async function getRequestUser(req) {
   const session = await auth();

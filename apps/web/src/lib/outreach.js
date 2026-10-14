@@ -7,8 +7,8 @@
  *   - production: sends normally to the real recipient.
  *   - any non-production env (staging OR local): NEVER emails the real recipient. If a
  *     tester has chosen a destination via the email picker (the `staging_email_to` cookie
- *     on web, or an `x-staging-email-to` request header for clients that can't use cookies —
- *     namely the mobile app, see EXPO_PUBLIC_TEST_EMAIL_TO), every email is REDIRECTED to
+ *     on web, or an `x-staging-email-to` request header for clients that can't use cookies,
+ *     namely the mobile app; see EXPO_PUBLIC_TEST_EMAIL_TO), every email is REDIRECTED to
  *     that inbox (cc/bcc dropped, original recipient noted in the subject) so flows can be
  *     tested end-to-end safely. Cron/webhook contexts have no request to read a cookie or
  *     header from, so OUTREACH_TEST_RECIPIENT (env var) is the fallback there. With no
@@ -24,7 +24,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
 const RECIPIENT_HEADER = "x-staging-email-to";
 
-// Read the dev-chosen test recipient — from the request header first (mobile has no
+// Read the dev-chosen test recipient: from the request header first (mobile has no
 // cookies to use), falling back to the browser cookie (web's picker widget). Returns null
 // outside a request context (e.g. cron / webhooks), when unset, or when `req` is omitted.
 async function stagingTestRecipient(req) {
@@ -49,7 +49,7 @@ export async function sendMailSafe(transporter, message, req) {
   // Non-production (staging or local): redirect to the tester-chosen inbox if set,
   // otherwise suppress. The real recipient is never contacted off production.
   // Cron/webhook contexts have no request (and mobile has no cookies), so
-  // OUTREACH_TEST_RECIPIENT provides the same redirect for them — header/cookie
+  // OUTREACH_TEST_RECIPIENT provides the same redirect for them: header/cookie
   // wins when present, env var is the fallback.
   const envRecipient = EMAIL_RE.test(process.env.OUTREACH_TEST_RECIPIENT ?? "")
     ? process.env.OUTREACH_TEST_RECIPIENT

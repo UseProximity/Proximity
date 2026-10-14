@@ -1,10 +1,10 @@
-// Screen 5: photos. Deliberately low-pressure — phone photos are fine, more
+// Screen 5: photos. Deliberately low-pressure: phone photos are fine, more
 // can be added post-publish. Order here is upload order, first photo is the
 // cover. Mirrors apps/web/src/components/listings/wizard/StepPhotos.js,
-// minus drag-to-reorder (no gesture-reorder lib installed for mobile v1 —
+// minus drag-to-reorder (no gesture-reorder lib installed for mobile v1;
 // remove and re-add to fix order) and the Street View preview (the shell
 // only attaches Street View when no photos are staged, so there's nothing
-// to confirm/delete here — see publish() in listings/add/index.js).
+// to confirm/delete here; see publish() in listings/add/index.js).
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { Camera, X } from "lucide-react-native";

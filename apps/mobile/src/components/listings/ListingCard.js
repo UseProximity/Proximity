@@ -99,7 +99,7 @@ export function ListingCard({ listing }) {
             <Text className="text-white text-xs font-semibold">Unavailable</Text>
           </View>
         )}
-        {/* Heart icon in top-right corner — no background circle (design-
+        {/* Heart icon in top-right corner with no background circle (design-
             system polish pass): a thick white outline reads clearly against
             any photo on its own, with fill (solid red vs. semi-transparent
             black) distinguishing saved from unsaved, so a filled backing

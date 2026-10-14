@@ -102,7 +102,7 @@ export default function LoginScreen() {
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View className="flex-1 justify-center px-7 pb-8">
           {/* text-[40px] = the `display` type-scale token (design-system/
-              MASTER.md §3) — reserved for one-off brand moments like this
+              MASTER.md §3). Reserved for one-off brand moments like this
               wordmark. font-bold (not font-extrabold): DM Sans only has
               400/500/600/700 weights loaded, so 700 is as heavy as it gets. */}
           <Text className="text-[40px] font-bold tracking-tight text-gray-900 mb-1.5 text-center">

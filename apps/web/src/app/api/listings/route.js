@@ -267,7 +267,7 @@ export function buildListing(row, owner = null) {
  * duplicating the select + landlord join. Pass `listingIds` to filter to a
  * specific set of listings (e.g. a user's saved listings) instead of
  * fetching everything; omit it (or leave it empty) to fetch all non-deleted
- * listings, unchanged from before. Throws on a DB error — callers handle
+ * listings, unchanged from before. Throws on a DB error; callers handle
  * the response.
  */
 export async function fetchListings(listingIds = null) {

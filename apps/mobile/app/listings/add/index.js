@@ -2,11 +2,11 @@
 // apps/web/src/components/listings/wizard/AddListingWizard.js: one
 // centralized form-state object (not step-local state), validateStep() per
 // step, full re-validation on publish. PMS/website-import (web's "Start"
-// step) is out of scope for v1 — the wizard opens directly on Address.
+// step) is out of scope for v1; the wizard opens directly on Address.
 //
 // No disk-based autosave (web uses localStorage; mobile has no AsyncStorage
 // dependency installed and expo-secure-store's size ceiling is too small for
-// a multi-unit draft) — the draft lives in React state only.
+// a multi-unit draft); the draft lives in React state only.
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -69,7 +69,7 @@ export default function AddListingScreen() {
   const [visited, setVisited] = useState(() => new Set());
   const [stagedImages, setStagedImages] = useState([]);
 
-  // --- Role gate — mirrors web's add-listing/layout.js redirect-if-not-landlord,
+  // --- Role gate: mirrors web's add-listing/layout.js redirect-if-not-landlord,
   // as an inline empty state rather than a silent navigation (the route is only
   // reachable via Profile's landlord-only entry point, so this is a safety net).
   if (!isHydrated) {
@@ -231,7 +231,7 @@ export default function AddListingScreen() {
         contactName: form.contact_name || null,
         ...(coords.lat != null && coords.lng != null ? { longitude: coords.lng, latitude: coords.lat } : {}),
         // Street View is stored at sort_order 0 (the cover slot) at create
-        // time, before any staged photos land via /api/upload afterward —
+        // time, before any staged photos land via /api/upload afterward,
         // so attaching it unconditionally would bury a landlord's own cover
         // photo under an auto screenshot. Mirrors web's
         // `!streetViewDeleted && stagedFiles.length === 0` (mobile has no
@@ -241,7 +241,7 @@ export default function AddListingScreen() {
       });
       const listingId = result.listing.id;
 
-      // A photo failure never un-saves the listing — surface it as a
+      // A photo failure never un-saves the listing; surface it as a
       // non-blocking alert and continue, matching AddListingWizard.js's
       // toast-and-continue behavior.
       if (stagedImages.length > 0) {
@@ -333,9 +333,9 @@ export default function AddListingScreen() {
           {STEPS.map((s, i) => {
             const done = stepComplete(s.id) || i < stepIndex;
             const reachable = i <= stepIndex || done;
-            // red-300 for "completed" (not `primarySoft`/red-50 — too pale
+            // red-300 for "completed" (not `primarySoft`/red-50: too pale
             // to read as a filled progress segment against a white
-            // background) — design-system/pages/add-listing.md.
+            // background); see design-system/pages/add-listing.md.
             return (
               <Pressable
                 key={s.id}

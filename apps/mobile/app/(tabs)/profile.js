@@ -159,7 +159,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats — Saved Listings is a student-facing concept; landlords have
+        {/* Stats: Saved Listings is a student-facing concept; landlords have
             their own My Listings tab instead, so this card (and its link to
             the Saved tab) is hidden for them rather than pointing at a tab
             that's no longer in their tab bar. */}

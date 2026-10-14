@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 import { colors } from "../../theme/tokens";
 
-// Small icon-badged section header — the app's consistent "this is a
+// Small icon-badged section header: the app's consistent "this is a
 // distinct section" marker (design-system Stage I visual-polish pass).
 // Shared between FilterSheet's grouped clusters and Listing Detail's
 // section headers rather than each screen hand-rolling its own.

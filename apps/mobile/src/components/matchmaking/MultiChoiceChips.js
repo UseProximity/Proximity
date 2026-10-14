@@ -1,4 +1,4 @@
-// Multi-select chip row for question kinds "multi" and "contact" — toggle any
+// Multi-select chip row for question kinds "multi" and "contact": toggle any
 // number of chips, then tap Send. "multi" also allows typing a custom option;
 // "contact" (allowOther=false) offers only the given options plus an escape.
 import { useState } from "react";

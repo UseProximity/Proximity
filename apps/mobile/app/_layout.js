@@ -1,4 +1,4 @@
-// Root layout. Tabs are public — no login required to browse listings, view
+// Root layout. Tabs are public: no login required to browse listings, view
 // details, or use the map (per the plan's auth-deferred decision). Auth
 // screens ((auth)/login, signup) are reachable from the Profile tab rather
 // than gating the whole app. authStore hydrates in the background so a
@@ -65,23 +65,23 @@ export default function RootLayout() {
 
   return (
     // font-sans (DM Sans regular) applied once here and inherited by every
-    // descendant Text via NativeWind v4's style inheritance — individual
+    // descendant Text via NativeWind v4's style inheritance, so individual
     // screens don't need to opt in. font-bold/semibold/medium classNames
     // still work as before; tailwind.config.js's plugin maps them to the
     // matching DM Sans weight family (see its comment for why that's
     // necessary, not just a font-family default).
     //
     // <Stack> must render unconditionally on every render, including the
-    // very first one — Expo Router requires a navigator to be mounted
+    // very first one, because Expo Router requires a navigator to be mounted
     // immediately (it throws "Attempted to navigate before mounting the
     // Root Layout component" otherwise). Fonts loading is masked with an
     // absolutely-positioned overlay instead of an early return that would
     // skip rendering <Stack>: an early-return version worked fine for
     // ordinary cold starts (fonts resolve well before a user can tap
     // anything) but broke the Google sign-in round-trip, where returning
-    // from the OAuth browser can remount this layout — if navigation fires
+    // from the OAuth browser can remount this layout: if navigation fires
     // during that remount's font-loading window with no <Stack> yet
-    // mounted, the app crashes. No native splash-screen API involved —
+    // mounted, the app crashes. No native splash-screen API involved:
     // expo-splash-screen isn't a dependency today, and Google Fonts load
     // quickly enough that a blank white overlay is enough.
     <View className="flex-1 font-sans">

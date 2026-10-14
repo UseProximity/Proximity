@@ -152,7 +152,7 @@ export default function ChangePasswordScreen() {
             </View>
           )}
 
-          {/* Security Tips — the `info` role (design-system/MASTER.md §2):
+          {/* Security Tips: the `info` role (design-system/MASTER.md §2):
               blue-50/blue-200/blue-900, blue-700 for body text as a second
               tier under the heading. This is where that role originated;
               the colors already matched, only the radius needed fixing. */}

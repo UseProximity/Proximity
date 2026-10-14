@@ -1,5 +1,5 @@
 // Screen 1: just the address. Picking a Mapbox suggestion captures
-// coordinates (walk times, map pin) — mirrors
+// coordinates (walk times, map pin), mirroring
 // apps/web/src/components/listings/wizard/StepAddress.js. Mobile skips the
 // Street View preview web shows here: the wizard shell decides whether to
 // attach it at publish time based on whether photos were staged, so there's
