@@ -1,17 +1,39 @@
 // Profile tab - Enhanced with full user management
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import Constants from "expo-constants";
-import { ChevronRight, FileText, LogOut, Lock, Pencil, ShieldCheck, Info, Trash2, User } from "lucide-react-native";
+import {
+  ChevronRight,
+  FileText,
+  LogOut,
+  Lock,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Info,
+  Trash2,
+  User,
+} from "lucide-react-native";
 import { isLandlord } from "@proximity/auth-core";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import apiClient from "../../src/lib/apiClient";
 import { getErrorMessage } from "../../src/lib/apiError";
 import { colors } from "../../src/theme/tokens";
-import { openLegalLink, PRIVACY_URL, TERMS_URL } from "../../src/lib/legalLinks";
+import {
+  openLegalLink,
+  PRIVACY_URL,
+  TERMS_URL,
+} from "../../src/lib/legalLinks";
 
 function ProfileSection({ title, children }) {
   return (
@@ -27,20 +49,38 @@ function ProfileSection({ title, children }) {
 }
 
 // Without an onPress the row is informational: a plain View with no chevron.
-function MenuItem({ label, icon: Icon, onPress, destructive = false, showBorder = true }) {
+function MenuItem({
+  label,
+  icon: Icon,
+  onPress,
+  destructive = false,
+  showBorder = true,
+}) {
   const Container = onPress ? Pressable : View;
   return (
     <Container
       onPress={onPress}
-      className={`flex-row items-center justify-between px-4 py-3.5 ${showBorder ? "border-b border-gray-100" : ""}`}
+      className={`flex-row items-center justify-between px-4 py-3.5 ${
+        showBorder ? "border-b border-gray-100" : ""
+      }`}
     >
       <View className="flex-row items-center gap-3">
-        <Icon size={18} color={destructive ? colors.primary : colors.textSecondary} strokeWidth={2} />
-        <Text className={`text-sm font-medium ${destructive ? "text-red-600" : "text-gray-900"}`}>
+        <Icon
+          size={18}
+          color={destructive ? colors.primary : colors.textSecondary}
+          strokeWidth={2}
+        />
+        <Text
+          className={`text-sm font-medium ${
+            destructive ? "text-red-600" : "text-gray-900"
+          }`}
+        >
           {label}
         </Text>
       </View>
-      {onPress ? <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} /> : null}
+      {onPress ? (
+        <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+      ) : null}
     </Container>
   );
 }
@@ -52,18 +92,14 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const handleLogout = () => {
-    Alert.alert(
-      "Log out",
-      "Are you sure you want to log out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Log out",
-          style: "destructive",
-          onPress: () => logout(),
-        },
-      ]
-    );
+    Alert.alert("Log out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: () => logout(),
+      },
+    ]);
   };
 
   // Two-step confirmation: this is irreversible for the user, and Apple/Google
@@ -78,29 +114,36 @@ export default function ProfileScreen() {
           text: "Continue",
           style: "destructive",
           onPress: () =>
-            Alert.alert("Are you sure?", "Deleting your account is permanent.", [
-              { text: "Keep my account", style: "cancel" },
-              {
-                text: "Delete account",
-                style: "destructive",
-                onPress: async () => {
-                  setDeleting(true);
-                  try {
-                    await apiClient.user.deleteAccount();
-                    // Clear local session/state; the account no longer authenticates
-                    // server-side, so anything cached would only 401.
-                    await logout();
-                  } catch (err) {
-                    Alert.alert(
-                      "Couldn't delete account",
-                      getErrorMessage(err, "Something went wrong. Please try again.")
-                    );
-                  } finally {
-                    setDeleting(false);
-                  }
+            Alert.alert(
+              "Are you sure?",
+              "Deleting your account is permanent.",
+              [
+                { text: "Keep my account", style: "cancel" },
+                {
+                  text: "Delete account",
+                  style: "destructive",
+                  onPress: async () => {
+                    setDeleting(true);
+                    try {
+                      await apiClient.user.deleteAccount();
+                      // Clear local session/state; the account no longer authenticates
+                      // server-side, so anything cached would only 401.
+                      await logout();
+                    } catch (err) {
+                      Alert.alert(
+                        "Couldn't delete account",
+                        getErrorMessage(
+                          err,
+                          "Something went wrong. Please try again."
+                        )
+                      );
+                    } finally {
+                      setDeleting(false);
+                    }
+                  },
                 },
-              },
-            ]),
+              ]
+            ),
         },
       ]
     );
@@ -120,7 +163,9 @@ export default function ProfileScreen() {
         <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center mb-4">
           <User size={32} color={colors.textMuted} strokeWidth={1.5} />
         </View>
-        <Text className="text-lg font-bold text-gray-900 mb-1">Sign in to Proximity</Text>
+        <Text className="text-lg font-bold text-gray-900 mb-1">
+          Sign in to Proximity
+        </Text>
         <Text className="text-sm text-gray-500 text-center mb-6">
           Save listings and manage your profile once you&apos;re signed in.
         </Text>
@@ -134,15 +179,26 @@ export default function ProfileScreen() {
   }
 
   // Get initials from name
-  const initials = user.name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "U";
+  const initials =
+    user.name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "U";
 
-  const roleLabel = user.role === "landlord" ? "Landlord" : user.role === "super" ? "Admin" : "Student";
-  const roleColor = user.role === "landlord" ? "bg-blue-100 text-blue-700" : user.role === "super" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700";
+  const roleLabel =
+    user.role === "landlord"
+      ? "Landlord"
+      : user.role === "super"
+      ? "Admin"
+      : "Student";
+  const roleColor =
+    user.role === "landlord"
+      ? "bg-blue-100 text-blue-700"
+      : user.role === "super"
+      ? "bg-purple-100 text-purple-700"
+      : "bg-green-100 text-green-700";
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -170,18 +226,47 @@ export default function ProfileScreen() {
           >
             <View className="flex-row items-center justify-between">
               <View>
-                <Text className="text-2xl font-bold text-gray-900">{savedListings.length}</Text>
-                <Text className="text-sm text-gray-500 mt-0.5">Saved Listings</Text>
+                <Text className="text-2xl font-bold text-gray-900">
+                  {savedListings.length}
+                </Text>
+                <Text className="text-sm text-gray-500 mt-0.5">
+                  Saved Listings
+                </Text>
               </View>
-              <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+              <ChevronRight
+                size={18}
+                color={colors.textMuted}
+                strokeWidth={2}
+              />
             </View>
           </Pressable>
         )}
 
+        {/* Landlords (and admins, matching Add Listing's own role gate) start a
+            new property listing from here; the wizard lives at /listings/add. */}
+        {isLandlord(user.role) && (
+          <ProfileSection title="Property Management">
+            <MenuItem
+              label="Add Listing"
+              icon={Plus}
+              onPress={() => router.push("/listings/add")}
+              showBorder={false}
+            />
+          </ProfileSection>
+        )}
+
         {/* Account Section */}
         <ProfileSection title="Account">
-          <MenuItem label="Edit Profile" icon={Pencil} onPress={() => router.push("/profile/edit")} />
-          <MenuItem label="Change Password" icon={Lock} onPress={() => router.push("/profile/change-password")} />
+          <MenuItem
+            label="Edit Profile"
+            icon={Pencil}
+            onPress={() => router.push("/profile/edit")}
+          />
+          <MenuItem
+            label="Change Password"
+            icon={Lock}
+            onPress={() => router.push("/profile/change-password")}
+          />
           <MenuItem
             label={deleting ? "Deleting…" : "Delete Account"}
             icon={Trash2}
@@ -193,8 +278,16 @@ export default function ProfileScreen() {
 
         {/* About Section */}
         <ProfileSection title="About">
-          <MenuItem label="Terms of Service" icon={FileText} onPress={() => openLegalLink(TERMS_URL)} />
-          <MenuItem label="Privacy Policy" icon={ShieldCheck} onPress={() => openLegalLink(PRIVACY_URL)} />
+          <MenuItem
+            label="Terms of Service"
+            icon={FileText}
+            onPress={() => openLegalLink(TERMS_URL)}
+          />
+          <MenuItem
+            label="Privacy Policy"
+            icon={ShieldCheck}
+            onPress={() => openLegalLink(PRIVACY_URL)}
+          />
           <MenuItem
             label={`Version ${Constants.expoConfig?.version ?? "Unknown"}`}
             icon={Info}
@@ -204,7 +297,13 @@ export default function ProfileScreen() {
 
         {/* Logout */}
         <View className="bg-white rounded-2xl border border-gray-200">
-          <MenuItem label="Log out" icon={LogOut} onPress={handleLogout} destructive showBorder={false} />
+          <MenuItem
+            label="Log out"
+            icon={LogOut}
+            onPress={handleLogout}
+            destructive
+            showBorder={false}
+          />
         </View>
 
         <View className="h-8" />
