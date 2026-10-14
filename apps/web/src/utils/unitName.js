@@ -38,26 +38,6 @@ export function unitNameKey(value) {
 }
 
 /*
- * The first name in `names` that clashes with another, or null. `taken` are
- * names that already stand (units that exist and are not being renamed): they
- * can clash with `names` but are not checked against each other, so a duplicate
- * that was already there never blocks a landlord who did not create it. Compared
- * the way the server compares unit names (case and spacing); an unnamed unit
- * claims nothing.
- */
-export function findDuplicateUnitName(names, taken = []) {
-  const seen = new Set(taken.map(unitNameKey).filter(Boolean));
-  for (const raw of names ?? []) {
-    const name = cleanUnitName(raw);
-    if (!name) continue;
-    const key = unitNameKey(name);
-    if (seen.has(key)) return name;
-    seen.add(key);
-  }
-  return null;
-}
-
-/*
  * The add-listing wizard describes several identical units on one card, so its
  * name field takes a list: "Apt 2W, Apt 2E" or a range, "Apt 101-104", which
  * expands to Apt 101 through Apt 104. Commas separate names (names themselves

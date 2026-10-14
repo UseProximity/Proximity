@@ -6,28 +6,29 @@ import {
   sendVerificationEmail,
   sendPasswordResetEmail,
 } from "@/lib/email";
-import { validateName, validateEmail, validatePassword } from "@proximity/auth-core";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { SIGNUP_ROLES } from "@/lib/auth/roles";
 
 export async function POST(req) {
   try {
-    let body;
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-    }
-    const { name, email: rawEmail, password, role, callbackUrl } = body;
+    const { name, email: rawEmail, password, role, callbackUrl } = await req.json();
     const email = normalizeEmail(rawEmail);
 
-    const nameErr = validateName(name);
-    if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 });
-    const emailErr = validateEmail(email);
-    if (emailErr) return NextResponse.json({ error: emailErr }, { status: 400 });
-    const passwordErr = validatePassword(password);
-    if (passwordErr) return NextResponse.json({ error: passwordErr }, { status: 400 });
+    if (!name?.trim())
+      return NextResponse.json({ error: "Name is required." }, { status: 400 });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json(
+        { error: "Valid email is required." },
+        { status: 400 }
+      );
+    }
+    if (!password || password.length < 8) {
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters." },
+        { status: 400 }
+      );
+    }
 
     // Honor the role chosen on the signup form; default to student. This lets an
     // email/password landlord be created with the right role from the start so
@@ -63,13 +64,22 @@ export async function POST(req) {
        * button cannot help them, and many of those addresses are not Google
        * accounts at all. They were left with no way in.
        */
-      if (existing.google_account || existing.apple_account) {
+      if (existing.google_account) {
         return NextResponse.json(
           {
             error:
-              existing.apple_account && !existing.google_account
-                ? "This email is linked to an Apple account. Please sign in with Apple."
-                : "This email is linked to a Google account. Please sign in with Google.",
+              "This email uses Google sign-in. Please continue with Google.",
+          },
+          { status: 409 }
+        );
+      }
+
+      // A Sign in with Apple account (created by the mobile app) has no password
+      // either, but it is not an unclaimed row: do not offer the set-password claim.
+      if (existing.apple_account) {
+        return NextResponse.json(
+          {
+            error: "This email is linked to an Apple account. Please sign in with Apple.",
           },
           { status: 409 }
         );

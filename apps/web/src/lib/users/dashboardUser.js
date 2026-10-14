@@ -3,23 +3,6 @@ import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingS
 import { isLiveLease, unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
 import { sortUnits } from "@/utils/unitOrder";
 
-// Every `users` column that is safe to return to the client. Deliberately
-// EXCLUDES the credential/verification columns that exist on the table:
-// password_hash, password_reset_token, password_reset_expires_at,
-// email_verification_token, email_verification_expires_at — plus apple_sub.
-// This function's result is serialized straight to the browser and the mobile
-// app by both /api/getUser and /api/admin/viewUser, so a wildcard select here
-// ships a working password-reset token in a JSON body — an account-takeover
-// primitive. Allowlisting also fails closed: a future sensitive column is
-// excluded by default rather than leaked. Keep in sync when adding a column.
-const USER_PUBLIC_COLUMNS = `
-  id, name, email, image, birthday, description, gender, phone,
-  profile_complete, referral_source, created_at, updated_at,
-  graduation_year, graduation_month, role_id, school_id, is_system,
-  deleted_at, email_verified, google_account, apple_account,
-  email_notifications, payment_method, payment_handle
-`.trim();
-
 /*
  * The dashboard payload, built once for whoever is being looked at.
  *
@@ -328,13 +311,19 @@ export async function buildDashboardUser({ email, id } = {}) {
     // finding it undefined, and the dashboard's fallback turned every such
     // user into a landlord — which is now load-bearing, since students reach
     // that dashboard too and the landlord-only tabs key off this.
-    .select(`${USER_PUBLIC_COLUMNS}, roles!role_id(name)`);
+    .select("*, roles!role_id(name)");
 
-  const { data: user, error: userError } = await (
+  const { data: row, error: userError } = await (
     id ? query.eq("id", id) : query.eq("email", email)
   ).maybeSingle();
 
-  if (userError || !user) return null;
+  if (userError || !row) return null;
+
+  // The whole row is spread into the payload below (and sent to the browser and
+  // the mobile app), so the Sign in with Apple columns are taken out here: the
+  // refresh token is a secret, and apple_sub is Apple's identifier for the person.
+  // Every other column is passed through as before.
+  const { apple_refresh_token: _appleRefreshToken, apple_sub: _appleSub, ...user } = row;
 
   const userId = user.id;
 

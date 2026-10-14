@@ -302,11 +302,6 @@ export default function ChatClient() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId, action: "contact_owners", listingIds, message, selectionLabel }),
           });
-          if (res.status === 401) {
-            localStorage.removeItem(LS_KEY);
-            setNeedsAuth(true);
-            return;
-          }
           const data = await res.json();
           if (res.ok) {
             contactStageRef.current = "sent";
@@ -364,11 +359,6 @@ export default function ChatClient() {
               weights: weightsRef.current,
             }),
           });
-          if (res.status === 401) {
-            localStorage.removeItem(LS_KEY);
-            setNeedsAuth(true);
-            return;
-          }
           const data = await res.json();
           if (res.ok) {
             applyRanking(data);
@@ -453,11 +443,6 @@ export default function ChatClient() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId, answer, ...snapshot }),
           });
-          if (res.status === 401) {
-            localStorage.removeItem(LS_KEY);
-            setNeedsAuth(true);
-            return;
-          }
           const data = await res.json();
           if (res.ok) {
             applyRanking(data);
@@ -514,11 +499,6 @@ export default function ChatClient() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId, message: text, ...snapshot }),
           });
-          if (res.status === 401) {
-            localStorage.removeItem(LS_KEY);
-            setNeedsAuth(true);
-            return;
-          }
           const data = await res.json();
           if (res.ok) {
             applyRanking(data);
@@ -773,11 +753,6 @@ export default function ChatClient() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ sessionId, action: "rewind_tradeoff", tradeoffIndex }),
             });
-            if (res.status === 401) {
-              localStorage.removeItem(LS_KEY);
-              setNeedsAuth(true);
-              return;
-            }
             const data = await res.json();
             if (res.ok) {
               if (data.preferences) {
@@ -830,14 +805,7 @@ export default function ChatClient() {
               weights: rewound.weights,
               transcript: truncated,
             }),
-          })
-            .then((res) => {
-              if (res.status === 401) {
-                localStorage.removeItem(LS_KEY);
-                setNeedsAuth(true);
-              }
-            })
-            .catch((err) => console.error("[ChatClient] rewind failed:", err))
+          }).catch((err) => console.error("[ChatClient] rewind failed:", err))
         );
 
         return truncated;
@@ -866,10 +834,6 @@ export default function ChatClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "" }),
       });
-      if (res.status === 401) {
-        setNeedsAuth(true);
-        return;
-      }
       const data = await res.json();
       if (res.ok) {
         applyServerState(data);

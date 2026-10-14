@@ -8,9 +8,6 @@
   "dependencies": {
     "zod": "^4.4.3"
   },
-  "devDependencies": {
-    "react-native": "0.85.3"
-  },
   "scripts": {
     "dev:web":    "npm run dev   --workspace=apps/web",
     "dev:mobile": "npm run start --workspace=apps/mobile",
