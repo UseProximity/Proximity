@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft } from "lucide-react-native";
 import { emptyUnit } from "@proximity/shared";
 import { colors } from "../../../src/theme/tokens";
@@ -56,6 +56,7 @@ const blankForm = (user) => ({
 
 export default function AddListingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, isHydrated } = useAuth();
 
   const [stepId, setStepId] = useState("address");
@@ -358,8 +359,12 @@ export default function AddListingScreen() {
         ) : null}
       </ScrollView>
 
+      {/* Keep the buttons clear of the home indicator, same as FilterSheet's footer. */}
       {stepId !== "review" ? (
-        <View className="flex-row items-center justify-between border-t border-gray-100 px-4 py-3">
+        <View
+          className="flex-row items-center justify-between border-t border-gray-100 p-4"
+          style={{ paddingBottom: Math.max(16, insets.bottom) }}
+        >
           <Pressable onPress={back} hitSlop={12} className="flex-row items-center">
             <ChevronLeft size={16} color={colors.textSecondary} strokeWidth={2.5} />
             <Text className="text-sm font-medium text-gray-500">Back</Text>
