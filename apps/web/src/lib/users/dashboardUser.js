@@ -152,15 +152,26 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
          * shows one rent per unit is describing a listing that doesn't exist —
          * and gives a landlord no way to find the offering that is actually
          * theirs. `mine` is what the UI gates editing on; the API re-checks it.
+         *
+         * Withdrawn offerings included. The dashboard's Withdraw button clears
+         * is_active, and this list used to drop anything not active, so a
+         * withdrawn offering vanished from the editor: the unit read "No
+         * offerings on this unit yet" while its footer said to restore one
+         * above. The Icon went live with 13 withdrawn floor plans and no way to
+         * publish any of them from the editor. Only deleted offerings are
+         * hidden; withdrawn ones sort last and carry a Publish again button.
          */
         leases: (u.unit_leases ?? [])
-          .filter((lease) => lease.is_active)
+          .filter((lease) => !lease.deleted_at)
           .map((lease) => ({
             id: lease.id,
             rent: lease.rent != null ? Number(lease.rent) : null,
             rentIsPerPerson: lease.rent_is_per_person ?? null,
             sublease: !!lease.sublease,
-            unavailable: !!lease.unavailable,
+            // Withdrawn by either route: the editor's checkbox sets unavailable
+            // alone, the dashboard button clears is_active as well. One flag
+            // so the editor reads both the same way.
+            unavailable: !isLiveLease(lease),
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
             leaseTermMonths: Array.isArray(lease.lease_term_months)
