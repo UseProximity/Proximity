@@ -232,6 +232,38 @@
         }
       },
       {
+        "table": "chat_checkin_alerts",
+        "status": "active",
+        "description": "Internal chat check-in: one row per thread the daily /api/cron/chat-checkin digest emailed about, keyed on the unanswered message, so each silence is reported once. Read by /api/cron/chat-checkin-report to count alerts by side and whether the quiet side came back. RLS on, no policies: service role only.",
+        "columns": [
+          "id:uuid",
+          "thread_id:uuid",
+          "last_message_id:uuid",
+          "quiet_side:text",
+          "silent_since:timestamptz",
+          "sent_at:timestamptz",
+          "recipients:text[]",
+          "dry_run:boolean"
+        ],
+        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migration 202610130001_chat_checkin.sql"
+      },
+      {
+        "table": "chat_checkin_runs",
+        "status": "active",
+        "description": "Job log for the internal chat check-in crons: one row per run of /api/cron/chat-checkin (kind=checkin) and /api/cron/chat-checkin-report (kind=report), with ok/error and the run's counts in stats. The weekly report summarises the checkin rows. RLS on, no policies: service role only.",
+        "columns": [
+          "id:uuid",
+          "kind:text",
+          "started_at:timestamptz",
+          "finished_at:timestamptz",
+          "ok:boolean",
+          "dry_run:boolean",
+          "stats:jsonb",
+          "error:text"
+        ],
+        "notes": "status=active; pk id; check kind in (checkin,report); rls: service role only (no policies); migration 202610130001_chat_checkin.sql"
+      },
+      {
         "table": "chat_email_log",
         "status": "unreleased",
         "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Outbound chat alert emails sent through SES or Gmail, with the provider message id. The next alert to the same person in the same thread carries these ids as References/In-Reply-To so mail clients stack them as one thread (lib/chat/notifyEmail.js).",
