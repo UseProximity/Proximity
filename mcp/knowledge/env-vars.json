@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-09T21:38:34.783Z",
-  "count": 76,
+  "_generated": "2026-10-13T22:11:06.201Z",
+  "count": 78,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -65,6 +65,14 @@
     },
     {
       "name": "AWS_SES_SECRET_ACCESS_KEY",
+      "public": false
+    },
+    {
+      "name": "CHAT_CHECKIN_ALERT_EMAILS",
+      "public": false
+    },
+    {
+      "name": "CHAT_CHECKIN_KEY",
       "public": false
     },
     {

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-13T02:52:46.342Z",
-  "count": 114,
+  "_generated": "2026-10-13T22:11:06.137Z",
+  "count": 116,
   "routes": [
     {
       "path": "/api/account",
@@ -565,6 +565,35 @@
         "users"
       ],
       "file": "src/app/api/cron/availability-check/route.js"
+    },
+    {
+      "path": "/api/cron/chat-checkin",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "chat_checkin_alerts",
+        "chat_checkin_runs"
+      ],
+      "file": "src/app/api/cron/chat-checkin/route.js"
+    },
+    {
+      "path": "/api/cron/chat-checkin-report",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "chat_checkin_runs"
+      ],
+      "file": "src/app/api/cron/chat-checkin-report/route.js"
     },
     {
       "path": "/api/cron/chat-retention",
