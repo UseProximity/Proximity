@@ -30,7 +30,7 @@ import toast from "react-hot-toast";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import AuthCard from "@/components/auth/AuthCard";
 import StarRatingInput from "@/components/ui/StarRatingInput";
-import { UNIT_DESIGNATORS } from "@proximity/shared";
+import { UNIT_DESIGNATORS } from "@/components/listings/listingFormOptions";
 import {
   SCHOOLS,
   schoolForEmail,

@@ -18,7 +18,7 @@ module.exports = {
   },
   plugins: [
     // @expo-google-fonts/dm-sans registers each weight as its own font
-    // family name (DMSans_400Regular, DMSans_700Bold, ...) — React Native
+    // family name (DMSans_400Regular, DMSans_700Bold, ...); React Native
     // does not synthesize bold from a single custom family the way it does
     // for system fonts. Redefining the font-weight utilities to also set
     // the matching family keeps the existing font-normal/medium/semibold/

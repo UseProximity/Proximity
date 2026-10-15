@@ -17,7 +17,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: async () => {
-    // Unregister the device's push token before clearing local tokens — the
+    // Unregister the device's push token before clearing local tokens: the
     // DELETE call needs the still-valid access token to authenticate.
     // Best effort and time-bounded (see unregisterDeviceToken): a failure here
     // must never stop the local sign-out below.
@@ -44,7 +44,7 @@ export const useAuthStore = create((set, get) => ({
     useFavoritesStore.getState().clear();
 
     // Matchmaking's own chatStore reacts to this store's user?.id changing
-    // (see the effect in app/(tabs)/matchmaking.js) — no explicit reset
+    // (see the effect in app/(tabs)/matchmaking.js), so no explicit reset
     // needed here.
   },
 

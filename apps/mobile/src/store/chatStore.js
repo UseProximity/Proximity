@@ -1,7 +1,7 @@
 // Matchmaking chat state, mirroring apps/web/src/components/matchmaking/ChatClient.js's
 // logic (same optimistic-update flow via the shared questionEngine, same
 // request shapes against apiClient.matchmaking.*) but as a Zustand store
-// instead of component state, and in-memory only — a guest's session can't be
+// instead of component state, and in-memory only: a guest's session can't be
 // resumed server-side anyway (GET /api/matchmaking/chat always returns
 // { session: null } for the shared guest identity), so there's nothing to gain
 // from persisting across an app restart, matching this plan's "in-memory"
@@ -99,7 +99,7 @@ export const useChatStore = create((set, get) => ({
           ...(m.recommendations ? { recommendations: m.recommendations } : {}),
         }));
         // A pre-rework session has messages but none carry a `question`
-        // descriptor (no chips) — it can't be answered. Restart it cleanly.
+        // descriptor (no chips), so it can't be answered. Restart it cleanly.
         const isStaleOldChat =
           session.status !== "recommendations_ready" &&
           serverMessages.length > 0 &&
@@ -184,12 +184,12 @@ export const useChatStore = create((set, get) => ({
     set({ ...initialState });
   },
 
-  // Called whenever the resolved auth identity changes (login or logout) —
+  // Called whenever the resolved auth identity changes (login or logout);
   // see the effect in app/(tabs)/matchmaking.js that watches authStore's
   // user?.id. A mount-only init() can't catch this: once a tab has been
   // visited it stays mounted for the app's lifetime (no unmountOnBlur), so
   // nothing would otherwise re-run the auth check after a logout/login that
-  // happens while already mounted. init() itself decides the outcome —
+  // happens while already mounted. init() itself decides the outcome;
   // this just guarantees the check actually re-runs on every identity change.
   reinit: async () => {
     get().reset();
@@ -218,7 +218,7 @@ export const useChatStore = create((set, get) => ({
         preferences: applied.preferences,
         weights: applied.weights,
         messages: msgs,
-        loading: !upcoming, // finalizing (last scripted answer) — ranking is the only wait
+        loading: !upcoming, // finalizing (last scripted answer); ranking is the only wait
       };
     });
 
@@ -402,7 +402,7 @@ export const useChatStore = create((set, get) => ({
     });
   },
 
-  // Free-text send — parses an answer mid-flow, or refines the picks once
+  // Free-text send: parses an answer mid-flow, or refines the picks once
   // recommendations are ready (server replies with mode: "agent").
   sendMessage: (text) => {
     const { sessionId, preferences, weights } = get();

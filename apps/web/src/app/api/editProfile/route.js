@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
-import { getRequestUser } from "@/lib/getRequestUser";
 import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 
 export async function PATCH(req) {
   try {
+    // Web cookie or mobile Bearer token.
     const authUser = await getRequestUser(req);
     if (!authUser?.email) {
-      console.error("PATCH /api/editProfile: no authenticated user");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error("PATCH /api/editProfile: no session email", { authUser });
+      return NextResponse.json({ error: "Unauthorized — no session email" }, { status: 401 });
     }
 
     console.log("PATCH /api/editProfile: looking up email", authUser.email);
@@ -59,7 +60,6 @@ export async function PATCH(req) {
     if (body.profileComplete !== undefined) allowedFields.profile_complete = body.profileComplete;
     if (body.referralSource !== undefined) allowedFields.referral_source = body.referralSource;
     if (body.image !== undefined) allowedFields.image = body.image;
-    if (body.email !== undefined) allowedFields.email = body.email;
 
     // Chat / outreach emails. Honoured by rpc_chat_notification_recipient.
     if (body.emailNotifications !== undefined) {

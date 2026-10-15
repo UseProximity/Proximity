@@ -9,7 +9,7 @@ export class UploadsResource {
     this.client = client;
   }
 
-  // files: [{ name, type }] — returns { presigned: [{ uploadUrl, publicUrl, key }] }
+  // files: [{ name, type }]. Returns { presigned: [{ uploadUrl, publicUrl, key }] }
   presignUpload(listingId, files) {
     return this.client.request("/api/upload", {
       method: "POST",
@@ -19,7 +19,7 @@ export class UploadsResource {
 
   // Direct-to-R2 PUT of the actual file bytes. Deliberately bypasses
   // ApiClient.request(), which always attaches Bearer auth and assumes a
-  // JSON request/response — this call needs neither (R2 doesn't check our
+  // JSON request/response; this call needs neither (R2 doesn't check our
   // auth) and must send the file's real MIME type as Content-Type.
   async uploadToPresignedUrl(uploadUrl, blob, contentType) {
     const res = await fetch(uploadUrl, {
@@ -34,7 +34,7 @@ export class UploadsResource {
     }
   }
 
-  // urls: [string] — confirms uploaded files and records them on the listing.
+  // urls: [string]. Confirms uploaded files and records them on the listing.
   confirmUpload(listingId, urls) {
     return this.client.request("/api/upload", {
       method: "PUT",

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import {
   AMENITY_LABELS,
   UTILITY_LABELS,
-} from "@proximity/shared";
+} from "@/components/listings/listingFormOptions";
 import {
   StepFrame,
   FieldLabel,

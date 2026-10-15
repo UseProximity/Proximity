@@ -12,7 +12,7 @@ export async function GET(req) {
 
   if (!user?.id) {
     // A Bearer header was present but didn't resolve to a user (missing/
-    // expired/invalid access token) — a real 401 so the mobile client's
+    // expired/invalid access token); a real 401 so the mobile client's
     // refresh-and-retry logic (createClient.js) actually kicks in, instead
     // of this being silently indistinguishable from "genuinely 0 favorites."
     // A logged-out web request (no header at all) keeps the existing
@@ -47,7 +47,7 @@ export async function GET(req) {
     return NextResponse.json({ ids: listingIds });
   }
 
-  // Mobile needs full listing objects — reuse the same fetch+shape path
+  // Mobile needs full listing objects, so this reuses the same fetch+shape path
   // Browse/listing-detail already use (fetchListings/buildListing in
   // apps/web/src/app/api/listings/route.js) instead of a separate,
   // hand-rolled query, so favorites can't drift out of sync with the

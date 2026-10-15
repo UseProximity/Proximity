@@ -1,6 +1,6 @@
 import { Text } from "react-native";
 
-// Small uppercase sub-label for a labeled group within a card/section —
+// Small uppercase sub-label for a labeled group within a card/section,
 // promoted from FilterSheet.js's local component since Listing Detail's
 // Amenities/Utilities split needed the identical pattern.
 export function FieldLabel({ children }) {

@@ -1,18 +1,18 @@
 // Matchmaking chat tab ("Proxy"). Ported behavior from
-// apps/web/src/components/matchmaking/ChatClient.js — same conversation state
+// apps/web/src/components/matchmaking/ChatClient.js: same conversation state
 // machine (via the shared questionEngine + chatStore), same request shapes
 // against apiClient.matchmaking.*, rebuilt as a native chat UI rather than a
-// copy of the web layout (custom FlatList, no @chatscope/chat-ui-kit-react —
+// copy of the web layout (custom FlatList, no @chatscope/chat-ui-kit-react;
 // web doesn't actually use it either).
 //
 // Requires a signed-in account (enforced server-side in
-// apps/web/src/app/api/matchmaking/chat/route.js) — chatStore's needsAuth
+// apps/web/src/app/api/matchmaking/chat/route.js). chatStore's needsAuth
 // flag drives the sign-in fallback below. The init effect re-runs on every
 // auth identity change (not just mount) so logging out/in while this tab is
-// already mounted stays in sync — see the userId effect below and
+// already mounted stays in sync; see the userId effect below and
 // chatStore.reinit().
 //
-// Route renamed from chat.js to matchmaking.js (Stage H) — the tab bar now
+// Route renamed from chat.js to matchmaking.js (Stage H) because the tab bar now
 // has a separate, genuinely-empty future "Chat" tab, so this file's old name
 // would have collided with it. No hardcoded references to "/(tabs)/chat"
 // existed anywhere else in the app (confirmed via grep before renaming), so
@@ -77,7 +77,7 @@ export default function MatchmakingScreen() {
   const [composerText, setComposerText] = useState("");
   const listRef = useRef(null);
 
-  // Re-runs on every auth identity change (login or logout), not just mount —
+  // Re-runs on every auth identity change (login or logout), not just mount, because
   // this tab stays mounted for the app's lifetime once visited once, so a
   // mount-only check would go stale across a logout/login cycle.
   //

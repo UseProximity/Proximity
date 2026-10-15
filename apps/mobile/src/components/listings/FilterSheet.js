@@ -4,7 +4,7 @@
 //
 // Visual-polish pass (design-system Stage I): the 11 original sections were
 // all identically weighted (same bold title, same spacing), which read as
-// flat and cluttered. Regrouped into 4 visually distinct clusters below —
+// flat and cluttered. Regrouped into 4 visually distinct clusters below:
 // every field/key/option list is untouched, only how they're grouped and
 // styled changed.
 import { useEffect, useState } from "react";
@@ -60,7 +60,7 @@ import { SectionHeader } from "../ui/SectionHeader";
 import { FieldLabel } from "../ui/FieldLabel";
 import { colors } from "../../theme/tokens";
 
-// Icons only where one genuinely aids recognition — not every option gets
+// Icons only where one genuinely aids recognition; not every option gets
 // one. Home Type/Lease Availability/Lease Structure stay text-only: their
 // options ("Condo" vs "Townhouse", "Individual" vs "Joint") don't have
 // visually distinct enough line-icon equivalents to actually help. A few

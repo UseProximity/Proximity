@@ -1,4 +1,4 @@
-// Screen 3: the units — the lease facts landlords care about most, asked
+// Screen 3: the units (the lease facts landlords care about most), asked
 // early (rent, beds/baths, terms). One card per floor-plan type; steppers
 // for counts, chips for lease terms, typing only for the rent number.
 // Mirrors apps/web/src/components/listings/wizard/StepUnits.js.

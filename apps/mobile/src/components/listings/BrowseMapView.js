@@ -1,7 +1,7 @@
 // Browse map. Ported from apps/web/src/components/listings/MapView.js's core
 // behavior (one marker per listing, no clustering, fit-bounds around campus
 // excluding outliers, tap a pin to select, rating teardrop pins, rated pins
-// prioritized over unrated ones when overlapping) — simplified for mobile: no
+// prioritized over unrated ones when overlapping); simplified for mobile: no
 // driving-route overlay, no "Browse this area" viewport filter, no
 // address-search fly-to.
 //

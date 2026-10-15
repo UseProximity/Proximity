@@ -1,7 +1,7 @@
 // Ported from apps/web/src/components/listings/MapView.js's
 // computeBoundsExcludingOutliers + the symmetric-bounds-around-campus logic
 // used for the initial fit-to-listings camera. MAP_CAMPUS_CENTER is web's own
-// separate hardcoded "map center" point — distinct from WASHU_PLACES' Danforth
+// separate hardcoded "map center" point, distinct from WASHU_PLACES' Danforth
 // University Center entry (a pre-existing inconsistency in web itself, kept
 // as-is rather than unified).
 export const MAP_CAMPUS_CENTER = {

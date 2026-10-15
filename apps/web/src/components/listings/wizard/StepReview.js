@@ -4,8 +4,9 @@ import {
   AMENITY_LABELS,
   UTILITY_LABELS,
   LEASE_TERM_PRESETS,
-} from "@proximity/shared";
+} from "@/components/listings/listingFormOptions";
 import { StepFrame } from "@/components/listings/wizard/wizardShared";
+import { parseUnitNames } from "@/utils/unitName";
 
 const termLabel = (m) =>
   LEASE_TERM_PRESETS.find((p) => p.months === m)?.label ?? `${m}-Month`;
@@ -41,46 +42,20 @@ function Row({ label, value, onChange, missing }) {
 export default function StepReview({ w }) {
   const { form, units } = w;
 
-  /*
-   * Units with their leases underneath, the same shape as the units step and
-   * the listing page. A blank date means available now.
-   */
-  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-  const leaseLine = (l) =>
-    [
-      l.rent !== "" && l.rent != null
-        ? `$${Number(l.rent).toLocaleString()}/mo${l.rentIsPerPerson ? " per person" : ""}`
-        : "contact for pricing",
-      (l.leaseTermMonths ?? []).length
-        ? l.leaseTermMonths.map(termLabel).join(", ")
-        : "no lease length",
-      ISO_DATE.test(l.availableFrom ?? "") ? `from ${l.availableFrom}` : "available now",
-    ].join(" · ");
-
   const unitLines = units.map((u, i) => {
     const bits = [];
     if (u.bedrooms !== "") bits.push(Number(u.bedrooms) === 0 ? "Studio" : `${u.bedrooms} bed`);
     if (u.bathrooms !== "") bits.push(`${u.bathrooms} bath`);
-    if (u.area !== "" && u.area != null) bits.push(`${u.area} sq ft`);
+    bits.push(u.rent !== "" ? `$${u.rent}/mo` : "rent not set");
+    const terms = (u.leaseTermMonths ?? []).map(termLabel).join(", ");
     return (
-      <div key={i}>
-        <p className="font-medium">
-          {u.title || `Unit ${i + 1}`}
-          <span className="font-normal text-gray-500">
-            {bits.length ? ` · ${bits.join(" · ")}` : ""}
-            {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
-            {(u.photos ?? []).length
-              ? ` · ${u.photos.length} photo${u.photos.length === 1 ? "" : "s"}`
-              : ""}
-            {u.available === false ? " · waitlist only" : ""}
-          </span>
-        </p>
-        <ul className="mt-0.5 space-y-0.5 border-l-2 border-red-100 pl-3 text-gray-600">
-          {(u.leases ?? []).map((l, k) => (
-            <li key={k}>{leaseLine(l)}</li>
-          ))}
-        </ul>
-      </div>
+      <p key={i}>
+        {u.unitNames?.trim() ? `${parseUnitNames(u.unitNames).join(", ")}: ` : ""}
+        {bits.join(" · ")}
+        {terms ? ` · ${terms}` : ""}
+        {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
+        {u.available === false ? " · not available" : ""}
+      </p>
     );
   });
 
@@ -98,10 +73,9 @@ export default function StepReview({ w }) {
       ? "Bedrooms and bathrooms needed"
       : units.some(
           (u) =>
-            u.available !== false &&
-            (u.leases ?? []).some((l) => !(l.leaseTermMonths ?? []).length)
+            u.available !== false && !(u.leaseTermMonths ?? []).length
         )
-      ? "Pick lease lengths for every lease"
+      ? "Pick lease terms for each available unit"
       : null;
 
   return (
@@ -126,12 +100,16 @@ export default function StepReview({ w }) {
             form.home_type.charAt(0).toUpperCase() + form.home_type.slice(1)
           }${form.furnished ? " · Furnished" : ""}${
             form.sublease_friendly ? " · Sublease friendly" : ""
-          }${form.twenty_one_plus ? " · 21+" : ""}`}
+          }${form.twenty_one_plus ? " · 21+" : ""}${
+            form.move_in_date
+              ? ` · Available from ${form.move_in_date}`
+              : " · Available now"
+          }`}
           onChange={() => w.goTo("basics")}
         />
         <Row
           label={`Units (${units.length})`}
-          value={<div className="space-y-2">{unitLines}</div>}
+          value={<div className="space-y-0.5">{unitLines}</div>}
           missing={unitsMissing}
           onChange={() => w.goTo("units")}
         />
@@ -209,23 +187,14 @@ export default function StepReview({ w }) {
         </div>
       )}
 
-      {w.batchMode ? (
-        // In a multi-property import every listing goes out together, from
-        // the workspace's own button.
-        <p className="mt-6 rounded-lg bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">
-          Looks right? Check your other properties, then use{" "}
-          <span className="font-semibold text-gray-900">Publish all listings</span> at the top.
-        </p>
-      ) : (
-        <button
-          type="button"
-          onClick={w.publish}
-          disabled={w.submitting}
-          className="mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
-        >
-          {w.submitting ? "Publishing…" : "Publish listing"}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={w.publish}
+        disabled={w.submitting}
+        className="mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+      >
+        {w.submitting ? "Publishing…" : "Publish listing"}
+      </button>
       {w.importQueue.length > 0 && (
         <p className="mt-2 text-center text-xs text-gray-500">
           Up next: {w.importQueue[0].name} ({w.importQueue.length} more to go)

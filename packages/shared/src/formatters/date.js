@@ -1,4 +1,4 @@
-// No standalone date-formatting utility exists on web to port verbatim — web
+// No standalone date-formatting utility exists on web to port verbatim: web
 // formats dates inline wherever needed (e.g. ListingModalInfo.js's review
 // dates), always via `toLocaleDateString("en-US", {...})`. This mirrors that
 // exact pattern as a single reusable helper for mobile.

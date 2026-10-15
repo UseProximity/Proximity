@@ -1,7 +1,7 @@
 // Canonical design tokens for new mobile screens (Add Listing onward).
 // `primary` mirrors web's actual brand color (apps/web/src/components/ui/
 // Button.js's default variant, bg-red-600) and the value already dominant
-// across the app (Badge.js, FilterSheet.js) — not the gray-900/#111827
+// across the app (Badge.js, FilterSheet.js), not the gray-900/#111827
 // primary used ad hoc in a few older screens, which is the drift this file
 // exists to stop from spreading further.
 //
@@ -14,7 +14,7 @@
 export const colors = {
   primary: "#dc2626", // red-600
   primaryPressed: "#b91c1c", // red-700
-  primarySoft: "#fef2f2", // red-50 — selected-chip tint, subtle highlight banners
+  primarySoft: "#fef2f2", // red-50: selected-chip tint, subtle highlight banners
   textPrimary: "#111827", // gray-900
   textSecondary: "#6b7280", // gray-500
   textMuted: "#9ca3af", // gray-400
@@ -22,14 +22,14 @@ export const colors = {
   surface: "#f9fafb", // gray-50
   surfaceAlt: "#f3f4f6", // gray-100
   white: "#ffffff",
-  error: "#ef4444", // red-500 — deliberately distinct from `primary` (red-600):
+  error: "#ef4444", // red-500; deliberately distinct from `primary` (red-600):
   // close enough to read as "the same family," different enough that an
   // error message is never visually confusable with a call-to-action.
   success: "#15803d", // green-700
   warningBg: "#fef3c7", // amber-100
   warningBorder: "#fbbf24", // amber-400
   warningText: "#92400e", // amber-800
-  infoBg: "#eff6ff", // blue-50 — informational tips (e.g. password requirements)
+  infoBg: "#eff6ff", // blue-50: informational tips (e.g. password requirements)
   infoBorder: "#bfdbfe", // blue-200
   infoText: "#1e3a8a", // blue-900
 };
@@ -69,7 +69,7 @@ export const typography = {
   display: 40, // reserved for one-off brand moments only (e.g. the auth wordmark)
 };
 
-// The app's primary shadow tier (design-system/MASTER.md §5) — was
+// The app's primary shadow tier (design-system/MASTER.md §5). It was
 // independently redefined as a local FLOATING_SHADOW constant in
 // BrowseMapView.js and Browse's index.js; promoted here once a 3rd caller
 // (Listing Detail's card sections) needed the identical values, so all three
@@ -83,7 +83,7 @@ export const shadows = {
     elevation: 3,
   },
   // A deliberately lighter second tier, narrowly reserved for Listing
-  // Detail's DetailCard stack (design-system/MASTER.md §5/§7) — a page built
+  // Detail's DetailCard stack (design-system/MASTER.md §5/§7): a page built
   // as several substantial content cards wants a softer "just barely lifted"
   // feel, not the more pronounced lift `floating` gives isolated controls
   // (search bar, filter button, map toggle). Not a general-purpose second

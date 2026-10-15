@@ -61,10 +61,10 @@ export function usePushNotifications() {
       }
     })();
 
-    // Expo may roll the token while the app is running (rare) — re-register
+    // Expo may roll the token while the app is running (rare). Re-register
     // immediately so the backend never sends to a token Expo has retired.
     // The listener already hands us the new native DevicePushToken, so it's
-    // passed straight through rather than re-fetched — re-fetching it here
+    // passed straight through rather than re-fetched, because re-fetching it here
     // would itself re-trigger this same listener and loop.
     const tokenSub = Notifications.addPushTokenListener(async (devicePushToken) => {
       const token = await registerForPushNotificationsAsync(devicePushToken);
@@ -73,7 +73,7 @@ export function usePushNotifications() {
 
     const receivedSub = Notifications.addNotificationReceivedListener(() => {
       // Foreground display is handled by setNotificationHandler
-      // (lib/pushNotifications.js) — nothing product-specific to do here yet.
+      // (lib/pushNotifications.js); nothing product-specific to do here yet.
     });
 
     const responseSub = Notifications.addNotificationResponseReceivedListener((response) =>

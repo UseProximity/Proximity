@@ -1,6 +1,6 @@
 // Optional shuttle-stop overlay for the Browse map. Ported from web's
 // MapView.js addShuttleStops/removeShuttleStops (teal circle layer, tap a
-// stop to see its name) — toggled via the "Show/Hide Shuttle stops" button.
+// stop to see its name), toggled via the "Show/Hide Shuttle stops" button.
 // Renders only the map layer; the parent renders the name label overlay
 // outside the MapView (ShapeSource/CircleLayer must be direct MapView children).
 import { SHUTTLE_STOPS } from "@proximity/shared";

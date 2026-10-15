@@ -2,7 +2,7 @@ import Svg, { Path } from "react-native-svg";
 
 // Ported from apps/web/public/logo.svg (the site header's brand mark,
 // apps/web/src/components/layout/Header.js). Web's SVG uses a single
-// external <style> class (.cls-1{fill:#e23a2f}) — RN SVG has no external
+// external <style> class (.cls-1{fill:#e23a2f}); RN SVG has no external
 // class-selector support, so each <path> gets its fill inline instead,
 // following the same per-element fill/stroke pattern. `color` is a real prop
 // (not hardcoded to the original brand hex) so the tab bar can drive it to

@@ -15,7 +15,7 @@ export default function AuthLayout() {
   const redirected = useRef(false);
 
   useEffect(() => {
-    // Bounce an already-logged-in user away from login/signup — reachable
+    // Bounce an already-logged-in user away from login/signup, which is reachable
     // via a stale deep link or back-navigation, not just the Profile prompt.
     // This is the only place that navigates after a successful sign-in, so the screens
     // below do not race it. A validated conversation destination (see the chat screen's

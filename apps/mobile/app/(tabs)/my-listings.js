@@ -1,15 +1,15 @@
-// Landlord's "My Listings" tab — a focused, mobile-appropriate subset of web's
+// Landlord's "My Listings" tab: a focused, mobile-appropriate subset of web's
 // landlord dashboard Properties section: view your listings, toggle
 // availability, delete, and reach the existing Add Listing flow. No
 // analytics/charts, reviews, PMS sync, or co-owner management here by
-// design (see the profile-split plan) — those stay web-only.
+// design (see the profile-split plan); those stay web-only.
 //
 // Moved here from app/profile/my-listings.js (Stage: tab nav) to become a
 // primary tab for landlords, shown in place of Saved (see (tabs)/_layout.js's
-// role-based second tab) — students see Saved instead. Landlord/student
+// role-based second tab); students see Saved instead. Landlord/student
 // data/toggle/delete logic is unchanged from the original screen; only the
 // header changed (dropped the "Back" affordance a pushed sub-screen needs,
-// since tab roots don't have back history — matches saved.js's plain title
+// since tab roots don't have back history; matches saved.js's plain title
 // header instead).
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, Switch, Text, View } from "react-native";

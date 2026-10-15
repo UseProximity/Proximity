@@ -13,7 +13,7 @@ export function useAuth() {
 
   const [isLoading, setIsLoading] = useState(false);
 
-  // Google sign-in — effect-driven flow via expo-auth-session
+  // Google sign-in: effect-driven flow via expo-auth-session
   const { response, promptAsync } = useGoogleSignIn();
 
   // Refs to bridge the effect-driven response back into the awaitable signInWithGoogle()
@@ -44,7 +44,7 @@ export function useAuth() {
       googleRejectRef.current?.(err);
       setIsLoading(false);
     } else {
-      // cancelled / dismissed — resolve silently so the caller doesn't hang
+      // cancelled / dismissed: resolve silently so the caller doesn't hang
       googleResolveRef.current?.();
       setIsLoading(false);
     }

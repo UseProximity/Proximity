@@ -4,7 +4,7 @@ import { NON_CAMPUS_WALK_PLACES } from "../constants/places.js";
 // as "campus" (excludes the grocery store and Med Campus), or null if no
 // usable data exists. Mirrors the inline calculation in web's ListingCard
 // (apps/web/src/components/listings/MapPopupCard.js) and BrowseContent's
-// distance filter — factored into a shared function since mobile needs it
+// distance filter. It's factored into a shared function since mobile needs it
 // in two places (the listing card now, the browse distance filter later).
 export function getCampusWalkMinutes(placeWalkMinutes) {
   if (!placeWalkMinutes || typeof placeWalkMinutes !== "object") return null;

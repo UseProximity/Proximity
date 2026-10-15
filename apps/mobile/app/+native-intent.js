@@ -1,8 +1,8 @@
 import { chatPathFromIncomingLink, isChatLinkRoute } from "../src/lib/chatLinks";
 
-// Expo Router intercepts every incoming deep link — including
+// Expo Router intercepts every incoming deep link, including
 // expo-auth-session's native OAuth redirect (see src/lib/googleAuth.js,
-// which defaults to `${applicationId}:/oauthredirect`) — and tries to match
+// which defaults to `${applicationId}:/oauthredirect`), and tries to match
 // it to a route. Since no route exists at "oauthredirect", it renders
 // Unmatched Route. expo-web-browser's own native listener on MainActivity
 // already consumes that same incoming intent to resolve the Google sign-in

@@ -6,7 +6,7 @@ export const AUTH_ERRORS = Object.freeze({
   INVALID_TOKEN: "INVALID_TOKEN",
   // Sign-in blocked because the account was deleted. Only returned on paths
   // where the caller has already proven they own the address (verified OAuth
-  // id_token) — the password path returns INVALID_CREDENTIALS instead so it
+  // id_token); the password path returns INVALID_CREDENTIALS instead so it
   // never confirms the address is registered.
   ACCOUNT_DELETED: "ACCOUNT_DELETED",
   // Sign in with Apple could not produce a usable, verified email address

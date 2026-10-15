@@ -5,7 +5,7 @@
 // here.
 //
 // Values are the exact boolean column names on `listing_amenities` /
-// `listing_utilities` — the API writes `row[name] = true` for each, so
+// `listing_utilities`; the API writes `row[name] = true` for each, so
 // anything not in these lists is dropped.
 
 export const AMENITY_OPTIONS = [
@@ -231,7 +231,7 @@ export function parseUnitNumbers(designator, raw) {
 
 /*
  * "2w" is a code and reads better as "2W". "Madrid" is a name and reading it
- * back as "MADRID" looks like shouting — buildings that name their apartments
+ * back as "MADRID" looks like shouting: buildings that name their apartments
  * after cities (Clocktower does) had every one of them upper-cased. Uppercase
  * the codes, leave real words as the landlord typed them.
  */

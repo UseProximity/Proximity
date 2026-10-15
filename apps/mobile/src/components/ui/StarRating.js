@@ -3,7 +3,7 @@ import { Star } from "lucide-react-native";
 
 // Lucide Star instead of the ★ Unicode glyph (design-system/MASTER.md §6),
 // matching web's lucide-react Star. Colors unchanged (yellow-400/gray-300)
-// — star ratings are a universal convention, not a brand-color context.
+// since star ratings are a universal convention, not a brand-color context.
 export function StarRating({ rating, size = "sm" }) {
   const iconSize = size === "lg" ? 20 : 14;
   return (

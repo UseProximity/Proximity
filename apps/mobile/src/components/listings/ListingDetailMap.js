@@ -1,5 +1,5 @@
 // Single-listing map. Ported from apps/web/src/components/listings/
-// ListingMap.js — a simple pin at a fixed zoom. Web also shows a text
+// ListingMap.js: a simple pin at a fixed zoom. Web also shows a text
 // Popup with the address; skipped here since the address is already shown
 // above the map in the Detail screen's own layout.
 import { View } from "react-native";

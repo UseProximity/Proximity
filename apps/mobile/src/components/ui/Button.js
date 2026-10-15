@@ -25,7 +25,7 @@ const SPINNER_COLOR = {
 };
 
 // Canonical primary/secondary/ghost button, matching web's actual brand color
-// (bg-red-600 — see apps/web/src/components/ui/Button.js's default variant)
+// (bg-red-600; see apps/web/src/components/ui/Button.js's default variant)
 // rather than the gray-900 used ad hoc in a few older mobile screens.
 export function Button({
   children,

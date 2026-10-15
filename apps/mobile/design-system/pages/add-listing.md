@@ -6,7 +6,7 @@
 
 **Why this gets an override file:** Add Listing's wizard shell already established its own real, working visual vocabulary (step frame, progress dots, chips, stepper) before this design system existed. That vocabulary is genuinely different in structure from the rest of the app (a multi-step form flow vs. list/detail/browse screens) and is worth documenting explicitly rather than pretending it's identical to the Master's generic component list.
 
-**Explicitly not covered here:** Add Listing's functionality, validation, navigation logic, or API behavior. This file is about re-skinning existing structure onto the Master visual system (§2–§8 of MASTER.md) — nothing here changes what the wizard does or how it behaves.
+**Explicitly not covered here:** Add Listing's functionality, validation, navigation logic, or API behavior. This file is about re-skinning existing structure onto the Master visual system (§2–§8 of MASTER.md). Nothing here changes what the wizard does or how it behaves.
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## Progress indicator
 
-The tappable dot-bar header (`Step X of N · Label` + row of pill segments) stays. Segment colors map directly to Master tokens: active = `primary`, completed = `primarySoft`-adjacent tint (currently `red-300` — reconcile toward a token at implementation time), upcoming = `border`/`gray-200`.
+The tappable dot-bar header (`Step X of N · Label` + row of pill segments) stays. Segment colors map directly to Master tokens: active = `primary`, completed = `primarySoft`-adjacent tint (currently `red-300`; reconcile toward a token at implementation time), upcoming = `border`/`gray-200`.
 
 ## Chip
 
@@ -24,11 +24,11 @@ The tappable dot-bar header (`Step X of N · Label` + row of pill segments) stay
 
 ## Stepper
 
-The +/- bedroom/bathroom counter (`wizardShared.js`'s `Stepper`) stays **scoped to the wizard** — no other screen in the app needs a numeric stepper control, so it does not get promoted to `ui/`.
+The +/- bedroom/bathroom counter (`wizardShared.js`'s `Stepper`) stays **scoped to the wizard**: no other screen in the app needs a numeric stepper control, so it does not get promoted to `ui/`.
 
 ## Cards (unit cards)
 
-`StepUnits.js`'s per-unit `Card` follows Master's `container` radius (16px) and border-led, no-shadow treatment directly — no override needed here.
+`StepUnits.js`'s per-unit `Card` follows Master's `container` radius (16px) and border-led, no-shadow treatment directly; no override needed here.
 
 ## Review screen rows
 
