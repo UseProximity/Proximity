@@ -1,4 +1,4 @@
-// Ported from apps/web/src/utils/washuPlaces.js — display-relevant subset only.
+// Ported from apps/web/src/utils/washuPlaces.js (display-relevant subset only).
 // CAMPUS isn't needed here: it's only used by web's write-time walk-time
 // computation (fetchAllWalkTimes), not by anything that just reads and
 // displays an already-computed listing.
@@ -13,7 +13,7 @@ export const WASHU_PLACES = [
   { name: "Med Campus",                 lat: 38.638520791600385, lng: -90.26355199334968 },
 ];
 
-// Places excluded from the "closest campus walk" metric — the browse distance
+// Places excluded from the "closest campus walk" metric: the browse distance
 // filter and the map-card campus walk badge. The grocery store isn't campus,
 // and the Med Campus sits ~2mi east of Danforth, so a listing near it should
 // not read as a close walk to campus.

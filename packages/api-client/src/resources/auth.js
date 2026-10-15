@@ -31,7 +31,7 @@ export class AuthResource {
     });
   }
 
-  // skipAuth: the refresh token IS the credential — no Bearer header
+  // skipAuth: the refresh token IS the credential; no Bearer header
   // `signal` (optional AbortSignal) is forwarded when a caller's own request was
   // made abortable, so cancelling that request cancels its refresh too.
   refresh(refreshToken, { signal } = {}) {

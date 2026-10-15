@@ -1,5 +1,5 @@
 // Single-pick chip row for question kinds "choice", "yesno_pref",
-// "month_select", and "tradeoff" — tapping a chip submits immediately (no
+// "month_select", and "tradeoff": tapping a chip submits immediately (no
 // separate send button), matching apps/web/src/components/matchmaking/AnswerControls.js.
 import { useState } from "react";
 import { TextInput, View } from "react-native";

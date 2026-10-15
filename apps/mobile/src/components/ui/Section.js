@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 
 // Titled group of form fields, generalized from the local Section component
-// already used in FilterSheet.js — reusable across Add Listing's wizard steps.
+// already used in FilterSheet.js, reusable across Add Listing's wizard steps.
 export function Section({ title, children, className = "" }) {
   return (
     <View className={`mb-6 ${className}`}>

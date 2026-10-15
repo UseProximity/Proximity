@@ -30,7 +30,7 @@ module.exports = {
     // "org.useproximity.app" is registered in addition to "proximity" so
     // Android has an intent-filter for expo-auth-session's Google OAuth
     // redirect, which defaults to `${applicationId}:/oauthredirect` on native
-    // builds (see src/lib/googleAuth.js) — without this, Google's redirect
+    // builds (see src/lib/googleAuth.js). Without this, Google's redirect
     // has nowhere to go and the auth session is silently dismissed.
     scheme: ["proximity", "org.useproximity.app"],
     version: "1.0.0",
@@ -42,7 +42,7 @@ module.exports = {
       // Adds the com.apple.developer.applesignin entitlement (iOS only).
       "expo-apple-authentication",
       ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }],
-      // Library-only picking for Add Listing photos — no live camera capture,
+      // Library-only picking for Add Listing photos with no live camera capture,
       // so camera/microphone permissions are declined rather than requested.
       [
         "expo-image-picker",
@@ -53,7 +53,7 @@ module.exports = {
         },
       ],
       // Registers the APNs entitlement (iOS) and default notification
-      // channel (Android) at build time — no local ios/android project to
+      // channel (Android) at build time. There is no local ios/android project to
       // hand-edit, this is the only place that config is set.
       "expo-notifications",
       // Excludes SecureStore's encrypted values from Android Auto Backup.
@@ -96,14 +96,28 @@ module.exports = {
       config: {
         usesNonExemptEncryption: false,
       },
+      // Required-reason API declarations for the app target. Most dependencies ship their
+      // own PrivacyInfo.xcprivacy (react-native, expo-constants, expo-device,
+      // expo-file-system, expo-notifications), so only usage by code without a manifest is
+      // declared here: @rnmapbox/maps writes UserDefaults in RNMBXModule.swift. No tracking
+      // SDK is installed.
+      privacyManifests: {
+        NSPrivacyAccessedAPITypes: [
+          {
+            NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+            NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+          },
+        ],
+        NSPrivacyTracking: false,
+      },
     },
     android: {
       package: "org.useproximity.app",
       // Wires the downloaded Firebase config into the native Android build at
-      // prebuild time (EAS Build or local `expo prebuild`/`run:android`) — no
+      // prebuild time (EAS Build or local `expo prebuild`/`run:android`) with no
       // manual Gradle edits: Expo's own config-plugin system copies the file
       // in, adds the com.google.gms:google-services classpath, and applies
-      // the plugin automatically. This alone does NOT enable sending pushes —
+      // the plugin automatically. This alone does NOT enable sending pushes:
       // that also needs an FCM v1 service-account key uploaded separately via
       // `eas credentials -p android`.
       googleServicesFile: "./google-services.json",

@@ -4,7 +4,7 @@
  * Required by Apple App Store Guideline 5.1.1(v) and Google Play's data-deletion
  * policy for any app that offers account creation, and by the CCPA right to
  * delete. Works for web (NextAuth session) and mobile (Bearer token) alike via
- * getRequestUser — never `auth()` alone, which would silently 401 every mobile
+ * getRequestUser; never `auth()` alone, which would silently 401 every mobile
  * caller.
  *
  * Two-stage by design (30-day grace period):
@@ -131,13 +131,10 @@ export async function DELETE(req) {
 
       // The listing's public contact fields may still hold the departing user's
       // details — that's their personal data staying live on someone else's
-      // listing. Hand contact over to the successor when it was ours. Matched
-      // on email or phone only: both are unique enough to identify a person.
-      // name is deliberately excluded — it's neither unique nor validated
-      // (e.g. Google sign-in falls back to "New User" when Google doesn't
-      // return one), so two different co-owners can share the same name and
-      // a match on it alone would reassign contact info that was never
-      // actually the departing user's.
+      // listing. Hand contact over to the successor when it was ours. Any of
+      // the three fields matching is enough: a listing can publish a shared
+      // inbox but the leaver's own mobile number, and that number is just as
+      // much their data as the address is.
       const { data: listing } = await supabase
         .from("listings")
         .select("contact_email, contact_name, contact_phone")
@@ -146,7 +143,8 @@ export async function DELETE(req) {
 
       const isOurs =
         (me.email && listing?.contact_email === me.email) ||
-        (me.phone && listing?.contact_phone === me.phone);
+        (me.phone && listing?.contact_phone === me.phone) ||
+        (me.name && listing?.contact_name === me.name);
 
       if (isOurs) {
         const { data: successorUser } = await supabase

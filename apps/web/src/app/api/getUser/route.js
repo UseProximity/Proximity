@@ -4,7 +4,7 @@ import { getRequestUser } from "@/lib/getRequestUser";
 import { buildDashboardUser } from "@/lib/users/dashboardUser";
 
 /*
- * The signed-in user's own dashboard payload — web session or mobile Bearer
+ * The signed-in user's own dashboard payload for a web session or mobile Bearer
  * token, resolved by getRequestUser().
  *
  * Everything returned here is built by lib/users/dashboardUser.js, which

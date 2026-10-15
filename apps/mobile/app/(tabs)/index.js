@@ -16,7 +16,7 @@ import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
 import { colors, shadows } from "../../src/theme/tokens";
 
 // The one shadow tier design-system/MASTER.md §5 allows, reserved for
-// floating elements — the pill search field and circular filter button are
+// floating elements: the pill search field and circular filter button are
 // a "lifted" pair of controls, the same kind of floating element it's for.
 const FLOATING_SHADOW = shadows.floating;
 
@@ -87,9 +87,9 @@ export default function BrowseScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
       <View className="px-4 pt-3 pb-3">
-        {/* Search + Filters — a lifted pill field + a matched circular
+        {/* Search + Filters: a lifted pill field + a matched circular
             button, same white/border/shadow treatment so the two read as
-            one control group. No page title here — the tab bar already
+            one control group. No page title here: the tab bar already
             says "Browse"; a repeated heading was pure visual weight with
             no new information. */}
         <View className="flex-row items-center gap-2.5">
@@ -122,7 +122,7 @@ export default function BrowseScreen() {
           </Pressable>
         </View>
 
-        {/* Count + view toggle share one compact row — the count is small/
+        {/* Count + view toggle share one compact row: the count is small/
             secondary (not a headline) and sits here rather than in its own
             header row precisely because this row's whole purpose (what am I
             looking at, and how) is a real relationship between the two,

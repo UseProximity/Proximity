@@ -1,9 +1,9 @@
-// Screen 2: what kind of place. Chips and toggles only — the availability
+// Screen 2: what kind of place. Chips and toggles only: the availability
 // ask costs one tap ("Available now" is pre-selected) but is deliberate:
 // matchmaking needs a move-in signal on every listing. Mirrors
 // apps/web/src/components/listings/wizard/StepBasics.js. The date field is a
 // plain YYYY-MM-DD text input, matching FilterSheet.js's existing
-// moveInDate precedent — no date-picker library installed.
+// moveInDate precedent (no date-picker library installed).
 import { TextInput, View } from "react-native";
 import { HOME_TYPES } from "@proximity/shared";
 import { Chip } from "../../ui/Chip";

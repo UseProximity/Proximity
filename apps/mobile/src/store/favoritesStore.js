@@ -67,7 +67,7 @@ export const useFavoritesStore = create((set, get) => ({
       savedListings: newListings,
     });
 
-    // Call API. POST /api/favorites is a toggle, not an idempotent add — if
+    // Call API. POST /api/favorites is a toggle, not an idempotent add: if
     // the server disagrees with our optimistic guess (e.g. it was already
     // favorited and this call just removed it), resync to server truth
     // instead of trusting the optimistic update blindly.

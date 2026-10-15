@@ -2226,37 +2226,6 @@ export default function ListingModalInfo({
                 {/* Lease options for the unit on the open tab: one card per
                     landlord, their offerings inside it, one Contact for all. */}
                 <div>
-                  {/* A rent special is the single biggest thing a student
-                      cannot see when comparing two rents. It sits directly
-                      above the prices it changes. */}
-                  {(listing.concessions ?? []).length > 0 && (
-                    <div className="mb-3 space-y-2">
-                      {listing.concessions.map((c) => (
-                        <div
-                          key={c.id}
-                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2"
-                        >
-                          <p className="text-sm font-semibold text-red-800">
-                            {decodeHtml(c.description)}
-                          </p>
-                          {(c.conditions || c.validUntil) && (
-                            <p className="mt-0.5 text-xs text-red-700">
-                              {c.conditions ? decodeHtml(c.conditions) : null}
-                              {c.conditions && c.validUntil ? " · " : null}
-                              {c.validUntil
-                                ? `Ends ${new Date(c.validUntil).toLocaleDateString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  })}`
-                                : null}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   <LeaseOptions
                     leases={selectedUnitLeases}
                     loading={leasesLoading}

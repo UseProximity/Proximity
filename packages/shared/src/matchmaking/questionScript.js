@@ -1,13 +1,13 @@
-// Ported verbatim from apps/web/src/lib/matchmaking/questionScript.js — pure
+// Ported verbatim from apps/web/src/lib/matchmaking/questionScript.js. Pure
 // JS, no DOM/React/Node deps, so it can drive the identical scripted-question
 // flow on both web and mobile. Keep in sync with the web copy; the two must
 // describe exactly the same conversation for /api/matchmaking/chat's stored
 // preferences shape to stay valid across clients.
 //
 // The matchmaking question flow is a FIXED, deterministic script. Each entry is
-// rendered instantly client-side as tappable option chips — no LLM decides what
+// rendered instantly client-side as tappable option chips; no LLM decides what
 // to ask. `prompt` is the exact phrasing shown; `field` is the canonical
-// preference key (a few questions write to multiple keys — see isAnswered).
+// preference key (a few questions write to multiple keys; see isAnswered).
 export const QUESTION_PLAN = [
   {
     id: "name_confirm",
@@ -86,7 +86,7 @@ export const QUESTION_PLAN = [
   {
     id: "priorities",
     // Multi-select: the student taps everything that matters to them. Tap order
-    // deliberately does NOT matter — every stated priority weighs the same
+    // deliberately does NOT matter: every stated priority weighs the same
     // (binary weights, see applyAnswer). The single headline anchor comes from
     // the top_priority follow-up below. The real fine-grained narrowing happens
     // via the listing-aware "Would you X for Y?" tradeoffs (see narrowing.js).
@@ -142,7 +142,7 @@ export const QUESTION_BY_ID = Object.fromEntries(QUESTION_PLAN.map((q) => [q.id,
 // BINARY by design: a stated preference weighs 1, no preference weighs 0. The
 // relative importance between dimensions is decided downstream (headline anchor
 // + the ranking LLM), never by hand-tuned magnitudes here. Note `furnished` is
-// its own dimension backed by listings.furnished — it is NOT an amenity.
+// its own dimension backed by listings.furnished; it is NOT an amenity.
 export const WEIGHT_MAP = {
   budget:     { budget: 1 },
   area:       { neighborhood: 1 },
@@ -151,7 +151,7 @@ export const WEIGHT_MAP = {
 };
 
 // Each priority label maps to the weight dimensions it implies. Every stated
-// priority gets the same binary weight of 1 (see applyAnswer) — the headline
+// priority gets the same binary weight of 1 (see applyAnswer); the headline
 // anchor (top_priority) is what differentiates emphasis, not magnitudes.
 export const PRIORITY_WEIGHTS = {
   "Close to campus": ["walkability", "location"],
@@ -175,7 +175,7 @@ export function isAnswered(question, preferences) {
   const p = preferences ?? {};
   switch (question.id) {
     // `name` is pre-filled at session creation, so gate on an explicit
-    // confirmation flag — we always want to ask/confirm it first.
+    // confirmation flag: we always want to ask/confirm it first.
     case "name_confirm":
       return !!p._name_confirmed;
     // Budget can be answered with a number or marked unsure (no cap).
@@ -186,7 +186,7 @@ export function isAnswered(question, preferences) {
     case "priorities":
       return isFilled(p.priorities) || !!p._priorities_unsure;
     // Conditional: only asked when 2+ priorities were picked (with 0–1 there is
-    // nothing to choose between — the single pick IS the anchor). "Not sure"
+    // nothing to choose between: the single pick IS the anchor). "Not sure"
     // stores "No preference", which isFilled treats as answered.
     case "top_priority":
       return (p.priorities?.length ?? 0) < 2 || isFilled(p.top_priority);

@@ -1,9 +1,9 @@
 // Reusable image-picker + compression + presigned-upload pipeline for Add
 // Listing's Photos step. Mirrors web's AddListingWizard.js: pick/stage
 // images locally, then (once the listing exists) presign -> PUT to R2 ->
-// confirm. Compression matches web's compressImage() — resize to a 1920px
+// confirm. Compression matches web's compressImage(): resize to a 1920px
 // long edge and re-encode as JPEG q0.85, but only for images >=1MB (smaller
-// files pass through untouched) — since /api/upload and r2.js do no
+// files pass through untouched). Since /api/upload and r2.js do no
 // server-side size/type validation (apps/web/src/lib/r2.js), mobile has to
 // self-police size here.
 import * as ImagePicker from "expo-image-picker";
@@ -15,7 +15,7 @@ const MAX_DIMENSION = 1920;
 
 // Requests library permission (if not already granted) and opens the native
 // picker. Returns a plain array of { uri, fileName, mimeType, fileSize,
-// width, height } — [] if the user cancels or denies permission.
+// width, height }, or [] if the user cancels or denies permission.
 export async function pickImages({ selectionLimit = 10 } = {}) {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) return [];
@@ -38,7 +38,7 @@ export async function pickImages({ selectionLimit = 10 } = {}) {
   }));
 }
 
-// Resizes to a 1920px long edge and re-encodes as JPEG q0.85 — only when the
+// Resizes to a 1920px long edge and re-encodes as JPEG q0.85, but only when the
 // original is >=1MB (or its size is unknown), matching web's threshold.
 // Returns the same asset shape with uri/mimeType/fileName/dimensions updated
 // to the compressed result.
@@ -75,7 +75,7 @@ export async function compressImage(asset) {
 // Uploads already-picked/compressed images to a listing via the presigned
 // flow: presign -> raw PUT to R2 -> confirm. Mirrors
 // AddListingWizard.js/publish()'s upload block. A single image's failure
-// doesn't throw — it's collected so the caller can surface a non-blocking
+// doesn't throw; it's collected so the caller can surface a non-blocking
 // warning; the listing exists either way, matching web.
 export async function uploadImages(listingId, images) {
   if (!images.length) return { uploadedUrls: [], failedCount: 0 };

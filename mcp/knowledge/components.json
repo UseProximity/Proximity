@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-14T11:51:18.900Z",
-  "count": 128,
+  "_generated": "2026-10-14T15:00:45.717Z",
+  "count": 126,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -126,11 +126,6 @@
     {
       "name": "ChatImageLightbox",
       "file": "src/components/chat/ChatImageLightbox.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ChatSafetyMenu",
-      "file": "src/components/chat/ChatSafetyMenu.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -324,11 +319,6 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "ListingFormPanel",
-      "file": "src/components/listings/ListingFormPanel.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
       "name": "ListingMap",
       "file": "src/components/listings/ListingMap.js",
       "description": "No description. Run generate after adding a description above."
@@ -449,14 +439,14 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "AddListingWizard",
-      "file": "src/components/listings/wizard/AddListingWizard.js",
+      "name": "listingFormOptions",
+      "file": "src/components/listings/listingFormOptions.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "ImportBatch",
-      "file": "src/components/listings/wizard/ImportBatch.js",
-      "description": "Multi-property import workspace: one tab per picked property, read one at a time, each running the add-listing steps; marks properties already on Proximity (yours or someone else's) and publishes every tab together behind a confirmation"
+      "name": "AddListingWizard",
+      "file": "src/components/listings/wizard/AddListingWizard.js",
+      "description": "No description. Run generate after adding a description above."
     },
     {
       "name": "StepAddress",
