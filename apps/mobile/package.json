@@ -52,5 +52,15 @@
     "web": "expo start --web",
     "generate:pin-icons": "node scripts/generate-pin-icons.js"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "ios": {
+        "buildFromSource": [
+          "expo-file-system",
+          "expo-image-manipulator"
+        ]
+      }
+    }
+  }
 }

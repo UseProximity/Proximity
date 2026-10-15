@@ -96,6 +96,20 @@ module.exports = {
       config: {
         usesNonExemptEncryption: false,
       },
+      // Required-reason API declarations for the app target. Most dependencies ship their
+      // own PrivacyInfo.xcprivacy (react-native, expo-constants, expo-device,
+      // expo-file-system, expo-notifications), so only usage by code without a manifest is
+      // declared here: @rnmapbox/maps writes UserDefaults in RNMBXModule.swift. No tracking
+      // SDK is installed.
+      privacyManifests: {
+        NSPrivacyAccessedAPITypes: [
+          {
+            NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+            NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+          },
+        ],
+        NSPrivacyTracking: false,
+      },
     },
     android: {
       package: "org.useproximity.app",
