@@ -129,8 +129,8 @@ export default function MatchmakingScreen() {
           recommendations and answer your questions.
         </Text>
         <Text className="text-sm text-gray-500 text-center mb-4">
-          Information such as your first name, profile details and preferences may be shared with
-          Anthropic for this purpose.
+          Relevant information from your matchmaking chat and profile, including your first name,
+          recorded gender and housing preferences, may be shared with Anthropic for this purpose.
         </Text>
         <Pressable onPress={() => openLegalLink(PRIVACY_URL)} hitSlop={8} className="mb-6">
           <Text className="text-sm font-semibold text-gray-900 underline">Privacy Policy</Text>
