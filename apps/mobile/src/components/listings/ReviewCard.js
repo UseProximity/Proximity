@@ -1,0 +1,75 @@
+import { View, Text, Image, Pressable } from "react-native";
+import { ThumbsDown, ThumbsUp } from "lucide-react-native";
+import { formatDate } from "@proximity/shared";
+import { StarRating } from "../ui/StarRating";
+import { colors } from "../../theme/tokens";
+
+// Read-only port of the review card in apps/web/src/components/listings/
+// ListingModalInfo.js's ReviewsTab. Voting and submitting reviews both
+// require auth (Phase 6), so this only displays, plus Report / Block links.
+//
+// `onReport` / `onBlock` are passed only for a signed-in viewer. Never offered on
+// the viewer's own review (`isMine`, set by the server even for anonymous ones).
+// Block additionally needs a public author: anonymous reviews can be reported but
+// not blocked, and the server refuses a block on them anyway.
+export function ReviewCard({ review, ownerName, onReport, onBlock }) {
+  const canReport = !!onReport && !review.isMine;
+  const canBlock = !!onBlock && !review.isMine && !!review.reviewer?._id;
+  const reviewerImage = review.reviewer?.image?.trim() ? review.reviewer.image : null;
+  const date = formatDate(review.createdAt, { month: "short", day: "numeric", year: "numeric" });
+
+  return (
+    <View className="border-b border-gray-100 py-4">
+      <View className="flex-row items-center gap-2">
+        {reviewerImage ? (
+          <Image source={{ uri: reviewerImage }} className="w-8 h-8 rounded-full" />
+        ) : (
+          <View className="w-8 h-8 rounded-full bg-gray-200" />
+        )}
+        <View className="flex-1 min-w-0">
+          <Text numberOfLines={1} className="text-sm font-semibold text-gray-900">
+            {review.reviewer?.name || "Anonymous"}
+          </Text>
+          {!!date && <Text className="text-xs text-gray-400">{date}</Text>}
+        </View>
+        <StarRating rating={review.rating} />
+      </View>
+
+      {!!review.comment && (
+        <Text className="text-gray-700 text-sm leading-relaxed mt-2">{review.comment}</Text>
+      )}
+
+      {!!review.landlordReply && (
+        <View className="bg-gray-50 rounded-lg p-3 mt-2">
+          <Text className="text-xs font-semibold text-gray-900">
+            {ownerName ?? "Landlord"} <Text className="font-normal text-gray-400">(Landlord)</Text>
+          </Text>
+          <Text className="text-sm text-gray-700 mt-1">{review.landlordReply.reply}</Text>
+        </View>
+      )}
+
+      <View className="flex-row items-center gap-4 mt-2">
+        <View className="flex-row items-center gap-1">
+          <ThumbsUp size={13} color={colors.textMuted} strokeWidth={2} />
+          <Text className="text-xs text-gray-400">{review.upvotes ?? 0}</Text>
+        </View>
+        <View className="flex-row items-center gap-1">
+          <ThumbsDown size={13} color={colors.textMuted} strokeWidth={2} />
+          <Text className="text-xs text-gray-400">{review.downvotes ?? 0}</Text>
+        </View>
+        {canReport && (
+          <View className="flex-row items-center gap-4 ml-auto">
+            <Pressable onPress={() => onReport(review)} hitSlop={8}>
+              <Text className="text-xs text-gray-400">Report</Text>
+            </Pressable>
+            {canBlock && (
+              <Pressable onPress={() => onBlock(review)} hitSlop={8}>
+                <Text className="text-xs text-gray-400">Block</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}

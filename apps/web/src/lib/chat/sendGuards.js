@@ -162,8 +162,15 @@ export const CHAT_PASSWORD_REQUIRED_MESSAGE =
  * to the address on the account, so following it proves control of the inbox.
  * Sending is where identity starts to matter, because the reply is attributed to
  * a named landlord and the student will act on it. An account that has never set
- * a password and is not a Google account has to set one first
+ * a password and has no Google or Apple identity has to set one first
  * (Wyatt, 2026-10-03).
+ *
+ * Apple counts as an identity for the same reason Google does: the account was
+ * created or linked through a verified Apple sign-in (apple_account), so the
+ * person has already proved who they are and does not need a password as well.
+ * That is what lets the mobile app's Sign in with Apple users message without
+ * being asked to create one. A credential-less row that only ever arrived through
+ * a chat magic link has none of the three, so it stays restricted.
  *
  * This is why relaxing landlordCanChat to "we have an email address" is safe.
  * Reachability and participation are separate gates, and this is the second one.
@@ -176,7 +183,7 @@ export const CHAT_PASSWORD_REQUIRED_MESSAGE =
 export async function assertSenderCanSend(userId) {
   const { data, error } = await supabase
     .from("users")
-    .select("password_hash, google_account")
+    .select("password_hash, google_account, apple_account")
     .eq("id", userId)
     .maybeSingle();
 
@@ -190,6 +197,7 @@ export async function assertSenderCanSend(userId) {
 
   if (!data) return { ok: true };
   if (data.google_account === true) return { ok: true };
+  if (data.apple_account === true) return { ok: true };
   if (data.password_hash) return { ok: true };
   return { ok: false, reason: "password_required" };
 }

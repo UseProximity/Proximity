@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { SignJWT } from "jose";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { isProdData } from "@/lib/appEnv";
 
 // Short-lived Supabase-shaped JWT for Realtime only. Writes/history stay on /api/chat/*.
@@ -19,10 +19,10 @@ function getJwtSecret() {
 }
 
 // GET /api/chat/realtime-token: mint a Realtime JWT for the logged-in user
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -34,7 +34,7 @@ export async function GET() {
       aud: "authenticated",
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setSubject(session.user.id)
+      .setSubject(authUser.id)
       .setIssuedAt()
       .setExpirationTime(expiresAt)
       .sign(secret);

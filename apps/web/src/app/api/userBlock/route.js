@@ -16,18 +16,19 @@
  * someone already blocked is a no-op.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    // Web cookie or mobile Bearer token.
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = requestUser.id;
 
     const body = await req.json().catch(() => ({}));
     let targetId = body.userId;

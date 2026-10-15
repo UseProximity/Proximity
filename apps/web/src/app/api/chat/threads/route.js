@@ -1,8 +1,9 @@
 import { NextResponse, after } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import {
   screenOutgoingChat,
   assertSenderCanSend,
@@ -13,6 +14,10 @@ import {
   CHAT_CONFIRM_SEND_CODE,
   recordFlaggedSend,
 } from "@/lib/chat/sendGuards";
+import {
+  applyBlocksToInbox,
+  assertListingContactNotBlocked,
+} from "@/lib/chat/safety";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -24,15 +29,15 @@ const SAFE_START_CHAT_ERRORS = new Set([
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/chat/threads: inbox for the logged-in user
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { data, error } = await supabase.rpc("rpc_list_chat_threads", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
     });
 
     if (error) {
@@ -40,7 +45,7 @@ export async function GET() {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(await applyBlocksToInbox(authUser.id, data ?? []));
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -50,12 +55,12 @@ export async function GET() {
 // POST /api/chat/threads: start or reuse a listing chat
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const eligibility = await assertSenderCanSend(session.user.id);
+    const eligibility = await assertSenderCanSend(authUser.id);
     if (!eligibility.ok) {
       return NextResponse.json(
         {
@@ -109,12 +114,22 @@ export async function POST(req) {
       );
     }
 
+    // Either person has blocked the other: neutral refusal, nothing is sent.
+    const blockCheck = await assertListingContactNotBlocked(
+      authUser.id,
+      listingId.trim(),
+      leaseIdArg
+    );
+    if (!blockCheck.ok) {
+      return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
+    }
+
     const screen = await screenOutgoingChat({
-      userId: session.user.id,
+      userId: authUser.id,
       body: trimmedBody,
       listingId: listingId.trim(),
       confirmed: payload?.confirmed === true,
-      audience: session.user.role === "landlord" ? "landlord" : "student",
+      audience: authUser.role === "landlord" ? "landlord" : "student",
     });
     if (screen.blocked) {
       return NextResponse.json({ error: screen.message }, { status: 422 });
@@ -127,7 +142,7 @@ export async function POST(req) {
     }
 
     const { data, error } = await supabase.rpc("rpc_start_or_get_listing_chat", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_listing_id: listingId.trim(),
       p_body: trimmedBody,
       p_lease_id: leaseIdArg,
@@ -149,7 +164,7 @@ export async function POST(req) {
 
     if (screen.flagged) {
       await recordFlaggedSend({
-        userId: session.user.id,
+        userId: authUser.id,
         threadId: data?.threadId ?? null,
         messageId: data?.messageId ?? null,
         listingId: listingId.trim(),
@@ -163,9 +178,16 @@ export async function POST(req) {
     after(() =>
       notifyNewChatMessage({
         threadId: data?.threadId,
-        senderId: session.user.id,
+        senderId: authUser.id,
         messageId: data?.messageId ?? null,
         baseUrl,
+      })
+    );
+    after(() =>
+      notifyNewChatMessagePush({
+        threadId: data?.threadId,
+        senderId: authUser.id,
+        messageId: data?.messageId,
       })
     );
 

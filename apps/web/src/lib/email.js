@@ -101,13 +101,15 @@ export function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
+export async function sendPasswordResetEmail({ email, name, token, baseUrl, req }) {
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Reset your Proximity password",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Reset your Proximity password",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Reset your password${name ? `, ${name}` : ""}</h2>
         <p>Click the button below to set a new password. This link expires in 1 hour.</p>
@@ -122,7 +124,9 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
         })}
       </div>
     `,
-  });
+    },
+    req
+  );
 }
 
 export async function sendLandlordNudgeEmail({ email, name }) {
@@ -547,15 +551,17 @@ export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, remove
 // `next` is where to send them once verified, so someone who signed up in the
 // middle of something (publishing a listing) lands back in it. The verify route
 // sanitizes it again, so the link is not trusted just because we built it.
-export async function sendVerificationEmail({ email, name, token, baseUrl, next }) {
+export async function sendVerificationEmail({ email, name, token, baseUrl, next, req }) {
   const verifyUrl =
     `${baseUrl}/api/auth/verify-email?token=${token}` +
     (next ? `&next=${encodeURIComponent(next)}` : "");
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Verify your Proximity account",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify your Proximity account",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Welcome to Proximity${name ? `, ${name}` : ""}!</h2>
         <p>Click the button below to verify your email address. This link expires in 24 hours.</p>
@@ -569,7 +575,9 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next 
         })}
       </div>
     `,
-  });
+    },
+    req
+  );
 }
 
 /*

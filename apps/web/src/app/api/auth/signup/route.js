@@ -37,7 +37,7 @@ export async function POST(req) {
 
     const { data: existing } = await supabase
       .from("users")
-      .select("id, name, password_hash, deleted_at, google_account")
+      .select("id, name, password_hash, deleted_at, google_account, apple_account")
       .ilike("email", emailMatchPattern(email))
       .single();
 
@@ -69,6 +69,17 @@ export async function POST(req) {
           {
             error:
               "This email uses Google sign-in. Please continue with Google.",
+          },
+          { status: 409 }
+        );
+      }
+
+      // A Sign in with Apple account (created by the mobile app) has no password
+      // either, but it is not an unclaimed row: do not offer the set-password claim.
+      if (existing.apple_account) {
+        return NextResponse.json(
+          {
+            error: "This email is linked to an Apple account. Please sign in with Apple.",
           },
           { status: 409 }
         );
@@ -169,6 +180,7 @@ export async function POST(req) {
       token,
       baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
+      req,
     });
 
     return NextResponse.json({ email });

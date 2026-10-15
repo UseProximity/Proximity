@@ -3,11 +3,14 @@
  *
  * Required by Apple App Store Guideline 5.1.1(v) and Google Play's data-deletion
  * policy for any app that offers account creation, and by the CCPA right to
- * delete.
+ * delete. Works for web (NextAuth session) and mobile (Bearer token) alike via
+ * getRequestUser; never `auth()` alone, which would silently 401 every mobile
+ * caller.
  *
  * Two-stage by design (30-day grace period):
  *   Stage 1 (here)  — soft-delete: stamp users.deleted_at. Every auth path
- *                     checks that column (see auth.js), so the account stops
+ *                     checks that column (see auth.js, getRequestUser.js, the
+ *                     mobile login/google/refresh routes), so the account stops
  *                     authenticating immediately and disappears from the app.
  *   Stage 2 (cron)  — hard purge after 30 days: scrub PII, drop behavioral rows
  *                     (matchmaking rows are kept three years), anonymize reviews, redact action_log,
@@ -28,20 +31,21 @@
  * aborts the request.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { getRequestUser } from "@/lib/getRequestUser";
+import { revokeAppleToken } from "@/lib/appleAuth";
 
-export async function DELETE() {
+export async function DELETE(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = requestUser.id;
 
     const { data: me, error: meErr } = await supabase
       .from("users")
-      .select("id, email, name, phone, is_system, deleted_at")
+      .select("id, email, name, phone, is_system, deleted_at, apple_refresh_token")
       .eq("id", userId)
       .single();
 
@@ -52,10 +56,11 @@ export async function DELETE() {
     if (me.is_system) {
       return NextResponse.json({ error: "This account cannot be deleted" }, { status: 403 });
     }
-    // Reachable only briefly: a deleted session goes dead once auth.js's
-    // role-refresh window (ROLE_REFRESH_MS) elapses. Inside that window a
-    // retry can still land here, so answer it as a no-op success instead of a
-    // confusing failure.
+    // Reachable only on the web path, and only briefly: getRequestUser rejects a
+    // deleted mobile token outright, and a deleted web session goes dead once
+    // auth.js's role-refresh window (ROLE_REFRESH_MS) elapses. Inside that
+    // window a retry can still land here, so answer it as a no-op success
+    // instead of a confusing failure.
     if (me.deleted_at) {
       return NextResponse.json({ ok: true, alreadyDeleted: true });
     }
@@ -171,6 +176,14 @@ export async function DELETE() {
     if (delErr) {
       console.error("[account DELETE] soft-delete failed:", delErr);
       return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+    }
+
+    // Sign in with Apple accounts: Apple requires the user's grant to be revoked
+    // when they delete their account. The account is already deleted at this
+    // point, so a failure must not undo it; the token stays stored and the
+    // purge cron retries.
+    if (me.apple_refresh_token && (await revokeAppleToken(me.apple_refresh_token))) {
+      await supabase.from("users").update({ apple_refresh_token: null }).eq("id", userId);
     }
 
     return NextResponse.json({

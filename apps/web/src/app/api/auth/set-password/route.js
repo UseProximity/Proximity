@@ -19,13 +19,13 @@
  */
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -47,7 +47,7 @@ export async function POST(req) {
     const { data: user, error: readError } = await supabase
       .from("users")
       .select("id, password_hash, google_account")
-      .eq("id", session.user.id)
+      .eq("id", authUser.id)
       .maybeSingle();
 
     if (readError || !user) {
