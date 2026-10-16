@@ -99,9 +99,11 @@ export default function AddListingFlow({ user }) {
   const [unit, setUnit] = useState(null);            // chosen existing unit
   const [newUnit, setNewUnit] = useState(emptyNewUnit);
   const [lease, setLease] = useState(emptyLease(user?.email));
-  const [submitting, setSubmitting] = useState(false);
-  // Set once a listing is live, so the flow can offer another on the same unit
-  // instead of walking the landlord back through the address.
+  // Which button is in flight: "publish", "draft", or null.
+  const [submitting, setSubmitting] = useState(null);
+  // Set once a listing is saved (live or as a draft), so the flow can offer
+  // another on the same unit instead of walking the landlord back through the
+  // address.
   const [published, setPublished] = useState(null);
 
   const { data: session, update: updateSession } = useSession();
@@ -274,7 +276,14 @@ export default function AddListingFlow({ user }) {
   const flag = (key) =>
     attempted && missingKeys.has(key) ? "border-red-400 ring-1 ring-red-200" : "";
 
-  const submit = async () => {
+  /*
+   * Publish, or save as a draft (202610100002). A draft is the same listing
+   * with the same required fields, only hidden from students until it is
+   * published from the dashboard. The fields stay required because the rows
+   * underneath need them either way; what a draft buys is a chance to add
+   * photos and read it over first, which this flow has no step for.
+   */
+  const submit = async (asDraft = false) => {
     if (missing.length) {
       setAttempted(true);
       const first = document.querySelector("[data-invalid='true']");
@@ -288,7 +297,7 @@ export default function AddListingFlow({ user }) {
       setGateOpen(true);
       return;
     }
-    setSubmitting(true);
+    setSubmitting(asDraft ? "draft" : "publish");
     try {
       let res;
       if (unitMode === "existing") {
@@ -310,6 +319,7 @@ export default function AddListingFlow({ user }) {
             contactEmail: lease.contactEmail,
             contactPhone: lease.contactPhone,
             contactName: user?.name ?? null,
+            draft: asDraft,
           }),
         });
       } else {
@@ -360,6 +370,8 @@ export default function AddListingFlow({ user }) {
              * it when attaching, where the property already has its photos.
              */
             attachStreetView: true,
+            // A new property is born a draft; on a live one the unit is.
+            draft: asDraft,
             unitTypes: [{
               bedrooms: Number(newUnit.bedrooms),
               bathrooms: Number(newUnit.bathrooms),
@@ -379,8 +391,10 @@ export default function AddListingFlow({ user }) {
       }
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Couldn't publish that listing.");
-      toast.success("Your listing is live.");
+      if (!res.ok) {
+        return toast.error(data.error || (asDraft ? "Couldn't save that draft." : "Couldn't publish that listing."));
+      }
+      toast.success(asDraft ? "Saved as a draft. Students can't see it yet." : "Your listing is live.");
       clearPendingDraft();
       const listingId = data.listing?.id ?? data.lease?.listingId ?? place.property?.id;
       /*
@@ -389,11 +403,11 @@ export default function AddListingFlow({ user }) {
        * on a choice rather than a redirect means the second one costs a form,
        * not the whole flow again.
        */
-      setPublished({ listingId, unitId: unit?.id ?? null });
+      setPublished({ listingId, unitId: unit?.id ?? null, draft: asDraft });
     } catch {
       toast.error("Network error.");
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
@@ -540,13 +554,32 @@ export default function AddListingFlow({ user }) {
             </div>
           )}
           {!published && !gateOpen && (
-          <button
-            onClick={submit} disabled={submitting}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Publishing…" : signedIn ? "Publish listing" : "Create account to publish"}
-          </button>
+            <>
+              <button
+                onClick={() => submit(false)} disabled={!!submitting}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {submitting === "publish" && <Loader2 className="h-4 w-4 animate-spin" />}
+                {submitting === "publish" ? "Publishing…" : signedIn ? "Publish listing" : "Create account to publish"}
+              </button>
+              {/* Only once there is an account to keep the draft in. A visitor
+                  goes through the gate first and picks on the way back. */}
+              {signedIn && (
+                <button
+                  type="button"
+                  onClick={() => submit(true)} disabled={!!submitting}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white py-3 text-sm font-semibold text-gray-700 transition hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-50"
+                >
+                  {submitting === "draft" && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {submitting === "draft" ? "Saving…" : "Save as draft"}
+                </button>
+              )}
+              {signedIn && (
+                <p className="mt-2 text-center text-xs text-gray-500">
+                  A draft is only on your dashboard until you publish it.
+                </p>
+              )}
+            </>
           )}
           {!published && gateOpen && !signedIn && (
             <PublishGate
@@ -555,7 +588,31 @@ export default function AddListingFlow({ user }) {
               onBack={() => setGateOpen(false)}
             />
           )}
-          {published && (
+          {published && published.draft && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-900">Saved as a draft.</p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Students can&apos;t see it. Add photos and check it over in the editor, then publish it from there or from your Drafts.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(published.listingId ? `/dashboard/landlord?property=${published.listingId}` : "/dashboard/landlord?tab=drafts")}
+                  className="rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  Finish it in the editor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard/landlord?tab=drafts")}
+                  className="rounded-lg px-3.5 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                >
+                  See my drafts
+                </button>
+              </div>
+            </div>
+          )}
+          {published && !published.draft && (
             <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
               <p className="text-sm font-medium text-green-900">Your listing is live.</p>
               <div className="mt-3 flex flex-wrap gap-2">

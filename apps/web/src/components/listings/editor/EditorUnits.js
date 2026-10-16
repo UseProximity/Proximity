@@ -348,11 +348,14 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
             onChange={(e) => set({ furnished: e.target.checked })} />
           Furnished
         </label>
-        <label className="inline-flex items-center gap-2 text-gray-700">
-          <input type="checkbox" checked={draft.unavailable}
-            onChange={(e) => set({ unavailable: e.target.checked })} />
-          Withdrawn (hide from students)
-        </label>
+        {/* A draft is already hidden; withdrawing is for something that was up. */}
+        {!lease.isDraft && (
+          <label className="inline-flex items-center gap-2 text-gray-700">
+            <input type="checkbox" checked={draft.unavailable}
+              onChange={(e) => set({ unavailable: e.target.checked })} />
+            Withdrawn (hide from students)
+          </label>
+        )}
       </div>
 
       {needsRightsConfirmation && (

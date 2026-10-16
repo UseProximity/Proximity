@@ -214,8 +214,10 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             sublease: !!lease.sublease,
             // Withdrawn by either route: the editor's checkbox sets unavailable
             // alone, the dashboard button clears is_active as well. One flag
-            // so the editor reads both the same way.
-            unavailable: !isLiveLease(lease),
+            // so the editor reads both the same way. Not isLiveLease: that also
+            // asks whether the row is published, and a draft is not withdrawn,
+            // it has simply never been put up.
+            unavailable: !lease.is_active || !!lease.unavailable,
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
             leaseTermMonths: Array.isArray(lease.lease_term_months)

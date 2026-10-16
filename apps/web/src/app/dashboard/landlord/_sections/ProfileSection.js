@@ -75,7 +75,8 @@ export default function ProfileSection({
                 </div>
               )}
               <p className="text-gray-500 mt-2 text-base sm:text-lg">
-                {user.listings?.length ?? 0} active listings
+                {/* Drafts are not listings students can see, so they are not counted. */}
+                {(user.listings ?? []).filter((l) => !l.isDraft).length} active listings
               </p>{" "}
               <p className="text-gray-400 text-sm sm:text-base mt-2">
                 {calcAge(user.birthday) != null

@@ -693,7 +693,13 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
   };
 
   // ------------------------------------------------------------------ publish
-  const publish = async () => {
+  /*
+   * Publish, or save as a draft (202610100002): the same listing, the same
+   * checks, only hidden from students until it is published from the
+   * dashboard. Called with an explicit flag, never as a bare onClick, so a
+   * click event is not mistaken for one.
+   */
+  const publish = async (asDraft = false) => {
     setFieldError(null);
     for (const s of STEPS) {
       const problem = validateStep(s.id);
@@ -703,7 +709,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         return;
       }
     }
-    setSubmitting(true);
+    setSubmitting(asDraft ? "draft" : "publish");
     setError(null);
     try {
       // A card describes identical units; expand it into one payload row per
@@ -744,6 +750,7 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
               contactEmail: form.contact_email || null,
               contactPhone: form.contact_phone || null,
               contactName: form.contact_name || null,
+              draft: asDraft,
             }),
           })
         : await fetch("/api/addListing", {
@@ -767,6 +774,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
             ? { longitude: coords.lng, latitude: coords.lat }
             : {}),
           attachStreetView: !streetViewDeleted && stagedFiles.length === 0,
+          // A new property is born a draft; attached to a live one, the new
+          // units are the drafts.
+          draft: asDraft,
         }),
       });
       const data = await res.json();
@@ -889,10 +899,10 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
 
       // Multi-property import: load the next queued property instead of leaving.
       if (importQueue.length > 0) {
-        await advanceImportQueue(unitPayload, Object.keys(diff).length ? diff : null);
+        await advanceImportQueue(unitPayload, Object.keys(diff).length ? diff : null, asDraft);
         return;
       }
-      await onSuccess(unitPayload, Object.keys(diff).length ? diff : null);
+      await onSuccess(unitPayload, Object.keys(diff).length ? diff : null, { draft: asDraft });
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -900,9 +910,9 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     }
   };
 
-  const advanceImportQueue = async (unitPayload, diff) => {
+  const advanceImportQueue = async (unitPayload, diff, asDraft = false) => {
     let queue = importQueue;
-    toast.success("Listing published!");
+    toast.success(asDraft ? "Draft saved." : "Listing published!");
     // Anything still downloading belongs to the listing we just published.
     cancelImportAssets();
     // fresh form for the next property
@@ -966,7 +976,8 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
     setImportQueue([]);
     setImportInfo(null);
     importBatch.current = { done: 0, total: 0 };
-    await onSuccess(unitPayload, diff);
+    // The last property's choice stands for the batch's landing toast.
+    await onSuccess(unitPayload, diff, { draft: asDraft });
   };
 
   // ------------------------------------------------------------------- render

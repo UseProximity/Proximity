@@ -189,12 +189,25 @@ export default function StepReview({ w }) {
 
       <button
         type="button"
-        onClick={w.publish}
-        disabled={w.submitting}
+        onClick={() => w.publish(false)}
+        disabled={!!w.submitting}
         className="mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
       >
-        {w.submitting ? "Publishing…" : "Publish listing"}
+        {w.submitting === "publish" ? "Publishing…" : "Publish listing"}
       </button>
+      {/* The same listing, kept off the site until it is published from the
+          dashboard. Everything above is still checked. */}
+      <button
+        type="button"
+        onClick={() => w.publish(true)}
+        disabled={!!w.submitting}
+        className="mt-2 w-full rounded-lg border border-gray-300 bg-white py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-60"
+      >
+        {w.submitting === "draft" ? "Saving…" : "Save as draft"}
+      </button>
+      <p className="mt-2 text-center text-xs text-gray-500">
+        A draft is only on your dashboard until you publish it.
+      </p>
       {w.importQueue.length > 0 && (
         <p className="mt-2 text-center text-xs text-gray-500">
           Up next: {w.importQueue[0].name} ({w.importQueue.length} more to go)
