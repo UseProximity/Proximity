@@ -105,7 +105,7 @@ export async function getWashuPageListings(pageDef) {
 // Minimum walk-minutes to campus for a built listing, using the same
 // campus-place set as the /browse distance filter (grocery + Med Campus
 // excluded via NON_CAMPUS_WALK_PLACES).
-function campusWalkMinutes(listing) {
+export function campusWalkMinutes(listing) {
   const pwm = listing?.placeWalkMinutes;
   if (!pwm || typeof pwm !== "object") return null;
   const campusMins = WASHU_PLACES.filter(
