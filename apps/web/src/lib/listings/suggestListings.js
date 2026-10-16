@@ -8,7 +8,8 @@
  *
  *   1. MATCHMAKING   the latest Proxy chat where budget or area was answered.
  *   2. INTERACTIONS  saved and contacted listings, read as exemplars: a listing
- *                    scores by how much it resembles the places they acted on.
+ *                    scores by how much it resembles the places they acted on
+ *                    (bedrooms first, then price, walk time to campus, type).
  *                    A contact is a stronger signal than a save.
  *   3. FILTERS       the browse filters they last saved (user_filter_summaries).
  *
@@ -34,7 +35,7 @@
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
 import { DEFAULT_FILTERS, matchListing } from "@/lib/listings/filterListings";
-import { haversineKm, neighborhoodScore } from "@/lib/geo/neighborhoods";
+import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import {
   isListingExcludedForViewer,
   isRoomShareListing,
@@ -74,12 +75,9 @@ function featuresOf(listing, campusMinutes) {
   const beds = [
     ...new Set(units.map((u) => u.bedrooms).filter((b) => Number.isFinite(b))),
   ];
-  const lat = Number(listing.latitude);
-  const lng = Number(listing.longitude);
   return {
     perPerson: minPerPersonRent(listing),
     beds,
-    coords: Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null,
     walk: campusMinutes(listing),
     homeType: listing.homeType && listing.homeType !== "Other" ? listing.homeType : null,
     furnished:
@@ -159,24 +157,28 @@ function scoreMatchmaking(listing, f, prefs) {
 // Signal 2: saved and contacted listings as exemplars
 // ---------------------------------------------------------------------------
 
+/*
+ * How much a listing resembles one the student acted on. Bedroom count leads:
+ * it is the hardest constraint to compromise on (a group of two cannot take a
+ * 1-bed), so a one-bedroom miss costs most of the dimension. Closeness to campus
+ * is compared as walk minutes, not map distance (Wyatt, 2026-10-16): two places
+ * a street apart can differ in what they offer, while two 10-minute walks from
+ * opposite sides of campus answer the same need.
+ */
 function similarity(a, b) {
+  let beds = NEUTRAL;
+  if (a.beds.length && b.beds.length) {
+    const gap = Math.min(...a.beds.flatMap((x) => b.beds.map((y) => Math.abs(x - y))));
+    beds = gap === 0 ? 1 : gap === 1 ? 0.2 : 0;
+  }
   const price =
     a.perPerson != null && b.perPerson != null
       ? clamp01(1 - Math.abs(a.perPerson - b.perPerson) / (0.35 * b.perPerson))
       : NEUTRAL;
-  const place =
-    a.coords && b.coords
-      ? clamp01(1 - haversineKm(a.coords.lat, a.coords.lng, b.coords.lat, b.coords.lng) / 2)
-      : NEUTRAL;
-  let beds = NEUTRAL;
-  if (a.beds.length && b.beds.length) {
-    const gap = Math.min(...a.beds.flatMap((x) => b.beds.map((y) => Math.abs(x - y))));
-    beds = gap === 0 ? 1 : gap === 1 ? NEUTRAL : 0;
-  }
-  const walk =
-    a.walk != null && b.walk != null ? clamp01(1 - Math.abs(a.walk - b.walk) / 15) : NEUTRAL;
+  const campus =
+    a.walk != null && b.walk != null ? clamp01(1 - Math.abs(a.walk - b.walk) / 10) : NEUTRAL;
   const home = a.homeType && b.homeType ? (a.homeType === b.homeType ? 1 : 0) : NEUTRAL;
-  return 0.3 * price + 0.3 * place + 0.2 * beds + 0.1 * walk + 0.1 * home;
+  return 0.45 * beds + 0.25 * price + 0.2 * campus + 0.1 * home;
 }
 
 function scoreInteractions(f, exemplars) {
