@@ -247,7 +247,7 @@
           "reminder_status:text",
           "reminder_sent_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); check reminder_status in (sent,too_old,listing_unavailable,blocked,no_recipient,suppressed,failed) or null; unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migrations 202610130001_chat_checkin.sql, 202610160001_chat_reply_reminders.sql"
+        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); check reminder_status in (sent,too_old,listing_unavailable,blocked,no_recipient,suppressed,failed) or null; unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migrations 202610130001_chat_checkin.sql, 202610160002_chat_reply_reminders.sql"
       },
       {
         "table": "chat_checkin_runs",
