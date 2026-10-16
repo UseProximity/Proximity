@@ -179,8 +179,8 @@ function groupByLandlord(leases) {
   return [...groups.values()];
 }
 
-// A long list of landlords pushes the rest of the listing out of reach, so it
-// opens on the first few and grows on request.
+// A long list (of landlords, or of one landlord's options) pushes the rest of
+// the listing out of reach, so it opens on the first few and grows on request.
 const PAGE = 5;
 
 function Cell({ label, children, className = "" }) {
@@ -305,10 +305,10 @@ function LeaseList({ leases, onContact }) {
 /*
  * One landlord on this unit: who they are, one Contact, and their options.
  *
- * With a single option there is nothing to fold, so it sits open under the
- * name with no toggle. With several, the card opens on a one-line summary
- * ("3 lease options from $900/mo") and the terms unfold on request, so a unit
- * with four landlords still fits on a screen.
+ * Every option is open from the start, so a renter can compare terms without
+ * clicking into each landlord. With several, a one-line summary ("3 lease
+ * options from $900/mo") sits under the name, and past the first PAGE options
+ * the rest grow on request so one prolific landlord can't bury the others.
  *
  * Contact carries the landlord's best option under the current sort as the
  * lease the enquiry is about. The chat is routed to the landlord either way,
@@ -317,8 +317,13 @@ function LeaseList({ leases, onContact }) {
 function LandlordCard({ group, onContact }) {
   const { landlordName, landlordImage, leases } = group;
   const single = leases.length === 1;
-  const [open, setOpen] = useState(false);
-  const expanded = single || open;
+  const [shown, setShown] = useState(PAGE);
+
+  // A different unit's tab (or a new sort) is a different list: start it from the top.
+  useEffect(() => setShown(PAGE), [leases]);
+
+  const visible = leases.slice(0, shown);
+  const remaining = leases.length - visible.length;
 
   const priced = leases.filter((l) => l.rent != null);
   const cheapest = priced.length
@@ -342,21 +347,9 @@ function LandlordCard({ group, onContact }) {
           <p className="truncate text-sm font-semibold text-gray-900">
             {landlordName ?? "Landlord"}
           </p>
-          {single ? (
-            <p className="text-xs text-gray-500">1 lease option</p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              className="flex items-center gap-0.5 rounded text-left text-xs text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <span className="truncate">{summary}</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-              />
-            </button>
-          )}
+          <p className="truncate text-xs text-gray-500">
+            {single ? "1 lease option" : summary}
+          </p>
         </div>
         <button
           type="button"
@@ -367,16 +360,38 @@ function LandlordCard({ group, onContact }) {
         </button>
       </div>
 
-      {expanded && (
-        <ul
-          className={`mt-3 divide-y divide-gray-100 ${
-            single ? "" : "rounded-lg border border-gray-100 bg-gray-50/60"
-          }`}
-        >
-          {leases.map((lease) => (
-            <LeaseRow key={lease.id} lease={lease} inset={!single} />
-          ))}
-        </ul>
+      <ul
+        className={`mt-3 divide-y divide-gray-100 ${
+          single ? "" : "rounded-lg border border-gray-100 bg-gray-50/60"
+        }`}
+      >
+        {visible.map((lease) => (
+          <LeaseRow key={lease.id} lease={lease} inset={!single} />
+        ))}
+      </ul>
+
+      {leases.length > PAGE && (
+        <div className="mt-1.5 flex items-center justify-center gap-4">
+          {remaining > 0 && (
+            <button
+              type="button"
+              onClick={() => setShown((n) => n + PAGE)}
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Show {Math.min(PAGE, remaining)} more
+              <span className="font-normal text-gray-400"> ({remaining} left)</span>
+            </button>
+          )}
+          {shown > PAGE && (
+            <button
+              type="button"
+              onClick={() => setShown(PAGE)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Show less
+            </button>
+          )}
+        </div>
       )}
     </li>
   );
