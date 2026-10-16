@@ -10,6 +10,9 @@ import MapPopupCard, {
   MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
+import SuggestedStrip, {
+  SuggestedHeading,
+} from "@/components/listings/SuggestedStrip";
 import {
   SLIDER_CSS,
   FilterSection,
@@ -31,6 +34,8 @@ const MapView = dynamic(() => import("@/components/listings/MapView"), {
 export default function AvailableListings({
   session,
   listings,
+  suggestedListings = [],
+  onFiltersSaved = () => {},
   filters,
   setFilters,
   handleReset,
@@ -259,6 +264,18 @@ export default function AvailableListings({
     });
   };
 
+  /*
+   * The suggested strip sits above the list on the unfiltered view only.
+   * BrowseContent already empties it when a filter or search is on; "Browse
+   * this area" is a filter too, so it hides here as well. While it shows, its
+   * listings are taken out of the list below so no card appears twice.
+   */
+  const showSuggested = suggestedListings.length > 0 && !viewportBounds;
+  const suggestedIdSet = useMemo(
+    () => new Set(showSuggested ? suggestedListings.map((l) => String(l._id)) : []),
+    [showSuggested, suggestedListings]
+  );
+
   const visibleListings = useMemo(() => {
     const filtered = !viewportBounds
       ? listings
@@ -280,8 +297,11 @@ export default function AvailableListings({
        * sit in the mix with the ones open today rather than in a tier below.
        */
       return (a.unavailable ? 1 : 0) - (b.unavailable ? 1 : 0);
-    });
-  }, [listings, viewportBounds]);
+    }).filter((l) => !suggestedIdSet.has(String(l._id)));
+  }, [listings, viewportBounds, suggestedIdSet]);
+
+  // Headline count includes the pinned cards, which are still results.
+  const resultCount = visibleListings.length + suggestedIdSet.size;
 
   /* ── Mobile UI state ── */
   const [mobileView, setMobileView] = useState(() => {
@@ -477,9 +497,14 @@ export default function AvailableListings({
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
           >
-            <div className="flex items-center gap-2 px-1 mb-4">
+            <div
+              className={`flex items-center gap-2 px-1 mb-4 ${
+                showSuggested ? "justify-between" : ""
+              }`}
+            >
+              {showSuggested && <SuggestedHeading />}
               <p className="text-sm font-semibold text-gray-500">
-                {visibleListings.length}{" "}
+                {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}
               </p>
               {viewportBounds && (
@@ -492,7 +517,20 @@ export default function AvailableListings({
               )}
             </div>
 
-            {visibleListings.length === 0 ? (
+            {showSuggested && (
+              <SuggestedStrip
+                listings={suggestedListings}
+                session={session}
+                layout="grid"
+                selectedId={selectedListing?._id}
+                onCardClick={(listing) => {
+                  setSelectedListing(listing);
+                  openPanel(listing);
+                }}
+              />
+            )}
+
+            {visibleListings.length === 0 && !showSuggested ? (
               emptyState
             ) : (
               <div className="grid grid-cols-2 gap-6">
@@ -535,6 +573,7 @@ export default function AvailableListings({
           isActive={isDesktop}
           onBrowseArea={handleBrowseArea}
           panelExpanded={!!expandedListing}
+          suggestedIds={suggestedIdSet}
         />
         {selectedListing && !expandedListing && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
@@ -573,6 +612,7 @@ export default function AvailableListings({
                 onSearchLocationConsumed={handleSearchLocationConsumed}
                 isActive={!isDesktop}
                 onBrowseArea={handleBrowseArea}
+                suggestedIds={suggestedIdSet}
               />
 
               {/* Minimal pin popup */}
@@ -641,8 +681,9 @@ export default function AvailableListings({
           {mobileView === "listings" && (
             <div className="h-full overflow-y-auto scrollbar-hidden bg-gray-50">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                {showSuggested && <SuggestedHeading />}
                 <span className="text-sm font-semibold text-gray-500">
-                  {visibleListings.length}{" "}
+                  {resultCount}{" "}
                   {viewportBounds ? "in this area" : "Listings Found"}
                 </span>
                 {viewportBounds && (
@@ -781,7 +822,17 @@ export default function AvailableListings({
                 )}
               </div>
               <div className="px-4 pb-6 space-y-4">
-                {visibleListings.length === 0
+                {showSuggested && (
+                  <SuggestedStrip
+                    listings={suggestedListings}
+                    session={session}
+                    layout="stack"
+                    onCardClick={(listing) =>
+                      router.push(`/listings/${listing._id}?from=listings`)
+                    }
+                  />
+                )}
+                {visibleListings.length === 0 && !showSuggested
                   ? emptyState
                   : visibleListings.map((listing) => (
                       <ListingCard
@@ -1251,6 +1302,7 @@ export default function AvailableListings({
                 <button
                   onClick={() => {
                     setFilters(mobileDraft);
+                    onFiltersSaved(mobileDraft);
                     setMobileFiltersOpen(false);
                   }}
                   className="px-8 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-full text-sm transition-colors shadow-md"

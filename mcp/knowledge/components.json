@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-16T23:17:51.355Z",
-  "count": 127,
+  "_generated": "2026-10-16T23:32:18.029Z",
+  "count": 128,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -376,6 +376,11 @@
     {
       "name": "SubleaseFormPanel",
       "file": "src/components/listings/SubleaseFormPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "SuggestedStrip",
+      "file": "src/components/listings/SuggestedStrip.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

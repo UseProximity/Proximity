@@ -2315,6 +2315,17 @@
         }
       },
       {
+        "table": "user_filter_summaries",
+        "status": "active",
+        "description": "One row per user: the browse filters they last saved (Done / Apply Filters), overwritten each time. Lightest-weighted signal behind \"Suggested for you\" (lib/listings/suggestListings.js); written by POST /api/filter-summary.",
+        "columns": [
+          "user_id:uuid",
+          "filters:jsonb",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk user_id; fk user_id->users.id (cascade); filters is the browse DEFAULT_FILTERS shape, cleaned by cleanFilterSummary (no savedOnly/subleaseOnly); rls: on, no policies (service role only); deleted by purge-accounts. Migration 202610160001_user_filter_summaries.sql: dev applied 2026-10-16, prod pending."
+      },
+      {
         "table": "user_listing_interactions",
         "status": "active",
         "description": "Log of user↔listing interactions (clicks, saves, contacts).",
