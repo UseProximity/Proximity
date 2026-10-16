@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-14T15:00:45.724Z",
-  "count": 127,
+  "_generated": "2026-10-16T22:26:47.185Z",
+  "count": 128,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -178,6 +178,10 @@
     {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
+    },
+    {
+      "file": "src/lib/email/newListingEmail.js",
+      "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",

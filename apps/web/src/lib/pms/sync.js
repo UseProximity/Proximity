@@ -163,7 +163,9 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
       .is("deleted_at", null);
     let unitTypeId = matchUnitsToListingUnits([unit], listingUnits ?? []).get(unit.externalUnitId);
     if (!unitTypeId && unit.bedrooms != null) {
-      // No matching floor-plan type — create one as the system actor.
+      // No matching floor-plan type — create one as the system actor. As a
+      // draft (202610100002): a floor plan the PMS grew is the landlord's to
+      // put live, from Properties > Drafts, not the sync's.
       const { data: created } = await supabase.rpc("rpc_insert_as_user", {
         p_user_id: SYSTEM_USER_ID,
         p_table: "listing_units",
@@ -172,6 +174,7 @@ export async function syncConnection(connection, { dryRun = false } = {}) {
           bedrooms: unit.bedrooms,
           bathrooms: unit.bathrooms ?? 1,
           area: unit.area,
+          published_at: null,
         },
       });
       unitTypeId = created?.id ?? null;

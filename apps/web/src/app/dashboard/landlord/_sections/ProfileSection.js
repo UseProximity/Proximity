@@ -75,8 +75,17 @@ export default function ProfileSection({
                 </div>
               )}
               <p className="text-gray-500 mt-2 text-base sm:text-lg">
-                {/* Drafts are not listings students can see, so they are not counted. */}
-                {(user.listings ?? []).filter((l) => !l.isDraft).length} active listings
+                {/* A property counts when students can take something there:
+                    a draft never does, and neither does a building where every
+                    offering (or, for a lease-holder, their own) is withdrawn. */}
+                {(user.listings ?? []).filter(
+                  (l) =>
+                    !l.isDraft &&
+                    (l.ownership === "property"
+                      ? (l.unitTypes ?? []).some((u) => u.available)
+                      : (l.myLeases ?? []).some((x) => x.isLive))
+                ).length}{" "}
+                active listings
               </p>{" "}
               <p className="text-gray-400 text-sm sm:text-base mt-2">
                 {calcAge(user.birthday) != null

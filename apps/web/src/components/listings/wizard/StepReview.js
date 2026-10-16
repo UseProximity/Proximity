@@ -187,24 +187,34 @@ export default function StepReview({ w }) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => w.publish(false)}
-        disabled={!!w.submitting}
-        className="mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
-      >
-        {w.submitting === "publish" ? "Publishing…" : "Publish listing"}
-      </button>
-      {/* The same listing, kept off the site until it is published from the
-          dashboard. Everything above is still checked. */}
-      <button
-        type="button"
-        onClick={() => w.publish(true)}
-        disabled={!!w.submitting}
-        className="mt-2 w-full rounded-lg border border-gray-300 bg-white py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-60"
-      >
-        {w.submitting === "draft" ? "Saving…" : "Save as draft"}
-      </button>
+      {/*
+        * Two buttons, same listing, same checks: one puts it in front of
+        * students now, the other keeps it on the dashboard until it is
+        * published from there. An import leads with the draft (Wyatt,
+        * 2026-10-16): what a website or PMS said about a building deserves a
+        * read-through, and the Drafts page publishes the complete ones in one
+        * click. Typed-in listings lead with Publish.
+        */}
+      {(() => {
+        const imported = !!w.importInfo || (w.importedFields?.size ?? 0) > 0;
+        const primary =
+          "mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60";
+        const secondary =
+          "mt-2 w-full rounded-lg border border-gray-300 bg-white py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-60";
+        const publishBtn = (cls) => (
+          <button key="publish" type="button" onClick={() => w.publish(false)} disabled={!!w.submitting} className={cls}>
+            {w.submitting === "publish" ? "Publishing…" : imported ? "Publish now" : "Publish listing"}
+          </button>
+        );
+        const draftBtn = (cls) => (
+          <button key="draft" type="button" onClick={() => w.publish(true)} disabled={!!w.submitting} className={cls}>
+            {w.submitting === "draft" ? "Saving…" : "Save as draft"}
+          </button>
+        );
+        return imported
+          ? [draftBtn(primary), publishBtn(secondary)]
+          : [publishBtn(primary), draftBtn(secondary)];
+      })()}
       <p className="mt-2 text-center text-xs text-gray-500">
         A draft is only on your dashboard until you publish it.
       </p>

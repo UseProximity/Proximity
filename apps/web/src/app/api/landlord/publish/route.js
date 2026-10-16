@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
+import { emailNewListingToOwners } from "@/lib/email/newListingEmail";
+import { nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { unitNameKey } from "@/utils/unitName";
 
 /*
  * Publish a draft: put a property, a unit or an offering in front of students.
@@ -75,10 +78,120 @@ async function ownerIdsFor(userId, isSuper, listingId) {
 
 const STILL_DRAFT = "This property is still a draft. Publish the property to put it live.";
 
+/*
+ * A draft building at an address that is already live.
+ *
+ * Another landlord cannot see a draft, so if they list the same building
+ * while it sits in Drafts they create their own row, and publishing the draft
+ * as it stands would put two copies of one building in front of students.
+ * Instead the draft's units and offerings join the live building (Wyatt,
+ * 2026-10-16): a unit with a name the live building already uses lends its
+ * offerings and photos to that unit and is retired; any other unit moves
+ * across whole, after the units already there. The draft row is then retired.
+ * Property photos with no unit on them stay with it: the building's gallery is
+ * its owner's, and the draft's owner is now a lease-holder there, not an
+ * owner, exactly as if they had added their apartments to it by hand.
+ *
+ * Returns the live building's id and the unit ids now carrying the draft's
+ * offerings, so the caller can publish them.
+ */
+async function mergeDraftIntoLive(draft, live) {
+  const draftUnits = liveRows(draft.listing_units);
+  const { data: liveUnitRows } = await supabase
+    .from("listing_units")
+    .select("id, name")
+    .eq("listing_id", live.id)
+    .is("deleted_at", null);
+  const liveByName = new Map(
+    (liveUnitRows ?? []).filter((u) => unitNameKey(u.name)).map((u) => [unitNameKey(u.name), u.id])
+  );
+
+  // Where each draft unit's offerings and photos end up.
+  const target = new Map();
+  const moving = [];
+  for (const u of draftUnits) {
+    const twin = unitNameKey(u.name) ? liveByName.get(unitNameKey(u.name)) : null;
+    target.set(u.id, twin ?? u.id);
+    if (!twin) moving.push(u.id);
+  }
+
+  // Whole units move first, so everything that points at them is consistent
+  // by the time the photo triggers look.
+  let sortOrder = await nextUnitSortOrder(live.id);
+  for (const unitId of moving) {
+    const { error } = await supabase
+      .from("listing_units")
+      .update({ listing_id: live.id, sort_order: sortOrder++ })
+      .eq("id", unitId);
+    if (error) throw error;
+  }
+
+  // Photos tagged with a draft unit follow it. A photo is one row with its
+  // tags beside it, and both must agree with the unit's building.
+  const { data: tagged } = await supabase
+    .from("listing_image_units")
+    .select("image_id, unit_id")
+    .in("unit_id", [...target.keys()]);
+  const imageIds = [...new Set((tagged ?? []).map((t) => t.image_id))];
+  if (imageIds.length) {
+    const { data: images } = await supabase
+      .from("listing_images")
+      .select("id, unit_id")
+      .in("id", imageIds);
+    for (const img of images ?? []) {
+      const { error } = await supabase
+        .from("listing_images")
+        .update({ listing_id: live.id, unit_id: img.unit_id ? target.get(img.unit_id) ?? img.unit_id : null })
+        .eq("id", img.id);
+      if (error) throw error;
+    }
+  }
+
+  // Twins: retag, move the offerings, retire the draft unit.
+  for (const [draftUnitId, targetId] of target) {
+    if (targetId === draftUnitId) continue;
+    const { error: tagErr } = await supabase
+      .from("listing_image_units")
+      .update({ unit_id: targetId })
+      .eq("unit_id", draftUnitId);
+    if (tagErr) throw tagErr;
+    const { error: leaseErr } = await supabase
+      .from("unit_leases")
+      .update({ unit_id: targetId })
+      .eq("unit_id", draftUnitId);
+    if (leaseErr) throw leaseErr;
+    const { error: unitErr } = await supabase
+      .from("listing_units")
+      .update({ deleted_at: now() })
+      .eq("id", draftUnitId);
+    if (unitErr) throw unitErr;
+  }
+
+  const { error } = await supabase.from("listings").update({ deleted_at: now() }).eq("id", draft.id);
+  if (error) throw error;
+
+  return { liveId: live.id, unitIds: [...new Set(target.values())] };
+}
+
+// The live building already at this draft's address, if there is one.
+async function liveTwinOf(draft) {
+  if (!draft.property_key) return null;
+  const { data } = await supabase
+    .from("listings")
+    .select("id")
+    .eq("property_key", draft.property_key)
+    .neq("id", draft.id)
+    .is("deleted_at", null)
+    .not("published_at", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  return data?.[0] ?? null;
+}
+
 async function publishProperty(userId, isSuper, id) {
   const { data: listing } = await supabase
     .from("listings")
-    .select("id, published_at, deleted_at, listing_units(id, published_at, deleted_at, unit_leases(owner_id, deleted_at))")
+    .select("id, property_key, published_at, deleted_at, listing_units(id, name, published_at, deleted_at, unit_leases(id, owner_id, deleted_at))")
     .eq("id", id)
     .maybeSingle();
   if (!listing || listing.deleted_at) throw new PublishError(404, "That property no longer exists.");
@@ -88,6 +201,20 @@ async function publishProperty(userId, isSuper, id) {
   const wasDraft = listing.published_at === null;
   const ownerIds = await ownerIdsFor(userId, isSuper, id);
   const units = liveRows(listing.listing_units);
+
+  if (wasDraft) {
+    const twin = await liveTwinOf(listing);
+    if (twin) {
+      // The draft's offerings are the only ones on its units, so publishing by
+      // lease id puts up exactly what came across and nothing of the twin's.
+      const leaseIds = units.flatMap((u) => liveRows(u.unit_leases).map((l) => l.id));
+      const { liveId, unitIds } = await mergeDraftIntoLive(listing, twin);
+      await publishRows("unit_leases", "id", leaseIds);
+      await publishRows("listing_units", "id", unitIds);
+      return { mergedInto: liveId };
+    }
+  }
+
   const draftUnitIds = units
     .filter((u) => u.published_at === null && (wasDraft || !addedByOthers(u, ownerIds)))
     .map((u) => u.id);
@@ -96,7 +223,13 @@ async function publishProperty(userId, isSuper, id) {
     wasDraft ? q : q.in("owner_id", ownerIds)
   );
   await publishRows("listing_units", "id", draftUnitIds);
-  if (wasDraft) await publishRows("listings", "id", [id]);
+  if (wasDraft) {
+    await publishRows("listings", "id", [id]);
+    // The "new listing" note a published-at-once property gets from addListing.
+    // A draft earns it now, the first time students can see it.
+    await emailNewListingToOwners(supabase, id);
+  }
+  return {};
 }
 
 async function canPublishUnit(userId, isSuper, unit) {
@@ -206,10 +339,11 @@ export async function POST(req) {
       const result = await publishAll(userId, isSuper, scope);
       return NextResponse.json({ published: { kind, scope, ...result } });
     }
-    if (kind === "property") await publishProperty(userId, isSuper, id);
+    let extra = {};
+    if (kind === "property") extra = await publishProperty(userId, isSuper, id);
     else if (kind === "unit") await publishUnit(userId, isSuper, id);
     else await publishLease(userId, isSuper, id);
-    return NextResponse.json({ published: { kind, id } });
+    return NextResponse.json({ published: { kind, id, ...extra } });
   } catch (e) {
     if (e instanceof PublishError) {
       return NextResponse.json({ error: e.message }, { status: e.status });

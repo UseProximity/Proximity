@@ -2634,7 +2634,8 @@
         "touches": "listings, listing_units, unit_leases",
         "called_from": "app/api/landlord/pms/confirm/route.js",
         "defined_in": "202609020003_retire_listing_unit_available.sql",
-        "description": "Applies a PMS snapshot (availability, rent) to the owner's offerings only; relist restores exactly the lease_ids it withdrew."
+        "description": "Applies a PMS snapshot (availability, rent) to the owner's offerings only; relist restores exactly the lease_ids it withdrew.",
+        "dev_note": "Dev only (202610160001, not yet on prod): an offering the sync creates on its own is born a draft (published_at NULL); repricing existing offerings is unchanged."
       },
       {
         "name": "rpc_pms_mark_verified",

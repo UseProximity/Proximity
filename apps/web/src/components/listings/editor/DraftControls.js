@@ -62,7 +62,16 @@ export function PublishButton({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't publish that.");
-      toast.success(typeof successText === "function" ? successText(data.published) : successText);
+      // A draft building whose address went live under someone else while it
+      // waited joins that building instead (see /api/landlord/publish).
+      if (data.published?.mergedInto) {
+        toast.success(
+          "Published. This building was already on Proximity, so your units and listings joined it. Find them under Live.",
+          { duration: 8000 }
+        );
+      } else {
+        toast.success(typeof successText === "function" ? successText(data.published) : successText);
+      }
       await onPublished?.();
     } catch {
       toast.error("Network error.");
