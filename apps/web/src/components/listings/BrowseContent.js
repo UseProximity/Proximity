@@ -48,15 +48,31 @@ export default function BrowseContent({ session, initialListings = null }) {
   // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
   // a listing contacted from the strip stays put until the next reload.
   const [suggestedIds, setSuggestedIds] = useState([]);
+  const [suggestedMode, setSuggestedMode] = useState("suggested");
+  const [anchorLabel, setAnchorLabel] = useState(null);
   const userId = session?.user?.id;
+  /*
+   * The chat's no-reply note links here as ?from=no-reply&similar=<id>, which
+   * asks for places similar to the listing that went unanswered (Wyatt,
+   * 2026-10-16). Not ?listing=, which opens that listing's panel. The API
+   * falls back to normal suggestions when it can't.
+   */
+  const similarTo = searchParams.get("similar");
 
   useEffect(() => {
-    if (!userId) return;
-    fetch("/api/listings/suggested")
+    if (!userId && !similarTo) return;
+    const url = similarTo
+      ? `/api/listings/suggested?similar=${encodeURIComponent(similarTo)}`
+      : "/api/listings/suggested";
+    fetch(url)
       .then((r) => (r.ok ? r.json() : { ids: [] }))
-      .then((data) => setSuggestedIds(Array.isArray(data?.ids) ? data.ids : []))
+      .then((data) => {
+        setSuggestedIds(Array.isArray(data?.ids) ? data.ids : []);
+        setSuggestedMode(data?.mode === "similar" ? "similar" : "suggested");
+        setAnchorLabel(typeof data?.anchorLabel === "string" ? data.anchorLabel : null);
+      })
       .catch(() => {});
-  }, [userId]);
+  }, [userId, similarTo]);
 
   /*
    * Saved filters feed the student's running filter summary (the lightest
@@ -170,6 +186,10 @@ export default function BrowseContent({ session, initialListings = null }) {
           session={session}
           listings={filteredListings}
           suggestedListings={suggestedListings}
+          suggestedMode={suggestedMode}
+          suggestedLabel={
+            suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
+          }
           onFiltersSaved={handleFiltersSaved}
           filters={filters}
           setFilters={setFilters}

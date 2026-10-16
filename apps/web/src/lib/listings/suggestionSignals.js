@@ -55,3 +55,56 @@ async function loadInteractions(userId) {
     return [];
   }
 }
+
+/*
+ * The anchor for "similar to" mode: the listing a student contacted, from the
+ * browse feed, plus the landlords behind it (so their other listings can rank
+ * last). Usually the landlord went quiet because the place is gone, and the
+ * feed drops withdrawn offerings, which would leave the anchor with no bedrooms
+ * or price to compare against. So when none of its units is live, its units
+ * are rebuilt from every offering, withdrawn or not.
+ *
+ * Returns { listing, ownerIds } or null when the listing is deleted or unknown.
+ */
+export async function loadAnchorListing(listingId, feed) {
+  const listing = feed.find((l) => String(l._id) === String(listingId));
+  if (!listing) return null;
+
+  const { data, error } = await supabase
+    .from("listings")
+    .select(
+      "id, listing_landlords(user_id), listing_units(bedrooms, deleted_at, unit_leases(rent, rent_is_per_person, is_active, furnished, owner_id))"
+    )
+    .eq("id", listingId)
+    .maybeSingle();
+  if (error || !data) return { listing, ownerIds: new Set(listing.owner?._id ? [String(listing.owner._id)] : []) };
+
+  const units = (data.listing_units ?? []).filter((u) => !u.deleted_at);
+  const ownerIds = new Set(
+    [
+      listing.owner?._id,
+      ...(data.listing_landlords ?? []).map((r) => r.user_id),
+      ...units.flatMap((u) => (u.unit_leases ?? []).map((l) => l.owner_id)),
+    ]
+      .filter(Boolean)
+      .map(String)
+  );
+
+  if ((listing.unitTypes ?? []).some((u) => u.available !== false)) return { listing, ownerIds };
+
+  const unitTypes = units.map((u) => {
+    // Active offerings first, then the cheapest priced one.
+    const priced = (u.unit_leases ?? [])
+      .filter((l) => l.rent != null)
+      .sort((a, b) => Number(b.is_active) - Number(a.is_active) || Number(a.rent) - Number(b.rent));
+    const head = priced[0] ?? null;
+    return {
+      bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
+      rent: head ? Number(head.rent) : null,
+      rentIsPerPerson: head?.rent_is_per_person ?? null,
+      available: true,
+      leases: (u.unit_leases ?? []).map((l) => ({ furnished: l.furnished })),
+    };
+  });
+  return { listing: { ...listing, unitTypes }, ownerIds };
+}

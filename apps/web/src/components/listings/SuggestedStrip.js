@@ -20,14 +20,14 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
  * The strip's heading. AvailableListings renders it in the results row, on the
  * left where the listing count normally sits, and moves the count to the right.
  */
-export function SuggestedHeading() {
+export function SuggestedHeading({ label = "Suggested for you" }) {
   return (
     <div className="flex items-center gap-2">
       <span
         aria-hidden="true"
         className="h-2.5 w-2.5 rounded-full bg-[#A1000A]"
       />
-      <h2 className="text-sm font-bold text-gray-900">Suggested for you</h2>
+      <h2 className="text-sm font-bold text-gray-900">{label}</h2>
     </div>
   );
 }
@@ -36,6 +36,9 @@ export default function SuggestedStrip({
   listings,
   session,
   layout = "grid",
+  // "similar" when opened from the chat's no-reply note (?similar=<id>).
+  mode = "suggested",
+  label = "Suggested for you",
   selectedId = null,
   onCardClick,
 }) {
@@ -48,6 +51,7 @@ export default function SuggestedStrip({
     trackEvent("suggested_impression", {
       surface: "browse",
       layout,
+      mode,
       count: listings.length,
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -55,7 +59,7 @@ export default function SuggestedStrip({
   if (!listings.length) return null;
 
   return (
-    <section aria-label="Suggested for you" className="mb-6">
+    <section aria-label={label} className="mb-6">
       <div
         className={
           layout === "grid" ? "grid grid-cols-2 gap-6" : "space-y-4"
@@ -77,6 +81,7 @@ export default function SuggestedStrip({
                   surface: "browse",
                   listing_id: String(listing._id),
                   position: i + 1,
+                  mode,
                 });
                 // Lets the existing save/contact events report source=suggested.
                 setListingSource(listing._id, "suggested");

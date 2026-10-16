@@ -35,6 +35,8 @@ export default function AvailableListings({
   session,
   listings,
   suggestedListings = [],
+  suggestedMode = "suggested",
+  suggestedLabel = "Suggested for you",
   onFiltersSaved = () => {},
   filters,
   setFilters,
@@ -502,7 +504,7 @@ export default function AvailableListings({
                 showSuggested ? "justify-between" : ""
               }`}
             >
-              {showSuggested && <SuggestedHeading />}
+              {showSuggested && <SuggestedHeading label={suggestedLabel} />}
               <p className="text-sm font-semibold text-gray-500">
                 {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}
@@ -522,6 +524,8 @@ export default function AvailableListings({
                 listings={suggestedListings}
                 session={session}
                 layout="grid"
+                mode={suggestedMode}
+                label={suggestedLabel}
                 selectedId={selectedListing?._id}
                 onCardClick={(listing) => {
                   setSelectedListing(listing);
@@ -681,7 +685,7 @@ export default function AvailableListings({
           {mobileView === "listings" && (
             <div className="h-full overflow-y-auto scrollbar-hidden bg-gray-50">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                {showSuggested && <SuggestedHeading />}
+                {showSuggested && <SuggestedHeading label={suggestedLabel} />}
                 <span className="text-sm font-semibold text-gray-500">
                   {resultCount}{" "}
                   {viewportBounds ? "in this area" : "Listings Found"}
@@ -827,6 +831,8 @@ export default function AvailableListings({
                     listings={suggestedListings}
                     session={session}
                     layout="stack"
+                    mode={suggestedMode}
+                    label={suggestedLabel}
                     onCardClick={(listing) =>
                       router.push(`/listings/${listing._id}?from=listings`)
                     }

@@ -31,6 +31,14 @@
  *
  * Unknown rent is neutral (0.5) on every price dimension: neither a match nor a
  * miss. Rent always goes through rentBasis.js.
+ *
+ * "Similar to" mode (Wyatt, 2026-10-16): the chat's no-reply note links to
+ * browse with the listing the student contacted as an ANCHOR. Resemblance to
+ * that one listing is ANCHOR_WEIGHT of the score and the student's usual
+ * profile the rest, so it mostly breaks ties. The data-point minimum does not
+ * apply (the anchor is the signal), a place more than one bedroom away from
+ * the anchor is not suggested, the anchor itself never is, and the anchor
+ * landlord's other listings rank after everyone else's.
  */
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
@@ -45,6 +53,7 @@ export const SOURCE_WEIGHTS = { matchmaking: 0.5, interactions: 0.35, filters: 0
 export const INTERACTION_WEIGHTS = { contacted: 1, saved: 0.7 };
 export const MIN_DATA_POINTS = 2;
 export const MAX_SUGGESTIONS = 4;
+export const ANCHOR_WEIGHT = 0.75;
 // A signal this decayed (about 3 months old) no longer counts toward the minimum.
 export const STALE_WEIGHT = 0.1;
 // Scores this close are a tie, broken toward the less-contacted listing so the
@@ -70,7 +79,7 @@ export function recencyWeight(at, now = Date.now()) {
 // Listing features
 // ---------------------------------------------------------------------------
 
-function featuresOf(listing, campusMinutes) {
+export function featuresOf(listing, campusMinutes) {
   const units = (listing.unitTypes ?? []).filter((u) => u.available !== false);
   const beds = [
     ...new Set(units.map((u) => u.bedrooms).filter((b) => Number.isFinite(b))),
@@ -324,14 +333,81 @@ function isSuggestable(listing, profile) {
   return true;
 }
 
+// Within one bedroom of the anchor, when both bedroom counts are known.
+function nearAnchorBeds(f, anchorFeatures) {
+  if (!f.beds.length || !anchorFeatures.beds.length) return true;
+  return f.beds.some((b) => anchorFeatures.beds.some((a) => Math.abs(a - b) <= 1));
+}
+
 /**
  * Ranked suggestion ids for one student: 0, 2 or 4 of them (always an even
  * count so the two-column strip never shows a lone card). Empty when the
  * profile is below the data-point minimum.
+ *
+ * `anchor` ({ listing, ownerIds }) switches to "similar to" mode, see the top
+ * of this file. `listing` is the anchor in the built shape; its features
+ * should be read regardless of availability (loadAnchorListing does that).
  */
-export function suggestListings({ listings, profile, campusMinutes, saturation = {} }) {
+export function suggestListings({ listings, profile, campusMinutes, saturation = {}, anchor = null }) {
+  if (anchor) return suggestSimilar({ listings, profile, campusMinutes, saturation, anchor });
   if (profile.dataPoints < MIN_DATA_POINTS) return [];
 
+  const sources = profileSources(profile, campusMinutes);
+  const totalWeight = sources.reduce((s, x) => s + x.weight, 0);
+  if (!totalWeight) return [];
+
+  const sat = (id) => saturation[id] ?? 0;
+  const ranked = listings
+    .filter((l) => isSuggestable(l, profile))
+    .map((l) => {
+      const f = featuresOf(l, campusMinutes);
+      const score = sources.reduce((s, src) => s + src.weight * src.score(l, f), 0) / totalWeight;
+      return { id: String(l._id), score };
+    })
+    .sort((a, b) => {
+      if (Math.abs(a.score - b.score) > TIE_BAND) return b.score - a.score;
+      if (sat(a.id) !== sat(b.id)) return sat(a.id) - sat(b.id);
+      return b.score - a.score;
+    });
+
+  const count = Math.min(MAX_SUGGESTIONS, ranked.length);
+  return ranked.slice(0, count - (count % 2)).map((r) => r.id);
+}
+
+function suggestSimilar({ listings, profile, campusMinutes, saturation, anchor }) {
+  const anchorId = String(anchor.listing._id);
+  const anchorFeatures = featuresOf(anchor.listing, campusMinutes);
+  const ownerIds = anchor.ownerIds ?? new Set();
+  const sources = profileSources(profile, campusMinutes);
+  const profileWeight = sources.reduce((s, x) => s + x.weight, 0);
+
+  const sat = (id) => saturation[id] ?? 0;
+  const ranked = listings
+    .filter((l) => String(l._id) !== anchorId && isSuggestable(l, profile))
+    .map((l) => ({ l, f: featuresOf(l, campusMinutes) }))
+    .filter(({ f }) => nearAnchorBeds(f, anchorFeatures))
+    .map(({ l, f }) => {
+      const resemblance = similarity(f, anchorFeatures);
+      const rest = profileWeight
+        ? sources.reduce((s, src) => s + src.weight * src.score(l, f), 0) / profileWeight
+        : null;
+      const score = rest == null ? resemblance : ANCHOR_WEIGHT * resemblance + (1 - ANCHOR_WEIGHT) * rest;
+      const sameLandlord = !!l.owner?._id && ownerIds.has(String(l.owner._id));
+      return { id: String(l._id), score, sameLandlord };
+    })
+    .sort((a, b) => {
+      if (a.sameLandlord !== b.sameLandlord) return a.sameLandlord ? 1 : -1;
+      if (Math.abs(a.score - b.score) > TIE_BAND) return b.score - a.score;
+      if (sat(a.id) !== sat(b.id)) return sat(a.id) - sat(b.id);
+      return b.score - a.score;
+    });
+
+  const count = Math.min(MAX_SUGGESTIONS, ranked.length);
+  return ranked.slice(0, count - (count % 2)).map((r) => r.id);
+}
+
+// The profile's weighted scorers, one per signal present.
+function profileSources(profile, campusMinutes) {
   const sources = [];
   if (profile.matchmaking) {
     sources.push({
@@ -352,23 +428,5 @@ export function suggestListings({ listings, profile, campusMinutes, saturation =
       score: (l) => scoreFilters(l, profile.filters.summary, campusMinutes),
     });
   }
-  const totalWeight = sources.reduce((s, x) => s + x.weight, 0);
-  if (!totalWeight) return [];
-
-  const sat = (id) => saturation[id] ?? 0;
-  const ranked = listings
-    .filter((l) => isSuggestable(l, profile))
-    .map((l) => {
-      const f = featuresOf(l, campusMinutes);
-      const score = sources.reduce((s, src) => s + src.weight * src.score(l, f), 0) / totalWeight;
-      return { id: String(l._id), score };
-    })
-    .sort((a, b) => {
-      if (Math.abs(a.score - b.score) > TIE_BAND) return b.score - a.score;
-      if (sat(a.id) !== sat(b.id)) return sat(a.id) - sat(b.id);
-      return b.score - a.score;
-    });
-
-  const count = Math.min(MAX_SUGGESTIONS, ranked.length);
-  return ranked.slice(0, count - (count % 2)).map((r) => r.id);
+  return sources;
 }
