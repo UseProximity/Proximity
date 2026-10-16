@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
+import NoReplyNote from "@/components/chat/NoReplyNote";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
@@ -176,6 +177,13 @@ export default function ChatTranscript({
     thread?.listingMaxRent
   );
   const canSend = (!!input.trim() || pendingFiles.length > 0) && !sending;
+  // The inbox says the landlord never replied; a reply that arrived since
+  // (realtime) hides the note before the inbox refreshes.
+  const showNoReply =
+    !!thread?.noReply &&
+    thread?.isInterestedUser &&
+    !!thread?.listingId &&
+    !list.some((m) => m.senderId && m.senderId === thread.otherUserId);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -505,6 +513,13 @@ export default function ChatTranscript({
         </div>
       ) : (
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
+        {showNoReply && (
+          <NoReplyNote
+            threadId={thread.threadId}
+            listingId={thread.listingId}
+            listingUnavailable={thread.noReply.listingUnavailable}
+          />
+        )}
         {confirmPrompt && (
           <div
             role="alertdialog"

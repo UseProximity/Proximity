@@ -6,9 +6,8 @@
  *
  * Consumers:
  *  - /washu/[slug] neighborhood landing pages (neighborhoodOfListing)
- *  - matchmaking's neighborhoodScore (imports CENTROIDS + haversineKm via
- *    lib/matchmaking/listingFilter.js so student-facing behavior stays in
- *    one place)
+ *  - neighborhoodScore below, used by matchmaking (re-exported through
+ *    lib/matchmaking/listingFilter.js) and by suggested listings
  *
  * Clayton's centroid was corrected from 38.6426,-90.3237 (which sat on the
  * University City/Forsyth edge and mislabeled UCity listings as Clayton) to
@@ -129,3 +128,21 @@ export const MATCHMAKING_CENTROIDS = Object.fromEntries(
     { lat: n.lat, lng: n.lng },
   ])
 );
+
+// 0..1 closeness of a listing to the NEAREST requested neighborhood centroid
+// (1 = on the centroid, 0 = at/beyond the radius edge). `areas` uses the
+// matchmaking key names. Returns null when no neighborhood is requested or the
+// listing has no coordinates, so the dimension is simply skipped. A score > 0
+// means the listing sits inside the neighborhood.
+export function neighborhoodScore(listing, areas) {
+  const wanted = (areas ?? []).filter((a) => MATCHMAKING_CENTROIDS[a]);
+  if (!wanted.length) return null;
+  const lat = Number(listing?.latitude), lng = Number(listing?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let best = Infinity;
+  for (const a of wanted) {
+    const c = MATCHMAKING_CENTROIDS[a];
+    best = Math.min(best, haversineKm(lat, lng, c.lat, c.lng));
+  }
+  return Math.max(0, 1 - best / NEIGHBORHOOD_RADIUS_KM);
+}
