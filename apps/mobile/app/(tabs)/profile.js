@@ -16,6 +16,7 @@ import {
   FileText,
   LogOut,
   Lock,
+  Mail,
   Pencil,
   Plus,
   ShieldCheck,
@@ -34,6 +35,7 @@ import {
   PRIVACY_URL,
   TERMS_URL,
 } from "../../src/lib/legalLinks";
+import { isNonProductionApi } from "../../src/lib/stagingEmail";
 
 function ProfileSection({ title, children }) {
   return (
@@ -288,6 +290,13 @@ export default function ProfileScreen() {
             icon={ShieldCheck}
             onPress={() => openLegalLink(PRIVACY_URL)}
           />
+          {isNonProductionApi(process.env.EXPO_PUBLIC_API_URL) ? (
+            <MenuItem
+              label="Test email destination"
+              icon={Mail}
+              onPress={() => router.push("/profile/test-email")}
+            />
+          ) : null}
           <MenuItem
             label={`Version ${Constants.expoConfig?.version ?? "Unknown"}`}
             icon={Info}
