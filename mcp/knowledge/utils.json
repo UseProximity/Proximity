@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-14T15:00:45.724Z",
-  "count": 127,
+  "_generated": "2026-10-16T23:17:51.375Z",
+  "count": 128,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -118,6 +118,10 @@
     {
       "file": "src/lib/chat/emailReplyText.js",
       "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
+    },
+    {
+      "file": "src/lib/chat/followups.js",
+      "description": "Follow-ups for conversations that went quiet (Wyatt, 2026-10-16)."
     },
     {
       "file": "src/lib/chat/inboundEmail.js",

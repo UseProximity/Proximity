@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-14T15:00:45.717Z",
-  "count": 126,
+  "_generated": "2026-10-16T23:17:51.355Z",
+  "count": 127,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -147,6 +147,11 @@
       "name": "MessagesPanel",
       "file": "src/components/chat/MessagesPanel.js",
       "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
+    },
+    {
+      "name": "NoReplyNote",
+      "file": "src/components/chat/NoReplyNote.js",
+      "description": "No description. Run generate after adding a description above."
     },
     {
       "name": "ProximityAssistantTranscript",

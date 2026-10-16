@@ -234,7 +234,7 @@
       {
         "table": "chat_checkin_alerts",
         "status": "active",
-        "description": "Internal chat check-in: one row per thread the daily /api/cron/chat-checkin digest emailed about, keyed on the unanswered message, so each silence is reported once. Read by /api/cron/chat-checkin-report to count alerts by side and whether the quiet side came back. RLS on, no policies: service role only.",
+        "description": "Internal chat check-in: one row per thread the daily /api/cron/chat-checkin digest emailed about, keyed on the unanswered message, so each silence is reported once. The same run sends the quiet person one reply reminder email and records the outcome in reminder_status/reminder_sent_at. Read by /api/cron/chat-checkin-report to count alerts by side and whether the quiet side came back. RLS on, no policies: service role only.",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -243,9 +243,11 @@
           "silent_since:timestamptz",
           "sent_at:timestamptz",
           "recipients:text[]",
-          "dry_run:boolean"
+          "dry_run:boolean",
+          "reminder_status:text",
+          "reminder_sent_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migration 202610130001_chat_checkin.sql"
+        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); check reminder_status in (sent,too_old,listing_unavailable,blocked,no_recipient,suppressed,failed) or null; unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migrations 202610130001_chat_checkin.sql, 202610160001_chat_reply_reminders.sql"
       },
       {
         "table": "chat_checkin_runs",
