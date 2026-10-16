@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
 import EditorOverview from "@/components/listings/editor/EditorOverview";
 import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
+import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import ListingMetricsChart from "./ListingMetricsChart";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
@@ -244,6 +245,10 @@ export default function PropertyAnalyticsSection({
         isPropertyOwner={isPropertyOwner}
         onChanged={onPhotosChanged}
       />
+
+      {/* Who students reach: one block for every lease this landlord owns
+          here, so it sits above the units rather than inside each offering. */}
+      <EditorContact listing={p} onChanged={onPhotosChanged} />
 
       <EditorUnits
         listing={p}

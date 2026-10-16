@@ -20,6 +20,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",
+    companyName: "",
     phone: "",
     description: "",
     birthday: "",
@@ -73,6 +74,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (!user) return;
     setForm({
       name: user.name || "",
+      companyName: user.company_name || "",
       phone: user.phone || "",
       description: user.description || "",
       birthday: user.birthday
@@ -113,6 +115,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (user) {
       setForm({
         name: user.name || "",
+        companyName: user.company_name || "",
         phone: user.phone || "",
         description: user.description || "",
         birthday: user.birthday
@@ -139,6 +142,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         },
         body: JSON.stringify({
           name: form.name?.trim(),
+          companyName: form.companyName?.trim() ?? "",
           phone: form.phone?.trim(),
           description: form.description?.trim(),
           birthday: form.birthday || null,

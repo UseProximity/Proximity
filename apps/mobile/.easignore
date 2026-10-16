@@ -1,0 +1,18 @@
+# Keep the plugin resolution script in EAS builds
+!scripts/
+!scripts/**
+
+# Never upload local environment files: apps/mobile/.env.local holds development
+# settings (a LAN API URL) that must not reach a distributed build. A build gets its
+# EXPO_PUBLIC_* values from the Expo environment named in eas.json. These patterns
+# are repeated here because EAS may use this file instead of .gitignore.
+.env
+.env.*
+!.env.example
+
+# Local and generated directories (also in .gitignore).
+node_modules/
+android/
+ios/
+.expo/
+dist/

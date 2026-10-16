@@ -16,6 +16,10 @@
  * Unavailable units are shown rather than hidden. The renter-facing panel drops
  * them, which meant a landlord who marked a unit unavailable had no way to find
  * it again and turn it back on.
+ *
+ * Contact is not edited here. It is one block per landlord per property
+ * (EditorContact), copied onto every lease they own, so an offering's form has
+ * nothing to say about who to reach.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -50,7 +54,7 @@ const field =
 // The saved state of an offering, as the form holds it. Shared by the initial
 // draft and by Discard, so "back to how it was" cannot drift from "how it
 // opened".
-const leaseDraft = (lease, fallbackEmail) => ({
+const leaseDraft = (lease) => ({
   rent: lease.rent ?? "",
   rentIsPerPerson: lease.rentIsPerPerson ?? false,
   leaseTermMonths: lease.leaseTermMonths ?? [],
@@ -58,19 +62,59 @@ const leaseDraft = (lease, fallbackEmail) => ({
   furnished: !!lease.furnished,
   availableFrom: lease.availableFrom ? String(lease.availableFrom).slice(0, 10) : "",
   unavailable: !!lease.unavailable,
-  /*
-   * Offerings from before the contact moved down to the lease have nothing here
-   * and nothing at the property either. Opening the form on the landlord's own
-   * address means saving fills the gap instead of being refused for a field
-   * they were never asked.
-   */
-  contactEmail: lease.contactEmail || fallbackEmail || "",
-  contactPhone: lease.contactPhone ?? "",
   description: lease.description ?? "",
 });
 
-function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDraft = false }) {
-  const [draft, setDraft] = useState(() => leaseDraft(lease, currentUserEmail));
+/*
+ * The contact on an imported offering nobody owns. The property's owner is the
+ * only one who can correct it, and only this: the rest of the offering stays
+ * read-only. A new address gets a confirmation email before alerts go there.
+ */
+function OwnerlessContact({ lease, onChanged }) {
+  const [email, setEmail] = useState(lease.contactEmail ?? "");
+  const [saving, setSaving] = useState(false);
+  const dirty = email.trim() !== (lease.contactEmail ?? "").trim();
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}/contact`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactEmail: email, contactName: lease.landlordName ?? null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't save that contact.");
+      toast.success(
+        data.verificationSent
+          ? "Contact updated. We emailed that address a link to confirm it for message alerts."
+          : "Contact updated."
+      );
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
+      <input type="email" className={`min-w-0 flex-1 ${field}`} value={email}
+        onChange={(e) => setEmail(e.target.value)} />
+      {dirty && (
+        <button onClick={save} disabled={saving} type="button"
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+          {saving ? "Saving…" : "Save"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, propertyIsDraft = false }) {
+  const [draft, setDraft] = useState(() => leaseDraft(lease));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
@@ -81,16 +125,11 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDra
   const needsRightsConfirmation = draft.sublease && !lease.sublease;
 
   const discard = () => {
-    setDraft(leaseDraft(lease, currentUserEmail));
+    setDraft(leaseDraft(lease));
     setDirty(false);
   };
 
   const save = async () => {
-    // A renter has to be able to reach someone. The property contact still backs
-    // legacy offerings, but a landlord editing their own can't leave it blank.
-    if (!draft.contactEmail.trim()) {
-      return toast.error("Add a contact email so students can reach you.");
-    }
     if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
       return toast.error("Please confirm you have the right to sublet this place.");
     }
@@ -99,12 +138,42 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDra
       const res = await fetch(`/api/leases/${lease.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, availableFrom: draft.availableFrom || null }),
+        body: JSON.stringify({
+          ...draft,
+          availableFrom: draft.availableFrom || null,
+          // The Withdrawn box is the same toggle as the dashboard's Withdraw
+          // and Publish again buttons, which set is_active and unavailable
+          // together. Sending unavailable alone left is_active false on an
+          // offering withdrawn from the dashboard, so unticking the box here
+          // looked like a relist and changed nothing students could see.
+          isActive: !draft.unavailable,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't save that listing.");
       toast.success("Your listing was updated.");
       setDirty(false);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // One click back onto the market, the inverse of the dashboard's Withdraw.
+  const republish = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't publish that listing.");
+      toast.success("Published. Students can see this listing again.");
+      setDraft((d) => ({ ...d, unavailable: false }));
       await onChanged();
     } catch {
       toast.error("Network error.");
@@ -159,6 +228,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDra
             Withdrawn
           </span>
         )}
+        {isPropertyOwner && lease.ownerless && <OwnerlessContact lease={lease} onChanged={onChanged} />}
       </li>
     );
   }
@@ -176,6 +246,14 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDra
           <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
             Withdrawn
           </span>
+        )}
+        {/* Offered on the saved offering, not the draft: a box unticked but not
+            yet saved is still withdrawn as far as students are concerned. */}
+        {lease.unavailable && !dirty && (
+          <button onClick={republish} disabled={saving} type="button"
+            className="rounded-lg border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60">
+            {saving ? "Publishing…" : "Publish again"}
+          </button>
         )}
         <span className="flex-1" />
         {dirty && (
@@ -203,7 +281,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDra
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Rent / month</span>
           <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent}
@@ -227,11 +305,6 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged, propertyIsDra
             A date in the past shows{" "}
             <span className="font-semibold text-green-600">Now</span>.
           </span>
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
-          <input type="email" required className={`mt-1 w-full ${field}`} value={draft.contactEmail}
-            onChange={(e) => set({ contactEmail: e.target.value })} />
         </label>
       </div>
 
@@ -472,8 +545,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <SectionLabel>Your listings on this unit</SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {myLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  currentUserEmail={currentUserEmail} onChanged={onChanged}
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged}
                   propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
@@ -490,7 +562,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {otherLeases.map((lease) => (
                 <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  currentUserEmail={currentUserEmail} onChanged={onChanged}
+                  isPropertyOwner={isPropertyOwner} onChanged={onChanged}
                   propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
@@ -517,6 +589,9 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
                     unitId: unit.id,
                     leaseTermMonths: [12],
                     available: true,
+                    // Only read for a landlord's FIRST lease at the property.
+                    // After that the server copies the contact block they set
+                    // in EditorContact onto every new one.
                     contactEmail: currentUserEmail ?? null,
                     // On a live unit the new offering is a draft until published,
                     // so students never see it half filled in. A draft unit or
@@ -560,7 +635,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
               ? "A draft: students won't see this unit until you publish it."
               : unit.available
               ? "On the market — students can see this unit."
-              : "Hidden from students: every offering on this unit has been withdrawn. Restore one above, or add a new one, to relist it."}
+              : "Hidden from students: every offering on this unit has been withdrawn. Publish one again above, or add a new one, to relist it."}
           </span>
         </div>
       )}

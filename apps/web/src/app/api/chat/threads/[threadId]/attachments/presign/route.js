@@ -6,7 +6,7 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
@@ -31,8 +31,8 @@ function getBucket() {
 
 export async function POST(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -81,7 +81,7 @@ export async function POST(req, { params }) {
       .from("chat_participants")
       .select("user_id")
       .eq("thread_id", threadId)
-      .eq("user_id", session.user.id)
+      .eq("user_id", authUser.id)
       .maybeSingle();
 
     if (partError) {
@@ -116,7 +116,7 @@ export async function POST(req, { params }) {
      * their own.
      */
     const { error: rateError } = await supabase.rpc("fn_chat_reserve_attachment_uploads", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_thread_id: threadId,
       p_file_count: files.length,
     });

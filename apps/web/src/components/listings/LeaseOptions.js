@@ -4,10 +4,16 @@
  * Lease options for ONE unit, shown directly under that unit's tab.
  *
  * A unit is a physical place; a lease is one landlord's offering on it. Several
- * landlords can offer the same unit, so these rows are competing options a
- * renter picks between — and because each row is a different landlord, contact
- * belongs on the row rather than on the property. That is why there is no
- * selection state here: every row is independently actionable.
+ * landlords can offer the same unit, so a renter is choosing between people as
+ * much as between terms. The list is therefore one card per landlord: who they
+ * are and one Contact, with every option they offer on this unit inside the
+ * card. A landlord with three leases here is one person to talk to, not three
+ * buttons that all reach the same inbox.
+ *
+ * Who counts as "one landlord" is decided server-side (landlordKey, standing
+ * in for the owning account, or the contact email of an imported lease with no
+ * account, neither of which reaches the browser). There is no
+ * selection state here: every card is independently actionable.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -145,7 +151,35 @@ const SORTS = {
   },
 };
 
-// A long list of offerings pushes the rest of the listing out of reach, so it
+// A stable sort by `compare`, falling back to arrival order (cheapest first).
+const stableSort = (items, compare) =>
+  items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => compare(a.item, b.item) || a.i - b.i)
+    .map(({ item }) => item);
+
+/*
+ * One card per landlord. The key is the server's; name and photo are taken
+ * from whichever of their leases has them, which is all of them once the
+ * landlord has saved a contact block, and the first one that does otherwise.
+ */
+function groupByLandlord(leases) {
+  const groups = new Map();
+  for (const lease of leases) {
+    const key = lease.landlordKey ?? lease.ownerId ?? lease.id;
+    let g = groups.get(key);
+    if (!g) {
+      g = { key, landlordName: null, landlordImage: null, leases: [] };
+      groups.set(key, g);
+    }
+    g.leases.push(lease);
+    if (!g.landlordName && lease.landlordName) g.landlordName = lease.landlordName;
+    if (!g.landlordImage && lease.landlordImage) g.landlordImage = lease.landlordImage;
+  }
+  return [...groups.values()];
+}
+
+// A long list of landlords pushes the rest of the listing out of reach, so it
 // opens on the first few and grows on request.
 const PAGE = 5;
 
@@ -194,22 +228,30 @@ function LeaseList({ leases, onContact }) {
   // A different unit's tab is a different list: start it from the top.
   useEffect(() => setShown(PAGE), [leases]);
 
-  const sorted = useMemo(
-    () =>
-      leases
-        .map((lease, i) => ({ lease, i }))
-        .sort((a, b) => SORTS[sortBy].compare(a.lease, b.lease) || a.i - b.i)
-        .map(({ lease }) => lease),
-    [leases, sortBy]
-  );
-  const visible = sorted.slice(0, shown);
-  const remaining = sorted.length - visible.length;
+  /*
+   * Sort inside each card, then sort the cards by their best option under the
+   * same rule: on "Price" the landlord with the cheapest lease comes first, and
+   * their cheapest lease heads their card.
+   */
+  const groups = useMemo(() => {
+    const { compare } = SORTS[sortBy];
+    const sortedWithin = groupByLandlord(leases).map((g) => ({
+      ...g,
+      leases: stableSort(g.leases, compare),
+    }));
+    return stableSort(sortedWithin, (a, b) => compare(a.leases[0], b.leases[0]));
+  }, [leases, sortBy]);
+  const visible = groups.slice(0, shown);
+  const remaining = groups.length - visible.length;
 
   return (
     <div>
       {leases.length > 1 && (
         <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs text-gray-500">
-          <span>{leases.length} lease options</span>
+          <span>
+            {leases.length} lease options
+            {groups.length > 1 && ` from ${groups.length} landlords`}
+          </span>
           <label className="flex items-center gap-1.5">
             <span>Sort by</span>
             <select
@@ -228,12 +270,12 @@ function LeaseList({ leases, onContact }) {
       )}
 
       <ul className="divide-y divide-gray-100">
-        {visible.map((lease) => (
-          <LeaseRow key={lease.id} lease={lease} onContact={onContact} />
+        {visible.map((group) => (
+          <LandlordCard key={group.key} group={group} onContact={onContact} />
         ))}
       </ul>
 
-      {sorted.length > PAGE && (
+      {groups.length > PAGE && (
         <div className="flex items-center justify-center gap-4 border-t border-gray-100 px-4 py-2.5">
           {remaining > 0 && (
             <button
@@ -261,13 +303,92 @@ function LeaseList({ leases, onContact }) {
 }
 
 /*
- * One offering. The five columns are what a renter compares across offerings;
- * everything that is true of only this one — the landlord's own note, whether
- * they furnish it — lives behind the chevron, so a unit with four competing
- * offerings still fits on a screen. Reaching the landlord goes through Contact,
- * never a phone number printed on the row.
+ * One landlord on this unit: who they are, one Contact, and their options.
+ *
+ * With a single option there is nothing to fold, so it sits open under the
+ * name with no toggle. With several, the card opens on a one-line summary
+ * ("3 lease options from $900/mo") and the terms unfold on request, so a unit
+ * with four landlords still fits on a screen.
+ *
+ * Contact carries the landlord's best option under the current sort as the
+ * lease the enquiry is about. The chat is routed to the landlord either way,
+ * and every option in the card reaches the same person.
  */
-function LeaseRow({ lease, onContact }) {
+function LandlordCard({ group, onContact }) {
+  const { landlordName, landlordImage, leases } = group;
+  const single = leases.length === 1;
+  const [open, setOpen] = useState(false);
+  const expanded = single || open;
+
+  const priced = leases.filter((l) => l.rent != null);
+  const cheapest = priced.length
+    ? priced.reduce((a, b) => (b.rent < a.rent ? b : a))
+    : null;
+  const summary = cheapest
+    ? `${leases.length} lease options from ${money(cheapest.rent)}${
+        cheapest.rentIsPerPerson ? "/person" : "/mo"
+      }`
+    : `${leases.length} lease options`;
+
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-center gap-3">
+        <img
+          src={landlordImage?.trim() ? landlordImage : "/default-icons/default-user.png"}
+          alt=""
+          className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-gray-100"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-gray-900">
+            {landlordName ?? "Landlord"}
+          </p>
+          {single ? (
+            <p className="text-xs text-gray-500">1 lease option</p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              className="flex items-center gap-0.5 rounded text-left text-xs text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              <span className="truncate">{summary}</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+              />
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onContact?.(leases[0])}
+          className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 sm:w-[130px]"
+        >
+          Contact
+        </button>
+      </div>
+
+      {expanded && (
+        <ul
+          className={`mt-3 divide-y divide-gray-100 ${
+            single ? "" : "rounded-lg border border-gray-100 bg-gray-50/60"
+          }`}
+        >
+          {leases.map((lease) => (
+            <LeaseRow key={lease.id} lease={lease} inset={!single} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/*
+ * One offering. The four columns are what a renter compares across offerings;
+ * everything that is true of only this one (the landlord's own note, whether
+ * they furnish it) lives behind the chevron. Who is offering it is said once,
+ * on the card above, and so is how to reach them.
+ */
+function LeaseRow({ lease, inset = false }) {
   const [open, setOpen] = useState(false);
   const details = [
     lease.furnished == null
@@ -277,9 +398,9 @@ function LeaseRow({ lease, onContact }) {
   const hasDetails = !!lease.description || details.length > 0;
 
   return (
-    <li className="px-4 py-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-        <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
+    <li className={inset ? "px-3 py-2.5" : "py-1"}>
+      <div className="flex items-center gap-3">
+        <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           <div className="min-w-0">
             <dt className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
               Price
@@ -314,37 +435,25 @@ function LeaseRow({ lease, onContact }) {
           </Cell>
           <DurationCell leaseTermMonths={lease.leaseTermMonths} />
           <Cell label="Lease type">{leaseTypeLabel(lease)}</Cell>
-          <Cell label="Listed by">{lease.landlordName}</Cell>
         </dl>
 
-        <div className="flex shrink-0 items-center gap-1.5">
-          {hasDetails && (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              aria-label={open ? "Hide details" : "Show details"}
-              className="rounded-lg p-2 text-gray-400 transition hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <ChevronDown
-                className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
-              />
-            </button>
-          )}
-          {/* Contact closes the row it belongs to, so a renter can never send an
-              enquiry to a landlord other than the one whose terms they just read. */}
+        {hasDetails && (
           <button
             type="button"
-            onClick={() => onContact?.(lease)}
-            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 sm:w-[130px] sm:flex-none"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? "Hide details" : "Show details"}
+            className="shrink-0 rounded-lg p-2 text-gray-400 transition hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
           >
-            Contact
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+            />
           </button>
-        </div>
+        )}
       </div>
 
       {open && hasDetails && (
-        <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2.5">
+        <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2.5">
           {lease.description && (
             <p className="whitespace-pre-line text-xs leading-relaxed text-gray-700">
               {lease.description}

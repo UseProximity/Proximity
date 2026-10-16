@@ -3,7 +3,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import {
   hasStakeInListing,
   canAddUnitPhotos,
@@ -53,11 +53,11 @@ function getPublicBase(db) {
  * database enforces the same thing, but a 403 here beats a 500 from the
  * trigger.)
  */
-async function resolveUploadScope(session, listingId, unitId) {
-  if (session.user.role === "super") return { ok: true, unitId: unitId ?? null };
+async function resolveUploadScope(requestUser, listingId, unitId) {
+  if (requestUser.role === "super") return { ok: true, unitId: unitId ?? null };
 
   if (!unitId) {
-    return (await hasStakeInListing(session.user.id, listingId))
+    return (await hasStakeInListing(requestUser.id, listingId))
       ? { ok: true, unitId: null }
       : {
           ok: false,
@@ -66,7 +66,7 @@ async function resolveUploadScope(session, listingId, unitId) {
         };
   }
 
-  const check = await canAddUnitPhotos(session.user.id, unitId);
+  const check = await canAddUnitPhotos(requestUser.id, unitId);
   if (!check.ok) {
     if (check.reason === "malformed") {
       return { ok: false, status: 400, error: "That isn't a valid unit id." };
@@ -131,8 +131,8 @@ function addressToFolderSlug(address) {
 
 export async function PATCH(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -178,7 +178,7 @@ export async function PATCH(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const scope = await resolveUploadScope(session, listingId, unitId);
+    const scope = await resolveUploadScope(requestUser, listingId, unitId);
     if (!scope.ok) {
       return Response.json({ error: scope.error }, { status: scope.status });
     }
@@ -217,7 +217,7 @@ export async function PATCH(req) {
       return Response.json({ urls, url: urls[0] });
     }
 
-    await fileIntoGallery({ listingId, scope, urls, userId: session.user.id });
+    await fileIntoGallery({ listingId, scope, urls, userId: requestUser.id });
 
     return Response.json({ urls, url: urls[0] });
   } catch (error) {
@@ -230,8 +230,8 @@ export async function PATCH(req) {
 // Body: { listingId, db?, files: [{ name, type }] }
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -254,7 +254,7 @@ export async function POST(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const scope = await resolveUploadScope(session, listingId, unitId);
+    const scope = await resolveUploadScope(requestUser, listingId, unitId);
     if (!scope.ok) {
       return Response.json({ error: scope.error }, { status: scope.status });
     }
@@ -285,8 +285,8 @@ export async function POST(req) {
 // Body: { listingId, db?, urls: [string] }
 export async function PUT(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -309,7 +309,7 @@ export async function PUT(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const scope = await resolveUploadScope(session, listingId, unitId);
+    const scope = await resolveUploadScope(requestUser, listingId, unitId);
     if (!scope.ok) {
       return Response.json({ error: scope.error }, { status: scope.status });
     }
@@ -320,7 +320,7 @@ export async function PUT(req) {
       return Response.json({ urls, url: urls[0] });
     }
 
-    await fileIntoGallery({ listingId, scope, urls, userId: session.user.id });
+    await fileIntoGallery({ listingId, scope, urls, userId: requestUser.id });
 
     return Response.json({ urls });
   } catch (error) {

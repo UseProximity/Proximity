@@ -1,0 +1,128 @@
+// Push notification foundation: permission request, Expo push token
+// acquisition, and registering/unregistering that token with the Proximity
+// backend (POST/DELETE /api/devices/push-token via apiClient.devices).
+// Listener wiring (foreground display, token rotation, tap handling) lives
+// in ../hooks/usePushNotifications.js; this file only knows how to get and
+// sync a token, not how the app reacts to notifications.
+import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
+import apiClient from "./apiClient";
+import { useChatUnreadStore } from "../store/chatUnreadStore";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The thread a chat notification opens, or null when the payload is not a
+// well-formed chat notification. The server sends { threadId, route: "/chat/<threadId>" };
+// both must be present and agree, so a payload cannot point the app anywhere but
+// the chat screen of a real-looking thread id.
+export function chatThreadIdFromNotificationData(data) {
+  const threadId = data?.threadId;
+  if (typeof threadId !== "string" || !UUID_RE.test(threadId)) return null;
+  if (data.route !== `/chat/${threadId}`) return null;
+  return threadId.toLowerCase();
+}
+
+// A chat notification for the conversation that is open on screen would only repeat
+// what the user is looking at (the message arrives over realtime), so it is not
+// shown while the app is in the foreground. Every other notification, including
+// chat ones for other conversations, shows as before.
+Notifications.setNotificationHandler({
+  handleNotification: async (notification) => {
+    const threadId = chatThreadIdFromNotificationData(notification.request.content.data);
+    const activeThreadId = useChatUnreadStore.getState().activeThreadId;
+    const viewingThread =
+      !!threadId && typeof activeThreadId === "string" && activeThreadId.toLowerCase() === threadId;
+    return {
+      shouldShowBanner: !viewingThread,
+      shouldShowList: !viewingThread,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    };
+  },
+});
+
+// Cached so logout can unregister the exact token that was registered,
+// without re-deriving it (and without prompting for permission again).
+let cachedToken = null;
+
+// Upper bound on how long logout waits for the server-side unregister. Past this
+// the request is aborted and logout carries on with the local cleanup.
+const UNREGISTER_TIMEOUT_MS = 3000;
+
+// `devicePushToken` is optional and only ever passed by the token-rotation
+// listener (usePushNotifications.js), which already receives the native
+// DevicePushToken as its argument. Passing it through here skips
+// getExpoPushTokenAsync's internal getDevicePushTokenAsync() call: calling
+// that from inside the listener re-triggers the listener itself and loops
+// (see expo-notifications' own TokenEmitter.ts: "You should not call
+// getDevicePushTokenAsync inside this function, as it triggers the listener
+// and may lead to an infinite loop"). The normal initial-registration call
+// (no argument) is unaffected; omitting it falls back to the usual fetch.
+export async function registerForPushNotificationsAsync(devicePushToken) {
+  // Physical devices always continue. Of the non-physical targets, only an
+  // Android emulator continues too, with Google Play services installed
+  // (the default on Android Studio's Play Store AVD images), it can obtain
+  // a real FCM-backed Expo push token like a physical device would. iOS
+  // simulators stay blocked: Apple's platform has no remote-push support in
+  // the simulator at all, so getExpoPushTokenAsync has nothing to succeed at.
+  if (!Device.isDevice && Platform.OS !== "android") return null;
+
+  const existing = await Notifications.getPermissionsAsync();
+  let status = existing.status;
+  if (status !== "granted") {
+    const requested = await Notifications.requestPermissionsAsync();
+    status = requested.status;
+  }
+  if (status !== "granted") return null;
+
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "default",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+  const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId, devicePushToken });
+  return token;
+}
+
+export async function registerDeviceToken(token) {
+  if (!token) return;
+  await apiClient.devices.registerPushToken({ expoPushToken: token, platform: Platform.OS });
+  cachedToken = token;
+}
+
+export async function unregisterDeviceToken() {
+  if (!cachedToken) return;
+  const token = cachedToken;
+  cachedToken = null;
+  // Aborting (rather than just abandoning the request) matters: a request left
+  // running could 401 after local state is cleared and trigger onTokenExpired,
+  // which would log out whoever signed in next. The signal also cancels the api
+  // client's token-refresh retry; the race is a backstop for a fetch that
+  // doesn't honor the signal, so logout never waits past the timeout.
+  const controller = new AbortController();
+  let timer;
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve();
+    }, UNREGISTER_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([
+      apiClient.devices.unregisterPushToken(token, { signal: controller.signal }),
+      timedOut,
+    ]);
+  } catch {
+    // Logout must proceed regardless (offline, timed out, server error). A
+    // failed unregister just leaves a stale row that a future registration
+    // (this device, any user) will overwrite via the upsert's onConflict, or
+    // that purge-accounts cleans up eventually.
+  } finally {
+    clearTimeout(timer);
+  }
+}

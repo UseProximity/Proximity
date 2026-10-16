@@ -185,12 +185,13 @@ export function buildListing(row, owner = null) {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
         us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active && isPublished(l)));
-      // Decide the listing's label from its AVAILABLE units when it has any, so an
-      // available sublease surfaces as "Sublease" even alongside an unavailable
-      // standard lease (and an unavailable sublease no longer forces the badge).
+      // Decide the listing's label from its AVAILABLE units when it has any, so
+      // an unavailable sublease never forces the badge. Within that pool a
+      // standard lease trumps: the card says "Sublease" only when every offering
+      // is one (Wyatt, 2026-10-12), matching isSubleaseListing in matchmaking.
       const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
-      return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
+      return pool.length && pool.every((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
     images: coverPool.map((img) => img.url),
     imageFromStreetView: coverPool[0]?.source === "street_view",
@@ -267,12 +268,16 @@ export function buildListing(row, owner = null) {
 
 /**
  * Fetch every non-deleted listing, fully built into the frontend shape.
- * Exported so other routes (e.g. the popular-listings ranking) can reuse the
- * exact same data path instead of duplicating the select + landlord join.
- * Throws on a DB error — callers handle the response.
+ * Exported so other routes (e.g. the popular-listings ranking, mobile's
+ * favorites read path) can reuse the exact same data path instead of
+ * duplicating the select + landlord join. Pass `listingIds` to filter to a
+ * specific set of listings (e.g. a user's saved listings) instead of
+ * fetching everything; omit it (or leave it empty) to fetch all non-deleted
+ * listings, unchanged from before. Throws on a DB error; callers handle
+ * the response.
  */
-export async function fetchListings() {
-  const { data: listings, error } = await supabase
+export async function fetchListings(listingIds = null) {
+  let query = supabase
     .from("listings")
     .select(
       `
@@ -307,6 +312,12 @@ export async function fetchListings() {
     .is("deleted_at", null)
     // Draft properties belong on their owner's dashboard, not in browse.
     .not("published_at", "is", null);
+
+  if (listingIds?.length > 0) {
+    query = query.in("id", listingIds);
+  }
+
+  const { data: listings, error } = await query;
 
   if (error) throw error;
 

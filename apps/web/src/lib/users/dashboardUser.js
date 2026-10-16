@@ -54,6 +54,17 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
   const primaryLandlord = landlords.find((x) => x.is_primary) ?? landlords[0] ?? null;
   const owner = primaryLandlord?.user_id ?? null;
 
+  /*
+   * Contact details stay with the people they belong to. The same serializer
+   * builds a student's saved and contacted listings (no currentUserId), and the
+   * Privacy Policy promises a listing's contact email and phone never reach the
+   * browser there. A landlord gets their own, plus the imported ownerless
+   * offerings on a property they own, which only they can fix.
+   */
+  const ownsProperty = !!currentUserId && landlords.some((x) => x.user_id === currentUserId);
+  const showLeaseContact = (lease) =>
+    !!currentUserId && (lease.owner_id === currentUserId || (!lease.owner_id && ownsProperty));
+
   const coOwners = landlords
     .filter((x) => x.user_id !== currentUserId)
     .map((x) => ({
@@ -74,10 +85,9 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
    * Drafts (202610100002) are shown to the people who own them and nobody else.
    * A draft unit belongs to the property's owners and to whoever is letting it;
    * a draft offering belongs to its owner alone, so a landlord sharing a
-   * building never sees a competitor's unpublished price.
+   * building never sees a competitor's unpublished price. ownsProperty is the
+   * same test the contact rules above use.
    */
-  const ownsProperty =
-    !!currentUserId && landlords.some((x) => x.user_id === currentUserId);
   const isMine = (lease) => !!currentUserId && lease.owner_id === currentUserId;
   const visibleUnits = (l.listing_units ?? []).filter(
     (u) =>
@@ -126,7 +136,11 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             sublease: !!lease.sublease,
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
+            // The contact block (EditorContact) is read off these: one per
+            // landlord per property, so every lease here carries the same one.
+            contactName: lease.contact_name ?? l.contact_name ?? "",
             contactEmail: lease.contact_email ?? l.contact_email ?? "",
+            contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
             description: lease.description ?? "",
             isActive: !!lease.is_active,
             unavailable: !!lease.unavailable,
@@ -181,16 +195,27 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
          * shows one rent per unit is describing a listing that doesn't exist —
          * and gives a landlord no way to find the offering that is actually
          * theirs. `mine` is what the UI gates editing on; the API re-checks it.
+         *
+         * Withdrawn offerings included. The dashboard's Withdraw button clears
+         * is_active, and this list used to drop anything not active, so a
+         * withdrawn offering vanished from the editor: the unit read "No
+         * offerings on this unit yet" while its footer said to restore one
+         * above. The Icon went live with 13 withdrawn floor plans and no way to
+         * publish any of them from the editor. Only deleted offerings are
+         * hidden; withdrawn ones sort last and carry a Publish again button.
          */
         leases: (u.unit_leases ?? [])
-          .filter((lease) => lease.is_active && (isPublished(lease) || isMine(lease)))
+          .filter((lease) => !lease.deleted_at && (isPublished(lease) || isMine(lease)))
           .map((lease) => ({
             id: lease.id,
             isDraft: !isPublished(lease),
             rent: lease.rent != null ? Number(lease.rent) : null,
             rentIsPerPerson: lease.rent_is_per_person ?? null,
             sublease: !!lease.sublease,
-            unavailable: !!lease.unavailable,
+            // Withdrawn by either route: the editor's checkbox sets unavailable
+            // alone, the dashboard button clears is_active as well. One flag
+            // so the editor reads both the same way.
+            unavailable: !isLiveLease(lease),
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
             leaseTermMonths: Array.isArray(lease.lease_term_months)
@@ -200,10 +225,17 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             // property's for leases that predate them. The editor opens on
             // these, so leaving them unselected showed a landlord an empty
             // contact box and lost the value on the next save.
-            contactEmail: lease.contact_email ?? l.contact_email ?? "",
-            contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
+            ...(showLeaseContact(lease)
+              ? {
+                  contactEmail: lease.contact_email ?? l.contact_email ?? "",
+                  contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
+                }
+              : {}),
             description: lease.description ?? "",
             mine: !!currentUserId && lease.owner_id === currentUserId,
+            // An imported offering with no account behind it. Its contact can be
+            // fixed by the property's owner (api/leases/[leaseId]/contact).
+            ownerless: !lease.owner_id,
             landlordName: lease.contact_name ?? l.contact_name ?? null,
           }))
           .sort((a, b) => {
@@ -268,8 +300,11 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     numReviews,
     numClicks: metricsMap[l.id] ?? 0,
     numSaves: 0,
-    contactEmail: l.contact_email ?? null,
-    contactPhone: l.contact_phone ?? null,
+    // Only on the viewer's own listings (see showLeaseContact). The name is
+    // public on the listing page, so it stays.
+    ...(currentUserId
+      ? { contactEmail: l.contact_email ?? null, contactPhone: l.contact_phone ?? null }
+      : {}),
     contactName: l.contact_name ?? null,
     owner,
     coOwners,
@@ -322,11 +357,17 @@ export async function buildDashboardUser({ email, id } = {}) {
     // that dashboard too and the landlord-only tabs key off this.
     .select("*, roles!role_id(name)");
 
-  const { data: user, error: userError } = await (
+  const { data: row, error: userError } = await (
     id ? query.eq("id", id) : query.eq("email", email)
   ).maybeSingle();
 
-  if (userError || !user) return null;
+  if (userError || !row) return null;
+
+  // The whole row is spread into the payload below (and sent to the browser and
+  // the mobile app), so the Sign in with Apple columns are taken out here: the
+  // refresh token is a secret, and apple_sub is Apple's identifier for the person.
+  // Every other column is passed through as before.
+  const { apple_refresh_token: _appleRefreshToken, apple_sub: _appleSub, ...user } = row;
 
   const userId = user.id;
 

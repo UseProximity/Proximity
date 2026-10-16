@@ -57,8 +57,12 @@ trap 'rm -f "$DUMP" "$DUMP.err" "$FKS" "$FKSQL"' EXIT
 echo "[1/6] Dumping PROD public schema → $DUMP"
 # --clean --if-exists: dump includes DROPs so the restore replaces existing objects.
 # --no-owner --no-privileges: skip role/grant statements (roles differ across projects).
+# --exclude-table-data=public.device_push_tokens: that table holds real users' Expo push tokens,
+# which must never be copied from PROD into DEV (staging could push real people's phones). Only the
+# rows are skipped; the table, indexes, FK and RLS are still dumped, so DEV keeps the table, empty.
 pg_dump "$PROD_DB_URL" \
   --schema=public --no-owner --no-privileges --clean --if-exists \
+  --exclude-table-data=public.device_push_tokens \
   --file="$DUMP"
 
 # Capture prod's foreign keys separately so step [5/6] can reconcile them. The dump *does*

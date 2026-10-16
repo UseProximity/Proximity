@@ -8,7 +8,9 @@
  * are read from EMAIL_HOST, EMAIL_PORT, EMAIL_USER, and EMAIL_PASS environment variables.
  */
 import nodemailer from "nodemailer";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { sendMailSafe } from "./outreach";
+import { stayOnProximityNote } from "./chat/moderation";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -16,6 +18,34 @@ const transporter = nodemailer.createTransport({
   secure: false,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
+
+/*
+ * Amazon SES, for chat alerts and alert-address confirmations. It can send as
+ * info@useproximity.org with a reply+token Reply-To on our own reply domain,
+ * which Gmail SMTP cannot, and it reports bounces and complaints back to
+ * /api/ses/events. Null when the AWS_SES_* variables are missing, in which case
+ * those emails go through Gmail like everything else.
+ */
+const sesTransporter =
+  process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY
+    ? nodemailer.createTransport({
+        SES: {
+          sesClient: new SESv2Client({
+            region: process.env.AWS_SES_REGION || "us-east-1",
+            credentials: {
+              accessKeyId: process.env.AWS_SES_ACCESS_KEY_ID,
+              secretAccessKey: process.env.AWS_SES_SECRET_ACCESS_KEY,
+            },
+          }),
+          SendEmailCommand,
+        },
+      })
+    : null;
+
+// Routes bounce and complaint events to the SNS topic behind /api/ses/events.
+const SES_SEND_OPTIONS = {
+  ConfigurationSetName: process.env.AWS_SES_CONFIGURATION_SET || "proximity-chat-alerts",
+};
 
 /*
  * The footer every outbound email carries.
@@ -71,13 +101,15 @@ export function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
+export async function sendPasswordResetEmail({ email, name, token, baseUrl, req }) {
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Reset your Proximity password",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Reset your Proximity password",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Reset your password${name ? `, ${name}` : ""}</h2>
         <p>Click the button below to set a new password. This link expires in 1 hour.</p>
@@ -92,7 +124,9 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
         })}
       </div>
     `,
-  });
+    },
+    req
+  );
 }
 
 export async function sendLandlordNudgeEmail({ email, name }) {
@@ -159,108 +193,375 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   });
 }
 
-const MESSAGE_PREVIEW_LIMIT = 300;
+const CHAT_FROM_ADDRESS = "info@useproximity.org";
+const CHAT_TIME_ZONE = "America/Chicago";
 
-// Notification for a new in-app chat message. The same thread has two sides, so the copy
-// flips on recipientIsInterestedUser: the listing owner gets an inquiry ("someone messaged
-// you about your listing"), the student gets a reply. When unreadCount > 1, subject and
-// intro mention how many messages are waiting; the body still quotes only the latest.
-export async function sendChatMessageEmail({
-  to,
-  recipientName,
+// Display names go into a header, so no quotes, angle brackets or line breaks.
+function displayName(value, fallback) {
+  const clean = String(value ?? "").replace(/["<>\r\n]/g, "").trim();
+  return clean || fallback;
+}
+
+// "LOCAL on Delmar" when the listing has a name, else the street part of the
+// address ("6811 Kingsbury"), matching the conversation header in the app.
+export function chatListingLabel({ listingTitle, listingAddress, subject }) {
+  const title = String(listingTitle ?? "").trim();
+  if (title) return title;
+  const street = String(listingAddress ?? "").split(",")[0].trim();
+  return street || String(subject ?? "").trim() || "your conversation";
+}
+
+function chatMessageText(m) {
+  const body = String(m?.body ?? "").trim();
+  if (m?.messageType === "attachment") {
+    const note = "(Attached a photo or document. Open the conversation on Proximity to see it.)";
+    return body ? `${body}\n${note}` : note;
+  }
+  return body;
+}
+
+// Line breaks as <br>, since Outlook ignores white-space:pre-wrap and would run
+// the paragraphs of a message together.
+function chatMessageHtml(m) {
+  return escapeHtml(chatMessageText(m)).replace(/\r\n|\r|\n/g, "<br>");
+}
+
+// A small time above each message, only when the email carries more than one,
+// so a burst reads as separate messages rather than one long one: "8:21 PM",
+// or "Oct 12, 8:21 PM" when the batch spans more than a day. Empty strings
+// when there is nothing to label.
+function chatTimeLabels(list) {
+  if (list.length < 2) return list.map(() => "");
+  const dates = list.map((m) => new Date(m?.createdAt ?? NaN));
+  if (dates.some((d) => Number.isNaN(d.getTime()))) return list.map(() => "");
+  const dayOf = new Intl.DateTimeFormat("en-US", { timeZone: CHAT_TIME_ZONE, dateStyle: "medium" });
+  const sameDay = new Set(dates.map((d) => dayOf.format(d))).size === 1;
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: CHAT_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+  });
+  return dates.map((d) => fmt.format(d));
+}
+
+/*
+ * Alert for new chat messages, one email per batch of unread messages.
+ *
+ * Subject and threading headers stay the same for every alert in a thread, so
+ * mail apps stack them into one conversation: "Proximity Inquiry · LOCAL on
+ * Delmar · Angela Clayton" (Wyatt, 2026-10-09). The From name is the other
+ * person ("Angela Clayton via Proximity") on our own address, or just
+ * "Proximity" for an account with no name.
+ *
+ * With a replyTo (the private reply+token address) the email says it can be
+ * answered directly. Without one, or when it falls back to Gmail, it only
+ * points to the app, since a reply would land in the shared inbox instead.
+ *
+ * The email reads like one the other person wrote, not a notification about
+ * one (Wyatt, 2026-10-12): their words first, in plain paragraphs, then a short
+ * signature with their name, company and the listing, then the small print.
+ * No greeting from us, no "X sent you a message" narration, no button. The
+ * "reply above this line" marker stays, in the faintest text, because inbound
+ * parsing cuts the quoted alert there.
+ */
+export function buildChatMessageEmail({
   senderName,
-  listingLabel,
-  messageBody,
-  messageType,
+  senderCompany,
+  listingTitle,
+  listingAddress,
+  subject: threadSubject,
+  messages,
+  earlierCount = 0,
   recipientIsInterestedUser,
   threadUrl,
-  unreadCount = 1,
+  canReply,
 }) {
-  const senderLabel = senderName || "Someone";
-  const listingText = listingLabel || "your conversation";
-  const sender = escapeHtml(senderLabel);
-  const listing = escapeHtml(listingText);
-  const firstName = recipientName ? escapeHtml(recipientName.split(" ")[0]) : "";
-  const count = Number.isFinite(Number(unreadCount)) ? Math.max(1, Math.floor(Number(unreadCount))) : 1;
-  const multi = count > 1;
-  const isAttachment = messageType === "attachment";
+  const named = displayName(senderName, "");
+  const other = named || "Someone";
+  const otherFirst = other.split(/\s+/)[0];
+  const company = displayName(senderCompany, "");
+  const listingLabel = chatListingLabel({ listingTitle, listingAddress, subject: threadSubject });
+  const subject = ["Proximity Inquiry", listingLabel, named].filter(Boolean).join(" · ");
+  const fromName = named ? `${otherFirst} via Proximity` : "Proximity";
+  const list = Array.isArray(messages) && messages.length > 0 ? messages : [];
+  const labels = chatTimeLabels(list);
+  const street = String(listingAddress ?? "").split(",")[0].trim();
+  const about = street && street !== listingLabel ? `${listingLabel}, ${street}` : listingLabel;
 
-  const body = (messageBody || "").trim();
-  const preview = escapeHtml(
-    body.length > MESSAGE_PREVIEW_LIMIT ? `${body.slice(0, MESSAGE_PREVIEW_LIMIT)}…` : body
-  );
+  const how = canReply
+    ? `Reply to this email and ${escapeHtml(otherFirst)} will see it on Proximity, or <a href="${threadUrl}" style="color:#9ca3af">open the conversation</a>.`
+    : `<a href="${threadUrl}" style="color:#9ca3af">Open the conversation on Proximity</a> to reply.`;
+  const earlier = earlierCount > 0
+    ? `There ${earlierCount === 1 ? "is 1 earlier message" : `are ${earlierCount} earlier messages`} in the conversation.`
+    : "";
+  const reason = recipientIsInterestedUser
+    ? "You are receiving this because you messaged a landlord on Proximity. You can turn off message emails in your account settings."
+    : "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.";
 
-  let subject;
-  let intro;
-  if (isAttachment && !multi) {
-    subject = recipientIsInterestedUser
-      ? `${senderLabel} sent a file about ${listingText}`
-      : `New file about ${listingLabel || "your listing"} (via Proximity)`;
-    intro = recipientIsInterestedUser
-      ? `<strong>${sender}</strong> sent you a photo or document about <strong>${listing}</strong>.`
-      : `<strong>${sender}</strong> sent a photo or document${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
-  } else if (multi) {
-    subject = recipientIsInterestedUser
-      ? `${count} messages from ${senderLabel} about ${listingText}`
-      : `${count} messages from ${senderLabel} about ${listingLabel || "your listing"} (via Proximity)`;
-    intro = recipientIsInterestedUser
-      ? `<strong>${sender}</strong> sent you <strong>${count} messages</strong> about <strong>${listing}</strong>.`
-      : `<strong>${sender}</strong> sent you <strong>${count} messages</strong>${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
-  } else if (recipientIsInterestedUser) {
-    subject = `${senderLabel} replied about ${listingText}`;
-    intro = `<strong>${sender}</strong> replied to you about <strong>${listing}</strong>.`;
-  } else {
-    subject = `New message about ${listingLabel || "your listing"} (via Proximity)`;
-    intro = `<strong>${sender}</strong> sent you a message${listingLabel ? ` about your listing at <strong>${listing}</strong>` : ""} on Proximity.`;
+  const small = (line) => `<p style="margin:0 0 6px">${line}</p>`;
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
+      ${canReply ? `<p style="color:#c4c8cf;font-size:11px;margin:0 0 20px">Reply above this line to message ${escapeHtml(other)}.</p>` : ""}
+      ${list
+        .map((m, i) =>
+          labels[i]
+            ? `<p style="margin:0 0 2px;color:#9ca3af;font-size:12px">${escapeHtml(labels[i])}</p><p style="margin:0 0 18px">${chatMessageHtml(m)}</p>`
+            : `<p style="margin:0 0 14px">${chatMessageHtml(m)}</p>`
+        )
+        .join("")}
+      <p style="margin:24px 0 0;color:#6b7280;font-size:14px;line-height:1.5">
+        <span style="color:#111827;font-weight:600">${escapeHtml(other)}</span>${company ? `<br>${escapeHtml(company)}` : ""}<br>
+        About <a href="${threadUrl}" style="color:#6b7280">${escapeHtml(about)}</a>
+      </p>
+      <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
+        ${small(how)}
+        ${earlier ? small(earlier) : ""}
+        ${small(reason)}
+        <p style="margin:0">${POSTAL_ADDRESS}</p>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    canReply ? `Reply above this line to message ${other}.\n` : null,
+    ...list.map((m, i) => `${labels[i] ? `${labels[i]}\n` : ""}${chatMessageText(m)}\n`),
+    other,
+    company || null,
+    `About ${about}`,
+    threadUrl,
+    "",
+    canReply
+      ? `Reply to this email and ${otherFirst} will see it on Proximity, or open the conversation: ${threadUrl}`
+      : `Open the conversation on Proximity to reply: ${threadUrl}`,
+    earlier || null,
+    reason,
+    POSTAL_ADDRESS,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+
+  return { subject, fromName, html, text };
+}
+
+export async function sendChatMessageEmail({
+  to,
+  senderName,
+  senderCompany,
+  listingTitle,
+  listingAddress,
+  subject: threadSubject,
+  messages,
+  earlierCount = 0,
+  recipientIsInterestedUser,
+  threadUrl,
+  replyTo,
+  threadRef,
+  references = [],
+}) {
+  const build = (canReply) =>
+    buildChatMessageEmail({
+      senderName,
+      senderCompany,
+      listingTitle,
+      listingAddress,
+      subject: threadSubject,
+      messages,
+      earlierCount,
+      recipientIsInterestedUser,
+      threadUrl,
+      canReply,
+    });
+  const { subject, fromName } = build(false);
+
+  // Threading: the real Message-IDs of the earlier alerts to this person in this
+  // thread (oldest first), so every mail client stacks them as one conversation.
+  // Before the first one there is nothing to reference, so a stable synthetic
+  // root per (thread, recipient) stands in. SES assigns its own Message-ID.
+  const root = threadRef ? `<${threadRef}@useproximity.org>` : null;
+  const chain = [root, ...references].filter(Boolean);
+  const headers = chain.length > 0
+    ? { References: chain.join(" "), "In-Reply-To": chain[chain.length - 1] }
+    : undefined;
+  const from = { name: fromName, address: CHAT_FROM_ADDRESS };
+
+  if (sesTransporter && replyTo) {
+    try {
+      const { html, text } = build(true);
+      const info = await sendMailSafe(sesTransporter, {
+        from,
+        to,
+        replyTo,
+        subject,
+        headers,
+        html,
+        text,
+        ses: SES_SEND_OPTIONS,
+      });
+      return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
+    } catch (err) {
+      console.error("sendChatMessageEmail: SES send failed, falling back to Gmail:", err);
+    }
   }
 
-  const closing = recipientIsInterestedUser
-    ? "Reply on Proximity to keep everything about this place in one thread."
-    : "Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.";
-
-  const quoteLabel = isAttachment
-    ? multi
-      ? "Most recent:"
-      : "Attachment:"
-    : multi
-      ? "Most recent:"
-      : `${sender} wrote:`;
-
-  return sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
+  const { html, text } = build(false);
+  const info = await sendMailSafe(transporter, {
+    from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
     subject,
+    headers,
+    html,
+    text,
+  });
+  return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed) };
+}
+
+// Why an emailed reply did not reach the conversation, in words the sender can
+// act on. Keyed by chat_inbound_emails.status.
+const NOT_DELIVERED_REASONS = {
+  unknown_address:
+    "This reply address is not connected to a conversation. It may be from an old or test email.",
+  wrong_sender:
+    "Replies have to come from the address the message alert was sent to, and forwarded emails cannot be posted.",
+  empty:
+    "We could not find a new message in your reply. Type your message above the quoted email and send it again.",
+  rejected:
+    "The conversation is no longer available, or too many messages were sent in a short time. Please try again in a few minutes.",
+  attachments_removed:
+    "The attached file could not be posted. Files that share contact details or ask for payment are not allowed in Proximity conversations.",
+};
+
+/*
+ * Sent when an emailed reply could not be posted (lib/chat/inboundEmail.js), at
+ * most once per sender per conversation per day. Marked Auto-Submitted so the
+ * other side's out-of-office does not answer it and start a loop.
+ */
+export async function sendReplyNotDeliveredEmail({ to, reason, baseUrl }) {
+  const why = NOT_DELIVERED_REASONS[reason] || NOT_DELIVERED_REASONS.rejected;
+  const inboxUrl = `${baseUrl}/messages`;
+  const message = {
+    from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: "Your reply was not delivered",
+    headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" },
+    text: `Your reply was not delivered.\n\n${why}\n\nYou can always reply in the Proximity app:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
     html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${firstName || "there"},</p>
-        <p>${intro}</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p style="margin: 6px 0;"><strong>${quoteLabel}</strong></p>
-        <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${preview}"</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <a href="${threadUrl}"
-           style="display:inline-block;margin:8px 0 16px;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Read and reply
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111">Your reply was not delivered</h2>
+        <p>${escapeHtml(why)}</p>
+        <p>You can always reply in the Proximity app.</p>
+        <a href="${inboxUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Open your messages
         </a>
-        <p>${closing}</p>
-        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
+        ${emailFooter({ reason: "You are receiving this because you replied to a Proximity message alert." })}
       </div>
     `,
-  });
+  };
+  if (sesTransporter) {
+    try {
+      await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+      return;
+    } catch (err) {
+      console.error("sendReplyNotDeliveredEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+}
+
+// What an emailed reply contained, in words the sender recognises. Keyed by
+// the reasons from lib/chat/moderation.js.
+const GUIDELINE_REASONS = {
+  contact_email: "an email address",
+  contact_phone: "a phone number",
+  external_link: "a link to an outside website",
+  social_handle: "a social media handle",
+  off_platform_request: "a request to continue outside Proximity",
+  irreversible_payment_rail: "a request for payment through gift cards, wire or cryptocurrency",
+  off_platform_payment_request: "a request for payment through an app Proximity cannot protect",
+  credential_phishing: "a request for login details",
+  slur: "abusive language",
+  threat: "a threat",
+};
+
+function listReasons(reasons) {
+  const parts = [...new Set(reasons.map((r) => GUIDELINE_REASONS[r]).filter(Boolean))];
+  if (parts.length === 0) return "contact details";
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/*
+ * Sent right after an emailed reply that broke the conversation rules was
+ * posted (Wyatt, 2026-10-12): by email the message is delivered and flagged,
+ * not blocked, and the sender is told what it contained and why to keep the
+ * conversation on Proximity. `removed` is true when part of the message was
+ * cut (abuse, fraud or phishing) rather than delivered in full. Marked
+ * Auto-Submitted so an out-of-office does not answer it.
+ */
+export function buildReplyGuidelinesEmail({ otherFirst, reasons, removed, baseUrl, audience = "student" }) {
+  const who = displayName(otherFirst, "the other person");
+  const what = listReasons(reasons);
+  const inboxUrl = `${baseUrl}/messages`;
+  const future = "In the future, please refrain from taking conversations outside of Proximity, unless it is to finalize a deal.";
+  const delivered = removed
+    ? `Your reply to ${who} was delivered, but part of it was removed because it contained ${what}. ${future}`
+    : `Your reply to ${who} was delivered. It contained ${what}, which Proximity conversations are meant to keep out. ${future}`;
+  const why = stayOnProximityNote(audience, "email");
+  const how = `Please reply to the message emails from Proximity the way you would reply to ${who} directly, and your words land in the conversation. Replies that keep including contact details may stop being delivered.`;
+  return {
+    subject: "A note about your reply",
+    text: `${delivered}\n\n${why}\n\n${how}\n\nThe conversation on Proximity:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
+    html: `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
+        <p style="margin:0 0 14px">${escapeHtml(delivered)}</p>
+        <p style="margin:0 0 14px">${escapeHtml(why)}</p>
+        <p style="margin:0 0 14px">${escapeHtml(how)}</p>
+        <p style="margin:0 0 14px"><a href="${inboxUrl}" style="color:#6b7280">The conversation on Proximity</a></p>
+        <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
+          <p style="margin:0 0 6px">You are receiving this because you replied to a Proximity message alert.</p>
+          <p style="margin:0">${POSTAL_ADDRESS}</p>
+        </div>
+      </div>
+    `,
+  };
+}
+
+export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, removed, baseUrl, audience = "student" }) {
+  const built = buildReplyGuidelinesEmail({ otherFirst, reasons, removed, baseUrl, audience });
+  const message = {
+    from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: built.subject,
+    headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" },
+    text: built.text,
+    html: built.html,
+  };
+  if (sesTransporter) {
+    try {
+      await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+      return;
+    } catch (err) {
+      console.error("sendReplyGuidelinesEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
 // `next` is where to send them once verified, so someone who signed up in the
 // middle of something (publishing a listing) lands back in it. The verify route
 // sanitizes it again, so the link is not trusted just because we built it.
-export async function sendVerificationEmail({ email, name, token, baseUrl, next }) {
+export async function sendVerificationEmail({ email, name, token, baseUrl, next, req }) {
   const verifyUrl =
     `${baseUrl}/api/auth/verify-email?token=${token}` +
     (next ? `&next=${encodeURIComponent(next)}` : "");
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Verify your Proximity account",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify your Proximity account",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Welcome to Proximity${name ? `, ${name}` : ""}!</h2>
         <p>Click the button below to verify your email address. This link expires in 24 hours.</p>
@@ -274,7 +575,58 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next 
         })}
       </div>
     `,
-  });
+    },
+    req
+  );
+}
+
+/*
+ * One-click confirmation for a per-listing alert address. Until someone at this
+ * address clicks through, chat alerts for the listing keep going to the
+ * landlord account's own email, see fn_chat_alert_email.
+ *
+ * Says plainly what the address is being signed up for, and that the
+ * conversations stay in the landlord's account, so a leasing office that never
+ * asked for this can tell what it is and ignore it.
+ */
+export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl }) {
+  const landlord = escapeHtml(landlordName || "A landlord");
+  const listing = listingLabel ? escapeHtml(listingLabel) : "";
+  const subject = listingLabel
+    ? `Confirm message alerts for ${listingLabel}`
+    : "Confirm this address for Proximity message alerts";
+  const message = {
+    from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <h2 style="color:#111">Confirm this address for message alerts</h2>
+        <p><strong>${landlord}</strong> wants students&#39; messages${listing ? ` about <strong>${listing}</strong>` : ""} sent to this address.</p>
+        <p>Once you confirm, each new message arrives here as an email, with the full text of the message and the sender&#39;s name. Reply directly to the email and your reply is posted to the conversation in ${landlord}&#39;s Proximity account. Copies of these emails stay in this inbox, so anyone who can read it can read the messages.</p>
+        <a href="${confirmUrl}"
+           style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Confirm this address
+        </a>
+        <p style="color:#666;font-size:14px">Or copy this link:<br>${confirmUrl}</p>
+        <p style="color:#999;font-size:12px">If you don&#39;t recognize this, ignore it. Nothing will be sent here unless you confirm. The link expires in 7 days.</p>
+        ${emailFooter({
+          reason: "You are receiving this because a landlord on Proximity entered this address as the contact for one of their listings.",
+        })}
+      </div>
+    `,
+  };
+  // Same sender as the alerts this address will get, so a first alert from SES
+  // is not the first time the inbox sees it.
+  if (sesTransporter) {
+    try {
+      await sendMailSafe(sesTransporter, { ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS });
+      return;
+    } catch (err) {
+      console.error("sendContactVerificationEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  await sendMailSafe(transporter, message);
 }
 
 // One email per PMS sync run, only when a human should look: errored or

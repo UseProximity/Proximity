@@ -21,6 +21,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { AUTH_ERRORS } from "@proximity/auth-core";
 import { hashChatAccessToken } from "@/lib/chat/accessToken";
 import { emailMatchPattern } from "@/lib/auth/email";
 
@@ -35,7 +36,7 @@ const ROLE_REFRESH_MS = 60_000;
 // learned the account was unverified and said "Invalid email or password".
 // The code reaches the client as `result.code`.
 class EmailNotVerified extends CredentialsSignin {
-  code = "EMAIL_NOT_VERIFIED";
+  code = AUTH_ERRORS.EMAIL_NOT_VERIFIED;
 }
 
 /*
