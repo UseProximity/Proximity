@@ -3,7 +3,7 @@
 /*
  * Quiet note above the composer when the landlord has never replied
  * (lib/chat/followups.js decides when). No alert, no badge: just a nudge
- * toward similar listings. "Explore other places" opens browse in "similar to
+ * toward similar listings. "Explore Similar" opens browse in "similar to
  * this listing" mode (Wyatt, 2026-10-16).
  */
 import { useEffect } from "react";
@@ -29,7 +29,7 @@ export default function NoReplyNote({ threadId, listingId, listingUnavailable = 
         onClick={() => trackEvent("chat_no_reply_explore_click", { thread_id: threadId, listing_id: listingId, variant })}
         className="flex-shrink-0 text-[13px] font-semibold text-gray-900 underline underline-offset-2 hover:text-gray-700"
       >
-        Explore other places
+        Explore Similar
       </Link>
     </div>
   );
