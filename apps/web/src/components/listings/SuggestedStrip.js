@@ -16,6 +16,22 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
  * Analytics: suggested_impression / suggested_click here; saves and contacts
  * that follow a click carry source=suggested on their existing events.
  */
+/*
+ * The strip's heading. AvailableListings renders it in the results row, on the
+ * left where the listing count normally sits, and moves the count to the right.
+ */
+export function SuggestedHeading() {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="h-2.5 w-2.5 rounded-full bg-[#A1000A]"
+      />
+      <h2 className="text-sm font-bold text-gray-900">Suggested for you</h2>
+    </div>
+  );
+}
+
 export default function SuggestedStrip({
   listings,
   session,
@@ -40,13 +56,6 @@ export default function SuggestedStrip({
 
   return (
     <section aria-label="Suggested for you" className="mb-6">
-      <div className="flex items-center gap-2 px-1 mb-3">
-        <span
-          aria-hidden="true"
-          className="h-2.5 w-2.5 rounded-full bg-[#A1000A]"
-        />
-        <h2 className="text-sm font-bold text-gray-900">Suggested for you</h2>
-      </div>
       <div
         className={
           layout === "grid" ? "grid grid-cols-2 gap-6" : "space-y-4"

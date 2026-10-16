@@ -10,7 +10,9 @@ import MapPopupCard, {
   MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
-import SuggestedStrip from "@/components/listings/SuggestedStrip";
+import SuggestedStrip, {
+  SuggestedHeading,
+} from "@/components/listings/SuggestedStrip";
 import {
   SLIDER_CSS,
   FilterSection,
@@ -495,7 +497,12 @@ export default function AvailableListings({
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
           >
-            <div className="flex items-center gap-2 px-1 mb-4">
+            <div
+              className={`flex items-center gap-2 px-1 mb-4 ${
+                showSuggested ? "justify-between" : ""
+              }`}
+            >
+              {showSuggested && <SuggestedHeading />}
               <p className="text-sm font-semibold text-gray-500">
                 {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}
@@ -674,6 +681,7 @@ export default function AvailableListings({
           {mobileView === "listings" && (
             <div className="h-full overflow-y-auto scrollbar-hidden bg-gray-50">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                {showSuggested && <SuggestedHeading />}
                 <span className="text-sm font-semibold text-gray-500">
                   {resultCount}{" "}
                   {viewportBounds ? "in this area" : "Listings Found"}
