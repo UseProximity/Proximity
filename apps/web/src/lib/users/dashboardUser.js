@@ -313,11 +313,17 @@ export async function buildDashboardUser({ email, id } = {}) {
     // that dashboard too and the landlord-only tabs key off this.
     .select("*, roles!role_id(name)");
 
-  const { data: user, error: userError } = await (
+  const { data: row, error: userError } = await (
     id ? query.eq("id", id) : query.eq("email", email)
   ).maybeSingle();
 
-  if (userError || !user) return null;
+  if (userError || !row) return null;
+
+  // The whole row is spread into the payload below (and sent to the browser and
+  // the mobile app), so the Sign in with Apple columns are taken out here: the
+  // refresh token is a secret, and apple_sub is Apple's identifier for the person.
+  // Every other column is passed through as before.
+  const { apple_refresh_token: _appleRefreshToken, apple_sub: _appleSub, ...user } = row;
 
   const userId = user.id;
 

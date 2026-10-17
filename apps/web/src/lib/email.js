@@ -101,13 +101,15 @@ export function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
+export async function sendPasswordResetEmail({ email, name, token, baseUrl, req }) {
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Reset your Proximity password",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Reset your Proximity password",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Reset your password${name ? `, ${name}` : ""}</h2>
         <p>Click the button below to set a new password. This link expires in 1 hour.</p>
@@ -122,7 +124,9 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl }) {
         })}
       </div>
     `,
-  });
+    },
+    req
+  );
 }
 
 export async function sendLandlordNudgeEmail({ email, name }) {
@@ -260,6 +264,10 @@ function chatTimeLabels(list) {
  * No greeting from us, no "X sent you a message" narration, no button. The
  * "reply above this line" marker stays, in the faintest text, because inbound
  * parsing cuts the quoted alert there.
+ *
+ * `reminder` (Wyatt, 2026-10-16): the 3 day follow-up from the check-in cron. Same
+ * email, same subject so it stacks under the original, with one line on top saying
+ * the other person is still waiting.
  */
 export function buildChatMessageEmail({
   senderName,
@@ -272,6 +280,7 @@ export function buildChatMessageEmail({
   recipientIsInterestedUser,
   threadUrl,
   canReply,
+  reminder = false,
 }) {
   const named = displayName(senderName, "");
   const other = named || "Someone";
@@ -295,10 +304,13 @@ export function buildChatMessageEmail({
     ? "You are receiving this because you messaged a landlord on Proximity. You can turn off message emails in your account settings."
     : "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.";
 
+  const nudge = reminder ? `Reminder: ${otherFirst} is still waiting for your reply.` : "";
+
   const small = (line) => `<p style="margin:0 0 6px">${line}</p>`;
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
       ${canReply ? `<p style="color:#c4c8cf;font-size:11px;margin:0 0 20px">Reply above this line to message ${escapeHtml(other)}.</p>` : ""}
+      ${nudge ? `<p style="margin:0 0 18px;color:#6b7280;font-size:14px">${escapeHtml(nudge)}</p>` : ""}
       ${list
         .map((m, i) =>
           labels[i]
@@ -321,6 +333,7 @@ export function buildChatMessageEmail({
 
   const text = [
     canReply ? `Reply above this line to message ${other}.\n` : null,
+    nudge ? `${nudge}\n` : null,
     ...list.map((m, i) => `${labels[i] ? `${labels[i]}\n` : ""}${chatMessageText(m)}\n`),
     other,
     company || null,
@@ -354,6 +367,7 @@ export async function sendChatMessageEmail({
   replyTo,
   threadRef,
   references = [],
+  reminder = false,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -367,6 +381,7 @@ export async function sendChatMessageEmail({
       recipientIsInterestedUser,
       threadUrl,
       canReply,
+      reminder,
     });
   const { subject, fromName } = build(false);
 
@@ -547,15 +562,17 @@ export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, remove
 // `next` is where to send them once verified, so someone who signed up in the
 // middle of something (publishing a listing) lands back in it. The verify route
 // sanitizes it again, so the link is not trusted just because we built it.
-export async function sendVerificationEmail({ email, name, token, baseUrl, next }) {
+export async function sendVerificationEmail({ email, name, token, baseUrl, next, req }) {
   const verifyUrl =
     `${baseUrl}/api/auth/verify-email?token=${token}` +
     (next ? `&next=${encodeURIComponent(next)}` : "");
-  await sendMailSafe(transporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Verify your Proximity account",
-    html: `
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify your Proximity account",
+      html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#111">Welcome to Proximity${name ? `, ${name}` : ""}!</h2>
         <p>Click the button below to verify your email address. This link expires in 24 hours.</p>
@@ -569,7 +586,9 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next 
         })}
       </div>
     `,
-  });
+    },
+    req
+  );
 }
 
 /*

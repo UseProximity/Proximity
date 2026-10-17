@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-13T22:11:06.137Z",
-  "count": 116,
+  "_generated": "2026-10-17T00:11:37.125Z",
+  "count": 126,
   "routes": [
     {
       "path": "/api/account",
@@ -292,6 +292,20 @@
       "file": "src/app/api/auth/[...nextauth]/route.js"
     },
     {
+      "path": "/api/auth/change-password",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/change-password/route.js"
+    },
+    {
       "path": "/api/auth/forgot-password",
       "methods": [
         "POST"
@@ -304,6 +318,64 @@
         "users"
       ],
       "file": "src/app/api/auth/forgot-password/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/apple",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
+      "file": "src/app/api/auth/mobile/apple/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/google",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
+      "file": "src/app/api/auth/mobile/google/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/login",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/mobile/login/route.js"
+    },
+    {
+      "path": "/api/auth/mobile/refresh",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/auth/mobile/refresh/route.js"
     },
     {
       "path": "/api/auth/resend-verification",
@@ -487,6 +559,20 @@
       "file": "src/app/api/chat/threads/[threadId]/attachments/presign/route.js"
     },
     {
+      "path": "/api/chat/threads/[threadId]/block",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "user_blocks"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/block/route.js"
+    },
+    {
       "path": "/api/chat/threads/[threadId]/messages",
       "methods": [
         "GET",
@@ -511,6 +597,21 @@
       },
       "tables": [],
       "file": "src/app/api/chat/threads/[threadId]/read/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/report",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "chat_messages",
+        "chat_reports"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/report/route.js"
     },
     {
       "path": "/api/contact-verify",
@@ -672,12 +773,14 @@
         "listing_reviews",
         "dorm_reviews",
         "user_listing_interactions",
+        "user_filter_summaries",
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
         "device_push_tokens",
         "user_blocks",
         "review_reports",
+        "chat_reports",
         "review_invites",
         "users"
       ],
@@ -788,6 +891,22 @@
       "file": "src/app/api/dev/matchmaking-saturation-sim/route.js"
     },
     {
+      "path": "/api/devices/push-token",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any",
+        "DELETE": "any"
+      },
+      "tables": [
+        "device_push_tokens"
+      ],
+      "file": "src/app/api/devices/push-token/route.js"
+    },
+    {
       "path": "/api/dormReviews",
       "methods": [
         "GET",
@@ -878,6 +997,20 @@
       },
       "tables": [],
       "file": "src/app/api/feedback/route.js"
+    },
+    {
+      "path": "/api/filter-summary",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "user_filter_summaries"
+      ],
+      "file": "src/app/api/filter-summary/route.js"
     },
     {
       "path": "/api/getUser",
@@ -1354,6 +1487,18 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/listings/popular/route.js"
+    },
+    {
+      "path": "/api/listings/suggested",
+      "methods": [
+        "GET"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "GET": "optional"
+      },
+      "tables": [],
+      "file": "src/app/api/listings/suggested/route.js"
     },
     {
       "path": "/api/matchmaking/chat",

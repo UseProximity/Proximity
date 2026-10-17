@@ -53,6 +53,7 @@ export default function TopFilterBar({
   filters,
   setFilters,
   onReset,
+  onFiltersSaved = () => {},
 }) {
   const [showFilters, setShowFilters] = useState(false);
   const [draft, setDraft] = useState(filters);
@@ -370,7 +371,10 @@ export default function TopFilterBar({
                 Reset
               </button>
               <button
-                onClick={() => setShowFilters(false)}
+                onClick={() => {
+                  onFiltersSaved(filters);
+                  setShowFilters(false);
+                }}
                 className="bg-red-500 text-white px-6 py-2 rounded-lg text-sm hover:bg-red-600"
               >
                 Done
@@ -429,7 +433,10 @@ export default function TopFilterBar({
                 Reset
               </button>
               <button
-                onClick={() => setShowFilters(false)}
+                onClick={() => {
+                  onFiltersSaved(filters);
+                  setShowFilters(false);
+                }}
                 className="bg-red-500 text-white px-6 py-2 rounded-lg text-sm hover:bg-red-600"
               >
                 Done
@@ -836,6 +843,7 @@ export default function TopFilterBar({
               <button
                 onClick={() => {
                   setFilters(draft);
+                  onFiltersSaved(draft);
                   setShowFilters(false);
                 }}
                 className="px-8 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-full text-sm transition-colors shadow-md"

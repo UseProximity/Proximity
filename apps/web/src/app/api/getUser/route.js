@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic"; //so Next knows it's dynamic and not static
 
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { buildDashboardUser } from "@/lib/users/dashboardUser";
 
 /*
- * The signed-in user's own dashboard payload.
+ * The signed-in user's own dashboard payload for a web session or mobile Bearer
+ * token, resolved by getRequestUser().
  *
  * Everything returned here is built by lib/users/dashboardUser.js, which
  * /api/admin/viewUser also calls so that "view as" cannot show an admin a
@@ -13,15 +14,19 @@ import { buildDashboardUser } from "@/lib/users/dashboardUser";
  *
  * @auth any
  */
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.email) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.email) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Looked up by email: reliable across auth provider ID differences.
-    const user = await buildDashboardUser({ email: session.user.email });
+    // Looked up by id when we have it (mobile's token already resolved the
+    // row); falls back to email, which is reliable across auth provider ID
+    // differences (web sessions from Google vs Credentials).
+    const user = await buildDashboardUser(
+      requestUser.id ? { id: requestUser.id } : { email: requestUser.email }
+    );
     if (!user) {
       return Response.json({ error: "User not found" }, { status: 404 });
     }

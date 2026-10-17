@@ -24,6 +24,13 @@ import {
   filterListings,
 } from "@/lib/listings/filterListings";
 
+// True when any filter differs from its default. The suggested strip only shows
+// on the unfiltered view: once a student narrows the list, their own question
+// is the ranking.
+const filtersActive = (filters) =>
+  Object.keys(DEFAULT_FILTERS).some(
+    (k) => JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !== JSON.stringify(DEFAULT_FILTERS[k])
+  );
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -38,6 +45,48 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
+  // a listing contacted from the strip stays put until the next reload.
+  const [suggestedIds, setSuggestedIds] = useState([]);
+  const [suggestedMode, setSuggestedMode] = useState("suggested");
+  const [anchorLabel, setAnchorLabel] = useState(null);
+  const userId = session?.user?.id;
+  /*
+   * The chat's no-reply note links here as ?from=no-reply&similar=<id>, which
+   * asks for places similar to the listing that went unanswered (Wyatt,
+   * 2026-10-16). Not ?listing=, which opens that listing's panel. The API
+   * falls back to normal suggestions when it can't.
+   */
+  const similarTo = searchParams.get("similar");
+
+  useEffect(() => {
+    if (!userId && !similarTo) return;
+    const url = similarTo
+      ? `/api/listings/suggested?similar=${encodeURIComponent(similarTo)}`
+      : "/api/listings/suggested";
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : { ids: [] }))
+      .then((data) => {
+        setSuggestedIds(Array.isArray(data?.ids) ? data.ids : []);
+        setSuggestedMode(data?.mode === "similar" ? "similar" : "suggested");
+        setAnchorLabel(typeof data?.anchorLabel === "string" ? data.anchorLabel : null);
+      })
+      .catch(() => {});
+  }, [userId, similarTo]);
+
+  /*
+   * Saved filters feed the student's running filter summary (the lightest
+   * suggestion signal). Called only from the explicit Done / Apply Filters
+   * buttons, never on every slider tick. Fire-and-forget.
+   */
+  const handleFiltersSaved = (saved) => {
+    if (!userId) return;
+    fetch("/api/filter-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filters: saved }),
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     const fetchListings = async () => {
@@ -101,6 +150,14 @@ export default function BrowseContent({ session, initialListings = null }) {
     [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  const suggestedListings = useMemo(() => {
+    if (search.trim() || filtersActive(filters)) return [];
+    const byId = new Map(listings.map((l) => [String(l._id), l]));
+    const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
+    // Keep the count even if a suggested listing dropped out of the feed.
+    return found.slice(0, found.length - (found.length % 2));
+  }, [listings, suggestedIds, search, filters]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -121,12 +178,19 @@ export default function BrowseContent({ session, initialListings = null }) {
           filters={filters}
           setFilters={setFilters}
           onReset={handleReset}
+          onFiltersSaved={handleFiltersSaved}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
         <AvailableListings
           session={session}
           listings={filteredListings}
+          suggestedListings={suggestedListings}
+          suggestedMode={suggestedMode}
+          suggestedLabel={
+            suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
+          }
+          onFiltersSaved={handleFiltersSaved}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}

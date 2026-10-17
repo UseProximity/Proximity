@@ -5,7 +5,7 @@
  */
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
@@ -32,8 +32,8 @@ function contentDisposition(fileName, asDownload) {
 
 export async function GET(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -46,7 +46,7 @@ export async function GET(req, { params }) {
     }
 
     const { data, error } = await supabase.rpc("rpc_get_chat_attachment", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_attachment_id: attachmentId,
     });
 

@@ -1,0 +1,51 @@
+import bcrypt from "bcryptjs";
+import supabase from "@/lib/supabase";
+import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
+import { AUTH_ERRORS } from "@proximity/auth-core";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+
+export async function POST(req) {
+  try {
+    const { email: rawEmail, password } = await req.json();
+    const email = normalizeEmail(rawEmail);
+
+    if (!email || !password) {
+      return Response.json({ error: AUTH_ERRORS.MISSING_FIELDS }, { status: 400 });
+    }
+
+    const { data: user } = await supabase
+      .from("users")
+      .select("id, email, name, image, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
+      .ilike("email", emailMatchPattern(email))
+      .single();
+
+    // A deleted account fails identically to a wrong password: same status,
+    // same message, so the response never confirms the address was registered.
+    if (!user || !user.password_hash || user.deleted_at) {
+      return Response.json({ error: AUTH_ERRORS.INVALID_CREDENTIALS }, { status: 401 });
+    }
+
+    if (!user.email_verified) {
+      return Response.json({ error: AUTH_ERRORS.EMAIL_NOT_VERIFIED }, { status: 403 });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return Response.json({ error: AUTH_ERRORS.INVALID_CREDENTIALS }, { status: 401 });
+    }
+
+    const [accessToken, refreshToken] = await Promise.all([
+      signAccessToken({
+        id: user.id,
+        role: user.roles?.name ?? "student",
+        profileComplete: user.profile_complete ?? false,
+      }),
+      signRefreshToken({ id: user.id }),
+    ]);
+
+    return Response.json({ accessToken, refreshToken, user: buildUserPayload(user) });
+  } catch (err) {
+    console.error("mobile/login error:", err);
+    return Response.json({ error: AUTH_ERRORS.SERVER_ERROR }, { status: 500 });
+  }
+}

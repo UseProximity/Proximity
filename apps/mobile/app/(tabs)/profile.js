@@ -1,0 +1,313 @@
+// Profile tab - Enhanced with full user management
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Link, useRouter } from "expo-router";
+import Constants from "expo-constants";
+import {
+  ChevronRight,
+  FileText,
+  LogOut,
+  Lock,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Info,
+  Trash2,
+  User,
+} from "lucide-react-native";
+import { isLandlord } from "@proximity/auth-core";
+import { useAuth } from "../../src/hooks/useAuth";
+import { useFavoritesStore } from "../../src/store/favoritesStore";
+import apiClient from "../../src/lib/apiClient";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { colors } from "../../src/theme/tokens";
+import {
+  openLegalLink,
+  PRIVACY_URL,
+  TERMS_URL,
+} from "../../src/lib/legalLinks";
+
+function ProfileSection({ title, children }) {
+  return (
+    <View className="mb-6">
+      <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-1">
+        {title}
+      </Text>
+      <View className="bg-white rounded-2xl border border-gray-200">
+        {children}
+      </View>
+    </View>
+  );
+}
+
+// Without an onPress the row is informational: a plain View with no chevron.
+function MenuItem({
+  label,
+  icon: Icon,
+  onPress,
+  destructive = false,
+  showBorder = true,
+}) {
+  const Container = onPress ? Pressable : View;
+  return (
+    <Container
+      onPress={onPress}
+      className={`flex-row items-center justify-between px-4 py-3.5 ${
+        showBorder ? "border-b border-gray-100" : ""
+      }`}
+    >
+      <View className="flex-row items-center gap-3">
+        <Icon
+          size={18}
+          color={destructive ? colors.primary : colors.textSecondary}
+          strokeWidth={2}
+        />
+        <Text
+          className={`text-sm font-medium ${
+            destructive ? "text-red-600" : "text-gray-900"
+          }`}
+        >
+          {label}
+        </Text>
+      </View>
+      {onPress ? (
+        <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+      ) : null}
+    </Container>
+  );
+}
+
+export default function ProfileScreen() {
+  const router = useRouter();
+  const { user, isHydrated, logout } = useAuth();
+  const savedListings = useFavoritesStore((state) => state.savedListings);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleLogout = () => {
+    Alert.alert("Log out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: () => logout(),
+      },
+    ]);
+  };
+
+  // Two-step confirmation: this is irreversible for the user, and Apple/Google
+  // both expect deletion to be deliberate rather than a single stray tap.
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete account",
+      "This deletes your Proximity account. Your account stops working immediately, and your personal data is erased after 30 days, except some records we keep for up to three years (see our Privacy Policy). This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () =>
+            Alert.alert(
+              "Are you sure?",
+              "Deleting your account is permanent.",
+              [
+                { text: "Keep my account", style: "cancel" },
+                {
+                  text: "Delete account",
+                  style: "destructive",
+                  onPress: async () => {
+                    setDeleting(true);
+                    try {
+                      await apiClient.user.deleteAccount();
+                      // Clear local session/state; the account no longer authenticates
+                      // server-side, so anything cached would only 401.
+                      await logout();
+                    } catch (err) {
+                      Alert.alert(
+                        "Couldn't delete account",
+                        getErrorMessage(
+                          err,
+                          "Something went wrong. Please try again."
+                        )
+                      );
+                    } finally {
+                      setDeleting(false);
+                    }
+                  },
+                },
+              ]
+            ),
+        },
+      ]
+    );
+  };
+
+  if (!isHydrated) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50">
+        <ActivityIndicator size="large" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 px-8">
+        <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center mb-4">
+          <User size={32} color={colors.textMuted} strokeWidth={1.5} />
+        </View>
+        <Text className="text-lg font-bold text-gray-900 mb-1">
+          Sign in to Proximity
+        </Text>
+        <Text className="text-sm text-gray-500 text-center mb-6">
+          Save listings and manage your profile once you&apos;re signed in.
+        </Text>
+        <Link href="/(auth)/login" asChild>
+          <Pressable className="bg-red-600 rounded-xl px-6 py-3">
+            <Text className="text-white font-semibold text-sm">Sign in</Text>
+          </Pressable>
+        </Link>
+      </SafeAreaView>
+    );
+  }
+
+  // Get initials from name
+  const initials =
+    user.name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "U";
+
+  const roleLabel =
+    user.role === "landlord"
+      ? "Landlord"
+      : user.role === "super"
+      ? "Admin"
+      : "Student";
+  const roleColor =
+    user.role === "landlord"
+      ? "bg-blue-100 text-blue-700"
+      : user.role === "super"
+      ? "bg-purple-100 text-purple-700"
+      : "bg-green-100 text-green-700";
+
+  return (
+    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 12 }}>
+        {/* Header with avatar */}
+        <View className="items-center mb-6">
+          <View className="w-20 h-20 rounded-full bg-red-600 items-center justify-center mb-3">
+            <Text className="text-white text-2xl font-bold">{initials}</Text>
+          </View>
+          <Text className="text-xl font-bold text-gray-900">{user.name}</Text>
+          <Text className="text-sm text-gray-500 mt-0.5">{user.email}</Text>
+          <View className={`mt-2 px-3 py-1 rounded-full ${roleColor}`}>
+            <Text className="text-xs font-semibold">{roleLabel}</Text>
+          </View>
+        </View>
+
+        {/* Stats: Saved Listings is a student-facing concept; landlords have
+            their own My Listings tab instead, so this card (and its link to
+            the Saved tab) is hidden for them rather than pointing at a tab
+            that's no longer in their tab bar. */}
+        {!isLandlord(user.role) && (
+          <Pressable
+            onPress={() => router.push("/(tabs)/saved")}
+            className="bg-white rounded-2xl border border-gray-200 p-4 mb-6"
+          >
+            <View className="flex-row items-center justify-between">
+              <View>
+                <Text className="text-2xl font-bold text-gray-900">
+                  {savedListings.length}
+                </Text>
+                <Text className="text-sm text-gray-500 mt-0.5">
+                  Saved Listings
+                </Text>
+              </View>
+              <ChevronRight
+                size={18}
+                color={colors.textMuted}
+                strokeWidth={2}
+              />
+            </View>
+          </Pressable>
+        )}
+
+        {/* Landlords (and admins, matching Add Listing's own role gate) start a
+            new property listing from here; the wizard lives at /listings/add. */}
+        {isLandlord(user.role) && (
+          <ProfileSection title="Property Management">
+            <MenuItem
+              label="Add Listing"
+              icon={Plus}
+              onPress={() => router.push("/listings/add")}
+              showBorder={false}
+            />
+          </ProfileSection>
+        )}
+
+        {/* Account Section */}
+        <ProfileSection title="Account">
+          <MenuItem
+            label="Edit Profile"
+            icon={Pencil}
+            onPress={() => router.push("/profile/edit")}
+          />
+          <MenuItem
+            label="Change Password"
+            icon={Lock}
+            onPress={() => router.push("/profile/change-password")}
+          />
+          <MenuItem
+            label={deleting ? "Deleting…" : "Delete Account"}
+            icon={Trash2}
+            onPress={deleting ? () => {} : handleDeleteAccount}
+            destructive
+            showBorder={false}
+          />
+        </ProfileSection>
+
+        {/* About Section */}
+        <ProfileSection title="About">
+          <MenuItem
+            label="Terms of Service"
+            icon={FileText}
+            onPress={() => openLegalLink(TERMS_URL)}
+          />
+          <MenuItem
+            label="Privacy Policy"
+            icon={ShieldCheck}
+            onPress={() => openLegalLink(PRIVACY_URL)}
+          />
+          <MenuItem
+            label={`Version ${Constants.expoConfig?.version ?? "Unknown"}`}
+            icon={Info}
+            showBorder={false}
+          />
+        </ProfileSection>
+
+        {/* Logout */}
+        <View className="bg-white rounded-2xl border border-gray-200">
+          <MenuItem
+            label="Log out"
+            icon={LogOut}
+            onPress={handleLogout}
+            destructive
+            showBorder={false}
+          />
+        </View>
+
+        <View className="h-8" />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

@@ -21,7 +21,7 @@
 
 import supabase from "@/lib/supabase";
 import { shapeLeases } from "@/lib/listings/getListing";
-import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import { unitIsAvailable, listingIsUnavailable, nextAvailableFrom } from "@/lib/listings/unitAvailability";
 import {
   LANDLORD_CHAT_SELECT,
   formatListingOwner,
@@ -222,18 +222,11 @@ export function buildListing(row, owner = null) {
     // Non-null means every open unit is pre-leased until that date, so the UI
     // shows "Available Aug 1" instead of hiding the listing.
     availableFrom: (() => {
-      const today = new Date().toISOString().slice(0, 10);
       const units = (row.listing_units ?? []).filter(unitIsAvailable);
       if (!units.length) return null;
-      const nexts = units.map(
-        (u) =>
-          (u.unit_leases ?? [])
-            .filter((l) => l.available_from)
-            .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
-            ?.available_from ?? null
-      );
-      if (nexts.some((d) => !d || String(d).slice(0, 10) <= today)) return null;
-      return String(nexts.sort()[0]).slice(0, 10);
+      const nexts = units.map(nextAvailableFrom);
+      if (nexts.some((d) => !d)) return null;
+      return nexts.sort()[0];
     })(),
     // Live-verified: availability/pricing sync daily from the landlord's
     // property management system (pms_connection_id marks the connection).
@@ -262,12 +255,16 @@ export function buildListing(row, owner = null) {
 
 /**
  * Fetch every non-deleted listing, fully built into the frontend shape.
- * Exported so other routes (e.g. the popular-listings ranking) can reuse the
- * exact same data path instead of duplicating the select + landlord join.
- * Throws on a DB error — callers handle the response.
+ * Exported so other routes (e.g. the popular-listings ranking, mobile's
+ * favorites read path) can reuse the exact same data path instead of
+ * duplicating the select + landlord join. Pass `listingIds` to filter to a
+ * specific set of listings (e.g. a user's saved listings) instead of
+ * fetching everything; omit it (or leave it empty) to fetch all non-deleted
+ * listings, unchanged from before. Throws on a DB error; callers handle
+ * the response.
  */
-export async function fetchListings() {
-  const { data: listings, error } = await supabase
+export async function fetchListings(listingIds = null) {
+  let query = supabase
     .from("listings")
     .select(
       `
@@ -300,6 +297,12 @@ export async function fetchListings() {
       `
     )
     .is("deleted_at", null);
+
+  if (listingIds?.length > 0) {
+    query = query.in("id", listingIds);
+  }
+
+  const { data: listings, error } = await query;
 
   if (error) throw error;
 

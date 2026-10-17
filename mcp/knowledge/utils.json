@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-13T22:11:06.163Z",
-  "count": 121,
+  "_generated": "2026-10-16T23:32:18.050Z",
+  "count": 131,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -60,6 +60,10 @@
       "description": "Central environment / data-target helper."
     },
     {
+      "file": "src/lib/appleAuth.js",
+      "description": "Sign in with Apple, server side (native iOS flow)."
+    },
+    {
       "file": "src/lib/auth/callbackUrl.js",
       "description": "A return URL that arrives from outside (a query string, a request body, an"
     },
@@ -74,6 +78,10 @@
     {
       "file": "src/lib/auth/roles.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/authMobile.js",
+      "description": "Signs a short-lived access token (15 minutes)."
     },
     {
       "file": "src/lib/autoUnavailable.js",
@@ -112,6 +120,10 @@
       "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
     },
     {
+      "file": "src/lib/chat/followups.js",
+      "description": "Follow-ups for conversations that went quiet (Wyatt, 2026-10-16)."
+    },
+    {
       "file": "src/lib/chat/inboundEmail.js",
       "description": "Post an emailed reply into its chat conversation."
     },
@@ -132,12 +144,20 @@
       "description": "Email notification for a new in-app chat message."
     },
     {
+      "file": "src/lib/chat/notifyPush.js",
+      "description": "Push notification for a new in-app chat message."
+    },
+    {
       "file": "src/lib/chat/realtime.js",
       "description": "Supabase Realtime helper for listing chat."
     },
     {
       "file": "src/lib/chat/replyAddress.js",
       "description": "Private reply addresses for chat alert emails."
+    },
+    {
+      "file": "src/lib/chat/safety.js",
+      "description": "Chat block and report support, kept out of the chat RPCs on purpose."
     },
     {
       "file": "src/lib/chat/scanAttachment.js",
@@ -166,6 +186,10 @@
     {
       "file": "src/lib/geo/neighborhoods.js",
       "description": "Canonical neighborhood table for the WashU market. Listings only carry"
+    },
+    {
+      "file": "src/lib/getRequestUser.js",
+      "description": "Thrown when the user lookup itself fails (the database or network, not a missing"
     },
     {
       "file": "src/lib/google/serviceAccount.js",
@@ -260,6 +284,14 @@
       "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
     },
     {
+      "file": "src/lib/listings/suggestionSignals.js",
+      "description": "Loads the raw signals suggestListings.js turns into a taste profile, for one"
+    },
+    {
+      "file": "src/lib/listings/suggestListings.js",
+      "description": "\"Suggested for you\": ranks the browse feed against one student's taste"
+    },
+    {
       "file": "src/lib/listings/unitAvailability.js",
       "description": "Is this unit something a renter can actually take?"
     },
@@ -294,6 +326,10 @@
     {
       "file": "src/lib/matchmaking/questionScript.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/saturation.js",
+      "description": "Demand signal shared by matchmaking ranking and suggested listings. Split out"
     },
     {
       "file": "src/lib/matchmaking/tradeoffTriage.js",
@@ -354,6 +390,10 @@
     {
       "file": "src/lib/pms/types.js",
       "description": "PMS connector contract + normalized shapes."
+    },
+    {
+      "file": "src/lib/push.js",
+      "description": "Push notification sender. The single entry point every feature should call:"
     },
     {
       "file": "src/lib/r2.js",

@@ -17,8 +17,8 @@
  *                    means clearing user_id/name/reviewer_email, not setting
  *                    that flag. Landlord contact fields on a review describe a
  *                    DIFFERENT person and are deliberately left in place.
- *   - behavioral     user_listing_interactions, review_votes, waitlist_clicks:
- *                    deleted outright.
+ *   - behavioral     user_listing_interactions, user_filter_summaries,
+ *                    review_votes, waitlist_clicks: deleted outright.
  *   - matchmaking    chat sessions and matchmaking_preferences are KEPT for
  *                    three years (Privacy Policy s8). They record why we showed
  *                    this person the properties we did, so they are erased by
@@ -26,10 +26,13 @@
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
- *   - blocks/reports user_blocks (either side) and the review_reports this person filed.
+ *   - blocks/reports user_blocks (either side) and the review_reports and chat_reports this person filed.
  *   - listings       sole-owned listings are soft-deleted by the users trigger.
  *                    The owner's phone is scrubbed now; their name and email
  *                    stay on the withdrawn listing for three years (Terms s17A).
+ *   - apple grant    Sign in with Apple: revoked here if DELETE /api/account
+ *                    didn't already manage it, since the token is about to be
+ *                    scrubbed from the row either way.
  *   - profile photo  every object under profiles/{userId}/ removed from R2.
  *   - action_log     PII payloads redacted, audit skeleton retained (see below).
  *
@@ -50,6 +53,7 @@ import { ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import supabase from "@/lib/supabase";
 import { r2 } from "@/lib/r2";
 import { isProdData } from "@/lib/appEnv";
+import { revokeAppleToken } from "@/lib/appleAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -223,6 +227,10 @@ async function purgeUser(user) {
     "user_listing_interactions",
     supabase.from("user_listing_interactions").delete().eq("user_id", userId)
   );
+  await must(
+    "user_filter_summaries",
+    supabase.from("user_filter_summaries").delete().eq("user_id", userId)
+  );
   await must("review_votes", supabase.from("review_votes").delete().eq("user_id", userId));
   // Matchmaking sessions and preferences are kept for three years; see the header.
   await must("lease_checks", supabase.from("lease_checks").delete().eq("user_id", userId));
@@ -244,6 +252,10 @@ async function purgeUser(user) {
   await must(
     "review_reports by reporter",
     supabase.from("review_reports").delete().eq("reporter_id", userId)
+  );
+  await must(
+    "chat_reports by reporter",
+    supabase.from("chat_reports").delete().eq("reporter_id", userId)
   );
   if (user.email) {
     // A waitlist click made before signing in carries the address on the row
@@ -275,6 +287,17 @@ async function purgeUser(user) {
   // other row this person appears in.
   await redactActionLog(userId, user.email);
 
+  // Sign in with Apple: DELETE /api/account already revoked the grant and cleared
+  // this if Apple answered. If it didn't, this is the last chance to revoke it,
+  // because the token is scrubbed below either way (a permanently failing revoke
+  // must not stop the personal data from being erased).
+  const { data: apple } = await supabase
+    .from("users")
+    .select("apple_refresh_token")
+    .eq("id", userId)
+    .maybeSingle();
+  if (apple?.apple_refresh_token) await revokeAppleToken(apple.apple_refresh_token);
+
   // Finally the row itself. Placeholders (not NULL) for the columns that are
   // never null in practice; the email is uniqueness-constrained, so it gets a
   // per-user sentinel that frees the real address for future signup.
@@ -304,6 +327,7 @@ async function purgeUser(user) {
       google_account: false,
       apple_account: false,
       apple_sub: null,
+      apple_refresh_token: null,
     })
     .eq("id", userId);
 

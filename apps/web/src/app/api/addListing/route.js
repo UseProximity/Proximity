@@ -1,6 +1,6 @@
 import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
@@ -228,18 +228,19 @@ export async function POST(req) {
     let ownerId = null;
 
     if (!isImportRequest) {
-      const session = await auth();
-      if (!session) {
+      // Web cookie or mobile Bearer token.
+      const requestUser = await getRequestUser(req);
+      if (!requestUser) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const userRole = session?.user?.role;
+      const userRole = requestUser.role;
       if (!["student", "landlord", "super"].includes(userRole)) {
         return NextResponse.json(
           { error: "Only students, landlords, and super admins can create listings." },
           { status: 403 }
         );
       }
-      ownerId = session?.user?.id;
+      ownerId = requestUser.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
       }
@@ -408,7 +409,8 @@ export async function POST(req) {
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
       rent: unit.rent ?? null,
-      name: cleanUnitName(unit.name),
+      // The mobile app sends `title` for a unit's name.
+      name: cleanUnitName(unit.name ?? unit.title),
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
       // A unit can be offered for several lease durations (months).
       leaseTermMonths: Array.isArray(unit.leaseTermMonths)

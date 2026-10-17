@@ -234,7 +234,7 @@
       {
         "table": "chat_checkin_alerts",
         "status": "active",
-        "description": "Internal chat check-in: one row per thread the daily /api/cron/chat-checkin digest emailed about, keyed on the unanswered message, so each silence is reported once. Read by /api/cron/chat-checkin-report to count alerts by side and whether the quiet side came back. RLS on, no policies: service role only.",
+        "description": "Internal chat check-in: one row per thread the daily /api/cron/chat-checkin digest emailed about, keyed on the unanswered message, so each silence is reported once. The same run sends the quiet person one reply reminder email and records the outcome in reminder_status/reminder_sent_at. Read by /api/cron/chat-checkin-report to count alerts by side and whether the quiet side came back. RLS on, no policies: service role only.",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -243,9 +243,11 @@
           "silent_since:timestamptz",
           "sent_at:timestamptz",
           "recipients:text[]",
-          "dry_run:boolean"
+          "dry_run:boolean",
+          "reminder_status:text",
+          "reminder_sent_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migration 202610130001_chat_checkin.sql"
+        "notes": "status=active; pk id; fk thread_id->chat_threads.id (cascade); fk last_message_id->chat_messages.id (cascade); check quiet_side in (landlord,student); check reminder_status in (sent,too_old,listing_unavailable,blocked,no_recipient,suppressed,failed) or null; unique (thread_id,last_message_id) where dry_run=false; rls: service role only (no policies); migrations 202610130001_chat_checkin.sql, 202610160002_chat_reply_reminders.sql"
       },
       {
         "table": "chat_checkin_runs",
@@ -489,6 +491,18 @@
           "prod_rows": 0,
           "prod_last_write": null
         }
+      },
+      {
+        "table": "device_push_tokens",
+        "description": "Expo push tokens for the mobile app, one row per physical device. expo_push_token is globally unique (not per-user), so a device changing owners (shared device, or logout/login as a different user) reassigns user_id via a service-role upsert (apps/web/src/app/api/devices/push-token/route.js) rather than an RLS-scoped client write. Read by sendPushNotification (apps/web/src/lib/push.js).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "expo_push_token:text",
+          "platform:text",
+          "created_at:timestamptz",
+          "last_seen_at:timestamptz"
+        ]
       },
       {
         "table": "dorm_review_tags",
@@ -2299,6 +2313,17 @@
           "prod_rows": 0,
           "prod_last_write": null
         }
+      },
+      {
+        "table": "user_filter_summaries",
+        "status": "active",
+        "description": "One row per user: the browse filters they last saved (Done / Apply Filters), overwritten each time. Lightest-weighted signal behind \"Suggested for you\" (lib/listings/suggestListings.js); written by POST /api/filter-summary.",
+        "columns": [
+          "user_id:uuid",
+          "filters:jsonb",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk user_id; fk user_id->users.id (cascade); filters is the browse DEFAULT_FILTERS shape, cleaned by cleanFilterSummary (no savedOnly/subleaseOnly); rls: on, no policies (service role only); deleted by purge-accounts. Migration 202610160001_user_filter_summaries.sql: dev applied 2026-10-16, prod pending."
       },
       {
         "table": "user_listing_interactions",

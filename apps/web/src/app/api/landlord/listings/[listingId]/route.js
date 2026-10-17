@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse, after } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { updateAsUser } from "@/lib/supabaseWithUser";
@@ -42,13 +42,13 @@ function boolRow(cols, selected) {
   return row;
 }
 
-async function requireOwnership(listingId) {
-  const session = await auth();
-  if (!session?.user?.id) return { err: "Unauthorized", status: 401 };
-  if (!["landlord", "super", "student"].includes(session.user.role)) {
+async function requireOwnership(req, listingId) {
+  const user = await getRequestUser(req);
+  if (!user?.id) return { err: "Unauthorized", status: 401 };
+  if (!["landlord", "super", "student"].includes(user.role)) {
     return { err: "Forbidden", status: 403 };
   }
-  if (session.user.role === "super") return { session };
+  if (user.role === "super") return { user };
 
   /*
    * PROPERTY-level ownership only. PATCH below rewrites the building's own
@@ -58,7 +58,7 @@ async function requireOwnership(listingId) {
    * own offering through /api/leases/[leaseId] instead. See
    * lib/listings/ownership.js.
    */
-  if (await isPropertyOwner(session.user.id, listingId)) return { session };
+  if (await isPropertyOwner(user.id, listingId)) return { user };
 
   // Distinguish "not yours at all" from "yours, but only the lease" so the
   // caller can be pointed at the route that will actually work.
@@ -74,7 +74,7 @@ async function requireOwnership(listingId) {
     const { data: mine } = await supabase
       .from("unit_leases")
       .select("id")
-      .eq("owner_id", session.user.id)
+      .eq("owner_id", user.id)
       .in("unit_id", unitIds)
       .limit(1);
     hasLease = !!mine?.length;
@@ -128,7 +128,7 @@ const MOVED = {
 // routes; see MOVED above.
 export async function PATCH(req, { params }) {
   const { listingId } = await params;
-  const check = await requireOwnership(listingId);
+  const check = await requireOwnership(req, listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
   const body = await req.json();
@@ -240,7 +240,7 @@ export async function PATCH(req, { params }) {
    * fix, so a future caller cannot reintroduce it by editing the guard alone.
    */
   const { error: rpcError } = await supabase.rpc("rpc_edit_listing", {
-    p_user_id: check.session.user.id,
+    p_user_id: check.user.id,
     p_listing_id: listingId,
     p_listing_updates: Object.keys(safeUpdates).length > 0 ? safeUpdates : null,
     p_amenities: amenities !== undefined ? boolRow(AMENITY_COLS, amenities) : null,
@@ -276,7 +276,7 @@ export async function PATCH(req, { params }) {
         p_listing_id: listingId,
       });
       await requestContactVerification({
-        landlordId: holderId || check.session.user.id,
+        landlordId: holderId || check.user.id,
         email: safeUpdates.contact_email,
         listingLabel: updated?.title || updated?.address || null,
         baseUrl,
@@ -295,13 +295,13 @@ export async function PATCH(req, { params }) {
 // (Privacy Policy s9, Terms s17A). Setting deleted_at is the same soft delete
 // the account-deletion trigger applies, and every public read already filters
 // on it, so the listing disappears from the marketplace exactly as before.
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   const { listingId } = await params;
-  const check = await requireOwnership(listingId);
+  const check = await requireOwnership(req, listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
   const { error } = await updateAsUser(supabase, {
-    userId: check.session.user.id,
+    userId: check.user.id,
     table: "listings",
     rowId: listingId,
     data: { deleted_at: new Date().toISOString() },

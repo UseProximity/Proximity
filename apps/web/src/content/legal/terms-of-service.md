@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** October 12, 2026
+**Last updated:** October 16, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -51,9 +51,9 @@ that you have authority to bind that organization, and "you" means both you and 
 
 ## 3. Your account
 
-You can create an account with Google or with an email address and password. If you sign up
-with an email address and password, you must verify your email address before you can sign
-in.
+You can create an account with Google, with Sign in with Apple (in the iOS app), or with an
+email address and password. If you sign up with an email address and password, you must
+verify your email address before you can sign in.
 
 You agree to:
 
@@ -81,7 +81,8 @@ This matters more here than on most platforms, so we want to be direct about it.
   identity verification, or license checks on anyone.
 - **We do not inspect properties.** We have never visited most of the properties listed.
 - **We do not screen or endorse.** A listing appearing on Proximity (including one the
-  matchmaking assistant recommends) is not a recommendation, endorsement, or judgment that
+  matchmaking assistant recommends or one shown as "Suggested for you") is not a
+  recommendation, endorsement, or judgment that
   the property or the person renting it is safe, legitimate, lawful, or suitable for you.
 - **We are not involved in your money.** We never collect rent, deposits, application fees,
   or any other payment between a student and a landlord, and we will never ask you to send
@@ -133,10 +134,12 @@ students can see who they are dealing with. The contact email address and phone 
 give are not shown on the listing: we use them to route inquiries to you.
 
 Everything else you write is published exactly as you type it: we never rewrite your words.
-We do refuse to save a description containing an email address, a phone number, a link, or a
-social handle, and ask you to edit it instead, because those belong in the contact fields
-above. Anything that does save is public and search engines may index it, so do not write
-anything into a description that you are not willing to make public.
+We do refuse to save a description containing an email address, a phone number, a link, a
+social media handle or account, a line sending students to contact you somewhere else, or the
+name of an individual person, and ask you to edit it instead. Contact details belong in the
+contact fields above, and a role such as "the leasing office" can replace a name. Anything
+that does save is public and search engines may index it, so do not write anything into a
+description that you are not willing to make public.
 
 **Building a listing from your own web page.** Rather than typing everything in, you can give
 us the address of your own property website or an existing listing of yours. We fetch the
@@ -206,7 +209,10 @@ that exceed a limit we have applied.
 **What a review must be.** A review must describe your own first-hand experience of living
 at, or dealing with, the property or landlord in question. You may not post a review in
 exchange for anything, post about a property you have never dealt with, review your own
-property, or ask anyone else to do any of those things.
+property, or ask anyone else to do any of those things. Reviews of off-campus listings, and
+landlords' replies to them, may not name individual people. Describe the role instead, for
+example "the landlord" or "the property manager". We refuse to save text that appears to name
+a person and ask you to edit it.
 
 **Anonymity.** You can post a review anonymously. When you do, we do not store a display
 name against it, and your name is not shown. Anonymity is from other users, not from us:
@@ -250,6 +256,19 @@ and then suggests listings. It is available on the website and in the mobile app
   and why we showed you the listings we did. We keep them while your account is open and
   for three years after you delete it (Privacy Policy §8).
 
+## 9A. Suggested listings
+
+When you are signed in, the homepage and the browse page may show a short "Suggested for
+you" selection. It is chosen automatically from your matchmaking preferences, the listings
+you have saved and contacted, and the browse filters you have saved. Privacy Policy §2.2
+explains how.
+
+- **It is automated and it can be wrong.** A suggestion means a listing resembles what you
+  have looked for, nothing more. It is not advice and not an endorsement (see Section 4).
+- **It never limits what you can see.** Every listing remains available to search, browse,
+  view, and contact. The same gender rule as the matchmaking assistant applies (Section 9).
+- **Landlords cannot pay to be suggested.** Suggestions are not advertising.
+
 ## 10. Lease Check
 
 Lease Check is currently available on the website only. You upload a lease and an AI model
@@ -266,15 +285,15 @@ keep only the output. See Privacy Policy §1.7 for exactly what is and is not re
 
 ## 11. Contacting landlords
 
-When you send an inquiry through a listing, Proximity delivers it by email to the person
-renting that property. Your name, email address, phone number if you gave one, and your
-message go to them, and **your email address is set as the reply-to** so they can respond to
-you directly. We send you a confirmation copy. If we cannot deliver your inquiry, we tell
-you so, so you can try again.
+When you message someone about a listing, Proximity delivers your message to them inside
+the Services, and may also notify them by email or push notification. When you ask the
+matchmaking assistant to contact an owner for you, Proximity emails the owner your name,
+your email address and the message you approved, **with your email address as the
+reply-to** so they can respond to you directly, and sends you a copy.
 
 We do not guarantee that anyone will reply, that a listing is still available, or that the
-recipient is who they say they are. Once your message is delivered, it is in their inbox and
-outside our control: we cannot recall it, including if you later delete your account. We
+recipient is who they say they are. Once an email is delivered, it is in the recipient's
+inbox and outside our control: we cannot recall it, including if you later delete your account. We
 also keep a record that you sent the inquiry (which listing, to whom, and when) for three
 years, including after you delete your account.
 
@@ -284,10 +303,8 @@ both of you can come back to it. The other participant can always see what you s
 Proximity staff can read a conversation where they need to investigate a report of abuse or
 a dispute, or to confirm that a lease was signed. The rules in Section 12 apply to messages
 exactly as they apply to listings and reviews, and we may remove a message or withdraw
-access to messaging for a breach of them. Messages that threaten or abuse someone, ask for
-login details, or ask for payment through a method we cannot protect are refused. If a
-reply you send by email contains something we would refuse in the app, we remove the
-sentences concerned, mark them as removed, deliver the rest, and tell you by email.
+access to messaging for a breach of them. The paragraph headed "Checks on messages and files" below
+says which messages are refused.
 
 A message you have sent cannot be unsent. If you delete your account, we keep your
 conversations for three years afterwards, with your name and email address as the only
@@ -296,6 +313,28 @@ dealings with the other participant: they rely on them in the same way they woul
 an email you sent them, and we may need them to resolve a dispute, investigate abuse, or
 confirm a lease. This, together with the inquiry records above, is the exception to the
 erasure timetable described in Section 17A. Privacy Policy §§8 and 9 set it out in full.
+
+**Checks on messages and files.** We use automated checks on messages and attached files
+sent through the Services. A message is refused if it threatens or abuses someone
+(including with slurs), asks for passwords, login details or one-time codes, or asks for
+payment through a method we cannot protect, such as gift cards, wire transfers or
+cryptocurrency. A message that shares an email address, a phone number, a link to an
+outside website or a social media handle, or that asks to continue the conversation
+elsewhere, is not refused: in the app we ask you to confirm before it is sent, and it is
+then delivered and flagged for review (Section 12 explains when this is a breach of these
+Terms). In a reply sent by email, the sentences we would refuse are removed and marked as
+removed, the rest is delivered, and you are told by email. Photos and documents are refused
+if their main purpose is to share contact details or ask for payment, or if they contain a
+QR code or barcode. We may record refused and flagged messages and files, as Privacy Policy
+§1.4 explains. If a check cannot be completed, a message or file may still be delivered. We
+do not guarantee that every message or file will be checked or that every violation will be
+caught.
+
+**Reporting and blocking.** You can report a review of a listing or a conversation, and
+block another user, from within the Services. We may act on a report as these Terms
+allow, but we do not promise a response time or outcome. Blocking changes what you can
+see and send in relation to that person; it does not remove content that is already
+published. To undo a block, email info@useproximity.org.
 
 ## 12. Acceptable use
 
@@ -373,11 +412,13 @@ who handle personal information.
 
 ## 17. Suspension, termination, and deleting your account
 
-**You can leave at any time.** Account deletion is self-service on the website, from your
-dashboard. When you confirm, your account stops working immediately, listings you owned
-alone are withdrawn from the marketplace, listings you co-owned stay live under the
-co-owner, and your personal data is permanently erased after 30 days. There is no undo.
-Privacy Policy §8 sets out exactly what is erased, what is anonymized, and what is kept.
+**You can leave at any time.** Account deletion is self-service, on the website from your
+dashboard or in the mobile apps under Profile → Delete Account. When you confirm, your
+account stops working immediately, listings you owned alone are withdrawn from the
+marketplace, listings you co-owned stay live under the co-owner, and after 30 days your
+personal data is erased, except the records Section 17A and Privacy Policy §8 allow us to
+keep for three years. There is no undo. Privacy Policy §8 sets out exactly what is erased,
+what is anonymized, and what is kept.
 
 **We can suspend or terminate.** We may suspend or terminate your account, remove your
 content, or withdraw a listing if we believe you have breached these Terms, if it is
@@ -473,7 +514,8 @@ even if we have been advised of the possibility.
 sublease, or rental arrangement you enter into; the conduct, acts, or omissions of any
 landlord, student, or other user, whether online or in person; the condition, safety,
 legality, or availability of any property; any payment you make to another user; or any
-decision you make in reliance on the matchmaking assistant or Lease Check.
+decision you make in reliance on the matchmaking assistant, suggested listings, or Lease
+Check.
 
 **Our total liability** to you for all claims relating to the Services will not exceed
 **$100 USD**.

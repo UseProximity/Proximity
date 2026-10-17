@@ -104,53 +104,104 @@ export async function notifyNewChatMessage({
     }
     if (!data?.recipientEmail) return;
 
-    // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
-    // /messages deep link so the notification still arrives.
-    //
-    // Only the account's own inbox gets one. A magic link signs in as the account, so an
-    // alert routed to a lease or listing contact (a shared leasing office inbox, say) would
-    // hand everyone reading that inbox the landlord's whole account. Contact addresses are
-    // alert routes, never accounts: they get the login-gated link and can reply by email.
-    const rawToken = (await isAccountInbox(data.recipientId, data.recipientEmail))
-      ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
-      : null;
-    const threadUrl = rawToken
-      ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
-      : `${baseUrl}/messages?thread=${data.threadId}`;
-
-    const [replyTo, references] = await Promise.all([
-      ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
-      earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
-    ]);
-
-    const sent = await sendChatMessageEmail({
-      to: data.recipientEmail,
-      senderName: data.senderName,
-      senderCompany: data.senderCompany,
-      listingTitle: data.listingTitle,
-      listingAddress: data.listingAddress,
-      subject: data.subject,
-      messages: data.messages,
-      earlierCount: data.earlierCount,
-      recipientIsInterestedUser: data.recipientIsInterestedUser,
-      threadUrl,
-      replyTo,
-      threadRef: `thread.${data.threadId}.${data.recipientId}`,
-      references,
-    });
-
-    if (sent && !sent.suppressed) {
-      const { error: logError } = await supabase.from("chat_email_log").insert({
-        thread_id: data.threadId,
-        recipient_id: data.recipientId,
-        to_email: data.recipientEmail,
-        provider: sent.provider,
-        provider_message_id: sent.messageId,
-      });
-      if (logError) console.error("notifyNewChatMessage: log insert failed:", logError);
-    }
+    await deliverAlert(data, { baseUrl });
   } catch (err) {
     // The message is already delivered in-app; a notification failure must stay silent.
     console.error("notifyNewChatMessage failed:", err);
+  }
+}
+
+/*
+ * Send one alert for a recipient row from rpc_chat_notification_recipient and log it.
+ * Returns the send result, or null when nothing was sent.
+ */
+async function deliverAlert(data, { baseUrl, reminder = false }) {
+  // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
+  // /messages deep link so the notification still arrives.
+  //
+  // Only the account's own inbox gets one. A magic link signs in as the account, so an
+  // alert routed to a lease or listing contact (a shared leasing office inbox, say) would
+  // hand everyone reading that inbox the landlord's whole account. Contact addresses are
+  // alert routes, never accounts: they get the login-gated link and can reply by email.
+  const rawToken = (await isAccountInbox(data.recipientId, data.recipientEmail))
+    ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
+    : null;
+  const threadUrl = rawToken
+    ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
+    : `${baseUrl}/messages?thread=${data.threadId}`;
+
+  const [replyTo, references] = await Promise.all([
+    ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
+    earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
+  ]);
+
+  const sent = await sendChatMessageEmail({
+    to: data.recipientEmail,
+    senderName: data.senderName,
+    senderCompany: data.senderCompany,
+    listingTitle: data.listingTitle,
+    listingAddress: data.listingAddress,
+    subject: data.subject,
+    messages: data.messages,
+    earlierCount: data.earlierCount,
+    recipientIsInterestedUser: data.recipientIsInterestedUser,
+    threadUrl,
+    replyTo,
+    threadRef: `thread.${data.threadId}.${data.recipientId}`,
+    references,
+    reminder,
+  });
+
+  if (sent && !sent.suppressed) {
+    const { error: logError } = await supabase.from("chat_email_log").insert({
+      thread_id: data.threadId,
+      recipient_id: data.recipientId,
+      to_email: data.recipientEmail,
+      provider: sent.provider,
+      provider_message_id: sent.messageId,
+    });
+    if (logError) console.error("notifyNewChatMessage: log insert failed:", logError);
+  }
+  return sent ?? null;
+}
+
+/*
+ * Reply reminder (Wyatt, 2026-10-16): sent once by the daily check-in cron when a
+ * message has gone unanswered for 3 days. `senderId` is the person who is waiting;
+ * the reminder goes to the other side, through the same routing, opt-out and
+ * suppression rules as a normal alert, and stacks into the same email thread.
+ *
+ * The RPC also sets the sender's email_mode from `via`. A reminder is not a send,
+ * so the sender's current mode is passed back unchanged.
+ *
+ * Returns "sent", "suppressed" (off production), "no_recipient" or "failed".
+ */
+export async function sendReplyReminder({ threadId, senderId, baseUrl }) {
+  try {
+    const { data: senderRow } = await supabase
+      .from("chat_participants")
+      .select("email_mode")
+      .eq("thread_id", threadId)
+      .eq("user_id", senderId)
+      .maybeSingle();
+
+    const { data, error } = await supabase.rpc("rpc_chat_notification_recipient", {
+      p_thread_id: threadId,
+      p_sender_id: senderId,
+      p_sender_via: senderRow?.email_mode ? "email" : "app",
+      p_message_id: null,
+    });
+    if (error) {
+      console.error("sendReplyReminder: recipient lookup failed:", error);
+      return "failed";
+    }
+    if (!data?.recipientEmail) return "no_recipient";
+
+    const sent = await deliverAlert(data, { baseUrl, reminder: true });
+    if (!sent) return "failed";
+    return sent.suppressed ? "suppressed" : "sent";
+  } catch (err) {
+    console.error("sendReplyReminder failed:", err);
+    return "failed";
   }
 }
