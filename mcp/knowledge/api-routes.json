@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-16T23:13:14.517Z",
+  "_generated": "2026-10-17T00:11:37.125Z",
   "count": 126,
   "routes": [
     {
@@ -962,7 +962,7 @@
       ],
       "auth": "any",
       "methodAuth": {
-        "GET": "any",
+        "GET": "optional",
         "POST": "any"
       },
       "tables": [
