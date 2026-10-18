@@ -13,6 +13,7 @@ import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
 import { ThreadRow } from "../../src/components/chat/ThreadRow";
 import { Button } from "../../src/components/ui/Button";
+import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { colors } from "../../src/theme/tokens";
 
 export default function ChatInboxScreen() {
@@ -89,15 +90,10 @@ export default function ChatInboxScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-white items-center justify-center px-8">
-        <Text className="text-xl font-bold text-gray-900 mb-2">Messages</Text>
-        <Text className="text-sm text-gray-500 text-center mb-6">
-          Sign in to message landlords and keep your conversations in one place.
-        </Text>
-        <Button onPress={() => router.push("/(auth)/login")} className="self-stretch">
-          Sign in
-        </Button>
-      </SafeAreaView>
+      <LoggedOutScreen
+        title="Message landlords"
+        description="Sign in to message landlords and keep your conversations in one place."
+      />
     );
   }
 

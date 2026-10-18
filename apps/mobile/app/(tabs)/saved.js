@@ -7,6 +7,7 @@ import { Heart } from "lucide-react-native";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
+import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { colors } from "../../src/theme/tokens";
 
 export default function SavedScreen() {
@@ -30,18 +31,10 @@ export default function SavedScreen() {
   // Not logged in
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-white items-center justify-center px-8">
-        <Text className="text-xl font-bold text-gray-900 mb-2">Save your favorites</Text>
-        <Text className="text-sm text-gray-500 text-center mb-6">
-          Sign in to save listings and access them anytime, anywhere.
-        </Text>
-        <Pressable
-          onPress={() => router.push("/(auth)/login")}
-          className="bg-red-600 rounded-xl px-6 py-3"
-        >
-          <Text className="text-white font-semibold text-sm">Sign in</Text>
-        </Pressable>
-      </SafeAreaView>
+      <LoggedOutScreen
+        title="Save your favorites"
+        description="Sign in to save listings and access them anytime, anywhere."
+      />
     );
   }
 
