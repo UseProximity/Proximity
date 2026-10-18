@@ -8,7 +8,7 @@ import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { isValidCount, isWholeCount } from "@/utils/unitCounts";
 import nodemailer from "nodemailer";
-import { sendMailSafe } from "@/lib/outreach";
+import { sendMailSafe, stagingEmailHeader } from "@/lib/outreach";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import {
@@ -27,7 +27,7 @@ const _emailTransporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-async function sendNewListingEmail(toEmail, toName, address, listingId) {
+async function sendNewListingEmail(toEmail, toName, address, listingId, req) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn("[sendNewListingEmail] Email env vars not set — skipping in dev mode.");
     return;
@@ -51,7 +51,7 @@ async function sendNewListingEmail(toEmail, toName, address, listingId) {
         <p style="color: #9ca3af; font-size: 12px;">You're receiving this because a listing was assigned to your account on Proximity.</p>
       </div>
     `,
-  });
+  }, req);
 }
 
 async function geocodeAddress(address) {
@@ -676,7 +676,7 @@ export async function POST(req) {
           .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId);
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req);
           }
         }
       } catch (emailErr) {
@@ -690,7 +690,8 @@ export async function POST(req) {
     // have no landlord on our side to confirm them for.
     if (!isImportRequest && ownerId && contactEmail) {
       const baseUrl = getBaseUrl(req);
-      after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl }));
+      const testEmailTo = stagingEmailHeader(req);
+      after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl, testEmailTo }));
     }
 
     return NextResponse.json(

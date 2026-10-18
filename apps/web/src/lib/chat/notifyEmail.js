@@ -86,6 +86,9 @@ export async function notifyNewChatMessage({
   baseUrl,
   via = "app",
   quietMs = ALERT_QUIET_MS,
+  // A staging tester's chosen test inbox: the x-staging-email-to header value,
+  // captured by the route before after() (see stagingEmailHeader in outreach.js).
+  testEmailTo = null,
 }) {
   try {
     // Without a message id there is nothing to dedupe against, so no wait.
@@ -137,6 +140,7 @@ export async function notifyNewChatMessage({
       replyTo,
       threadRef: `thread.${data.threadId}.${data.recipientId}`,
       references,
+      testEmailTo,
     });
 
     if (sent && !sent.suppressed) {

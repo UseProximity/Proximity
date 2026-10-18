@@ -162,7 +162,7 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 // listing's owner with the student CC'd and set as reply-to, so the landlord replies
 // straight to the student. Routed through sendMailSafe, so on staging it's redirected to
 // the chosen test inbox (and the cc is dropped) — never reaching a real owner.
-export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message }) {
+export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req }) {
   // The contact flow always supplies the student's note (the editable draft can't be
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
   // future caller omits it — the real default lives in contactNote.js.
@@ -190,7 +190,7 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
         })}
       </div>
     `,
-  });
+  }, req);
 }
 
 const CHAT_FROM_ADDRESS = "info@useproximity.org";
@@ -358,6 +358,7 @@ export async function sendChatMessageEmail({
   replyTo,
   threadRef,
   references = [],
+  testEmailTo,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -397,7 +398,7 @@ export async function sendChatMessageEmail({
         html,
         text,
         ses: SES_SEND_OPTIONS,
-      });
+      }, testEmailTo);
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
     } catch (err) {
       console.error("sendChatMessageEmail: SES send failed, falling back to Gmail:", err);
@@ -412,7 +413,7 @@ export async function sendChatMessageEmail({
     headers,
     html,
     text,
-  });
+  }, testEmailTo);
   return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed) };
 }
 
@@ -589,7 +590,7 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next,
  * conversations stay in the landlord's account, so a leasing office that never
  * asked for this can tell what it is and ignore it.
  */
-export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl }) {
+export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl, testEmailTo }) {
   const landlord = escapeHtml(landlordName || "A landlord");
   const listing = listingLabel ? escapeHtml(listingLabel) : "";
   const subject = listingLabel
@@ -620,13 +621,13 @@ export async function sendContactVerificationEmail({ to, landlordName, listingLa
   // is not the first time the inbox sees it.
   if (sesTransporter) {
     try {
-      await sendMailSafe(sesTransporter, { ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS });
+      await sendMailSafe(sesTransporter, { ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS }, testEmailTo);
       return;
     } catch (err) {
       console.error("sendContactVerificationEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  await sendMailSafe(transporter, message);
+  await sendMailSafe(transporter, message, testEmailTo);
 }
 
 // One email per PMS sync run, only when a human should look: errored or
