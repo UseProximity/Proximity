@@ -9,7 +9,8 @@ import { requestContactVerification } from "@/lib/chat/contactVerification";
  * One contact per landlord per property.
  *
  * A lease row still carries its own contact_name / contact_email /
- * contact_phone, and browse still reads them: that is how imported leases with
+ * contact_phone (phone is legacy: mobile still sends it, the web editor does
+ * not), and browse still reads them: that is how imported leases with
  * no account behind them stay reachable. But a landlord with an account no
  * longer sets them one offering at a time. They set this block once per
  * property and it is written to every lease they own there, so a renter sees
@@ -45,8 +46,13 @@ export async function PUT(req, { params }) {
   const contact = {
     contact_name: text(body.contactName),
     contact_email: text(body.contactEmail),
-    contact_phone: text(body.contactPhone),
   };
+  // The web editor no longer collects a phone (students write through
+  // Proximity, never call), so it sends no contactPhone key at all. A missing
+  // key leaves whatever phone is stored alone; only a client that sends the
+  // key (mobile still does) can set or clear it. Otherwise every save from the
+  // web would silently wipe the phones the 202610120001 backfill put there.
+  if (body.contactPhone !== undefined) contact.contact_phone = text(body.contactPhone);
   // A renter has to be able to reach someone, so this is the one field that
   // cannot be cleared. Same rule the per-lease routes apply.
   if (!contact.contact_email || !contact.contact_email.includes("@")) {
