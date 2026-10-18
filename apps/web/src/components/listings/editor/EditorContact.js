@@ -27,10 +27,10 @@ const field =
 function savedContact(listing) {
   const mine = listing?.myLeases ?? [];
   const src = mine.find((l) => l.contactEmail) ?? mine[0];
+  // No phone: students write through Proximity, never call (Wyatt, 2026-10-18).
   return {
     contactName: src?.contactName ?? "",
     contactEmail: src?.contactEmail ?? "",
-    contactPhone: src?.contactPhone ?? "",
   };
 }
 
@@ -108,7 +108,7 @@ export default function EditorContact({ listing, onChanged }) {
         )}
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Name</span>
           <input type="text" className={field} value={draft.contactName}
@@ -122,12 +122,6 @@ export default function EditorContact({ listing, onChanged }) {
           <input type="email" required className={field} value={draft.contactEmail}
             onChange={(e) => set({ contactEmail: e.target.value })} />
           <ContactEmailStatus savedEmail={savedContact(listing).contactEmail} draftEmail={draft.contactEmail} />
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Phone</span>
-          <input type="tel" className={field} value={draft.contactPhone}
-            placeholder="Optional"
-            onChange={(e) => set({ contactPhone: e.target.value })} />
         </label>
       </div>
 

@@ -73,7 +73,12 @@ export default function AddListingPage() {
         <AddListingWizard
           user={user}
           onClose={() => setMode(null)}
-          onSuccess={() => {
+          onSuccess={(_units, _diff, result) => {
+            if (result?.draft) {
+              toast.success("Saved as a draft. Students can't see it yet.");
+              router.push("/dashboard/landlord?tab=drafts");
+              return;
+            }
             toast.success("Listing published!");
             router.push("/dashboard/landlord?tab=properties");
           }}

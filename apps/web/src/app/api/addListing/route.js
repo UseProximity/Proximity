@@ -7,8 +7,7 @@ import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { isValidCount, isWholeCount } from "@/utils/unitCounts";
-import nodemailer from "nodemailer";
-import { sendMailSafe } from "@/lib/outreach";
+import { sendNewListingEmail } from "@/lib/email/newListingEmail";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import {
@@ -18,41 +17,7 @@ import {
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
 import { cleanUnitName } from "@/utils/unitName";
-import { nextUnitSortOrder } from "@/lib/listings/unitNames";
-
-const _emailTransporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT) || 587,
-  secure: false,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
-
-async function sendNewListingEmail(toEmail, toName, address, listingId) {
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn("[sendNewListingEmail] Email env vars not set — skipping in dev mode.");
-    return;
-  }
-  const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
-  await sendMailSafe(_emailTransporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: toEmail,
-    subject: "You have a new listing on Proximity!",
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
-        <p>Congratulations! A new listing has been added to your Proximity account.</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p><strong>Address:</strong> ${address}</p>
-        <p style="margin-top: 16px;">
-          <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Your Listing</a>
-        </p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
-        <p style="color: #9ca3af; font-size: 12px;">You're receiving this because a listing was assigned to your account on Proximity.</p>
-      </div>
-    `,
-  });
-}
+import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
 
 async function geocodeAddress(address) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -138,6 +103,14 @@ export async function POST(req) {
       // add a new unit to it rather than create a second property row.
       attachToListingId,
     } = body;
+
+    /*
+     * Save as a draft instead of publishing (see 202610100002). A new property
+     * is born a draft, which hides everything under it. Attached to a property
+     * that is already live, the new units are the drafts instead, so the
+     * building students can see is left exactly as it was.
+     */
+    const draft = body.draft === true;
 
     // The add forms hold their state in snake_case and spread it straight into
     // the body, so any field this route read only in camelCase never arrived:
@@ -512,6 +485,7 @@ export async function POST(req) {
           lease_availability: leaseAvailabilityArr,
           unavailable: false,
           deleted_at: null,
+          draft,
         },
         p_amenities: amenityObj,
         p_utilities: utilityObj,
@@ -558,29 +532,45 @@ export async function POST(req) {
     // In the order the landlord entered them, after any units already there.
     let sortOrder = await nextUnitSortOrder(listingId);
     for (const unit of unitData) {
-      const { data: insertedUnit, error: unitError } = await supabase
-        .from("listing_units")
-        .insert({
-          listing_id: listingId,
-          bedrooms: unit.bedrooms,
-          bathrooms: unit.bathrooms,
-          area: unit.area,
-          name: unit.name,
-          sort_order: sortOrder++,
-          floor_plan_image_url: unit.floorPlanImageUrl,
-        })
-        .select("id")
-        .single();
+      /*
+       * One apartment, one row. Adding "Apt 2E" to a building that already
+       * has an Apt 2E, which happens when a second landlord describes a unit
+       * the first one put there as a draft they cannot see (202610100002),
+       * puts this offering on the existing unit rather than making a twin.
+       * The offering is still this landlord's own; the unit is shared, as it
+       * would be had they picked it from the list.
+       */
+      const existingId = attachToListingId ? await findUnitNamed(listingId, unit.name) : null;
+      let unitId = existingId;
+      if (!unitId) {
+        const { data: insertedUnit, error: unitError } = await supabase
+          .from("listing_units")
+          .insert({
+            listing_id: listingId,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms,
+            area: unit.area,
+            name: unit.name,
+            sort_order: sortOrder++,
+            floor_plan_image_url: unit.floorPlanImageUrl,
+            // A draft property already hides its units; on a live one the unit
+            // itself is the draft.
+            ...(draft && attachToListingId ? { published_at: null } : {}),
+          })
+          .select("id")
+          .single();
 
-      if (unitError) {
-        console.error("[addListing] Unit insert failed:", unitError.message);
-        return fail(500, "Could not save a unit.");
+        if (unitError) {
+          console.error("[addListing] Unit insert failed:", unitError.message);
+          return fail(500, "Could not save a unit.");
+        }
+        unitId = insertedUnit.id;
       }
 
-      createdUnitIds.push(insertedUnit.id);
+      createdUnitIds.push(unitId);
 
       const { error: leaseError } = await supabase.from("unit_leases").insert({
-        unit_id: insertedUnit.id,
+        unit_id: unitId,
         owner_id: ownerId,
         rent: unit.rent,
         // Which number `rent` is. Dropped here until now, so an offering
@@ -597,6 +587,10 @@ export async function POST(req) {
         contact_email: contactEmail ?? null,
         contact_phone: contactPhone ?? null,
         contact_name: contactName ?? null,
+        // A draft offering on a live building. Inside a draft property the
+        // row is published and the property hides it, so publishing the
+        // property alone puts everything up.
+        ...(draft && attachToListingId ? { published_at: null } : {}),
       });
 
       if (leaseError) {
@@ -667,8 +661,8 @@ export async function POST(req) {
       }
     }
 
-    // Notify landlord of their new listing
-    if (ownerId) {
+    // Notify landlord of their new listing. A draft is not one yet.
+    if (ownerId && !draft) {
       try {
         const { data: landlordUsers } = await supabase
           .from("users")
@@ -695,8 +689,8 @@ export async function POST(req) {
 
     return NextResponse.json(
       {
-        message: "Listing created successfully",
-        listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty },
+        message: draft ? "Draft saved" : "Listing created successfully",
+        listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft },
       },
       { status: 201 }
     );

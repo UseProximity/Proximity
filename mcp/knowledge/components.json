@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-16T23:32:18.029Z",
-  "count": 128,
+  "_generated": "2026-10-18T21:47:38.878Z",
+  "count": 129,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -427,6 +427,11 @@
       "name": "ContactEmailStatus",
       "file": "src/components/listings/editor/ContactEmailStatus.js",
       "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "DraftControls",
+      "file": "src/components/listings/editor/DraftControls.js",
+      "description": "The amber Draft badge and the one-way Publish button (POST /api/landlord/publish) shared by every draft surface in the property editor"
     },
     {
       "name": "EditorContact",

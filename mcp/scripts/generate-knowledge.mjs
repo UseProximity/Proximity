@@ -199,6 +199,7 @@ function generateDbSchema() {
 
 const COMPONENT_DESCRIPTIONS = {
   "AddressSearchInput.js": "Mapbox address autocomplete input — used in add-listing and add-sub-lease forms",
+  "listings/editor/DraftControls.js": "The amber Draft badge and the one-way Publish button (POST /api/landlord/publish) shared by every draft surface in the property editor",
   "admin/ReviewInvitesView.js": "Admin view for review invites: pick students, write one templated message, send it in chunks, and browse the invite ledger",
   "admin/reviewInvites/InviteComposer.js": "Subject and message editor for bulk review invites, with {first_name} / {link} placeholders and a live preview",
   "admin/reviewInvites/RosterPicker.js": "Student roster picker for review invites: search, filter by contacted status, flag missing first names, and draw N at random",
