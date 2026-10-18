@@ -312,9 +312,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
           ...(profileUpdatePrompt.email && {
             email: profileUpdatePrompt.email,
           }),
-          ...(profileUpdatePrompt.phone && {
-            phone: profileUpdatePrompt.phone,
-          }),
         }),
       });
       await fetchUser();

@@ -193,12 +193,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   {profileUpdatePrompt.email}
                 </li>
               )}
-              {profileUpdatePrompt.phone && (
-                <li>
-                  <span className="font-medium">Phone:</span>{" "}
-                  {profileUpdatePrompt.phone}
-                </li>
-              )}
             </ul>
             <div className="flex gap-2 justify-end pt-2">
               <button

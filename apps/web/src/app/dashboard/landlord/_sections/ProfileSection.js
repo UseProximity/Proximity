@@ -94,7 +94,7 @@ export default function ProfileSection({
                 {user.gender ? ` • ${user.gender}` : ""}
               </p>
               <p className="text-gray-500 text-sm sm:text-base mt-2 break-words">
-                📞 {user.phone} • ✉️ {user.email}
+                ✉️ {user.email}
               </p>
               {/* Additional Info */}
               <div className="mt-6">
@@ -142,18 +142,6 @@ export default function ProfileSection({
                 <p className="mt-1 text-xs text-gray-400">
                   Shown next to your name when you message students.
                 </p>
-              </div>
-              <div className="col-span-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  Phone
-                </label>
-                <input
-                  name="phone"
-                  value={form.phone == "N/A" ? "" : form.phone}
-                  onChange={onChange}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="+1 (555) 555-5555"
-                />
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">

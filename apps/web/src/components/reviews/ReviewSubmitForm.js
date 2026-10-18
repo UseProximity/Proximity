@@ -112,8 +112,9 @@ export default function ReviewSubmitForm({
 
   // Landlord / company
   const [landlordName, setLandlordName] = useState("");
+  // Email or nothing: a phone number was collected here for years and never
+  // read by anything, since landlords are only ever reached by email.
   const [landlordEmail, setLandlordEmail] = useState("");
-  const [landlordPhone, setLandlordPhone] = useState("");
   const [noContact, setNoContact] = useState(false);
 
   // Who's reviewing (signed-out only) + how it's shown
@@ -125,7 +126,6 @@ export default function ReviewSubmitForm({
 
   // Progressive reveal: each step only renders once the step before it is answered.
   const landlordEmailOk = EMAIL_RE.test(landlordEmail.trim());
-  const landlordPhoneOk = landlordPhone.trim().length >= 7;
   const addressReady = !!picked;
   const overallReady = rating >= 0.5;
   const categoriesReady = comm >= 0.5 && val >= 0.5 && loc >= 0.5;
@@ -135,7 +135,7 @@ export default function ReviewSubmitForm({
   const commentProblem = checkReviewText(comment);
   const landlordReady =
     landlordName.trim().length >= 2 &&
-    (noContact || landlordEmailOk || landlordPhoneOk);
+    (noContact || landlordEmailOk);
 
   // A signed-out reviewer's school comes from the address they typed in.
   const contactSchool = schoolForEmail(lockedEmail || contact.email);
@@ -210,8 +210,8 @@ export default function ReviewSubmitForm({
     if (commentProblem) return toast.error(commentProblem);
     if (landlordName.trim().length < 2)
       return toast.error("Please enter the landlord or company name.");
-    if (!noContact && !landlordEmailOk && !landlordPhoneOk)
-      return toast.error("Add a landlord email or phone, or check the box below.");
+    if (!noContact && !landlordEmailOk)
+      return toast.error("Add the landlord's email, or check the box below.");
     if (requireContact && !contactReady(contact, { requireContact }))
       return toast.error("Add your name, class year and school email.");
     if (contactSchoolMismatch)
@@ -232,7 +232,6 @@ export default function ReviewSubmitForm({
       unitNumber: wholeProperty ? null : unitNumber.trim() || null,
       landlordName: landlordName.trim(),
       landlordEmail: landlordEmail.trim() || null,
-      landlordPhone: landlordPhone.trim() || null,
       noLandlordContact: noContact,
       anonymous,
       source,
@@ -466,33 +465,18 @@ export default function ReviewSubmitForm({
               className={INPUT_CLASS}
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="review-landlord-email" className="block text-sm text-gray-600 mb-1.5">
-                Landlord email
-              </label>
-              <input
-                id="review-landlord-email"
-                type="email"
-                value={landlordEmail}
-                onChange={(e) => setLandlordEmail(e.target.value)}
-                disabled={noContact}
-                className={`${INPUT_CLASS} disabled:bg-gray-100 disabled:text-gray-400`}
-              />
-            </div>
-            <div>
-              <label htmlFor="review-landlord-phone" className="block text-sm text-gray-600 mb-1.5">
-                Landlord phone
-              </label>
-              <input
-                id="review-landlord-phone"
-                type="tel"
-                value={landlordPhone}
-                onChange={(e) => setLandlordPhone(e.target.value)}
-                disabled={noContact}
-                className={`${INPUT_CLASS} disabled:bg-gray-100 disabled:text-gray-400`}
-              />
-            </div>
+          <div>
+            <label htmlFor="review-landlord-email" className="block text-sm text-gray-600 mb-1.5">
+              Landlord email
+            </label>
+            <input
+              id="review-landlord-email"
+              type="email"
+              value={landlordEmail}
+              onChange={(e) => setLandlordEmail(e.target.value)}
+              disabled={noContact}
+              className={`${INPUT_CLASS} disabled:bg-gray-100 disabled:text-gray-400`}
+            />
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-600">
             <input
