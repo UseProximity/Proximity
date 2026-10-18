@@ -120,6 +120,10 @@ export default function AuthCard({
       setUnverifiedSignIn(true);
       return;
     }
+    if (result.code === "TOO_MANY_ATTEMPTS") {
+      setError("Too many failed sign-in attempts. Please wait about 15 minutes and try again.");
+      return;
+    }
     if (result.error) {
       setError("Invalid email or password.");
       return;
