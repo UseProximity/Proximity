@@ -14,7 +14,12 @@ import {
   isRoomShareListing,
 } from "./listingConstraints";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
-import { unitIsAvailable, liveLeasesOf } from "@/lib/listings/unitAvailability";
+import {
+  unitIsAvailable,
+  liveLeasesOf,
+  publicUnits,
+  isPublished,
+} from "@/lib/listings/unitAvailability";
 import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import { fetchSaturation } from "./saturation";
 
@@ -958,12 +963,18 @@ export async function fetchActiveListings() {
     .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
     .is("deleted_at", null)
     .eq("unavailable", false)
+    .not("published_at", "is", null)
     .limit(80);
   if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
-  // Retired units (collapsed by a property merge) are not rentable options.
+  // Retired units (collapsed by a property merge) are not rentable options, and
+  // neither are drafts. Draft offerings are dropped here too, so every check
+  // below sees only what students can.
   return (data ?? []).map((row) => ({
     ...row,
-    listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at),
+    listing_units: publicUnits(row.listing_units).map((u) => ({
+      ...u,
+      unit_leases: (u.unit_leases ?? []).filter(isPublished),
+    })),
   }));
 }
 

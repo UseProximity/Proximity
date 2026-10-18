@@ -126,7 +126,10 @@ export default function LeaseStep({
         />
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Email only. Students reach landlords through Proximity messages, which
+          go to this address; a phone number is not something we collect
+          (Wyatt, 2026-10-18). */}
+      <div>
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
             Contact email <span className="text-red-500">*</span>
@@ -142,13 +145,6 @@ export default function LeaseStep({
               ? "Your contact at this property, shared by all your listings here. Change it from your dashboard."
               : "Where student enquiries about this apartment go."}
           </span>
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">
-            Contact phone
-          </span>
-          <input className={field} value={value.contactPhone}
-            onChange={(e) => set({ contactPhone: e.target.value })} />
         </label>
       </div>
 

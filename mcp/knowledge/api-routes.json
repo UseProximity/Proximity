@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-17T00:11:37.125Z",
-  "count": 126,
+  "_generated": "2026-10-18T21:47:38.875Z",
+  "count": 127,
   "routes": [
     {
       "path": "/api/account",
@@ -1353,6 +1353,25 @@
         "pms_integration_requests"
       ],
       "file": "src/app/api/landlord/pms/request-integration/route.js"
+    },
+    {
+      "path": "/api/landlord/publish",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_landlords",
+        "listing_units",
+        "listing_image_units",
+        "listing_images",
+        "unit_leases",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/publish/route.js"
     },
     {
       "path": "/api/landlord/reviews",

@@ -178,6 +178,8 @@ export async function GET(req) {
        unit_type_status, listing_units(id, bedrooms, unit_leases(id, is_active, unavailable))`
     )
     .is("deleted_at", null)
+    // Drafts are not on the market, so there is nothing to hide.
+    .not("published_at", "is", null)
     .is("pms_connection_id", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

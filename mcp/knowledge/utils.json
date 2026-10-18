@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-16T23:32:18.050Z",
-  "count": 131,
+  "_generated": "2026-10-18T21:47:38.885Z",
+  "count": 134,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -74,6 +74,14 @@
     {
       "file": "src/lib/auth/landlordRole.js",
       "description": "Turn the signed-in account into a landlord."
+    },
+    {
+      "file": "src/lib/auth/loginThrottle.js",
+      "description": "In-memory brute-force guard for the two password login paths (the NextAuth"
+    },
+    {
+      "file": "src/lib/auth/loginThrottle.test.js",
+      "description": "Run with: npm test (from apps/web). Uses Node's built-in test runner, so there"
     },
     {
       "file": "src/lib/auth/roles.js",
@@ -182,6 +190,10 @@
     {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
+    },
+    {
+      "file": "src/lib/email/newListingEmail.js",
+      "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",
