@@ -167,7 +167,7 @@ export default function StepReview({ w }) {
         />
         <Row
           label="Contact"
-          value={[form.contact_name, form.contact_email, form.contact_phone]
+          value={[form.contact_name, form.contact_email]
             .filter(Boolean)
             .join(" · ")}
           onChange={() => w.goTo("description")}

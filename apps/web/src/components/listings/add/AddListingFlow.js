@@ -58,7 +58,6 @@ const emptyLease = (email) => ({
   subleaseRightsConfirmed: false,
   furnished: false,
   contactEmail: email ?? "",
-  contactPhone: "",
   description: "",
 });
 
@@ -317,7 +316,6 @@ export default function AddListingFlow({ user }) {
             availableFrom: lease.availableFrom || null,
             description: lease.description,
             contactEmail: lease.contactEmail,
-            contactPhone: lease.contactPhone,
             contactName: user?.name ?? null,
             draft: asDraft,
           }),
@@ -360,7 +358,6 @@ export default function AddListingFlow({ user }) {
             description: lease.description,
             furnished: lease.furnished,
             contactEmail: lease.contactEmail,
-            contactPhone: lease.contactPhone,
             contactName: user?.name ?? null,
             // Attaching to a property we already hold rather than making a second one.
             ...(attachId ? { attachToListingId: attachId } : {}),

@@ -47,7 +47,6 @@ const blankForm = (user) => ({
   twenty_one_plus: false,
   move_in_date: "",
   contact_email: user?.email ?? "",
-  contact_phone: user?.phone ?? "",
   contact_name: user?.name ?? "",
   amenities: [],
   utilities_included: [],
@@ -460,7 +459,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
       home_type: listing.home_type,
       contact_name: listing.contact_name,
       contact_email: listing.contact_email,
-      contact_phone: listing.contact_phone,
     };
     for (const [key, val] of Object.entries(importable)) {
       if (val != null && val !== "") marked.add(key);
@@ -748,7 +746,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
               description: form.description,
               furnished: form.furnished,
               contactEmail: form.contact_email || null,
-              contactPhone: form.contact_phone || null,
               contactName: form.contact_name || null,
               draft: asDraft,
             }),
@@ -768,7 +765,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
           // create-path bug — edit always saved it).
           moveInDate: form.move_in_date || null,
           contactEmail: form.contact_email || null,
-          contactPhone: form.contact_phone || null,
           contactName: form.contact_name || null,
           ...(coords.lat != null && coords.lng != null
             ? { longitude: coords.lng, latitude: coords.lat }
@@ -892,8 +888,6 @@ export default function AddListingWizard({ user, onClose, onSuccess }) {
         diff.name = trim(form.contact_name);
       if (trim(form.contact_email) && trim(form.contact_email) !== trim(user?.email))
         diff.email = trim(form.contact_email);
-      if (trim(form.contact_phone) && trim(form.contact_phone) !== trim(user?.phone))
-        diff.phone = trim(form.contact_phone);
 
       clearAutosave();
 
