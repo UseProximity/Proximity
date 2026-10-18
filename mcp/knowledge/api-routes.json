@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-16T22:26:47.163Z",
-  "count": 125,
+  "_generated": "2026-10-18T21:47:38.875Z",
+  "count": 127,
   "routes": [
     {
       "path": "/api/account",
@@ -773,6 +773,7 @@
         "listing_reviews",
         "dorm_reviews",
         "user_listing_interactions",
+        "user_filter_summaries",
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
@@ -961,7 +962,7 @@
       ],
       "auth": "any",
       "methodAuth": {
-        "GET": "any",
+        "GET": "optional",
         "POST": "any"
       },
       "tables": [
@@ -996,6 +997,20 @@
       },
       "tables": [],
       "file": "src/app/api/feedback/route.js"
+    },
+    {
+      "path": "/api/filter-summary",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "user_filter_summaries"
+      ],
+      "file": "src/app/api/filter-summary/route.js"
     },
     {
       "path": "/api/getUser",
@@ -1491,6 +1506,18 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/listings/popular/route.js"
+    },
+    {
+      "path": "/api/listings/suggested",
+      "methods": [
+        "GET"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "GET": "optional"
+      },
+      "tables": [],
+      "file": "src/app/api/listings/suggested/route.js"
     },
     {
       "path": "/api/matchmaking/chat",

@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** October 12, 2026
+**Last updated:** October 16, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -183,6 +183,11 @@ Android app offer email and password or Google.
 
 - **Interaction history**: which listings you save and which you contact, with
   timestamps. We do not record which listings you merely view against your account.
+- **Saved browse filters** (website): when you are signed in and save a set of filters on
+  the browse page (by pressing **Done** or **Apply Filters**), we keep that latest set,
+  such as a price range, bedroom count, or walk time, and when you saved it. Each new save
+  replaces the last; we do not keep a history of your searches, and we do not record the
+  text you type into the search box.
 - **Legacy viewing history**: an earlier version of the Services did record page and
   listing views against signed-in accounts. We stopped collecting this in June 2026. The
   records already gathered are retained but no longer added to, and are not used to
@@ -287,6 +292,7 @@ another, replying to say so is enough.
 |---|---|
 | **Provide the Services** | Create and authenticate your account; display listings; save favorites; publish your listings; display reviews and replies. |
 | **Match you to housing** | Operate the matchmaking assistant; store your preferences so you can resume where you left off; rank and explain listings against those preferences. |
+| **Suggest listings** | When you are signed in, show a short "Suggested for you" selection on the homepage and the browse page, chosen automatically from your most recent matchmaking preferences, the listings you have saved and contacted, and your saved browse filters (Section 2.2). |
 | **Connect students and landlords** | Deliver your messages and notify the other person by email or push notification; send inquiry emails on your behalf when you ask the matchmaking assistant to; send you a copy of those emails. |
 | **Account and transactional email** | Verify your email address; reset your password; ask landlords to confirm whether a listing is still available; remind new landlords who have not yet posted. |
 | **Collect reviews** | Email students at the universities we serve to invite them to review a place they have lived, using a single-use link. |
@@ -308,9 +314,26 @@ gender in their description (for example, "looking for a female roommate"). The
 matchmaking assistant will sometimes not suggest those listings to students of another
 gender.
 
-This affects only which listings the matchmaking assistant surfaces. It never restricts
-what you can search, browse, view, or contact directly, and it is not used for any other
-purpose.
+Suggested listings (Section 2.2) follow the same rule, so a listing like that will not be
+suggested to you either.
+
+This affects only which listings the matchmaking assistant and suggested listings surface.
+It never restricts what you can search, browse, view, or contact directly, and it is not
+used for any other purpose.
+
+### 2.2 How we choose suggested listings
+
+Suggestions are chosen by a fixed set of rules that run on our own servers. No AI model is
+involved and nothing is sent to a third party. We compare each listing with, in order of
+importance: the preferences from your most recent matchmaking conversation, the listings
+you have saved and contacted (looking at things like price per person, location, bedrooms,
+and walk time), and your saved browse filters. Recent activity counts more than older
+activity, and activity from several months ago has little or no effect.
+
+We only show suggestions once we have at least two pieces of recent activity to go on.
+We never suggest a listing you have already contacted, a listing that is unavailable, or a
+sublease. Suggestions never hide or reorder anything else: every listing remains available
+to browse, and using any filter or search on the browse page turns them off.
 
 ---
 
@@ -549,7 +572,7 @@ the end of that period instead:
 | Reviews you wrote | **Kept, but anonymized.** We remove your name and your email address and disconnect the review from your account; the review text stays published, because it describes a property and continues to help other students. |
 | Messages you sent through Proximity | **Kept for three years, with your name and email address.** The text of each message, who sent it, and when are retained for three years after deletion, and then erased. This is a deliberate exception to the erasure above: a conversation is a record of dealings between two people, the other participant relies on it in the same way they would rely on an email you sent them, and we may need it to resolve a dispute, investigate abuse, or confirm a lease. The conversation is never published; it stays visible to the other participant and to Proximity staff who need it. See Terms §17A. |
 | Inquiries you sent to landlords, and leases a landlord told us you signed | **Kept for three years, with your name and email address.** The record of which listing you contacted and when, and any lease recorded under Section 1.9, are retained for three years after deletion as a record of the introductions we make, and then erased. See Terms §17A. |
-| Saved listings, review votes | Permanently deleted. |
+| Saved listings, saved browse filters, review votes | Permanently deleted. |
 | Push notification tokens | Permanently deleted. |
 | Conversation-link records | Not removed at the 30-day erasure. Deleted automatically about 30 days after each link expires (Section 1.1). They contain no name or email address. |
 | Blocks you set, and reports you filed | Permanently deleted. |
@@ -593,7 +616,7 @@ the end of that period instead:
 | Inquiry records and recorded leases | While your account is active, then for three years after deletion with your name and email address, then erased (Section 8). |
 | Matchmaking conversations, and the housing preferences derived from them | While your account is active, then for three years after deletion, then erased (Section 8). |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
-| Saved listings | While your account is active, then erased under Section 8. |
+| Saved listings and saved browse filters | While your account is active, then erased under Section 8. Saved browse filters are replaced each time you save a new set. |
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
 | Legacy viewing history | No longer collected. Records gathered before June 2026 are retained (Section 1.5). |
@@ -622,6 +645,10 @@ the end of that period instead:
   the app in your device settings at any time.
 - **Email notifications.** On the website you can turn off emails about new messages in
   your profile settings. The mobile apps do not have this setting.
+- **Suggested listings.** Suggestions are based only on activity described in Section 2.2.
+  If you would rather not see them, applying any filter on the browse page turns them off
+  for that view, and you can email info@useproximity.org to have your saved browse filters
+  deleted.
 - **Decline the AI features.** Matchmaking and Lease Check are optional. Nothing is sent to
   Anthropic unless you choose to use them.
 - **Request a copy of your data.** Email info@useproximity.org from the address on your

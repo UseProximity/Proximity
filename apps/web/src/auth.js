@@ -24,6 +24,12 @@ import supabase from "@/lib/supabase";
 import { AUTH_ERRORS } from "@proximity/auth-core";
 import { hashChatAccessToken } from "@/lib/chat/accessToken";
 import { emailMatchPattern } from "@/lib/auth/email";
+import {
+  checkLoginLock,
+  recordLoginFailure,
+  recordLoginSuccess,
+  clientIp,
+} from "@/lib/auth/loginThrottle";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
@@ -37,6 +43,12 @@ const ROLE_REFRESH_MS = 60_000;
 // The code reaches the client as `result.code`.
 class EmailNotVerified extends CredentialsSignin {
   code = AUTH_ERRORS.EMAIL_NOT_VERIFIED;
+}
+
+// Too many failed password attempts for this email or IP. Same CredentialsSignin
+// trick as above, so the sign-in form receives the code as `result.code`.
+class LoginLocked extends CredentialsSignin {
+  code = AUTH_ERRORS.TOO_MANY_ATTEMPTS;
 }
 
 /*
@@ -94,9 +106,14 @@ const config = {
       clientSecret: process.env.GOOGLE_SECRET,
     }),
     Credentials({
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const { email, password } = credentials;
         if (!email || !password) return null;
+
+        // Checked before any DB lookup so a locked unknown email and a locked
+        // real one are indistinguishable. See lib/auth/loginThrottle.js.
+        const who = { email: String(email), ip: clientIp(request?.headers) };
+        if (checkLoginLock(who).locked) throw new LoginLocked();
 
         const { data: user } = await supabase
           .from("users")
@@ -107,15 +124,23 @@ const config = {
         // Deleted accounts fail exactly like a wrong password — same null
         // return, no distinct error. Confirming "this account was deleted"
         // would leak that the address was registered.
-        if (!user || !user.password_hash || user.deleted_at) return null;
+        if (!user || !user.password_hash || user.deleted_at) {
+          recordLoginFailure(who);
+          return null;
+        }
 
         const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) return null;
+        if (!valid) {
+          recordLoginFailure(who);
+          return null;
+        }
 
         // Checked after the password, so only the account's owner learns that
-        // it exists but is unverified.
+        // it exists but is unverified. Not a password guess, so it neither
+        // counts as a failure nor resets the counter.
         if (!user.email_verified) throw new EmailNotVerified();
 
+        recordLoginSuccess(who);
         return { id: user.id, email: user.email, name: user.name };
       },
     }),

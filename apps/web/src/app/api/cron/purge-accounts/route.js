@@ -17,8 +17,8 @@
  *                    means clearing user_id/name/reviewer_email, not setting
  *                    that flag. Landlord contact fields on a review describe a
  *                    DIFFERENT person and are deliberately left in place.
- *   - behavioral     user_listing_interactions, review_votes, waitlist_clicks:
- *                    deleted outright.
+ *   - behavioral     user_listing_interactions, user_filter_summaries,
+ *                    review_votes, waitlist_clicks: deleted outright.
  *   - matchmaking    chat sessions and matchmaking_preferences are KEPT for
  *                    three years (Privacy Policy s8). They record why we showed
  *                    this person the properties we did, so they are erased by
@@ -226,6 +226,10 @@ async function purgeUser(user) {
   await must(
     "user_listing_interactions",
     supabase.from("user_listing_interactions").delete().eq("user_id", userId)
+  );
+  await must(
+    "user_filter_summaries",
+    supabase.from("user_filter_summaries").delete().eq("user_id", userId)
   );
   await must("review_votes", supabase.from("review_votes").delete().eq("user_id", userId));
   // Matchmaking sessions and preferences are kept for three years; see the header.

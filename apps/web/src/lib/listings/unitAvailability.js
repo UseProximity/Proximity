@@ -76,3 +76,25 @@ export function listingIsUnavailable(row) {
   const units = row?.listing_units ?? [];
   return units.length > 0 && units.every((u) => !unitIsAvailable(u));
 }
+
+/**
+ * When can a renter move into this unit? Read off its LIVE offerings only.
+ *
+ * Returns null for "available now": any live offering with no date (or a date
+ * that has already passed) means the unit can be taken today, and that beats
+ * any pre-lease date on a sibling offering. Otherwise the earliest future
+ * date, as YYYY-MM-DD.
+ *
+ * This used to be computed inline from every lease on the unit, live or not,
+ * and from dated leases only. Rosebury Rentals wore "Available Jun 1, 2027"
+ * for both its buildings because a switched-off import still carried that
+ * date, while the landlord's own undated offering was skipped.
+ */
+export function nextAvailableFrom(unit) {
+  const today = new Date().toISOString().slice(0, 10);
+  const dates = liveLeasesOf(unit).map((l) =>
+    l.available_from ? String(l.available_from).slice(0, 10) : null
+  );
+  if (!dates.length || dates.some((d) => !d || d <= today)) return null;
+  return dates.sort()[0];
+}

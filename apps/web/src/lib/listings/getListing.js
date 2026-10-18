@@ -16,6 +16,7 @@ import supabase from "@/lib/supabase";
 import {
   unitIsAvailable,
   listingIsUnavailable,
+  nextAvailableFrom,
   isLiveLease,
   isPublished,
   publicUnits,
@@ -221,12 +222,7 @@ function buildListing(row, owner = null, reviews = []) {
         .filter((l) => l.rent != null)
         .sort((a, b) => Number(a.rent) - Number(b.rent))[0] ?? null;
       const activeRent = cheapestPriced?.rent;
-      const nextAvailable =
-        (u.unit_leases ?? [])
-          .filter((l) => l.available_from && isPublished(l))
-          .sort(
-            (a, b) => new Date(a.available_from) - new Date(b.available_from)
-          )[0]?.available_from ?? null;
+      const nextAvailable = nextAvailableFrom(u);
       const activeLease = liveLeases[0];
       // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
       // above stay as the first-active-lease summary so existing callers (cards,

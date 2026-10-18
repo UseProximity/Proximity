@@ -179,9 +179,13 @@ function groupByLandlord(leases) {
   return [...groups.values()];
 }
 
-// A long list of landlords pushes the rest of the listing out of reach, so it
-// opens on the first few and grows on request.
+// A long list (of landlords, or of one landlord's options) pushes the rest of
+// the listing out of reach, so it opens on the first few and grows on request.
 const PAGE = 5;
+
+// How many lease rows open on their own across every landlord on a unit. Past
+// this, landlords start folded so a busy unit still fits on a screen.
+const OPEN_BUDGET = 10;
 
 function Cell({ label, children, className = "" }) {
   return (
@@ -239,7 +243,23 @@ function LeaseList({ leases, onContact }) {
       ...g,
       leases: stableSort(g.leases, compare),
     }));
-    return stableSort(sortedWithin, (a, b) => compare(a.leases[0], b.leases[0]));
+    const sorted = stableSort(sortedWithin, (a, b) => compare(a.leases[0], b.leases[0]));
+
+    /*
+     * Open landlords in order until the next one would take the rows on show
+     * past OPEN_BUDGET; from there on every card starts folded. A card shows at
+     * most PAGE rows, so that is what it spends. The first landlord always
+     * opens, so the top option is never hidden.
+     */
+    let spent = 0;
+    let budgetLeft = true;
+    return sorted.map((g, i) => {
+      const cost = Math.min(g.leases.length, PAGE);
+      if (i > 0 && spent + cost > OPEN_BUDGET) budgetLeft = false;
+      const defaultOpen = budgetLeft;
+      if (defaultOpen) spent += cost;
+      return { ...g, defaultOpen };
+    });
   }, [leases, sortBy]);
   const visible = groups.slice(0, shown);
   const remaining = groups.length - visible.length;
@@ -305,30 +325,44 @@ function LeaseList({ leases, onContact }) {
 /*
  * One landlord on this unit: who they are, one Contact, and their options.
  *
- * With a single option there is nothing to fold, so it sits open under the
- * name with no toggle. With several, the card opens on a one-line summary
- * ("3 lease options from $900/mo") and the terms unfold on request, so a unit
- * with four landlords still fits on a screen.
+ * The first landlords open with every option showing, so a renter can compare
+ * terms without clicking in; once OPEN_BUDGET rows are on show, the rest start
+ * folded to a one-line summary ("3 lease options from $900/mo") that opens on
+ * request. Inside an open card, past the first PAGE options the rest grow on
+ * request so one prolific landlord can't bury the others.
  *
  * Contact carries the landlord's best option under the current sort as the
  * lease the enquiry is about. The chat is routed to the landlord either way,
  * and every option in the card reaches the same person.
  */
 function LandlordCard({ group, onContact }) {
-  const { landlordName, landlordImage, leases } = group;
+  const { landlordName, landlordImage, leases, defaultOpen } = group;
   const single = leases.length === 1;
-  const [open, setOpen] = useState(false);
-  const expanded = single || open;
+  const [open, setOpen] = useState(defaultOpen);
+  const [shown, setShown] = useState(PAGE);
+
+  // A different unit's tab (or a new sort) is a different list: start it from the top.
+  useEffect(() => {
+    setOpen(defaultOpen);
+    setShown(PAGE);
+  }, [leases, defaultOpen]);
+
+  // A lone option that opened on its own has nothing to fold away.
+  const toggleable = !(single && defaultOpen);
+
+  const visible = leases.slice(0, shown);
+  const remaining = leases.length - visible.length;
 
   const priced = leases.filter((l) => l.rent != null);
   const cheapest = priced.length
     ? priced.reduce((a, b) => (b.rent < a.rent ? b : a))
     : null;
+  const count = single ? "1 lease option" : `${leases.length} lease options`;
   const summary = cheapest
-    ? `${leases.length} lease options from ${money(cheapest.rent)}${
+    ? `${count}${single ? " · " : " from "}${money(cheapest.rent)}${
         cheapest.rentIsPerPerson ? "/person" : "/mo"
       }`
-    : `${leases.length} lease options`;
+    : count;
 
   return (
     <li className="px-4 py-3">
@@ -342,9 +376,7 @@ function LandlordCard({ group, onContact }) {
           <p className="truncate text-sm font-semibold text-gray-900">
             {landlordName ?? "Landlord"}
           </p>
-          {single ? (
-            <p className="text-xs text-gray-500">1 lease option</p>
-          ) : (
+          {toggleable ? (
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -356,6 +388,8 @@ function LandlordCard({ group, onContact }) {
                 className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
               />
             </button>
+          ) : (
+            <p className="text-xs text-gray-500">1 lease option</p>
           )}
         </div>
         <button
@@ -367,16 +401,40 @@ function LandlordCard({ group, onContact }) {
         </button>
       </div>
 
-      {expanded && (
+      {open && (
         <ul
           className={`mt-3 divide-y divide-gray-100 ${
             single ? "" : "rounded-lg border border-gray-100 bg-gray-50/60"
           }`}
         >
-          {leases.map((lease) => (
+          {visible.map((lease) => (
             <LeaseRow key={lease.id} lease={lease} inset={!single} />
           ))}
         </ul>
+      )}
+
+      {open && leases.length > PAGE && (
+        <div className="mt-1.5 flex items-center justify-center gap-4">
+          {remaining > 0 && (
+            <button
+              type="button"
+              onClick={() => setShown((n) => n + PAGE)}
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Show {Math.min(PAGE, remaining)} more
+              <span className="font-normal text-gray-400"> ({remaining} left)</span>
+            </button>
+          )}
+          {shown > PAGE && (
+            <button
+              type="button"
+              onClick={() => setShown(PAGE)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Show less
+            </button>
+          )}
+        </div>
       )}
     </li>
   );

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-16T22:26:47.185Z",
-  "count": 128,
+  "_generated": "2026-10-18T21:47:38.885Z",
+  "count": 134,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -76,6 +76,14 @@
       "description": "Turn the signed-in account into a landlord."
     },
     {
+      "file": "src/lib/auth/loginThrottle.js",
+      "description": "In-memory brute-force guard for the two password login paths (the NextAuth"
+    },
+    {
+      "file": "src/lib/auth/loginThrottle.test.js",
+      "description": "Run with: npm test (from apps/web). Uses Node's built-in test runner, so there"
+    },
+    {
       "file": "src/lib/auth/roles.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -118,6 +126,10 @@
     {
       "file": "src/lib/chat/emailReplyText.js",
       "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
+    },
+    {
+      "file": "src/lib/chat/followups.js",
+      "description": "Follow-ups for conversations that went quiet (Wyatt, 2026-10-16)."
     },
     {
       "file": "src/lib/chat/inboundEmail.js",
@@ -284,6 +296,14 @@
       "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
     },
     {
+      "file": "src/lib/listings/suggestionSignals.js",
+      "description": "Loads the raw signals suggestListings.js turns into a taste profile, for one"
+    },
+    {
+      "file": "src/lib/listings/suggestListings.js",
+      "description": "\"Suggested for you\": ranks the browse feed against one student's taste"
+    },
+    {
       "file": "src/lib/listings/unitAvailability.js",
       "description": "Is this unit something a renter can actually take?"
     },
@@ -318,6 +338,10 @@
     {
       "file": "src/lib/matchmaking/questionScript.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/saturation.js",
+      "description": "Demand signal shared by matchmaking ranking and suggested listings. Split out"
     },
     {
       "file": "src/lib/matchmaking/tradeoffTriage.js",
