@@ -9,17 +9,14 @@ import { useAuthStore } from "../../src/store/authStore";
 import { isAppleSignInAvailable } from "../../src/lib/appleAuth";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import { AuthScreen } from "../../src/components/brand/AuthScreen";
 import { colors } from "../../src/theme/tokens";
 
 const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 
-const APPLE_ERRORS = {
-  ACCOUNT_DELETED: "This account has been deleted.",
-  EMAIL_NOT_VERIFIED:
-    "An account with your Apple email exists but isn't verified yet. Verify it, or sign in the way you signed up.",
-  APPLE_EMAIL_REQUIRED: "Apple didn't share a verified email address, so we can't create your account.",
-};
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -50,7 +47,7 @@ export default function LoginScreen() {
         setNeedsVerification(true);
         setError(null);
       } else {
-        setError(err?.body?.error ?? err?.message ?? "Sign in failed. Please try again.");
+        setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN));
       }
     }
   }
@@ -64,7 +61,7 @@ export default function LoginScreen() {
       await apiClient.auth.resendVerification(email);
       setResendSuccess(true);
     } catch (err) {
-      setError("Failed to send verification email. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.RESEND_VERIFICATION));
     } finally {
       setResending(false);
     }
@@ -80,7 +77,7 @@ export default function LoginScreen() {
       // to the tabs, as before.
       if (!useAuthStore.getState().user) router.replace("/(tabs)");
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Google sign in failed. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN_GOOGLE));
     }
   }
 
@@ -93,8 +90,12 @@ export default function LoginScreen() {
       // (auth)/_layout.js navigates on, to the pending conversation if any.
       await signInWithApple();
     } catch (err) {
-      const code = err?.body?.error;
-      setError(APPLE_ERRORS[code] ?? code ?? err?.message ?? "Apple sign in failed. Please try again.");
+      setError(
+        getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN_APPLE, {
+          // Apple sign-in words an unverified email its own way.
+          overrides: { EMAIL_NOT_VERIFIED: ERROR_MESSAGES.AUTH.APPLE_EMAIL_NOT_VERIFIED },
+        })
+      );
     }
   }
 
@@ -164,7 +165,7 @@ export default function LoginScreen() {
           </View>
         )}
 
-        {error ? <Text className="text-red-500 text-[13px] text-center">{error}</Text> : null}
+        <ErrorMessage compact>{error}</ErrorMessage>
 
         <Button onPress={handleLogin} loading={isLoading}>
           Sign In

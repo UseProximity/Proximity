@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { ImageOff } from "lucide-react-native";
 import { getChatImageUri } from "../../lib/chatImageCache";
+import { ERROR_MESSAGES } from "../../lib/errorMessages";
 
 export function isImageAttachment(attachment) {
   return typeof attachment?.contentType === "string" && attachment.contentType.startsWith("image/");
@@ -116,7 +117,7 @@ function Thumbnail({ attachment, size, onPress, onLongPress }) {
       {status === "error" ? (
         <View className="flex-1 items-center justify-center px-2">
           <ImageOff size={22} color="#6b7280" strokeWidth={2} />
-          <Text className="text-[11px] text-gray-500 mt-1 text-center">Tap to retry</Text>
+          <Text className="text-[11px] text-gray-500 mt-1 text-center">{ERROR_MESSAGES.CHAT.IMAGE_TAP_RETRY}</Text>
         </View>
       ) : null}
     </Pressable>

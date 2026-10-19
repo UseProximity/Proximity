@@ -5,6 +5,9 @@ import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import { AuthScreen } from "../../src/components/brand/AuthScreen";
 import { colors } from "../../src/theme/tokens";
 import { openLegalLink, PRIVACY_URL, TERMS_URL } from "../../src/lib/legalLinks";
@@ -29,6 +32,7 @@ export default function SignupScreen() {
   const [verifiedEmail, setVerifiedEmail] = useState(null);
   const [resending, setResending] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
+  const [resendError, setResendError] = useState(null);
 
   async function handleSignup() {
     setError(null);
@@ -36,18 +40,19 @@ export default function SignupScreen() {
       const data = await signup(name, email, password, role);
       setVerifiedEmail(data.email);
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Sign up failed. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_UP));
     }
   }
 
   async function handleResend() {
     setResendMsg("");
+    setResendError(null);
     setResending(true);
     try {
       await apiClient.auth.resendVerification(verifiedEmail);
       setResendMsg("Resent! Check your inbox.");
-    } catch {
-      setResendMsg("Failed to resend. Please try again.");
+    } catch (err) {
+      setResendError(getErrorMessage(err, ERROR_MESSAGES.AUTH.RESEND_EMAIL));
     } finally {
       setResending(false);
     }
@@ -74,6 +79,9 @@ export default function SignupScreen() {
             )}
           </Pressable>
           {resendMsg ? <Text className="mt-2 text-[13px] text-gray-500">{resendMsg}</Text> : null}
+          <ErrorMessage compact className="mt-3 self-stretch">
+            {resendError}
+          </ErrorMessage>
 
           <Button onPress={() => router.replace("/(auth)/login")} className="mt-7 self-stretch">
             Back to Sign In
@@ -136,7 +144,7 @@ export default function SignupScreen() {
           </View>
         </View>
 
-        {error ? <Text className="text-red-500 text-[13px] text-center">{error}</Text> : null}
+        <ErrorMessage compact>{error}</ErrorMessage>
 
         <Button onPress={handleSignup} loading={isLoading}>
           Create Account

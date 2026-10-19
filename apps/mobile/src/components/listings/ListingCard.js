@@ -5,6 +5,9 @@ import { getRentRangeLabel, getCampusWalkMinutes } from "@proximity/shared";
 import { HeartIcon } from "../ui/HeartIcon";
 import { useFavoritesStore } from "../../store/favoritesStore";
 import { useAuthStore } from "../../store/authStore";
+import { getErrorMessage } from "../../lib/apiError";
+import { ERROR_MESSAGES } from "../../lib/errorMessages";
+import { showError } from "../../lib/showError";
 
 // Ported from apps/web/src/components/listings/MapPopupCard.js's ListingCard.
 // Omitted vs. web (cosmetic/non-essential, not a functional gap): analytics
@@ -97,7 +100,7 @@ export function ListingCard({ listing }) {
     try {
       await toggleFavorite(listing._id, listing);
     } catch (error) {
-      Alert.alert("Error", "Failed to update favorites. Please try again.");
+      showError(getErrorMessage(error, ERROR_MESSAGES.LISTINGS.FAVORITE));
     }
   };
 

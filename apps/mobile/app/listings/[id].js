@@ -77,12 +77,16 @@ import apiClient from "../../src/lib/apiClient";
 import { Badge } from "../../src/components/ui/Badge";
 import { Button } from "../../src/components/ui/Button";
 import { ChatAvatar } from "../../src/components/chat/ChatAvatar";
-import { CHAT_MAX_BODY, chatErrorMessage, defaultListingInquiry, isConfirmSend, leaseForChat } from "../../src/lib/chatFormat";
+import { CHAT_MAX_BODY, defaultListingInquiry, isConfirmSend, leaseForChat } from "../../src/lib/chatFormat";
 import { confirmSendAnyway } from "../../src/lib/chatConfirm";
 import { StarRating } from "../../src/components/ui/StarRating";
 import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
 import { SectionHeader } from "../../src/components/ui/SectionHeader";
 import { FieldLabel } from "../../src/components/ui/FieldLabel";
+import { ErrorMessage, ErrorState } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { showError } from "../../src/lib/showError";
 import { ReviewCard } from "../../src/components/listings/ReviewCard";
 import { SectionNav } from "../../src/components/listings/SectionNav";
 import { UnitLeases } from "../../src/components/listings/UnitLeases";
@@ -237,7 +241,7 @@ export default function ListingDetailScreen() {
     apiClient.listings
       .getListing(id)
       .then(setListing)
-      .catch((err) => setError(err.message ?? "Failed to load listing"))
+      .catch((err) => setError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.LOAD_ONE)))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -249,7 +253,7 @@ export default function ListingDetailScreen() {
       Alert.alert("Report sent", "Thanks, we'll take a look at this review.");
     } catch (err) {
       if (err?.status === 401) return; // session expired: the api client already signed out
-      Alert.alert("Couldn't send your report", "Please try again.");
+      showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.REPORT_REVIEW));
     }
   }
 
@@ -267,7 +271,7 @@ export default function ListingDetailScreen() {
               await apiClient.listings.blockReviewAuthor(review._id);
             } catch (err) {
               if (err?.status === 401) return;
-              Alert.alert("Couldn't block this user", "Please try again.");
+              showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.BLOCK_USER));
               return;
             }
             // The server now sends this author's reviews score-only
@@ -347,7 +351,7 @@ export default function ListingDetailScreen() {
       if (isConfirmSend(err)) {
         confirmMessage = err.body.error; // nothing was sent; the draft stays for Edit
       } else {
-        setMessageError(chatErrorMessage(err, "Couldn't send your message. Please try again."));
+        setMessageError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.MESSAGE_SEND));
       }
     } finally {
       setSending(false);
@@ -373,7 +377,7 @@ export default function ListingDetailScreen() {
     try {
       await toggleFavorite(id, listing);
     } catch (error) {
-      Alert.alert("Error", "Failed to update favorites. Please try again.");
+      showError(getErrorMessage(error, ERROR_MESSAGES.LISTINGS.FAVORITE));
     }
   };
 
@@ -436,11 +440,8 @@ export default function ListingDetailScreen() {
 
   if (error || !listing) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 px-6">
-        <Text className="text-gray-500 text-center">{error ?? "Listing not found."}</Text>
-        <Pressable onPress={() => router.back()} className="mt-4">
-          <Text className="text-red-600 font-medium">Go back</Text>
-        </Pressable>
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <ErrorState message={error ?? ERROR_MESSAGES.LISTINGS.NOT_FOUND} actionLabel="Go back" onAction={() => router.back()} />
       </SafeAreaView>
     );
   }
@@ -757,7 +758,7 @@ export default function ListingDetailScreen() {
                     style={{ minHeight: 90, maxHeight: 160, textAlignVertical: "top" }}
                   />
 
-                  {messageError ? <Text className="text-red-500 text-xs">{messageError}</Text> : null}
+                  <ErrorMessage compact>{messageError}</ErrorMessage>
 
                   <Button onPress={() => handleStartChat()} loading={sending} disabled={!messageText.trim()}>
                     Send message

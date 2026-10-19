@@ -19,6 +19,7 @@ import {
   loadStagingEmail,
   setStagingEmail,
 } from "../../src/lib/stagingEmail";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 
 export default function TestEmailScreen() {
   const router = useRouter();
@@ -82,7 +83,7 @@ export default function TestEmailScreen() {
           />
           {!valid ? (
             <Text className="text-xs text-red-500 mt-1">
-              Enter a valid email (or leave blank to suppress).
+              {ERROR_MESSAGES.PROFILE.TEST_EMAIL_INVALID}
             </Text>
           ) : null}
         </ScrollView>

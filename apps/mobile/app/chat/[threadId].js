@@ -24,6 +24,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, FileText, MoreHorizontal, Paperclip, RefreshCw, X } from "lucide-react-native";
+import { ErrorMessage, ErrorState } from "../../src/components/ui/ErrorMessage";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import apiClient from "../../src/lib/apiClient";
 import {
   CHAT_MAX_BODY,
@@ -123,7 +125,7 @@ export default function ChatThreadScreen() {
       } catch (err) {
         if (err?.status === 401) return; // session expired: the api client already signed out
         if (initial)
-          setError(chatErrorMessage(err, "Couldn't load this conversation."));
+          setError(chatErrorMessage(err, ERROR_MESSAGES.CHAT.LOAD_THREAD));
       } finally {
         setLoading(false);
       }
@@ -200,7 +202,7 @@ export default function ChatThreadScreen() {
       setHasMore(page.length >= PAGE_SIZE);
     } catch (err) {
       if (err?.status === 401) return;
-      setSendError(chatErrorMessage(err, "Couldn't load earlier messages."));
+      setSendError(chatErrorMessage(err, ERROR_MESSAGES.CHAT.LOAD_EARLIER));
     } finally {
       setLoadingOlder(false);
     }
@@ -211,8 +213,8 @@ export default function ChatThreadScreen() {
     const remaining = CHAT_PHOTO_MAX_FILES - staged.length;
     if (remaining <= 0) {
       Alert.alert(
-        "Photo limit reached",
-        `You can attach up to ${CHAT_PHOTO_MAX_FILES} files to a message.`
+        ERROR_MESSAGES.CHAT.PHOTO_LIMIT_TITLE,
+        ERROR_MESSAGES.CHAT.attachmentLimit(CHAT_PHOTO_MAX_FILES)
       );
       return;
     }
@@ -220,7 +222,7 @@ export default function ChatThreadScreen() {
     try {
       const picked = await pickChatPhotos({ limit: remaining });
       if (picked.status === "denied") {
-        Alert.alert("Photo access is off", "Allow Proximity to access your photos in Settings to attach them.", [
+        Alert.alert(ERROR_MESSAGES.CHAT.PHOTO_ACCESS_TITLE, ERROR_MESSAGES.CHAT.PHOTO_ACCESS, [
           { text: "Cancel", style: "cancel" },
           { text: "Open Settings", onPress: () => Linking.openSettings() },
         ]);
@@ -240,11 +242,11 @@ export default function ChatThreadScreen() {
         .filter(Boolean);
       if (ready.length < results.length) {
         const refused = results.find((r) => r.status === "rejected" && r.reason?.userFacing);
-        setSendError(refused ? refused.reason.message : "Some photos couldn't be added.");
+        setSendError(refused ? refused.reason.message : ERROR_MESSAGES.CHAT.SOME_PHOTOS);
       }
       setStaged((current) => [...current, ...ready].slice(0, CHAT_PHOTO_MAX_FILES));
     } catch {
-      setSendError("Couldn't open your photos. Please try again.");
+      setSendError(ERROR_MESSAGES.CHAT.OPEN_PHOTOS);
     } finally {
       setPreparing(false);
     }
@@ -255,8 +257,8 @@ export default function ChatThreadScreen() {
     const remaining = CHAT_PHOTO_MAX_FILES - staged.length;
     if (remaining <= 0) {
       Alert.alert(
-        "Attachment limit reached",
-        `You can attach up to ${CHAT_PHOTO_MAX_FILES} files to a message.`
+        ERROR_MESSAGES.CHAT.ATTACHMENT_LIMIT_TITLE,
+        ERROR_MESSAGES.CHAT.attachmentLimit(CHAT_PHOTO_MAX_FILES)
       );
       return;
     }
@@ -268,10 +270,10 @@ export default function ChatThreadScreen() {
       const stamp = Date.now();
       const ready = picked.pdfs.map((pdf, i) => ({ id: `${stamp}-${i}`, kind: "pdf", ...pdf }));
       if (picked.errors.length > 0) setSendError(picked.errors[0]);
-      else if (picked.skipped > 0) setSendError(`Only ${CHAT_PHOTO_MAX_FILES} files fit in one message.`);
+      else if (picked.skipped > 0) setSendError(ERROR_MESSAGES.CHAT.filesLimit(CHAT_PHOTO_MAX_FILES));
       setStaged((current) => [...current, ...ready].slice(0, CHAT_PHOTO_MAX_FILES));
     } catch {
-      setSendError("Couldn't open your files. Please try again.");
+      setSendError(ERROR_MESSAGES.CHAT.OPEN_FILES);
     } finally {
       setPreparing(false);
     }
@@ -335,7 +337,7 @@ export default function ChatThreadScreen() {
         // Nothing was sent; the files and caption stay in the composer.
         confirmMessage = err.body.error;
       } else if (err?.status !== 401) {
-        setSendError(chatErrorMessage(err, "Couldn't send your attachments. Please try again."));
+        setSendError(chatErrorMessage(err, ERROR_MESSAGES.CHAT.SEND_ATTACHMENTS));
       }
     } finally {
       sendingPhotosRef.current = false;
@@ -401,7 +403,7 @@ export default function ChatThreadScreen() {
       } else if (err?.status !== 401) {
         setText(body); // give the words back so nothing typed is lost
         setSendError(
-          chatErrorMessage(err, "Couldn't send your message. Please try again.")
+          chatErrorMessage(err, ERROR_MESSAGES.CHAT.SEND_MESSAGE)
         );
       }
     } finally {
@@ -549,18 +551,13 @@ export default function ChatThreadScreen() {
             <ActivityIndicator size="large" />
           </View>
         ) : error && messages.length === 0 ? (
-          <View className="flex-1 items-center justify-center px-8">
-            <Text className="text-gray-500 text-center mb-4">{error}</Text>
-            <Pressable
-              onPress={() => {
-                setLoading(true);
-                loadLatest({ initial: true });
-              }}
-              hitSlop={8}
-            >
-              <Text className="text-red-600 font-semibold">Try again</Text>
-            </Pressable>
-          </View>
+          <ErrorState
+            message={error}
+            onAction={() => {
+              setLoading(true);
+              loadLatest({ initial: true });
+            }}
+          />
         ) : (
           <FlatList
             data={data}
@@ -585,9 +582,9 @@ export default function ChatThreadScreen() {
           />
         )}
 
-        {sendError ? (
-          <Text className="text-xs text-red-500 px-4 pb-1">{sendError}</Text>
-        ) : null}
+        <ErrorMessage compact className="mx-4 mb-2">
+          {sendError}
+        </ErrorMessage>
 
         {unavailable ? (
           <View className="border-t border-gray-100 bg-white px-4 py-4 items-center">

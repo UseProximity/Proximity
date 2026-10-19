@@ -39,6 +39,7 @@ import { RecommendationCard } from "../../src/components/matchmaking/Recommendat
 import { DraftCompose } from "../../src/components/matchmaking/DraftCompose";
 import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { SendButton } from "../../src/components/ui/SendButton";
+import { ErrorState } from "../../src/components/ui/ErrorMessage";
 import { Button } from "../../src/components/ui/Button";
 import { useAiConsent } from "../../src/lib/aiConsent";
 import { openLegalLink, PRIVACY_URL } from "../../src/lib/legalLinks";
@@ -174,9 +175,7 @@ export default function MatchmakingScreen() {
           contentContainerStyle={{ flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={startOver} />}
         >
-          <View className="flex-1 items-center justify-center mt-20 px-6">
-            <Text className="text-gray-500 text-center mb-4">{error}</Text>
-          </View>
+          <ErrorState message={error} className="mt-20" />
         </ScrollView>
       </SafeAreaView>
     );

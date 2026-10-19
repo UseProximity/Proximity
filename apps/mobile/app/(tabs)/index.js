@@ -14,6 +14,9 @@ import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
 import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
+import { ErrorState } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import { colors, shadows } from "../../src/theme/tokens";
 
 // The one shadow tier design-system/MASTER.md §5 allows, reserved for
@@ -48,7 +51,7 @@ export default function BrowseScreen() {
       const data = await apiClient.listings.getListings();
       setListings(data);
     } catch (err) {
-      setError(err.message ?? "Failed to load listings");
+      setError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.LOAD));
     }
   }
 
@@ -79,8 +82,14 @@ export default function BrowseScreen() {
 
   if (error) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-white px-6">
-        <Text className="text-gray-500 text-center">{error}</Text>
+      <SafeAreaView className="flex-1 bg-white">
+        <ErrorState
+          message={error}
+          onAction={() => {
+            setLoading(true);
+            load().finally(() => setLoading(false));
+          }}
+        />
       </SafeAreaView>
     );
   }

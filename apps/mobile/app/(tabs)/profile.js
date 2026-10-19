@@ -28,6 +28,8 @@ import { useAuth } from "../../src/hooks/useAuth";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import apiClient from "../../src/lib/apiClient";
 import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { showError } from "../../src/lib/showError";
 import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { colors } from "../../src/theme/tokens";
 import {
@@ -132,13 +134,7 @@ export default function ProfileScreen() {
                       // server-side, so anything cached would only 401.
                       await logout();
                     } catch (err) {
-                      Alert.alert(
-                        "Couldn't delete account",
-                        getErrorMessage(
-                          err,
-                          "Something went wrong. Please try again."
-                        )
-                      );
+                      showError(getErrorMessage(err, ERROR_MESSAGES.PROFILE.DELETE_ACCOUNT));
                     } finally {
                       setDeleting(false);
                     }
