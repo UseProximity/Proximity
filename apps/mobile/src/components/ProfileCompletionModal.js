@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, GraduationCap, Home } from "lucide-react-native";
 import apiClient from "../lib/apiClient";
 import { ErrorMessage } from "./ui/ErrorMessage";
@@ -25,6 +25,7 @@ const ROLES = [
 ];
 
 export function ProfileCompletionModal({ user, onComplete }) {
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(1);
   const [name, setName] = useState(user?.name || "");
   const [role, setRole] = useState(user?.role || "student");
@@ -85,8 +86,14 @@ export function ProfileCompletionModal({ user, onComplete }) {
   };
 
   return (
-    <Modal visible={true} animationType="slide" presentationStyle="fullScreen">
-      <SafeAreaView className="flex-1 bg-white">
+    <Modal
+      visible={true}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
+      <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
         <KeyboardAvoidingView
           className="flex-1"
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -180,7 +187,10 @@ export function ProfileCompletionModal({ user, onComplete }) {
           </ScrollView>
 
           {/* Footer */}
-          <View className="px-6 py-4 border-t border-gray-100">
+          <View
+            className="px-6 pt-4 border-t border-gray-100"
+            style={{ paddingBottom: Math.max(16, insets.bottom) }}
+          >
             <Pressable
               onPress={handleContinue}
               disabled={saving}
@@ -198,7 +208,7 @@ export function ProfileCompletionModal({ user, onComplete }) {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
