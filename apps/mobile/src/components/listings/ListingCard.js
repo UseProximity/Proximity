@@ -1,5 +1,6 @@
 import { Alert, Image, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Star } from "lucide-react-native";
 import { getRentRangeLabel, getCampusWalkMinutes } from "@proximity/shared";
 import { HeartIcon } from "../ui/HeartIcon";
 import { useFavoritesStore } from "../../store/favoritesStore";
@@ -30,6 +31,29 @@ function WalkBadge({ minutes, label }) {
         {minutes} min
       </Text>
       <Text className="text-[10px] text-gray-400 capitalize">{label}</Text>
+    </View>
+  );
+}
+
+// Rating and review count, as on web's MapPopupCard: a red star, the average to
+// one decimal, then the count in brackets. Only legit reviews count (the feed
+// already filters them) and rating is 0 when there are none, so the review
+// count is the gate; nothing renders without a real rating.
+const RED_400 = "#f87171";
+
+function RatingBadge({ listing }) {
+  const numReviews = Number(listing.numReviews) || 0;
+  const rating = Number(listing.rating);
+  if (!(numReviews > 0 && Number.isFinite(rating) && rating > 0)) return null;
+  return (
+    <View
+      className="flex-row items-center gap-0.5 ml-2"
+      accessible
+      accessibilityLabel={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}
+    >
+      <Star size={12} color={RED_400} fill={RED_400} strokeWidth={2} />
+      <Text className="text-xs font-semibold text-gray-700">{rating.toFixed(1)}</Text>
+      <Text className="text-xs text-gray-400">({numReviews})</Text>
     </View>
   );
 }
@@ -134,8 +158,9 @@ export function ListingCard({ listing }) {
             {bedLabel} bed | {bathLabel} bath
             {listing.leaseType ? ` | ${listing.leaseType}` : ""}
           </Text>
+          <RatingBadge listing={listing} />
           {!!listing.owner?.name && (
-            <Text className="text-gray-400 text-xs ml-2" numberOfLines={1}>
+            <Text className="text-gray-400 text-xs ml-2 max-w-[90px]" numberOfLines={1}>
               {listing.owner.name}
             </Text>
           )}
