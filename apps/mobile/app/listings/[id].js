@@ -50,7 +50,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ChevronLeft,
   BedDouble,
@@ -79,6 +79,7 @@ import { ChatAvatar } from "../../src/components/chat/ChatAvatar";
 import { CHAT_MAX_BODY, chatErrorMessage, defaultListingInquiry, isConfirmSend, leaseForChat } from "../../src/lib/chatFormat";
 import { confirmSendAnyway } from "../../src/lib/chatConfirm";
 import { StarRating } from "../../src/components/ui/StarRating";
+import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
 import { SectionHeader } from "../../src/components/ui/SectionHeader";
 import { FieldLabel } from "../../src/components/ui/FieldLabel";
 import { ReviewCard } from "../../src/components/listings/ReviewCard";
@@ -95,6 +96,14 @@ function walkTimesList(listing) {
     .filter((row) => Number.isFinite(row.minutes))
     .sort((a, b) => a.minutes - b.minutes);
 }
+
+// Persistent header bar and section chip row heights. Section jumps stop below
+// both (plus a small gap) so the card heading is never covered.
+const HEADER_HEIGHT = 56;
+const NAV_HEIGHT = 44;
+const SECTION_GAP = 8;
+// Scroll distance after which the back-to-top button appears.
+const BACK_TO_TOP_OFFSET = 600;
 
 function QuickFact({ icon: Icon, value, label }) {
   return (
@@ -171,6 +180,29 @@ export default function ListingDetailScreen() {
     extrapolate: "clamp",
   });
 
+  // Section navigation. Each card reports its y inside the card stack (onLayout
+  // fires again whenever a card resizes, e.g. the map or reviews finishing), and
+  // the stack reports its own y inside the scroll content. Jump targets are the
+  // sum of the two, read at tap time, so nothing is hardcoded.
+  const insets = useSafeAreaInsets();
+  const stackY = useRef(0);
+  const sectionY = useRef({});
+  const [showNav, setShowNav] = useState(false);
+  const [showTop, setShowTop] = useState(false);
+  const [activeSection, setActiveSection] = useState(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [messageFocusedState, setMessageFocusedState] = useState(false);
+  const visibleKeys = useRef([]);
+  // Chip row bookkeeping, so the active chip can be kept in view: the row's
+  // visible width, its current horizontal offset, and each chip's measured
+  // x/width.
+  const navRef = useRef(null);
+  const navWidth = useRef(0);
+  const navX = useRef(0);
+  const chipLayout = useRef({});
+  const heroHeightRef = useRef(280);
+  heroHeightRef.current = heroHeight;
+
   const user = useAuthStore((state) => state.user);
   const isSaved = useFavoritesStore((state) => state.isSaved(id));
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
@@ -191,10 +223,31 @@ export default function ListingDetailScreen() {
   const messageFocused = useRef(false);
   useEffect(() => {
     const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      setKeyboardOpen(true);
       if (messageFocused.current) scrollRef.current?.scrollToEnd({ animated: true });
     });
-    return () => subscription.remove();
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardOpen(false));
+    return () => {
+      subscription.remove();
+      hideSubscription.remove();
+    };
   }, []);
+
+  // When the active section changes, reveal its chip only if it is not already
+  // fully visible, leaving a margin so it is not flush with an edge. Runs on
+  // active-section changes only (not on the row's own scrolling), so it never
+  // fights a manual swipe of the row.
+  useEffect(() => {
+    if (!activeSection || !showNav) return;
+    const chip = chipLayout.current[activeSection];
+    const width = navWidth.current;
+    if (!chip || !width) return;
+    const margin = 24;
+    const left = navX.current;
+    if (chip.x - margin >= left && chip.x + chip.width + margin <= left + width) return;
+    const target = Math.max(0, chip.x - (width - chip.width) / 2);
+    navRef.current?.scrollTo({ x: target, animated: true });
+  }, [activeSection, showNav]);
 
   useEffect(() => {
     apiClient.listings
@@ -319,6 +372,47 @@ export default function ListingDetailScreen() {
     }
   };
 
+  function handleScroll(e) {
+    const y = e.nativeEvent.contentOffset.y;
+    // Setting the same boolean again is a no-op, so this does not re-render on
+    // every scroll tick.
+    const navVisible = y > heroHeightRef.current - HEADER_HEIGHT;
+    // The row unmounts while hidden and remounts at x = 0.
+    if (!navVisible) navX.current = 0;
+    setShowNav(navVisible);
+    setShowTop(y > BACK_TO_TOP_OFFSET);
+
+    // Active chip: the last section whose top has reached the line just below
+    // the pinned bars. Pinned to the last section at the very bottom, since a
+    // short final card can never scroll up to that line.
+    const { contentSize, layoutMeasurement } = e.nativeEvent;
+    const atBottom = y + layoutMeasurement.height >= contentSize.height - 4;
+    const line = y + HEADER_HEIGHT + NAV_HEIGHT + SECTION_GAP + 4;
+    let current = null;
+    const entries = Object.entries(sectionY.current).filter(([key]) => visibleKeys.current.includes(key));
+    for (const [key, top] of entries) {
+      if (stackY.current + top <= line && (current == null || top > sectionY.current[current])) current = key;
+    }
+    if (atBottom) {
+      const keys = entries.map(([key]) => key);
+      current = keys.reduce((a, b) => (a == null || sectionY.current[b] > sectionY.current[a] ? b : a), null);
+    }
+    setActiveSection(current);
+  }
+
+  function measureSection(key) {
+    return (e) => {
+      sectionY.current[key] = e.nativeEvent.layout.y;
+    };
+  }
+
+  function scrollToSection(key) {
+    const y = sectionY.current[key];
+    if (y == null) return;
+    const target = stackY.current + y - HEADER_HEIGHT - NAV_HEIGHT - SECTION_GAP;
+    scrollRef.current?.scrollTo({ y: Math.max(0, target), animated: true });
+  }
+
   if (loading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-gray-50">
@@ -355,6 +449,16 @@ export default function ListingDetailScreen() {
   // contact address and no landlord account yet; that is never "mine".
   const isOwnListing = !!user?.id && listing.owner?._id === user.id;
   const canMessage = listing.owner?.canChat === true && !isOwnListing;
+  const hasAmenities = listing.amenities?.length > 0 || listing.utilitiesIncluded?.length > 0;
+  // One chip per card that actually renders, in page order.
+  const navSections = [
+    listing.description ? { key: "description", label: "Description" } : null,
+    hasAmenities ? { key: "amenities", label: "Amenities & Utilities" } : null,
+    { key: "location", label: "Location" },
+    { key: "reviews", label: "Reviews" },
+    canMessage ? { key: "message", label: "Contact" } : null,
+  ].filter(Boolean);
+  visibleKeys.current = navSections.map((section) => section.key);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -383,13 +487,57 @@ export default function ListingDetailScreen() {
               </Animated.View>
             </Pressable>
           </View>
+          {showNav ? (
+            <ScrollView
+              ref={navRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              onLayout={(e) => {
+                navWidth.current = e.nativeEvent.layout.width;
+              }}
+              onScroll={(e) => {
+                navX.current = e.nativeEvent.contentOffset.x;
+              }}
+              scrollEventThrottle={16}
+              className="bg-white border-b border-gray-200"
+              style={[{ height: NAV_HEIGHT, flexGrow: 0 }, shadows.subtle]}
+              contentContainerStyle={{ paddingHorizontal: 12, alignItems: "center", gap: 8 }}
+            >
+              {navSections.map((section) => {
+                const active = activeSection === section.key;
+                return (
+                  <Pressable
+                    key={section.key}
+                    onLayout={(e) => {
+                      chipLayout.current[section.key] = { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width };
+                    }}
+                    onPress={() => scrollToSection(section.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Go to ${section.label}`}
+                    hitSlop={{ top: 6, bottom: 6 }}
+                    className={`px-4 py-2 rounded-full border ${
+                      active
+                        ? "bg-red-600 border-red-600 active:bg-red-700"
+                        : "bg-gray-100 border-gray-300 active:bg-gray-300"
+                    }`}
+                  >
+                    <Text className={`text-sm font-semibold ${active ? "text-white" : "text-gray-800"}`}>
+                      {section.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
         </View>
 
         <Animated.ScrollView
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 40 }}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false, listener: handleScroll })}
           scrollEventThrottle={16}
         >
           {/* Hero: its own visual area, a carousel with floating heart overlay + pagination pill */}
@@ -456,8 +604,16 @@ export default function ListingDetailScreen() {
             </View>
           </View>
 
+          {canMessage ? (
+            <View className="px-4 pb-2">
+              <Button size="md" onPress={() => scrollToSection("message")}>
+                Contact
+              </Button>
+            </View>
+          ) : null}
+
           {/* Card stack: each major section is its own white, shadowed card on the light page background */}
-          <View className="px-4 pb-4 gap-4">
+          <View className="px-4 pb-4 gap-4" onLayout={(e) => { stackY.current = e.nativeEvent.layout.y; }}>
             <DetailCard>
               <View className="flex-row items-center">
                 <QuickFact icon={BedDouble} value={bedLabel} label="Beds" />
@@ -485,13 +641,16 @@ export default function ListingDetailScreen() {
             </DetailCard>
 
             {listing.description ? (
+              <View onLayout={measureSection("description")}>
               <DetailCard>
                 <SectionHeader icon={FileText} title="Description" />
                 <Text className="text-sm text-gray-700 leading-relaxed">{listing.description}</Text>
               </DetailCard>
+              </View>
             ) : null}
 
-            {(listing.amenities?.length > 0 || listing.utilitiesIncluded?.length > 0) && (
+            {hasAmenities && (
+              <View onLayout={measureSection("amenities")}>
               <DetailCard>
                 <SectionHeader icon={Tag} title="Amenities & Utilities" />
                 {listing.amenities?.length > 0 && (
@@ -519,8 +678,10 @@ export default function ListingDetailScreen() {
                   </View>
                 )}
               </DetailCard>
+              </View>
             )}
 
+            <View onLayout={measureSection("location")}>
             <DetailCard>
               <SectionHeader icon={MapPin} title="Location" />
               <ListingDetailMap latitude={listing.latitude} longitude={listing.longitude} />
@@ -541,7 +702,9 @@ export default function ListingDetailScreen() {
                 </View>
               )}
             </DetailCard>
+            </View>
 
+            <View onLayout={measureSection("reviews")}>
             <DetailCard>
               <SectionHeader
                 icon={Star}
@@ -562,8 +725,10 @@ export default function ListingDetailScreen() {
                 ))
               )}
             </DetailCard>
+            </View>
 
             {canMessage ? (
+              <View onLayout={measureSection("message")}>
               <DetailCard>
                 <SectionHeader icon={Mail} title="Message the landlord" />
 
@@ -588,9 +753,11 @@ export default function ListingDetailScreen() {
                     editable={!sending}
                     onFocus={() => {
                       messageFocused.current = true;
+                      setMessageFocusedState(true);
                     }}
                     onBlur={() => {
                       messageFocused.current = false;
+                      setMessageFocusedState(false);
                     }}
                     style={{ minHeight: 90, maxHeight: 160, textAlignVertical: "top" }}
                   />
@@ -602,9 +769,17 @@ export default function ListingDetailScreen() {
                   </Button>
                 </View>
               </DetailCard>
+              </View>
             ) : null}
           </View>
         </Animated.ScrollView>
+
+        {showTop && !keyboardOpen && !messageFocusedState ? (
+          <BackToTopButton
+            bottom={insets.bottom + 16}
+            onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

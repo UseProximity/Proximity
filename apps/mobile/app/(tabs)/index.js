@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ArrowUp, Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
+import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
 import {
   DEFAULT_FILTERS,
   filterListings,
@@ -13,6 +13,7 @@ import apiClient from "../../src/lib/apiClient";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
+import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
 import { colors, shadows } from "../../src/theme/tokens";
 
 // The one shadow tier design-system/MASTER.md §5 allows, reserved for
@@ -174,16 +175,7 @@ export default function BrowseScreen() {
             }
           />
           {showBackToTop ? (
-            <Pressable
-              onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
-              accessibilityRole="button"
-              accessibilityLabel="Back to top"
-              hitSlop={8}
-              className="absolute right-4 bottom-4 w-11 h-11 rounded-full bg-white border border-gray-200 items-center justify-center"
-              style={FLOATING_SHADOW}
-            >
-              <ArrowUp size={18} color={colors.textPrimary} strokeWidth={2} />
-            </Pressable>
+            <BackToTopButton onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })} />
           ) : null}
         </View>
       )}
