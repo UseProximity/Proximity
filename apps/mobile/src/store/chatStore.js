@@ -29,7 +29,10 @@ function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
 }
 
-const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
+// Identity of a question: its id plus the step key that keeps repeated ids (the
+// numbered tradeoffs) distinct. Also keys the answer controls, so each question
+// starts with fresh local state.
+export const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
 
 function inlineRecsMessage(data) {
   return {

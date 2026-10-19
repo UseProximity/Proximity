@@ -31,7 +31,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useChatStore } from "../../src/store/chatStore";
+import { qKey, useChatStore } from "../../src/store/chatStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { ChatBubble } from "../../src/components/matchmaking/ChatBubble";
 import { AnswerBar } from "../../src/components/matchmaking/AnswerBar";
@@ -220,7 +220,7 @@ export default function MatchmakingScreen() {
 
         <View className="border-t border-gray-100 bg-white px-4 py-2.5">
           {activeQuestion ? (
-            <AnswerBar question={activeQuestion} onAnswer={answerQuestion} />
+            <AnswerBar key={qKey(activeQuestion)} question={activeQuestion} onAnswer={answerQuestion} />
           ) : hasRecommendations ? (
             <View className="flex-row items-center gap-2">
               <TextInput
