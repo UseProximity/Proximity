@@ -29,7 +29,7 @@
 // is what keeps this from being an SSRF hole.
 const SIGHTMAP_HOST = "sightmap.com";
 const TIMEOUT_MS = 20000;
-const MAX_TERM_LOOKUPS = 12;
+const MAX_TERM_LOOKUPS = 60;
 
 // Worth spending a rendered page-load on. `realpage` is the giveaway that
 // survives into un-rendered HTML; the others catch sites that name the widget
@@ -124,47 +124,53 @@ export async function fetchSightmapInventory(embedToken) {
     });
   if (!units.length) return null;
 
-  // One term lookup per floor plan: the offered lengths are a property of the
-  // building, not of the apartment.
-  const byPlan = new Map();
-  for (const u of units) {
-    if (!u.priceUrl) continue;
-    if (!byPlan.has(u.planId)) byPlan.set(u.planId, []);
-    byPlan.get(u.planId).push(u);
-  }
-  const termsByPlan = new Map();
-  await Promise.all(
-    [...byPlan.entries()].slice(0, MAX_TERM_LOOKUPS).map(async ([planId, list]) => {
-      // Two attempts per plan: one unit's matrix can come back empty (a unit
-      // already under application, say) and that used to leave the whole floor
-      // plan with no lease terms at all.
-      for (const u of list.slice(0, 2)) {
-        /*
-         * The matrix is quoted against a move-in date, and defaults to today.
-         * Ask about a unit that does not free up until October and you get an
-         * empty list, which is how Pershing came back with no lease terms while
-         * the site's own availability panel showed nine. Quote it against the
-         * date the unit actually frees up.
-         */
-        const t = await getJson(
-          u.availableOn ? `${u.priceUrl}&date=${encodeURIComponent(u.availableOn)}` : u.priceUrl
-        );
-        const options = (t?.data?.options ?? [])
-          .map((o) => ({
-            months: Number(o.lease_term),
-            price: typeof o.price === "number" ? o.price : null,
-          }))
-          .filter((o) => Number.isFinite(o.months) && o.months > 0);
-        if (options.length) {
-          termsByPlan.set(planId, options);
-          return;
-        }
-      }
-    })
-  );
+  /*
+   * The lease-term matrix for every priced apartment, a few at a time.
+   *
+   * It used to be fetched once per floor plan and copied onto every apartment
+   * on the plan, which invented prices: #1501 and #2701 share a plan and
+   * differ by $15, and the matrix is quoted against one unit's rent. The
+   * matrix is where a site's per-term pricing lives (7 months $2,203 / 12
+   * months $1,974), and the PRD wants each of those prices as its own lease,
+   * so each apartment gets its own. Cheap JSON, four in flight.
+   */
+  const withUrl = units.filter((u) => u.priceUrl).slice(0, MAX_TERM_LOOKUPS);
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const u = withUrl[cursor++];
+      if (!u) return;
+      /*
+       * The matrix is quoted against a move-in date, and defaults to today.
+       * Ask about a unit that does not free up until October and you get an
+       * empty list, which is how Pershing came back with no lease terms while
+       * the site's own availability panel showed nine. Quote it against the
+       * date the unit actually frees up.
+       */
+      const t = await getJson(
+        u.availableOn ? `${u.priceUrl}&date=${encodeURIComponent(u.availableOn)}` : u.priceUrl
+      );
+      const options = (t?.data?.options ?? [])
+        .map((o) => ({
+          months: Number(o.lease_term),
+          price: typeof o.price === "number" ? o.price : null,
+        }))
+        .filter((o) => Number.isFinite(o.months) && o.months > 0);
+      u.termPricing = options.length ? options : null;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, withUrl.length) }, worker));
 
+  // A plan's offered lengths, for apartments whose own matrix came back empty.
+  const termsByPlan = new Map();
   for (const u of units) {
-    u.termPricing = termsByPlan.get(u.planId) ?? null;
+    if (!u.termPricing) continue;
+    const months = u.termPricing.map((o) => o.months);
+    termsByPlan.set(u.planId, [...new Set([...(termsByPlan.get(u.planId) ?? []), ...months])]);
+  }
+  for (const u of units) {
+    u.planTerms = termsByPlan.get(u.planId) ?? null;
+    if (!("termPricing" in u)) u.termPricing = null;
     delete u.priceUrl;
   }
   return { units };

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-20T16:00:08.315Z",
-  "count": 127,
+  "_generated": "2026-10-20T20:29:16.425Z",
+  "count": 136,
   "routes": [
     {
       "path": "/api/account",
@@ -237,6 +237,18 @@
       },
       "tables": [],
       "file": "src/app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/source-sync",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/source-sync/route.js"
     },
     {
       "path": "/api/admin/update-campus-walk-times",
@@ -713,6 +725,18 @@
       "file": "src/app/api/cron/chat-retention/route.js"
     },
     {
+      "path": "/api/cron/import-jobs",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/import-jobs/route.js"
+    },
+    {
       "path": "/api/cron/landlord-nudge",
       "methods": [
         "GET"
@@ -812,6 +836,18 @@
         "seo_query_metrics"
       ],
       "file": "src/app/api/cron/seo-report/route.js"
+    },
+    {
+      "path": "/api/cron/source-sync",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/source-sync/route.js"
     },
     {
       "path": "/api/cron/waitlist-nudge",
@@ -1042,6 +1078,87 @@
         "listings"
       ],
       "file": "src/app/api/landlord/contact-emails/route.js"
+    },
+    {
+      "path": "/api/landlord/import/batches/[batchId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/batches/[batchId]/route.js"
+    },
+    {
+      "path": "/api/landlord/import/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/events/route.js"
+    },
+    {
+      "path": "/api/landlord/import/jobs/[jobId]",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public",
+        "DELETE": "public"
+      },
+      "tables": [
+        "listing_import_jobs",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/import/jobs/[jobId]/route.js"
+    },
+    {
+      "path": "/api/landlord/import/listing/[listingId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listing_source_events"
+      ],
+      "file": "src/app/api/landlord/import/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/landlord/import/run",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/run/route.js"
+    },
+    {
+      "path": "/api/landlord/import/start",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/landlord/import/start/route.js"
     },
     {
       "path": "/api/landlord/listing-draft",

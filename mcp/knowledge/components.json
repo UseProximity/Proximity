@@ -1,6 +1,6 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-20T16:02:33.702Z",
+  "_generated": "2026-10-20T20:29:16.430Z",
   "count": 130,
   "components": [
     {
@@ -464,9 +464,9 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "ImportBatch",
-      "file": "src/components/listings/wizard/ImportBatch.js",
-      "description": "Multi-property import workspace: one tab per picked property, read one at a time, each running the add-listing steps; marks properties already on Proximity (yours or someone else's) and publishes every tab together behind a confirmation"
+      "name": "ImportWorkspace",
+      "file": "src/components/listings/wizard/ImportWorkspace.js",
+      "description": "No description. Run generate after adding a description above."
     },
     {
       "name": "StepAddress",

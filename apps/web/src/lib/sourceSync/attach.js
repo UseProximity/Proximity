@@ -68,6 +68,9 @@ export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, user
           source_kind: classified.kind,
           index_url: classifiedIndex?.url ?? null,
           enabled: true,
+          // Obvious changes (a price moved, a date moved, a lease dropped) are
+          // applied by the sync; anything unclear is held for a person.
+          auto_apply: true,
           consecutive_failures: 0,
           muted_until: null,
           last_status: null,

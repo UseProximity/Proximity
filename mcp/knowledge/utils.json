@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-20T16:02:33.714Z",
-  "count": 139,
+  "_generated": "2026-10-20T20:29:16.458Z",
+  "count": 147,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -462,6 +462,38 @@
     {
       "file": "src/lib/seo/targets.js",
       "description": "The evidence-backed target-query map the measurement engine tracks."
+    },
+    {
+      "file": "src/lib/sourceImport/apply.js",
+      "description": "Lay a snapshot over a listing."
+    },
+    {
+      "file": "src/lib/sourceImport/assets.js",
+      "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
+    },
+    {
+      "file": "src/lib/sourceImport/jobs.js",
+      "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/model.js",
+      "description": "The model calls behind the importer: Haiku first, Sonnet only when Haiku"
+    },
+    {
+      "file": "src/lib/sourceImport/read.js",
+      "description": "Read a landlord's website into a snapshot."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/entrata.js",
+      "description": "Entrata floor plans, as the \"pm-entrata-manager\" WordPress plugin renders"
+    },
+    {
+      "file": "src/lib/sourceImport/snapshot.js",
+      "description": "The one shape every reader produces and the one shape the writer consumes."
+    },
+    {
+      "file": "src/lib/sourceImport/sync.js",
+      "description": "The recurring source sync."
     },
     {
       "file": "src/lib/sourceSync/attach.js",

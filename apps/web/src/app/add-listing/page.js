@@ -8,7 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { PencilLine, Globe, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
-import ImportBatch, { loadBatch, newBatch } from "@/components/listings/wizard/ImportBatch";
+import ImportWorkspace from "@/components/listings/wizard/ImportWorkspace";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
 
 /*
@@ -80,14 +80,33 @@ export default function AddListingPage() {
   }, [profileComplete]);
 
   /*
-   * A multi-property import in progress. Kept in the browser, so coming back
-   * to the page (or reloading it) reopens the same tabs instead of starting a
-   * new import. Read once the user is known, because it is stored per user.
+   * A multi-property import in progress lives in the database (one draft and
+   * one background job per ticked property), so the batch id in the URL is
+   * all the page needs: reloading, or coming back tomorrow, reopens the same
+   * drafts without reading the website again.
    */
-  const [batch, setBatch] = useState(null);
-  useEffect(() => {
-    if (ready && user?.id) setBatch(loadBatch(user.id));
-  }, [ready, user?.id]);
+  const batchId = searchParams.get("batch");
+  const [starting, setStarting] = useState(false);
+  const startImport = async (targets, pastedUrl) => {
+    setStarting(true);
+    try {
+      const res = await fetch("/api/landlord/import/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pastedUrl, targets }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.batchId) {
+        toast.error(data.error || "We couldn't start that import. Please try again.");
+        return;
+      }
+      router.push(`/add-listing?mode=assisted&batch=${encodeURIComponent(data.batchId)}`);
+    } catch {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setStarting(false);
+    }
+  };
 
   useEffect(() => {
     if (mode === "assisted" && !session) {
@@ -107,25 +126,24 @@ export default function AddListingPage() {
         </div>
       ) : mode === "manual" ? (
         <AddListingFlow user={user} />
-      ) : mode === "assisted" && batch ? (
-        <ImportBatch
-          key={batch.tabs[0]?.key}
+      ) : mode === "assisted" && batchId ? (
+        <ImportWorkspace
+          key={batchId}
           user={user}
-          initial={batch}
-          onDone={() => {
-            setBatch(null);
-            router.push("/dashboard/landlord?tab=properties");
-          }}
-          onCancel={() => {
-            setBatch(null);
-            router.push("/add-listing?mode=assisted");
-          }}
+          batchId={batchId}
+          onDone={() => router.push("/dashboard/landlord?tab=drafts")}
+          onCancel={() => router.push("/add-listing?mode=assisted")}
         />
+      ) : mode === "assisted" && starting ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-sm text-gray-600">
+          <Loader2 className="h-6 w-6 animate-spin text-red-500" />
+          Creating your drafts…
+        </div>
       ) : mode === "assisted" ? (
         <AddListingWizard
           user={user}
           initialImportUrl={site}
-          onImportMany={(targets, pastedUrl) => setBatch(newBatch(targets, pastedUrl))}
+          onImportMany={startImport}
           onClose={() => setMode(null)}
           onSuccess={(_units, _diff, result) => {
             if (result?.draft) {

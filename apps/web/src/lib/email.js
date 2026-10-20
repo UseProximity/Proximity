@@ -953,3 +953,89 @@ export async function sendReviewInviteEmail({
     `,
   });
 }
+
+/*
+ * Source sync (the weekly re-read of landlord websites, lib/sourceImport).
+ *
+ * One digest per run naming every listing that changed, was held for a
+ * person, or failed, with the applied and proposed changes under each. The
+ * failure email goes out immediately, per listing, because a site that
+ * stopped answering is worth knowing about before the digest.
+ */
+const escSync = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function describeChange(c) {
+  const where = c.detail?.label ? `${escSync(c.detail.label)}: ` : "";
+  const money = (n) => (n == null ? "no price" : `$${Number(n).toLocaleString("en-US")}`);
+  switch (c.kind) {
+    case "lease_new":
+      return `${where}new lease at ${money(c.new?.rent)}${c.new?.rentIsPerPerson ? " per person" : ""}${(c.new?.leaseTermMonths ?? []).length ? ` (${c.new.leaseTermMonths.join(", ")} months)` : ""}`;
+    case "lease_withdrawn":
+      return `${where}lease at ${money(c.detail?.rent)} no longer offered, marked unavailable`;
+    case "lease_updated":
+      return `${where}lease details updated (${escSync(c.field)})`;
+    case "unit_relisted":
+      return `${where}lease is back on the website`;
+    case "unit_new":
+      return `${where}new floor plan on the website${c.new?.offers ? `, ${c.new.offers} price${c.new.offers === 1 ? "" : "s"}` : ""}`;
+    case "unit_updated":
+      return `${where}unit details filled in (${escSync(c.field)})`;
+    case "spec_mismatch":
+      return `${where}bed/bath/size differ from the website (${escSync(JSON.stringify(c.old))} vs ${escSync(JSON.stringify(c.new))})`;
+    case "missing_unit":
+      return `${where}no longer on the website`;
+    case "property_updated":
+      return `property details filled in`;
+    case "photos_added":
+      return `${where}${c.new} photo${c.new === 1 ? "" : "s"} added`;
+    default:
+      return `${where}${escSync(c.kind)}`;
+  }
+}
+
+export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
+  const block = (i) => {
+    const link = `${baseUrl}/dashboard/admin?listing=${encodeURIComponent(i.listingId)}`;
+    const head = `<p style="margin:16px 0 4px"><strong>${escSync(i.listing)}</strong> <span style="color:#666">(${escSync(i.status)}${i.platform ? `, ${escSync(i.platform)}` : ""}${i.confidence ? `, ${escSync(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
+    if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escSync(i.error)}</p>`;
+    const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
+    const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escSync(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
+    const hold = i.holdReason
+      ? `<p style="color:#b45309;margin:4px 0">Held for review: ${i.holdReason === "churn_hold" ? "more than a fifth of the leases would change at once" : "the reader was not confident in this read"}. Nothing was applied.</p>`
+      : "";
+    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+  };
+  const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const quiet = items.length - changed.length;
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync: ${changed.length} listing${changed.length === 1 ? "" : "s"} changed or need a look`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync digest</h2>
+        <p style="color:#444">${items.length} listing${items.length === 1 ? "" : "s"} checked against ${items.length === 1 ? "its" : "their"} landlord${items.length === 1 ? "'s" : "s'"} website${items.length === 1 ? "" : "s"}. ${quiet} unchanged.</p>
+        ${changed.map(block).join("")}
+        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. Held changes can be applied from the import review or the admin console.</p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourceUrl, error, failures, baseUrl }) {
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync failed: ${listing}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync failed</h2>
+        <p><strong>${escSync(listing)}</strong> could not be read from <a href="${escSync(sourceUrl)}">${escSync(sourceUrl)}</a>.</p>
+        <p style="color:#b91c1c">${escSync(error)}</p>
+        <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
+        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
