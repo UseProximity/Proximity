@@ -462,8 +462,11 @@ export function PropertyPhotoRow({ listing, isPropertyOwner, onChanged }) {
 /**
  * One unit's floor plan. Rendered inside that unit's panel.
  */
-export function UnitFloorPlan({ listing, unit, onChanged }) {
+export function UnitFloorPlan({ listing, unit, onChanged, inline = false }) {
   const listingId = listing?._id || listing?.id;
+  // `inline` puts the slot in the unit's own spec row (name, beds, baths,
+  // sq ft, then the plan) rather than in a row of its own beneath it.
+  if (inline) return <FloorPlanSlot unit={unit} canEdit listingId={listingId} onChanged={onChanged} />;
   return (
     <div className="border-t border-gray-100 px-4 py-3">
       {/* Editable by anyone who may add to this unit: the property owner, or a

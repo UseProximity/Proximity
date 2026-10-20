@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-20T23:27:24.901Z",
-  "count": 150,
+  "_generated": "2026-10-20T23:42:06.636Z",
+  "count": 151,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -482,6 +482,10 @@
     {
       "file": "src/lib/sourceImport/read.js",
       "description": "Read a landlord's website into a snapshot."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/embeddedProperties.js",
+      "description": "A company's property list embedded as JSON in a page."
     },
     {
       "file": "src/lib/sourceImport/readers/entrata.js",

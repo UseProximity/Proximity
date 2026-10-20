@@ -483,10 +483,10 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
       </div>
 
       {isPropertyOwner ? (
-        <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-7">
           {/* The unit's one name. Whatever is typed here is what every screen
               calls this unit, students' and landlords' alike. */}
-          <label className="block sm:col-span-3">
+          <label className="block sm:col-span-4 lg:col-span-3">
             <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
               {UNIT_NAME_LABEL}
               <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
@@ -510,16 +510,21 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
               onChange={(e) => set({ area: clampCount(e.target.value) })} />
           </label>
+          {/* The plan sits in the same row as the numbers it draws. */}
+          <div className="block">
+            <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} inline />
+          </div>
         </div>
       ) : (
-        <p className="px-4 py-3 text-sm text-gray-500">
-          {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
-          {unit.area ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
-          <span className="ml-2 text-xs text-gray-400">Managed by the property owner</span>
-        </p>
+        <div className="flex flex-wrap items-start gap-4 px-4 py-3">
+          <p className="text-sm text-gray-500">
+            {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
+            {unit.area ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
+            <span className="ml-2 text-xs text-gray-400">Managed by the property owner</span>
+          </p>
+          <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} inline />
+        </div>
       )}
-
-      <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} />
 
       {/*
         * The offerings sit on a darker ground than the unit above them. They are

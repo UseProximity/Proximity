@@ -52,6 +52,7 @@ import { findLeaseTerms } from "@/lib/listingDraft/floorPlanUnits";
 import { findFlyerCandidates, readInclusionsFlyer } from "./readers/flyer.js";
 import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
+import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
@@ -399,6 +400,25 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
       }
       console.log(`[source-import] g5: ${locations.length} buildings for ${client}`);
       return { kind: "properties", sourceUrl: main.finalUrl, properties: locations.map((l) => ({ name: l.name, address: l.address, url: l.url, kind: "property" })) };
+    }
+  }
+
+  /*
+   * A property list embedded as JSON (Mac's search page): every building
+   * with its address and coordinates, nearest to campus first. The
+   * homepage usually hides this behind a "Search Apartments" link, so that
+   * link is tried too.
+   */
+  {
+    let embedded = parseEmbeddedProperties(main.html, main.finalUrl);
+    if (!embedded) {
+      const inv = crawl.links.find((l) => l.internal && l.url !== main.finalUrl && (INVENTORY_LINK_RE.test(`${l.text} ${l.url}`) || /\/search\b/i.test(l.url)));
+      const page = inv ? await crawl.follow(inv.url) : null;
+      if (page) embedded = parseEmbeddedProperties(page.html, page.finalUrl);
+    }
+    if (embedded?.length) {
+      console.log(`[source-import] embedded property list: ${embedded.length} buildings (nearest ${embedded[0].name}, ${embedded[0].distanceKm ?? "?"} km)`);
+      return { kind: "properties", sourceUrl: main.finalUrl, properties: embedded.map(({ distanceKm, ...p }) => p) };
     }
   }
 
