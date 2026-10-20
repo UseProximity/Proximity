@@ -67,7 +67,8 @@ async function geocode(address) {
 
 /* A name that is free, or the name with the street behind it, or with a tag. */
 async function freeTitle(name, address) {
-  const candidates = [name, address ? `${name} (${address.split(",")[0].trim()})` : null, `${name} ${Math.random().toString(36).slice(2, 6)}`].filter(Boolean);
+  const street = address && address !== name ? address.split(",")[0].trim() : null;
+  const candidates = [name, street ? `${name} (${street})` : null, `${name} ${Math.random().toString(36).slice(2, 6)}`].filter(Boolean);
   for (const t of candidates) {
     if (!(await findPropertyNameConflict(t, { schoolId: null }))) return t;
   }

@@ -48,6 +48,8 @@ import {
   fetchFloorPlanUnits,
 } from "@/lib/listingDraft/floorPlanUnits";
 import { ENTRATA_HINT_RE, parseEntrataFloorPlans } from "./readers/entrata.js";
+import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
+import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
@@ -134,7 +136,10 @@ class Crawl {
     return this.fetched.some((f) => f.finalUrl === url);
   }
   async follow(url) {
-    if (!url || this.has(url)) return null;
+    if (!url) return null;
+    // Already read: hand back the page rather than nothing, so a floor plans
+    // link that points at the page we are on still counts as found.
+    if (this.has(url)) return this.fetched.find((f) => f.finalUrl === url) ?? null;
     try {
       const sub = await fetchPageSmart(url);
       if (this.has(sub.finalUrl)) return sub;
@@ -365,11 +370,49 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
   }
   crawl.add(main);
 
+  /*
+   * A G5-hosted site names its company and building in the page. The
+   * inventory service lists every building the company has, with addresses
+   * and each one's own website, which beats rendering a location-finder
+   * widget and asking a model to read the cards. A building's own site is
+   * one property; the corporate site (whose "location" is the head office,
+   * absent from the list) is the list.
+   */
+  if (G5_HINT_RE.test(main.html)) {
+    const { client, location } = findG5Urns(main.html);
+    const locations = client ? await fetchG5Locations(client) : null;
+    if (locations?.length) {
+      const own = location ? locations.find((l) => l.g5LocationUrn === location) : null;
+      if (own) {
+        onStep("Reading the property");
+        return { kind: "single", sourceUrl: main.finalUrl, property: { ...own, url: main.finalUrl }, properties: [] };
+      }
+      console.log(`[source-import] g5: ${locations.length} buildings for ${client}`);
+      return { kind: "properties", sourceUrl: main.finalUrl, properties: locations.map((l) => ({ name: l.name, address: l.address, url: l.url, kind: "property" })) };
+    }
+  }
+
   const linkedPortal = detectPmsPortal(main.finalUrl, main.html);
   if (linkedPortal && (skipPmsSteer || !SYNCABLE_PMS.has(linkedPortal)) && crawl.pages[0].text.length < 3000) {
     const rendered = await tryRenderPage(main.finalUrl);
     if (rendered && htmlToText(rendered.html).length > crawl.pages[0].text.length) {
       main = rendered;
+      crawl.replaceMain(main);
+    }
+  }
+
+  /*
+   * A page whose list of buildings is drawn by a script after load: Mills'
+   * "Our Properties" is 616 characters of footer until a location finder has
+   * fetched its data, then 5,000 characters naming every building with its
+   * address and its own website. One waited render, only when the quick
+   * reads came back this thin.
+   */
+  if (crawl.pages[0].text.length < 1500) {
+    const waited = await renderPageWaited(main.finalUrl);
+    if (waited && htmlToText(waited.html).length > crawl.pages[0].text.length * 1.5) {
+      console.log(`[source-import] waited render of ${main.finalUrl}: ${htmlToText(waited.html).length} chars`);
+      main = waited;
       crawl.replaceMain(main);
     }
   }
@@ -483,11 +526,32 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   // points at it (Keeley's buildings each have one), then its floor plans.
   let propPage = main;
   let floorPlanIndex = null;
-  const targetUrl = target.url ? resolveTargetUrl(target.url, pastedUrl, main.finalUrl, crawl.links) : null;
-  if (targetUrl && targetUrl !== main.finalUrl) {
+  let targetUrl = target.url ? resolveTargetUrl(target.url, pastedUrl, main.finalUrl, crawl.links) : null;
+  /*
+   * A building's own website that the company page never links to in plain
+   * HTML (the inventory feed named it, or a widget would have). It is still
+   * worth opening, on one condition: the page has to name the property.
+   * That is what keeps a mis-resolved link from importing the wrong building.
+   */
+  let unverified = null;
+  if (!targetUrl && target.url) {
+    const url = normalizeLinkUrl(target.url, main.finalUrl);
+    if (url && !isListingPortal(url) && !detectPmsPortal(url)) unverified = url;
+  }
+  console.log(`[source-import] ${target.name}: start ${startUrl}, target ${targetUrl ?? unverified ?? "(none)"}${unverified ? " (unlinked, will verify)" : ""}`);
+  if ((targetUrl ?? unverified) && (targetUrl ?? unverified) !== main.finalUrl) {
     onStep(`Opening ${target.name}`);
-    const page = await crawl.follow(targetUrl);
-    if (page) propPage = page;
+    const page = await crawl.follow(targetUrl ?? unverified);
+    if (page && unverified) {
+      const text = htmlToText(page.html).toLowerCase();
+      const words = String(target.name ?? "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !["apartments", "apartment", "the", "and"].includes(w));
+      const number = String(target.address ?? "").match(/^\s*(\d{2,6})\b/)?.[1];
+      const named = (words.length && words.filter((w) => text.includes(w)).length >= Math.min(2, words.length)) || (number && text.includes(number));
+      if (named) targetUrl = unverified;
+      else console.log(`[source-import] ${target.name}: ${unverified} does not name the property, ignored`);
+    }
+    if (page && targetUrl) propPage = page;
+    else if (!page) console.log(`[source-import] ${target.name}: could not open ${targetUrl ?? unverified}`);
   }
   if (propPage) {
     const ownSite = findPropertyOwnSite(crawl.structureOf(propPage), propPage.finalUrl, target.name);
@@ -503,8 +567,12 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     );
     if (fp) {
       onStep("Reading floor plans");
-      floorPlanIndex = await crawl.follow(fp.url);
+      floorPlanIndex = await crawl.follow(fp.url) ?? crawl.fetched.find((f) => f.finalUrl === fp.url) ?? null;
     }
+    console.log(
+      `[source-import] ${target.name}: property page ${propPage.finalUrl} (${htmlToText(propPage.html).length} chars), ` +
+        `floor plans ${floorPlanIndex ? floorPlanIndex.finalUrl : fp ? `link ${fp.url} failed` : "no link found"}`
+    );
     const galleryish = extractLinks(crawl.structureOf(propPage), propPage.finalUrl)
       .filter((l) => /gallery|photo|amenit|feature|tour/i.test(`${l.url} ${l.text}`) && l.url !== propPage.finalUrl)
       .slice(0, 2);
@@ -533,8 +601,31 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   let readerUnits = [];
   let confidence = "low";
 
-  // 1. SightMap feed (RealPage estates).
+  // 0. G5 inventory service (Mills and other G5-hosted estates).
+  let g5Concessions = [];
   {
+    // The building's pages were fetched after the company's, so try the
+    // URNs from the last page back: the corporate site names the head
+    // office, which has no floor plans, and must not win over the building.
+    const urns = [...new Set([...crawl.fetched].reverse().map((f) => (G5_HINT_RE.test(f.html) ? findG5Urns(f.html).location : null)).filter(Boolean))];
+    for (const location of urns) {
+      onStep("Reading live availability");
+      const inv = await fetchG5Inventory(location);
+      if (!inv) continue;
+      {
+        platform = "g5";
+        readerUnits = inv.units;
+        g5Concessions = inv.concessions;
+        notes.push(...inv.notes);
+        confidence = "high";
+        console.log(`[source-import] g5 inventory ${location}: ${inv.units.length} plans, ${inv.apartments} apartments`);
+        break;
+      }
+    }
+  }
+
+  // 1. SightMap feed (RealPage estates).
+  if (!readerUnits.length) {
     let token = null;
     for (const f of crawl.fetched) {
       token = findSightmapEmbed(f.html);
@@ -560,7 +651,24 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     }
   }
 
-  // 2. Entrata floor plan cards.
+  // 2. A floor plan feed embedded in the page (Mac's Storyblok site).
+  let embeddedConcessions = [];
+  if (!readerUnits.length) {
+    for (const f of crawl.fetched) {
+      if (!EMBEDDED_HINT_RE.test(f.html)) continue;
+      const parsed = parseEmbeddedFloorPlans(f.html);
+      if (!parsed) continue;
+      platform = "rentcafe-embedded";
+      readerUnits = parsed.units;
+      embeddedConcessions = parsed.concessions;
+      notes.push(...parsed.notes);
+      confidence = "high";
+      console.log(`[source-import] embedded floor plans on ${f.finalUrl}: ${parsed.units.length} plans`);
+      break;
+    }
+  }
+
+  // 3. Entrata floor plan cards.
   if (!readerUnits.length) {
     const page = crawl.fetched.find((f) => ENTRATA_HINT_RE.test(f.html) && parseEntrataFloorPlans(f.html, f.finalUrl));
     const parsed = page ? parseEntrataFloorPlans(page.html, page.finalUrl) : null;
@@ -573,9 +681,10 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     }
   }
 
-  // 3. RentCafe-style floor plan pages, one level below the index.
+  // 4. RentCafe-style floor plan pages, one level below the index.
   if (!readerUnits.length && floorPlanIndex) {
     const planUrls = findFloorPlanPages(crawl.structureOf(floorPlanIndex), floorPlanIndex.finalUrl);
+    console.log(`[source-import] ${target.name}: ${planUrls.length} floor plan pages under ${floorPlanIndex.finalUrl}`);
     if (planUrls.length) {
       onStep(`Reading ${Math.min(planUrls.length, 16)} floor plan pages`);
       const result = await fetchFloorPlanUnits(chooseFloorPlansToRead(planUrls));
@@ -638,12 +747,15 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   for (const u of units) {
     if (u.floorPlanImageUrl && !offered.has(u.floorPlanImageUrl) && !/^https?:/.test(u.floorPlanImageUrl)) u.floorPlanImageUrl = null;
   }
-  if (units.length && images.length) {
+  // A reader that already filed photos per unit (the embedded feed) is not
+  // second-guessed; the model sorts only for units that arrived without any.
+  const unsorted = units.filter((u) => !(u.photos ?? []).length);
+  if (unsorted.length && images.length) {
     onStep("Sorting photos by unit");
-    const sorted = await sortPhotosByUnit({ units, images: images.filter((im) => !diagrams.has(im.url)) });
+    const sorted = await sortPhotosByUnit({ units: unsorted, images: images.filter((im) => !diagrams.has(im.url)) });
     if (sorted) {
-      units.forEach((u, i) => {
-        u.photos = sorted.byUnit[i] ?? [];
+      unsorted.forEach((u, i) => {
+        u.photos = (sorted.byUnit[i] ?? []).slice(0, 8);
       });
       const onUnits = new Set(sorted.byUnit.flat());
       const shared = sorted.shared.filter((url) => !propertyPhotos.some((p) => p.url === url)).map((url) => ({ url, alt: crawl.imageMap.get(url)?.alt ?? "" }));
@@ -670,7 +782,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       contactEmail: listing?.contact_email ?? null,
       contactPhone: listing?.contact_phone ?? null,
       photos: propertyPhotos,
-      concessions: listing?.concessions ?? [],
+      concessions: [...(listing?.concessions ?? []), ...embeddedConcessions, ...g5Concessions],
     },
     units,
     notes: [...notes, ...(listing?.sourceNotes ?? []).filter((n) => !/supplied separately|unit list|instruction|known units/i.test(n)).slice(0, 3)],

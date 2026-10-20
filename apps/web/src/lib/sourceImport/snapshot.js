@@ -136,7 +136,10 @@ export function consolidateOffers(raw = []) {
     const perPerson = !!o.rentIsPerPerson;
     const key = rent == null ? "none" : `${rent}:${perPerson ? "pp" : "whole"}`;
     const terms = termList(o.leaseTermMonths);
-    const date = isoDate(o.availableFrom);
+    // A date already behind us means available now; feeds keep the day an
+    // apartment first freed up.
+    const raw = isoDate(o.availableFrom);
+    const date = raw && raw < new Date().toISOString().slice(0, 10) ? null : raw;
     const apartments = (o.apartments ?? []).map((a) => String(a ?? "").trim()).filter(Boolean);
     const g = groups.get(key);
     if (!g) {

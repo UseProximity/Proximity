@@ -192,13 +192,21 @@ function buildSections({ pages, images, links, targetProperty, brandName, knownU
 }
 
 async function parseWith(model, { system, schema, content, maxTokens, tag }) {
-  const response = await getClient().messages.parse({
+  let response;
+  try {
+    response = await getClient().messages.parse({
     model,
     max_tokens: maxTokens,
     output_config: { format: zodOutputFormat(schema) },
-    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-    messages: [{ role: "user", content }],
-  });
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content }],
+    });
+  } catch (err) {
+    // A truncated or malformed answer (the SDK throws on it) is "could not
+    // read", which the caller escalates or reports; it is not a crash.
+    console.error(`[source-import] ${tag} on ${model} failed to parse: ${err?.message?.slice(0, 160)}`);
+    return { parsed: null, cost: 0 };
+  }
   const cost = logCost(tag, model, response.usage) ?? 0;
   return { parsed: response.parsed_output ? stripEmDashes(response.parsed_output) : null, cost };
 }
@@ -239,7 +247,7 @@ function shouldEscalate(parsed, { pages, knownUnits, targetProperty, discover })
 export async function readWithModel(input, { force = null } = {}) {
   const content = buildSections(input);
   const call = (model) =>
-    parseWith(model, { system: SYSTEM, schema: ReadSchema, content, maxTokens: input.discover ? 3000 : 12000, tag: input.discover ? "discover" : "property" });
+    parseWith(model, { system: SYSTEM, schema: ReadSchema, content, maxTokens: input.discover ? 8000 : 12000, tag: input.discover ? "discover" : "property" });
 
   if (force) {
     const r = await call(force);
@@ -263,6 +271,9 @@ export async function readWithModel(input, { force = null } = {}) {
  */
 export async function sortPhotosByUnit({ units, images }) {
   if (!units.length || !images.length) return null;
+  // Enough candidates to cover a big building's room shots, few enough that
+  // the numbered answer fits; it was truncating past eighty.
+  images = images.slice(0, 80);
   const content = [
     `UNITS:\n${units.map((u, i) => `${i + 1}. ${u.name ?? "(unnamed)"}: ${u.bedrooms ?? "?"} bed / ${u.bathrooms ?? "?"} bath${u.area ? `, ${u.area} sq ft` : ""}`).join("\n")}`,
     `PHOTOS (number. url | alt | page(s)):\n${images
@@ -270,7 +281,7 @@ export async function sortPhotosByUnit({ units, images }) {
       .join("\n")}`,
   ].join("\n\n");
   try {
-    const { parsed } = await parseWith(HAIKU, { system: PHOTO_SYSTEM, schema: PhotoSchema, content, maxTokens: 4000, tag: "photos" });
+    const { parsed } = await parseWith(HAIKU, { system: PHOTO_SYSTEM, schema: PhotoSchema, content, maxTokens: 8000, tag: "photos" });
     if (!parsed) return null;
     const at = (n) => images[n - 1]?.url;
     const byUnit = units.map(() => []);

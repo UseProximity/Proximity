@@ -128,7 +128,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     }
     // A fuller address from the site than the picker had, same street number.
     const num = (a) => String(a ?? "").match(/^\s*(\d+)/)?.[1];
-    if (p.address && num(p.address) && num(p.address) === num(state.address) && p.address.length > (state.address ?? "").length + 4) {
+    if (p.address && num(p.address) && (!num(state.address) || (num(p.address) === num(state.address) && p.address.length > (state.address ?? "").length + 4))) {
       patch.address = p.address;
     }
   } else if (p.description && !state.description?.trim()) {
