@@ -48,6 +48,7 @@ import {
   fetchFloorPlanUnits,
 } from "@/lib/listingDraft/floorPlanUnits";
 import { ENTRATA_HINT_RE, parseEntrataFloorPlans } from "./readers/entrata.js";
+import { findLeaseTerms } from "@/lib/listingDraft/floorPlanUnits";
 import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
@@ -339,6 +340,14 @@ function fillFromModel(readerUnits, modelUnits) {
     ru.area ??= mu.area;
     ru.floorPlanImageUrl ??= mu.floorPlanImageUrl;
     if (!ru.offers.length && mu.offers.length) ru.offers = mu.offers;
+    // Lease lengths and dates the plan page did not carry but the site's text
+    // did (an FAQ, a pricing page): lent to every offer still missing them.
+    const terms = mu.offers.find((o) => (o.leaseTermMonths ?? []).length)?.leaseTermMonths ?? [];
+    const date = mu.offers.find((o) => o.availableFrom)?.availableFrom ?? null;
+    for (const o of ru.offers) {
+      if (!(o.leaseTermMonths ?? []).length && terms.length) o.leaseTermMonths = terms;
+      if (!o.availableFrom && date && !o.apartments?.length) o.availableFrom = date;
+    }
   }
   return readerUnits;
 }
@@ -470,7 +479,9 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
 
   const properties = portalPage ? [] : (draft.properties ?? []).filter((p) => p.kind !== "group" || p.url);
   if (draft.listing) {
-    const single = { name: draft.listing.title ?? draft.listing.address ?? pastedUrl, address: draft.listing.address ?? "", url: main.finalUrl, kind: "property" };
+    const looksLikeUrl = (t) => /^(https?:\/\/|www\.)|\.(com|org|net|co)\b/i.test(String(t ?? ""));
+    const title = draft.listing.title && !looksLikeUrl(draft.listing.title) ? draft.listing.title : null;
+    const single = { name: title ?? draft.listing.address ?? extractSiteBrand(main.html) ?? pastedUrl, address: draft.listing.address ?? "", url: main.finalUrl, kind: "property" };
     const split = splitAddressRange(single);
     if (split.length > 1) return { kind: "properties", sourceUrl: main.finalUrl, properties: [...split, ...properties] };
     // The picker only needs to know it is one property; the job reads it.
@@ -573,10 +584,19 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       `[source-import] ${target.name}: property page ${propPage.finalUrl} (${htmlToText(propPage.html).length} chars), ` +
         `floor plans ${floorPlanIndex ? floorPlanIndex.finalUrl : fp ? `link ${fp.url} failed` : "no link found"}`
     );
-    const galleryish = extractLinks(crawl.structureOf(propPage), propPage.finalUrl)
-      .filter((l) => /gallery|photo|amenit|feature|tour/i.test(`${l.url} ${l.text}`) && l.url !== propPage.finalUrl)
-      .slice(0, 2);
-    for (const l of galleryish) await crawl.follow(l.url);
+    /*
+     * The pages a building's facts are spread over: amenities and features
+     * (utilities, furnishing), FAQ and fees (lease lengths, what is
+     * included), gallery (photos), specials. Same-site, cached, cheap; six
+     * at most, in that order of usefulness.
+     */
+    const DEEP_RE = /amenit|feature|faq|fees?\b|pricing|utilit|includ|lease|special|gallery|photo|tour|availab|neighborhood|location/i;
+    const deeper = extractLinks(crawl.structureOf(propPage), propPage.finalUrl, 80)
+      .filter((l) => DEEP_RE.test(`${l.url} ${l.text}`) && l.url !== propPage.finalUrl && !/resident|portal|login|apply|pay|blog|feed|wp-json|popup=|\?tour/i.test(l.url))
+      .sort((a, b) => DEEP_RE.exec(`${a.url} ${a.text}`).index - DEEP_RE.exec(`${b.url} ${b.text}`).index)
+      .slice(0, 6);
+    if (deeper.length) onStep("Reading amenities and details");
+    for (const l of deeper) await crawl.follow(l.url);
   }
 
   // A small landlord's page per apartment, only the ones carrying this
@@ -732,6 +752,15 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     if (units.length) confidence = listing?.confidence >= 0.75 ? "high" : "low";
   }
 
+  // Lease lengths stated anywhere on the site ("12-month leases" in an FAQ)
+  // go on every offer that has none; a building's terms are the building's.
+  if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
+    const siteTerms = findLeaseTerms(crawl.pages.map((p) => p.text).join("\n"));
+    if (siteTerms.length && siteTerms.length <= 6) {
+      for (const u of units) for (const o of u.offers) o.leaseTermMonths = siteTerms;
+      notes.push(`Lease lengths (${siteTerms.join(", ")} months) were read from the site's general text, not from each floor plan. Check them.`);
+    }
+  }
   // Lease lengths nobody published: say so once rather than leave blanks.
   if (units.length && !notes.some((n) => /lease lengths/i.test(n)) && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
     notes.push("This site doesn't publish its lease lengths. Choose them for each lease before publishing.");
@@ -764,6 +793,25 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   }
 
   const sourceUrl = propPage?.finalUrl ?? main.finalUrl;
+  const trace = {
+    pages: crawl.fetched.map((f) => ({ url: f.finalUrl, chars: htmlToText(f.html).length })),
+    reader: platform,
+    readerUnits: readerUnits.length,
+    model: modelUsed ?? (listing ? "picker" : null),
+    modelUnits: modelUnits.length,
+    found: {
+      amenities: (listing?.amenities ?? []).length,
+      customAmenities: (listing?.customAmenities ?? []).length,
+      utilities: (listing?.utilities_included ?? []).length,
+      leaseTerms: units.filter((u) => u.offers.some((o) => (o.leaseTermMonths ?? []).length)).length,
+      availabilityDates: units.filter((u) => u.offers.some((o) => o.availableFrom)).length,
+      floorPlans: units.filter((u) => u.floorPlanImageUrl).length,
+      propertyPhotos: propertyPhotos.length,
+      unitPhotos: units.reduce((n, u) => n + (u.photos ?? []).length, 0),
+      concessions: (listing?.concessions ?? []).length + embeddedConcessions.length + g5Concessions.length,
+    },
+  };
+  console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
   const snapshot = makeSnapshot({
     sourceUrl,
     indexUrl: sourceUrl === pastedUrl ? null : pastedUrl,
@@ -788,6 +836,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     notes: [...notes, ...(listing?.sourceNotes ?? []).filter((n) => !/supplied separately|unit list|instruction|known units/i.test(n)).slice(0, 3)],
   });
   snapshot.model = modelUsed;
+  snapshot.trace = trace;
   return snapshot;
 }
 

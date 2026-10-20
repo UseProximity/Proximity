@@ -9,6 +9,7 @@ import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
+import ImportGaps from "@/components/listings/editor/ImportGaps";
 
 /*
  * The import workspace: one tab per property the landlord ticked.
@@ -264,6 +265,7 @@ function ListingTab({ job, user, onPublished }) {
         )}
       </div>
 
+      {p.isDraft && <ImportGaps listing={p} />}
       {!p.isDraft && <Proposed listingId={p._id || p.id} proposed={data.proposed ?? []} flagged={data.flagged ?? []} onApplied={load} />}
 
       <EditorOverview listing={p} canEdit={isPropertyOwner} onChanged={load} />

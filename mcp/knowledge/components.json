@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-20T20:29:16.430Z",
-  "count": 130,
+  "_generated": "2026-10-20T23:05:57.663Z",
+  "count": 131,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -451,6 +451,11 @@
     {
       "name": "EditorUnits",
       "file": "src/components/listings/editor/EditorUnits.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ImportGaps",
+      "file": "src/components/listings/editor/ImportGaps.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

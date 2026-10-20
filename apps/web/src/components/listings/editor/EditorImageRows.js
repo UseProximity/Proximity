@@ -204,7 +204,7 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
 
   const inputId = `fp-${unit?.id}`;
   return (
-    <div className="w-28 shrink-0">
+    <div className="w-28 shrink-0" data-gap={`floorplan:${unit?.id}`}>
       {/* The heading is part of the target too: people click the words "Floor
           plan" as readily as the box under them. */}
       <label
@@ -428,7 +428,7 @@ export function PropertyPhotoRow({ listing, isPropertyOwner, onChanged }) {
   const canTag = (photo) => isPropertyOwner || (photo.mine && allowedUnitIds.size > 0);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white">
+    <div className="rounded-xl border border-gray-200 bg-white" data-gap="photos">
       <Row
         label="Photos"
         hint={

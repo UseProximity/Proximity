@@ -119,7 +119,7 @@ export default function EditorContact({ listing, onChanged }) {
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
             Contact email <span className="text-red-500">*</span>
           </span>
-          <input type="email" required className={field} value={draft.contactEmail}
+          <input type="email" required className={field} value={draft.contactEmail} data-gap="contact"
             onChange={(e) => set({ contactEmail: e.target.value })} />
           <ContactEmailStatus savedEmail={savedContact(listing).contactEmail} draftEmail={draft.contactEmail} />
         </label>

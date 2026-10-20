@@ -244,7 +244,13 @@ function shouldEscalate(parsed, { pages, knownUnits, targetProperty, discover })
  * where draft is { properties, listing } (listing null for a multi-property
  * page) or null when neither model could parse the pages.
  */
-export async function readWithModel(input, { force = null } = {}) {
+/*
+ * SOURCE_IMPORT_MODEL=sonnet makes every extraction run on Sonnet directly,
+ * for comparing accuracy against the Haiku-first default on the same sites.
+ */
+const FORCED = process.env.SOURCE_IMPORT_MODEL === "sonnet" ? SONNET : process.env.SOURCE_IMPORT_MODEL === "haiku" ? HAIKU : null;
+
+export async function readWithModel(input, { force = FORCED } = {}) {
   const content = buildSections(input);
   const call = (model) =>
     parseWith(model, { system: SYSTEM, schema: ReadSchema, content, maxTokens: input.discover ? 8000 : 12000, tag: input.discover ? "discover" : "property" });

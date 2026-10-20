@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
@@ -59,7 +59,7 @@ export default function AddListingPage() {
   // once), the remembered copy after it has been taken out of the URL.
   const site = siteParam || keptSite;
   useEffect(() => {
-    if (!siteParam) return;
+    if (!siteParam || startedRef.current) return;
     setSite(siteParam);
     router.replace(`/add-listing?mode=${mode ?? "assisted"}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,7 +87,19 @@ export default function AddListingPage() {
    */
   const batchId = searchParams.get("batch");
   const [starting, setStarting] = useState(false);
+  /*
+   * One start per paste. The wizard used to be swapped for a spinner while
+   * the drafts were created and then, for one render before the URL carried
+   * the batch id, mounted again with the pasted address, so the picker read
+   * the site a second time and a second batch of drafts followed three
+   * seconds behind the first. The wizard now stays mounted and the address is
+   * dropped once an import has started.
+   */
+  const startedRef = useRef(false);
   const startImport = async (targets, pastedUrl) => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    setSite("");
     setStarting(true);
     try {
       const res = await fetch("/api/landlord/import/start", {
@@ -97,6 +109,7 @@ export default function AddListingPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.batchId) {
+        startedRef.current = false;
         toast.error(data.error || "We couldn't start that import. Please try again.");
         return;
       }
@@ -134,13 +147,14 @@ export default function AddListingPage() {
           onDone={() => router.push("/dashboard/landlord?tab=drafts")}
           onCancel={() => router.push("/add-listing?mode=assisted")}
         />
-      ) : mode === "assisted" && starting ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-20 text-sm text-gray-600">
-          <Loader2 className="h-6 w-6 animate-spin text-red-500" />
-          Creating your drafts…
-        </div>
       ) : mode === "assisted" ? (
-        <AddListingWizard
+        <>
+          {starting && (
+            <div className="mx-auto mb-3 flex max-w-2xl items-center gap-2 px-4 text-sm text-gray-600">
+              <Loader2 className="h-4 w-4 animate-spin text-red-500" /> Creating your drafts…
+            </div>
+          )}
+          <AddListingWizard
           user={user}
           initialImportUrl={site}
           onImportMany={startImport}
@@ -154,7 +168,8 @@ export default function AddListingPage() {
             toast.success("Listing published!");
             router.push("/dashboard/landlord?tab=properties");
           }}
-        />
+          />
+        </>
       ) : (
         <StartChoice
           signedOut={!session}

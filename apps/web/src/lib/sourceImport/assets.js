@@ -82,6 +82,8 @@ export async function copyRemoteImages(urls, opts) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker));
+  const ok = out.filter(Boolean).length;
+  console.log(`[source-import] photos: ${ok} of ${urls.length} copied${opts?.slug ? ` for ${opts.slug}` : ""}${ok < urls.length ? ` (first miss: ${urls[out.findIndex((x) => !x)]?.slice(0, 100)})` : ""}`);
   return urls.map((url, i) => ({ url, stored: out[i] })).filter((r) => r.stored);
 }
 

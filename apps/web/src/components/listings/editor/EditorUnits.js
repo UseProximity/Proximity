@@ -22,6 +22,7 @@
  * nothing to say about who to reach.
  */
 
+import { FOCUS_EVENT, revealGap } from "./ImportGaps";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, Trash2 } from "lucide-react";
@@ -284,7 +285,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Rent / month</span>
-          <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent}
+          <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent} data-gap={`rent:${lease.id}`}
             placeholder="Leave blank for “Contact for pricing”"
             onChange={(e) => set({ rent: e.target.value })} />
           <div className="mt-1.5 inline-flex rounded-lg bg-gray-100 p-0.5 text-[11px]">
@@ -299,7 +300,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Available on</span>
-          <input type="date" className={`mt-1 w-full ${field}`} value={draft.availableFrom}
+          <input type="date" className={`mt-1 w-full ${field}`} value={draft.availableFrom} data-gap={`date:${lease.id}`}
             onChange={(e) => set({ availableFrom: e.target.value })} />
           <span className="mt-0.5 block text-[11px] text-gray-400">
             A date in the past shows{" "}
@@ -312,7 +313,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
         <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
           Lease lengths you accept
         </span>
-        <div className="mt-1.5">
+        <div className="mt-1.5" data-gap={`terms:${lease.id}`}>
           <LeaseTermPicker
             value={draft.leaseTermMonths}
             onChange={(next) => set({ leaseTermMonths: next })}
@@ -436,7 +437,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white">
+    <div className="rounded-xl border border-gray-200 bg-white" data-gap={`unit:${unit.id}`}>
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
         <h4 className="text-sm font-semibold text-gray-900">
           {unit.name ?? `${unit.bedrooms ?? "?"} bed · ${unit.bathrooms ?? "?"} bath`}
@@ -828,6 +829,18 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
    * forms with no way to tell where one ended — the same reason browse tabs them.
    */
   const [openId, setOpenId] = useState(null);
+
+  // "Fill this in" from the missing-fields box (ImportGaps): open the unit
+  // the field belongs to, then scroll to and highlight the field.
+  useEffect(() => {
+    const onFocus = (e) => {
+      const { target, unitId } = e.detail ?? {};
+      if (unitId) setOpenId(unitId);
+      setTimeout(() => revealGap(target), unitId ? 250 : 50);
+    };
+    window.addEventListener(FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(FOCUS_EVENT, onFocus);
+  }, []);
   // A unit being described but not yet saved. It gets its own tab so the + is
   // still one click, but nothing reaches the database until the specs are
   // there — a unit with invented beds and baths would show up in browse and

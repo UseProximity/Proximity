@@ -278,6 +278,8 @@ export async function runJob(jobId) {
           held: result.held.length,
           holdReason: result.holdReason,
           seconds: Math.round((Date.now() - started) / 1000),
+          // What was read and where it came from, for anyone debugging a read.
+          trace: { ...(snapshot.trace ?? {}), photosStored: result.applied.filter((c) => c.kind === "photos_added" || c.kind === "unit_new").map((c) => c.note).filter(Boolean) },
         },
       })
       .eq("id", jobId);

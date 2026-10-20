@@ -163,7 +163,12 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   }
 
   // ---- units and leases
-  const { pairs, unmatched } = matchUnits(snapshot.units, state.listing_units);
+  // Studios first, then by bedrooms, bathrooms and size: the order students
+  // and landlords expect, whatever order the site listed them in.
+  const ordered = [...snapshot.units].sort(
+    (a, b) => (a.bedrooms ?? 99) - (b.bedrooms ?? 99) || (a.bathrooms ?? 99) - (b.bathrooms ?? 99) || (a.area ?? 0) - (b.area ?? 0) || String(a.name ?? "").localeCompare(String(b.name ?? ""))
+  );
+  const { pairs, unmatched } = matchUnits(ordered, state.listing_units);
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
