@@ -108,6 +108,9 @@ export async function ingestPmsProperty({
       lease_availability: deriveLeaseAvailability(unitData),
       unavailable: false,
       deleted_at: null,
+      // Born a draft (202610100002, Wyatt 2026-10-16): what the PMS said about
+      // a building is checked on the dashboard before students see it.
+      draft: true,
     },
     p_walk_times: await walkTimeRowsFor(geo.latitude, geo.longitude),
     p_units: unitData,

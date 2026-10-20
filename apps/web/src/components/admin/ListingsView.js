@@ -278,7 +278,7 @@ function AddUnitForm({ listingId, dbTarget, isProd, onDone, onCancel }) {
 // ─── New listing modal ────────────────────────────────────────────────────────
 
 function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
-  const [fields, setFields] = useState({ address: "", title: "", contact_name: "", contact_email: "", contact_phone: "" });
+  const [fields, setFields] = useState({ address: "", title: "", contact_name: "", contact_email: "" });
   const [units, setUnits] = useState([{ bedrooms: "", bathrooms: "", area: "", rent: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -345,7 +345,7 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
             <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Display name</label>
             <input type="text" value={fields.title} onChange={(e) => setField("title", e.target.value)} className={inputClass} />
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Contact name</label>
               <input type="text" value={fields.contact_name} onChange={(e) => setField("contact_name", e.target.value)} className={inputClass} />
@@ -353,10 +353,6 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
             <div>
               <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Contact email</label>
               <input type="email" value={fields.contact_email} onChange={(e) => setField("contact_email", e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Contact phone</label>
-              <input type="text" value={fields.contact_phone} onChange={(e) => setField("contact_phone", e.target.value)} className={inputClass} />
             </div>
           </div>
           <div>

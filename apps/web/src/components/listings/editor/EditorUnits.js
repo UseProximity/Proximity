@@ -8,9 +8,18 @@
  *   the unit    — a physical fact of the building; the property owner's
  *   an offering — one landlord's terms on that unit; only that landlord's
  *
+ * On a property that is already live, a unit or offering added here starts as
+ * a draft (202610100002): it carries an amber Draft marker and its own Publish
+ * button, and students see nothing of it until that is pressed. Inside a draft
+ * property nothing is marked, because the whole property is the draft.
+ *
  * Unavailable units are shown rather than hidden. The renter-facing panel drops
  * them, which meant a landlord who marked a unit unavailable had no way to find
  * it again and turn it back on.
+ *
+ * Contact is not edited here. It is one block per landlord per property
+ * (EditorContact), copied onto every lease they own, so an offering's form has
+ * nothing to say about who to reach.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +33,7 @@ import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
 import InfoTip from "@/components/ui/InfoTip";
+import { DraftBadge, PublishButton } from "./DraftControls";
 
 
 // Heading for a group of offerings inside a unit.
@@ -44,7 +54,7 @@ const field =
 // The saved state of an offering, as the form holds it. Shared by the initial
 // draft and by Discard, so "back to how it was" cannot drift from "how it
 // opened".
-const leaseDraft = (lease, fallbackEmail) => ({
+const leaseDraft = (lease) => ({
   rent: lease.rent ?? "",
   rentIsPerPerson: lease.rentIsPerPerson ?? false,
   leaseTermMonths: lease.leaseTermMonths ?? [],
@@ -52,19 +62,59 @@ const leaseDraft = (lease, fallbackEmail) => ({
   furnished: !!lease.furnished,
   availableFrom: lease.availableFrom ? String(lease.availableFrom).slice(0, 10) : "",
   unavailable: !!lease.unavailable,
-  /*
-   * Offerings from before the contact moved down to the lease have nothing here
-   * and nothing at the property either. Opening the form on the landlord's own
-   * address means saving fills the gap instead of being refused for a field
-   * they were never asked.
-   */
-  contactEmail: lease.contactEmail || fallbackEmail || "",
-  contactPhone: lease.contactPhone ?? "",
   description: lease.description ?? "",
 });
 
-function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
-  const [draft, setDraft] = useState(() => leaseDraft(lease, currentUserEmail));
+/*
+ * The contact on an imported offering nobody owns. The property's owner is the
+ * only one who can correct it, and only this: the rest of the offering stays
+ * read-only. A new address gets a confirmation email before alerts go there.
+ */
+function OwnerlessContact({ lease, onChanged }) {
+  const [email, setEmail] = useState(lease.contactEmail ?? "");
+  const [saving, setSaving] = useState(false);
+  const dirty = email.trim() !== (lease.contactEmail ?? "").trim();
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}/contact`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactEmail: email, contactName: lease.landlordName ?? null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't save that contact.");
+      toast.success(
+        data.verificationSent
+          ? "Contact updated. We emailed that address a link to confirm it for message alerts."
+          : "Contact updated."
+      );
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
+      <input type="email" className={`min-w-0 flex-1 ${field}`} value={email}
+        onChange={(e) => setEmail(e.target.value)} />
+      {dirty && (
+        <button onClick={save} disabled={saving} type="button"
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+          {saving ? "Saving…" : "Save"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, propertyIsDraft = false }) {
+  const [draft, setDraft] = useState(() => leaseDraft(lease));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
@@ -75,16 +125,11 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
   const needsRightsConfirmation = draft.sublease && !lease.sublease;
 
   const discard = () => {
-    setDraft(leaseDraft(lease, currentUserEmail));
+    setDraft(leaseDraft(lease));
     setDirty(false);
   };
 
   const save = async () => {
-    // A renter has to be able to reach someone. The property contact still backs
-    // legacy offerings, but a landlord editing their own can't leave it blank.
-    if (!draft.contactEmail.trim()) {
-      return toast.error("Add a contact email so students can reach you.");
-    }
     if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
       return toast.error("Please confirm you have the right to sublet this place.");
     }
@@ -93,12 +138,42 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
       const res = await fetch(`/api/leases/${lease.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, availableFrom: draft.availableFrom || null }),
+        body: JSON.stringify({
+          ...draft,
+          availableFrom: draft.availableFrom || null,
+          // The Withdrawn box is the same toggle as the dashboard's Withdraw
+          // and Publish again buttons, which set is_active and unavailable
+          // together. Sending unavailable alone left is_active false on an
+          // offering withdrawn from the dashboard, so unticking the box here
+          // looked like a relist and changed nothing students could see.
+          isActive: !draft.unavailable,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't save that listing.");
       toast.success("Your listing was updated.");
       setDirty(false);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // One click back onto the market, the inverse of the dashboard's Withdraw.
+  const republish = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't publish that listing.");
+      toast.success("Published. Students can see this listing again.");
+      setDraft((d) => ({ ...d, unavailable: false }));
       await onChanged();
     } catch {
       toast.error("Network error.");
@@ -153,6 +228,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
             Withdrawn
           </span>
         )}
+        {isPropertyOwner && lease.ownerless && <OwnerlessContact lease={lease} onChanged={onChanged} />}
       </li>
     );
   }
@@ -160,12 +236,24 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
   return (
     <li className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center gap-2">
+        {lease.isDraft && <DraftBadge />}
+        {lease.isDraft && (
+          <span className="text-[11px] text-amber-700">Students can&apos;t see this yet.</span>
+        )}
         {/* Red because it is a live consequence, not a note: while this is on,
             students cannot find the offering at all. */}
         {draft.unavailable && (
           <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
             Withdrawn
           </span>
+        )}
+        {/* Offered on the saved offering, not the draft: a box unticked but not
+            yet saved is still withdrawn as far as students are concerned. */}
+        {lease.unavailable && !dirty && (
+          <button onClick={republish} disabled={saving} type="button"
+            className="rounded-lg border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60">
+            {saving ? "Publishing…" : "Publish again"}
+          </button>
         )}
         <span className="flex-1" />
         {dirty && (
@@ -182,6 +270,10 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
             </button>
           </>
         )}
+        {lease.isDraft && !dirty && (
+          <PublishButton kind="lease" id={lease.id} onPublished={onChanged}
+            disabledReason={propertyIsDraft ? "Publish the property first. Its listings go live with it." : null} />
+        )}
         <button onClick={remove} disabled={saving} type="button"
           title="Delete this listing" aria-label="Delete this listing"
           className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
@@ -189,7 +281,7 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Rent / month</span>
           <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent}
@@ -213,11 +305,6 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
             A date in the past shows{" "}
             <span className="font-semibold text-green-600">Now</span>.
           </span>
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
-          <input type="email" required className={`mt-1 w-full ${field}`} value={draft.contactEmail}
-            onChange={(e) => set({ contactEmail: e.target.value })} />
         </label>
       </div>
 
@@ -261,11 +348,14 @@ function LeaseRow({ lease, listingId, currentUserEmail, onChanged }) {
             onChange={(e) => set({ furnished: e.target.checked })} />
           Furnished
         </label>
-        <label className="inline-flex items-center gap-2 text-gray-700">
-          <input type="checkbox" checked={draft.unavailable}
-            onChange={(e) => set({ unavailable: e.target.checked })} />
-          Withdrawn (hide from students)
-        </label>
+        {/* A draft is already hidden; withdrawing is for something that was up. */}
+        {!lease.isDraft && (
+          <label className="inline-flex items-center gap-2 text-gray-700">
+            <input type="checkbox" checked={draft.unavailable}
+              onChange={(e) => set({ unavailable: e.target.checked })} />
+            Withdrawn (hide from students)
+          </label>
+        )}
       </div>
 
       {needsRightsConfirmation && (
@@ -294,6 +384,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
 
   const myLeases = (unit.leases ?? []).filter((l) => l.mine);
   const otherLeases = (unit.leases ?? []).filter((l) => !l.mine);
+  // Marked only on a live property; in a draft property everything is a draft.
+  const unitIsDraft = !!unit.isDraft && !listing?.isDraft;
 
   const patchUnit = async (payload, message) => {
     setSaving(true);
@@ -353,24 +445,40 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
           {unit.area != null ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
         </span>
-        {!unit.available && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
+        {unitIsDraft ? (
+          <>
+            <DraftBadge />
+            <span className="text-[11px] text-amber-700">
+              {unit.draftByOther
+                ? "Added by another landlord. Students see it once they publish."
+                : "Students can't see this unit or its listings yet."}
+            </span>
+          </>
+        ) : (
+          !unit.available && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
+          )
         )}
-        {isPropertyOwner && (
-          <div className="ml-auto flex items-center gap-2">
-            {dirty && (
-              <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
-                {saving ? "Saving…" : "Save unit"}
-              </button>
-            )}
+        <div className="ml-auto flex items-center gap-2">
+          {/* Save first: publishing half-edited specs would put the old ones live. */}
+          {unitIsDraft && !dirty && (
+            <PublishButton kind="unit" id={unit.id} label="Publish unit" onPublished={onChanged}
+              disabledReason={unit.draftByOther ? "Another landlord added this unit. It goes live when they publish their listing." : null} />
+          )}
+          {isPropertyOwner && dirty && (
+            <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+              {saving ? "Saving…" : "Save unit"}
+            </button>
+          )}
+          {isPropertyOwner && (
             <button onClick={removeUnit} disabled={saving} type="button"
               title="Delete this unit" aria-label="Delete this unit"
               className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
               <Trash2 className="h-4 w-4" />
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {isPropertyOwner ? (
@@ -440,8 +548,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <SectionLabel>Your listings on this unit</SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {myLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  currentUserEmail={currentUserEmail} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged}
+                  propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
           </>
@@ -457,7 +565,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {otherLeases.map((lease) => (
                 <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  currentUserEmail={currentUserEmail} onChanged={onChanged} />
+                  isPropertyOwner={isPropertyOwner} onChanged={onChanged}
+                  propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
           </>
@@ -483,12 +592,23 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
                     unitId: unit.id,
                     leaseTermMonths: [12],
                     available: true,
+                    // Only read for a landlord's FIRST lease at the property.
+                    // After that the server copies the contact block they set
+                    // in EditorContact onto every new one.
                     contactEmail: currentUserEmail ?? null,
+                    // On a live unit the new offering is a draft until published,
+                    // so students never see it half filled in. A draft unit or
+                    // property already hides it.
+                    draft: !listing?.isDraft && !unit.isDraft,
                   }),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) return toast.error(data.error || "Couldn't add a listing.");
-                toast.success("Added — fill in your terms below.");
+                toast.success(
+                  !listing?.isDraft && !unit.isDraft
+                    ? "Draft added. Fill in your terms, then publish it."
+                    : "Added. Fill in your terms below."
+                );
                 await onChanged();
               } catch {
                 toast.error("Network error.");
@@ -514,9 +634,11 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
       {isPropertyOwner && (
         <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
           <span className="text-xs text-gray-500">
-            {unit.available
+            {unitIsDraft
+              ? "A draft: students won't see this unit until you publish it."
+              : unit.available
               ? "On the market — students can see this unit."
-              : "Hidden from students: every offering on this unit has been withdrawn. Restore one above, or add a new one, to relist it."}
+              : "Hidden from students: every offering on this unit has been withdrawn. Publish one again above, or add a new one, to relist it."}
           </span>
         </div>
       )}
@@ -732,7 +854,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
       const res = await fetch(`/api/landlord/listings/${listingId}/units`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        // A unit added to a live property is a draft until published.
+        body: JSON.stringify({ ...payload, draft: !listing?.isDraft }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -756,6 +879,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
       toast.success(
         data.claimedProperty
           ? "Unit added — this property is now yours to manage."
+          : !listing?.isDraft
+          ? "Draft unit added. Students won't see it until you publish it."
           : "Unit added — add your listing on it below."
       );
       await onChanged();
@@ -849,7 +974,12 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
             {unitTabLabel(u)}
             {/* A unit with nothing on offer still gets a tab — it is the only
                 way back to one — but it should not look like an active listing. */}
-            {!u.available && (
+            {u.isDraft && !listing?.isDraft ? (
+              <span className={`ml-1.5 text-[10px] font-semibold ${
+                openUnit.id === u.id && !drafting ? "text-amber-100" : "text-amber-600"}`}>
+                draft
+              </span>
+            ) : !u.available && (
               <span className={`ml-1.5 text-[10px] font-normal ${
                 openUnit.id === u.id && !drafting ? "text-red-100" : "text-red-400"}`}>
                 hidden

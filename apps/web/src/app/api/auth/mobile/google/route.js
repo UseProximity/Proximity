@@ -1,0 +1,108 @@
+import supabase from "@/lib/supabase";
+import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
+import { AUTH_ERRORS } from "@proximity/auth-core";
+import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+
+export async function POST(req) {
+  try {
+    const { idToken } = await req.json();
+
+    if (!idToken) {
+      return Response.json({ error: AUTH_ERRORS.MISSING_FIELDS }, { status: 400 });
+    }
+
+    // Verify the Google id_token via tokeninfo endpoint
+    const tokenInfoRes = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+    );
+    if (!tokenInfoRes.ok) {
+      return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
+    }
+    const tokenInfo = await tokenInfoRes.json();
+    // expo-auth-session requests a native platform's own client ID (not the
+    // web client) on iOS/Android, so the id_token's `aud` will be that
+    // platform's client ID, not GOOGLE_ID.
+    const validAudiences = [process.env.GOOGLE_ID, process.env.GOOGLE_ANDROID_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID].filter(
+      Boolean
+    );
+    if (!validAudiences.includes(tokenInfo.aud)) {
+      return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
+    }
+
+    const { name, picture } = tokenInfo;
+    if (typeof tokenInfo.email !== "string" || !tokenInfo.email) {
+      return Response.json({ error: AUTH_ERRORS.INVALID_TOKEN }, { status: 401 });
+    }
+    const email = normalizeEmail(tokenInfo.email);
+
+    // Look up user by email
+    const { data: existing } = await supabase
+      .from("users")
+      .select("id, email, name, image, profile_complete, deleted_at, roles!role_id(name)")
+      .ilike("email", emailMatchPattern(email))
+      .single();
+
+    // Reject a deleted account explicitly. Falling through to the create branch
+    // below would try to insert a second row on an email that already exists.
+    // Unlike the password path, naming the reason leaks nothing here: Google
+    // already verified this caller owns the address.
+    if (existing?.deleted_at) {
+      return Response.json({ error: AUTH_ERRORS.ACCOUNT_DELETED }, { status: 403 });
+    }
+
+    let userRow;
+
+    if (existing) {
+      const imageUpdate = picture ? { image: picture, google_account: true } : { google_account: true };
+      await supabase.from("users").update(imageUpdate).eq("id", existing.id);
+      userRow = {
+        ...existing,
+        image: picture ?? existing.image,
+      };
+    } else {
+      const { data: studentRole } = await supabase
+        .from("roles")
+        .select("id")
+        .eq("name", "student")
+        .single();
+
+      const { data: newUser, error: insertError } = await supabase
+        .from("users")
+        .insert({
+          email,
+          name: name || email.split("@")[0] || "New User",
+          image: picture ?? null,
+          role_id: studentRole?.id,
+          profile_complete: false,
+          email_verified: true,
+          google_account: true,
+          gender: "unspecified",
+          phone: "N/A",
+          description: "",
+          referral_source: "",
+        })
+        .select("id, email, name, image, profile_complete, roles!role_id(name)")
+        .single();
+
+      if (insertError) {
+        console.error("mobile/google: insert error", insertError);
+        return Response.json({ error: AUTH_ERRORS.SERVER_ERROR }, { status: 500 });
+      }
+      userRow = newUser;
+    }
+
+    const [accessToken, refreshToken] = await Promise.all([
+      signAccessToken({
+        id: userRow.id,
+        role: userRow.roles?.name ?? "student",
+        profileComplete: userRow.profile_complete ?? false,
+      }),
+      signRefreshToken({ id: userRow.id }),
+    ]);
+
+    return Response.json({ accessToken, refreshToken, user: buildUserPayload(userRow) });
+  } catch (err) {
+    console.error("mobile/google error:", err);
+    return Response.json({ error: AUTH_ERRORS.SERVER_ERROR }, { status: 500 });
+  }
+}

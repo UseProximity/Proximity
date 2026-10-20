@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 
 // A non-participant must not learn whether the thread exists, so this maps to 403.
@@ -8,10 +8,10 @@ const NOT_PARTICIPANT_ERROR = "not a participant in this conversation";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // POST /api/chat/threads/[threadId]/read: mark a thread read for the current user
-export async function POST(_req, { params }) {
+export async function POST(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -21,7 +21,7 @@ export async function POST(_req, { params }) {
     }
 
     const { data, error } = await supabase.rpc("rpc_mark_thread_read", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_thread_id: threadId,
     });
 

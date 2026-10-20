@@ -1,6 +1,7 @@
 /*
  * Shared messenger UI: inbox + transcript (desktop split / mobile stack).
- * Used by the /messages page. Data/actions come from useMessages().
+ * Rendered inside GlobalMessagesPanel, which owns the "Messages" title bar and
+ * close button, so there is no header here. Data/actions come from useMessages().
  */
 "use client";
 
@@ -10,13 +11,9 @@ import ChatThreadList from "@/components/chat/ChatThreadList";
 import ChatTranscript from "@/components/chat/ChatTranscript";
 
 /**
- * @param {{ headerActions?: import('react').ReactNode, onBrowse?: () => void, className?: string }} [props]
+ * @param {{ onBrowse?: () => void, className?: string }} [props]
  */
-export default function MessagesPanel({
-  headerActions = null,
-  onBrowse,
-  className = "",
-}) {
+export default function MessagesPanel({ onBrowse, className = "" }) {
   const {
     threads,
     threadsStatus,
@@ -82,17 +79,11 @@ export default function MessagesPanel({
     <div
       className={`flex flex-col h-full min-h-0 bg-white overflow-hidden ${className}`}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-        <h1 className="text-base font-bold text-gray-900">Messages</h1>
-        {headerActions ? (
-          <div className="flex items-center gap-0.5">{headerActions}</div>
-        ) : null}
-      </div>
       <div className="flex-1 min-h-0 flex">
         <div className="hidden md:flex w-[340px] flex-shrink-0 border-r border-gray-100 flex-col min-h-0">
           <ChatThreadList {...listProps} />
         </div>
-        <div className="flex-1 min-h-0 flex flex-col md:hidden">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col md:hidden">
           {activeThreadId ? (
             <ChatTranscript
               thread={activeThread}
@@ -105,7 +96,7 @@ export default function MessagesPanel({
             <ChatThreadList {...listProps} />
           )}
         </div>
-        <div className="hidden md:flex flex-1 min-h-0 flex-col">
+        <div className="hidden md:flex flex-1 min-w-0 min-h-0 flex-col">
           {activeThreadId ? (
             <ChatTranscript
               thread={activeThread}

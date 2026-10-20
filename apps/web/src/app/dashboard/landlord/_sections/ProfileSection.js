@@ -61,6 +61,9 @@ export default function ProfileSection({
                   </Badge>
                 )}
               </div>
+              {user.company_name && (
+                <p className="text-gray-600 text-base sm:text-lg">{user.company_name}</p>
+              )}
               {user.numReviews === 0 ? (
                 <p className="text-gray-500 text-sm italic">No ratings yet</p>
               ) : (
@@ -72,7 +75,17 @@ export default function ProfileSection({
                 </div>
               )}
               <p className="text-gray-500 mt-2 text-base sm:text-lg">
-                {user.listings?.length ?? 0} active listings
+                {/* A property counts when students can take something there:
+                    a draft never does, and neither does a building where every
+                    offering (or, for a lease-holder, their own) is withdrawn. */}
+                {(user.listings ?? []).filter(
+                  (l) =>
+                    !l.isDraft &&
+                    (l.ownership === "property"
+                      ? (l.unitTypes ?? []).some((u) => u.available)
+                      : (l.myLeases ?? []).some((x) => x.isLive))
+                ).length}{" "}
+                active listings
               </p>{" "}
               <p className="text-gray-400 text-sm sm:text-base mt-2">
                 {calcAge(user.birthday) != null
@@ -81,7 +94,7 @@ export default function ProfileSection({
                 {user.gender ? ` • ${user.gender}` : ""}
               </p>
               <p className="text-gray-500 text-sm sm:text-base mt-2 break-words">
-                📞 {user.phone} • ✉️ {user.email}
+                ✉️ {user.email}
               </p>
               {/* Additional Info */}
               <div className="mt-6">
@@ -116,15 +129,19 @@ export default function ProfileSection({
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">
-                  Phone
+                  Company
                 </label>
                 <input
-                  name="phone"
-                  value={form.phone == "N/A" ? "" : form.phone}
+                  name="companyName"
+                  value={form.companyName}
                   onChange={onChange}
+                  maxLength={100}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="+1 (555) 555-5555"
+                  placeholder="e.g. Proximity LLC"
                 />
+                <p className="mt-1 text-xs text-gray-400">
+                  Shown next to your name when you message students.
+                </p>
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">

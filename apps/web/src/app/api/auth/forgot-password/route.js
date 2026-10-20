@@ -14,11 +14,17 @@ export async function POST(req) {
 
     const { data: user } = await supabase
       .from("users")
-      .select("id, name, google_account")
+      .select("id, name, google_account, apple_account, password_hash")
       .ilike("email", emailMatchPattern(email))
       .single();
 
-    if (user && !user.google_account) {
+    // Google-only and Apple-only accounts have no password to reset (an
+    // email/password account that also linked Apple still has one). They get the
+    // same generic response as an unknown address, so nothing here reveals
+    // whether the account exists or how it signs in.
+    const hasPassword = user && !user.google_account && !(user.apple_account && !user.password_hash);
+
+    if (hasPassword) {
       const token = crypto.randomUUID();
       const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
@@ -32,6 +38,7 @@ export async function POST(req) {
         name: user.name,
         token,
         baseUrl: getBaseUrl(),
+        req,
       });
     }
 

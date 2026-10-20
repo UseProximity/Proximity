@@ -1,0 +1,162 @@
+// Browse map. Ported from apps/web/src/components/listings/MapView.js's core
+// behavior (one marker per listing, no clustering, fit-bounds around campus
+// excluding outliers, tap a pin to select, rating teardrop pins, rated pins
+// prioritized over unrated ones when overlapping); simplified for mobile: no
+// driving-route overlay, no "Browse this area" viewport filter, no
+// address-search fly-to.
+//
+// Markers render via a ShapeSource + SymbolLayer of pre-rendered pin icons
+// (static PNGs, see pinIcons) rather than one live MarkerView per listing: this
+// keeps every pin fully GPU-composited and perfectly in sync with the camera
+// during pan/zoom. An earlier MarkerView-per-listing version measured ~3x
+// slower frame times during panning (gfxinfo: 93ms vs 31ms median frame time
+// with ~40 markers on screen) because each MarkerView is a live Android view
+// whose position is re-synced through the JS bridge on every camera frame.
+import { useMemo, useState } from "react";
+import { Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
+import { computeListingMapBounds, MAP_CAMPUS_CENTER } from "@proximity/shared";
+import Mapbox from "../../lib/mapbox";
+import { PIN_ICON_IMAGES, ratingIconId } from "./pinIcons";
+import { ShuttleStopsLayer } from "./ShuttleStopsLayer";
+import { colors, shadows } from "../../theme/tokens";
+
+// The one shadow tier design-system/MASTER.md §5 allows, reserved for
+// floating elements lifted off the map surface (this screen's toggle pill
+// and selected-listing preview card).
+const FLOATING_SHADOW = shadows.floating;
+
+// Mapbox logo and attribution "i" offsets. The clearance is the selected-listing
+// card's height (about 62) plus its 16 bottom offset, with a little breathing room.
+const ORNAMENT_MARGIN = 8;
+const SELECTED_CARD_CLEARANCE = 88;
+
+// Pin size relative to the bundled artwork (35x49pt). Mapbox scales symbols
+// around their anchor, so with iconAnchor "bottom" the tip stays on the
+// listing's coordinate at any value here.
+const PIN_ICON_SCALE = 0.78;
+
+export function BrowseMapView({ listings }) {
+  const router = useRouter();
+  const [selectedId, setSelectedId] = useState(null);
+  const [showShuttleStops, setShowShuttleStops] = useState(false);
+  const [shuttleStopName, setShuttleStopName] = useState(null);
+
+  const bounds = useMemo(() => computeListingMapBounds(listings), [listings]);
+  const pinnable = useMemo(
+    () => listings.filter((l) => Number.isFinite(l.latitude) && Number.isFinite(l.longitude)),
+    [listings]
+  );
+  const selected = pinnable.find((l) => l._id === selectedId) ?? null;
+  // Mapbox's logo and attribution "i" (the telemetry opt-in) sit at the bottom
+  // corners. Lift them clear of the selected-listing card so they stay visible
+  // and tappable while it is open.
+  const ornamentBottom = selected ? SELECTED_CARD_CLEARANCE : ORNAMENT_MARGIN;
+
+  const shape = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: pinnable.map((listing) => {
+        const rating = (listing.rating || 0) > 0 ? listing.rating || 0 : null;
+        const isSelected = listing._id === selectedId;
+        return {
+          type: "Feature",
+          id: listing._id,
+          geometry: { type: "Point", coordinates: [listing.longitude, listing.latitude] },
+          properties: {
+            listingId: listing._id,
+            iconId: ratingIconId(rating, isSelected),
+            sortKey: isSelected ? 2 : rating != null ? 1 : 0,
+          },
+        };
+      }),
+    }),
+    [pinnable, selectedId]
+  );
+
+  function handlePress(event) {
+    const listingId = event.features?.[0]?.properties?.listingId;
+    if (listingId) setSelectedId(listingId);
+  }
+
+  return (
+    <View className="flex-1">
+      <Mapbox.MapView
+        style={{ flex: 1 }}
+        styleURL="mapbox://styles/mapbox/streets-v11"
+        surfaceView={false}
+        logoPosition={{ bottom: ornamentBottom, left: ORNAMENT_MARGIN }}
+        attributionPosition={{ bottom: ornamentBottom, right: ORNAMENT_MARGIN }}
+      >
+        <Mapbox.Camera
+          bounds={bounds ?? undefined}
+          defaultSettings={{
+            centerCoordinate: [MAP_CAMPUS_CENTER.longitude, MAP_CAMPUS_CENTER.latitude],
+            zoomLevel: 12,
+          }}
+        />
+        <ShuttleStopsLayer visible={showShuttleStops} onSelectStop={setShuttleStopName} />
+        <Mapbox.Images images={PIN_ICON_IMAGES} />
+        <Mapbox.ShapeSource id="listings-source" shape={shape} onPress={handlePress} hitbox={{ width: 44, height: 44 }}>
+          <Mapbox.SymbolLayer
+            id="listings-icons"
+            style={{
+              iconImage: ["get", "iconId"],
+              iconAnchor: "bottom",
+              iconAllowOverlap: true,
+              iconSize: PIN_ICON_SCALE,
+              symbolSortKey: ["get", "sortKey"],
+            }}
+          />
+        </Mapbox.ShapeSource>
+      </Mapbox.MapView>
+
+      <View className="absolute top-3 right-3 flex-col gap-1.5">
+        <Pressable
+          onPress={() => {
+            setShowShuttleStops((v) => !v);
+            setShuttleStopName(null);
+          }}
+          className={`px-2.5 py-1.5 rounded-full border ${
+            showShuttleStops ? "bg-red-600 border-red-600" : "bg-white border-gray-200"
+          }`}
+          style={FLOATING_SHADOW}
+        >
+          <Text className={`text-[11px] font-medium ${showShuttleStops ? "text-white" : "text-gray-700"}`}>
+            {showShuttleStops ? "Hide Shuttle stops" : "Show Shuttle stops"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {showShuttleStops && shuttleStopName && (
+        <View className="absolute top-14 left-0 right-0 items-center">
+          <View className="bg-gray-900/90 rounded-full px-3 py-1.5">
+            <Text className="text-white text-xs font-semibold">{shuttleStopName}</Text>
+          </View>
+        </View>
+      )}
+
+      {selected && (
+        <Pressable
+          onPress={() => router.push(`/listings/${selected._id}`)}
+          className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl border border-gray-100 p-3 flex-row items-center justify-between"
+          style={FLOATING_SHADOW}
+        >
+          <View className="flex-1 min-w-0 mr-2">
+            <Text numberOfLines={1} className="font-bold text-gray-900 text-sm">
+              {selected.title || selected.address}
+            </Text>
+            <Text numberOfLines={1} className="text-xs text-gray-500 mt-0.5">
+              {selected.address}
+            </Text>
+          </View>
+          <View className="flex-row items-center">
+            <Text className="text-red-600 text-xs font-semibold">View</Text>
+            <ChevronRight size={14} color={colors.primary} strokeWidth={2.5} />
+          </View>
+        </Pressable>
+      )}
+    </View>
+  );
+}

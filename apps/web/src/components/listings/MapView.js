@@ -16,6 +16,10 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { useRouter } from "next/navigation";
 import { SHUTTLE_STOPS } from "@/utils/washuPlaces";
 
+// Pin body for "Suggested for you" listings. Matches the swatch in
+// SuggestedStrip's heading (bg-[#A1000A]); change both together.
+const SUGGESTED_PIN_COLOR = "#A1000A";
+
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 // WashU Campus center coordinates (Danforth Campus)
@@ -69,6 +73,9 @@ export default function MapView({
   heroMode = false,
   onBrowseArea = null,
   panelExpanded = false,
+  // Set of listing ids in the browse "Suggested for you" strip; their pins get
+  // a deeper red body (same size) so the strip can be found on the map.
+  suggestedIds = null,
 }) {
   const router = useRouter();
   const mapContainerRef = useRef(null);
@@ -320,7 +327,8 @@ export default function MapView({
   // Builds an inline-SVG pin element with a dynamically clipped star fill.
   // rating: exact float (e.g. 3.7) or null for no-review pins
   // isActive: true = lighter/brighter active color scheme
-  function buildPinSVGElement(rating, listingId, isActive) {
+  // isSuggested: deeper red body for "Suggested for you" listings
+  function buildPinSVGElement(rating, listingId, isActive, isSuggested = false) {
     const el = document.createElement("div");
     el.style.cssText = "width:35px;height:49px;";
     // The scale lives on an inner wrapper because Mapbox owns the marker
@@ -333,13 +341,15 @@ export default function MapView({
     const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
     const hasRating = rating != null && rating > 0;
 
+    const bodyColor = isSuggested ? SUGGESTED_PIN_COLOR : "#E8000B";
+
     const PIN_PATH =
       "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
     const STAR_PATH =
       "M17.0293 8.79004C17.1878 8.34883 17.8122 8.34883 17.9707 8.79004L20.4404 15.668C20.6507 16.2534 21.2013 16.6479 21.8232 16.6602L29.2773 16.8076C29.7553 16.817 29.9486 17.427 29.5635 17.71L23.6768 22.0293C23.1599 22.4086 22.9415 23.0747 23.1328 23.6865L25.2832 30.5664C25.4241 31.0173 24.9192 31.3935 24.5273 31.1299L18.3379 26.9619C17.8315 26.621 17.1685 26.621 16.6621 26.9619L10.4727 31.1299C10.0808 31.3935 9.57593 31.0173 9.7168 30.5664L11.8672 23.6865C12.0585 23.0747 11.8401 22.4086 11.3232 22.0293L5.43652 17.71C5.05135 17.427 5.24468 16.817 5.72266 16.8076L13.1768 16.6602C13.7987 16.6479 14.3493 16.2534 14.5596 15.668L17.0293 8.79004Z";
 
     if (!hasRating) {
-      const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
+      const pinBodyStop2 = isActive ? "#FFDFDF" : bodyColor;
       const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
       const circleFill = isActive ? "#FFA2A2" : "white";
       el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -349,7 +359,7 @@ export default function MapView({
             <stop offset="0.18" stop-color="${pinBodyStop2}"${pinBodyOpacity}/>
           </linearGradient>
         </defs>
-        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
+        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="${bodyColor}" stroke-width="2"/>
         <circle cx="17.5" cy="20" r="5.5" fill="${circleFill}" opacity="0.9"/>
       </svg>${WRAP_CLOSE}`;
     } else {
@@ -359,7 +369,7 @@ export default function MapView({
       const fillHeight = ((rating / 5) * STAR_HEIGHT).toFixed(2);
       const clipY = (STAR_BOTTOM - parseFloat(fillHeight)).toFixed(2);
 
-      const pinBodyStop2 = isActive ? "#FFDFDF" : "#E8000B";
+      const pinBodyStop2 = isActive ? "#FFDFDF" : bodyColor;
       const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
       // Every rated star fills with a gold gradient pinned to the full star, so the
       // gold tip only shows as the fill nears the top (a 5.0 shows all of it, a 2.5
@@ -388,7 +398,7 @@ export default function MapView({
             <rect x="4" y="${clipY}" width="27" height="${parseFloat(fillHeight) + 0.5}"/>
           </clipPath>
         </defs>
-        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="#E8000B" stroke-width="2"/>
+        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="${bodyColor}" stroke-width="2"/>
         <path d="${STAR_PATH}" fill="none" stroke="${outlineStroke}" stroke-width="0.75"/>
         <path d="${STAR_PATH}" fill="${starFill}" stroke="${starFill}" stroke-width="0.75" clip-path="url(#sc_${safeId})"/>
       </svg>${WRAP_CLOSE}`;
@@ -419,7 +429,13 @@ export default function MapView({
 
       const exactRating =
         (listing.rating || 0) > 0 ? listing.rating || 0 : null;
-      const markerEl = buildPinSVGElement(exactRating, listing._id, false);
+      const isSuggested = !!suggestedIds?.has(String(listing._id));
+      const markerEl = buildPinSVGElement(
+        exactRating,
+        listing._id,
+        false,
+        isSuggested
+      );
       markerEl.style.cursor = onListingSelect ? "pointer" : "default";
       const marker = new mapboxgl.Marker({
         element: markerEl,
@@ -429,6 +445,7 @@ export default function MapView({
         .addTo(map);
       marker._listingId = listing._id;
       marker._rating = exactRating;
+      marker._suggested = isSuggested;
       if (onListingSelect) {
         markerEl.addEventListener("click", () => {
           onListingSelect(listing);
@@ -564,7 +581,7 @@ export default function MapView({
       }
       // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
     };
-  }, [isActive, listings, showShuttleStops]);
+  }, [isActive, listings, showShuttleStops, suggestedIds]);
 
   // Keep listingsRef current so the selectedListingId effect can find coordinates
   useEffect(() => {
@@ -636,7 +653,8 @@ export default function MapView({
       const newPin = buildPinSVGElement(
         marker._rating,
         marker._listingId,
-        isActive
+        isActive,
+        marker._suggested
       );
       el.innerHTML = newPin.innerHTML;
     });

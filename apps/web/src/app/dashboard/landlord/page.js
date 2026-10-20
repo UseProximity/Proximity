@@ -1,6 +1,16 @@
 "use client";
 
-import { BarChart3, MapPin, Plug, Star, User, Menu, X } from "lucide-react";
+import { useState } from "react";
+import {
+  BarChart3,
+  MapPin,
+  Plug,
+  Star,
+  User,
+  Menu,
+  X,
+  ChevronDown,
+} from "lucide-react";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
 import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
@@ -44,9 +54,25 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     handleNavigation,
     handlePropertySelect,
     handleBackToProperties,
+    backLabel,
     getPageTitle,
     router,
   } = useLandlordDashboard({ initialViewAsId });
+
+  // Properties opens into Live and Drafts. Open by default: the drafts count is
+  // the thing a landlord should not have to go looking for.
+  const [propertiesOpen, setPropertiesOpen] = useState(true);
+  const listings = user?.listings ?? [];
+  const draftCount =
+    listings.filter((l) => l.isDraft).length +
+    listings.filter(
+      (l) =>
+        !l.isDraft &&
+        ((l.draftUnitCount ?? 0) + (l.draftLeaseCount ?? 0) > 0 ||
+          (l.ownership === "lease" && l.myLeases?.some((x) => x.isDraft)))
+    ).length;
+  const inProperties =
+    activeView === "properties" || activeView === "drafts" || !!selectedProperty;
 
   /*
    * This dashboard is reachable by anyone holding a stake, which now includes a
@@ -69,6 +95,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       return (
         <PropertyAnalyticsSection
           handleBackToProperties={handleBackToProperties}
+          backLabel={backLabel}
           selectedProperty={selectedProperty}
           viewAsId={viewAsId}
           onPhotosChanged={fetchUser}
@@ -86,9 +113,12 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
 
     switch (view) {
       case "properties":
+      case "drafts":
         return (
           <PropertiesSection
             user={user}
+            mode={view === "drafts" ? "drafts" : "live"}
+            onPublished={fetchUser}
             handlePropertySelect={handlePropertySelect}
             router={router}
             onAddListing={handleAddListing}
@@ -161,12 +191,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                 <li>
                   <span className="font-medium">Email:</span>{" "}
                   {profileUpdatePrompt.email}
-                </li>
-              )}
-              {profileUpdatePrompt.phone && (
-                <li>
-                  <span className="font-medium">Phone:</span>{" "}
-                  {profileUpdatePrompt.phone}
                 </li>
               )}
             </ul>
@@ -277,16 +301,47 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   </button>
                   )}
                   <button
-                    onClick={() => handleNavigation("properties")}
+                    onClick={() => setPropertiesOpen((o) => !o)}
+                    aria-expanded={propertiesOpen}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                      activeView === "properties" || selectedProperty
-                        ? "bg-red-50 text-red-700"
+                      inProperties
+                        ? "text-red-700"
                         : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
                     <MapPin className="h-4 w-4" />
                     Properties
+                    <ChevronDown
+                      className={`ml-auto h-4 w-4 transition-transform ${
+                        propertiesOpen ? "" : "-rotate-90"
+                      }`}
+                    />
                   </button>
+                  {propertiesOpen && (
+                    <div className="ml-5 space-y-1 border-l border-gray-200 pl-2">
+                      {[
+                        { key: "properties", label: "Live" },
+                        { key: "drafts", label: "Drafts", count: draftCount },
+                      ].map(({ key, label, count }) => (
+                        <button
+                          key={key}
+                          onClick={() => handleNavigation(key)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-full text-left text-sm transition-colors ${
+                            activeView === key
+                              ? "bg-red-50 text-red-700 font-medium"
+                              : "text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          {label}
+                          {count > 0 && (
+                            <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {isLandlord && (
                   <button
                     onClick={() => handleNavigation("reviews")}

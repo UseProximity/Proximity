@@ -13,7 +13,14 @@
 
 import { cache } from "react";
 import supabase from "@/lib/supabase";
-import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import {
+  unitIsAvailable,
+  listingIsUnavailable,
+  nextAvailableFrom,
+  isLiveLease,
+  isPublished,
+  publicUnits,
+} from "@/lib/listings/unitAvailability";
 import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
 import {
   LANDLORD_CHAT_SELECT,
@@ -84,22 +91,48 @@ function driveTimesToMap(driveTimes) {
   return map;
 }
 
+/*
+ * Which landlord an offering belongs to, as far as a renter is concerned.
+ *
+ * The owning account is the identity, because that is who a conversation
+ * reaches: Contact on a card opens a thread with the owner of the lease it
+ * names (fn_chat_resolve_landlord). Keying on the contact email instead merged
+ * two owners who share a leasing address, or who both fall back to the
+ * listing's, into one card whose Contact reached only the first of them.
+ * An imported lease with no account has only its contact email to be known
+ * by, so that is its identity. The browser gets a per-response stand-in
+ * ("landlord-1", "landlord-2") rather than the address or id itself; grouping
+ * needs equality, not the value. One keyer per listing, so the same landlord
+ * on two units of the building gets the same key.
+ */
+export function landlordKeyer() {
+  const keys = new Map();
+  return (lease, listingRow) => {
+    const email = (lease.contact_email ?? listingRow?.contact_email ?? "").trim().toLowerCase();
+    const identity = lease.owner_id ? `o:${lease.owner_id}` : email ? `e:${email}` : `l:${lease.id}`;
+    if (!keys.has(identity)) keys.set(identity, `landlord-${keys.size + 1}`);
+    return keys.get(identity);
+  };
+}
+
 /**
  * Shape a unit's lease rows into the offering list the UI renders beneath it.
  *
  * One lease = one owner's offering on that unit, so these are competing options
  * a renter chooses between, not attributes of the unit. Withdrawn offers
- * (is_active false, or the owner flagged unavailable) are dropped — they are
- * neither contactable nor real choices.
+ * (is_active false, or the owner flagged unavailable) and drafts are dropped:
+ * they are neither contactable nor real choices.
  *
  * Contact falls back to the listing row because pre-migration leases carry the
  * property-level contact; once a lease has its own, that wins.
  */
-export function shapeLeases(unitLeases, listingRow) {
+export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
   return (unitLeases ?? [])
-    .filter((l) => l.is_active && !l.unavailable)
+    .filter(isLiveLease)
     .map((l) => ({
       id: l.id,
+      // Which landlord this is, for grouping. Opaque on purpose: see landlordKeyer.
+      landlordKey: keyFor(l, listingRow),
       rent: l.rent != null ? Number(l.rent) : null,
       // null = the landlord never said; rentBasis falls back to inference.
       rentIsPerPerson: l.rent_is_per_person ?? null,
@@ -129,7 +162,9 @@ export function shapeLeases(unitLeases, listingRow) {
 function buildListing(row, owner = null, reviews = []) {
   // Retired units are not part of the property any more — see the note in
   // api/listings/route.js; PostgREST can't filter an embedded resource.
-  row = { ...row, listing_units: sortUnits((row.listing_units ?? []).filter((u) => !u.deleted_at)) };
+  // Draft units are their owner's until published, so they go too.
+  row = { ...row, listing_units: sortUnits(publicUnits(row.listing_units)) };
+  const keyFor = landlordKeyer();
 
   /*
    * A property has one gallery, and units are tags on its photos
@@ -175,7 +210,7 @@ function buildListing(row, owner = null, reviews = []) {
     unitTypes: (row.listing_units ?? []).map((u) => {
       // Live offerings only, and cheapest first — a withdrawn lease is not this
       // unit's price. Matches the browse feed (api/listings/route.js).
-      const liveLeases = (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable);
+      const liveLeases = (u.unit_leases ?? []).filter(isLiveLease);
       /*
        * Keep the cheapest priced OFFERING, not just its number, so the rent and
        * the basis that explains it travel together. Taking the flag from
@@ -187,17 +222,12 @@ function buildListing(row, owner = null, reviews = []) {
         .filter((l) => l.rent != null)
         .sort((a, b) => Number(a.rent) - Number(b.rent))[0] ?? null;
       const activeRent = cheapestPriced?.rent;
-      const nextAvailable =
-        (u.unit_leases ?? [])
-          .filter((l) => l.available_from)
-          .sort(
-            (a, b) => new Date(a.available_from) - new Date(b.available_from)
-          )[0]?.available_from ?? null;
+      const nextAvailable = nextAvailableFrom(u);
       const activeLease = liveLeases[0];
       // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
       // above stay as the first-active-lease summary so existing callers (cards,
       // filters, matchmaking) keep working unchanged.
-      const leases = shapeLeases(u.unit_leases, row);
+      const leases = shapeLeases(u.unit_leases, row, keyFor);
       return {
         id: u.id,
         // The photos tagged with this unit, in gallery order.
@@ -225,13 +255,14 @@ function buildListing(row, owner = null, reviews = []) {
     leaseType: (() => {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
-        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
-      // Decide the listing's label from its AVAILABLE units when it has any, so an
-      // available sublease surfaces as "Sublease" even alongside an unavailable
-      // standard lease (and an unavailable sublease no longer forces the badge).
+        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active && isPublished(l)));
+      // Decide the listing's label from its AVAILABLE units when it has any, so
+      // an unavailable sublease never forces the badge. Within that pool a
+      // standard lease trumps: the card says "Sublease" only when every offering
+      // is one (Wyatt, 2026-10-12), matching isSubleaseListing in matchmaking.
       const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
-      return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
+      return pool.length && pool.every((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
     images: coverPool.map((img) => img.url),
     // Every photo at this property with the units it is tagged with, so the
@@ -320,16 +351,16 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       lease_type, contact_email, contact_phone, contact_name,
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
-      city, state, zipcode, created_at, property_key,
+      city, state, zipcode, created_at, property_key, published_at,
       pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(
-        id, bedrooms, bathrooms, area, deleted_at, name, sort_order, floor_plan_image_url,
+        id, bedrooms, bathrooms, area, deleted_at, published_at, name, sort_order, floor_plan_image_url,
         unit_leases(
           id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
-          unavailable, description, furnished, owner_id,
+          unavailable, description, furnished, owner_id, published_at,
           contact_name, contact_email, contact_phone,
           users!owner_id(id, name, image)
         )
@@ -358,6 +389,8 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
     // and the landlord dashboard's availability toggle is a PATCH, so neither is
     // affected by this filter.
     .is("deleted_at", null)
+    // A draft is not public yet either: same 404 as a deleted listing.
+    .not("published_at", "is", null)
     .single();
 
   if (error || !row) {

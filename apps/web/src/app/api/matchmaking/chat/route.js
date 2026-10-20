@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { getRequestUser, RequestUserLookupError } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { isProdData } from "@/lib/appEnv";
 import { handleTurn, computeRecommendations, continueRelaxedSearch, rewindToTradeoff } from "@/lib/matchmaking/chatOrchestrator";
@@ -12,8 +13,10 @@ import { recordListingContact } from "@/lib/contactTracking";
 const GUEST_EMAIL = "guest@proximity.test";
 
 // Resolve a listing's primary-landlord contact (server-side, never trusting the
-// client) for the "have Proxy contact the owner" flow. Falls back to the listing's
-// own contact_email when there's no linked landlord account.
+// client) for the "have Proxy contact the owner" flow. The address follows the
+// same rule as chat alerts (fn_landlord_contact_email): the listing's confirmed
+// contact email first, else the account email. Falls back to the listing's own
+// contact_email when there's no linked landlord account.
 async function resolveOwnerForListing(listingId) {
   const { data: row } = await supabase
     .from("listings")
@@ -24,11 +27,18 @@ async function resolveOwnerForListing(listingId) {
   const links = row.listing_landlords ?? [];
   const primary = links.find((l) => l.is_primary) ?? links[0];
   let owner = null;
+  let routed = null;
   if (primary?.user_id) {
     const { data: u } = await supabase.from("users").select("name, email").eq("id", primary.user_id).single();
     owner = u;
+    const { data: route } = await supabase.rpc("fn_landlord_contact_email", {
+      p_landlord_id: primary.user_id,
+      p_listing_id: listingId,
+      p_lease_id: null,
+    });
+    routed = typeof route === "string" ? route.trim() : "";
   }
-  const email = owner?.email || row.contact_email || null;
+  const email = routed || owner?.email || row.contact_email || null;
   if (!email) return null;
   return { email, name: owner?.name || row.contact_name || null, address: row.address, title: row.title };
 }
@@ -53,13 +63,19 @@ async function resolveUserId(email) {
 // unconditionally guarded and flag the deliberate non-prod guest response as a
 // missing auth check. "optional" is the honest label — anonymous callers get a
 // safe response off production, and a 401 on it.
-async function resolveActor(session) {
-  if (session?.user?.email) {
-    const user = await resolveUserId(session.user.email);
+//
+// `requestUser` is the web session or a mobile Bearer token (getRequestUser). A request
+// that sent a Bearer token which did not resolve (expired or invalid) is a real 401,
+// never a guest: the mobile client's refresh-and-retry depends on it.
+async function resolveActor(requestUser, request) {
+  if (requestUser?.email) {
+    const user = await resolveUserId(requestUser.email);
     if (!user) return { error: { msg: "User not found", status: 404 } };
     return { actor: user, isGuest: false };
   }
-  if (!isProdData()) {
+  // Any Bearer header counts, including an empty or malformed one.
+  const sentBearer = /^bearer\b/i.test(request?.headers?.get("authorization") ?? "");
+  if (!isProdData() && !sentBearer) {
     const guest = await resolveUserId(GUEST_EMAIL);
     if (!guest) return { error: { msg: "Guest tester not provisioned", status: 503 } };
     return { actor: guest, isGuest: true };
@@ -69,7 +85,7 @@ async function resolveActor(session) {
 
 export async function GET(request) {
   try {
-    const { actor, isGuest, error } = await resolveActor(await auth());
+    const { actor, isGuest, error } = await resolveActor(await getRequestUser(request), request);
     if (error) return NextResponse.json({ error: error.msg }, { status: error.status });
 
     // The client remembers which session it was in (localStorage). When it asks
@@ -102,14 +118,19 @@ export async function GET(request) {
     return NextResponse.json({ session: chatSession ?? null });
   } catch (err) {
     console.error("[matchmaking/chat GET]", err);
+    // A failed user lookup is not "no session": answering 200 with null would make the
+    // mobile app start a fresh conversation over the one it could not load.
+    if (err instanceof RequestUserLookupError) {
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
     return NextResponse.json({ session: null });
   }
 }
 
 export async function POST(request) {
   try {
-    const session = await auth();
-    const { actor, error: actorError } = await resolveActor(session);
+    const requestUser = await getRequestUser(request);
+    const { actor, error: actorError } = await resolveActor(requestUser, request);
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
 
     const body = await request.json();
@@ -234,8 +255,10 @@ export async function POST(request) {
     // redirected to the staging test inbox by sendMailSafe — real owners are never hit).
     if (action === "contact_owners") {
       const listingIds = Array.isArray(body.listingIds) ? [...new Set(body.listingIds.filter(Boolean))] : [];
-      const student = session?.user?.email
-        ? { name: (session.user.name || actor.name || "A Proximity student").trim(), email: session.user.email }
+      // The web session carries the display name; a mobile Bearer token has none.
+      const sessionName = (await auth())?.user?.name;
+      const student = requestUser?.email
+        ? { name: (sessionName || actor.name || "A Proximity student").trim(), email: requestUser.email }
         : { name: "Proximity Tester", email: GUEST_EMAIL };
 
       let sent = 0;
@@ -323,7 +346,7 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   try {
-    const { actor, error: actorError } = await resolveActor(await auth());
+    const { actor, error: actorError } = await resolveActor(await getRequestUser(request), request);
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
 
     const body = await request.json();

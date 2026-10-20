@@ -1,6 +1,6 @@
 import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
-import { unitIsAvailable } from "@/lib/listings/unitAvailability";
+import { unitIsAvailable, isLiveLease, isPublished } from "@/lib/listings/unitAvailability";
 import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
 import { listingsAtAddress } from "@/lib/listings/propertyName";
 import { unitNameKey } from "@/utils/unitName";
@@ -58,13 +58,14 @@ export async function GET(req) {
   const { data: rows, error } = await supabase
     .from("listings")
     .select(
-      `id, title, address, latitude, longitude, created_at,
+      `id, title, address, latitude, longitude, created_at, published_at,
+       listing_landlords!listing_id(user_id),
        listing_images(id, listing_image_units(unit_id)),
        listing_units!listing_id(
-         id, name, sort_order, bedrooms, bathrooms, area, deleted_at, floor_plan_image_url,
+         id, name, sort_order, bedrooms, bathrooms, area, deleted_at, published_at, floor_plan_image_url,
          unit_leases!unit_id(
            id, rent, rent_is_per_person, lease_term_months, available_from,
-           sublease, is_active, unavailable, owner_id, contact_name
+           sublease, is_active, unavailable, owner_id, contact_name, contact_email, published_at
          )
        )`
     )
@@ -85,10 +86,42 @@ export async function GET(req) {
     return Response.json({ error: "Could not look up that address." }, { status: 500 });
   }
 
-  if (!rows?.length) return Response.json({ propertyKey, property: null });
-
-  const canonical = rows[0];
   const userId = session?.user?.id ?? null;
+
+  /*
+   * Drafts are visible to the people who own them and nobody else. Another
+   * landlord at the same address sees the property as it stands on the site:
+   * a draft property is not there yet, and neither is a draft unit or offering
+   * on a live one. Owners of the property see its draft units; a lease-holder
+   * sees their own draft offerings.
+   */
+  const ownsRow = (row) =>
+    !!userId && (row.listing_landlords ?? []).some((l) => l.user_id === userId);
+  const visibleRows = (rows ?? [])
+    .filter((row) => isPublished(row) || ownsRow(row))
+    .map((row) => {
+      const owner = ownsRow(row);
+      return {
+        ...row,
+        listing_units: (row.listing_units ?? [])
+          .map((unit) => ({
+            ...unit,
+            unit_leases: (unit.unit_leases ?? []).filter(
+              (lease) => isPublished(lease) || (!!userId && lease.owner_id === userId)
+            ),
+          }))
+          .filter(
+            (unit) =>
+              isPublished(unit) ||
+              owner ||
+              unit.unit_leases.some((lease) => lease.owner_id === userId)
+          ),
+      };
+    });
+
+  if (!visibleRows.length) return Response.json({ propertyKey, property: null });
+
+  const canonical = visibleRows[0];
 
   /*
    * How many photos each unit, and the property, already has. An import onto a
@@ -96,33 +129,40 @@ export async function GET(req) {
    * a landlord who uploaded their rooms by hand doesn't get every one twice.
    */
   const photoCountByUnit = new Map();
-  for (const img of rows.flatMap((row) => row.listing_images ?? [])) {
+  for (const img of visibleRows.flatMap((row) => row.listing_images ?? [])) {
     for (const tag of img.listing_image_units ?? []) {
       photoCountByUnit.set(tag.unit_id, (photoCountByUnit.get(tag.unit_id) ?? 0) + 1);
     }
   }
 
-  const units = rows
+  const units = visibleRows
     .flatMap((row) =>
       sortUnits((row.listing_units ?? []).filter((unit) => !unit.deleted_at))
         .map((unit) => ({ unit, listingId: row.id }))
     )
     .map(({ unit, listingId }) => {
-      const leases = (unit.unit_leases ?? []).map((lease) => ({
-        id: lease.id,
-        rent: lease.rent,
-        // What the landlord needs to edit an offering of their own in place.
-        rentIsPerPerson: !!lease.rent_is_per_person,
-        leaseTermMonths: lease.lease_term_months ?? [],
-        availableFrom: lease.available_from ?? null,
-        unavailable: !!lease.unavailable,
-        sublease: !!lease.sublease,
-        // Whether a renter could take this offering today.
-        live: !!lease.is_active && !lease.unavailable,
-        ownerId: lease.owner_id,
-        contactName: lease.contact_name,
-        isMine: !!lease.owner_id && lease.owner_id === userId,
-      }));
+      const leases = (unit.unit_leases ?? []).map((lease) => {
+        const isMine = !!lease.owner_id && lease.owner_id === userId;
+        return {
+          id: lease.id,
+          rent: lease.rent,
+          // What the landlord needs to edit an offering of their own in place.
+          rentIsPerPerson: !!lease.rent_is_per_person,
+          leaseTermMonths: lease.lease_term_months ?? [],
+          availableFrom: lease.available_from ?? null,
+          unavailable: !!lease.unavailable,
+          sublease: !!lease.sublease,
+          // Whether a renter could take this offering today.
+          live: isLiveLease(lease),
+          ownerId: lease.owner_id,
+          contactName: lease.contact_name,
+          isMine,
+          // The caller's own contact at this property, which a new lease here
+          // inherits (api/leases), so the add flow can show it rather than ask
+          // again. Nobody else's email leaves the server.
+          ...(isMine ? { contactEmail: lease.contact_email ?? null } : {}),
+        };
+      });
 
       const liveLeases = leases.filter((l) => l.live);
 
@@ -215,7 +255,7 @@ export async function GET(req) {
       latitude: canonical.latitude,
       longitude: canonical.longitude,
       // >1 means the duplicate rows behind this key have not been merged yet.
-      listingRowCount: rows.length,
+      listingRowCount: visibleRows.length,
       ownerCount: ownerIds.size,
       viewerHasLease: mergedUnits.some((u) => u.leases.some((l) => l.isMine)),
       photoCount: (canonical.listing_images ?? []).length,

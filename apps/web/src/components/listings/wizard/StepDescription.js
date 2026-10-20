@@ -127,11 +127,12 @@ export default function StepDescription({ w }) {
 
       <div className="mt-7">
         <FieldLabel>Contact info students will see</FieldLabel>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Name and email only: students write through Proximity, never call
+            (Wyatt, 2026-10-18). */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {[
             { name: "contact_name", label: "Name", type: "text" },
             { name: "contact_email", label: "Email", type: "email" },
-            { name: "contact_phone", label: "Phone", type: "text" },
           ].map(({ name, label, type }) => (
             <input
               key={name}

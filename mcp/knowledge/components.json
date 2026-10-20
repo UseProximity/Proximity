@@ -1,11 +1,16 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-10T19:06:56.533Z",
-  "count": 124,
+  "_generated": "2026-10-20T16:02:33.702Z",
+  "count": 130,
   "components": [
     {
       "name": "DeleteAccountButton",
       "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ConversationsView",
+      "file": "src/components/admin/ConversationsView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -142,6 +147,11 @@
       "name": "MessagesPanel",
       "file": "src/components/chat/MessagesPanel.js",
       "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
+    },
+    {
+      "name": "NoReplyNote",
+      "file": "src/components/chat/NoReplyNote.js",
+      "description": "No description. Run generate after adding a description above."
     },
     {
       "name": "ProximityAssistantTranscript",
@@ -369,6 +379,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "SuggestedStrip",
+      "file": "src/components/listings/SuggestedStrip.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "TopFilterBar",
       "file": "src/components/listings/TopFilterBar.js",
       "description": "No description. Run generate after adding a description above."
@@ -406,6 +421,21 @@
     {
       "name": "lookupPlace",
       "file": "src/components/listings/add/lookupPlace.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ContactEmailStatus",
+      "file": "src/components/listings/editor/ContactEmailStatus.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "DraftControls",
+      "file": "src/components/listings/editor/DraftControls.js",
+      "description": "The amber Draft badge and the one-way Publish button (POST /api/landlord/publish) shared by every draft surface in the property editor"
+    },
+    {
+      "name": "EditorContact",
+      "file": "src/components/listings/editor/EditorContact.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

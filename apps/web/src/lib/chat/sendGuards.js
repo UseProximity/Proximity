@@ -7,7 +7,10 @@
  * reply and attachment paths cannot drift apart on policy.
  */
 import supabase from "@/lib/supabase";
-import { screenChatText } from "@/lib/chat/moderation";
+import { screenChatText, confirmMessage, CONTACT_REASONS } from "@/lib/chat/moderation";
+
+export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
+const CONFIRMED_REASON = "confirmed_in_app";
 
 /*
  * Log the decision. Never allowed to break a send: a screening record is
@@ -41,21 +44,54 @@ async function logModeration({
 /**
  * Screen a body before sending.
  *
- * A block is recorded and refused. A flag is recorded and allowed through, and
- * the sender is told nothing: the whole point of the flag tier is that someone
- * probing for what gets through learns nothing from the response.
+ * Three outcomes:
  *
- * @returns {Promise<{blocked: true, message: string} | {blocked: false, flagged: boolean, reasons: string[]}>}
+ * - blocked: abuse, fraud or phishing. Recorded here (there will be no message
+ *   row) and refused with copy for the sender.
+ * - needsConfirmation: only contact details or a move-elsewhere request
+ *   (CONTACT_REASONS) and the sender has not yet confirmed. Not recorded, since
+ *   nothing was sent; the route answers 409 CONFIRM_SEND and the composer asks
+ *   "send anyway?" (Wyatt, 2026-10-12). The same message sent again with
+ *   confirmed: true comes back as flagged with "confirmed_in_app" added.
+ * - flagged (or clean): allowed through. The sender is told nothing about a
+ *   flag, so someone probing for what gets through learns nothing. Flags are
+ *   NOT recorded here: the route calls recordFlaggedSend after the post so the
+ *   event carries the message id and the admin Conversations view can pin it
+ *   to the message.
+ *
+ * @returns {Promise<
+ *   {blocked: true, message: string}
+ *   | {blocked: false, needsConfirmation: true, reasons: string[], message: string}
+ *   | {blocked: false, flagged: boolean, reasons: string[]}
+ * >}
  */
 export async function screenOutgoingChat({
   userId,
   body,
   threadId = null,
   listingId = null,
+  confirmed = false,
+  audience = "student",
 }) {
   const verdict = screenChatText(body);
 
   if (verdict.action === "block") {
+    const contactOnly = verdict.reasons.every((r) => CONTACT_REASONS.has(r));
+    if (contactOnly) {
+      if (!confirmed) {
+        return {
+          blocked: false,
+          needsConfirmation: true,
+          reasons: verdict.reasons,
+          message: confirmMessage(verdict.reasons, audience),
+        };
+      }
+      return {
+        blocked: false,
+        flagged: true,
+        reasons: [...verdict.reasons, ...(verdict.flags ?? []), CONFIRMED_REASON],
+      };
+    }
     await logModeration({
       userId,
       action: "block",
@@ -68,18 +104,27 @@ export async function screenOutgoingChat({
   }
 
   if (verdict.action === "flag") {
-    await logModeration({
-      userId,
-      action: "flag",
-      reasons: verdict.reasons,
-      body,
-      threadId,
-      listingId,
-    });
     return { blocked: false, flagged: true, reasons: verdict.reasons };
   }
 
   return { blocked: false, flagged: false, reasons: [] };
+}
+
+/**
+ * Record a flag on a message that was posted. Called by the send routes after
+ * the RPC returns the message id, for both the silent flag tier and the
+ * confirmed contact-details case.
+ */
+export async function recordFlaggedSend({ userId, threadId, messageId, listingId = null, reasons, body }) {
+  await logModeration({
+    userId,
+    action: "flag",
+    reasons,
+    body,
+    threadId,
+    messageId,
+    listingId,
+  });
 }
 
 /**
@@ -117,8 +162,15 @@ export const CHAT_PASSWORD_REQUIRED_MESSAGE =
  * to the address on the account, so following it proves control of the inbox.
  * Sending is where identity starts to matter, because the reply is attributed to
  * a named landlord and the student will act on it. An account that has never set
- * a password and is not a Google account has to set one first
+ * a password and has no Google or Apple identity has to set one first
  * (Wyatt, 2026-10-03).
+ *
+ * Apple counts as an identity for the same reason Google does: the account was
+ * created or linked through a verified Apple sign-in (apple_account), so the
+ * person has already proved who they are and does not need a password as well.
+ * That is what lets the mobile app's Sign in with Apple users message without
+ * being asked to create one. A credential-less row that only ever arrived through
+ * a chat magic link has none of the three, so it stays restricted.
  *
  * This is why relaxing landlordCanChat to "we have an email address" is safe.
  * Reachability and participation are separate gates, and this is the second one.
@@ -131,7 +183,7 @@ export const CHAT_PASSWORD_REQUIRED_MESSAGE =
 export async function assertSenderCanSend(userId) {
   const { data, error } = await supabase
     .from("users")
-    .select("password_hash, google_account")
+    .select("password_hash, google_account, apple_account")
     .eq("id", userId)
     .maybeSingle();
 
@@ -145,6 +197,7 @@ export async function assertSenderCanSend(userId) {
 
   if (!data) return { ok: true };
   if (data.google_account === true) return { ok: true };
+  if (data.apple_account === true) return { ok: true };
   if (data.password_hash) return { ok: true };
   return { ok: false, reason: "password_required" };
 }

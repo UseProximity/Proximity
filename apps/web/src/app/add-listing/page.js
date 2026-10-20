@@ -127,7 +127,12 @@ export default function AddListingPage() {
           initialImportUrl={site}
           onImportMany={(targets, pastedUrl) => setBatch(newBatch(targets, pastedUrl))}
           onClose={() => setMode(null)}
-          onSuccess={() => {
+          onSuccess={(_units, _diff, result) => {
+            if (result?.draft) {
+              toast.success("Saved as a draft. Students can't see it yet.");
+              router.push("/dashboard/landlord?tab=drafts");
+              return;
+            }
             toast.success("Listing published!");
             router.push("/dashboard/landlord?tab=properties");
           }}

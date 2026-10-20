@@ -1,8 +1,9 @@
 import { NextResponse, after } from "next/server";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import {
   CHAT_ATTACHMENT_ALLOWED_TYPES,
   CHAT_ATTACHMENT_MAX_BYTES,
@@ -16,8 +17,11 @@ import {
   CHAT_PASSWORD_REQUIRED_MESSAGE,
   isChatRateLimitError,
   CHAT_RATE_LIMIT_MESSAGE,
+  CHAT_CONFIRM_SEND_CODE,
+  recordFlaggedSend,
 } from "@/lib/chat/sendGuards";
 import { scanChatAttachments } from "@/lib/chat/scanAttachment";
+import { assertThreadNotBlocked } from "@/lib/chat/safety";
 
 // Surfaced to the client as-is; everything else becomes a generic 500.
 const SAFE_SEND_MESSAGE_ERRORS = new Set([
@@ -101,8 +105,8 @@ function normalizeAttachments(raw) {
 // GET /api/chat/threads/[threadId]/messages: paginated history for a participant
 export async function GET(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -112,7 +116,7 @@ export async function GET(req, { params }) {
     }
 
     const { searchParams } = new URL(req.url);
-    const rpcArgs = { p_user_id: session.user.id, p_thread_id: threadId };
+    const rpcArgs = { p_user_id: authUser.id, p_thread_id: threadId };
 
     const limitParam = searchParams.get("limit");
     if (limitParam !== null) {
@@ -154,8 +158,8 @@ export async function GET(req, { params }) {
 // POST /api/chat/threads/[threadId]/messages: reply (text and/or attachments)
 export async function POST(req, { params }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -168,7 +172,7 @@ export async function POST(req, { params }) {
      * A magic-link arrival can read this thread without any credentials. Sending
      * is the line: an account with neither a password nor Google has to set one.
      */
-    const eligibility = await assertSenderCanSend(session.user.id);
+    const eligibility = await assertSenderCanSend(authUser.id);
     if (!eligibility.ok) {
       return NextResponse.json(
         {
@@ -177,6 +181,13 @@ export async function POST(req, { params }) {
         },
         { status: 403 }
       );
+    }
+
+    // Either person has blocked the other: neutral refusal before anything is
+    // screened, scanned or sent.
+    const blockCheck = await assertThreadNotBlocked(threadId, authUser.id);
+    if (!blockCheck.ok) {
+      return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
     }
 
     let payload;
@@ -188,6 +199,11 @@ export async function POST(req, { params }) {
 
     const rawBody = payload?.body;
     const bodyText = typeof rawBody === "string" ? rawBody.trim() : "";
+    // Set when the composer re-sends after the "send anyway?" prompt.
+    const confirmed = payload?.confirmed === true;
+    // Which "keep it on Proximity" reasons the prompt gives: scams for students,
+    // the dated record for landlords.
+    const audience = authUser.role === "landlord" ? "landlord" : "student";
     const normalized = normalizeAttachments(payload?.attachments);
 
     if (normalized?.error) {
@@ -208,16 +224,24 @@ export async function POST(req, { params }) {
       }
 
       const screen = await screenOutgoingChat({
-        userId: session.user.id,
+        userId: authUser.id,
         body: bodyText,
         threadId,
+        confirmed,
+        audience,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
       }
+      if (screen.needsConfirmation) {
+        return NextResponse.json(
+          { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+          { status: 409 }
+        );
+      }
 
       const { data, error } = await supabase.rpc("rpc_send_chat_message", {
-        p_user_id: session.user.id,
+        p_user_id: authUser.id,
         p_thread_id: threadId,
         p_body: bodyText,
       });
@@ -227,13 +251,28 @@ export async function POST(req, { params }) {
         return mapChatRpcError(error);
       }
 
+      if (screen.flagged) {
+        await recordFlaggedSend({
+          userId: authUser.id,
+          threadId,
+          messageId: data?.messageId ?? null,
+          listingId: data?.listingId ?? null,
+          reasons: screen.reasons,
+          body: bodyText,
+        });
+      }
+
       const baseUrl = getBaseUrl(req);
       after(() =>
         notifyNewChatMessage({
           threadId,
-          senderId: session.user.id,
+          senderId: authUser.id,
+          messageId: data?.messageId ?? null,
           baseUrl,
         })
+      );
+      after(() =>
+        notifyNewChatMessagePush({ threadId, senderId: authUser.id, messageId: data?.messageId })
       );
 
       return NextResponse.json(data);
@@ -246,14 +285,23 @@ export async function POST(req, { params }) {
       );
     }
 
+    let screen = null;
     if (bodyText) {
-      const screen = await screenOutgoingChat({
-        userId: session.user.id,
+      screen = await screenOutgoingChat({
+        userId: authUser.id,
         body: bodyText,
         threadId,
+        confirmed,
+        audience,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
+      if (screen.needsConfirmation) {
+        return NextResponse.json(
+          { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+          { status: 409 }
+        );
       }
     }
 
@@ -266,7 +314,7 @@ export async function POST(req, { params }) {
     const scan = await scanChatAttachments({ attachments: normalized.attachments });
     if (scan.reasons.length > 0) {
       await recordAttachmentScan({
-        userId: session.user.id,
+        userId: authUser.id,
         threadId,
         blocked: scan.blocked,
         reasons: scan.reasons,
@@ -278,7 +326,7 @@ export async function POST(req, { params }) {
     }
 
     const { data, error } = await supabase.rpc("rpc_send_chat_attachment_message", {
-      p_user_id: session.user.id,
+      p_user_id: authUser.id,
       p_thread_id: threadId,
       p_body: bodyText || null,
       p_attachments: normalized.attachments,
@@ -289,13 +337,28 @@ export async function POST(req, { params }) {
       return mapChatRpcError(error);
     }
 
+    if (screen?.flagged) {
+      await recordFlaggedSend({
+        userId: authUser.id,
+        threadId,
+        messageId: data?.messageId ?? null,
+        listingId: data?.listingId ?? null,
+        reasons: screen.reasons,
+        body: bodyText,
+      });
+    }
+
     const baseUrl = getBaseUrl(req);
     after(() =>
       notifyNewChatMessage({
         threadId,
-        senderId: session.user.id,
+        senderId: authUser.id,
+        messageId: data?.messageId ?? null,
         baseUrl,
       })
+    );
+    after(() =>
+      notifyNewChatMessagePush({ threadId, senderId: authUser.id, messageId: data?.messageId })
     );
 
     return NextResponse.json(data);

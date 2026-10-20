@@ -268,13 +268,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
             </select>
           </div>
 
-          {/* Phone */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Phone</label>
-            <input type="tel" name="phone" value={form.phone} onChange={handleChange}
-              placeholder="e.g. (314) 555-0100"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-          </div>
+          {/* No phone field: nothing on Proximity calls or texts anyone, and
+              landlords reach students through messages (Wyatt, 2026-10-18). */}
 
           {/* Bio */}
           <div>
@@ -812,7 +807,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               ) : (
                 <>
                   <p className="text-sm text-gray-500 mb-4">
-                    Congrats, you&apos;ve reached out to the leasing agent. Check your email and phone number for updates.
+                    Congrats, you&apos;ve reached out to the leasing agent. Check your email and your Proximity messages for updates.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
                     {contactedVisible.map((listing) => (

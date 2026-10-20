@@ -54,7 +54,6 @@ const blankForm = (user) => ({
   sublease_friendly: false,
   twenty_one_plus: false,
   contact_email: user?.email ?? "",
-  contact_phone: user?.phone ?? "",
   contact_name: user?.name ?? "",
   amenities: [],
   utilities_included: [],
@@ -923,7 +922,6 @@ export default function AddListingWizard({
       home_type: listing.home_type,
       contact_name: listing.contact_name,
       contact_email: listing.contact_email,
-      contact_phone: listing.contact_phone,
     };
     for (const [key, val] of Object.entries(importable)) {
       if (val != null && val !== "") marked.add(key);
@@ -1337,17 +1335,19 @@ export default function AddListingWizard({
 
   /*
    * Everything publishing does, short of leaving the page. Returns
-   * { ok, listingId, unitPayload, diff } or { ok: false, error }, so the
-   * single-listing button and the workspace's "Publish all" share one path.
+   * { ok, listingId, unitPayload, diff, asDraft } or { ok: false, error }, so
+   * the single-listing buttons and the workspace's "Publish all" share one
+   * path. `asDraft` saves the same listing hidden from students
+   * (202610100002) until it is published from the dashboard.
    */
-  const submitListing = async () => {
+  const submitListing = async (asDraft = false) => {
     setFieldError(null);
     const problem = firstProblem();
     if (problem) {
       showProblem(problem);
       return { ok: false, error: problem.problem };
     }
-    setSubmitting(true);
+    setSubmitting(asDraft ? "draft" : "publish");
     setError(null);
     try {
       /*
@@ -1631,6 +1631,7 @@ export default function AddListingWizard({
             contactEmail: form.contact_email || null,
             contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
+            draft: asDraft,
           }),
         });
       /*
@@ -1674,12 +1675,14 @@ export default function AddListingWizard({
           sourceUrl: importSourceUrl.current || null,
           indexUrl: importPastedUrl.current || null,
           contactEmail: form.contact_email || null,
-          contactPhone: form.contact_phone || null,
           contactName: form.contact_name || null,
           ...(coords.lat != null && coords.lng != null
             ? { longitude: coords.lng, latitude: coords.lat }
             : {}),
           attachStreetView: !streetViewDeleted && stagedFiles.length === 0,
+          // A new property is born a draft; attached to a live one, the new
+          // units are the drafts.
+          draft: asDraft,
         }),
       });
       const data = await res.json();
@@ -1787,8 +1790,6 @@ export default function AddListingWizard({
         diff.name = trim(form.contact_name);
       if (trim(form.contact_email) && trim(form.contact_email) !== trim(user?.email))
         diff.email = trim(form.contact_email);
-      if (trim(form.contact_phone) && trim(form.contact_phone) !== trim(user?.phone))
-        diff.phone = trim(form.contact_phone);
 
       clearAutosave();
       return {
@@ -1796,6 +1797,7 @@ export default function AddListingWizard({
         listingId: publishedId,
         unitPayload,
         diff: Object.keys(diff).length ? diff : null,
+        asDraft,
       };
     } catch {
       setError("Network error. Please try again.");
@@ -1805,15 +1807,21 @@ export default function AddListingWizard({
     }
   };
 
-  const publish = async () => {
-    const result = await submitListing();
+  /*
+   * Publish, or save as a draft (202610100002): the same listing, the same
+   * checks, only hidden from students until it is published from the
+   * dashboard. Called with an explicit flag, never as a bare onClick, so a
+   * click event is not mistaken for one.
+   */
+  const publish = async (asDraft = false) => {
+    const result = await submitListing(asDraft);
     if (!result.ok) return;
     // Multi-property import: load the next queued property instead of leaving.
     if (importQueue.length > 0) {
-      await advanceImportQueue(result.unitPayload, result.diff);
+      await advanceImportQueue(result.unitPayload, result.diff, asDraft);
       return;
     }
-    await onSuccess(result.unitPayload, result.diff);
+    await onSuccess(result.unitPayload, result.diff, { draft: asDraft });
   };
 
   /*
@@ -1843,9 +1851,9 @@ export default function AddListingWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryKey]);
 
-  const advanceImportQueue = async (unitPayload, diff) => {
+  const advanceImportQueue = async (unitPayload, diff, asDraft = false) => {
     let queue = importQueue;
-    toast.success("Listing published!");
+    toast.success(asDraft ? "Draft saved." : "Listing published!");
     // Anything still downloading belongs to the listing we just published.
     cancelImportAssets();
     // fresh form for the next property
@@ -1910,7 +1918,8 @@ export default function AddListingWizard({
     setImportQueue([]);
     setImportInfo(null);
     importBatch.current = { done: 0, total: 0 };
-    await onSuccess(unitPayload, diff);
+    // The last property's choice stands for the batch's landing toast.
+    await onSuccess(unitPayload, diff, { draft: asDraft });
   };
 
   // ------------------------------------------------------------------- render

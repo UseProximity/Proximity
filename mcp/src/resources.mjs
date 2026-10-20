@@ -18,7 +18,7 @@ export const RESOURCES = [
     uri: "proximity://db-schema",
     name: "Database Schema",
     description:
-      "Supabase (PostgreSQL) table definitions. Includes columns, types, and relationships.",
+      "Supabase (PostgreSQL) schema: every table with status, purpose, columns, keys and constraints, plus RPC functions, triggers, webhooks, the edge function, RLS and dev-vs-prod drift.",
     mimeType: "application/json",
     file: "db-schema.json",
   },

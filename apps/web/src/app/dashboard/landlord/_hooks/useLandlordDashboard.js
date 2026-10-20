@@ -20,6 +20,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",
+    companyName: "",
     phone: "",
     description: "",
     birthday: "",
@@ -49,6 +50,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     const tab = params.get("tab");
     const propertyId = params.get("property");
     if (tab) setActiveView(tab);
+    if (tab === "drafts") setReturnView("drafts");
     if (propertyId) {
       const listing = user.listings?.find(
         (l) => l._id === propertyId || l.id === propertyId
@@ -72,6 +74,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (!user) return;
     setForm({
       name: user.name || "",
+      companyName: user.company_name || "",
       phone: user.phone || "",
       description: user.description || "",
       birthday: user.birthday
@@ -112,6 +115,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (user) {
       setForm({
         name: user.name || "",
+        companyName: user.company_name || "",
         phone: user.phone || "",
         description: user.description || "",
         birthday: user.birthday
@@ -138,6 +142,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         },
         body: JSON.stringify({
           name: form.name?.trim(),
+          companyName: form.companyName?.trim() ?? "",
           phone: form.phone?.trim(),
           description: form.description?.trim(),
           birthday: form.birthday || null,
@@ -307,9 +312,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
           ...(profileUpdatePrompt.email && {
             email: profileUpdatePrompt.email,
           }),
-          ...(profileUpdatePrompt.phone && {
-            phone: profileUpdatePrompt.phone,
-          }),
         }),
       });
       await fetchUser();
@@ -331,11 +333,21 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
 
+  /*
+   * Which list a property was opened from, Live ("properties") or "drafts", so
+   * Back returns there rather than dropping someone reviewing drafts onto the
+   * live list. Kept in the URL's tab so a reload lands in the same place.
+   */
+  const listView = activeView === "drafts" ? "drafts" : "properties";
+  const [returnView, setReturnView] = useState("properties");
+
   const handlePropertySelect = (property) => {
+    const from = listView;
+    setReturnView(from);
     setSelectedProperty(property);
-    setActiveView("property-analytics");
+    setActiveView(from);
     const p = new URLSearchParams({
-      tab: "properties",
+      tab: from,
       property: property._id || property.id,
     });
     if (viewAsId) p.set("viewAs", viewAsId);
@@ -344,8 +356,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
 
   const handleBackToProperties = () => {
     setSelectedProperty(null);
-    setActiveView("properties");
-    const p = new URLSearchParams({ tab: "properties" });
+    setActiveView(returnView);
+    const p = new URLSearchParams({ tab: returnView });
     if (viewAsId) p.set("viewAs", viewAsId);
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
@@ -355,6 +367,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     switch (activeView) {
       case "properties":
         return "Properties";
+      case "drafts":
+        return "Drafts";
       case "settings":
         return "Settings";
       case "reviews":
@@ -406,6 +420,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     handleNavigation,
     handlePropertySelect,
     handleBackToProperties,
+    backLabel: returnView === "drafts" ? "Back to Drafts" : "Back to Properties",
     getPageTitle,
     router,
   };

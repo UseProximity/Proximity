@@ -19,47 +19,36 @@ function formatPreviewTime(iso) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/*
+ * Who wrote the last message, then what it said. The row's heading is the
+ * listing, so the person only appears here (Wyatt, 2026-10-09).
+ */
 function threadPreview(thread) {
-  const attachmentPreview =
+  const who = thread.lastMessageMine
+    ? "You"
+    : thread.otherUserName?.split(" ")[0] || "";
+  const text =
     thread.lastMessageType === "attachment"
-      ? thread.lastMessageMine
-        ? `You: ${thread.lastMessageBody || "Sent a file"}`
-        : thread.lastMessageBody || "Sent a file"
-      : null;
-  if (attachmentPreview) return attachmentPreview;
-  return thread.lastMessageMine
-    ? `You: ${thread.lastMessageBody || ""}`
-    : thread.lastMessageBody || "";
+      ? thread.lastMessageBody || "Sent a file"
+      : thread.lastMessageBody || "";
+  return who && text ? `${who}: ${text}` : text;
 }
 
 /*
- * Every property the conversation has covered, most recent inquiry first.
- *
- * A thread is one person now, not one property, so showing only the latest
- * inquiry hid the rest: a landlord could not see that the same student had also
- * asked about two other places. Capped at three lines, because an inbox row that
- * grows without limit pushes every other conversation off the screen.
+ * A conversation is about one listing: its name heads the row and its address
+ * sits under it, the same pair the listing panel shows. A listing with no name
+ * uses its address as the heading and shows nothing under it.
  */
-const MAX_LISTING_LINES = 3;
-
-function listingLinesFor(thread) {
-  const list = Array.isArray(thread.listings) ? thread.listings : [];
-  if (list.length === 0) {
-    const fallback = thread.listingTitle || thread.listingAddress;
-    return { lines: fallback ? [fallback] : [], extra: 0 };
-  }
-  const labels = list
-    .map((l) => l?.title || l?.address)
-    .filter(Boolean);
-  return {
-    lines: labels.slice(0, MAX_LISTING_LINES),
-    extra: Math.max(0, labels.length - MAX_LISTING_LINES),
-  };
+function listingHeading(thread) {
+  const title = thread.listingTitle?.trim();
+  const address = thread.listingAddress?.trim();
+  if (title) return { title, subtitle: address && address !== title ? address : "" };
+  return { title: address || thread.otherUserName || "Conversation", subtitle: "" };
 }
 
 function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
   const preview = threadPreview(thread);
-  const { lines: listingLines, extra: extraListings } = listingLinesFor(thread);
+  const { title, subtitle } = listingHeading(thread);
   return (
     <button
       type="button"
@@ -72,8 +61,8 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
     >
       <div className="relative flex-shrink-0">
         <ChatAvatar
-          src={thread.otherUserImage || thread.listingImage}
-          name={thread.otherUserName || thread.listingTitle}
+          src={thread.listingImage || thread.otherUserImage}
+          name={title}
           shape={thread.listingImage ? "square" : "circle"}
         />
         {thread.hasUnread && (
@@ -89,28 +78,16 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
                 : "font-semibold text-gray-900"
             }`}
           >
-            {thread.otherUserName || "Conversation"}
+            {title}
           </p>
           <span className="text-[10px] text-gray-400 flex-shrink-0">
             {formatPreviewTime(thread.lastMessageAt)}
           </span>
         </div>
-        {listingLines.length > 0 && (
-          <div className="mt-0.5 space-y-px">
-            {listingLines.map((label) => (
-              <p
-                key={label}
-                className="text-[11px] text-gray-400 truncate leading-snug"
-              >
-                {label}
-              </p>
-            ))}
-            {extraListings > 0 && (
-              <p className="text-[11px] text-gray-400 leading-snug">
-                +{extraListings} more
-              </p>
-            )}
-          </div>
+        {subtitle && (
+          <p className="text-[11px] text-gray-400 truncate leading-snug mt-0.5">
+            {subtitle}
+          </p>
         )}
         <p
           className={`text-xs truncate mt-0.5 ${

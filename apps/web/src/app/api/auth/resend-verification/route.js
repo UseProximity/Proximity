@@ -35,6 +35,7 @@ export async function POST(req) {
       token,
       baseUrl: getBaseUrl(),
       next: sanitizeCallbackUrl(callbackUrl, null),
+      req,
     });
 
     return NextResponse.json({ ok: true });
