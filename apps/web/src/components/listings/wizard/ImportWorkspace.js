@@ -68,7 +68,7 @@ function StatusLine({ job }) {
   );
 }
 
-function Progress({ job }) {
+function Progress({ job, others = 0 }) {
   const pct = Math.max(3, Math.min(100, job.progress ?? 0));
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white p-12 text-center">
@@ -79,7 +79,7 @@ function Progress({ job }) {
       <div className="h-1.5 w-64 overflow-hidden rounded-full bg-gray-100">
         <div className="h-full rounded-full bg-red-500 transition-all duration-700" style={{ width: `${pct}%` }} />
       </div>
-      <p className="text-xs text-gray-400">Usually a minute or two. You can check the finished ones meanwhile.</p>
+      <p className="text-xs text-gray-400">Usually a minute or two.{others > 0 ? " You can check the finished ones meanwhile." : ""}</p>
     </div>
   );
 }
@@ -396,9 +396,10 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
             <p className="mt-1 text-sm text-gray-500">
               {jobs.length} {jobs.length === 1 ? "property" : "properties"} from {host}, saved as drafts. Check each one, then publish it or keep it as a draft.
             </p>
-            {reading > 0 && (
+            {reading > 0 && jobs.length > 1 && (
               <p className="mt-1 text-xs text-gray-500">
-                Reading {reading} more from your website, one at a time. You can check the finished ones meanwhile.
+                Reading {reading} {reading === jobs.length ? "" : "more "}from your website, one at a time.
+                {done > 0 ? " You can check the finished ones meanwhile." : ""}
               </p>
             )}
           </div>
@@ -458,7 +459,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
         <div className="min-w-0 flex-1">
           {jobs.map((j) => (
             <div key={j.id} className={j.id === activeId ? "" : "hidden"}>
-              {ACTIVE.has(j.status) && <Progress job={j} />}
+              {ACTIVE.has(j.status) && <Progress job={j} others={jobs.length - 1} />}
               {j.status === "cancelled" && (
                 <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
                   {j.target?.skipped || "Skipped."}

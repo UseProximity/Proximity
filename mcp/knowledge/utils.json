@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-20T22:38:49.600Z",
-  "count": 149,
+  "_generated": "2026-10-20T23:27:24.901Z",
+  "count": 150,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -486,6 +486,10 @@
     {
       "file": "src/lib/sourceImport/readers/entrata.js",
       "description": "Entrata floor plans, as the \"pm-entrata-manager\" WordPress plugin renders"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/flyer.js",
+      "description": "\"What's included\" flyers."
     },
     {
       "file": "src/lib/sourceImport/readers/g5.js",

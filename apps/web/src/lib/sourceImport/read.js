@@ -49,6 +49,7 @@ import {
 } from "@/lib/listingDraft/floorPlanUnits";
 import { ENTRATA_HINT_RE, parseEntrataFloorPlans } from "./readers/entrata.js";
 import { findLeaseTerms } from "@/lib/listingDraft/floorPlanUnits";
+import { findFlyerCandidates, readInclusionsFlyer } from "./readers/flyer.js";
 import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
@@ -481,7 +482,12 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
   if (draft.listing) {
     const looksLikeUrl = (t) => /^(https?:\/\/|www\.)|\.(com|org|net|co)\b/i.test(String(t ?? ""));
     const title = draft.listing.title && !looksLikeUrl(draft.listing.title) ? draft.listing.title : null;
-    const single = { name: title ?? draft.listing.address ?? extractSiteBrand(main.html) ?? pastedUrl, address: draft.listing.address ?? "", url: main.finalUrl, kind: "property" };
+    // A building's own site names the building in its brand ("Everly on the
+    // Loop"); an address-shaped title is the model falling back.
+    const brand = extractSiteBrand(main.html);
+    const addressLike = (t) => /^\s*\d+\s+\S/.test(String(t ?? ""));
+    const name = title && !addressLike(title) ? title : brand && !looksLikeUrl(brand) ? brand : title ?? draft.listing.address ?? pastedUrl;
+    const single = { name, address: draft.listing.address ?? "", url: main.finalUrl, kind: "property" };
     const split = splitAddressRange(single);
     if (split.length > 1) return { kind: "properties", sourceUrl: main.finalUrl, properties: [...split, ...properties] };
     // The picker only needs to know it is one property; the job reads it.
@@ -720,6 +726,26 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     }
   }
 
+  /*
+   * "What's included" and fee-guide flyers: pictures, read by the model's
+   * eyes. They are where student-housing sites keep utilities, lease lengths
+   * and fees, so they are read before the extraction and handed to it.
+   */
+  const flyers = [];
+  {
+    const seen = new Set();
+    for (const f of crawl.fetched) {
+      for (const url of findFlyerCandidates(crawl.structureOf(f), f.finalUrl)) {
+        if (seen.has(url) || flyers.length >= 2) continue;
+        seen.add(url);
+        onStep("Reading the fee guide");
+        const flyer = await readInclusionsFlyer(url);
+        if (flyer) flyers.push(flyer);
+      }
+    }
+  }
+  const flyerSections = flyers.map((f) => `FLYER "what is included" (${f.url}):\n${f.text}`);
+
   // ---- the model: property fields, photos, and units only if nothing read them
   onStep("Filling in the details");
   const images = crawl.images();
@@ -734,6 +760,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       targetProperty: { name: target.name, address: target.address ?? null },
       brandName,
       knownUnits: readerUnits,
+      extras: flyerSections,
     });
     listing = read.draft?.listing ?? null;
     modelUsed = read.model;
@@ -752,6 +779,16 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     if (units.length) confidence = listing?.confidence >= 0.75 ? "high" : "low";
   }
 
+  // What the flyers said: lease lengths onto every offer still without them.
+  const flyerTerms = [...new Set(flyers.flatMap((f) => f.leaseTermMonths))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 36).sort((a, b) => a - b);
+  if (flyerTerms.length) {
+    let applied = 0;
+    for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; applied += 1; }
+    if (applied) {
+      for (let i = notes.length - 1; i >= 0; i--) if (/lease lengths/i.test(notes[i])) notes.splice(i, 1);
+      notes.push(`Lease lengths (${flyerTerms.join(", ")} months) come from the site's fee guide. Check them against each floor plan.`);
+    }
+  }
   // Lease lengths stated anywhere on the site ("12-month leases" in an FAQ)
   // go on every offer that has none; a building's terms are the building's.
   if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
@@ -802,7 +839,8 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     found: {
       amenities: (listing?.amenities ?? []).length,
       customAmenities: (listing?.customAmenities ?? []).length,
-      utilities: (listing?.utilities_included ?? []).length,
+      utilities: (listing?.utilities_included ?? []).length + flyers.reduce((n, f) => n + f.utilities.length, 0),
+      flyers: flyers.map((f) => f.url),
       leaseTerms: units.filter((u) => u.offers.some((o) => (o.leaseTermMonths ?? []).length)).length,
       availabilityDates: units.filter((u) => u.offers.some((o) => o.availableFrom)).length,
       floorPlans: units.filter((u) => u.floorPlanImageUrl).length,
@@ -823,9 +861,9 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       description: listing?.description ?? null,
       homeType: listing?.home_type ?? null,
       furnished: listing?.furnished ?? null,
-      amenities: listing?.amenities ?? [],
-      customAmenities: listing?.customAmenities ?? [],
-      utilities: listing?.utilities_included ?? [],
+      amenities: [...(listing?.amenities ?? []), ...flyers.flatMap((f) => f.amenities)],
+      customAmenities: [...(listing?.customAmenities ?? []), ...flyers.flatMap((f) => f.customAmenities)],
+      utilities: [...(listing?.utilities_included ?? []), ...flyers.flatMap((f) => f.utilities)],
       contactName: listing?.contact_name ?? null,
       contactEmail: listing?.contact_email ?? null,
       contactPhone: listing?.contact_phone ?? null,

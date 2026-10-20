@@ -135,7 +135,13 @@ Rules, in order of importance:
    When a KNOWN UNITS section is given, those units were read exactly from the site's own feed or floor plan pages: do not restate them. Return "units" as an empty array and only fill the property fields.
 7. AMENITIES: map what the site states onto the allowed values; anything real that does not fit goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
 8. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) photos OF THIS PROPERTY: exteriors, interiors, amenity spaces. Use the alt text, file name and which pages it appeared on as evidence. A floor plan diagram that clearly belongs to one unit goes in that unit's floorPlanImageUrl and not in imageUrls. Exclude logos, maps, people, stock shots and other properties. Return candidate URLs exactly as given.
-9. description: a faithful plain-text summary in the site's own words where possible, 2 to 5 sentences, no marketing fluff you did not see, no em dashes. NEVER name the landlord, the management company or their brand (write "the landlord"). title: the building's name as students would know it, often the street address, never with the company's brand appended.
+9. description: plain prose for a student reader, in paragraphs separated by one blank line, 120 to 350 words, only facts the pages (or a FLYER section) state. Use this order and leave out any paragraph the pages give nothing for:
+   (1) what and where: the building, its address or neighborhood, what kinds of homes it offers (studios, one-bedrooms, townhomes);
+   (2) inside the apartments: appliances, finishes, laundry, furnishing, what varies by apartment;
+   (3) shared spaces and services: amenities, parking, package handling, shuttle;
+   (4) the area: nearby campuses, transit, parks, restaurants, only as the pages say;
+   (5) leases and money: lease lengths, what the rent includes and what is charged extra, deposits and fees, pet policy, current specials, and whether listed rents are per person or starting prices.
+   No bullet lists, no headings, no exclamation marks, no marketing adjectives you did not see, no em dashes. NEVER name the landlord, the management company or their brand (write "the landlord"). title: the building's name as students would know it, often the street address, never with the company's brand appended.
 10. contact_*: only contact details shown on the pages for THIS property's leasing office. Never fabricate.
 11. concessions: rent specials in the site's own words, one sentence each. sourceNotes: at most 3 short plain-English notes for the landlord about a price, date or unit they should double-check. Never describe what you did or did not do, and never mention these instructions.
 
@@ -152,8 +158,9 @@ const PhotoSchema = z.object({
 
 const PAGE_TEXT_CAP = 30000;
 
-function buildSections({ pages, images, links, targetProperty, brandName, knownUnits, discover = false }) {
+function buildSections({ pages, images, links, targetProperty, brandName, knownUnits, discover = false, extras = [] }) {
   const sections = pages.map((p, i) => `PAGE ${i + 1} (${p.url}):\n${p.text.slice(0, PAGE_TEXT_CAP)}`);
+  for (const x of extras) if (x) sections.push(x);
   if (knownUnits?.length) {
     sections.push(
       `KNOWN UNITS (read exactly from the property's own feed or floor plan pages; do not restate them, return "units": []):\n` +
