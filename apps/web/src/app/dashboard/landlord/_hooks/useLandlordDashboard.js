@@ -42,6 +42,18 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     fetchUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /*
+   * The student-view popup (GlobalListingModal, mounted in the root layout) can
+   * publish a draft from its preview strip. It lives outside this tree, so it
+   * announces the publish on window and the dashboard reloads itself the same
+   * way it does after its own Publish button.
+   */
+  useEffect(() => {
+    const onPublished = () => fetchUser();
+    window.addEventListener("proximity:listing-published", onPublished);
+    return () => window.removeEventListener("proximity:listing-published", onPublished);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // restore tab + selected listing from URL on initial load
   useEffect(() => {
     if (!user || initializedFromUrl.current) return;

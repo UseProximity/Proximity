@@ -1755,10 +1755,11 @@
       {
         "table": "matchmaking_chat_sessions",
         "status": "active",
-        "description": "Proxy matchmaking chat (/api/matchmaking/chat): transcript, extracted preferences, weights, candidate set and recommendations as jsonb, status in_progress|swiping|recommendations_ready|abandoned. Owner-only RLS policy. 100 rows in prod, written daily.",
+        "description": "Proxy matchmaking chat (/api/matchmaking/chat): transcript, extracted preferences, weights, candidate set and recommendations as jsonb, status in_progress|swiping|recommendations_ready|abandoned. Since 2026-10-20 a chat can start signed OUT: user_id is then NULL and visitor_id holds the prx_vid device cookie; no listing id (picks or narrowing state) reaches the visitor's browser until an account claims the row (sets user_id; visitor_id is kept, so claimed rows are the sign-up wall's conversions). Claims happen only on request: the chat route's POST action \"claim\", sent on return from the sign-up wall (?claim=1) or from the \"add this chat to your account?\" prompt. visitor_id is NEVER set on chats that started signed in. Cap: 3 chats per visitor_id. Unclaimed rows older than 30 days are BLANKED (not deleted) by the purge-accounts cron: contents emptied, visitor_id cleared, expired_at set; id/created_at/status stay so the signed-out analytics hold. Owner-only RLS policy. 100 rows in prod, written daily.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
+          "visitor_id:uuid",
           "status:text",
           "transcript:jsonb",
           "preferences:jsonb",
@@ -1766,9 +1767,10 @@
           "candidates:jsonb",
           "recommendations:jsonb",
           "created_at:timestamptz",
-          "updated_at:timestamptz"
+          "updated_at:timestamptz",
+          "expired_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk user_id->users.id (cascade); check status in (in_progress,swiping,recommendations_ready,abandoned); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk user_id->users.id (cascade), NULLABLE since 2026-10-20; visitor_id uuid (device cookie, partial index where not null); expired_at timestamptz (set when an unclaimed signed-out chat is blanked); check owner_check (user_id is not null or visitor_id is not null or expired_at is not null); check status in (in_progress,swiping,recommendations_ready,abandoned); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 100,
           "prod_last_write": "2026-10-12"
