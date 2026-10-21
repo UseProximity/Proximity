@@ -155,8 +155,8 @@ export default function AddListingPage() {
               the site); this card takes over the screen while the drafts
               are being made, which can take a few seconds per building. */}
           {starting && (
-            <div className="mx-auto max-w-2xl px-4">
-              <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-6 py-14 text-center shadow-sm">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 px-4 backdrop-blur-sm">
+              <div className="flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-8 py-12 text-center shadow-xl">
                 <Loader2 className="h-8 w-8 animate-spin text-red-600" />
                 <p className="text-lg font-semibold text-gray-900">
                   Creating {startingCount === 1 ? "your draft" : `${startingCount} drafts`}…
