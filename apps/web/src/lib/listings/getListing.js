@@ -317,14 +317,47 @@ function buildListing(row, owner = null, reviews = []) {
   };
 }
 
+/*
+ * A draft rendered as if it were published right now. The owner's preview
+ * (/api/landlord/listings/[id]/preview) asks "what will students see when I
+ * press Publish?", and the honest answer is this exact builder run over the
+ * same rows with the draft markers removed. Stamping published_at in memory,
+ * rather than teaching every availability helper a second mode, means the
+ * preview cannot drift from the public rendering: whatever buildListing does
+ * to a live row it does to this one. The database row is untouched.
+ */
+function asPublished(row) {
+  const stamp = (r) => (r && r.published_at === null ? { ...r, published_at: "preview" } : r);
+  return {
+    ...stamp(row),
+    listing_units: (row.listing_units ?? []).map((u) => ({
+      ...stamp(u),
+      unit_leases: (u.unit_leases ?? []).map(stamp),
+    })),
+  };
+}
+
 /**
  * Fetch one listing with all v4 relations, reviews, and vote counts.
  * Returns the buildListing() shape, or null when the listing doesn't exist.
  * Throws on unexpected errors so callers can distinguish 404 from 500.
  */
-export const getListing = cache(async (listingId, currentUserId = null) => {
+export const getListing = cache(async (listingId, currentUserId = null) =>
+  fetchListing(listingId, currentUserId, { includeDrafts: false })
+);
+
+/**
+ * The owner's view of a listing. Not cached and never exported to a public
+ * surface: with includeDrafts the draft property, its draft units and draft
+ * leases all render as published. Callers must check ownership first.
+ */
+export function getListingPreview(listingId, { currentUserId = null, includeDrafts = false } = {}) {
+  return fetchListing(listingId, currentUserId, { includeDrafts });
+}
+
+async function fetchListing(listingId, currentUserId, { includeDrafts }) {
   // Fetch listing with all v4 related tables
-  const { data: row, error } = await supabase
+  let query = supabase
     .from("listings")
     .select(
       `
@@ -368,16 +401,18 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
     // JSON-LD advertising removed inventory. Admin reads go via /api/admin/[table],
     // and the landlord dashboard's availability toggle is a PATCH, so neither is
     // affected by this filter.
-    .is("deleted_at", null)
-    // A draft is not public yet either: same 404 as a deleted listing.
-    .not("published_at", "is", null)
-    .single();
+    .is("deleted_at", null);
+  // A draft is not public yet either: same 404 as a deleted listing. Only the
+  // owner's preview, which has already checked who is asking, gets past this.
+  if (!includeDrafts) query = query.not("published_at", "is", null);
+  const { data: fetched, error } = await query.single();
 
-  if (error || !row) {
+  if (error || !fetched) {
     // PGRST116 = no rows for .single(); treat any fetch failure here as not-found,
     // matching the previous API behavior (it returned 404 on error || !row).
     return null;
   }
+  const row = includeDrafts ? asPublished(fetched) : fetched;
 
   // Resolve primary landlord from listing_landlords
   const ll = row.listing_landlords ?? [];
@@ -562,4 +597,4 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
   });
 
   return buildListing(row, ownerUser, reviews);
-});
+}
