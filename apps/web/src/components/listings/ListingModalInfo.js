@@ -520,6 +520,7 @@ function ReviewsTab({
   setValRating,
   reviewLoading,
   handleReviewSubmit,
+  preview = false,
 }) {
   const maxCount = Math.max(...starCounts.map((d) => d.count), 1);
   // Reviews may not name people. Shown as they type; the submit handler and the
@@ -866,7 +867,9 @@ function ReviewsTab({
         </>
       )}
 
-      {/* Leave a Review form */}
+      {/* Leave a Review form. Not in the owner's preview: a landlord can't
+          review their own property, and the sign-up nudge is not for them. */}
+      {!preview && (
       <div className="border-t border-gray-100 pt-6 mt-4">
         {isReviewEligibleEmail(session?.user?.email) ? (
           <>
@@ -925,6 +928,7 @@ function ReviewsTab({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -936,6 +940,8 @@ function ContactTab({
   session,
   selectedLease = null,
   onOpenThread,
+  // The owner's preview: show who students would reach, never open a thread.
+  preview = false,
 }) {
   const { startListingChat } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
@@ -951,7 +957,7 @@ function ContactTab({
   const isOwnListing =
     listing?.owner?._id === userId || listing?.owner?.id === userId;
   const canMessage = Boolean(
-    session?.user?.id && listing?.owner?.canChat && !isOwnListing
+    session?.user?.id && listing?.owner?.canChat && !isOwnListing && !preview
   );
 
   /*
@@ -1428,6 +1434,14 @@ export default function ListingModalInfo({
    * feed data rather than leaving the skeleton up forever.
    */
   detailLoading = false,
+  /*
+   * The owner looking at their own listing through the dashboard's "View as
+   * Student" (GlobalListingModal with ?preview=1). Everything renders as a
+   * student would see it, but nothing a student would DO is wired: no Save,
+   * no message, no review, no waitlist. A landlord favouriting or reviewing
+   * their own draft would be a record nobody wants.
+   */
+  preview = false,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
@@ -2018,7 +2032,7 @@ export default function ListingModalInfo({
                 </div>
               )}
               {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
-              {!compact && (
+              {!compact && !preview && (
                 <div
                   className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
                   onClick={(e) => e.stopPropagation()}
@@ -2279,7 +2293,7 @@ export default function ListingModalInfo({
                       own form, so the link hops through our API first: that
                       redirect is the only place a click can still be recorded
                       before the browser leaves for a domain we can't see into. */}
-                  {waitlist &&
+                  {waitlist && !preview &&
                     (session ? (
                       <a
                         href={`/api/waitlist/${listing._id}`}
@@ -2363,6 +2377,7 @@ export default function ListingModalInfo({
                   setValRating={setValRating}
                   reviewLoading={reviewLoading}
                   handleReviewSubmit={handleReviewSubmit}
+                  preview={preview}
                 />
               )}
               {activeTab === "contact" && !session && (
@@ -2377,6 +2392,7 @@ export default function ListingModalInfo({
                   session={session}
                   selectedLease={selectedLease}
                   onOpenThread={openThread}
+                  preview={preview}
                 />
               )}
             </div>
@@ -2385,7 +2401,7 @@ export default function ListingModalInfo({
       </div>
 
       {/* ── Waitlist capture (signed-out only) ── */}
-      {waitlist && !session && (
+      {waitlist && !session && !preview && (
         <WaitlistDialog
           isOpen={waitlistOpen}
           onClose={() => setWaitlistOpen(false)}
