@@ -305,12 +305,65 @@ function feeSummary(feeLists) {
  *               moved (and new ones) are quoted again (the sync)
  *   onStep      progress text for the workspace
  */
+/*
+ * Each plan's pictures, asked from inside the Apartments page. "View Floor
+ * Plan" opens a gallery (contentclass=photogallery&imagetype=floorplan) of
+ * the plan's images on the RentCafe CDN; the hover tooltip shows the first
+ * of them, which may or may not be the drawing. Returns { planId: [urls] }
+ * with drawing-like names first; the vision check settles which is the
+ * diagram.
+ */
+export const planImagesScript = () => `
+  (async () => {
+    const out = {};
+    for (const box of document.querySelectorAll('[id^="links_"]')) {
+      const planId = (box.id.match(/links_(\\d+)/) || [])[1];
+      if (!planId) continue;
+      const link = box.querySelector('.view-floor-plan a');
+      const oc = (link && link.getAttribute('onclick')) || '';
+      const q = (oc.match(/'(imagetype=floorplan[^']+)'/) || [])[1];
+      if (!q) continue;
+      try {
+        const r = await fetch('/rcloadcontent.ashx?contentclass=photogallery&' + q.replace(/&amp;/g, '&'), { credentials: 'include' });
+        if (!r.ok) continue;
+        const html = await r.text();
+        // The gallery writes "photo(1).jpg?&maxwidth=800" for a file the CDN
+        // only has as "photo.jpg": the "(1)" and the query go, one entry per file.
+        const seen = new Set();
+        out[planId] = [];
+        for (const u of html.match(/https?:\\/\\/[^"'\\s]+\\.(?:jpe?g|png|webp|gif)[^"'\\s]*/gi) || []) {
+          const key = u.replace(/\\?.*$/, '').replace(/\\(\\d+\\)(\\.[a-z]+)$/i, '$1');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out[planId].push(key);
+          if (out[planId].length >= 24) break;
+        }
+      } catch (e) { /* this plan keeps the website's pictures */ }
+    }
+    return JSON.stringify(out);
+  })()`;
+
+const DRAWING_NAME_RE = /floor-?plan|diagram|layout|[-_]unit[-_]|[-_]plan[-_]/i;
+const MAX_PLAN_PHOTOS = 12;
+
 export async function readSecureCafe(portal, { known = null, onStep = () => {}, deep = true } = {}) {
   onStep("Reading the leasing portal");
   const moveIn = soon();
-  const page = await renderPage(apartmentsUrl(portal, moveIn), { waitMs: 6000 });
+  const page = await renderPage(apartmentsUrl(portal, moveIn), { waitMs: 6000, actions: [{ type: "executeJavascript", script: planImagesScript() }] });
   const parsed = page ? parseApartmentsPage(page.html) : null;
   if (!parsed) return null;
+  let planImages = {};
+  try {
+    planImages = JSON.parse(page.returns?.find((v) => typeof v === "string" && v.startsWith("{")) ?? "{}");
+  } catch {
+    planImages = {};
+  }
+  // Drawing-like names first so the photo cap never drops the diagram.
+  const picturesOf = (planId) => {
+    const urls = (planImages[planId] ?? []).filter((u) => typeof u === "string" && /^https?:/.test(u) && !/thumbnail/i.test(u));
+    const named = (u) => DRAWING_NAME_RE.test(u.split("/").pop() ?? "");
+    return [...urls.filter(named), ...urls.filter((u) => !named(u))].slice(0, MAX_PLAN_PHOTOS);
+  };
 
   const all = parsed.plans.flatMap((p) => p.apartments.map((a) => ({ ...a, planId: p.id })));
   const remembered = new Map((known?.apartments ?? []).map((a) => [a.unitId, a]));
@@ -344,9 +397,11 @@ export async function readSecureCafe(portal, { known = null, onStep = () => {}, 
     bedrooms: p.bedrooms,
     bathrooms: p.bathrooms,
     area: p.apartments.map((a) => a.area).filter(Boolean).sort((x, y) => y - x)[0] ?? null,
+    // The portal's gallery for the plan; the vision check promotes the
+    // drawing among them to the floor plan slot.
     floorPlanImageUrl: null,
     available: p.apartments.length > 0,
-    photos: [],
+    photos: picturesOf(p.id),
     offers: p.apartments.flatMap((a) => {
       if (a.special) concessions.add(a.special);
       const q = quoteFor(a);

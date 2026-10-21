@@ -25,8 +25,9 @@ import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { compressImage } from "@/utils/compressImage";
 import { uploadImagesToR2 } from "@/utils/uploadImagesToR2";
 
-// Photos shown before "Show all".
-const PHOTO_PAGE = 24;
+// A row longer than PHOTO_FOLD_PAST photos folds to PHOTO_PAGE until "Show all".
+const PHOTO_FOLD_PAST = 20;
+const PHOTO_PAGE = 12;
 
 const BUSY_LABEL = {
   upload: "Uploading…",
@@ -42,7 +43,8 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
   // see what arrived, the rest unfold on request.
   const [expanded, setExpanded] = useState(false);
   const movable = canMoveAll ? photos : photos.filter((p) => p.mine);
-  const shown = expanded ? movable : movable.slice(0, PHOTO_PAGE);
+  const folds = movable.length > PHOTO_FOLD_PAST;
+  const shown = expanded || !folds ? movable : movable.slice(0, PHOTO_PAGE);
   const hidden = movable.slice(shown.length);
   const pinned = canMoveAll ? [] : photos.filter((p) => !p.mine);
   const inputId = `img-${unitId ?? "property"}`;
@@ -140,7 +142,7 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
               renderCorner={renderCorner}
             />
           )}
-          {movable.length > PHOTO_PAGE && (
+          {folds && (
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}

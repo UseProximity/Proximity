@@ -333,12 +333,13 @@ async function insertImages({ state, userId, unitId, urls, slug }) {
 }
 
 /*
- * What the lease says about itself: which apartments it is for and the
- * special running on it ("Apts 10E, 12E. 6 Weeks Free! Sign by 10/31...").
- * The editor caps this at 300 characters.
+ * What the lease says about itself, apartments first so a student reading
+ * two cards under one floor plan sees which is which: "Apts 10E, 12E.
+ * Available now. 6 Weeks Free! Sign by 10/31...". The editor caps this at
+ * 300 characters.
  */
 export function leaseBlurb(offer) {
-  const parts = [offer.availableNow && !offer.availableFrom ? "Available now" : null, apartmentsLabel(offer.apartments), offer.special].filter(Boolean);
+  const parts = [apartmentsLabel(offer.apartments), offer.availableNow && !offer.availableFrom ? "Available now" : null, offer.special].filter(Boolean);
   if (!parts.length) return null;
   return parts.join(". ").replace(/\.\.(\s|$)/g, ".$1").slice(0, 300);
 }

@@ -73,16 +73,6 @@ export function parseUnitNames(raw) {
  * "Apts 07C, 11C". A floor plan is one unit, so this is where a building's
  * apartment numbers live.
  */
-/*
- * The apartments a lease covers, read back from its description: "Apt 02E"
- * or "Apts 10E, 12E", or null when the description does not open that way.
- * The import writes these; a landlord's own text is left alone.
- */
-export function leaseApartmentsLabel(description) {
-  const m = String(description ?? "").match(/^(?:Available now\.\s*)?(Apts?\s+[A-Z0-9-]+(?:,\s*[A-Z0-9-]+)*)/i);
-  return m ? m[1].replace(/\s+/g, " ") : null;
-}
-
 export function apartmentsLabel(apartments) {
   const list = [...new Set((apartments ?? []).map((a) => String(a ?? "").trim()).filter(Boolean))];
   if (!list.length) return null;

@@ -32,7 +32,7 @@ import { UnitFloorPlan } from "./EditorImageRows";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
-import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP, leaseApartmentsLabel } from "@/utils/unitName";
+import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
 import InfoTip from "@/components/ui/InfoTip";
 import { DraftBadge, PublishButton } from "./DraftControls";
 
@@ -114,12 +114,7 @@ function OwnerlessContact({ lease, onChanged }) {
   );
 }
 
-/* "Apt 02E" on a card, only when the unit has more than one listing to tell apart. */
-function apartmentLabelFor(lease, siblings) {
-  return siblings.length > 1 ? leaseApartmentsLabel(lease.description) : null;
-}
-
-function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, propertyIsDraft = false, apartmentLabel = null }) {
+function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, propertyIsDraft = false }) {
   const [draft, setDraft] = useState(() => leaseDraft(lease));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -242,12 +237,6 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
   return (
     <li className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center gap-2">
-        {/* Which apartment this is, when the floor plan has several listings:
-            without it two cards at different rents read as one apartment with
-            a dearer and a cheaper rate. */}
-        {apartmentLabel && (
-          <span className="rounded-md bg-gray-900 px-2 py-0.5 text-xs font-semibold text-white">{apartmentLabel}</span>
-        )}
         {lease.isDraft && <DraftBadge />}
         {lease.isDraft && (
           <span className="text-[11px] text-amber-700">Students can&apos;t see this yet.</span>
@@ -566,7 +555,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {myLeases.map((lease) => (
                 <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged}
-                  propertyIsDraft={!!listing?.isDraft} apartmentLabel={apartmentLabelFor(lease, myLeases)} />
+                  propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
           </>
@@ -583,7 +572,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
               {otherLeases.map((lease) => (
                 <LeaseRow key={lease.id} lease={lease} listingId={listingId}
                   isPropertyOwner={isPropertyOwner} onChanged={onChanged}
-                  propertyIsDraft={!!listing?.isDraft} apartmentLabel={apartmentLabelFor(lease, otherLeases)} />
+                  propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
           </>

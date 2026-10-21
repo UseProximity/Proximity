@@ -389,10 +389,16 @@ export async function renderPage(rawUrl, { waitMs = 0, raw = false, actions = nu
       }),
       signal: AbortSignal.timeout(90000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[render] firecrawl ${res.status} for ${rawUrl.slice(0, 100)}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
+      return null;
+    }
     const data = await res.json();
     const html = raw ? data?.data?.rawHtml : data?.data?.html;
-    if (typeof html !== "string" || !html) return null;
+    if (typeof html !== "string" || !html) {
+      console.warn(`[render] firecrawl gave no html for ${rawUrl.slice(0, 100)}: ${JSON.stringify(data).slice(0, 300)}`);
+      return null;
+    }
     return {
       html: html.slice(0, MAX_BYTES * 3),
       finalUrl: data?.data?.metadata?.url || rawUrl,
