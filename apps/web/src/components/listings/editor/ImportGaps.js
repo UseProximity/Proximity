@@ -65,7 +65,8 @@ export function findGaps(listing) {
   add(
     "availability",
     "Availability date (shows as available now)",
-    units.flatMap((u, i) => mine(u).filter((l) => !l.availableFrom).map((l) => ({ text: label(u, i), target: `date:${l.id}`, unitId: u.id })))
+    // A lease the import marked "Available now" has its date: the site said so.
+    units.flatMap((u, i) => mine(u).filter((l) => !l.availableFrom && !/^Available now\b/.test(l.description ?? "")).map((l) => ({ text: label(u, i), target: `date:${l.id}`, unitId: u.id })))
   );
   add(
     "photos",

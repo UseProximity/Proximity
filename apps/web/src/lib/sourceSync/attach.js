@@ -15,7 +15,7 @@ import { classifySourceUrl } from "./classify.js";
  * Returns { ok: true, kind, url } or { ok: false, reason }.
  * Never throws — a failure here must not fail listing creation.
  */
-export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, userId = null }) {
+export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, userId = null, portal = null }) {
   if (!listingId) return { ok: false, reason: "no_listing" };
 
   const classified = classifySourceUrl(rawUrl);
@@ -75,6 +75,9 @@ export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, user
           muted_until: null,
           last_status: null,
           last_error: null,
+          // The ids a portal read learned (property, plans, apartments), so
+          // the sync opens only what changed. Kept when this read had none.
+          ...(portal ? { portal } : {}),
         },
         { onConflict: "listing_id" }
       );

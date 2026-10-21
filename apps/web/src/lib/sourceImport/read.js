@@ -55,6 +55,7 @@ import { sanitizeDescription } from "./sanitize.js";
 import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
+import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
@@ -548,7 +549,7 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
  *
  * onStep(text) is called as the read moves, for the workspace's progress line.
  */
-export async function readProperty({ pastedUrl: rawPasted, target, onStep = () => {}, _crawl = null, _brandName = null, _modelDraft = null }) {
+export async function readProperty({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
@@ -716,6 +717,38 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       confidence = "high";
       console.log(`[source-import] embedded floor plans on ${f.finalUrl}: ${parsed.units.length} plans`);
       break;
+    }
+  }
+
+  // 2b. The SecureCafe leasing portal behind a RentCafe site: every apartment
+  // with its price, date and special, and the lease terms behind each. It
+  // outranks the embedded feed for offers; the feed keeps the diagrams,
+  // photos and sizes for the plans it also knows.
+  let learned = null;
+  {
+    const portal = crawl.fetched.map((f) => findSecureCafe(f.html)).find(Boolean);
+    if (portal) {
+      const sc = await readSecureCafe(portal, { known: knownPortal?.propertyId === portal.propertyId ? knownPortal : null, onStep });
+      if (sc?.units?.length) {
+        const norm = (x) => String(x ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+        const byName = new Map(readerUnits.map((u) => [norm(u.name), u]));
+        for (const u of sc.units) {
+          const e = byName.get(norm(u.name));
+          if (!e) continue;
+          u.floorPlanImageUrl ??= e.floorPlanImageUrl;
+          u.area ??= e.area;
+          u.bedrooms ??= e.bedrooms;
+          u.bathrooms ??= e.bathrooms;
+          if (!(u.photos ?? []).length) u.photos = e.photos ?? [];
+        }
+        platform = readerUnits.length ? `${platform}+securecafe` : "securecafe";
+        readerUnits = sc.units;
+        embeddedConcessions = [...new Set([...embeddedConcessions, ...sc.concessions])];
+        notes.push(...sc.notes);
+        confidence = "high";
+        learned = sc.learned;
+        console.log(`[source-import] securecafe ${portal.host}/${portal.slug}: ${sc.units.length} plans, ${sc.apartments} apartments, ${sc.quoted} quoted, ${sc.reused} reused from the last read`);
+      }
     }
   }
 
@@ -910,10 +943,17 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       concessions: [...(listing?.concessions ?? []), ...embeddedConcessions, ...g5Concessions],
     },
     units,
-    notes: [...notes, ...(listing?.sourceNotes ?? []).filter((n) => !/supplied separately|unit list|instruction|known units/i.test(n)).slice(0, 3)],
+    // Readers and the model warn about lease lengths and rent ranges they
+    // could not see; the portal priced every apartment at every length, so
+    // those warnings would now be wrong.
+    notes: [...notes, ...(listing?.sourceNotes ?? []).filter((n) => !/supplied separately|unit list|instruction|known units/i.test(n)).slice(0, 3)].filter(
+      (n) => !learned || !/lease lengths?|rent range|lowest figure|ranges by floor plan|confirm the current price|per person|one rate per apartment|starting prices?/i.test(n)
+    ),
   });
   snapshot.model = modelUsed;
   snapshot.trace = trace;
+  // Where the numbers live, for the sync to go straight there next time.
+  snapshot.portal = learned;
   return snapshot;
 }
 

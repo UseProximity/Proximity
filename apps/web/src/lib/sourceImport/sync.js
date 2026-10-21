@@ -56,7 +56,7 @@ async function ensureMonitors() {
 async function dueMonitors({ listingId, limit, force }) {
   let q = supabase
     .from("listing_source_monitors")
-    .select("id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, consecutive_failures, muted_until, last_fingerprint, listings!listing_id(id, title, address, published_at, deleted_at)")
+    .select("id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, consecutive_failures, muted_until, last_fingerprint, portal, listings!listing_id(id, title, address, published_at, deleted_at)")
     .order("next_check_at", { ascending: true, nullsFirst: true })
     .limit(limit);
   if (listingId) q = q.eq("listing_id", listingId);
@@ -112,7 +112,9 @@ export async function runSourceSync({ listingId = null, limit = 30, force = fals
       const snapshot = await readProperty({
         pastedUrl: m.index_url ?? m.source_url,
         target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
+        knownPortal: m.portal ?? null,
       });
+      if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
       await keepSnapshot(m.id, { ok: true, snapshot });
       const fp = fingerprint(snapshot);
       const unchanged = !force && m.last_fingerprint === fp;

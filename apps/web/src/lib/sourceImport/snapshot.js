@@ -141,6 +141,7 @@ export function consolidateOffers(raw = []) {
     const raw = isoDate(o.availableFrom);
     const date = raw && raw < new Date().toISOString().slice(0, 10) ? null : raw;
     const apartments = (o.apartments ?? []).map((a) => String(a ?? "").trim()).filter(Boolean);
+    const special = typeof o.special === "string" && o.special.trim() ? o.special.trim().slice(0, 200) : null;
     const g = groups.get(key);
     if (!g) {
       groups.set(key, {
@@ -150,12 +151,18 @@ export function consolidateOffers(raw = []) {
         // null means "now", and now beats any date.
         availableFrom: date,
         apartments: [...new Set(apartments)],
+        // The running special on this price, in the site's words.
+        special,
+        // The site said "available now" (rather than saying nothing).
+        availableNow: o.availableNow === true,
         dated: date !== null,
       });
       continue;
     }
     g.leaseTermMonths = termList([...g.leaseTermMonths, ...terms]);
     g.apartments = [...new Set([...g.apartments, ...apartments])];
+    g.special ??= special;
+    g.availableNow = g.availableNow || o.availableNow === true;
     if (date === null) g.availableFrom = null;
     else if (g.availableFrom !== null && date < g.availableFrom) g.availableFrom = date;
   }
@@ -289,7 +296,7 @@ export function fingerprint(snapshot) {
       ba: u.bathrooms,
       a: u.area,
       av: u.available,
-      o: u.offers.map((o) => [o.rent, o.rentIsPerPerson ? 1 : 0, o.leaseTermMonths, o.availableFrom, [...o.apartments].sort()]),
+      o: u.offers.map((o) => [o.rent, o.rentIsPerPerson ? 1 : 0, o.leaseTermMonths, o.availableFrom, [...o.apartments].sort(), o.special ?? null]),
     }))
     .sort((a, b) => (a.k < b.k ? -1 : 1));
   return JSON.stringify(units);

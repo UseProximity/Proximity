@@ -230,6 +230,12 @@ async function monitorIdFor(listingId) {
   return data?.id ?? null;
 }
 
+/* What an earlier read of this listing learned about its leasing portal. */
+async function knownPortalFor(listingId) {
+  const { data } = await supabase.from("listing_source_monitors").select("portal").eq("listing_id", listingId).maybeSingle();
+  return data?.portal ?? null;
+}
+
 /* Run one job to completion. Never throws; the job row carries the outcome. */
 export async function runJob(jobId) {
   const { data: job } = await supabase.from("listing_import_jobs").select("*").eq("id", jobId).maybeSingle();
@@ -241,7 +247,7 @@ export async function runJob(jobId) {
     .eq("id", jobId);
 
   const target = job.target ?? {};
-  const steps = ["Reading your website", "Opening", "Reading floor plans", "Reading live availability", "Reading unit pages", "Filling in the details", "Sorting photos by unit", "Saving"];
+  const steps = ["Reading your website", "Opening", "Reading floor plans", "Reading live availability", "Reading unit pages", "Reading the leasing portal", "Pricing", "Priced", "Filling in the details", "Sorting photos by unit", "Saving"];
   const onStep = (text) => {
     const i = steps.findIndex((s) => text.startsWith(s));
     const progress = i >= 0 ? Math.round(10 + (i / steps.length) * 70) : null;
@@ -257,6 +263,8 @@ export async function runJob(jobId) {
       pastedUrl: target.pastedUrl,
       target: { name: target.name, address: target.address, url: target.url, levelUrl: target.levelUrl },
       onStep,
+      // A listing that was read before: price only the apartments that moved.
+      knownPortal: await knownPortalFor(listing.id),
     });
 
     // Cancelled while the site was being read: write nothing.
@@ -266,7 +274,7 @@ export async function runJob(jobId) {
       return still;
     }
     await setStep(jobId, "Saving", 82);
-    const attached = await attachSourceUrl({ listingId: listing.id, rawUrl: snapshot.sourceUrl, indexUrl: snapshot.indexUrl, userId: job.user_id });
+    const attached = await attachSourceUrl({ listingId: listing.id, rawUrl: snapshot.sourceUrl, indexUrl: snapshot.indexUrl, userId: job.user_id, portal: snapshot.portal ?? null });
     const monitorId = attached.ok ? await monitorIdFor(listing.id) : null;
     const mode = listing.published_at ? "sync" : "import";
     const result = await applySnapshot({

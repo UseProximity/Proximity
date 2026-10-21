@@ -243,7 +243,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const k = leaseKey(o.rent, o.rentIsPerPerson);
       seen.add(k);
       const l = byKey.get(k);
-      const apartments = apartmentsLabel(o.apartments);
+      const apartments = leaseBlurb(o);
       if (!l) {
         if (o.rent == null && mine.some((x) => x.rent == null)) continue;
         push({
@@ -332,6 +332,17 @@ async function insertImages({ state, userId, unitId, urls, slug }) {
   return rows?.length ?? 0;
 }
 
+/*
+ * What the lease says about itself: which apartments it is for and the
+ * special running on it ("Apts 10E, 12E. 6 Weeks Free! Sign by 10/31...").
+ * The editor caps this at 300 characters.
+ */
+export function leaseBlurb(offer) {
+  const parts = [offer.availableNow && !offer.availableFrom ? "Available now" : null, apartmentsLabel(offer.apartments), offer.special].filter(Boolean);
+  if (!parts.length) return null;
+  return parts.join(". ").replace(/\.\.(\s|$)/g, ".$1").slice(0, 300);
+}
+
 function leaseRow({ state, userId, unitId, offer, available, draft }) {
   return {
     unit_id: unitId,
@@ -343,7 +354,7 @@ function leaseRow({ state, userId, unitId, offer, available, draft }) {
     sublease: false,
     is_active: true,
     unavailable: !available,
-    description: apartmentsLabel(offer.apartments) ?? null,
+    description: leaseBlurb(offer),
     furnished: state.furnished ?? null,
     contact_email: state.contact_email ?? null,
     contact_phone: state.contact_phone ?? null,
@@ -516,7 +527,12 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (mode === "sync" && snapshot.confidence === "low") holdReason = "low_confidence";
   if (mode === "sync" && !holdReason) {
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
-    const touched = changes.filter((c) => ["lease_new", "lease_withdrawn", "lease_updated", "unit_relisted"].includes(c.kind)).length;
+    // Churn is leases appearing, vanishing or repricing. A lease whose blurb
+    // or lengths were reworded is the same lease; counting those once held
+    // a building because every lease gained the words "Available now".
+    const touched = changes.filter(
+      (c) => ["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? ""))
+    ).length;
     if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
   }
 

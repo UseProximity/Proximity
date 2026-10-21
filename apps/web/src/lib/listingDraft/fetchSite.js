@@ -358,6 +358,51 @@ export function extractJsonLd(html, cap = 6000) {
  */
 export const renderCounts = { firecrawl: 0, jina: 0, tavily: 0 };
 
+/*
+ * One rendered page, on demand, for readers that know the page they want
+ * (a leasing portal's apartment list): SSRF-checked, one credit, optional
+ * scripts kept (`raw`) and optional in-page actions whose return values come
+ * back as `returns`. Null on any failure.
+ */
+export async function renderPage(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+    await assertSafeUrl(url);
+  } catch {
+    return null;
+  }
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return null;
+  renderCounts.firecrawl += 1;
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: rawUrl,
+        formats: [raw ? "rawHtml" : "html"],
+        onlyMainContent: false,
+        ...(waitMs ? { waitFor: waitMs } : {}),
+        ...(actions ? { actions } : {}),
+        timeout: 60000,
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const html = raw ? data?.data?.rawHtml : data?.data?.html;
+    if (typeof html !== "string" || !html) return null;
+    return {
+      html: html.slice(0, MAX_BYTES * 3),
+      finalUrl: data?.data?.metadata?.url || rawUrl,
+      returns: (data?.data?.actions?.javascriptReturns ?? []).map((r) => r?.value),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;

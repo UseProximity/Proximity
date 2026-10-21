@@ -68,22 +68,6 @@ export default function AddListingPage() {
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
   /*
-   * Leaving while the drafts are being made throws the whole batch away:
-   * the request may already have created them, so they are cancelled by the
-   * id chosen above, and the jump to the workspace is called off.
-   */
-  useLeaveGuard({
-    active: starting,
-    message: "Leaving now will discard every property in this import. Leave anyway?",
-    onLeave: ({ beacon }) => {
-      const id = pendingBatch.current;
-      pendingBatch.current = null;
-      startedRef.current = false;
-      return id ? sendWhileLeaving(`/api/landlord/import/batches/${id}/cancel`, { all: true }, { beacon }) : Promise.resolve();
-    },
-  });
-
-  /*
    * Fetched again when profileComplete changes: a new Google account fills in
    * its name in the profile modal after this page has already loaded, and the
    * listing is published under the name held here.
@@ -116,6 +100,21 @@ export default function AddListingPage() {
   const startedRef = useRef(false);
   // Chosen here, before the request, so leaving mid-way can still cancel it.
   const pendingBatch = useRef(null);
+  /*
+   * Leaving while the drafts are being made throws the whole batch away:
+   * the request may already have created them, so they are cancelled by the
+   * id chosen above, and the jump to the workspace is called off.
+   */
+  useLeaveGuard({
+    active: starting,
+    message: "Leaving now will discard every property in this import. Leave anyway?",
+    onLeave: ({ beacon }) => {
+      const id = pendingBatch.current;
+      pendingBatch.current = null;
+      startedRef.current = false;
+      return id ? sendWhileLeaving(`/api/landlord/import/batches/${id}/cancel`, { all: true }, { beacon }) : Promise.resolve();
+    },
+  });
   const startImport = async (targets, pastedUrl) => {
     if (startedRef.current) return;
     startedRef.current = true;

@@ -1505,7 +1505,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff). Zero rows; created outside the repo migrations. Service role only.",
+        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows; created outside the repo migrations. Service role only.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1524,7 +1524,8 @@
           "next_check_at:timestamptz",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "index_url:text"
+          "index_url:text",
+          "portal:jsonb"
         ],
         "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unique (listing_id); check source_kind in (own_site,portal) | last_status in (ok,unchanged,changed,fetch_failed,parse_failed,suppressed,skipped,gone,url_stale); rls: service role only (no policies)",
         "observed_2026_10_12": {
