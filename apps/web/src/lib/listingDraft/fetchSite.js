@@ -351,9 +351,17 @@ export function extractJsonLd(html, cap = 6000) {
  * Order: Firecrawl (best anti-bot) -> Jina Reader -> Tavily Extract
  * (renewing monthly free tier, returns text + images, wrapped as pseudo-HTML).
  */
+/*
+ * How many paid render calls have been made in this process, by service.
+ * A job reads this before and after its work to report what it cost in
+ * credits; Firecrawl charges one credit per scrape (five with a wait).
+ */
+export const renderCounts = { firecrawl: 0, jina: 0, tavily: 0 };
+
 async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
+  renderCounts.firecrawl += 1;
   try {
     const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
@@ -433,6 +441,7 @@ async function renderPageViaJina(rawUrl) {
 
   for (const key of [...keys, null]) {
     try {
+      renderCounts.jina += 1;
       const res = await jinaFetch(rawUrl, key);
       if (key && (res.status === 402 || res.status === 401 || res.status === 403)) {
         spentJinaKeys.add(key);
@@ -457,6 +466,7 @@ async function renderPageViaJina(rawUrl) {
 async function renderPageViaTavily(rawUrl) {
   const key = process.env.TAVILY_API_KEY;
   if (!key) return null;
+  renderCounts.tavily += 1;
   try {
     const res = await fetch("https://api.tavily.com/extract", {
       method: "POST",

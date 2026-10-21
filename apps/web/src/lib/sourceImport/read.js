@@ -36,6 +36,7 @@ import {
   SYNCABLE_PMS,
   sameSite,
   DraftFetchError,
+  renderCounts,
 } from "@/lib/listingDraft/fetchSite";
 import {
   SIGHTMAP_HINT_RE,
@@ -50,6 +51,7 @@ import {
 import { ENTRATA_HINT_RE, parseEntrataFloorPlans } from "./readers/entrata.js";
 import { findLeaseTerms } from "@/lib/listingDraft/floorPlanUnits";
 import { findFlyerCandidates, readInclusionsFlyer } from "./readers/flyer.js";
+import { sanitizeDescription } from "./sanitize.js";
 import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
@@ -552,6 +554,8 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   const notes = [];
   const crawl = _crawl ?? new Crawl();
   let main = crawl.fetched[0] ?? null;
+  const rendersBefore = { ...renderCounts };
+  let modelCost = 0;
 
   if (!main) {
     onStep("Reading your website");
@@ -785,6 +789,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     });
     listing = read.draft?.listing ?? null;
     modelUsed = read.model;
+    modelCost += read.cost ?? 0;
     if (read.escalated) notes.push("Parts of this site were hard to read, so a stronger model was used. Check the units carefully.");
   }
 
@@ -850,6 +855,14 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     }
   }
 
+  // The description must pass the same rules the editor applies on save:
+  // no phone numbers, emails, links, handles or people's names.
+  const cleaned = sanitizeDescription(listing?.description ?? null);
+  if (cleaned.removed.length) {
+    console.log(`[source-import] ${target.name}: description scrubbed (${cleaned.removed.map((r) => r.split(":")[0]).join(", ")})`);
+    if (listing) listing.description = cleaned.text;
+  }
+
   const sourceUrl = propPage?.finalUrl ?? main.finalUrl;
   const trace = {
     pages: crawl.fetched.map((f) => ({ url: f.finalUrl, chars: htmlToText(f.html).length })),
@@ -857,6 +870,10 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     readerUnits: readerUnits.length,
     model: modelUsed ?? (listing ? "picker" : null),
     modelUnits: modelUnits.length,
+    // What this read spent: model dollars (extraction only; the photo sort
+    // and flyer reads are logged separately) and paid render calls.
+    modelCostUsd: Math.round(modelCost * 1000) / 1000,
+    renders: Object.fromEntries(Object.entries(renderCounts).map(([k, v]) => [k, v - rendersBefore[k]])),
     found: {
       amenities: (listing?.amenities ?? []).length,
       customAmenities: (listing?.customAmenities ?? []).length,
@@ -869,6 +886,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       unitPhotos: units.reduce((n, u) => n + (u.photos ?? []).length, 0),
       concessions: (listing?.concessions ?? []).length + embeddedConcessions.length + g5Concessions.length,
     },
+    scrubbed: cleaned.removed,
   };
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
   const snapshot = makeSnapshot({

@@ -10,6 +10,7 @@ import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 import ImportGaps from "@/components/listings/editor/ImportGaps";
+import BackToTop from "@/components/ui/BackToTop";
 
 /*
  * The import workspace: one tab per property the landlord ticked.
@@ -392,6 +393,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-6">
+      <BackToTop />
       <div className="sticky top-[83px] z-40 -mx-4 mb-5 border-b border-gray-200 bg-gray-50/95 px-4 pb-4 pt-5 backdrop-blur md:top-[104px]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

@@ -87,6 +87,7 @@ export default function AddListingPage() {
    */
   const batchId = searchParams.get("batch");
   const [starting, setStarting] = useState(false);
+  const [startingCount, setStartingCount] = useState(0);
   /*
    * One start per paste. The wizard used to be swapped for a spinner while
    * the drafts were created and then, for one render before the URL carried
@@ -100,6 +101,7 @@ export default function AddListingPage() {
     if (startedRef.current) return;
     startedRef.current = true;
     setSite("");
+    setStartingCount(targets.length);
     setStarting(true);
     try {
       const res = await fetch("/api/landlord/import/start", {
@@ -149,11 +151,23 @@ export default function AddListingPage() {
         />
       ) : mode === "assisted" ? (
         <>
+          {/* The wizard stays mounted underneath (a remount would re-read
+              the site); this card takes over the screen while the drafts
+              are being made, which can take a few seconds per building. */}
           {starting && (
-            <div className="mx-auto mb-3 flex max-w-2xl items-center gap-2 px-4 text-sm text-gray-600">
-              <Loader2 className="h-4 w-4 animate-spin text-red-500" /> Creating your drafts…
+            <div className="mx-auto max-w-2xl px-4">
+              <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-6 py-14 text-center shadow-sm">
+                <Loader2 className="h-8 w-8 animate-spin text-red-600" />
+                <p className="text-lg font-semibold text-gray-900">
+                  Creating {startingCount === 1 ? "your draft" : `${startingCount} drafts`}…
+                </p>
+                <p className="max-w-md text-sm text-gray-500">
+                  Each property gets a draft listing now. Reading your website into them starts right after, and you can watch it on the next page.
+                </p>
+              </div>
             </div>
           )}
+          <div className={starting ? "hidden" : ""}>
           <AddListingWizard
           user={user}
           initialImportUrl={site}
@@ -169,6 +183,7 @@ export default function AddListingPage() {
             router.push("/dashboard/landlord?tab=properties");
           }}
           />
+          </div>
         </>
       ) : (
         <StartChoice

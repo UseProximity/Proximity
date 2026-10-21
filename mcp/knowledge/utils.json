@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-20T23:42:06.636Z",
-  "count": 151,
+  "_generated": "2026-10-21T00:38:39.479Z",
+  "count": 152,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -502,6 +502,10 @@
     {
       "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
       "description": "Floor plans embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/sanitize.js",
+      "description": "Make an imported description publishable under the content rules."
     },
     {
       "file": "src/lib/sourceImport/snapshot.js",
