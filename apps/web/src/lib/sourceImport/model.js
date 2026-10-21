@@ -41,7 +41,7 @@ const PRICES = {
   [SONNET]: { input: 3.0 / 1e6, output: 15.0 / 1e6, cacheRead: 0.3 / 1e6, cacheWrite: 3.75 / 1e6 },
 };
 
-function logCost(tag, model, usage) {
+export function logCost(tag, model, usage) {
   if (!usage) return;
   const p = PRICES[model] ?? PRICES[SONNET];
   const cost =

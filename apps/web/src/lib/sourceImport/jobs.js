@@ -254,7 +254,7 @@ export async function runJob(jobId) {
     .eq("id", jobId);
 
   const target = job.target ?? {};
-  const steps = ["Reading your website", "Opening", "Reading floor plans", "Reading live availability", "Reading unit pages", "Reading the leasing portal", "Pricing", "Priced", "Filling in the details", "Sorting photos by unit", "Saving"];
+  const steps = ["Reading your website", "Opening", "Reading floor plans", "Reading live availability", "Reading unit pages", "Reading the leasing portal", "Pricing", "Priced", "Filling in the details", "Sorting photos by unit", "Checking floor plan", "Saving"];
   const onStep = (text) => {
     const i = steps.findIndex((s) => text.startsWith(s));
     const progress = i >= 0 ? Math.round(10 + (i / steps.length) * 70) : null;

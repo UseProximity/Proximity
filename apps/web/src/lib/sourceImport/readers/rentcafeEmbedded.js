@@ -108,8 +108,18 @@ export function parseEmbeddedFloorPlans(html) {
     if (!name || seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
     const images = (p.imageUrls ?? []).filter((u) => typeof u === "string" && /^https?:/.test(u));
-    const diagram = images.find((u) => PLAN_IMAGE_RE.test(u.split("/").pop() ?? "") && !ROOM_RE.test((u.split("/").pop() ?? "").replace(/_fp\./i, "."))) ?? null;
-    const rooms = images.filter((u) => u !== diagram && !/thumbnail/i.test(u));
+    // Mac suffixes every image of a plan with "_FP", so a name that says
+    // "floorplan" outranks the suffix; the vision check settles it later.
+    const fileName = (u) => u.split("/").pop() ?? "";
+    const diagram =
+      images.find((u) => /floor-?plan/i.test(fileName(u))) ??
+      images.find((u) => PLAN_IMAGE_RE.test(fileName(u)) && !ROOM_RE.test(fileName(u).replace(/_fp\./i, "."))) ??
+      null;
+    // Anything else that might be a drawing stays within the photo cap so the
+    // vision check can still promote it to the floor plan slot.
+    const drawingLike = (u) => /floor-?plan|diagram|layout|[-_]unit[-_]|[-_]plan[-_]/i.test(fileName(u));
+    const rest = images.filter((u) => u !== diagram && !/thumbnail/i.test(u));
+    const rooms = [...rest.filter(drawingLike), ...rest.filter((u) => !drawingLike(u))];
     const minRent = Number(p.minRent) > 0 ? Math.round(Number(p.minRent)) : null;
     const maxRent = Number(p.maxRent) > 0 ? Math.round(Number(p.maxRent)) : null;
     const sqft = Number(p.sqft) > 0 ? Number(p.sqft) : Number(p.minSqft) > 0 ? Number(p.minSqft) : null;

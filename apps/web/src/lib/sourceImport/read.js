@@ -56,6 +56,7 @@ import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmb
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
+import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
@@ -887,6 +888,10 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       propertyPhotos.splice(0, propertyPhotos.length, ...propertyPhotos.filter((p) => !onUnits.has(p.url)), ...shared);
     }
   }
+  // The pictures decide which image is each unit's diagram; filenames only
+  // nominated candidates.
+  const floorPlanCheck = await confirmFloorPlans(units, { onStep });
+  modelCost += floorPlanCheck.costUsd;
 
   // The description must pass the same rules the editor applies on save:
   // no phone numbers, emails, links, handles or people's names.
@@ -915,6 +920,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       leaseTerms: units.filter((u) => u.offers.some((o) => (o.leaseTermMonths ?? []).length)).length,
       availabilityDates: units.filter((u) => u.offers.some((o) => o.availableFrom)).length,
       floorPlans: units.filter((u) => u.floorPlanImageUrl).length,
+      floorPlanCheck: { checked: floorPlanCheck.checked, changed: floorPlanCheck.changed, cleared: floorPlanCheck.cleared, unsure: floorPlanCheck.unsure },
       propertyPhotos: propertyPhotos.length,
       unitPhotos: units.reduce((n, u) => n + (u.photos ?? []).length, 0),
       concessions: (listing?.concessions ?? []).length + embeddedConcessions.length + g5Concessions.length,

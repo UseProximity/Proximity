@@ -112,7 +112,7 @@ export default function ImportGaps({ listing }) {
     <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
       <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
         <AlertTriangle className="h-4 w-4 text-amber-600" />
-        {total} thing{total === 1 ? "" : "s"} the website did not say
+        {total} thing{total === 1 ? "" : "s"} the scrape did not pull
       </p>
       <p className="mt-0.5 text-xs text-gray-600">Click one to jump to the field and fill it in.</p>
       <ul className="mt-3 space-y-2">
