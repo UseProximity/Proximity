@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-20T23:38:22.769Z",
-  "count": 135,
+  "_generated": "2026-10-21T02:07:47.692Z",
+  "count": 136,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -478,6 +478,10 @@
     {
       "file": "src/lib/users/viewAs.js",
       "description": "Who a dashboard request is actually ABOUT."
+    },
+    {
+      "file": "src/lib/visitorCookie.js",
+      "description": "The prx_vid device cookie: names a signed-out browser across visits. Shared"
     },
     {
       "file": "src/lib/waitlistNudge.js",

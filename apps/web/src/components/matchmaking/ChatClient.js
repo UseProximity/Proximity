@@ -4,12 +4,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
+import ClaimChatPrompt from "./ClaimChatPrompt";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
 import { QUESTION_BY_ID, QUESTION_PLAN, MAX_TRADEOFFS } from "@/lib/matchmaking/questionScript";
 import { defaultInquiryNote } from "@/lib/matchmaking/contactNote";
 import { trackEvent, getPreviousPath } from "@/utils/analytics";
 
 const LS_KEY = "prx_chat_v2";
+// The newest signed-out chat this browser answered "Not mine" to, so the prompt
+// stays away until a newer one turns up.
+const LS_CLAIM_DISMISSED = "prx_claim_dismissed";
 
 function saveToStorage(data) {
   try {
@@ -81,6 +85,10 @@ export default function ChatClient() {
   // how many fresh chats this device can still start (null when signed in).
   const [locked, setLocked] = useState(false);
   const [triesLeft, setTriesLeft] = useState(null);
+  // Signed in, with signed-out chats on this browser that no account owns yet:
+  // { count, latestAt } drives the "add this chat to your account?" prompt.
+  const [claimOffer, setClaimOffer] = useState(null);
+  const [claimBusy, setClaimBusy] = useState(false);
   const hadCache = useRef(false);
 
   // Refs mirror the latest prefs/weights so rapid chip taps build on current
@@ -646,16 +654,38 @@ export default function ChatClient() {
         setLoading(true);
       }
 
-      // 2. Sync with server (authoritative source). Ask for the session we were
+      // 2. Back from the sign-up wall (?claim=1): move this browser's signed-out
+      // chats into the account first, so the request below gets the one we were
+      // in back unlocked. The marker is dropped from the address bar so a reload
+      // or a shared link never claims again. A failure (or no session after all)
+      // falls through: the prompt below still offers the claim.
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("claim")) {
+        params.delete("claim");
+        const qs = params.toString();
+        window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+        try {
+          const claimRes = await fetch("/api/matchmaking/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "claim" }),
+          });
+          if (claimRes.ok) {
+            const { claimed } = await claimRes.json();
+            trackEvent("Proxy Chat Claimed", { from: "wall", count: claimed ?? 0 });
+          }
+        } catch (err) {
+          console.error("[ChatClient] claim failed:", err);
+        }
+      }
+
+      // 3. Sync with server (authoritative source). Ask for the session we were
       // last in by id, so the device that ran a signed-out chat resumes that
-      // exact chat, and, once signed in, gets it back unlocked (the server claims
-      // it on this very request).
+      // exact chat (unlocked, once claimed).
       try {
-        const res = await fetch(
-          cached?.sessionId
-            ? `/api/matchmaking/chat?sessionId=${encodeURIComponent(cached.sessionId)}`
-            : "/api/matchmaking/chat"
-        );
+        const query = new URLSearchParams({ claimable: "1" });
+        if (cached?.sessionId) query.set("sessionId", cached.sessionId);
+        const res = await fetch(`/api/matchmaking/chat?${query}`);
         if (res.status === 401) {
           // Only a bad mobile token answers 401 now, but a cached transcript
           // still can't be continued from here.
@@ -665,8 +695,15 @@ export default function ChatClient() {
           setLoading(false);
           return;
         }
-        const { session, anonymous, triesLeft: left } = await res.json();
+        const { session, anonymous, triesLeft: left, claimable } = await res.json();
         if (typeof left === "number") setTriesLeft(left);
+        if (claimable?.count > 0) {
+          let dismissed = null;
+          try {
+            dismissed = localStorage.getItem(LS_CLAIM_DISMISSED);
+          } catch {}
+          if (dismissed !== claimable.latestAt) setClaimOffer(claimable);
+        }
 
         if (session) {
           setLocked(!!session.locked);
@@ -778,6 +815,39 @@ export default function ChatClient() {
 
     init();
   }, [applyServerState, buildContactMessage]);
+
+  // "Add it": claim, then reopen the page on the newest claimed chat. Pointing the
+  // cache at it (with no messages) makes init ask for that chat by id.
+  const handleClaim = useCallback(async () => {
+    setClaimBusy(true);
+    try {
+      const res = await fetch("/api/matchmaking/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "claim" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        trackEvent("Proxy Chat Claimed", { from: "prompt", count: data.claimed ?? 0 });
+        if (data.sessionId) saveToStorage({ sessionId: data.sessionId });
+        window.location.reload();
+        return;
+      }
+    } catch (err) {
+      console.error("[ChatClient] claim failed:", err);
+    }
+    setClaimBusy(false);
+  }, []);
+
+  // "Not mine": leave the chat unclaimed (it expires on its own) and stop asking
+  // until a newer signed-out chat appears on this browser.
+  const dismissClaim = useCallback(() => {
+    try {
+      if (claimOffer?.latestAt) localStorage.setItem(LS_CLAIM_DISMISSED, claimOffer.latestAt);
+    } catch {}
+    trackEvent("Proxy Chat Claim Declined", {});
+    setClaimOffer(null);
+  }, [claimOffer]);
 
   const handlePanelUpdate = useCallback(
     (data) => {
@@ -1071,6 +1141,7 @@ export default function ChatClient() {
               Start over
             </button>
           </div>
+          <ClaimChatPrompt offer={claimOffer} busy={claimBusy} onClaim={handleClaim} onDismiss={dismissClaim} />
           {/* Recommendations now render inline in the chat so the user can keep
               chatting to refine — no full-screen swap. */}
           <ChatWindow
@@ -1088,7 +1159,7 @@ export default function ChatClient() {
           />
         </div>
 
-        {/* Side panel — desktop only; always the answers panel so users can edit.
+        {/* Side panel, desktop only. Always the answers panel so users can edit.
             self-start + max-h-full: it hugs its content and grows with each
             answer, up to the chat's height, instead of standing full height. */}
         <div className="hidden md:flex flex-col w-72 self-start max-h-full min-h-0 bg-white rounded-2xl border border-gray-200 overflow-hidden">

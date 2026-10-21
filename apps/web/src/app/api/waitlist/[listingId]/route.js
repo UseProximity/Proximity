@@ -26,17 +26,11 @@
  */
 
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
 import { ensureReviewerAccount } from "@/lib/reviews/onboarding";
-
-// Names the signed-out browser across visits so repeat clicks from one person
-// don't read as several. A year outlives a leasing cycle, which is the window
-// any of this gets reconciled over.
-const VISITOR_COOKIE = "prx_vid";
-const VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+import { readVisitorId, newVisitorId, setVisitorCookie } from "@/lib/visitorCookie";
 
 // Checked before the query so a hand-typed path is a 404 and not a Postgres
 // "invalid input syntax for type uuid" surfacing as a 500.
@@ -146,8 +140,8 @@ export async function GET(req, { params }) {
       phone,
     });
 
-    const existingVisitorId = req.cookies.get(VISITOR_COOKIE)?.value ?? null;
-    const visitorId = existingVisitorId || randomUUID();
+    const existingVisitorId = readVisitorId(req);
+    const visitorId = existingVisitorId || newVisitorId();
 
     /*
      * The contact details are copied onto the row even though user_id already
@@ -171,13 +165,7 @@ export async function GET(req, { params }) {
     const res = NextResponse.redirect(destination, 302);
 
     if (!existingVisitorId) {
-      res.cookies.set(VISITOR_COOKIE, visitorId, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: VISITOR_COOKIE_MAX_AGE,
-      });
+      setVisitorCookie(res, visitorId);
     }
 
     return res;
@@ -259,8 +247,8 @@ export async function POST(req, { params }) {
     const fullName = [firstName, lastName].filter(Boolean).join(" ");
     const destination = resolveWaitlistUrl(waitlist, { name: fullName, email, phone });
 
-    const existingVisitorId = req.cookies.get(VISITOR_COOKIE)?.value ?? null;
-    const visitorId = existingVisitorId || randomUUID();
+    const existingVisitorId = readVisitorId(req);
+    const visitorId = existingVisitorId || newVisitorId();
 
     await logClick({
       listing_id: listing.id,
@@ -281,13 +269,7 @@ export async function POST(req, { params }) {
     });
 
     if (!existingVisitorId) {
-      res.cookies.set(VISITOR_COOKIE, visitorId, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: VISITOR_COOKIE_MAX_AGE,
-      });
+      setVisitorCookie(res, visitorId);
     }
 
     return res;

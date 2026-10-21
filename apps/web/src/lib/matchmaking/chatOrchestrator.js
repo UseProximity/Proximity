@@ -717,25 +717,22 @@ async function runAgentTurn(session) {
   return stripEmDashes(reply);
 }
 
+// The chat route always creates the row before a turn runs, so this is an
+// update, and it never writes the owner columns (user_id, visitor_id). A turn
+// that loaded a signed-out session and is still ranking when the same visitor
+// claims it from another tab would otherwise write user_id = null back over the
+// claim, handing the chat back to the device.
 async function persistSession(session) {
   const { error } = await supabase
     .from("matchmaking_chat_sessions")
-    .upsert(
-      {
-        id: session.id,
-        user_id: session.user_id,
-        // Postgres checks the proposed INSERT row before resolving the conflict,
-        // so a signed-out session (user_id null) must carry its visitor_id here or
-        // the owner check constraint rejects the upsert.
-        visitor_id: session.visitor_id ?? null,
-        status: session.status,
-        transcript: session.transcript,
-        preferences: session.preferences,
-        weights: session.weights,
-        recommendations: session.recommendations,
-      },
-      { onConflict: "id" }
-    );
+    .update({
+      status: session.status,
+      transcript: session.transcript,
+      preferences: session.preferences,
+      weights: session.weights,
+      recommendations: session.recommendations,
+    })
+    .eq("id", session.id);
   if (error) throw new Error(`[chatOrchestrator] Failed to persist session: ${error.message}`);
 }
 

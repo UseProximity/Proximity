@@ -2,58 +2,33 @@
  * Matchmaking before login. Everything the chat route needs to run the Proxy
  * chat for a visitor who has no account yet (Wyatt, 2026-10-20):
  *
- *   - identity: the prx_vid device cookie (same cookie the waitlist feature
- *     sets), HttpOnly and set by the server, so Safari does not expire it the way
- *     it does script-set cookies;
+ *   - identity: the prx_vid device cookie (lib/visitorCookie, shared with the
+ *     waitlist feature);
  *   - the cap: three chats per device, counted on every session ever created
  *     for that cookie (claimed ones included: signing up does not refill it);
  *   - a soft per-IP limit so a script that clears its cookie cannot run up the
  *     ranking bill, sized for a campus network where many students share an IP;
- *   - the lock: a visitor gets to the end of the flow, but the response never
- *     carries which listings matched until the session is claimed by an account;
- *   - the claim: the first signed-in request from that device takes ownership of
- *     every unclaimed session for the cookie.
+ *   - the lock: a visitor gets to the end of the flow, but no response ever
+ *     carries a listing id (picks, or the narrowing state that names the pool)
+ *     until the session is claimed by an account;
+ *   - the claim: only on the account's say-so. Coming back from the sign-up wall
+ *     claims straight away; any other sign-in on that browser is asked first, so
+ *     a shared computer never hands one person's chat to the next.
  *
  * Server-only: imports supabase and the ranker.
  */
-import { randomUUID } from "crypto";
 import supabase from "@/lib/supabase";
 import { computeRecommendations } from "@/lib/matchmaking/chatOrchestrator";
 
-export const VISITOR_COOKIE = "prx_vid";
-const VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+export { VISITOR_COOKIE, readVisitorId, newVisitorId, setVisitorCookie } from "@/lib/visitorCookie";
 
 // Three free chats per device. "Start over" counts; resuming does not.
 export const ANON_SESSION_CAP = 3;
 
-// Unclaimed sessions older than this are deleted by the purge-accounts cron.
+// Unclaimed sessions older than this are blanked by the purge-accounts cron.
 export const ANON_RETENTION_DAYS = 30;
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const T = "matchmaking_chat_sessions";
-
-// ── Device cookie ───────────────────────────────────────────────────────────
-
-export function readVisitorId(request) {
-  const v = request?.cookies?.get?.(VISITOR_COOKIE)?.value ?? "";
-  return UUID_RE.test(v) ? v.toLowerCase() : null;
-}
-
-export function newVisitorId() {
-  return randomUUID();
-}
-
-export function setVisitorCookie(response, visitorId) {
-  response.cookies.set(VISITOR_COOKIE, visitorId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: VISITOR_COOKIE_MAX_AGE,
-  });
-  return response;
-}
 
 // ── Soft per-IP limit ───────────────────────────────────────────────────────
 //
@@ -151,22 +126,55 @@ export async function abandonUnfinishedVisitorSessions(visitorId) {
     .eq("status", "in_progress");
 }
 
-export async function deleteExpiredAnonymousSessions() {
+/*
+ * Unclaimed sessions past the claim window are blanked, not deleted: the row
+ * keeps its id, created_at and status so the dashboard's signed-out counts and
+ * conversion rate stay true for any period, but loses everything the visitor
+ * said and the cookie that tied it to a browser. With visitor_id gone it no
+ * longer counts toward that device's chat cap either, the same as a deletion.
+ */
+export async function expireAnonymousSessions() {
   const cutoff = new Date(Date.now() - ANON_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from(T)
-    .delete()
+    .update({
+      visitor_id: null,
+      expired_at: new Date().toISOString(),
+      preferences: {},
+      weights: {},
+      transcript: [],
+      candidates: [],
+      recommendations: [],
+    })
     .is("user_id", null)
+    .not("visitor_id", "is", null)
     .lt("created_at", cutoff)
     .select("id");
   if (error) throw error;
   return data?.length ?? 0;
 }
 
+// The chats this browser started signed out that no account owns yet, for the
+// "add this chat to your account?" prompt: how many, and when the newest began
+// (the client remembers a "Not mine" against that, so a later chat asks again).
+// Abandoned ones ("start over") are not worth asking about.
+export async function countClaimableSessions(visitorId) {
+  if (!visitorId) return { count: 0, latestAt: null };
+  const { data, count } = await supabase
+    .from(T)
+    .select("created_at", { count: "exact" })
+    .eq("visitor_id", visitorId)
+    .is("user_id", null)
+    .not("status", "eq", "abandoned")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return { count: count ?? 0, latestAt: data?.[0]?.created_at ?? null };
+}
+
 /*
  * Claim: stamp the signed-in account onto every session this device started
- * while signed out. Runs on each signed-in request that carries the cookie; it
- * is a no-op once nothing is left to claim.
+ * while signed out. Called only when the account asked for it (the chat route's
+ * "claim" action), never as a side effect of an ordinary request.
  *
  * On claim the session also learns what the account knows: the first name (the
  * chat no longer asks for it) and the recorded gender. A finished chat was
@@ -176,42 +184,52 @@ export async function deleteExpiredAnonymousSessions() {
  * this student does qualify for can come back in. Nothing was shown yet, so
  * there is no "my matches changed" surprise.
  */
+//
+// Returns how many were claimed and the newest live one, which the client opens.
 export async function claimVisitorSessions(actor, visitorId) {
-  if (!visitorId || !actor?.id) return 0;
+  const none = { claimed: 0, sessionId: null };
+  if (!visitorId || !actor?.id) return none;
   const { data: rows } = await supabase
     .from(T)
-    .select("id, status, preferences, weights, transcript")
+    .select("id, status, created_at, preferences, weights, transcript")
     .eq("visitor_id", visitorId)
-    .is("user_id", null);
-  if (!rows?.length) return 0;
+    .is("user_id", null)
+    .order("created_at", { ascending: false });
+  if (!rows?.length) return none;
 
   const firstName = (actor.name ?? "").trim().split(/\s+/)[0] ?? "";
   const gender = normalizeAccountGender(actor.gender);
 
-  let claimed = 0;
-  for (const row of rows) {
-    const preferences = { ...(row.preferences ?? {}), _viewerGender: gender };
-    if (firstName && !preferences.name) preferences.name = firstName;
+  // Each row re-ranks and claims on its own, side by side: one failing leaves
+  // the others claimed, and the claim call can simply be retried.
+  const results = await Promise.all(
+    rows.map(async (row) => {
+      const preferences = { ...(row.preferences ?? {}), _viewerGender: gender };
+      if (firstName && !preferences.name) preferences.name = firstName;
 
-    const patch = { user_id: actor.id, preferences };
-    if (row.status === "recommendations_ready" && gender) {
-      try {
-        const fresh = await computeRecommendations(preferences, row.weights ?? {});
-        if (fresh.length) {
-          patch.recommendations = fresh;
-          patch.transcript = withLatestRecommendations(row.transcript, fresh);
+      const patch = { user_id: actor.id, preferences };
+      if (row.status === "recommendations_ready" && gender) {
+        try {
+          const fresh = await computeRecommendations(preferences, row.weights ?? {});
+          if (fresh.length) {
+            patch.recommendations = fresh;
+            patch.transcript = withLatestRecommendations(row.transcript, fresh);
+          }
+        } catch (err) {
+          console.error("[matchmaking claim] re-rank failed, keeping anonymous picks:", err);
         }
-      } catch (err) {
-        console.error("[matchmaking claim] re-rank failed, keeping anonymous picks:", err);
       }
-    }
 
-    // `.is("user_id", null)` again so two concurrent signed-in requests (two tabs)
-    // cannot both claim, and a row some other account claimed meanwhile is skipped.
-    const { data: updated } = await supabase.from(T).update(patch).eq("id", row.id).is("user_id", null).select("id");
-    if (updated?.length) claimed += 1;
-  }
-  return claimed;
+      // `.is("user_id", null)` again so two concurrent claims (two tabs) cannot
+      // both claim, and a row some other account claimed meanwhile is skipped.
+      const { data: updated } = await supabase.from(T).update(patch).eq("id", row.id).is("user_id", null).select("id");
+      return updated?.length ? row : null;
+    })
+  );
+  const claimed = results.filter(Boolean);
+  // Rows came newest first, and Promise.all keeps that order.
+  const open = claimed.find((r) => r.status !== "abandoned");
+  return { claimed: claimed.length, sessionId: open?.id ?? null };
 }
 
 function normalizeAccountGender(g) {
@@ -221,7 +239,7 @@ function normalizeAccountGender(g) {
 
 // The "here are your matches" message embeds its own copy of the picks, and a
 // reload renders the cards from it: rewrite the latest one to the fresh set.
-function withLatestRecommendations(transcript, recommendations) {
+export function withLatestRecommendations(transcript, recommendations) {
   if (!Array.isArray(transcript)) return transcript;
   for (let i = transcript.length - 1; i >= 0; i--) {
     if (Array.isArray(transcript[i]?.recommendations) && transcript[i].recommendations.length) {
@@ -233,17 +251,24 @@ function withLatestRecommendations(transcript, recommendations) {
 
 // ── The lock ────────────────────────────────────────────────────────────────
 //
-// A visitor's finished session goes to the browser without the picks: only each
-// card's intention label survives ("Best value", "Closest to campus"), enough to
-// draw the three placeholder cards behind the sign-up wall, and never a listing
-// id or any card data (the listing endpoint is public, so an id IS the match).
-// The hidden narrowing state is dropped too since it carries the candidate pool.
+// Nothing a visitor's browser receives may name a listing: the listing endpoint
+// is public, so an id IS the match. That holds for the whole chat, not just the
+// end. Mid-chat, the narrowing state (each tradeoff's kept and dropped listings,
+// the pruned and set-aside sets) names the shrinking pool, which after the last
+// tradeoff is a superset of the picks. Once the picks exist, only each card's
+// intention label survives ("Best value", "Closest to campus"), enough to draw
+// the three placeholder cards behind the sign-up wall.
+//
+// The server never needs these back from the client: handleTurn carries them
+// over from the stored session, and a visitor's rewind restores them with
+// withHiddenPreferences.
 
-const LOCKED_PREF_KEYS = [
+const HIDDEN_PREF_KEYS = [
   "_setAside",
   "_excluded",
   "_narrowed",
   "_autoPruned",
+  "_shadowOptIn",
   "_pendingTradeoff",
   "_tradeoffHistory",
   "_relaxPrevSetAside",
@@ -259,8 +284,12 @@ function lockRecommendations(recs) {
 }
 
 function lockPreferences(preferences) {
-  const out = { ...(preferences ?? {}) };
-  for (const k of LOCKED_PREF_KEYS) delete out[k];
+  if (!preferences) return preferences;
+  const out = { ...preferences };
+  for (const k of HIDDEN_PREF_KEYS) delete out[k];
+  // The client only reads how MANY tradeoffs were answered (it stamps each
+  // answer bubble with its index for "Edit"), so placeholders keep the count.
+  if (Array.isArray(preferences._tradeoffHistory)) out._tradeoffHistory = preferences._tradeoffHistory.map(() => null);
   return out;
 }
 
@@ -272,35 +301,40 @@ function lockTranscript(transcript) {
   );
 }
 
+// A visitor's preferences as the client sent them, with the hidden keys put
+// back from the stored copy (the client only ever held the stripped version).
+export function withHiddenPreferences(clientPrefs, storedPrefs) {
+  const out = { ...(clientPrefs ?? {}) };
+  for (const k of HIDDEN_PREF_KEYS) {
+    if (storedPrefs?.[k] !== undefined) out[k] = storedPrefs[k];
+    else delete out[k];
+  }
+  return out;
+}
+
 // A whole stored session, as returned by GET.
 export function lockSessionForVisitor(session) {
   if (!session) return null;
-  // The candidate pool column is never needed client-side; `_pendingTradeoff`
-  // names pool listings even before the picks exist.
-  const { candidates, ...rest } = session;
-  const prefs = { ...(rest.preferences ?? {}) };
-  delete prefs._pendingTradeoff;
-  if (!isLockedStatus(session.status)) return { ...rest, preferences: prefs, locked: false };
+  // The candidate pool column is never needed client-side, and the cookie value
+  // stays out of reach of page scripts (it is HttpOnly for a reason).
+  const { candidates, visitor_id, ...rest } = session;
   return {
     ...rest,
-    preferences: lockPreferences(prefs),
+    preferences: lockPreferences(rest.preferences),
     recommendations: lockRecommendations(rest.recommendations),
     transcript: lockTranscript(rest.transcript),
-    locked: true,
+    locked: isLockedStatus(session.status),
   };
 }
 
 // One turn's response payload, as returned by POST / PATCH.
 export function lockTurnForVisitor(payload) {
   if (!payload) return payload;
-  const prefs = payload.preferences ? { ...payload.preferences } : payload.preferences;
-  if (prefs) delete prefs._pendingTradeoff;
-  if (!isLockedStatus(payload.status)) return { ...payload, preferences: prefs, locked: false };
   return {
     ...payload,
-    preferences: prefs ? lockPreferences(prefs) : prefs,
-    recommendations: lockRecommendations(payload.recommendations),
+    preferences: lockPreferences(payload.preferences),
+    ...("recommendations" in payload ? { recommendations: lockRecommendations(payload.recommendations) } : {}),
     draft: null,
-    locked: true,
+    locked: isLockedStatus(payload.status),
   };
 }

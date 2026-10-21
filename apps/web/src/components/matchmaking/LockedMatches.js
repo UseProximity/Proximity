@@ -25,6 +25,8 @@ const INTENTION_COLORS = {
   "Your pick": "bg-teal-100 text-teal-700",
 };
 
+const CLAIM_RETURN = encodeURIComponent("/matchmaking?claim=1");
+
 // A listing card's silhouette: photo block, title line, price line, two short
 // detail lines. Blurred and inert so it reads as "a real card is here".
 function PlaceholderCard({ seed }) {
@@ -105,15 +107,17 @@ export default function LockedMatches({ recommendations, triesLeft }) {
           <p className="mt-1.5 text-xs text-gray-500 leading-relaxed">
             Create a free account to see them, save them, and have Proxy email the owners for you.
           </p>
+          {/* `claim=1` is the account's say-so: coming back from here, the chat
+              page takes this browser's signed-out chats into the account. */}
           <Link
-            href="/login?tab=signup&callbackUrl=/matchmaking"
+            href={`/login?tab=signup&callbackUrl=${CLAIM_RETURN}`}
             onClick={() => click("signup")}
             className="mt-4 block w-full py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition"
           >
             Create a free account
           </Link>
           <Link
-            href="/login?callbackUrl=/matchmaking"
+            href={`/login?callbackUrl=${CLAIM_RETURN}`}
             onClick={() => click("login")}
             className="mt-2 inline-block text-xs font-medium text-gray-500 hover:text-red-600 transition"
           >

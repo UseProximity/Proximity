@@ -127,7 +127,7 @@ export default async function loadMatchmaking(period) {
   const [sessions, formSaves, guestRows] = await Promise.all([
     fetchAll(
       "matchmaking_chat_sessions",
-      "id, user_id, visitor_id, status, created_at, preferences, recommendations, transcript",
+      "id, user_id, visitor_id, status, created_at, expired_at, preferences, recommendations, transcript",
       (q) => q.gte("created_at", period.prevStart)
     ),
     fetchAll("matchmaking_preferences", "id, created_at", (q) => q.gte("created_at", period.prevStart)),
@@ -138,8 +138,12 @@ export default async function loadMatchmaking(period) {
 
   const current = sessions.filter((s) => within(s.created_at, period.start));
   const completed = sessions.filter((s) => s.status === COMPLETED);
-  const currentCompleted = current.filter((s) => s.status === COMPLETED);
-  const currentUnfinished = current.filter((s) => s.status !== COMPLETED);
+  // An unclaimed signed-out chat past its 30-day window keeps its row (so the
+  // counts above hold) but not its contents; anything read from what was said
+  // or recommended skips it.
+  const readable = current.filter((s) => !s.expired_at);
+  const currentCompleted = readable.filter((s) => s.status === COMPLETED);
+  const currentUnfinished = readable.filter((s) => s.status !== COMPLETED);
   const prefs = (s) => s.preferences ?? {};
 
   const started = periodTotals(period, sessions);
@@ -147,13 +151,14 @@ export default async function loadMatchmaking(period) {
   const signedIn = (from, to) =>
     new Set(
       sessions
-        .filter((s) => s.user_id && s.user_id !== guestId && within(s.created_at, from, to))
+        .filter((s) => s.user_id && !s.visitor_id && s.user_id !== guestId && within(s.created_at, from, to))
         .map((s) => s.user_id)
     ).size;
-  // Chats that STARTED signed out (visitor_id is only ever set on those). A
-  // claimed one is a signed-out chat whose visitor then created an account or
-  // logged in: the sign-up wall's conversion.
-  const startedSignedOut = sessions.filter((s) => s.visitor_id);
+  // Chats that STARTED signed out: visitor_id is only ever set on those, and an
+  // expired one has lost its visitor_id but still has no user_id. A claimed one
+  // is a signed-out chat whose visitor then created an account or logged in:
+  // the sign-up wall's conversion.
+  const startedSignedOut = sessions.filter((s) => s.visitor_id || !s.user_id);
   const claimed = startedSignedOut.filter((s) => s.user_id);
   const signedOutStarted = periodTotals(period, startedSignedOut);
   const signedOutClaimed = periodTotals(period, claimed);

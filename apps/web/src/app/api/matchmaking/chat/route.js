@@ -17,6 +17,9 @@ import {
   ownsAsVisitor,
   abandonUnfinishedVisitorSessions,
   claimVisitorSessions,
+  countClaimableSessions,
+  withHiddenPreferences,
+  withLatestRecommendations,
   isLockedStatus,
   lockSessionForVisitor,
   lockTurnForVisitor,
@@ -82,7 +85,9 @@ async function resolveActor(requestUser, request) {
   if (requestUser?.email) {
     const user = await resolveUserId(requestUser.email);
     if (!user) return { error: { msg: "User not found", status: 404 } };
-    return { actor: user };
+    // The cookie rides along for a signed-in caller too: the "claim" action needs
+    // it to find the chats this browser ran signed out.
+    return { actor: user, visitor: readVisitorId(request) };
   }
   // Any Bearer header counts, including an empty or malformed one.
   const sentBearer = /^bearer\b/i.test(request?.headers?.get("authorization") ?? "");
@@ -116,10 +121,12 @@ export async function GET(request) {
       });
     }
 
-    // First signed-in request from a device that chatted signed out: take those
-    // sessions over before looking anything up, so the chat they just finished
-    // is what comes back below.
-    await claimVisitorSessions(actor, readVisitorId(request));
+    // The chat page (not the homepage) asks whether this browser holds signed-out
+    // chats no account owns yet, to offer "add this chat to your account?".
+    // Nothing is claimed here: that takes the account's say-so (POST "claim").
+    const claimable = new URL(request.url).searchParams.get("claimable")
+      ? { claimable: await countClaimableSessions(visitor) }
+      : {};
 
     // The client remembers which session it was in (localStorage). When it asks
     // for that one by id, hand it back; an unknown/foreign id just means "no
@@ -132,7 +139,7 @@ export async function GET(request) {
         .eq("user_id", actor.id)
         .not("status", "eq", "abandoned")
         .maybeSingle();
-      if (byId) return NextResponse.json({ session: byId });
+      if (byId) return NextResponse.json({ session: byId, ...claimable });
     }
 
     const { data: chatSession } = await supabase
@@ -144,7 +151,7 @@ export async function GET(request) {
       .limit(1)
       .maybeSingle();
 
-    return NextResponse.json({ session: chatSession ?? null });
+    return NextResponse.json({ session: chatSession ?? null, ...claimable });
   } catch (err) {
     console.error("[matchmaking/chat GET]", err);
     // A failed user lookup is not "no session": answering 200 with null would make the
@@ -176,7 +183,14 @@ export async function POST(request) {
     // Anonymous responses never carry the picks (see lockTurnForVisitor).
     const reply = (payload, init) => respond(actor ? payload : lockTurnForVisitor(payload), init);
 
-    if (actor) await claimVisitorSessions(actor, cookieVisitor);
+    // Take over the chats this browser ran signed out. Only ever on request: the
+    // client sends it on the way back from the sign-up wall, or when the student
+    // says yes to "add this chat to your account?". Never automatic, so whoever
+    // signs in next on a shared computer does not inherit someone else's chat.
+    if (action === "claim") {
+      if (!actor) return respond({ error: "Sign in to save this chat" }, { status: 401 });
+      return respond(await claimVisitorSessions(actor, cookieVisitor));
+    }
 
     let chatSession;
 
@@ -258,10 +272,14 @@ export async function POST(request) {
     // Rewind: the user clicked "edit" on a past prompt. Replace the session's
     // prefs/weights/transcript with the client's truncated, authoritative copy.
     if (action === "rewind") {
+      // A visitor's client only ever held the stripped preferences (see the lock),
+      // so the narrowing state comes back from the stored copy, not the echo.
+      const rewoundPrefs =
+        preferences && !actor ? withHiddenPreferences(preferences, chatSession.preferences) : preferences;
       const { error: rewindErr } = await supabase
         .from("matchmaking_chat_sessions")
         .update({
-          preferences: preferences ?? chatSession.preferences,
+          preferences: rewoundPrefs ?? chatSession.preferences,
           weights: weights ?? chatSession.weights,
           transcript: transcript ?? chatSession.transcript,
           recommendations: [],
@@ -441,8 +459,6 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "sessionId and patch are required" }, { status: 400 });
     }
 
-    if (actor) await claimVisitorSessions(actor, visitor);
-
     const { data: chatSession, error } = await supabase
       .from("matchmaking_chat_sessions")
       .select("*")
@@ -488,14 +504,7 @@ export async function PATCH(request) {
         // The chat is rebuilt from the transcript on reload, and each "here are
         // your matches" message embeds its own copy of the picks. Rewrite the
         // latest such message so a refresh shows the NEW matches, not the old set.
-        if (Array.isArray(transcript)) {
-          for (let i = transcript.length - 1; i >= 0; i--) {
-            if (Array.isArray(transcript[i].recommendations) && transcript[i].recommendations.length) {
-              transcript = transcript.map((m, idx) => (idx === i ? { ...m, recommendations } : m));
-              break;
-            }
-          }
-        }
+        transcript = withLatestRecommendations(transcript, recommendations);
       } catch (err) {
         console.error("[matchmaking/chat PATCH] computeRecommendations failed:", err);
         updatedPreferences._setAside = prevSetAside;

@@ -24,7 +24,7 @@
  *                    this person the properties we did, so they are erased by
  *                    the retention stage below, not here. (Signed-out chats that
  *                    no account claimed within 30 days are a separate, final
- *                    step of this run: they belong to no one.)
+ *                    step of this run: they belong to no one, so their contents are blanked.)
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
@@ -56,7 +56,7 @@ import supabase from "@/lib/supabase";
 import { r2 } from "@/lib/r2";
 import { isProdData } from "@/lib/appEnv";
 import { revokeAppleToken } from "@/lib/appleAuth";
-import { deleteExpiredAnonymousSessions } from "@/lib/matchmaking/anonymousSessions";
+import { expireAnonymousSessions } from "@/lib/matchmaking/anonymousSessions";
 
 export const dynamic = "force-dynamic";
 
@@ -400,11 +400,12 @@ export async function GET(req) {
 
   // Signed-out matchmaking chats that no account ever claimed (see
   // lib/matchmaking/anonymousSessions.js): nothing links them to a person, so
-  // they are simply dropped once their 30-day claim window has passed.
-  let anonymousChatsDeleted = 0;
+  // once their 30-day claim window has passed their contents and device cookie
+  // are blanked. The empty row stays so the dashboard's signed-out counts hold.
+  let anonymousChatsExpired = 0;
   let anonymousChatsFailed = false;
   try {
-    anonymousChatsDeleted = await deleteExpiredAnonymousSessions();
+    anonymousChatsExpired = await expireAnonymousSessions();
   } catch (err) {
     console.error("[purge-accounts] anonymous matchmaking cleanup failed:", err);
     anonymousChatsFailed = true;
@@ -419,7 +420,7 @@ export async function GET(req) {
     retentionCutoff,
     retentionErased: erased,
     retentionFailed: eraseFailed.length + (expiredError ? 1 : 0),
-    anonymousChatsDeleted,
+    anonymousChatsExpired,
     anonymousChatsFailed,
   });
 }
