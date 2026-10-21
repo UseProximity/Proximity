@@ -19,6 +19,7 @@
  */
 import { randomUUID } from "node:crypto";
 import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
 import { findPropertyNameConflict } from "@/lib/listings/propertyName";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
@@ -32,7 +33,13 @@ import { summarize } from "./snapshot.js";
 // geocode. The listing is a draft, the editor shows the address, and the
 // workspace tells the landlord to confirm it before publishing.
 const CAMPUS = { latitude: 38.6488, longitude: -90.3108 };
-const STUCK_AFTER_MS = 15 * 60 * 1000;
+// A running job that has not written a step for this long belongs to a
+// function that died (Vercel stops a call at five minutes). Reads write a
+// step every page, every quote batch and every model call, so six quiet
+// minutes is a dead runner, not a slow site.
+const STUCK_AFTER_MS = 6 * 60 * 1000;
+// How long a queued job may wait with no runner before a poll starts one.
+const IDLE_KICK_MS = 15 * 1000;
 const MAX_ATTEMPTS = 3;
 export const MAX_TARGETS = 40;
 
@@ -337,11 +344,16 @@ export async function runJob(jobId) {
  * each read is a minute or two of fetches and model calls, and the render
  * services rate-limit bursts. Returns how many ran.
  */
-export async function runPendingJobs({ batchId = null, userId = null, budgetMs = 240000 } = {}) {
+export async function runPendingJobs({ batchId = null, userId = null, budgetMs = 240000, maxJobs = Infinity } = {}) {
   const started = Date.now();
   let ran = 0;
   for (;;) {
-    if (Date.now() - started > budgetMs) break;
+    if (ran >= maxJobs || Date.now() - started > budgetMs) {
+      // Out of room in this call: a fresh call takes the rest, so a batch of
+      // twelve buildings is twelve five-minute windows, not one.
+      if (await hasQueued({ batchId, userId })) await chainRunner({ batchId });
+      break;
+    }
     let q = supabase.from("listing_import_jobs").select("id").eq("status", "queued").order("created_at", { ascending: true }).limit(1);
     if (batchId) q = q.eq("batch_id", batchId);
     if (userId) q = q.eq("user_id", userId);
@@ -351,7 +363,7 @@ export async function runPendingJobs({ batchId = null, userId = null, budgetMs =
     // Claim it. A second runner (the cron, say) that loses the race skips it.
     const { data: claimed } = await supabase
       .from("listing_import_jobs")
-      .update({ status: "running", started_at: new Date().toISOString() })
+      .update({ status: "running", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("id", next.id)
       .eq("status", "queued")
       .select("id");
@@ -362,15 +374,65 @@ export async function runPendingJobs({ batchId = null, userId = null, budgetMs =
   return ran;
 }
 
+async function hasQueued({ batchId = null, userId = null } = {}) {
+  let q = supabase.from("listing_import_jobs").select("id").eq("status", "queued").limit(1);
+  if (batchId) q = q.eq("batch_id", batchId);
+  if (userId) q = q.eq("user_id", userId);
+  const { data } = await q;
+  return !!data?.length;
+}
+
+/*
+ * Ask a new function call to carry on with the queue. The run route answers
+ * at once and does the work after the response, so this returns in well
+ * under a second and the two calls never nest. Needs CRON_SECRET; without
+ * it (or if the call fails) the next workspace poll or the cron picks the
+ * queue up instead.
+ */
+export async function chainRunner({ batchId = null } = {}) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/landlord/import/run`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ batchId, chain: true }),
+      signal: AbortSignal.timeout(15000),
+    });
+    console.log(`[source-import] runner handed the queue to a new call (${res.status})`);
+    return res.ok;
+  } catch (err) {
+    console.error("[source-import] runner hand-off failed:", err?.message);
+    return false;
+  }
+}
+
+/*
+ * The batch's poll keeps the queue alive: a job whose runner died goes back
+ * to the queue, and a queue nobody is working gets a runner. Returns true
+ * when a runner was started so the caller can hand it to after().
+ */
+export async function keepBatchMoving({ batchId, userId }) {
+  await requeueStuck({ batchId });
+  const { data: jobs } = await supabase.from("listing_import_jobs").select("status, updated_at, created_at").eq("batch_id", batchId).eq("user_id", userId);
+  const queued = (jobs ?? []).some((j) => j.status === "queued");
+  const running = (jobs ?? []).some((j) => j.status === "running");
+  if (!queued || running) return false;
+  const newest = Math.max(...(jobs ?? []).map((j) => new Date(j.updated_at ?? j.created_at).getTime()));
+  return Date.now() - newest > IDLE_KICK_MS;
+}
+
 /* Jobs a dead function left running: back to the queue, or failed for good. */
-export async function requeueStuck() {
+export async function requeueStuck({ batchId = null } = {}) {
   const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
-  const { data: stuck } = await supabase.from("listing_import_jobs").select("id, attempts").eq("status", "running").lt("started_at", cutoff);
+  let q = supabase.from("listing_import_jobs").select("id, attempts").eq("status", "running").lt("updated_at", cutoff);
+  if (batchId) q = q.eq("batch_id", batchId);
+  const { data: stuck } = await q;
   for (const j of stuck ?? []) {
     if (j.attempts >= MAX_ATTEMPTS) {
       await supabase.from("listing_import_jobs").update({ status: "failed", step: "Couldn't read it", error: "The read kept timing out. Try again, or fill it in by hand." }).eq("id", j.id);
     } else {
-      await supabase.from("listing_import_jobs").update({ status: "queued", step: "Waiting to read" }).eq("id", j.id);
+      await supabase.from("listing_import_jobs").update({ status: "queued", step: "Waiting to read", started_at: null, updated_at: new Date().toISOString() }).eq("id", j.id);
     }
   }
   return (stuck ?? []).length;

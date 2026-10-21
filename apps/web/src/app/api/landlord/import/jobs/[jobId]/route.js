@@ -22,7 +22,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: "That one is still being read." }, { status: 409 });
   }
   await supabase.from("listing_import_jobs").update({ status: "queued", step: "Waiting to read", error: null, progress: 0 }).eq("id", jobId);
-  after(() => runPendingJobs({ batchId: job.batch_id, budgetMs: 270000 }).catch(() => {}));
+  after(() => runPendingJobs({ batchId: job.batch_id, maxJobs: 1, budgetMs: 270000 }).catch(() => {}));
   return NextResponse.json({ ok: true });
 }
 

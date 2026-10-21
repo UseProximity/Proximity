@@ -141,34 +141,52 @@ export function parseRentalOptionsPage(html) {
  * The slider on Rental Options fetches /onlineleasing/rcLoadContent.ashx
  * (contentclass=olequotesheet) with a unit id and a term, on the portal's
  * session. That call does not care which apartment the page was opened for,
- * so one render can quote a batch of apartments at every term we want: the
- * whole building's price matrix costs a handful of credits, not one per
- * apartment. Each quote also lists the mandatory monthly charges beside the
- * rent (Mac adds a "Utility Flat Fee"), which the rent on the Apartments page
- * leaves out.
+ * so one render can quote a batch of apartments: the whole building's
+ * prices cost a handful of credits, not one per apartment.
  *
- * The script returns JSON: { "<unitId>": { "<term>": "<the Monthly Charges
- * text of that quote>" } }, read apart here by parseQuote.
+ * Which terms to quote is the slider's decision, not ours: each apartment's
+ * Rental Options page carries `var terms = [12]`, the lengths the landlord
+ * will lease it for right now. The quote sheet answers for any number you
+ * send it, so asking for lengths the slider does not offer would invent
+ * leases the landlord does not sell. The script fetches each apartment's
+ * page first (same session, no credit), reads that list, and quotes those.
+ *
+ * Each quote also lists the mandatory monthly charges beside the rent (Mac
+ * adds a "Utility Flat Fee"), which the rent on the Apartments page leaves
+ * out.
+ *
+ * The script returns JSON: { "<unitId>": { terms: [12], quotes: { "12":
+ * "<the Monthly Charges text of that quote>" } } }, read apart here by
+ * parseQuote.
  */
-const QUOTE_STOPS = [3, 6, 9, 10, 12, 15, 18, 24];
 const BATCH = 12;
+const FALLBACK_TERMS = [12];
 
-export const quoteScript = ({ propertyId, moveIn, unitIds, terms }) => `
+export const quoteScript = ({ portal, moveIn, apartments }) => `
   (async () => {
     const out = {};
     const clean = (s) => s.replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ');
-    for (const u of ${JSON.stringify(unitIds)}) {
-      out[u] = {};
-      for (const t of ${JSON.stringify(terms)}) {
+    const movein = ${JSON.stringify(encodeURIComponent(moveIn))};
+    for (const a of ${JSON.stringify(apartments.map((a) => ({ u: a.unitId, p: a.planId })))}) {
+      const u = a.u;
+      out[u] = { terms: null, quotes: {} };
+      try {
+        const page = await fetch('/onlineleasing/${portal.slug}/oleapplication.aspx?Stepname=RentalOptions&myOlePropertyId=${portal.propertyId}&UnitID=' + u + '&FloorPlanID=' + a.p + '&header=1&MoveInDate=' + movein, { credentials: 'include' });
+        const html = page.ok ? await page.text() : '';
+        const m = html.match(/var\\s+terms\\s*=\\s*\\[([\\d,\\s]*)\\]/);
+        if (m) out[u].terms = m[1].split(',').map((x) => Number(x.trim())).filter((n) => n > 0);
+      } catch (e) { /* no page: quote the fallback below */ }
+      const terms = out[u].terms && out[u].terms.length ? out[u].terms : ${JSON.stringify(FALLBACK_TERMS)};
+      for (const t of terms) {
         try {
-          const r = await fetch('/onlineleasing/rcLoadContent.ashx?contentclass=olequotesheet&MoveinDate=${encodeURIComponent(moveIn)}&sLeaseTerm=' + t + '&UnitId=' + u + '&PropertyId=${propertyId}&', { credentials: 'include' });
-          if (!r.ok) { out[u][t] = null; continue; }
+          const r = await fetch('/onlineleasing/rcLoadContent.ashx?contentclass=olequotesheet&MoveinDate=' + movein + '&sLeaseTerm=' + t + '&UnitId=' + u + '&PropertyId=${portal.propertyId}&', { credentials: 'include' });
+          if (!r.ok) { out[u].quotes[t] = null; continue; }
           const text = clean(await r.text());
-          const a = text.indexOf('Monthly Charges');
-          const b = text.indexOf('Move-In Charges');
-          const monthly = a >= 0 ? text.slice(a, b > a ? b : a + 800) : '';
-          out[u][t] = monthly ? monthly.slice(0, 600) : null;
-        } catch (e) { out[u][t] = null; }
+          const i = text.indexOf('Monthly Charges');
+          const j = text.indexOf('Move-In Charges');
+          const monthly = i >= 0 ? text.slice(i, j > i ? j : i + 800) : '';
+          out[u].quotes[t] = monthly ? monthly.slice(0, 600) : null;
+        } catch (e) { out[u].quotes[t] = null; }
       }
     }
     return JSON.stringify(out);
@@ -194,23 +212,15 @@ export function parseQuote(monthly) {
   return { rent, fees, total };
 }
 
-/* Terms to quote for a building whose portal offers [min, max] months. */
-export function quoteTerms(range) {
-  const [lo, hi] = range ?? [12, 12];
-  const set = new Set(QUOTE_STOPS.filter((t) => t >= lo && t <= hi));
-  set.add(lo);
-  set.add(hi);
-  return [...set].filter((t) => t > 0 && t <= 36).sort((a, b) => a - b);
-}
-
 /*
- * Quote `apartments` ([{ unitId, planId }]) at `terms`, BATCH per render.
- * The page rendered is the first apartment's Rental Options step, which
- * also tells the building's term policy (parsed once by the caller).
- * Returns Map(unitId -> { termPrices: { months: rent }, fees: [[name,
- * amount]], total }) and the first page's HTML.
+ * Quote `apartments` ([{ unitId, planId }]), BATCH per render. The page
+ * rendered is the first apartment's Rental Options step, which also tells
+ * the building's advertised term range (parsed once by the caller).
+ * Returns Map(unitId -> { terms: [months the slider allows], termPrices:
+ * { months: rent }, fees: [[name, amount]], total }) and the first page's
+ * HTML.
  */
-async function quoteApartments(portal, apartments, terms, moveIn, onStep, progress = { done: 0, total: apartments.length }) {
+async function quoteApartments(portal, apartments, moveIn, onStep, progress = { done: 0, total: apartments.length }) {
   const quotes = new Map();
   let firstHtml = null;
   const batches = [];
@@ -224,32 +234,33 @@ async function quoteApartments(portal, apartments, terms, moveIn, onStep, progre
       const r = await renderPage(rentalOptionsUrl(portal, lead, moveIn), {
         waitMs: 3000,
         raw: true,
-        actions: [{ type: "executeJavascript", script: quoteScript({ propertyId: portal.propertyId, moveIn, unitIds: batch.map((a) => a.unitId), terms }) }],
+        actions: [{ type: "executeJavascript", script: quoteScript({ portal, moveIn, apartments: batch }) }],
       });
       firstHtml ??= r?.html ?? null;
       const returned = r?.returns?.find((v) => typeof v === "string" && v.startsWith("{"));
       if (!returned) console.warn(`[source-import] securecafe quote batch (${batch.length} apartments) returned nothing: ${r ? `html ${r.html.length}, returns ${JSON.stringify(r.returns).slice(0, 200)}` : "render failed"}`);
       if (returned) {
         try {
-          for (const [unitId, byTerm] of Object.entries(JSON.parse(returned))) {
+          for (const [unitId, got] of Object.entries(JSON.parse(returned))) {
             const termPrices = {};
             let fees = null;
             let total = null;
-            for (const [t, monthly] of Object.entries(byTerm ?? {})) {
+            for (const [t, monthly] of Object.entries(got?.quotes ?? {})) {
               const q = parseQuote(monthly);
               if (!q) continue;
               termPrices[Number(t)] = q.rent;
               fees ??= q.fees;
               total ??= q.total;
             }
-            if (Object.keys(termPrices).length) quotes.set(unitId, { termPrices, fees: fees ?? [], total });
+            const terms = (got?.terms ?? []).filter((n) => Number.isInteger(n) && n > 0 && n <= 36);
+            if (Object.keys(termPrices).length) quotes.set(unitId, { terms: terms.length ? terms : Object.keys(termPrices).map(Number), termPrices, fees: fees ?? [], total });
           }
         } catch (err) {
           console.warn(`[source-import] securecafe quote batch unreadable: ${err?.message}`);
         }
       }
       progress.done += batch.length;
-      onStep(`Priced ${Math.min(progress.done, progress.total)} of ${progress.total} apartments at every lease length`);
+      onStep(`Priced ${Math.min(progress.done, progress.total)} of ${progress.total} apartments`);
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker));
@@ -304,30 +315,27 @@ export async function readSecureCafe(portal, { known = null, onStep = () => {}, 
   const all = parsed.plans.flatMap((p) => p.apartments.map((a) => ({ ...a, planId: p.id })));
   const remembered = new Map((known?.apartments ?? []).map((a) => [a.unitId, a]));
   // Quote what is new or repriced; reuse the rest from the last read.
-  const toQuote = all.filter((a) => a.rent != null && !(remembered.get(a.unitId)?.rent === a.rent && remembered.get(a.unitId)?.termPrices)).slice(0, deep ? MAX_QUOTED : BATCH);
+  // Reused only when the last read recorded which terms the slider allowed;
+  // earlier reads quoted terms of our own choosing and must be redone.
+  const fresh = (a) => {
+    const r = remembered.get(a.unitId);
+    return r && r.rent === a.rent && r.termPrices && Array.isArray(r.terms) && r.terms.length;
+  };
+  const toQuote = all.filter((a) => a.rent != null && !fresh(a)).slice(0, deep ? MAX_QUOTED : BATCH);
   let range = known?.range ?? null;
   let term = known?.term ?? null;
   let specialValue = null;
   const quotes = new Map();
   if (toQuote.length) {
-    onStep(`Pricing ${toQuote.length} apartment${toQuote.length === 1 ? "" : "s"} at every lease length`);
-    // The term policy comes from any Rental Options page; one render reads
-    // it and quotes the first batch at the stops we know. If the policy
-    // turns out wider than assumed, the later batches use the real range.
-    const terms0 = quoteTerms(range ?? [6, 24]);
-    const progress = { done: 0, total: toQuote.length };
-    const first = await quoteApartments(portal, toQuote.slice(0, BATCH), terms0, moveIn, onStep, progress);
-    for (const [k, v] of first.quotes) quotes.set(k, v);
-    const options = first.firstHtml ? parseRentalOptionsPage(first.firstHtml) : null;
+    onStep(`Pricing ${toQuote.length} apartment${toQuote.length === 1 ? "" : "s"} at the lease lengths the portal offers`);
+    const got = await quoteApartments(portal, toQuote, moveIn, onStep);
+    for (const [k, v] of got.quotes) quotes.set(k, v);
+    const options = got.firstHtml ? parseRentalOptionsPage(got.firstHtml) : null;
     range = options?.range ?? range;
     term = options?.term ?? term;
     specialValue = options?.specialValue ?? null;
-    if (toQuote.length > BATCH) {
-      const rest = await quoteApartments(portal, toQuote.slice(BATCH), quoteTerms(range ?? [6, 24]), moveIn, onStep, progress);
-      for (const [k, v] of rest.quotes) quotes.set(k, v);
-    }
   }
-  const quoteFor = (a) => quotes.get(a.unitId) ?? (remembered.get(a.unitId)?.rent === a.rent ? remembered.get(a.unitId) : null);
+  const quoteFor = (a) => quotes.get(a.unitId) ?? (fresh(a) ? remembered.get(a.unitId) : null);
 
   const concessions = new Set();
   const feeLists = [];
@@ -359,7 +367,17 @@ export async function readSecureCafe(portal, { known = null, onStep = () => {}, 
   }));
 
   const notes = [];
-  if (range) notes.push(`The leasing portal offers lease terms from ${range[0]} to ${range[1]} months; each lease here lists the lengths it was quoted at.`);
+  // What the slider let us pick, across the building, against what the
+  // page advertises: "3 to 24 months" on the page, 12 on every slider.
+  const offered = [...new Set(all.flatMap((a) => quoteFor(a)?.terms ?? []))].sort((x, y) => x - y);
+  if (offered.length) {
+    const list = offered.length === 1 ? `${offered[0]} months` : `${offered.slice(0, -1).join(", ")} and ${offered[offered.length - 1]} months`;
+    notes.push(
+      range && (offered.length > 1 || offered[0] !== range[0] || offered[0] !== range[1])
+        ? `The leasing portal advertises lease terms from ${range[0]} to ${range[1]} months but is currently letting applicants choose ${list}; the leases here carry what it lets them choose.`
+        : `The leasing portal is currently leasing for ${list}.`
+    );
+  }
   notes.push(...feeSummary(feeLists));
   if (specialValue) notes.push(`The current special is worth about $${specialValue} on a 12-month lease, per the portal.`);
   if (toQuote.length && !quotes.size) notes.push(TIMEOUT_NOTE);
@@ -376,7 +394,7 @@ export async function readSecureCafe(portal, { known = null, onStep = () => {}, 
       plans: parsed.plans.map((p) => ({ id: p.id, name: p.name })),
       apartments: all.map((a) => {
         const q = quoteFor(a);
-        return { unitId: a.unitId, planId: a.planId, number: a.number, rent: a.rent, termPrices: q?.termPrices ?? null, fees: q?.fees ?? null };
+        return { unitId: a.unitId, planId: a.planId, number: a.number, rent: a.rent, terms: q?.terms ?? null, termPrices: q?.termPrices ?? null, fees: q?.fees ?? null };
       }),
     },
     apartments: all.length,

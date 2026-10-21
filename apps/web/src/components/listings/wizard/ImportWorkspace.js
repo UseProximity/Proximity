@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { AlertCircle, Building2, Check, ExternalLink, Loader2, RotateCw, X } from "lucide-react";
+import { AlertCircle, Building2, Check, ExternalLink, Info, Loader2, RotateCw, X } from "lucide-react";
 import EditorOverview from "@/components/listings/editor/EditorOverview";
 import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorContact from "@/components/listings/editor/EditorContact";
@@ -201,6 +201,46 @@ function Proposed({ listingId, proposed, flagged, onApplied }) {
 }
 
 /* One finished tab: the dashboard editor on the draft (or live listing). */
+/*
+ * What the read had to say for itself (plans left out, a fee the portal
+ * adds, a stronger model used), behind an icon at the top right. Listing
+ * them as a stack of banners buried the property under caveats; hover or
+ * tap to read them, the rest of the time the count is enough.
+ */
+function ReadNotes({ notes }) {
+  const [open, setOpen] = useState(false);
+  if (!notes.length) return null;
+  return (
+    <div className="relative shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        aria-expanded={open}
+        aria-label={`${notes.length} note${notes.length === 1 ? "" : "s"} from reading your website`}
+        className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+      >
+        <Info className="h-3.5 w-3.5" />
+        {notes.length} {notes.length === 1 ? "note" : "notes"}
+      </button>
+      {open && (
+        <div role="tooltip" className="absolute right-0 top-full z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700 shadow-lg">
+          <p className="mb-2 font-semibold text-gray-900">From reading your website</p>
+          <ul className="space-y-1.5">
+            {notes.map((n, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                <span>{n}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ListingTab({ job, user, onPublished }) {
   const listingId = job.listing?.id;
   const [data, setData] = useState(null);
@@ -243,27 +283,25 @@ function ListingTab({ job, user, onPublished }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold text-gray-900">{p.title || p.address}</h2>
-          {p.isDraft ? <DraftBadge /> : <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">Live</span>}
-          {job.result?.sourceUrl && (
-            <a href={job.result.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-red-600">
-              <ExternalLink className="h-3 w-3" /> read from your website
-            </a>
-          )}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900">{p.title || p.address}</h2>
+              {p.isDraft ? <DraftBadge /> : <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">Live</span>}
+              {job.result?.sourceUrl && (
+                <a href={job.result.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-red-600">
+                  <ExternalLink className="h-3 w-3" /> read from your website
+                </a>
+              )}
+            </div>
+            <p className="mt-0.5 text-sm text-gray-600">{p.address}</p>
+          </div>
+          <ReadNotes notes={notes} />
         </div>
-        <p className="mt-0.5 text-sm text-gray-600">{p.address}</p>
         {needsAddress && (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
             We couldn&apos;t place this address on the map. Check it is complete (street, city, state) before publishing.
           </p>
-        )}
-        {notes.length > 0 && (
-          <ul className="mt-2 space-y-1 text-xs text-amber-800">
-            {notes.map((n, i) => (
-              <li key={i} className="rounded-lg bg-amber-50 px-3 py-1.5">{n}</li>
-            ))}
-          </ul>
         )}
       </div>
 
