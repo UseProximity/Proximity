@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-21T02:11:47.715Z",
-  "count": 155,
+  "_generated": "2026-10-21T02:39:24.899Z",
+  "count": 157,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -324,6 +324,10 @@
       "description": "One apartment, one row. Two live units at the same property both called"
     },
     {
+      "file": "src/lib/matchmaking/anonymousSessions.js",
+      "description": "Matchmaking before login. Everything the chat route needs to run the Proxy"
+    },
+    {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -558,6 +562,10 @@
     {
       "file": "src/lib/users/viewAs.js",
       "description": "Who a dashboard request is actually ABOUT."
+    },
+    {
+      "file": "src/lib/visitorCookie.js",
+      "description": "The prx_vid device cookie: names a signed-out browser across visits. Shared"
     },
     {
       "file": "src/lib/waitlistNudge.js",

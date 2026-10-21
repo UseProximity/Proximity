@@ -4,12 +4,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import ChatWindow from "./ChatWindow";
 import PreferencePanel from "./PreferencePanel";
+import ClaimChatPrompt from "./ClaimChatPrompt";
 import { applyAnswer, nextQuestion, answerToLabel, describeQuestion, rewindTo } from "@/lib/matchmaking/questionEngine";
 import { QUESTION_BY_ID, QUESTION_PLAN, MAX_TRADEOFFS } from "@/lib/matchmaking/questionScript";
 import { defaultInquiryNote } from "@/lib/matchmaking/contactNote";
 import { trackEvent, getPreviousPath } from "@/utils/analytics";
 
 const LS_KEY = "prx_chat_v2";
+// The newest signed-out chat this browser answered "Not mine" to, so the prompt
+// stays away until a newer one turns up.
+const LS_CLAIM_DISMISSED = "prx_claim_dismissed";
 
 function saveToStorage(data) {
   try {
@@ -46,6 +50,22 @@ const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
 const NARROWING_START = 0.9;
 const NARROWING_STEP = Math.max(0.03, (1 - NARROWING_START) / (MAX_TRADEOFFS + 1));
 
+// Copy for the full-screen card shown when the chat cannot run (see `gate`).
+const GATE_COPY = {
+  auth: {
+    title: "Sign in to chat with Proxy",
+    body: "Answer a few quick questions and get free personalized off-campus housing matches near WashU.",
+  },
+  cap: {
+    title: "You've used your three free chats",
+    body: "Create a free account to keep chatting with Proxy, see your matches, and have Proxy email the owners for you.",
+  },
+  busy: {
+    title: "Proxy is busy right now",
+    body: "A lot of people are chatting from your network. Try again in a little while, or create a free account to keep going.",
+  },
+};
+
 export default function ChatClient() {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -56,9 +76,19 @@ export default function ChatClient() {
   const [loading, setLoading] = useState(false);
   const [recsUpdating, setRecsUpdating] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
-  // The chat API requires a signed-in user in production (401). Without this the
-  // screen rendered an empty, unanswerable chat — show a sign-in card instead.
-  const [needsAuth, setNeedsAuth] = useState(false);
+  // A full-screen card that replaces the chat when it cannot run at all:
+  // "auth" (the API answered 401), "cap" (a signed-out device has used its three
+  // free chats), "busy" (the per-IP guard tripped). null = show the chat.
+  const [gate, setGate] = useState(null);
+  // Signed-out visitor state. `locked` means the matches exist but sit behind the
+  // sign-up wall (the server never sent which listings they are); `triesLeft` is
+  // how many fresh chats this device can still start (null when signed in).
+  const [locked, setLocked] = useState(false);
+  const [triesLeft, setTriesLeft] = useState(null);
+  // Signed in, with signed-out chats on this browser that no account owns yet:
+  // { count, latestAt } drives the "add this chat to your account?" prompt.
+  const [claimOffer, setClaimOffer] = useState(null);
+  const [claimBusy, setClaimBusy] = useState(false);
   const hadCache = useRef(false);
 
   // Refs mirror the latest prefs/weights so rapid chip taps build on current
@@ -130,17 +160,21 @@ export default function ChatClient() {
   // Persist chat state to localStorage on every meaningful change
   useEffect(() => {
     if (messages.length > 0 && sessionId) {
-      saveToStorage({ messages, sessionId, preferences, weights, recommendations, status });
+      saveToStorage({ messages, sessionId, preferences, weights, recommendations, status, locked });
     }
-  }, [messages, sessionId, preferences, weights, recommendations, status]);
+  }, [messages, sessionId, preferences, weights, recommendations, status, locked]);
 
   // Mirror the visible chat back to the server. Several turns are authored only
   // on the client (the "want me to email these owners?" offer, a declined offer,
   // an email draft), and a reload rebuilds the window from the STORED transcript,
   // so without this those turns disappear. Debounced, and pushed through
   // postChain so it can never overtake an in-flight turn.
+  //
+  // Not while locked: a visitor's copy of the transcript is the stripped one
+  // (no listings), nothing is authored client-side behind the wall, and the
+  // server would ignore it anyway.
   useEffect(() => {
-    if (!sessionId || messages.length === 0 || loading) return;
+    if (!sessionId || messages.length === 0 || loading || locked) return;
     const id = setTimeout(() => {
       const transcript = messages.map((m) => ({
         role: m.role,
@@ -161,22 +195,37 @@ export default function ChatClient() {
       );
     }, 800);
     return () => clearTimeout(id);
-  }, [messages, sessionId, loading]);
+  }, [messages, sessionId, loading, locked]);
 
-  const applyServerState = useCallback((data) => {
-    if (data.sessionId) setSessionId(data.sessionId);
-    if (data.preferences) setPreferences(data.preferences);
-    if (data.weights) setWeights(data.weights);
-    if (data.recommendations) setRecommendations(data.recommendations);
-    if (data.status) setStatus(data.status);
+  // Visitor bookkeeping every server response may carry (see the chat route):
+  // whether the picks are behind the wall, and how many fresh chats are left.
+  const applyVisitorState = useCallback((data) => {
+    if (typeof data.locked === "boolean") setLocked(data.locked);
+    if (typeof data.triesLeft === "number") setTriesLeft(data.triesLeft);
   }, []);
+
+  const applyServerState = useCallback(
+    (data) => {
+      if (data.sessionId) setSessionId(data.sessionId);
+      if (data.preferences) setPreferences(data.preferences);
+      if (data.weights) setWeights(data.weights);
+      if (data.recommendations) setRecommendations(data.recommendations);
+      if (data.status) setStatus(data.status);
+      applyVisitorState(data);
+    },
+    [applyVisitorState]
+  );
 
   // Apply ONLY ranking/status from a server response — never prefs/weights/
   // messages, which the client owns optimistically during the question flow.
-  const applyRanking = useCallback((data) => {
-    if (data.recommendations) setRecommendations(data.recommendations);
-    if (data.status) setStatus(data.status);
-  }, []);
+  const applyRanking = useCallback(
+    (data) => {
+      if (data.recommendations) setRecommendations(data.recommendations);
+      if (data.status) setStatus(data.status);
+      applyVisitorState(data);
+    },
+    [applyVisitorState]
+  );
 
   const inlineRecsMessage = (data) => ({
     role: "assistant",
@@ -214,9 +263,16 @@ export default function ChatClient() {
     );
   }, []);
 
-  // Append the matches followed by the contact offer in one update.
+  // Append the matches followed by the contact offer in one update. A visitor's
+  // matches arrive locked (intention labels only): the turn renders as the
+  // sign-up wall instead of cards, and there is no contact offer to make.
   const appendRecsWithContact = useCallback(
     (data) => {
+      if (data.locked) {
+        trackEvent("Proxy Matches Locked", { count: data.recommendations?.length ?? 0 });
+        setMessages((prev) => [...prev, { ...inlineRecsMessage(data), locked: true }]);
+        return;
+      }
       trackEvent("Proxy Recommendations Shown", { count: data.recommendations?.length ?? 0 });
       setMessages((prev) => {
         const next = [...prev, inlineRecsMessage(data)];
@@ -413,8 +469,7 @@ export default function ChatClient() {
         kind: "scripted",
         step: stepIdx + 1,
         totalSteps: QUESTION_PLAN.length,
-        // The name question's label contains the student's name — keep it out of analytics.
-        ...(answer.questionId === "name_confirm" ? {} : { answer: answerToLabel(answer) }),
+        answer: answerToLabel(answer),
       });
 
       prefsRef.current = applied.preferences;
@@ -593,31 +648,65 @@ export default function ChatClient() {
         if (cached.weights) setWeights(cached.weights);
         if (cached.recommendations) setRecommendations(cached.recommendations);
         if (cached.status) setStatus(cached.status);
+        if (cached.locked) setLocked(true);
         hadCache.current = true;
       } else {
         setLoading(true);
       }
 
-      // 2. Sync with server (authoritative source). Ask for the session we were
-      // last in by id — that's what lets an anonymous/guest tester resume, since
-      // guests share one identity and can't be handed "their latest session".
+      // 2. Back from the sign-up wall (?claim=1): move this browser's signed-out
+      // chats into the account first, so the request below gets the one we were
+      // in back unlocked. The marker is dropped from the address bar so a reload
+      // or a shared link never claims again. A failure (or no session after all)
+      // falls through: the prompt below still offers the claim.
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("claim")) {
+        params.delete("claim");
+        const qs = params.toString();
+        window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+        try {
+          const claimRes = await fetch("/api/matchmaking/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "claim" }),
+          });
+          if (claimRes.ok) {
+            const { claimed } = await claimRes.json();
+            trackEvent("Proxy Chat Claimed", { from: "wall", count: claimed ?? 0 });
+          }
+        } catch (err) {
+          console.error("[ChatClient] claim failed:", err);
+        }
+      }
+
+      // 3. Sync with server (authoritative source). Ask for the session we were
+      // last in by id, so the device that ran a signed-out chat resumes that
+      // exact chat (unlocked, once claimed).
       try {
-        const res = await fetch(
-          cached?.sessionId
-            ? `/api/matchmaking/chat?sessionId=${encodeURIComponent(cached.sessionId)}`
-            : "/api/matchmaking/chat"
-        );
+        const query = new URLSearchParams({ claimable: "1" });
+        if (cached?.sessionId) query.set("sessionId", cached.sessionId);
+        const res = await fetch(`/api/matchmaking/chat?${query}`);
         if (res.status === 401) {
-          // Anonymous in production — a cached transcript can't be continued either.
+          // Only a bad mobile token answers 401 now, but a cached transcript
+          // still can't be continued from here.
           localStorage.removeItem(LS_KEY);
           setMessages([]);
-          setNeedsAuth(true);
+          setGate("auth");
           setLoading(false);
           return;
         }
-        const { session } = await res.json();
+        const { session, anonymous, triesLeft: left, claimable } = await res.json();
+        if (typeof left === "number") setTriesLeft(left);
+        if (claimable?.count > 0) {
+          let dismissed = null;
+          try {
+            dismissed = localStorage.getItem(LS_CLAIM_DISMISSED);
+          } catch {}
+          if (dismissed !== claimable.latestAt) setClaimOffer(claimable);
+        }
 
         if (session) {
+          setLocked(!!session.locked);
           // Transcript messages already carry their `question` descriptor.
           const serverMessages = (session.transcript ?? []).map((m) => ({
             role: m.role,
@@ -627,6 +716,7 @@ export default function ChatClient() {
             ...(m.questionId ? { questionId: m.questionId } : {}),
             ...(m.tradeoffIndex != null ? { tradeoffIndex: m.tradeoffIndex } : {}),
             ...(m.recommendations ? { recommendations: m.recommendations } : {}),
+            ...(m.locked ? { locked: true } : {}),
             ...(m.draft ? { draft: m.draft } : {}),
           }));
           // A pre-rework session has messages but none carry a `question`
@@ -648,8 +738,9 @@ export default function ChatClient() {
           if (serverMessages.length > 0) {
             // If the matches are the last thing shown (the offer hasn't been answered
             // yet), re-add the "contact owners?" question so a reload still offers it.
+            // Not behind the wall: a visitor can't email anyone.
             const last = serverMessages[serverMessages.length - 1];
-            if (session.status === "recommendations_ready" && last?.recommendations) {
+            if (session.status === "recommendations_ready" && last?.recommendations && !session.locked) {
               const contact = buildContactMessage(session.recommendations, false);
               setMessages(contact ? [...serverMessages, contact] : serverMessages);
             } else {
@@ -660,13 +751,28 @@ export default function ChatClient() {
             return;
           }
           setLoading(false);
-        } else if (!hadCache.current) {
-          await startFresh();
-        } else {
-          // The server has no session to hand back, but we restored a real
-          // transcript from this browser — keep it. (Wiping it here is what used
-          // to nuke a guest tester's whole chat on reload.)
+        } else if (anonymous && left === 0) {
+          // This device has no live chat and no tries left: the only way on is
+          // an account.
+          localStorage.removeItem(LS_KEY);
+          setMessages([]);
+          setGate("cap");
           setLoading(false);
+        } else {
+          // The server has nothing to hand back, so whatever this browser cached
+          // belongs to a chat that can no longer be continued (signed out of the
+          // account that owns it, cookie cleared, or purged). Start clean.
+          if (hadCache.current) {
+            localStorage.removeItem(LS_KEY);
+            setMessages([]);
+            setSessionId(null);
+            setPreferences({});
+            setWeights({});
+            setRecommendations([]);
+            setStatus("in_progress");
+            setLocked(false);
+          }
+          await startFresh();
         }
       } catch (err) {
         console.error("[ChatClient] serverSync failed:", err);
@@ -684,10 +790,14 @@ export default function ChatClient() {
           body: JSON.stringify({ message: "" }),
         });
         if (res.status === 401) {
-          setNeedsAuth(true);
+          setGate("auth");
           return;
         }
         const data = await res.json();
+        if (res.status === 429) {
+          setGate(data.error === "cap_reached" ? "cap" : "busy");
+          return;
+        }
         if (res.ok) {
           applyServerState(data);
           setMessages([
@@ -705,6 +815,39 @@ export default function ChatClient() {
 
     init();
   }, [applyServerState, buildContactMessage]);
+
+  // "Add it": claim, then reopen the page on the newest claimed chat. Pointing the
+  // cache at it (with no messages) makes init ask for that chat by id.
+  const handleClaim = useCallback(async () => {
+    setClaimBusy(true);
+    try {
+      const res = await fetch("/api/matchmaking/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "claim" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        trackEvent("Proxy Chat Claimed", { from: "prompt", count: data.claimed ?? 0 });
+        if (data.sessionId) saveToStorage({ sessionId: data.sessionId });
+        window.location.reload();
+        return;
+      }
+    } catch (err) {
+      console.error("[ChatClient] claim failed:", err);
+    }
+    setClaimBusy(false);
+  }, []);
+
+  // "Not mine": leave the chat unclaimed (it expires on its own) and stop asking
+  // until a newer signed-out chat appears on this browser.
+  const dismissClaim = useCallback(() => {
+    try {
+      if (claimOffer?.latestAt) localStorage.setItem(LS_CLAIM_DISMISSED, claimOffer.latestAt);
+    } catch {}
+    trackEvent("Proxy Chat Claim Declined", {});
+    setClaimOffer(null);
+  }, [claimOffer]);
 
   const handlePanelUpdate = useCallback(
     (data) => {
@@ -815,6 +958,7 @@ export default function ChatClient() {
   );
 
   // Abandon the current chat and begin a brand-new session from question one.
+  // For a signed-out device this spends one of its three free chats.
   const startOver = useCallback(async () => {
     trackEvent("Proxy Chat Started", { restart: true });
     contactStageRef.current = "none";
@@ -827,6 +971,7 @@ export default function ChatClient() {
     setWeights({});
     setRecommendations([]);
     setStatus("in_progress");
+    setLocked(false);
     setLoading(true);
     try {
       const res = await fetch("/api/matchmaking/chat", {
@@ -835,6 +980,10 @@ export default function ChatClient() {
         body: JSON.stringify({ message: "" }),
       });
       const data = await res.json();
+      if (res.status === 429) {
+        setGate(data.error === "cap_reached" ? "cap" : "busy");
+        return;
+      }
       if (res.ok) {
         applyServerState(data);
         setMessages([
@@ -865,30 +1014,31 @@ export default function ChatClient() {
   })();
   const progressPct = Math.round(progress * 100);
 
-  // Signed-out: the chat can't run at all, so replace it with a sign-in card
-  // rather than an empty window that never answers.
-  if (needsAuth) {
+  // The chat can't run at all: replace it with a card that says why and offers
+  // the way forward (an account), rather than an empty window that never answers.
+  if (gate) {
+    const copy = GATE_COPY[gate] ?? GATE_COPY.auth;
     return (
       <div className="h-[calc(100svh-109px)] md:h-[calc(100svh-130px)] bg-gray-50 flex items-center justify-center px-4">
         <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-8 text-center">
           <div className="w-12 h-12 mx-auto rounded-full bg-red-100 text-red-600 text-lg font-bold flex items-center justify-center">
             P
           </div>
-          <h1 className="mt-4 text-xl font-bold text-gray-900">Sign in to chat with Proxy</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Answer a few quick questions and get free personalized off-campus housing matches near WashU.
-          </p>
-          <Link
-            href="/login?callbackUrl=/matchmaking"
-            className="mt-6 block w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
-          >
-            Sign in
-          </Link>
+          <h1 className="mt-4 text-xl font-bold text-gray-900">{copy.title}</h1>
+          <p className="mt-2 text-sm text-gray-500">{copy.body}</p>
           <Link
             href="/login?tab=signup&callbackUrl=/matchmaking"
+            onClick={() => trackEvent("Proxy Gate Clicked", { gate, action: "signup" })}
+            className="mt-6 block w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition"
+          >
+            Create a free account
+          </Link>
+          <Link
+            href="/login?callbackUrl=/matchmaking"
+            onClick={() => trackEvent("Proxy Gate Clicked", { gate, action: "login" })}
             className="mt-3 inline-block text-sm font-medium text-gray-500 hover:text-red-600 transition"
           >
-            Create an account
+            Already have one? Log in
           </Link>
         </div>
       </div>
@@ -923,17 +1073,18 @@ export default function ChatClient() {
         </div>
       </div>
 
-      {/* Mobile bottom sheet */}
+      {/* Mobile bottom sheet. Sized to its content (capped at 60vh) so a chat
+          with two answers gets a short sheet, not a mostly empty one. */}
       {panelOpen && (
         <div
           className="md:hidden fixed inset-0 z-40 bg-black/30"
           onClick={() => setPanelOpen(false)}
         >
           <div
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl h-[60vh] overflow-hidden"
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[60vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 pt-3 pb-1">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 pt-3 pb-1">
               <button
                 onClick={() => {
                   startOver();
@@ -958,6 +1109,7 @@ export default function ChatClient() {
               sessionId={sessionId}
               onUpdated={handlePanelUpdate}
               onUpdating={setRecsUpdating}
+              readOnly={locked}
             />
           </div>
         </div>
@@ -989,6 +1141,7 @@ export default function ChatClient() {
               Start over
             </button>
           </div>
+          <ClaimChatPrompt offer={claimOffer} busy={claimBusy} onClaim={handleClaim} onDismiss={dismissClaim} />
           {/* Recommendations now render inline in the chat so the user can keep
               chatting to refine — no full-screen swap. */}
           <ChatWindow
@@ -996,21 +1149,27 @@ export default function ChatClient() {
             loading={loading}
             recsUpdating={recsUpdating}
             userInitial={(preferences?.name ?? "").trim().charAt(0).toUpperCase()}
+            locked={locked}
+            triesLeft={triesLeft}
             onSend={handleUserSend}
             onAnswer={handleAnswer}
             onSendDraft={handleSendDraft}
-            onEdit={handleEditFrom}
+            // Behind the wall nothing can be edited (an edit is a re-rank).
+            onEdit={locked ? undefined : handleEditFrom}
           />
         </div>
 
-        {/* Side panel — desktop only; always the answers panel so users can edit */}
-        <div className="hidden md:flex flex-col w-72 min-h-0 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        {/* Side panel, desktop only. Always the answers panel so users can edit.
+            self-start + max-h-full: it hugs its content and grows with each
+            answer, up to the chat's height, instead of standing full height. */}
+        <div className="hidden md:flex flex-col w-72 self-start max-h-full min-h-0 bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <PreferencePanel
             preferences={preferences}
             weights={weights}
             sessionId={sessionId}
             onUpdated={handlePanelUpdate}
             onUpdating={setRecsUpdating}
+            readOnly={locked}
           />
         </div>
       </div>

@@ -814,7 +814,7 @@ function CTABand() {
 // ─── Matchmaking Prompt Popup ──────────────────────────────────────────────────
 
 function MatchmakingPopup() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -822,17 +822,17 @@ function MatchmakingPopup() {
     if (status === "loading") return;
 
     const check = async () => {
-      if (session?.user) {
-        try {
-          // Don't nag someone who has already started the Proxy chat. The chat
-          // GET returns their latest non-abandoned session (null if none), so a
-          // session here means they're already in the flow.
-          const res = await fetch("/api/matchmaking/chat");
-          const { session: chatSession } = await res.json();
-          if (chatSession) return;
-        } catch {
-          // show popup on error to be safe
-        }
+      try {
+        // Don't nag someone who has already started the Proxy chat. The chat
+        // GET returns their latest non-abandoned session (null if none), so a
+        // session here means they're already in the flow. Signed-out visitors
+        // can chat too now, so this is asked for everyone: for them it answers
+        // from the device cookie (and sets none when there is no chat yet).
+        const res = await fetch("/api/matchmaking/chat");
+        const { session: chatSession } = await res.json();
+        if (chatSession) return;
+      } catch {
+        // show popup on error to be safe
       }
       // Delay before showing
       const t = setTimeout(() => setVisible(true), 3000);
@@ -843,7 +843,7 @@ function MatchmakingPopup() {
     return () => {
       cleanup?.then?.((fn) => fn?.());
     };
-  }, [status, session]);
+  }, [status]);
 
   if (dismissed || !visible) return null;
 

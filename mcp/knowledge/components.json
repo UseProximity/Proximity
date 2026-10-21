@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-21T00:38:39.456Z",
-  "count": 132,
+  "_generated": "2026-10-21T02:39:24.875Z",
+  "count": 134,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -531,6 +531,16 @@
     {
       "name": "ChatWindow",
       "file": "src/components/matchmaking/ChatWindow.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ClaimChatPrompt",
+      "file": "src/components/matchmaking/ClaimChatPrompt.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LockedMatches",
+      "file": "src/components/matchmaking/LockedMatches.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

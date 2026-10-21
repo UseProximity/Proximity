@@ -636,8 +636,13 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           used to carry its own availability flag, set here and reported nowhere
           the landlord looked; it drifted out of step with the marketplace and
           quietly hid live properties. Withdraw the last offering to take a unit
-          off the market; add or restore one to put it back. */}
-      {isPropertyOwner && (
+          off the market; add or restore one to put it back.
+
+          Not on a draft property. Its units are born with published_at set,
+          so one with a live-shaped offering read "On the market, students can
+          see this unit" under a banner saying students can see none of it.
+          The banner is the whole answer there. */}
+      {isPropertyOwner && !listing?.isDraft && (
         <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
           <span className="text-xs text-gray-500">
             {unitIsDraft

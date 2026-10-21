@@ -69,8 +69,20 @@ export default function PropertyAnalyticsSection({
   const images = Array.isArray(p.images) ? p.images : [];
   const pendingCount = (p.draftUnitCount ?? 0) + (p.draftLeaseCount ?? 0);
 
+  /*
+   * Opens the same listing popup students get from the homepage cards, right
+   * here over the dashboard, through the global ?listing= modal in preview
+   * mode. It used to send the landlord off to the browse page in a new tab,
+   * which could not show a draft at all (the public API hides them) and
+   * counted the landlord's own look as a student click in their metrics.
+   * Built from window.location so the dashboard's own tab/property/viewAs
+   * params, which it writes with history.replaceState, come along.
+   */
   const handleViewAsStudent = () => {
-    window.open(`/browse?panel=${p._id || p.id}`, "_blank");
+    const params = new URLSearchParams(window.location.search);
+    params.set("listing", listingId);
+    params.set("preview", "1");
+    router.push(`?${params.toString()}`);
   };
 
   return (
@@ -105,16 +117,20 @@ export default function PropertyAnalyticsSection({
               {p.unavailable ? "Unavailable" : "Available"}
             </Badge>
           )}
-          {/* A draft isn't on the site, so there is no student view of it yet. */}
-          {!p.isDraft && (
+          {/* On a draft this shows what students WILL see once it's published;
+              on a live property, what they see now. */}
           <button
             onClick={handleViewAsStudent}
+            title={
+              p.isDraft
+                ? "See this draft the way students will once it's published"
+                : "See this property the way students see it now"
+            }
             className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition-colors"
           >
             <Eye className="h-3.5 w-3.5" />
             View as Student
           </button>
-          )}
           {/* No Edit button. Everything below this header is editable in place
               now, the old button opened a separate modal over a panel that
               already edits itself, which meant two ways to change the same
