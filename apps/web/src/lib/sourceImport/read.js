@@ -663,7 +663,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     const urns = [...new Set([...crawl.fetched].reverse().map((f) => (G5_HINT_RE.test(f.html) ? findG5Urns(f.html).location : null)).filter(Boolean))];
     for (const location of urns) {
       onStep("Reading live availability");
-      const inv = await fetchG5Inventory(location);
+      const inv = await fetchG5Inventory(location, { vlsHost: crawl.fetched.map((f) => f.html?.match(/"vlsHost"\s*:\s*"(https?:[^"]+)"/)?.[1]).find(Boolean) });
       if (!inv) continue;
       {
         platform = "g5";

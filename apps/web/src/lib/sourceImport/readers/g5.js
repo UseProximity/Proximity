@@ -74,13 +74,119 @@ export async function fetchG5Locations(clientUrn) {
  * offer per apartment and per lease-term price where the units feed has
  * them, else one offer at the plan's starting rate.
  */
-export async function fetchG5Inventory(locationUrn) {
+/*
+ * The price at every lease length, from G5's lease-terms service.
+ *
+ * The floor plans widget shows "9 months $1,880 ... 15 months $1,695" per
+ * apartment (Jasper). Those figures are not in the inventory feed: the
+ * widget POSTs the apartment to <vlsHost>/api/v1/lease_terms_retrievals,
+ * gets back a Pusher channel, and the matrix arrives as one event on it
+ * ("lease_term_options_from_rent_matrix", about a second later). This does
+ * the same over one websocket for every apartment of the building, and
+ * returns Map(apartment id -> [{ months, price }]). No credits, no model.
+ */
+const VLS_DEFAULT = "https://vendor-leads.g5marketingcloud.com";
+const PUSHER_HOST = "ws.pusherapp.com";
+const MAX_TERM_LOOKUPS = 80;
+const MATRIX_WAIT_MS = 12000;
+
+export async function fetchG5LeaseTerms({ locationUrn, vlsHost = VLS_DEFAULT, plans, apartments, moveInDate }) {
+  const out = new Map();
+  if (typeof WebSocket !== "function" || !apartments.length) return out;
+  const planById = new Map(plans.map((p) => [String(p.id), p]));
+  // One ticket per apartment.
+  const tickets = [];
+  for (const a of apartments.slice(0, MAX_TERM_LOOKUPS)) {
+    const plan = planById.get(String(a.floorplanId)) ?? plans.find((p) => p.name === a.floorplan?.name);
+    if (!plan?.locationCode) continue;
+    const body = {
+      location_urn: locationUrn,
+      location_code: plan.locationCode,
+      needed_by_date: moveInDate,
+      unit_data: {
+        floorplan_name: (plan.externalIds ?? [])[0] ?? plan.name,
+        apartment_name: a.name,
+        unit_id: a.externalId,
+        building_id: a.building,
+        external_id: a.externalId,
+        parent_external_id: a.parentExternalId ?? null,
+        ...(Number(a.requiredFeesDeposits) > 0 ? { required_fees_deposits: a.requiredFeesDeposits } : {}),
+      },
+    };
+    try {
+      const res = await fetch(`${vlsHost.replace(/\/$/, "")}/api/v1/lease_terms_retrievals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const t = res.ok ? await res.json().catch(() => null) : null;
+      if (t?.pusher_channel && t?.pusher_key) tickets.push({ apartmentId: a.id, channel: t.pusher_channel, event: t.pusher_event, key: t.pusher_key });
+    } catch (err) {
+      console.log(`[source-import] g5 lease terms ticket failed for ${a.name}: ${err?.message}`);
+    }
+  }
+  if (!tickets.length) return out;
+
+  // One socket, every channel; done when all have answered or time is up.
+  const byChannel = new Map(tickets.map((t) => [t.channel, t]));
+  await new Promise((resolve) => {
+    let ws;
+    const finish = () => {
+      clearTimeout(timer);
+      try {
+        ws?.close();
+      } catch {
+        /* closing anyway */
+      }
+      resolve();
+    };
+    const timer = setTimeout(finish, MATRIX_WAIT_MS);
+    try {
+      ws = new WebSocket(`wss://${PUSHER_HOST}/app/${tickets[0].key}?protocol=7&client=js&version=8.4.0&flash=false`);
+    } catch {
+      finish();
+      return;
+    }
+    ws.onerror = () => finish();
+    ws.onmessage = (m) => {
+      let msg;
+      try {
+        msg = JSON.parse(m.data);
+      } catch {
+        return;
+      }
+      if (msg.event === "pusher:connection_established") {
+        for (const t of tickets) ws.send(JSON.stringify({ event: "pusher:subscribe", data: { channel: t.channel } }));
+        return;
+      }
+      const t = byChannel.get(msg.channel);
+      if (!t || msg.event !== t.event) return;
+      let payload;
+      try {
+        payload = typeof msg.data === "string" ? JSON.parse(msg.data) : msg.data;
+      } catch {
+        payload = null;
+      }
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      const matrix = rows
+        .map((r) => ({ months: Number(r.lease_term), price: money(r.rent ?? r.base_rent), spaceOption: r.space_option ?? null }))
+        .filter((r) => Number.isInteger(r.months) && r.months > 0 && r.price);
+      out.set(t.apartmentId, matrix);
+      byChannel.delete(msg.channel);
+      if (!byChannel.size) finish();
+    };
+  });
+  return out;
+}
+
+export async function fetchG5Inventory(locationUrn, { vlsHost = VLS_DEFAULT } = {}) {
   if (!/^g5-cl-[a-z0-9-]+$/i.test(locationUrn ?? "")) return null;
   const plus = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
   const data = await gql(
     `query($u:String!){
       apartmentComplex(locationUrn:$u){ firstAvailableMoveInDate pricingDisclaimer
-        floorplans { id name beds baths sqft startingRate endingRate totalAvailableUnits leaseTermBasisMin imageUrl imageUrls hasSpecials floorplanSpecial { name } } }
+        floorplans { id name beds baths sqft startingRate endingRate totalAvailableUnits leaseTermBasisMin imageUrl imageUrls hasSpecials floorplanSpecial { name } locationCode externalIds } }
     }`,
     { u: locationUrn }
   );
@@ -102,13 +208,17 @@ export async function fetchG5Inventory(locationUrn) {
       const p = withUnits[cursor++];
       if (!p) return;
       const r = await gql(
-        `query($u:String!,$d:String,$f:ID){ units(locationUrn:$u, moveInDate:$d, floorplanId:$f, limit:200){ name displayName sqftDisplay availabilityDate prices { priceType formattedPrice value leaseTermBasisMin } floorplan { name } specials { name } } }`,
+        `query($u:String!,$d:String,$f:ID){ units(locationUrn:$u, moveInDate:$d, floorplanId:$f, limit:200){ id name displayName sqftDisplay availabilityDate externalId building parentExternalId requiredFeesDeposits prices { priceType formattedPrice value leaseTermBasisMin } floorplan { name } specials { name } } }`,
         { u: locationUrn, d: plus(60), f: String(p.id) }
       );
-      for (const a of r?.units ?? []) apartments.push({ ...a, floorplan: a.floorplan ?? { name: p.name } });
+      for (const a of r?.units ?? []) apartments.push({ ...a, floorplanId: String(p.id), floorplan: a.floorplan ?? { name: p.name } });
     }
   };
   await Promise.all(Array.from({ length: Math.min(6, withUnits.length) }, worker));
+
+  // The price at every lease length, where the site's widget offers one.
+  const matrices = await fetchG5LeaseTerms({ locationUrn, vlsHost, plans, apartments, moveInDate: plus(60) });
+  if (matrices.size) console.log(`[source-import] g5 lease terms: ${matrices.size} of ${apartments.length} apartments priced per term`);
 
   const byPlan = new Map();
   for (const a of apartments) {
@@ -117,11 +227,13 @@ export async function fetchG5Inventory(locationUrn) {
     byPlan.get(key).push(a);
   }
   const concessions = new Set();
-  // A plan with nothing free and no apartments is the catalogue, not the
-  // inventory (see rentcafeEmbedded.js); it arrives when something frees up.
+  // Every plan the site shows, including ones with nothing free right now
+  // (Jasper's Sapphire): those arrive switched off with the site's starting
+  // price, and the sync turns them on when an apartment frees up. Only a
+  // plan with neither a price nor an apartment is left out.
   let skipped = 0;
   const units = plans.filter((p) => {
-    const keep = Number(p.totalAvailableUnits) > 0 || (byPlan.get(String(p.name ?? "").toLowerCase()) ?? []).length > 0;
+    const keep = Number(p.totalAvailableUnits) > 0 || money(p.startingRate) || (byPlan.get(String(p.name ?? "").toLowerCase()) ?? []).length > 0;
     if (!keep) skipped += 1;
     return keep;
   }).map((p) => {
@@ -130,7 +242,13 @@ export async function fetchG5Inventory(locationUrn) {
     for (const a of mine) {
       const number = (a.displayName || a.name || "").replace(/^(apt|unit|#)\s*/i, "").trim();
       const prices = (a.prices ?? []).filter((x) => money(x.value));
-      if (prices.length) {
+      const matrix = matrices.get(a.id) ?? [];
+      if (matrix.length) {
+        // One offer per term price; equal prices share a lease downstream.
+        for (const m of matrix) {
+          offers.push({ rent: m.price, rentIsPerPerson: !!m.spaceOption, leaseTermMonths: [m.months], availableFrom: isoDate(a.availabilityDate), apartments: number ? [number] : [] });
+        }
+      } else if (prices.length) {
         for (const x of prices) {
           const term = num(String(x.leaseTermBasisMin ?? "").match(/\d+/)?.[0]);
           offers.push({ rent: money(x.value), rentIsPerPerson: false, leaseTermMonths: term ? [term] : [], availableFrom: isoDate(a.availabilityDate), apartments: number ? [number] : [] });
@@ -151,7 +269,7 @@ export async function fetchG5Inventory(locationUrn) {
       area: num(p.sqft, { max: 20000, min: 50 }),
       // G5 plans carry one image, the diagram.
       floorPlanImageUrl: images[0] ?? null,
-      available: Number(p.totalAvailableUnits) > 0 || offers.length > 0,
+      available: Number(p.totalAvailableUnits) > 0 || mine.length > 0,
       photos: [],
       offers,
       rentRange: money(p.endingRate) && money(p.endingRate) !== money(p.startingRate) ? [money(p.startingRate), money(p.endingRate)] : null,
@@ -163,7 +281,10 @@ export async function fetchG5Inventory(locationUrn) {
   if (data?.apartmentComplex?.pricingDisclaimer) notes.push(`The site says: ${data.apartmentComplex.pricingDisclaimer}`);
   const ranged = units.filter((u) => u.rentRange && !u.offers.some((o) => o.apartments.length)).length;
   if (ranged) notes.push(`${ranged} floor plan${ranged === 1 ? " shows" : "s show"} a rent range on the site; the lowest figure was imported as the lease price.`);
-  if (units.every((u) => u.offers.every((o) => !o.leaseTermMonths.length))) {
+  if (matrices.size) {
+    const months = [...new Set([...matrices.values()].flat().map((m) => m.months))].sort((x, y) => x - y);
+    notes.push(`Rent changes with the lease length on this site (${months[0]} to ${months[months.length - 1]} months); each lease here is one price with the lengths it buys.`);
+  } else if (units.every((u) => u.offers.every((o) => !o.leaseTermMonths.length))) {
     notes.push("The site does not publish lease lengths on its floor plans. Choose them for each lease before publishing.");
   }
   return { units, concessions: [...concessions], notes, apartments: apartments.length };
