@@ -418,7 +418,8 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
     }
     if (embedded?.length) {
       console.log(`[source-import] embedded property list: ${embedded.length} buildings (nearest ${embedded[0].name}, ${embedded[0].distanceKm ?? "?"} km)`);
-      return { kind: "properties", sourceUrl: main.finalUrl, properties: embedded.map(({ distanceKm, ...p }) => p) };
+      // distanceKm rides along: the picker places a building by it when it has one.
+      return { kind: "properties", sourceUrl: main.finalUrl, properties: embedded };
     }
   }
 

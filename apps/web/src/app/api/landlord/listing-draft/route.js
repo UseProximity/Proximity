@@ -8,6 +8,8 @@ import { auth } from "@/auth";
 import { discoverSite } from "@/lib/sourceImport/read";
 import { findExistingProperties } from "@/lib/listings/propertyName";
 import { getOwnedListings } from "@/lib/listings/ownership";
+import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
+import supabase from "@/lib/supabase";
 import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
 
 /*
@@ -89,6 +91,19 @@ async function markAlreadyListed(properties, userId) {
     findExistingProperties(pickable),
     findExistingProperties(pickable, { ids: [...owned.keys()] }),
   ]);
+  /*
+   * Whose it is. Three answers, and the workspace treats each differently:
+   *   you      your own record, or you hold a lease there: the read becomes
+   *            proposed changes you accept on that tab
+   *   none     listed by Proximity with no landlord behind it (an import or a
+   *            review stub): ticking it makes it yours, then as above
+   *   other    another landlord's: shown, not read, with a way to add your
+   *            own units to it by hand
+   */
+  const hitIds = [...new Set([...listed.values(), ...mine.values()].map((h) => h.id))];
+  const placeholderId = await resolveProximityLandlordId().catch(() => null);
+  const { data: landlordRows } = hitIds.length ? await supabase.from("listing_landlords").select("listing_id, user_id").in("listing_id", hitIds) : { data: [] };
+  const realOwners = new Set((landlordRows ?? []).filter((r) => r.user_id && r.user_id !== placeholderId).map((r) => r.listing_id));
   return properties.map((p) => {
     const own = mine.get(p);
     const hit = own ?? listed.get(p);
@@ -100,6 +115,7 @@ async function markAlreadyListed(properties, userId) {
             title: hit.title ?? null,
             address: hit.address ?? null,
             mine: own ? (owned.get(hit.id) === "lease" ? "lease" : "owner") : null,
+            owner: own ? "you" : realOwners.has(hit.id) ? "other" : "none",
           },
         }
       : p;

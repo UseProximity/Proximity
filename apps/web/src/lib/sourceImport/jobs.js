@@ -23,6 +23,7 @@ import { findPropertyNameConflict } from "@/lib/listings/propertyName";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
+import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { readProperty, DraftFetchError } from "./read.js";
 import { applySnapshot } from "./apply.js";
 import { summarize } from "./snapshot.js";
@@ -134,11 +135,29 @@ export async function createImportBatch({ userId, user, pastedUrl, targets }) {
       url: typeof raw.url === "string" ? raw.url.slice(0, 500) : null,
       levelUrl: typeof raw.levelUrl === "string" ? raw.levelUrl.slice(0, 500) : null,
       pastedUrl,
-      alreadyListed: raw.alreadyListed?.id ? { id: raw.alreadyListed.id, title: raw.alreadyListed.title ?? null, mine: raw.alreadyListed.mine ?? null } : null,
+      alreadyListed: raw.alreadyListed?.id
+        ? { id: raw.alreadyListed.id, title: raw.alreadyListed.title ?? null, mine: raw.alreadyListed.mine ?? null, owner: raw.alreadyListed.owner ?? (raw.alreadyListed.mine ? "you" : "other") }
+        : null,
     };
     let listingId = null;
     let created = null;
-    if (target.alreadyListed?.mine) {
+    if (target.alreadyListed?.owner === "none") {
+      /*
+       * Listed by Proximity with nobody behind it. Ticking it is the same
+       * claim a landlord makes by adding units to it by hand (addListing):
+       * the record becomes theirs, and the read is laid over it as proposed
+       * changes. If the claim is refused (someone else holds a lease there),
+       * it is treated as another landlord's.
+       */
+      const claimed = await claimUnclaimedProperty({ userId, listingId: target.alreadyListed.id });
+      if (claimed) {
+        listingId = target.alreadyListed.id;
+        target.alreadyListed = { ...target.alreadyListed, mine: "owner", owner: "you", claimed: true };
+      } else {
+        target.alreadyListed = { ...target.alreadyListed, owner: "other" };
+        target.skipped = "Already on Proximity under another landlord.";
+      }
+    } else if (target.alreadyListed?.mine) {
       listingId = target.alreadyListed.id;
     } else if (target.alreadyListed) {
       // Someone else's building: nothing to write to. Recorded so the tab can say so.

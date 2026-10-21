@@ -49,7 +49,7 @@ function StatusLine({ job }) {
         <AlertCircle className="h-3 w-3" /> Couldn&apos;t read it
       </span>
     );
-  if (job.status === "cancelled") return <span className="text-gray-400">{job.step || "Skipped"}</span>;
+  if (job.status === "cancelled") return <span className="text-gray-400">{job.target?.alreadyListed ? "Not read: not yours to change" : job.step || "Skipped"}</span>;
   if (job.listing && !job.listing.isDraft && job.result?.mode === "sync")
     return <span className="text-amber-700">{job.result.held ? `${job.result.held} proposed change${job.result.held === 1 ? "" : "s"}` : "Up to date"}</span>;
   if (job.listing && !job.listing.isDraft)
@@ -375,7 +375,10 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
     );
   }
 
-  const jobs = batch.jobs.filter((j) => j.status !== "cancelled" || !j.target?.skipped);
+  // Every ticked property has a tab, the ones already on Proximity included.
+  const jobs = batch.jobs;
+  const existing = jobs.filter((j) => j.target?.alreadyListed);
+  const fresh = jobs.filter((j) => !j.target?.alreadyListed);
   const reading = jobs.filter((j) => ACTIVE.has(j.status)).length;
   const done = jobs.filter((j) => j.status === "done").length;
   const published = jobs.filter((j) => j.status === "done" && j.listing && !j.listing.isDraft && j.result?.mode === "import").length;
@@ -394,7 +397,9 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Review your listings</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {jobs.length} {jobs.length === 1 ? "property" : "properties"} from {host}, saved as drafts. Check each one, then publish it or keep it as a draft.
+              {fresh.length > 0 && `${fresh.length} new ${fresh.length === 1 ? "property" : "properties"} from ${host}, saved as drafts. Check each one, then publish it or keep it as a draft.`}
+              {fresh.length > 0 && existing.length > 0 && " "}
+              {existing.length > 0 && `${existing.length} ${existing.length === 1 ? "is" : "are"} already on Proximity: ${existing.length === 1 ? "its tab shows" : "their tabs show"} what the website says differently.`}
             </p>
             {reading > 0 && jobs.length > 1 && (
               <p className="mt-1 text-xs text-gray-500">
@@ -420,7 +425,17 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
 
       <div className="flex flex-col gap-4 md:flex-row md:items-start">
         <nav className="flex gap-2 overflow-x-auto pb-1 md:w-64 md:shrink-0 md:flex-col md:overflow-visible md:pb-0">
-          {jobs.map((j) => {
+          {[
+            { title: "New from your website", list: fresh },
+            { title: "Already on Proximity", list: existing },
+          ].filter((g) => g.list.length).map((g, gi) => (
+          <div key={g.title} className="contents md:block">
+            {(fresh.length > 0 && existing.length > 0) && (
+              <p className={`hidden text-[11px] font-semibold uppercase tracking-wide text-gray-400 md:block ${gi ? "mt-4 border-t border-gray-200 pt-3" : ""} mb-1.5`}>
+                {g.title} ({g.list.length})
+              </p>
+            )}
+          {g.list.map((j) => {
             const active = j.id === activeId;
             return (
               <div
@@ -434,7 +449,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
                   {j.target?.alreadyListed && (
                     <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
                       <Building2 className="h-3 w-3" />
-                      {j.target.alreadyListed.mine ? "On Proximity · yours" : "On Proximity"}
+                      {j.target.alreadyListed.claimed ? "Now yours" : j.target.alreadyListed.mine ? "Yours" : "Another landlord's"}
                     </span>
                   )}
                   <span className="mt-1 block text-[11px]">
@@ -454,6 +469,8 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
               </div>
             );
           })}
+          </div>
+          ))}
         </nav>
 
         <div className="min-w-0 flex-1">
@@ -462,14 +479,16 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
               {ACTIVE.has(j.status) && <Progress job={j} others={jobs.length - 1} />}
               {j.status === "cancelled" && (
                 <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
-                  {j.target?.skipped || "Skipped."}
+                  <Building2 className="mx-auto mb-2 h-6 w-6 text-gray-400" />
+                  <p className="font-medium text-gray-900">{nameOf(j)}</p>
+                  <p className="mt-1">{j.target?.skipped || "Skipped."}</p>
                   {j.target?.alreadyListed && !j.target.alreadyListed.mine && (
                     <p className="mt-2 text-xs text-gray-500">
-                      Another landlord lists this building. You can add your own units to it from{" "}
+                      Another landlord lists this building, so its listing was not read or changed. If you let units here too, add them to it from{" "}
                       <Link href="/add-listing?mode=manual" className="font-medium text-red-600 hover:underline">
                         Type it in myself
                       </Link>
-                      .
+                      , or contact us to share the building.
                     </p>
                   )}
                 </div>

@@ -95,12 +95,18 @@ const flatten = (s) => {
   return v.replace(/[-_/+.]+/g, " ");
 };
 
+// Within this of campus counts as near when the distance is known. Clayton,
+// the Loop, the CWE and the Grove all fall inside it; Chesterfield does not.
+const NEAR_KM = 12;
+
 const nearCampus = (p) =>
-  // nearLevel is stamped on when the page this came from was itself a
-  // near-campus folder, so a building listed there counts even when the site
-  // gave it neither an address nor a link of its own.
-  p.nearLevel === true ||
-  NEAR_CAMPUS_RE.test(flatten(`${p.name ?? ""} ${p.address ?? ""} ${p.url ?? ""}`));
+  typeof p.distanceKm === "number"
+    ? p.distanceKm <= NEAR_KM
+    : // nearLevel is stamped on when the page this came from was itself a
+      // near-campus folder, so a building listed there counts even when the
+      // site gave it neither an address nor a link of its own.
+      p.nearLevel === true ||
+      NEAR_CAMPUS_RE.test(flatten(`${p.name ?? ""} ${p.address ?? ""} ${p.url ?? ""}`));
 
 const levelIsNearCampus = (levelUrl) => !!levelUrl && nearCampus({ url: levelUrl });
 
@@ -128,7 +134,7 @@ const placedElsewhere = (p) =>
   CITY_ELSEWHERE_RE.test(flatten(`${p.address ?? ""} ${p.url ?? ""}`));
 
 // Set aside only when we can place it somewhere that is not ours.
-const farAway = (p) => !nearCampus(p) && placedElsewhere(p);
+const farAway = (p) => (typeof p.distanceKm === "number" ? p.distanceKm > NEAR_KM : !nearCampus(p) && placedElsewhere(p));
 
 /*
  * One building, one identity, wherever it turns up — without merging buildings
@@ -231,6 +237,10 @@ const makeNode = (p, parentUrl) => ({
   // Set by the server when this building is already on Proximity. Dropped
   // here until now, so the picker never showed the marker it was sent.
   alreadyListed: p.alreadyListed ?? null,
+  // Straight-line distance to campus, when the site's own data had
+  // coordinates. Beats every pattern below: River Terrace Gardens in River
+  // Edge, New Jersey was "near" because nothing in its text said otherwise.
+  distanceKm: typeof p.distanceKm === "number" ? p.distanceKm : null,
   children: null, // null = not opened yet
   open: false,
   loading: false,
@@ -837,6 +847,11 @@ export default function ListingDraftImport({
             n.name.toLowerCase().replace(/[.\s]+$/, "") && (
             <span className="block truncate text-xs text-gray-500">{n.address}</span>
           )}
+        {typeof n.distanceKm === "number" && (
+          <span className="block text-[11px] text-gray-400">
+            {n.distanceKm < 1 ? "under a mile" : `${Math.round(n.distanceKm * 0.621 * 10) / 10} mi`} from WashU
+          </span>
+        )}
       </span>
       {/* Only worth showing when rows further out are on screen to contrast
           with. A column of identical badges is decoration. */}

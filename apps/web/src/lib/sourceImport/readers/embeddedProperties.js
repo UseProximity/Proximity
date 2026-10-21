@@ -102,10 +102,13 @@ export function parseEmbeddedProperties(html, baseUrl) {
     const key = name.toLowerCase();
     if (!name || seen.has(key)) continue;
     seen.add(key);
-    const address = [o.address, [o.city, o.state].filter(Boolean).join(", "), o.zipCode ?? o.zip ?? o.postalCode]
+    // "144 Bogert Rd, River Edge, NJ 07661": state and zip together, the way
+    // addresses are written and the way the picker's patterns expect them.
+    const cityState = [o.city, [o.state, o.zipCode ?? o.zip ?? o.postalCode].map((x) => String(x ?? "").trim()).filter(Boolean).join(" ")]
       .map((x) => String(x ?? "").trim())
       .filter(Boolean)
       .join(", ");
+    const address = [String(o.address ?? "").trim(), cityState].filter(Boolean).join(", ");
     const own = typeof o.externalWebsiteUrl === "string" && /^https?:/.test(o.externalWebsiteUrl) ? o.externalWebsiteUrl : null;
     const path = typeof o.publicPath === "string" ? normalizeLinkUrl(o.publicPath, baseUrl) : null;
     const lat = Number(o.latitude);
