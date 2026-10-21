@@ -724,6 +724,10 @@ async function persistSession(session) {
       {
         id: session.id,
         user_id: session.user_id,
+        // Postgres checks the proposed INSERT row before resolving the conflict,
+        // so a signed-out session (user_id null) must carry its visitor_id here or
+        // the owner check constraint rejects the upsert.
+        visitor_id: session.visitor_id ?? null,
         status: session.status,
         transcript: session.transcript,
         preferences: session.preferences,

@@ -5,7 +5,6 @@ import { recomputeFromPreferences } from "@/lib/matchmaking/questionEngine";
 import { QUESTION_BY_ID, peopleLabel } from "@/lib/matchmaking/questionScript";
 
 const FIELD_LABELS = {
-  name: "Name",
   group_size: "Group size",
   budget_max: "Max rent ($/mo)",
   area: "Preferred area",
@@ -19,7 +18,6 @@ const FIELD_LABELS = {
 
 // A panel field maps back to the scripted question whose options drive its editor.
 const FIELD_TO_QID = {
-  name: "name_confirm",
   group_size: "group_size",
   budget_max: "budget",
   area: "area",
@@ -51,9 +49,7 @@ const FIELD_INPUT =
 function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
   const q = QUESTION_BY_ID[FIELD_TO_QID[field]];
   const kind = q?.kind;
-  const [text, setText] = useState(
-    field === "budget_max" || field === "notes" || field === "name" ? String(value ?? "") : ""
-  );
+  const [text, setText] = useState(field === "budget_max" || field === "notes" ? String(value ?? "") : "");
   const [selected, setSelected] = useState(Array.isArray(value) ? value : []);
   const [otherMode, setOtherMode] = useState(false);
   const [otherText, setOtherText] = useState("");
@@ -84,8 +80,7 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
     );
   }
 
-  if (kind === "open_text" || kind === "confirm_or_replace") {
-    const needsText = kind === "confirm_or_replace";
+  if (kind === "open_text") {
     return (
       <div className="flex items-center gap-2 mt-2">
         <div className={`flex-1 min-w-0 ${FIELD}`}>
@@ -95,15 +90,11 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
             value={text}
             disabled={disabled}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (!needsText || text.trim()) && onCommit(text.trim())}
+            onKeyDown={(e) => e.key === "Enter" && onCommit(text.trim())}
             className={FIELD_INPUT}
           />
         </div>
-        <button
-          className={SAVE_BTN}
-          disabled={disabled || (needsText && !text.trim())}
-          onClick={() => (!needsText || text.trim()) && onCommit(text.trim())}
-        >
+        <button className={SAVE_BTN} disabled={disabled} onClick={() => onCommit(text.trim())}>
           Save
         </button>
       </div>
@@ -203,7 +194,14 @@ function FieldEditor({ field, value, onCommit, disabled, optionsOverride }) {
 
 // Compact summary of the answers Proxy has collected. Tap any answer to drop
 // down that question's options and edit it inline (priorities drag-to-rank).
-export default function PreferencePanel({ preferences, weights, sessionId, onUpdated, onUpdating }) {
+//
+// Sized to its content: the panel grows a row at a time as answers come in
+// rather than standing full height from the first question (Wyatt, 2026-10-20).
+// The host column caps it at the chat's height and the list scrolls past that.
+//
+// `readOnly`: a signed-out visitor whose matches are locked behind the sign-up
+// wall can still see their answers but not change them (editing would re-rank).
+export default function PreferencePanel({ preferences, weights, sessionId, onUpdated, onUpdating, readOnly = false }) {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -283,14 +281,6 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
         set("notes", rawValue ?? "");
         set("_extras_done", true);
         break;
-      case "name":
-        if (!String(rawValue).trim()) {
-          setEditing(null);
-          return;
-        }
-        set("name", String(rawValue).trim());
-        set("_name_confirmed", true);
-        break;
       case "area":
         set(field, Array.isArray(rawValue) ? rawValue : [rawValue]);
         break;
@@ -303,16 +293,18 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
+    <div className="max-h-full min-h-0 flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">Your answers</h2>
           {saving && <span className="text-[10px] text-gray-400">Updating matches…</span>}
         </div>
-        <p className="text-[11px] text-gray-400 mt-0.5">Tap any answer to change it.</p>
+        <p className="text-[11px] text-gray-400 mt-0.5">
+          {readOnly ? "Create an account to change your answers." : "Tap any answer to change it."}
+        </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-2">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2">
         {rows.length === 0 ? (
           <p className="text-xs text-gray-400 py-4 text-center">No answers collected yet.</p>
         ) : (
@@ -323,8 +315,10 @@ export default function PreferencePanel({ preferences, weights, sessionId, onUpd
                 <button
                   type="button"
                   onClick={() => setEditing(isEditing ? null : field)}
-                  disabled={saving}
-                  className="w-full flex items-start justify-between gap-2 text-left group disabled:opacity-60"
+                  disabled={saving || readOnly}
+                  className={`w-full flex items-start justify-between gap-2 text-left group ${
+                    readOnly ? "cursor-default" : "disabled:opacity-60"
+                  }`}
                 >
                   <span className="text-xs text-gray-500 w-24 flex-shrink-0 pt-0.5">{FIELD_LABELS[field] ?? field}</span>
                   <span className="flex-1 text-right text-xs text-gray-700 group-hover:text-red-600 transition">

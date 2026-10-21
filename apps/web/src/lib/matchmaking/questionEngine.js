@@ -16,7 +16,6 @@ export function describeQuestion(question, preferences) {
   const p = preferences ?? {};
   const prompt = question.prompt.replace("{{name}}", p.name || "there");
   const meta = {};
-  if (question.kind === "confirm_or_replace") meta.currentName = p.name || "";
   if (question.kind === "budget_max") meta.maxLabel = question.maxLabel;
   if (question.kind === "month_select") meta.others = question.others ?? [];
   if (question.kind === "open_text") meta.placeholder = question.placeholder ?? "";
@@ -76,10 +75,6 @@ export function applyAnswer(preferences, weights, answer) {
     (Array.isArray(value) && value.length === 1 && value[0] === "No preference");
 
   switch (kind) {
-    case "confirm_or_replace":
-      prefs.name = value;
-      prefs._name_confirmed = true;
-      break;
     case "budget_max":
       if (unsure) {
         prefs.budget_max = null;
@@ -155,8 +150,6 @@ export function applyAnswer(preferences, weights, answer) {
 function reconstructAnswer(q, p) {
   const base = { questionId: q.id, field: q.field, kind: q.kind };
   switch (q.id) {
-    case "name_confirm":
-      return { ...base, value: p.name };
     case "budget":
       return { ...base, value: p._budget_unsure ? UNSURE : p.budget_max };
     case "priorities":
@@ -225,8 +218,8 @@ export function recomputeFromPreferences(preferences) {
 // Human-readable rendering of an answer, for the user's chat bubble.
 export function answerToLabel(answer) {
   const { kind, value } = answer;
-  // When the control supplied an explicit display label (e.g. the "Yes, that's
-  // me" name-confirm chip), show that in the bubble rather than the raw value.
+  // When the control supplied an explicit display label, show that in the
+  // bubble rather than the raw value.
   if (answer.label) return answer.label;
   // The UNSURE sentinel must be resolved before any kind-specific rendering, or
   // the raw "__unsure__" string leaks into the bubble (tradeoff hit this).

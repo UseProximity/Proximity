@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-18T21:47:38.885Z",
-  "count": 134,
+  "_generated": "2026-10-20T23:38:22.769Z",
+  "count": 135,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -310,6 +310,10 @@
     {
       "file": "src/lib/listings/unitNames.js",
       "description": "One apartment, one row. Two live units at the same property both called"
+    },
+    {
+      "file": "src/lib/matchmaking/anonymousSessions.js",
+      "description": "Matchmaking before login. Everything the chat route needs to run the Proxy"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",

@@ -46,9 +46,8 @@ export default function QuestionControls({ question, onAnswer }) {
   const { id, field, kind, options, meta } = question;
   const [submitted, setSubmitted] = useState(false);
   const interactive = !!onAnswer && !submitted;
-  // `label` (optional) overrides what's shown in the user's sent bubble — e.g.
-  // the name-confirm "Yes, that's me" chip submits the name as the value but
-  // should read "Yes, that's me" in the transcript, not the name itself.
+  // `label` (optional) overrides what's shown in the user's sent bubble when a
+  // chip's value and its wording differ.
   const submit = (value, label) => {
     if (submitted) return; // guard against double-answering / repeated questions
     setSubmitted(true);
@@ -57,7 +56,6 @@ export default function QuestionControls({ question, onAnswer }) {
 
   const [selected, setSelected] = useState([]); // multi-select set
   const [max, setMax] = useState("");
-  const [name, setName] = useState("");
   const [text, setText] = useState("");
   // When a "choice" question offers an "Other" option, tapping it swaps the chip
   // row for a small text field so the user can type their own answer.
@@ -358,40 +356,6 @@ export default function QuestionControls({ question, onAnswer }) {
           I&apos;m all set
         </button>
         <SendButton onClick={() => text.trim() && submit(text.trim())} disabled={!interactive || !text.trim()} />
-      </div>
-    );
-  }
-
-  if (kind === "confirm_or_replace") {
-    // "Yes, that's me" auto-submits the stored name; typing a different name is
-    // confirmed with the send button or Enter (the bubble shows what they chose).
-    const send = () => {
-      if (name.trim()) submit(name.trim());
-    };
-    return (
-      <div className="flex items-center gap-2" onKeyDown={onEnter(send)}>
-        {meta?.currentName && (
-          <button
-            className={CHIP}
-            disabled={!interactive}
-            onClick={() => submit(meta.currentName, "Yes, that's me")}
-          >
-            Yes, that&apos;s me
-          </button>
-        )}
-        {/* Sized to a name rather than stretched across the row: a full-width
-            field reads as "write a lot here" and crowds the send button. */}
-        <div className={`w-48 max-w-[55%] ${FIELD}`}>
-          <input
-            type="text"
-            placeholder="Or type a name…"
-            value={name}
-            disabled={!interactive}
-            onChange={(e) => setName(e.target.value)}
-            className={FIELD_INPUT}
-          />
-        </div>
-        <SendButton className="ml-auto" onClick={send} disabled={!interactive || !name.trim()} />
       </div>
     );
   }
