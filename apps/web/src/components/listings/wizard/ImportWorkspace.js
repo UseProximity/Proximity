@@ -11,6 +11,7 @@ import EditorUnits from "@/components/listings/editor/EditorUnits";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 import ImportGaps from "@/components/listings/editor/ImportGaps";
 import BackToTop from "@/components/ui/BackToTop";
+import useLeaveGuard, { sendWhileLeaving } from "@/lib/useLeaveGuard";
 
 /*
  * The import workspace: one tab per property the landlord ticked.
@@ -50,7 +51,7 @@ function StatusLine({ job }) {
         <AlertCircle className="h-3 w-3" /> Couldn&apos;t read it
       </span>
     );
-  if (job.status === "cancelled") return <span className="text-gray-400">{job.target?.alreadyListed ? "Not read: not yours to change" : job.step || "Skipped"}</span>;
+  if (job.status === "cancelled") return <span className="text-gray-400">{job.target?.alreadyListed && job.target?.skipped ? "Not read: not yours to change" : job.step || "Skipped"}</span>;
   if (job.listing && !job.listing.isDraft && job.result?.mode === "sync")
     return <span className="text-amber-700">{job.result.held ? `${job.result.held} proposed change${job.result.held === 1 ? "" : "s"}` : "Up to date"}</span>;
   if (job.listing && !job.listing.isDraft)
@@ -343,6 +344,23 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
     return () => clearInterval(t);
   }, [batch, load, batchId]);
 
+  /*
+   * Leaving while properties are still being read: those are cancelled and
+   * their empty drafts deleted, so nothing half-read sits on the Drafts page.
+   * Finished ones are kept. The same applies to "Done for now".
+   */
+  const unfinished = batch?.jobs.filter((j) => ACTIVE.has(j.status)).length ?? 0;
+  const LEAVE_MESSAGE = `${unfinished} ${unfinished === 1 ? "property hasn't" : "properties haven't"} been read yet. If you leave now ${unfinished === 1 ? "it" : "they"} will be deleted; the finished ones stay on your Drafts page. Leave anyway?`;
+  const cancelUnfinished = ({ beacon }) => sendWhileLeaving(`/api/landlord/import/batches/${batchId}/cancel`, {}, { beacon });
+  useLeaveGuard({ active: unfinished > 0, message: LEAVE_MESSAGE, onLeave: cancelUnfinished });
+  const leave = async () => {
+    if (unfinished > 0) {
+      if (!window.confirm(LEAVE_MESSAGE)) return;
+      await cancelUnfinished({ beacon: false });
+    }
+    onDone();
+  };
+
   const retry = async (job) => {
     const res = await fetch(`/api/landlord/import/jobs/${job.id}`, { method: "POST" });
     if (!res.ok) toast.error("Couldn't retry that one.");
@@ -413,7 +431,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
           <div className="flex flex-col items-end gap-1">
             <button
               type="button"
-              onClick={onDone}
+              onClick={leave}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
             >
               Done for now

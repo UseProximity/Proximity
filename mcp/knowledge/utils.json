@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-21T00:38:39.479Z",
-  "count": 152,
+  "_generated": "2026-10-21T00:49:41.132Z",
+  "count": 153,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -534,6 +534,10 @@
     {
       "file": "src/lib/supabaseWithUser.js",
       "description": "Thin wrappers around the write-as-user RPCs defined in migration"
+    },
+    {
+      "file": "src/lib/useLeaveGuard.js",
+      "description": "Ask before leaving a page with work in flight, and clean up if they go."
     },
     {
       "file": "src/lib/userRole.js",

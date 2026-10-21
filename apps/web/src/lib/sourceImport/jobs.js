@@ -125,8 +125,10 @@ async function createDraft({ userId, user, target }) {
  * One job per ticked property. Returns { batchId, jobs }.
  * `user` is { name, email, phone } for the draft's contact details.
  */
-export async function createImportBatch({ userId, user, pastedUrl, targets }) {
-  const batchId = randomUUID();
+export async function createImportBatch({ userId, user, pastedUrl, targets, batchId: requested = null }) {
+  // The client may choose the id, so it can cancel the batch even if the
+  // response creating it never arrives (they left the page mid-way).
+  const batchId = typeof requested === "string" && /^[0-9a-f-]{36}$/i.test(requested) ? requested : randomUUID();
   const jobs = [];
   for (const raw of targets.slice(0, MAX_TARGETS)) {
     const target = {
@@ -257,6 +259,12 @@ export async function runJob(jobId) {
       onStep,
     });
 
+    // Cancelled while the site was being read: write nothing.
+    const { data: still } = await supabase.from("listing_import_jobs").select("status").eq("id", jobId).maybeSingle();
+    if (still?.status === "cancelled") {
+      console.log(`[source-import] job ${jobId} cancelled during the read; nothing applied`);
+      return still;
+    }
     await setStep(jobId, "Saving", 82);
     const attached = await attachSourceUrl({ listingId: listing.id, rawUrl: snapshot.sourceUrl, indexUrl: snapshot.indexUrl, userId: job.user_id });
     const monitorId = attached.ok ? await monitorIdFor(listing.id) : null;
@@ -385,4 +393,40 @@ export async function loadBatch({ batchId, userId }) {
       };
     }),
   };
+}
+
+/*
+ * Stop a batch the landlord walked away from. Unfinished jobs (queued or
+ * running) are cancelled and the drafts created for them deleted; a job
+ * that already finished keeps its draft. `all` also deletes the finished
+ * drafts (leaving page A before the workspace ever opened).
+ */
+export async function cancelBatch({ batchId, userId, all = false }) {
+  const { data: jobs } = await supabase
+    .from("listing_import_jobs")
+    .select("id, status, listing_id, target")
+    .eq("batch_id", batchId)
+    .eq("user_id", userId);
+  const doomed = (jobs ?? []).filter((j) => (all ? j.status !== "cancelled" : ["queued", "running"].includes(j.status)));
+  if (!doomed.length) return { cancelled: 0, deleted: 0 };
+  await supabase
+    .from("listing_import_jobs")
+    .update({ status: "cancelled", step: "Cancelled: you left the import", finished_at: new Date().toISOString() })
+    .in("id", doomed.map((j) => j.id));
+  // Only drafts this import created. A building that already existed (the
+  // landlord's own, or one they claimed) is never deleted here.
+  const draftIds = doomed.filter((j) => j.listing_id && !j.target?.alreadyListed).map((j) => j.listing_id);
+  let deleted = 0;
+  if (draftIds.length) {
+    const { data } = await supabase
+      .from("listings")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", draftIds)
+      .is("published_at", null)
+      .is("deleted_at", null)
+      .select("id");
+    deleted = data?.length ?? 0;
+  }
+  console.log(`[source-import] batch ${batchId} cancelled: ${doomed.length} jobs, ${deleted} drafts deleted`);
+  return { cancelled: doomed.length, deleted };
 }

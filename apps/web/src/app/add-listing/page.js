@@ -10,6 +10,7 @@ import { PencilLine, Globe, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
 import ImportWorkspace from "@/components/listings/wizard/ImportWorkspace";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
+import useLeaveGuard, { sendWhileLeaving } from "@/lib/useLeaveGuard";
 
 /*
  * Full-page "Add Listing" for landlords (and super).
@@ -67,6 +68,22 @@ export default function AddListingPage() {
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
   /*
+   * Leaving while the drafts are being made throws the whole batch away:
+   * the request may already have created them, so they are cancelled by the
+   * id chosen above, and the jump to the workspace is called off.
+   */
+  useLeaveGuard({
+    active: starting,
+    message: "Leaving now will discard every property in this import. Leave anyway?",
+    onLeave: ({ beacon }) => {
+      const id = pendingBatch.current;
+      pendingBatch.current = null;
+      startedRef.current = false;
+      return id ? sendWhileLeaving(`/api/landlord/import/batches/${id}/cancel`, { all: true }, { beacon }) : Promise.resolve();
+    },
+  });
+
+  /*
    * Fetched again when profileComplete changes: a new Google account fills in
    * its name in the profile modal after this page has already loaded, and the
    * listing is published under the name held here.
@@ -97,17 +114,20 @@ export default function AddListingPage() {
    * dropped once an import has started.
    */
   const startedRef = useRef(false);
+  // Chosen here, before the request, so leaving mid-way can still cancel it.
+  const pendingBatch = useRef(null);
   const startImport = async (targets, pastedUrl) => {
     if (startedRef.current) return;
     startedRef.current = true;
     setSite("");
     setStartingCount(targets.length);
     setStarting(true);
+    pendingBatch.current = crypto.randomUUID();
     try {
       const res = await fetch("/api/landlord/import/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pastedUrl, targets }),
+        body: JSON.stringify({ pastedUrl, targets, batchId: pendingBatch.current }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.batchId) {
@@ -115,6 +135,7 @@ export default function AddListingPage() {
         toast.error(data.error || "We couldn't start that import. Please try again.");
         return;
       }
+      if (!pendingBatch.current) return; // cancelled while creating
       router.push(`/add-listing?mode=assisted&batch=${encodeURIComponent(data.batchId)}`);
     } catch {
       toast.error("Network error. Please try again.");

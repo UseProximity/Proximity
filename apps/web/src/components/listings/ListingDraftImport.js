@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import useLeaveGuard from "@/lib/useLeaveGuard";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -384,9 +385,22 @@ export default function ListingDraftImport({
   };
   const stopLoading = () => {};
 
+  // Every read in flight shares this, so leaving the page can stop them all.
+  const aborter = useRef(null);
+  useLeaveGuard({
+    active: phase === "loading" || phase === "groups",
+    message: "Your website is still being read. Leaving now will throw away everything found so far. Leave anyway?",
+    onLeave: () => {
+      aborter.current?.abort();
+      return Promise.resolve();
+    },
+  });
+
   const apiCall = async (fetchUrl, targetProperty) => {
+    if (!aborter.current || aborter.current.signal.aborted) aborter.current = new AbortController();
     const res = await fetch("/api/landlord/listing-draft", {
       method: "POST",
+      signal: aborter.current.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: fetchUrl,
