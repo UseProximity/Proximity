@@ -5,7 +5,9 @@
         "appIDs": ["KU975HTP7L.com.proximityllc.proximity"],
         "components": [
           { "/": "/chat-link" },
-          { "/": "/messages" }
+          { "/": "/messages" },
+          { "/": "/reset-password" },
+          { "/": "/api/auth/verify-email" }
         ]
       }
     ]
