@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-21T02:07:47.663Z",
-  "count": 128,
+  "_generated": "2026-10-22T20:27:35.902Z",
+  "count": 129,
   "routes": [
     {
       "path": "/api/account",
@@ -784,6 +784,7 @@
         "device_push_tokens",
         "user_blocks",
         "review_reports",
+        "review_reply_reports",
         "chat_reports",
         "review_invites",
         "users"
@@ -1675,15 +1676,20 @@
     {
       "path": "/api/replyReview",
       "methods": [
-        "POST"
+        "POST",
+        "PATCH",
+        "DELETE"
       ],
       "auth": "any",
       "methodAuth": {
-        "POST": "any"
+        "POST": "any",
+        "PATCH": "public",
+        "DELETE": "public"
       },
       "tables": [
         "listing_reviews",
-        "listing_landlords"
+        "listing_landlords",
+        "listing_review_replies"
       ],
       "file": "src/app/api/replyReview/route.js"
     },
@@ -1720,9 +1726,27 @@
       },
       "tables": [
         "listing_reviews",
-        "review_reports"
+        "review_reports",
+        "listing_review_replies",
+        "review_reply_reports"
       ],
       "file": "src/app/api/reviewReport/route.js"
+    },
+    {
+      "path": "/api/reviews/[reviewId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "PATCH": "public",
+        "DELETE": "public"
+      },
+      "tables": [
+        "listing_reviews"
+      ],
+      "file": "src/app/api/reviews/[reviewId]/route.js"
     },
     {
       "path": "/api/reviews/confirm",

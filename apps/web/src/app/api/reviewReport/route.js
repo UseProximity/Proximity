@@ -1,10 +1,11 @@
 /*
- * POST /api/reviewReport { reviewId }
+ * POST /api/reviewReport { reviewId } or { replyId }
  *
- * Reports a review for a person to look at later. Signed-in users only. The
- * reported author is read from the review here, never trusted from the client,
- * so an anonymous review can be reported without its author being revealed.
- * Reporting twice is a harmless no-op (unique per reporter and review).
+ * Reports a review, or a landlord's reply to one, for a person to look at
+ * later. Signed-in users only. The reported author is read from the row here,
+ * never trusted from the client, so an anonymous review can be reported without
+ * its author being revealed. Reporting twice is a harmless no-op (unique per
+ * reporter and review, or reporter and reply).
  */
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
@@ -21,7 +22,9 @@ export async function POST(req) {
     }
     const userId = requestUser.id;
 
-    const { reviewId } = await req.json().catch(() => ({}));
+    const { reviewId, replyId } = await req.json().catch(() => ({}));
+    if (replyId !== undefined) return reportReply(userId, replyId);
+
     if (typeof reviewId !== "string" || !UUID.test(reviewId)) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
@@ -60,4 +63,41 @@ export async function POST(req) {
     console.error("[reviewReport] unexpected error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
+}
+
+async function reportReply(userId, replyId) {
+  if (typeof replyId !== "string" || !UUID.test(replyId)) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  const { data: reply, error: replyErr } = await supabase
+    .from("listing_review_replies")
+    .select("id, user_id")
+    .eq("id", replyId)
+    .maybeSingle();
+
+  if (replyErr) {
+    console.error("[reviewReport] reply lookup failed:", replyErr.message);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+  if (!reply) {
+    return NextResponse.json({ error: "Reply not found" }, { status: 404 });
+  }
+  if (reply.user_id === userId) {
+    return NextResponse.json({ error: "You can't report your own reply" }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("review_reply_reports").insert({
+    reporter_id: userId,
+    reply_id: replyId,
+    reported_user_id: reply.user_id ?? null,
+  });
+
+  // 23505 = already reported by this user. Treat as success.
+  if (error && error.code !== "23505") {
+    console.error("[reviewReport] reply insert failed:", error.message);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-21T02:07:47.668Z",
-  "count": 131,
+  "_generated": "2026-10-22T20:27:35.907Z",
+  "count": 134,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -359,6 +359,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ReviewEditForm",
+      "file": "src/components/listings/ReviewEditForm.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ReviewReplySection",
       "file": "src/components/listings/ReviewReplySection.js",
       "description": "No description. Run generate after adding a description above."
@@ -601,6 +606,16 @@
     {
       "name": "Card",
       "file": "src/components/ui/Card.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CardMenu",
+      "file": "src/components/ui/CardMenu.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ConfirmDialog",
+      "file": "src/components/ui/ConfirmDialog.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

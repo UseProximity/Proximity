@@ -446,6 +446,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
     location_rating,
     value_rating,
     created_at,
+    edited_at,
     deleted_at,
     user_id,
     name,
@@ -455,6 +456,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
       reply,
       created_at,
       updated_at,
+      edited_at,
       user_id
     )
   `
@@ -568,6 +570,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
       locationRating: r.location_rating ?? null,
       valueRating: r.value_rating ?? null,
       createdAt: r.created_at ?? null,
+      editedAt: r.edited_at ?? null,
       deletedAt: r.deleted_at ?? null,
       upvotes: votes.up,
       downvotes: votes.down,
@@ -590,6 +593,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
             reply: r.listing_review_replies.reply,
             createdAt: r.listing_review_replies.created_at,
             updatedAt: r.listing_review_replies.updated_at,
+            editedAt: r.listing_review_replies.edited_at ?? null,
             userId: r.listing_review_replies.user_id,
           }
         : null,
