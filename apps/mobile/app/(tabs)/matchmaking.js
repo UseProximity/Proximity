@@ -31,14 +31,15 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link } from "expo-router";
-import { useChatStore } from "../../src/store/chatStore";
+import { qKey, useChatStore } from "../../src/store/chatStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { ChatBubble } from "../../src/components/matchmaking/ChatBubble";
 import { AnswerBar } from "../../src/components/matchmaking/AnswerBar";
 import { RecommendationCard } from "../../src/components/matchmaking/RecommendationCard";
 import { DraftCompose } from "../../src/components/matchmaking/DraftCompose";
+import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { SendButton } from "../../src/components/ui/SendButton";
+import { ErrorState } from "../../src/components/ui/ErrorMessage";
 import { Button } from "../../src/components/ui/Button";
 import { useAiConsent } from "../../src/lib/aiConsent";
 import { openLegalLink, PRIVACY_URL } from "../../src/lib/legalLinks";
@@ -152,17 +153,10 @@ export default function MatchmakingScreen() {
 
   if (needsAuth) {
     return (
-      <SafeAreaView className="flex-1 bg-white items-center justify-center px-8">
-        <Text className="text-lg font-bold text-gray-900 mb-1">Sign in to chat with Proxy</Text>
-        <Text className="text-sm text-gray-500 text-center mb-6">
-          Answer a few quick questions and get free personalized off-campus housing matches near WashU.
-        </Text>
-        <Link href="/(auth)/login" asChild>
-          <Pressable className="bg-red-600 rounded-lg px-6 py-3">
-            <Text className="text-white font-semibold text-sm">Sign in</Text>
-          </Pressable>
-        </Link>
-      </SafeAreaView>
+      <LoggedOutScreen
+        title="Sign in to use Matchmaking"
+        description="Answer a few quick questions and get free personalized off-campus housing matches near WashU."
+      />
     );
   }
 
@@ -181,9 +175,7 @@ export default function MatchmakingScreen() {
           contentContainerStyle={{ flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={startOver} />}
         >
-          <View className="flex-1 items-center justify-center mt-20 px-6">
-            <Text className="text-gray-500 text-center mb-4">{error}</Text>
-          </View>
+          <ErrorState message={error} className="mt-20" />
         </ScrollView>
       </SafeAreaView>
     );
@@ -227,7 +219,7 @@ export default function MatchmakingScreen() {
 
         <View className="border-t border-gray-100 bg-white px-4 py-2.5">
           {activeQuestion ? (
-            <AnswerBar question={activeQuestion} onAnswer={answerQuestion} />
+            <AnswerBar key={qKey(activeQuestion)} question={activeQuestion} onAnswer={answerQuestion} />
           ) : hasRecommendations ? (
             <View className="flex-row items-center gap-2">
               <TextInput

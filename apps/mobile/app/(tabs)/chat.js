@@ -3,16 +3,19 @@
 // no realtime on mobile yet, and supports pull-to-refresh. Tapping a row opens
 // the thread screen at app/chat/[threadId].js.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, RefreshControl, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { MessageCircle } from "lucide-react-native";
 import apiClient from "../../src/lib/apiClient";
-import { chatErrorMessage } from "../../src/lib/chatFormat";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { ErrorMessage, ErrorState } from "../../src/components/ui/ErrorMessage";
 import { useAuthStore } from "../../src/store/authStore";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
 import { ThreadRow } from "../../src/components/chat/ThreadRow";
 import { Button } from "../../src/components/ui/Button";
+import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { colors } from "../../src/theme/tokens";
 
 export default function ChatInboxScreen() {
@@ -33,7 +36,7 @@ export default function ChatInboxScreen() {
       setError(null);
     } catch (err) {
       if (err?.status === 401) return; // session expired: the api client already signed out
-      setError(chatErrorMessage(err, "Couldn't load your messages."));
+      setError(getErrorMessage(err, ERROR_MESSAGES.CHAT.LOAD_THREADS));
     }
   }, []);
 
@@ -89,15 +92,10 @@ export default function ChatInboxScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-white items-center justify-center px-8">
-        <Text className="text-xl font-bold text-gray-900 mb-2">Messages</Text>
-        <Text className="text-sm text-gray-500 text-center mb-6">
-          Sign in to message landlords and keep your conversations in one place.
-        </Text>
-        <Button onPress={() => router.push("/(auth)/login")} className="self-stretch">
-          Sign in
-        </Button>
-      </SafeAreaView>
+      <LoggedOutScreen
+        title="Message landlords"
+        description="Sign in to message landlords and keep your conversations in one place."
+      />
     );
   }
 
@@ -123,12 +121,7 @@ export default function ChatInboxScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             error ? (
-              <View className="flex-1 items-center justify-center px-8">
-                <Text className="text-gray-500 text-center mb-4">{error}</Text>
-                <Pressable onPress={load} hitSlop={8}>
-                  <Text className="text-red-600 font-semibold">Try again</Text>
-                </Pressable>
-              </View>
+              <ErrorState message={error} onAction={load} />
             ) : (
               <View className="flex-1 items-center justify-center px-8">
                 <View className="mb-4">
@@ -146,7 +139,9 @@ export default function ChatInboxScreen() {
           }
           ListHeaderComponent={
             error && threads?.length ? (
-              <Text className="text-xs text-red-500 text-center py-2">{error}</Text>
+              <ErrorMessage compact className="mx-4 my-2">
+                {error}
+              </ErrorMessage>
             ) : null
           }
         />

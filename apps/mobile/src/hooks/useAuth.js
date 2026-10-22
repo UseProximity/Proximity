@@ -40,7 +40,8 @@ export function useAuth() {
           setIsLoading(false);
         });
     } else if (response.type === "error") {
-      const err = new Error(response.error?.message ?? "Google sign-in failed.");
+      // The library's own message is technical; the caller shows a plain one.
+      const err = new Error("Google sign-in failed.");
       googleRejectRef.current?.(err);
       setIsLoading(false);
     } else {

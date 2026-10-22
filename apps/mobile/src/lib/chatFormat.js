@@ -1,11 +1,14 @@
 // Small presentation helpers shared by the messaging screens. The data shapes
 // come from the chat routes (rpc_list_chat_threads / rpc_get_chat_messages).
 
+import { getErrorMessage } from "./apiError.js";
+import { ERROR_MESSAGES } from "./errorMessages.js";
+
 export const CHAT_MAX_BODY = 5000;
 
 // What the server answers when either person has blocked the other (see
 // api/chat/threads). It is neutral on purpose: it does not say who blocked whom.
-export const CONVERSATION_UNAVAILABLE_MESSAGE = "This conversation is unavailable";
+export const CONVERSATION_UNAVAILABLE_MESSAGE = ERROR_MESSAGES.CHAT.UNAVAILABLE;
 
 // Same opening line the web composer starts with.
 export function defaultListingInquiry(ownerName) {
@@ -80,8 +83,9 @@ export function isConfirmSend(err) {
   return err?.status === 409 && err?.body?.code === "CONFIRM_SEND";
 }
 
-export function chatErrorMessage(err, fallback) {
-  return err?.body?.error ?? err?.message ?? fallback;
+// Kept under its own name for the messaging screens; the rules live in apiError.
+export function chatErrorMessage(err, fallback, options) {
+  return getErrorMessage(err, fallback, options);
 }
 
 // "1.2 MB" style size for file rows, the same format web's formatFileSize uses.

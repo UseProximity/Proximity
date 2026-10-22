@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import Constants from "expo-constants";
 import {
   ChevronRight,
@@ -22,13 +22,15 @@ import {
   ShieldCheck,
   Info,
   Trash2,
-  User,
 } from "lucide-react-native";
 import { isLandlord } from "@proximity/auth-core";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import apiClient from "../../src/lib/apiClient";
 import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { showError } from "../../src/lib/showError";
+import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
 import { colors } from "../../src/theme/tokens";
 import {
   openLegalLink,
@@ -132,13 +134,7 @@ export default function ProfileScreen() {
                       // server-side, so anything cached would only 401.
                       await logout();
                     } catch (err) {
-                      Alert.alert(
-                        "Couldn't delete account",
-                        getErrorMessage(
-                          err,
-                          "Something went wrong. Please try again."
-                        )
-                      );
+                      showError(getErrorMessage(err, ERROR_MESSAGES.PROFILE.DELETE_ACCOUNT));
                     } finally {
                       setDeleting(false);
                     }
@@ -161,22 +157,10 @@ export default function ProfileScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 px-8">
-        <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center mb-4">
-          <User size={32} color={colors.textMuted} strokeWidth={1.5} />
-        </View>
-        <Text className="text-lg font-bold text-gray-900 mb-1">
-          Sign in to Proximity
-        </Text>
-        <Text className="text-sm text-gray-500 text-center mb-6">
-          Save listings and manage your profile once you&apos;re signed in.
-        </Text>
-        <Link href="/(auth)/login" asChild>
-          <Pressable className="bg-red-600 rounded-xl px-6 py-3">
-            <Text className="text-white font-semibold text-sm">Sign in</Text>
-          </Pressable>
-        </Link>
-      </SafeAreaView>
+      <LoggedOutScreen
+        title="Your Proximity profile"
+        description="Sign in to manage your account, save listings and keep your housing search in one place."
+      />
     );
   }
 

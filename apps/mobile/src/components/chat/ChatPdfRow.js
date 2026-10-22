@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Download, FileText } from "lucide-react-native";
 import { formatFileSize } from "../../lib/chatFormat";
 import { openChatPdf } from "../../lib/chatPdf";
+import { getErrorMessage } from "../../lib/apiError";
+import { showError } from "../../lib/showError";
+import { ERROR_MESSAGES } from "../../lib/errorMessages";
 
 export function isPdfAttachment(attachment) {
   return attachment?.contentType === "application/pdf";
@@ -24,10 +27,7 @@ export function ChatPdfRow({ attachment, mine, interactive = true, onLongPress }
       await openChatPdf(attachment);
     } catch (error) {
       if (error?.status === 401) return; // session expired: the api client already signed out
-      Alert.alert(
-        "Couldn't open this PDF",
-        error?.userFacing ? error.message : "Check your connection and try again."
-      );
+      showError(getErrorMessage(error, ERROR_MESSAGES.CHAT.OPEN_PDF));
     } finally {
       setBusy(false);
     }

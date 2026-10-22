@@ -8,6 +8,8 @@
 // framing of the port.
 import { create } from "zustand";
 import apiClient from "../lib/apiClient";
+import { isNetworkError } from "../lib/apiError";
+import { ERROR_MESSAGES } from "../lib/errorMessages";
 import {
   applyAnswer,
   nextQuestion,
@@ -29,7 +31,10 @@ function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
 }
 
-const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
+// Identity of a question: its id plus the step key that keeps repeated ids (the
+// numbered tradeoffs) distinct. Also keys the answer controls, so each question
+// starts with fresh local state.
+export const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
 
 function inlineRecsMessage(data) {
   return {
@@ -142,7 +147,10 @@ export const useChatStore = create((set, get) => ({
         return;
       }
       console.error("[chatStore] init failed:", err);
-      set({ error: "Couldn't reach Proxy. Pull to try again.", loading: false });
+      set({
+        error: isNetworkError(err) ? ERROR_MESSAGES.MATCHMAKING.OFFLINE : ERROR_MESSAGES.MATCHMAKING.LOAD,
+        loading: false,
+      });
     }
   },
 
@@ -169,7 +177,10 @@ export const useChatStore = create((set, get) => ({
         return;
       }
       console.error("[chatStore] startFresh failed:", err);
-      set({ error: "Couldn't start a chat with Proxy. Pull to try again.", loading: false });
+      set({
+        error: isNetworkError(err) ? ERROR_MESSAGES.MATCHMAKING.OFFLINE : ERROR_MESSAGES.MATCHMAKING.START,
+        loading: false,
+      });
     }
   },
 
@@ -393,7 +404,7 @@ export const useChatStore = create((set, get) => ({
         set((state) => ({
           messages: [
             ...state.messages,
-            { role: "assistant", content: "I couldn't reach out just now, please try again in a bit.", ts: new Date().toISOString(), animate: true },
+            { role: "assistant", content: ERROR_MESSAGES.MATCHMAKING.CONTACT, ts: new Date().toISOString(), animate: true },
           ],
         }));
       } finally {
