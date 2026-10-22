@@ -5,8 +5,10 @@
 #
 # ⚠️ DESTRUCTIVE to the DEV database's `public` schema. It NEVER writes to prod.
 #
-# Steps: [1] dump prod (+ capture its FK set)  [2] save partner sandbox data  [3] restore into dev
-#        [4] re-grant Supabase roles  [5] reconcile FKs against prod, then verify parity or abort
+# Steps: [1] dump prod (+ capture its FK set and function grants)  [2] save partner sandbox data
+#        [3] restore into dev  [4] re-grant Supabase roles, then copy prod's function grants and
+#        verify no definer function is left public or abort  [5] reconcile FKs against prod, then
+#        verify parity or abort
 #        [6] put partner sandbox data back.
 # Steps 2 and 6 keep dev-only partner accounts (snapshot_preserve.protected_users) and everything
 # they created alive across the wipe. See scripts/snapshot-preserve.sql.
@@ -52,7 +54,8 @@ command -v psql   >/dev/null || { echo "ABORT: psql not found (install postgresq
 DUMP="$(mktemp -t prox-prod-snapshot-XXXXXX.sql)"
 FKS="$(mktemp -t prox-prod-fks-XXXXXX.tsv)"
 FKSQL="$(mktemp -t prox-prod-fks-XXXXXX.sql)"
-trap 'rm -f "$DUMP" "$DUMP.err" "$FKS" "$FKSQL"' EXIT
+FNACL="$(mktemp -t prox-prod-fn-grants-XXXXXX.sql)"
+trap 'rm -f "$DUMP" "$DUMP.err" "$FKS" "$FKSQL" "$FNACL"' EXIT
 
 echo "[1/6] Dumping PROD public schema → $DUMP"
 # --clean --if-exists: dump includes DROPs so the restore replaces existing objects.
@@ -88,6 +91,30 @@ psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -o "$FKSQL" \
                     t.relname, c.conname, pg_get_constraintdef(c.oid)) $FK_SELECT;"
 
 echo "    prod foreign keys captured: $(grep -c . "$FKS" 2>/dev/null || echo 0)"
+
+# Capture who may execute each prod function, as SQL that step 4 replays on dev. The dump uses
+# --no-privileges, and step 4 has to re-grant routines wholesale, which would leave every
+# SECURITY DEFINER function callable with the public anon key (they trust a caller-supplied
+# p_user_id, so that means writing as any user). Each statement is a no-op if dev lacks the
+# function. Extension-owned functions are skipped: their grants are not ours to manage.
+psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -o "$FNACL" <<'SQL'
+select format(
+  'do $f$ begin if to_regprocedure(%L) is not null then '
+  'revoke all on function %s from public, anon, authenticated; %s end if; end $f$;',
+  sig, sig,
+  coalesce((select string_agg(format('grant execute on function %s to %I;', sig, r), ' ')
+              from unnest(array['anon', 'authenticated', 'service_role']) r
+              where has_function_privilege(r, oid, 'execute')), ''))
+from (
+  select p.oid, p.oid::regprocedure::text as sig
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+) f
+order by sig;
+SQL
+echo "    prod function grants captured: $(grep -c . "$FNACL" 2>/dev/null || echo 0)"
 
 echo "[2/6] Saving partner sandbox data (snapshot_preserve)…"
 # Partner accounts live only in dev, so the restore below would wipe them. Install/refresh the
@@ -160,6 +187,28 @@ on conflict (key) do update set value = excluded.value, updated_at = now();
 
 notify pgrst, 'reload schema';
 SQL
+
+# The blanket routine grant above reopened every function to anon and authenticated. Put back
+# exactly what prod allows, then run the definer lockdown migration as a safety net for any
+# dev-only function prod doesn't have.
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -f "$FNACL" >/dev/null
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
+  -f "$REPO_ROOT/supabase/migrations/202610220004_lock_down_definer_functions.sql" >/dev/null
+
+# Verify: the only definer functions the public may call are the two RLS policies depend on
+# (see that migration). Anything else means dev is exposed, so stop here, loudly.
+OPEN_FNS=$(psql "$DEV_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
+  select string_agg(p.oid::regprocedure::text, ', ')
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype
+    and p.proname not in ('fn_current_user_role', 'fn_is_chat_participant')
+    and (has_function_privilege('anon', p.oid, 'execute')
+         or has_function_privilege('authenticated', p.oid, 'execute'));")
+if [[ -n "$OPEN_FNS" ]]; then
+  echo "ABORT: these SECURITY DEFINER functions are still callable with the anon key on DEV: $OPEN_FNS"
+  exit 1
+fi
+echo "    function grants copied from prod; no definer function left public"
 
 echo "[5/6] Reconciling foreign keys against PROD…"
 # WHY THIS EXISTS: the restore above is deliberately tolerant (`|| true`), because prod's schema
@@ -265,4 +314,4 @@ echo "[6/6] Putting partner sandbox data back…"
 psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.restore();"
 psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema';"
 
-echo "✓ Done. DEV mirrors PROD; role grants re-applied; FKs reconciled; partner data restored; snapshot_taken_at stamped."
+echo "✓ Done. DEV mirrors PROD; role grants re-applied; function grants match prod; FKs reconciled; partner data restored; snapshot_taken_at stamped."
