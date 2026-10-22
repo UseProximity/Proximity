@@ -78,17 +78,22 @@ function buildPinSvg({ rating, isActive }) {
   const fillHeight = (rating / 5) * STAR_HEIGHT;
   const clipY = STAR_BOTTOM - fillHeight;
   const isGold = rating >= 5 && !isActive;
-  const starPaint = isGold ? "url(#sg)" : isActive ? "#FFA2A2" : "#FFFFF6";
-  const goldGradient = isGold
-    ? `<linearGradient id="sg" x1="17.5" y1="8.2" x2="17.5" y2="31.4" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#D69121"/>
-      <stop offset="0.45" stop-color="#F7D14A"/>
-      <stop offset="0.78" stop-color="#F7EF84"/>
-      <stop offset="1" stop-color="#FFFDEB"/>
-    </linearGradient>`
-    : "";
 
-  return `${open}<defs>${bodyGradient}${goldGradient}<clipPath id="sc"><rect x="4" y="${clipY}" width="27" height="${fillHeight}"/></clipPath></defs>${body}<path d="${STAR_PATH}" fill="${starPaint}" clip-path="url(#sc)"/><path d="${STAR_PATH}" fill="none" stroke="${starPaint}" stroke-width="0.75"/></svg>`;
+  if (isGold) {
+    // Same star as the web pin's gold state (MapView.js buildPinSVGElement): the
+    // gold gradient is pinned to the full star, a cream outline sits under it, and
+    // the gradient fill and stroke are clipped to the star's full height.
+    const goldGradient = `<linearGradient id="sg" x1="17.5" y1="${STAR_BOTTOM - STAR_HEIGHT}" x2="17.5" y2="${STAR_BOTTOM}" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D69121"/>
+      <stop offset="0.115" stop-color="#F7D14A"/>
+      <stop offset="0.236" stop-color="#F7EF84"/>
+      <stop offset="0.394" stop-color="#FFFDEB"/>
+    </linearGradient>`;
+    return `${open}<defs>${bodyGradient}${goldGradient}<clipPath id="sc"><rect x="4" y="${clipY}" width="27" height="${fillHeight + 0.5}"/></clipPath></defs>${body}<path d="${STAR_PATH}" fill="none" stroke="#FFFFF6" stroke-width="0.75"/><path d="${STAR_PATH}" fill="url(#sg)" stroke="url(#sg)" stroke-width="0.75" clip-path="url(#sc)"/></svg>`;
+  }
+
+  const starPaint = isActive ? "#FFA2A2" : "#FFFFF6";
+  return `${open}<defs>${bodyGradient}<clipPath id="sc"><rect x="4" y="${clipY}" width="27" height="${fillHeight}"/></clipPath></defs>${body}<path d="${STAR_PATH}" fill="${starPaint}" clip-path="url(#sc)"/><path d="${STAR_PATH}" fill="none" stroke="${starPaint}" stroke-width="0.75"/></svg>`;
 }
 
 async function main() {

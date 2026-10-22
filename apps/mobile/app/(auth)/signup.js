@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useNavigation, useRouter } from "expo-router";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { AuthScreen } from "../../src/components/brand/AuthScreen";
 import { colors } from "../../src/theme/tokens";
 import { openLegalLink, PRIVACY_URL, TERMS_URL } from "../../src/lib/legalLinks";
 
@@ -18,6 +20,7 @@ const ROLES = [
 export default function SignupScreen() {
   const { signup, isLoading } = useAuth();
   const router = useRouter();
+  const navigation = useNavigation();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -30,6 +33,7 @@ export default function SignupScreen() {
   const [verifiedEmail, setVerifiedEmail] = useState(null);
   const [resending, setResending] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
+  const [resendError, setResendError] = useState(null);
 
   async function handleSignup() {
     setError(null);
@@ -37,27 +41,37 @@ export default function SignupScreen() {
       const data = await signup(name, email, password, role);
       setVerifiedEmail(data.email);
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Sign up failed. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_UP));
     }
   }
 
   async function handleResend() {
     setResendMsg("");
+    setResendError(null);
     setResending(true);
     try {
       await apiClient.auth.resendVerification(verifiedEmail);
       setResendMsg("Resent! Check your inbox.");
-    } catch {
-      setResendMsg("Failed to resend. Please try again.");
+    } catch (err) {
+      setResendError(getErrorMessage(err, ERROR_MESSAGES.AUTH.RESEND_EMAIL));
     } finally {
       setResending(false);
     }
   }
 
+  // Sign In links here, so when it is the screen just below this one, go back to
+  // it instead of pushing another copy (toggling between the two would otherwise
+  // grow the stack without limit). From anywhere else, open Sign In fresh.
+  function handleSignInInstead() {
+    const { routes, index } = navigation.getState();
+    if (routes[index - 1]?.name === "login") router.back();
+    else router.push("/(auth)/login");
+  }
+
   if (verifiedEmail) {
     return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 justify-center items-center px-7">
+      <AuthScreen compact>
+        <View className="items-center">
           <Text className="text-2xl font-bold text-gray-900 mb-3 text-center">Check your email</Text>
           <Text className="text-base text-gray-500 text-center leading-[22px]">
             We sent a verification link to {verifiedEmail}. Click it to activate your account, then sign in.
@@ -75,95 +89,89 @@ export default function SignupScreen() {
             )}
           </Pressable>
           {resendMsg ? <Text className="mt-2 text-[13px] text-gray-500">{resendMsg}</Text> : null}
+          <ErrorMessage compact className="mt-3 self-stretch">
+            {resendError}
+          </ErrorMessage>
 
           <Button onPress={() => router.replace("/(auth)/login")} className="mt-7 self-stretch">
             Back to Sign In
           </Button>
         </View>
-      </SafeAreaView>
+      </AuthScreen>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <View className="flex-1 justify-center px-7 pb-8">
-          <Link href="/(auth)/login" className="mb-6 flex-row items-center">
-            <ChevronLeft size={16} color={colors.textSecondary} strokeWidth={2.5} />
-            <Text className="text-gray-500 text-sm">Sign in instead</Text>
-          </Link>
+    <AuthScreen onBack={handleSignInInstead} backLabel="Sign in instead">
+      <Text className="text-[22px] font-bold text-gray-900 text-center">Create account</Text>
+      <Text className="text-sm text-gray-500 text-center mt-1 mb-5">
+        Join thousands of students finding housing near campus.
+      </Text>
 
-          <Text className="text-[28px] font-bold text-gray-900 mb-1.5">Create account</Text>
-          <Text className="text-sm text-gray-500 mb-7">
-            Join thousands of students finding housing near campus.
-          </Text>
+      <View className="gap-3">
+        <TextField
+          placeholder="Full name"
+          value={name}
+          onChangeText={setName}
+          autoCapitalize="words"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+        <TextField
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+        <TextField
+          placeholder="Password (min. 8 characters)"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!isLoading}
+        />
 
-          <View className="gap-3">
-            <TextField
-              placeholder="Full name"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              autoCorrect={false}
-              editable={!isLoading}
-            />
-            <TextField
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isLoading}
-            />
-            <TextField
-              placeholder="Password (min. 8 characters)"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!isLoading}
-            />
-
-            <View>
-              <Text className="text-[13px] text-gray-500 mb-2 font-medium">I am a…</Text>
-              <View className="flex-row gap-2.5">
-                {ROLES.map((r) => (
-                  <Pressable
-                    key={r.value}
-                    onPress={() => setRole(r.value)}
-                    disabled={isLoading}
-                    className={`flex-1 h-11 rounded-full border items-center justify-center ${
-                      role === r.value ? "bg-red-600 border-red-600" : "bg-gray-50 border-gray-200"
-                    }`}
-                  >
-                    <Text className={`text-sm font-medium ${role === r.value ? "text-white" : "text-gray-500"}`}>
-                      {r.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            {error ? <Text className="text-red-500 text-[13px] text-center">{error}</Text> : null}
-
-            <Button onPress={handleSignup} loading={isLoading}>
-              Create Account
-            </Button>
-
-            <Text className="text-center text-xs leading-[18px] text-gray-500">
-              By creating an account you agree to our{" "}
-              <Text className="font-semibold text-gray-900" onPress={() => openLegalLink(TERMS_URL)}>
-                Terms of Service
-              </Text>{" "}
-              and{" "}
-              <Text className="font-semibold text-gray-900" onPress={() => openLegalLink(PRIVACY_URL)}>
-                Privacy Policy
-              </Text>
-              .
-            </Text>
+        <View>
+          <Text className="text-[13px] text-gray-500 mb-2 font-medium">I am a…</Text>
+          <View className="flex-row gap-2.5">
+            {ROLES.map((r) => (
+              <Pressable
+                key={r.value}
+                onPress={() => setRole(r.value)}
+                disabled={isLoading}
+                className={`flex-1 h-11 rounded-full border items-center justify-center ${
+                  role === r.value ? "bg-red-600 border-red-600" : "bg-gray-50 border-gray-200"
+                }`}
+              >
+                <Text className={`text-sm font-medium ${role === r.value ? "text-white" : "text-gray-500"}`}>
+                  {r.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+        <ErrorMessage compact>{error}</ErrorMessage>
+
+        <Button onPress={handleSignup} loading={isLoading}>
+          Create Account
+        </Button>
+
+        <Text className="text-center text-xs leading-[18px] text-gray-500">
+          By creating an account you agree to our{" "}
+          <Text className="font-semibold text-gray-900" onPress={() => openLegalLink(TERMS_URL)}>
+            Terms of Service
+          </Text>{" "}
+          and{" "}
+          <Text className="font-semibold text-gray-900" onPress={() => openLegalLink(PRIVACY_URL)}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+      </View>
+    </AuthScreen>
   );
 }

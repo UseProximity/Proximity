@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ImageOff, X } from "lucide-react-native";
 import { useAttachmentImage } from "./ChatAttachmentImages";
+import { ERROR_MESSAGES } from "../../lib/errorMessages";
 
 // Full-screen photo viewer. Swipe sideways between a message's photos; on iOS pinch
 // to zoom. `photos` is the list of image attachments, `index` the one to start on.
@@ -50,8 +51,8 @@ function Page({ attachment, width, height }) {
       {status === "error" ? (
         <Pressable onPress={retryNow} className="items-center justify-center" accessibilityLabel="Retry loading photo">
           <ImageOff size={32} color="#d1d5db" strokeWidth={1.8} />
-          <Text className="text-white text-base mt-3">Couldn&apos;t load this photo</Text>
-          <Text className="text-gray-300 text-sm mt-1">Tap to try again</Text>
+          <Text className="text-white text-base mt-3">{ERROR_MESSAGES.CHAT.IMAGE_LOAD_FAILED}</Text>
+          <Text className="text-gray-300 text-sm mt-1">{ERROR_MESSAGES.CHAT.IMAGE_TAP_TRY_AGAIN}</Text>
         </Pressable>
       ) : null}
     </ScrollView>

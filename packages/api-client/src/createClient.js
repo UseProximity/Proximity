@@ -25,18 +25,22 @@ import { ChatResource } from "./resources/chat.js";
 // same preference as an `x-staging-email-to` header instead. The server only
 // honors it outside real production (see apps/web/src/lib/outreach.js), so
 // it's inert/no-op if ever left set in a production build.
-export function createApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo }) {
-  return new ApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo });
+//
+// getTestEmailTo is the same preference read at request time, for a destination
+// the tester can change while the app is running (it takes precedence).
+export function createApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo, getTestEmailTo }) {
+  return new ApiClient({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo, getTestEmailTo });
 }
 
 class ApiClient {
-  constructor({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo }) {
+  constructor({ baseUrl, getToken, getRefreshToken, onTokenExpired, onTokenRefreshed, testEmailTo, getTestEmailTo }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.getToken = getToken ?? (() => null);
     this.getRefreshToken = getRefreshToken ?? (() => null);
     this.onTokenExpired = onTokenExpired ?? (() => {});
     this.onTokenRefreshed = onTokenRefreshed ?? null;
     this.testEmailTo = testEmailTo ?? null;
+    this.getTestEmailTo = getTestEmailTo ?? null;
 
     this.listings = createListingsResource(this);
     this.dormReviews = createDormReviewsResource(this);
@@ -86,10 +90,11 @@ class ApiClient {
   // access token once and retries. Shared by request() and requestBinary().
   async fetchWithAuth(path, fetchOptions, baseHeaders, skipAuth) {
     const token = skipAuth ? null : await this.getToken();
+    const testEmailTo = this.getTestEmailTo?.() || this.testEmailTo;
     const headers = {
       ...baseHeaders,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(this.testEmailTo ? { "x-staging-email-to": this.testEmailTo } : {}),
+      ...(testEmailTo ? { "x-staging-email-to": testEmailTo } : {}),
     };
 
     const url = this.baseUrl + path;

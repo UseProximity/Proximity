@@ -15,7 +15,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-export async function sendNewListingEmail(toEmail, toName, address, listingId) {
+export async function sendNewListingEmail(toEmail, toName, address, listingId, req) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn("[sendNewListingEmail] Email env vars not set, skipping in dev mode.");
     return;
@@ -39,7 +39,7 @@ export async function sendNewListingEmail(toEmail, toName, address, listingId) {
         <p style="color: #9ca3af; font-size: 12px;">You're receiving this because a listing was assigned to your account on Proximity.</p>
       </div>
     `,
-  });
+  }, req);
 }
 
 /*

@@ -86,6 +86,9 @@ export async function notifyNewChatMessage({
   baseUrl,
   via = "app",
   quietMs = ALERT_QUIET_MS,
+  // A staging tester's chosen test inbox: the x-staging-email-to header value,
+  // captured by the route before after() (see stagingEmailHeader in outreach.js).
+  testEmailTo = null,
 }) {
   try {
     // Without a message id there is nothing to dedupe against, so no wait.
@@ -104,7 +107,7 @@ export async function notifyNewChatMessage({
     }
     if (!data?.recipientEmail) return;
 
-    await deliverAlert(data, { baseUrl });
+    await deliverAlert(data, { baseUrl, testEmailTo });
   } catch (err) {
     // The message is already delivered in-app; a notification failure must stay silent.
     console.error("notifyNewChatMessage failed:", err);
@@ -115,7 +118,7 @@ export async function notifyNewChatMessage({
  * Send one alert for a recipient row from rpc_chat_notification_recipient and log it.
  * Returns the send result, or null when nothing was sent.
  */
-async function deliverAlert(data, { baseUrl, reminder = false }) {
+async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null }) {
   // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
   // /messages deep link so the notification still arrives.
   //
@@ -150,6 +153,7 @@ async function deliverAlert(data, { baseUrl, reminder = false }) {
     threadRef: `thread.${data.threadId}.${data.recipientId}`,
     references,
     reminder,
+    testEmailTo,
   });
 
   if (sent && !sent.suppressed) {

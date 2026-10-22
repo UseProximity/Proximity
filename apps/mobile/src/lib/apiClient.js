@@ -1,6 +1,7 @@
 import { createApiClient } from "@proximity/api-client";
 import { useAuthStore } from "../store/authStore";
 import { assertDistributableApiUrl } from "./envGuard";
+import { getStagingEmail, isNonProductionApi, loadStagingEmail } from "./stagingEmail";
 
 // Literal process.env reads: Expo only inlines EXPO_PUBLIC_* written out like this.
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -26,7 +27,12 @@ const apiClient = createApiClient({
   // Development only: a distributed build never sends the override, even if the
   // variable leaked into it.
   testEmailTo: __DEV__ ? TEST_EMAIL_TO || null : null,
+  // Staging only: the destination chosen in Profile > Test email destination, read
+  // at request time so a change applies at once. Never sent to the real site.
+  getTestEmailTo: () => (isNonProductionApi(API_URL) ? getStagingEmail() : null),
 });
+
+if (isNonProductionApi(API_URL)) loadStagingEmail();
 
 /**
  * Explicitly refreshes the access token and persists it to the store.

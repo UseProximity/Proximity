@@ -14,6 +14,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import apiClient from "../../src/lib/apiClient";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
@@ -29,27 +32,27 @@ export default function ChangePasswordScreen() {
 
     // Validation
     if (!currentPassword) {
-      setError("Current password is required");
+      setError(ERROR_MESSAGES.PROFILE.CURRENT_PASSWORD_REQUIRED);
       return;
     }
 
     if (!newPassword) {
-      setError("New password is required");
+      setError(ERROR_MESSAGES.PROFILE.NEW_PASSWORD_REQUIRED);
       return;
     }
 
     if (newPassword.length < 8) {
-      setError("New password must be at least 8 characters");
+      setError(ERROR_MESSAGES.PROFILE.NEW_PASSWORD_SHORT);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("New passwords do not match");
+      setError(ERROR_MESSAGES.PROFILE.PASSWORDS_MISMATCH);
       return;
     }
 
     if (newPassword === currentPassword) {
-      setError("New password must be different from current password");
+      setError(ERROR_MESSAGES.PROFILE.PASSWORD_UNCHANGED);
       return;
     }
 
@@ -64,12 +67,7 @@ export default function ChangePasswordScreen() {
         [{ text: "OK", onPress: () => router.back() }]
       );
     } catch (err) {
-      const errorMessage = err?.body?.error ?? err?.message ?? "Failed to change password";
-      if (errorMessage.includes("current password")) {
-        setError("Current password is incorrect");
-      } else {
-        setError(errorMessage);
-      }
+      setError(getErrorMessage(err, ERROR_MESSAGES.PROFILE.CHANGE_PASSWORD));
     } finally {
       setSaving(false);
     }
@@ -146,11 +144,7 @@ export default function ChangePasswordScreen() {
           </View>
 
           {/* Error */}
-          {error && (
-            <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-              <Text className="text-red-700 text-sm">{error}</Text>
-            </View>
-          )}
+          <ErrorMessage className="mb-4">{error}</ErrorMessage>
 
           {/* Security Tips: the `info` role (design-system/MASTER.md §2):
               blue-50/blue-200/blue-900, blue-700 for body text as a second

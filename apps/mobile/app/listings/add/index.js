@@ -19,6 +19,8 @@ import apiClient from "../../../src/lib/apiClient";
 import { pickImages, compressImage, uploadImages } from "../../../src/lib/imageUpload";
 import { Button } from "../../../src/components/ui/Button";
 import { getErrorMessage } from "../../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../../src/lib/errorMessages";
+import { ErrorMessage } from "../../../src/components/ui/ErrorMessage";
 import StepAddress from "../../../src/components/listings/wizard/StepAddress";
 import StepBasics from "../../../src/components/listings/wizard/StepBasics";
 import StepUnits from "../../../src/components/listings/wizard/StepUnits";
@@ -126,10 +128,14 @@ export default function AddListingScreen() {
   // listing exists (see publish()), mirroring AddListingWizard.js's
   // staged-file flow.
   const addImages = async () => {
-    const picked = await pickImages();
-    if (!picked.length) return;
-    const compressed = await Promise.all(picked.map(compressImage));
-    setStagedImages((prev) => [...prev, ...compressed]);
+    try {
+      const picked = await pickImages();
+      if (!picked.length) return;
+      const compressed = await Promise.all(picked.map(compressImage));
+      setStagedImages((prev) => [...prev, ...compressed]);
+    } catch {
+      setError(ERROR_MESSAGES.LISTINGS.PHOTOS_ADD);
+    }
   };
   const removeStagedImage = (i) => setStagedImages((imgs) => imgs.filter((_, idx) => idx !== i));
 
@@ -137,16 +143,16 @@ export default function AddListingScreen() {
   const stepIndex = STEPS.findIndex((s) => s.id === stepId);
 
   const validateStep = (id) => {
-    if (id === "address" && !form.address.trim()) return "Enter the property address to continue.";
+    if (id === "address" && !form.address.trim()) return ERROR_MESSAGES.LISTINGS.STEP_ADDRESS;
     if (id === "basics" && availabilityMode === "date" && !form.move_in_date)
-      return "Pick the date it becomes available, or choose Available now.";
+      return ERROR_MESSAGES.LISTINGS.STEP_MOVE_IN;
     if (id === "units") {
-      if (units.length === 0) return "Add at least one unit.";
-      if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) return "Each unit needs bedrooms and bathrooms.";
+      if (units.length === 0) return ERROR_MESSAGES.LISTINGS.STEP_UNITS_NONE;
+      if (units.some((u) => u.bedrooms === "" || u.bathrooms === "")) return ERROR_MESSAGES.LISTINGS.STEP_UNIT_BEDS_BATHS;
       if (units.some((u) => u.available !== false && !(Array.isArray(u.leaseTermMonths) && u.leaseTermMonths.length > 0)))
-        return "Pick at least one lease term for each available unit.";
+        return ERROR_MESSAGES.LISTINGS.STEP_UNIT_LEASE_TERM;
     }
-    if (id === "description" && !form.description.trim()) return "A short description is required.";
+    if (id === "description" && !form.description.trim()) return ERROR_MESSAGES.LISTINGS.STEP_DESCRIPTION;
     return null;
   };
 
@@ -249,19 +255,16 @@ export default function AddListingScreen() {
         try {
           const { failedCount } = await uploadImages(listingId, stagedImages);
           if (failedCount > 0) {
-            Alert.alert(
-              "Listing published",
-              `${failedCount} photo${failedCount === 1 ? "" : "s"} failed to upload. You can re-add them from the listing later.`
-            );
+            Alert.alert(ERROR_MESSAGES.LISTINGS.PHOTOS_PARTIAL_TITLE, ERROR_MESSAGES.LISTINGS.photosPartial(failedCount));
           }
         } catch {
-          Alert.alert("Listing published", "Photos failed to upload. You can re-add them from the listing later.");
+          Alert.alert(ERROR_MESSAGES.LISTINGS.PHOTOS_PARTIAL_TITLE, ERROR_MESSAGES.LISTINGS.PHOTOS_FAILED);
         }
       }
 
       router.replace(`/listings/${listingId}`);
     } catch (err) {
-      setError(getErrorMessage(err, "Something went wrong. Please try again."));
+      setError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.PUBLISH));
     } finally {
       setSubmitting(false);
     }
@@ -352,11 +355,7 @@ export default function AddListingScreen() {
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
         {renderStep()}
-        {error ? (
-          <View className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-            <Text className="text-sm text-red-700">{error}</Text>
-          </View>
-        ) : null}
+        <ErrorMessage className="mt-4">{error}</ErrorMessage>
       </ScrollView>
 
       {/* Keep the buttons clear of the home indicator, same as FilterSheet's footer. */}

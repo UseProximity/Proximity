@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import apiClient from "../../lib/apiClient";
 import { ListingCard } from "../listings/ListingCard";
+import { ERROR_MESSAGES } from "../../lib/errorMessages";
 
 // Full class strings (not interpolated), because NativeWind, like Tailwind, only
 // picks up class names it can see literally in source.
@@ -47,7 +48,7 @@ export function RecommendationCard({ recommendation }) {
         <ListingCard listing={listing} />
       ) : failed ? (
         <View className="aspect-video rounded-2xl bg-gray-100 items-center justify-center mb-4">
-          <Text className="text-xs text-gray-400">Couldn&apos;t load this listing</Text>
+          <Text className="text-xs text-gray-400">{ERROR_MESSAGES.MATCHMAKING.LISTING_LOAD}</Text>
         </View>
       ) : (
         <View className="aspect-video rounded-2xl bg-gray-100 items-center justify-center mb-4">

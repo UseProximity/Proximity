@@ -13,6 +13,7 @@ import { File, FileMode, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import apiClient from "./apiClient";
 import { CHAT_PHOTO_MAX_BYTES } from "./chatPhotos";
+import { ERROR_MESSAGES } from "./errorMessages";
 
 export const PDF_MIME_TYPE = "application/pdf";
 const PDF_MAGIC = "%PDF-";
@@ -64,8 +65,8 @@ async function preparePdf(picked, index) {
   }
 
   const { size, isPdf } = inspect(file);
-  if (!size || !isPdf) throw userFacing("That file isn't a valid PDF.");
-  if (size > CHAT_PHOTO_MAX_BYTES) throw userFacing("Each file must be 20MB or smaller.");
+  if (!size || !isPdf) throw userFacing(ERROR_MESSAGES.CHAT.FILE_NOT_PDF);
+  if (size > CHAT_PHOTO_MAX_BYTES) throw userFacing(ERROR_MESSAGES.CHAT.FILE_TOO_LARGE);
 
   return {
     uri: file.uri,
@@ -90,7 +91,7 @@ export async function pickChatPdfs({ limit }) {
     pdfs: results.filter((r) => r.status === "fulfilled").map((r) => r.value),
     errors: results
       .filter((r) => r.status === "rejected")
-      .map((r) => (r.reason?.userFacing ? r.reason.message : "Couldn't read that file.")),
+      .map((r) => (r.reason?.userFacing ? r.reason.message : ERROR_MESSAGES.CHAT.FILE_UNREADABLE)),
     skipped: Math.max(0, picked.result.length - limit),
   };
 }
@@ -119,9 +120,9 @@ async function downloadChatPdf(attachment) {
 }
 
 export async function openChatPdf(attachment) {
-  if (!attachment?.id) throw userFacing("This PDF isn't available yet.");
+  if (!attachment?.id) throw userFacing(ERROR_MESSAGES.CHAT.PDF_NOT_READY);
   if (!(await Sharing.isAvailableAsync())) {
-    throw userFacing("Opening files isn't supported on this device.");
+    throw userFacing(ERROR_MESSAGES.CHAT.PDF_UNSUPPORTED);
   }
   const file = await downloadChatPdf(attachment);
   await Sharing.shareAsync(file.uri, {

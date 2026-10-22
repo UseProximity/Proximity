@@ -1,7 +1,7 @@
 // Browse map. Ported from apps/web/src/components/listings/MapView.js's core
 // behavior (one marker per listing, no clustering, fit-bounds around campus
-// excluding outliers, tap a pin to select, rating teardrop pins, rated pins
-// prioritized over unrated ones when overlapping); simplified for mobile: no
+// excluding outliers, tap a pin to select, rating teardrop pins, the more
+// southern pin drawn on top where pins overlap); simplified for mobile: no
 // driving-route overlay, no "Browse this area" viewport filter, no
 // address-search fly-to.
 //
@@ -34,8 +34,9 @@ const SELECTED_CARD_CLEARANCE = 88;
 
 // Pin size relative to the bundled artwork (35x49pt). Mapbox scales symbols
 // around their anchor, so with iconAnchor "bottom" the tip stays on the
-// listing's coordinate at any value here.
-const PIN_ICON_SCALE = 0.78;
+// listing's coordinate at any value here. 0.66 is the former 0.78 reduced by
+// about 15% to ease crowding in dense areas.
+const PIN_ICON_SCALE = 0.66;
 
 export function BrowseMapView({ listings }) {
   const router = useRouter();
@@ -48,6 +49,20 @@ export function BrowseMapView({ listings }) {
     () => listings.filter((l) => Number.isFinite(l.latitude) && Number.isFinite(l.longitude)),
     [listings]
   );
+  // Draw order for overlapping pins, matching web: north to south, so the more
+  // southern pin is drawn last and sits on top. A symbol sort key replaces
+  // Mapbox's own ordering by screen position, so the order is spelled out here.
+  // Equal latitudes fall back to longitude, then id, so the stacking is stable
+  // between renders whatever order the API returns the listings in.
+  const stackRank = useMemo(() => {
+    const ordered = [...pinnable].sort(
+      (a, b) =>
+        b.latitude - a.latitude ||
+        a.longitude - b.longitude ||
+        String(a._id).localeCompare(String(b._id))
+    );
+    return new Map(ordered.map((l, i) => [l._id, i]));
+  }, [pinnable]);
   const selected = pinnable.find((l) => l._id === selectedId) ?? null;
   // Mapbox's logo and attribution "i" (the telemetry opt-in) sit at the bottom
   // corners. Lift them clear of the selected-listing card so they stay visible
@@ -60,6 +75,8 @@ export function BrowseMapView({ listings }) {
       features: pinnable.map((listing) => {
         const rating = (listing.rating || 0) > 0 ? listing.rating || 0 : null;
         const isSelected = listing._id === selectedId;
+        // The selected pin takes the highest key, so it stays on top.
+        const sortKey = isSelected ? pinnable.length : stackRank.get(listing._id);
         return {
           type: "Feature",
           id: listing._id,
@@ -67,12 +84,12 @@ export function BrowseMapView({ listings }) {
           properties: {
             listingId: listing._id,
             iconId: ratingIconId(rating, isSelected),
-            sortKey: isSelected ? 2 : rating != null ? 1 : 0,
+            sortKey,
           },
         };
       }),
     }),
-    [pinnable, selectedId]
+    [pinnable, selectedId, stackRank]
   );
 
   function handlePress(event) {

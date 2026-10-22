@@ -28,7 +28,7 @@
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
- *   - blocks/reports user_blocks (either side) and the review_reports and chat_reports this person filed.
+ *   - blocks/reports user_blocks (either side) and the review_reports, review_reply_reports and chat_reports this person filed.
  *   - listings       sole-owned listings are soft-deleted by the users trigger.
  *                    The owner's phone is scrubbed now; their name and email
  *                    stay on the withdrawn listing for three years (Terms s17A).
@@ -82,7 +82,9 @@ function bucket() {
 // replaced their photo several times and old objects were never cleaned up).
 async function deleteProfilePhotos(userId) {
   const Bucket = bucket();
-  if (!Bucket) return 0;
+  // Not "nothing to delete": without a bucket the photos cannot be checked at all,
+  // and returning quietly would let the account be tombstoned with them intact.
+  if (!Bucket) throw new Error("R2 bucket name is not configured");
 
   let deleted = 0;
   let ContinuationToken;
@@ -92,7 +94,17 @@ async function deleteProfilePhotos(userId) {
     );
     const objects = (listed.Contents ?? []).map((o) => ({ Key: o.Key }));
     if (objects.length > 0) {
-      await r2.send(new DeleteObjectsCommand({ Bucket, Delete: { Objects: objects } }));
+      const result = await r2.send(
+        new DeleteObjectsCommand({ Bucket, Delete: { Objects: objects } })
+      );
+      // DeleteObjects answers 200 even when individual keys fail, listing them in
+      // Errors. Treat any entry as a failed purge so the run is retried.
+      if (result?.Errors?.length) {
+        const first = result.Errors[0];
+        throw new Error(
+          `R2 failed to delete ${result.Errors.length} of ${objects.length} objects (${first.Code ?? "unknown"}: ${first.Message ?? "no message"})`
+        );
+      }
       deleted += objects.length;
     }
     ContinuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
@@ -257,6 +269,10 @@ async function purgeUser(user) {
     supabase.from("review_reports").delete().eq("reporter_id", userId)
   );
   await must(
+    "review_reply_reports by reporter",
+    supabase.from("review_reply_reports").delete().eq("reporter_id", userId)
+  );
+  await must(
     "chat_reports by reporter",
     supabase.from("chat_reports").delete().eq("reporter_id", userId)
   );
@@ -276,14 +292,10 @@ async function purgeUser(user) {
 
   const listingsScrubbed = await scrubListingContacts(user);
 
-  let photosDeleted = 0;
-  try {
-    photosDeleted = await deleteProfilePhotos(userId);
-  } catch (err) {
-    // Don't abort the DB purge because object storage misbehaved; the row scrub
-    // below is the part that matters most, and this is retried next run.
-    console.error(`[purge-accounts] R2 cleanup failed for ${userId}:`, err);
-  }
+  // A failure here throws on purpose: the tombstone below is what stops this job
+  // from ever selecting the account again, so it must not happen while photos
+  // remain. GET() records the failure and the next run retries from the top.
+  const photosDeleted = await deleteProfilePhotos(userId);
 
   // action_log holds full to_jsonb(OLD/NEW) snapshots of the users row — every
   // historical email/phone/birthday/gender plus password_hash — and of every

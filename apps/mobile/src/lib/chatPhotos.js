@@ -17,6 +17,8 @@
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import apiClient from "./apiClient";
+import { userFacingError } from "./apiError";
+import { ERROR_MESSAGES } from "./errorMessages";
 
 export const CHAT_PHOTO_MAX_FILES = 5;
 export const CHAT_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
@@ -131,9 +133,7 @@ export async function prepareChatPhoto(asset, index = 0) {
   const fallback = await encodeJpeg(asset, FALLBACK_ENCODE);
   if (fits(fallback.bytes)) return asJpeg(fallback);
 
-  const error = new Error("A photo is too large to send.");
-  error.userFacing = true;
-  throw error;
+  throw userFacingError(ERROR_MESSAGES.CHAT.PHOTO_TOO_LARGE);
 }
 
 // Presigns and uploads prepared attachments (photos from prepareChatPhoto, PDFs from
@@ -144,8 +144,8 @@ export async function uploadChatAttachments(threadId, photos) {
   // One read per file; its size is both what is presigned and what is uploaded.
   const blobs = await Promise.all(photos.map((photo) => readBlob(photo.uri)));
   blobs.forEach((blob) => {
-    if (!blob.size) throw new Error("One of the files is empty.");
-    if (blob.size > CHAT_PHOTO_MAX_BYTES) throw new Error("Each file must be 20MB or smaller.");
+    if (!blob.size) throw userFacingError(ERROR_MESSAGES.CHAT.FILE_EMPTY);
+    if (blob.size > CHAT_PHOTO_MAX_BYTES) throw userFacingError(ERROR_MESSAGES.CHAT.FILE_TOO_LARGE);
   });
 
   const { presigned } = await apiClient.chat.presignAttachments(
@@ -153,7 +153,7 @@ export async function uploadChatAttachments(threadId, photos) {
     photos.map((photo, i) => ({ name: photo.fileName, type: photo.mimeType, size: blobs[i].size }))
   );
   if (!Array.isArray(presigned) || presigned.length !== photos.length) {
-    throw new Error("Couldn't prepare the upload.");
+    throw userFacingError(ERROR_MESSAGES.CHAT.UPLOAD_PREPARE);
   }
 
   await Promise.all(
@@ -163,7 +163,7 @@ export async function uploadChatAttachments(threadId, photos) {
         headers: { "Content-Type": photos[i].mimeType },
         body: blobs[i],
       });
-      if (!response.ok) throw new Error("Couldn't upload a file. Please try again.");
+      if (!response.ok) throw userFacingError(ERROR_MESSAGES.CHAT.UPLOAD_FILE);
     })
   );
 

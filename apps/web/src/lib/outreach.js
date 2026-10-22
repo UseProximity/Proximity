@@ -13,22 +13,35 @@
  *     tested end-to-end safely. Cron/webhook contexts have no request to read a cookie or
  *     header from, so OUTREACH_TEST_RECIPIENT (env var) is the fallback there. With no
  *     recipient chosen by any of the three, the email is suppressed (logged only). Pass the
- *     incoming `req` through when a caller has one, so the header/cookie checks can run.
+ *     incoming `req` through when a caller has one, so the header/cookie checks can run
+ *     (or, from inside after(), the header value captured earlier with stagingEmailHeader).
  *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  */
 import { outreachEnabled } from "./appEnv.js";
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// One ordinary address only: commas, semicolons and angle brackets are rejected so a
+// header, cookie or env value cannot name several recipients (nodemailer splits on them).
+// Keep identical to the copies in StagingEmailPicker.js and mobile stagingEmail.js
+// (outreach.test.mjs checks they match).
+const EMAIL_RE = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
 const RECIPIENT_HEADER = "x-staging-email-to";
+
+// The raw test-recipient header from a request, or null. Routes that send inside
+// after() read it here BEFORE scheduling the callback and pass the plain string on
+// (sendMailSafe accepts it in place of `req`), so nothing relies on the request
+// object still being usable once the response has gone out.
+export function stagingEmailHeader(req) {
+  return req?.headers?.get?.(RECIPIENT_HEADER) ?? null;
+}
 
 // Read the dev-chosen test recipient: from the request header first (mobile has no
 // cookies to use), falling back to the browser cookie (web's picker widget). Returns null
 // outside a request context (e.g. cron / webhooks), when unset, or when `req` is omitted.
 async function stagingTestRecipient(req) {
-  const headerValue = req?.headers?.get?.(RECIPIENT_HEADER);
+  const headerValue = typeof req === "string" ? req : stagingEmailHeader(req);
   if (headerValue && EMAIL_RE.test(headerValue)) return headerValue;
 
   try {

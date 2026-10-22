@@ -21,6 +21,9 @@ import { getRentRangeLabel } from "@proximity/shared";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
 import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { showError } from "../../src/lib/showError";
+import { ErrorState } from "../../src/components/ui/ErrorMessage";
 import { colors } from "../../src/theme/tokens";
 
 function rangeLabel(values) {
@@ -115,7 +118,7 @@ export default function MyListingsScreen() {
       setListings(data.listings ?? []);
       setError(null);
     } catch (err) {
-      setError(getErrorMessage(err, "Couldn't load your listings."));
+      setError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.MINE_LOAD));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -143,7 +146,7 @@ export default function MyListingsScreen() {
       setListings((prev) =>
         prev.map((l) => (l._id === listing._id ? { ...l, unavailable: listing.unavailable } : l))
       );
-      Alert.alert("Error", getErrorMessage(err, "Couldn't update availability. Please try again."));
+      showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.MINE_AVAILABILITY));
     } finally {
       setTogglingId(null);
     }
@@ -164,7 +167,7 @@ export default function MyListingsScreen() {
               await apiClient.landlord.deleteListing(listing._id);
               setListings((prev) => prev.filter((l) => l._id !== listing._id));
             } catch (err) {
-              Alert.alert("Error", getErrorMessage(err, "Couldn't delete this listing. Please try again."));
+              showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.MINE_DELETE));
             } finally {
               setDeletingId(null);
             }
@@ -223,12 +226,7 @@ export default function MyListingsScreen() {
         )}
         ListEmptyComponent={
           error ? (
-            <View className="flex-1 items-center justify-center mt-20 px-6">
-              <Text className="text-gray-500 text-center mb-4">{error}</Text>
-              <Pressable onPress={load} className="bg-gray-100 rounded-xl px-6 py-3">
-                <Text className="text-gray-900 font-semibold text-sm">Try again</Text>
-              </Pressable>
-            </View>
+            <ErrorState message={error} onAction={load} className="mt-20" />
           ) : (
             <View className="flex-1 items-center justify-center mt-20 px-6">
               <Text className="text-gray-900 font-semibold text-base mb-1">No listings yet</Text>

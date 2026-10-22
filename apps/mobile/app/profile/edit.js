@@ -15,6 +15,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -33,22 +36,22 @@ export default function EditProfileScreen() {
 
     // Validation
     if (!name.trim()) {
-      setError("Name is required");
+      setError(ERROR_MESSAGES.PROFILE.NAME_REQUIRED);
       return;
     }
 
     if (!email.trim()) {
-      setError("Email is required");
+      setError(ERROR_MESSAGES.PROFILE.EMAIL_REQUIRED);
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError("Please enter a valid email");
+      setError(ERROR_MESSAGES.PROFILE.EMAIL_INVALID);
       return;
     }
 
     if (isStudent && graduationYear && !/^\d{4}$/.test(graduationYear)) {
-      setError("Graduation year must be a 4-digit year");
+      setError(ERROR_MESSAGES.PROFILE.GRAD_YEAR);
       return;
     }
 
@@ -80,7 +83,7 @@ export default function EditProfileScreen() {
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Failed to update profile");
+      setError(getErrorMessage(err, ERROR_MESSAGES.PROFILE.SAVE));
     } finally {
       setSaving(false);
     }
@@ -156,11 +159,7 @@ export default function EditProfileScreen() {
           )}
 
           {/* Error */}
-          {error && (
-            <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-              <Text className="text-red-700 text-sm">{error}</Text>
-            </View>
-          )}
+          <ErrorMessage className="mb-4">{error}</ErrorMessage>
 
           {/* Role Info */}
           <View className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4">

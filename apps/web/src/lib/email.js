@@ -162,7 +162,7 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 // listing's owner with the student CC'd and set as reply-to, so the landlord replies
 // straight to the student. Routed through sendMailSafe, so on staging it's redirected to
 // the chosen test inbox (and the cc is dropped) — never reaching a real owner.
-export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message }) {
+export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req }) {
   // The contact flow always supplies the student's note (the editable draft can't be
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
   // future caller omits it — the real default lives in contactNote.js.
@@ -190,7 +190,7 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
         })}
       </div>
     `,
-  });
+  }, req);
 }
 
 const CHAT_FROM_ADDRESS = "info@useproximity.org";
@@ -367,6 +367,7 @@ export async function sendChatMessageEmail({
   replyTo,
   threadRef,
   references = [],
+  testEmailTo,
   reminder = false,
 }) {
   const build = (canReply) =>
@@ -408,7 +409,7 @@ export async function sendChatMessageEmail({
         html,
         text,
         ses: SES_SEND_OPTIONS,
-      });
+      }, testEmailTo);
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
     } catch (err) {
       console.error("sendChatMessageEmail: SES send failed, falling back to Gmail:", err);
@@ -423,7 +424,7 @@ export async function sendChatMessageEmail({
     headers,
     html,
     text,
-  });
+  }, testEmailTo);
   return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed) };
 }
 
@@ -600,7 +601,7 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next,
  * conversations stay in the landlord's account, so a leasing office that never
  * asked for this can tell what it is and ignore it.
  */
-export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl }) {
+export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl, testEmailTo }) {
   const landlord = escapeHtml(landlordName || "A landlord");
   const listing = listingLabel ? escapeHtml(listingLabel) : "";
   const subject = listingLabel
@@ -631,13 +632,13 @@ export async function sendContactVerificationEmail({ to, landlordName, listingLa
   // is not the first time the inbox sees it.
   if (sesTransporter) {
     try {
-      await sendMailSafe(sesTransporter, { ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS });
+      await sendMailSafe(sesTransporter, { ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS }, testEmailTo);
       return;
     } catch (err) {
       console.error("sendContactVerificationEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  await sendMailSafe(transporter, message);
+  await sendMailSafe(transporter, message, testEmailTo);
 }
 
 // One email per PMS sync run, only when a human should look: errored or
@@ -952,4 +953,40 @@ export async function sendReviewInviteEmail({
       </div>
     `,
   });
+}
+
+/*
+ * One short note to the team per new review or reply report, so a report gets
+ * looked at instead of sitting in review_reports / review_reply_reports.
+ * Everything but our own labels is user text and is escaped. Off production
+ * sendMailSafe redirects it to the tester's inbox or drops it.
+ */
+export async function sendContentReportEmail({
+  kind,
+  text,
+  author,
+  reporter,
+  listingLabel,
+  listingUrl,
+  req,
+}) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: "info@useproximity.org",
+      subject: `Reported ${kind}${listingLabel ? `: ${listingLabel}` : ""}`,
+      html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>A ${esc(kind)} was reported${listingLabel ? ` on <b>${esc(listingLabel)}</b>` : ""}.</p>
+        <blockquote style="margin:12px 0;padding:8px 12px;border-left:3px solid #ef4444;color:#333">${esc(text)}</blockquote>
+        <p style="color:#444">Written by ${esc(author)}<br>Reported by ${esc(reporter)}</p>
+        ${listingUrl ? `<p><a href="${esc(listingUrl)}">Open the listing</a></p>` : ""}
+      </div>
+    `,
+    },
+    req
+  );
 }
