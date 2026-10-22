@@ -32,6 +32,9 @@ export const ERROR_MESSAGES = {
     EMAIL_EXISTS: "An account with this email already exists.",
     APPLE_ACCOUNT: "This email is linked to an Apple account. Please sign in with Apple.",
     GOOGLE_ACCOUNT: "This email is linked to a Google account. Please sign in with Google.",
+    SET_PASSWORD_EMAILED: "This email is already on Proximity but has no password yet. Check your inbox for a link to set one.",
+    EMAIL_RECENTLY_DELETED:
+      "This email belonged to a recently deleted account. It frees up 30 days after deletion. Need help? Contact info@useproximity.org.",
     EMAIL_INVALID: "Enter a valid email address.",
     NAME_REQUIRED: "Enter your name.",
     FIELDS_REQUIRED: "Fill in all the required fields.",
@@ -193,10 +196,14 @@ export const SERVER_ERRORS = {
   TOKEN_EXPIRED: E.AUTH.SESSION_EXPIRED,
   EMAIL_EXISTS: E.AUTH.EMAIL_EXISTS,
   GOOGLE_ACCOUNT: E.AUTH.GOOGLE_ACCOUNT,
+  SET_PASSWORD_EMAILED: E.AUTH.SET_PASSWORD_EMAILED,
   MISSING_FIELDS: E.AUTH.FIELDS_REQUIRED,
   // Sign up and password reset.
   "An account with this email already exists.": E.AUTH.EMAIL_EXISTS,
   "This email is linked to an Apple account. Please sign in with Apple.": E.AUTH.APPLE_ACCOUNT,
+  "This email uses Google sign-in. Please continue with Google.": E.AUTH.GOOGLE_ACCOUNT,
+  "This email is temporarily unavailable because it was recently used by a deleted account. It frees up 30 days after deletion. Need help? Contact info@useproximity.org.":
+    E.AUTH.EMAIL_RECENTLY_DELETED,
   "Valid email is required.": E.AUTH.EMAIL_INVALID,
   "Email is required.": E.AUTH.EMAIL_INVALID,
   "Name is required.": E.AUTH.NAME_REQUIRED,
