@@ -5,6 +5,7 @@ import { Image, Pressable, Text, View } from "react-native";
 import { AMENITY_LABELS, UTILITY_LABELS, LEASE_TERM_PRESETS } from "@proximity/shared";
 import { Button } from "../../ui/Button";
 import { StepFrame } from "./wizardShared";
+import { ERROR_MESSAGES } from "../../../lib/errorMessages";
 
 const termLabel = (m) => LEASE_TERM_PRESETS.find((p) => p.months === m)?.label ?? `${m}-Month`;
 
@@ -47,9 +48,9 @@ export default function StepReview({ w }) {
 
   const unitsMissing =
     units.length === 0 || units.some((u) => u.bedrooms === "" || u.bathrooms === "")
-      ? "Bedrooms and bathrooms needed"
+      ? ERROR_MESSAGES.LISTINGS.REVIEW_UNIT_BEDS_BATHS
       : units.some((u) => u.available !== false && !(u.leaseTermMonths ?? []).length)
-      ? "Pick lease terms for each available unit"
+      ? ERROR_MESSAGES.LISTINGS.REVIEW_UNIT_LEASE_TERM
       : null;
 
   return (
@@ -58,7 +59,7 @@ export default function StepReview({ w }) {
         <Row
           label="Address"
           value={form.address}
-          missing={!form.address.trim() ? "Address needed" : null}
+          missing={!form.address.trim() ? ERROR_MESSAGES.LISTINGS.REVIEW_ADDRESS : null}
           onPress={() => w.goTo("address")}
         />
         <Row
@@ -121,7 +122,7 @@ export default function StepReview({ w }) {
         <Row
           label="Description"
           value={form.description.length > 140 ? `${form.description.slice(0, 140)}…` : form.description}
-          missing={!form.description.trim() ? "A short description is needed" : null}
+          missing={!form.description.trim() ? ERROR_MESSAGES.LISTINGS.REVIEW_DESCRIPTION : null}
           onPress={() => w.goTo("description")}
         />
         <Row

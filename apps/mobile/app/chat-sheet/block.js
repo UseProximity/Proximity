@@ -3,12 +3,14 @@
 // follows the finger like the swipe-back gesture does. Opened from the chat
 // screen's options menu with the thread id and the other person's name and photo.
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ban, BellOff } from "lucide-react-native";
 import apiClient from "../../src/lib/apiClient";
-import { chatErrorMessage } from "../../src/lib/chatFormat";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { showError } from "../../src/lib/showError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import { useChatUnreadStore } from "../../src/store/chatUnreadStore";
 import { ChatAvatar } from "../../src/components/chat/ChatAvatar";
 
@@ -26,7 +28,7 @@ export default function BlockSheet() {
     } catch (err) {
       setBusy(false);
       if (err?.status === 401) return;
-      Alert.alert("Couldn't block this user", chatErrorMessage(err, "Please try again."));
+      showError(getErrorMessage(err, ERROR_MESSAGES.CHAT.BLOCK));
       return;
     }
     useChatUnreadStore.getState().refresh();

@@ -34,7 +34,7 @@
 // the same underlying data, just no longer reading as its own special
 // category. All data, fetching, and handlers below are unchanged across
 // every pass; only how they're grouped, labeled, and rendered.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -50,7 +50,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ChevronLeft,
   BedDouble,
@@ -71,17 +71,25 @@ import {
   UTILITY_LABELS,
   LEASE_AVAILABILITY_FILTER_LABELS,
   WASHU_PLACES,
+  buildUnitTabs,
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
 import { Badge } from "../../src/components/ui/Badge";
 import { Button } from "../../src/components/ui/Button";
 import { ChatAvatar } from "../../src/components/chat/ChatAvatar";
-import { CHAT_MAX_BODY, chatErrorMessage, defaultListingInquiry, isConfirmSend, leaseForChat } from "../../src/lib/chatFormat";
+import { CHAT_MAX_BODY, defaultListingInquiry, isConfirmSend, leaseForChat } from "../../src/lib/chatFormat";
 import { confirmSendAnyway } from "../../src/lib/chatConfirm";
 import { StarRating } from "../../src/components/ui/StarRating";
+import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
 import { SectionHeader } from "../../src/components/ui/SectionHeader";
 import { FieldLabel } from "../../src/components/ui/FieldLabel";
+import { ErrorMessage, ErrorState } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { showError } from "../../src/lib/showError";
 import { ReviewCard } from "../../src/components/listings/ReviewCard";
+import { SectionNav } from "../../src/components/listings/SectionNav";
+import { UnitLeases } from "../../src/components/listings/UnitLeases";
 import { ListingDetailMap } from "../../src/components/listings/ListingDetailMap";
 import { HeartIcon } from "../../src/components/ui/HeartIcon";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
@@ -95,6 +103,14 @@ function walkTimesList(listing) {
     .filter((row) => Number.isFinite(row.minutes))
     .sort((a, b) => a.minutes - b.minutes);
 }
+
+// Persistent header bar and section chip row heights. Section jumps stop below
+// both (plus a small gap) so the card heading is never covered.
+const HEADER_HEIGHT = 56;
+const NAV_HEIGHT = 44;
+const SECTION_GAP = 8;
+// Scroll distance after which the back-to-top button appears.
+const BACK_TO_TOP_OFFSET = 600;
 
 function QuickFact({ icon: Icon, value, label }) {
   return (
@@ -171,6 +187,26 @@ export default function ListingDetailScreen() {
     extrapolate: "clamp",
   });
 
+  // Section navigation. Each card reports its y inside the card stack (onLayout
+  // fires again whenever a card resizes, e.g. the map or reviews finishing), and
+  // the stack reports its own y inside the scroll content. Jump targets are the
+  // sum of the two, read at tap time, so nothing is hardcoded.
+  const insets = useSafeAreaInsets();
+  const stackY = useRef(0);
+  const sectionY = useRef({});
+  const [showNav, setShowNav] = useState(false);
+  const [showTop, setShowTop] = useState(false);
+  const [activeSection, setActiveSection] = useState(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [messageFocusedState, setMessageFocusedState] = useState(false);
+  const visibleKeys = useRef([]);
+  // While a tapped chip's animated page scroll is under way, scroll events must
+  // not move the highlight on to whichever section happens to pass by (or the
+  // last one, when the page bottoms out). Cleared as soon as the user drags.
+  const activeLockUntil = useRef(0);
+  const heroHeightRef = useRef(280);
+  heroHeightRef.current = heroHeight;
+
   const user = useAuthStore((state) => state.user);
   const isSaved = useFavoritesStore((state) => state.isSaved(id));
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
@@ -191,16 +227,21 @@ export default function ListingDetailScreen() {
   const messageFocused = useRef(false);
   useEffect(() => {
     const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      setKeyboardOpen(true);
       if (messageFocused.current) scrollRef.current?.scrollToEnd({ animated: true });
     });
-    return () => subscription.remove();
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardOpen(false));
+    return () => {
+      subscription.remove();
+      hideSubscription.remove();
+    };
   }, []);
 
   useEffect(() => {
     apiClient.listings
       .getListing(id)
       .then(setListing)
-      .catch((err) => setError(err.message ?? "Failed to load listing"))
+      .catch((err) => setError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.LOAD_ONE)))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -212,7 +253,7 @@ export default function ListingDetailScreen() {
       Alert.alert("Report sent", "Thanks, we'll take a look at this review.");
     } catch (err) {
       if (err?.status === 401) return; // session expired: the api client already signed out
-      Alert.alert("Couldn't send your report", "Please try again.");
+      showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.REPORT_REVIEW));
     }
   }
 
@@ -230,7 +271,7 @@ export default function ListingDetailScreen() {
               await apiClient.listings.blockReviewAuthor(review._id);
             } catch (err) {
               if (err?.status === 401) return;
-              Alert.alert("Couldn't block this user", "Please try again.");
+              showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.BLOCK_USER));
               return;
             }
             // The server now sends this author's reviews score-only
@@ -243,13 +284,34 @@ export default function ListingDetailScreen() {
     );
   }
 
-  // Recipient name shown on the Message card. Comes from the listing owner; the
-  // server resolves the real recipient (and any lease) when the chat starts.
+  // Units and their leases, as on web. The first unit starts open; the lease the
+  // message is about defaults to the open unit's first (cheapest) offering and
+  // follows the Contact button on a landlord's card. A lease that is no longer
+  // on the open unit (the unit changed, or the listing refetched) falls back to
+  // that unit's first one.
+  const unitTabs = useMemo(() => buildUnitTabs(listing?.unitTypes), [listing?.unitTypes]);
+  const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
+  const unitIdx = unitTabs[selectedUnitIdx] ? selectedUnitIdx : 0;
+  const selectedUnit = unitTabs[unitIdx]?.unit ?? null;
+  const selectedUnitLeases = useMemo(() => selectedUnit?.leases ?? [], [selectedUnit]);
+  const [selectedLeaseId, setSelectedLeaseId] = useState(null);
+  useEffect(() => {
+    setSelectedLeaseId((current) =>
+      current && selectedUnitLeases.some((l) => l.id === current) ? current : selectedUnitLeases[0]?.id ?? null
+    );
+  }, [selectedUnitLeases]);
+  const selectedLease = selectedUnitLeases.find((l) => l.id === selectedLeaseId) ?? null;
+
+  // Who the message goes to: the selected lease's landlord, falling back to the
+  // listing owner for anything the lease does not name. The server routes the
+  // chat by the lease id sent with it.
   const ownerName = listing?.owner?.name ?? null;
+  const recipientName = selectedLease ? selectedLease.landlordName ?? ownerName : ownerName;
+  const recipientImage = selectedLease ? selectedLease.landlordImage ?? listing?.owner?.image : listing?.owner?.image;
   useEffect(() => {
     if (messageEdited) return;
-    setMessageText(defaultListingInquiry(ownerName));
-  }, [ownerName, messageEdited]);
+    setMessageText(defaultListingInquiry(recipientName));
+  }, [recipientName, messageEdited]);
 
   async function handleStartChat(confirmed = false) {
     if (!listing) return;
@@ -268,7 +330,7 @@ export default function ListingDetailScreen() {
     setSending(true);
     setMessageError(null);
     try {
-      const lease = leaseForChat(listing);
+      const lease = selectedLease ?? leaseForChat(listing);
       const result = await apiClient.chat.startListingChat({
         listingId: listing._id,
         body,
@@ -280,7 +342,7 @@ export default function ListingDetailScreen() {
         pathname: "/chat/[threadId]",
         params: {
           threadId: result.threadId,
-          name: lease?.landlordName ?? ownerName ?? "",
+          name: lease?.landlordName ?? recipientName ?? "",
           listingTitle: listing.title ?? listing.address ?? "",
         },
       });
@@ -289,7 +351,7 @@ export default function ListingDetailScreen() {
       if (isConfirmSend(err)) {
         confirmMessage = err.body.error; // nothing was sent; the draft stays for Edit
       } else {
-        setMessageError(chatErrorMessage(err, "Couldn't send your message. Please try again."));
+        setMessageError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.MESSAGE_SEND));
       }
     } finally {
       setSending(false);
@@ -315,9 +377,58 @@ export default function ListingDetailScreen() {
     try {
       await toggleFavorite(id, listing);
     } catch (error) {
-      Alert.alert("Error", "Failed to update favorites. Please try again.");
+      showError(getErrorMessage(error, ERROR_MESSAGES.LISTINGS.FAVORITE));
     }
   };
+
+  function handleScroll(e) {
+    const y = e.nativeEvent.contentOffset.y;
+    // Setting the same boolean again is a no-op, so this does not re-render on
+    // every scroll tick.
+    const navVisible = y > heroHeightRef.current - HEADER_HEIGHT;
+    setShowNav(navVisible);
+    setShowTop(y > BACK_TO_TOP_OFFSET);
+    if (Date.now() < activeLockUntil.current) return;
+
+    // Active chip: the last section whose top has reached the line just below
+    // the pinned bars. Pinned to the last section at the very bottom, since a
+    // short final card can never scroll up to that line.
+    const { contentSize, layoutMeasurement } = e.nativeEvent;
+    const atBottom = y + layoutMeasurement.height >= contentSize.height - 4;
+    const line = y + HEADER_HEIGHT + NAV_HEIGHT + SECTION_GAP + 4;
+    let current = null;
+    const entries = Object.entries(sectionY.current).filter(([key]) => visibleKeys.current.includes(key));
+    for (const [key, top] of entries) {
+      if (stackY.current + top <= line && (current == null || top > sectionY.current[current])) current = key;
+    }
+    if (atBottom) {
+      const keys = entries.map(([key]) => key);
+      current = keys.reduce((a, b) => (a == null || sectionY.current[b] > sectionY.current[a] ? b : a), null);
+    }
+    setActiveSection(current);
+  }
+
+  function measureSection(key) {
+    return (e) => {
+      sectionY.current[key] = e.nativeEvent.layout.y;
+    };
+  }
+
+  // Contact on a landlord's lease card: make that lease the one the message is
+  // about, then bring the message card into view. The input is not focused.
+  function handleContactLease(lease) {
+    setSelectedLeaseId(lease.id);
+    scrollToSection("message");
+  }
+
+  function scrollToSection(key) {
+    const y = sectionY.current[key];
+    if (y == null) return;
+    const target = stackY.current + y - HEADER_HEIGHT - NAV_HEIGHT - SECTION_GAP;
+    setActiveSection(key);
+    activeLockUntil.current = Date.now() + 900;
+    scrollRef.current?.scrollTo({ y: Math.max(0, target), animated: true });
+  }
 
   if (loading) {
     return (
@@ -329,11 +440,8 @@ export default function ListingDetailScreen() {
 
   if (error || !listing) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 px-6">
-        <Text className="text-gray-500 text-center">{error ?? "Listing not found."}</Text>
-        <Pressable onPress={() => router.back()} className="mt-4">
-          <Text className="text-red-600 font-medium">Go back</Text>
-        </Pressable>
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <ErrorState message={error ?? ERROR_MESSAGES.LISTINGS.NOT_FOUND} actionLabel="Go back" onAction={() => router.back()} />
       </SafeAreaView>
     );
   }
@@ -355,6 +463,17 @@ export default function ListingDetailScreen() {
   // contact address and no landlord account yet; that is never "mine".
   const isOwnListing = !!user?.id && listing.owner?._id === user.id;
   const canMessage = listing.owner?.canChat === true && !isOwnListing;
+  const hasAmenities = listing.amenities?.length > 0 || listing.utilitiesIncluded?.length > 0;
+  // One chip per card that actually renders, in page order.
+  const navSections = [
+    unitTabs.length > 0 ? { key: "units", label: "Units & Leases" } : null,
+    listing.description ? { key: "description", label: "Description" } : null,
+    hasAmenities ? { key: "amenities", label: "Amenities & Utilities" } : null,
+    { key: "location", label: "Location" },
+    { key: "reviews", label: "Reviews" },
+    canMessage ? { key: "message", label: "Contact" } : null,
+  ].filter(Boolean);
+  visibleKeys.current = navSections.map((section) => section.key);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -383,14 +502,25 @@ export default function ListingDetailScreen() {
               </Animated.View>
             </Pressable>
           </View>
+          {showNav ? (
+            <SectionNav
+              sections={navSections}
+              activeKey={activeSection}
+              onSelect={scrollToSection}
+              height={NAV_HEIGHT}
+            />
+          ) : null}
         </View>
 
         <Animated.ScrollView
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 40 }}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false, listener: handleScroll })}
           scrollEventThrottle={16}
+          onScrollBeginDrag={() => {
+            activeLockUntil.current = 0;
+          }}
         >
           {/* Hero: its own visual area, a carousel with floating heart overlay + pagination pill */}
           <View className="relative" onLayout={(e) => setHeroHeight(e.nativeEvent.layout.height)}>
@@ -456,8 +586,16 @@ export default function ListingDetailScreen() {
             </View>
           </View>
 
+          {canMessage ? (
+            <View className="px-4 pb-2">
+              <Button size="md" onPress={() => scrollToSection("message")}>
+                Contact
+              </Button>
+            </View>
+          ) : null}
+
           {/* Card stack: each major section is its own white, shadowed card on the light page background */}
-          <View className="px-4 pb-4 gap-4">
+          <View className="px-4 pb-4 gap-4" onLayout={(e) => { stackY.current = e.nativeEvent.layout.y; }}>
             <DetailCard>
               <View className="flex-row items-center">
                 <QuickFact icon={BedDouble} value={bedLabel} label="Beds" />
@@ -484,14 +622,28 @@ export default function ListingDetailScreen() {
               )}
             </DetailCard>
 
+            {unitTabs.length > 0 ? (
+              <View onLayout={measureSection("units")}>
+                <UnitLeases
+                  tabs={unitTabs}
+                  selectedIdx={unitIdx}
+                  onSelectIdx={setSelectedUnitIdx}
+                  onContact={canMessage ? handleContactLease : undefined}
+                />
+              </View>
+            ) : null}
+
             {listing.description ? (
+              <View onLayout={measureSection("description")}>
               <DetailCard>
                 <SectionHeader icon={FileText} title="Description" />
                 <Text className="text-sm text-gray-700 leading-relaxed">{listing.description}</Text>
               </DetailCard>
+              </View>
             ) : null}
 
-            {(listing.amenities?.length > 0 || listing.utilitiesIncluded?.length > 0) && (
+            {hasAmenities && (
+              <View onLayout={measureSection("amenities")}>
               <DetailCard>
                 <SectionHeader icon={Tag} title="Amenities & Utilities" />
                 {listing.amenities?.length > 0 && (
@@ -519,8 +671,10 @@ export default function ListingDetailScreen() {
                   </View>
                 )}
               </DetailCard>
+              </View>
             )}
 
+            <View onLayout={measureSection("location")}>
             <DetailCard>
               <SectionHeader icon={MapPin} title="Location" />
               <ListingDetailMap latitude={listing.latitude} longitude={listing.longitude} />
@@ -541,7 +695,9 @@ export default function ListingDetailScreen() {
                 </View>
               )}
             </DetailCard>
+            </View>
 
+            <View onLayout={measureSection("reviews")}>
             <DetailCard>
               <SectionHeader
                 icon={Star}
@@ -562,22 +718,27 @@ export default function ListingDetailScreen() {
                 ))
               )}
             </DetailCard>
+            </View>
 
             {canMessage ? (
+              <View onLayout={measureSection("message")}>
               <DetailCard>
                 <SectionHeader icon={Mail} title="Message the landlord" />
 
                 <View className="gap-2.5">
                   <View className="flex-row items-center gap-2.5">
-                    <ChatAvatar name={ownerName} image={listing.owner?.image} size={36} />
-                    <Text className="flex-1 text-sm font-semibold text-gray-900" numberOfLines={1}>
-                      {ownerName ?? "Property manager"}
-                    </Text>
+                    <ChatAvatar name={recipientName} image={recipientImage} size={36} />
+                    <View className="flex-1">
+                      <Text className="text-[11px] text-gray-400">Message to</Text>
+                      <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
+                        {recipientName ?? "Property manager"}
+                      </Text>
+                    </View>
                   </View>
 
                   <TextInput
                     className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"
-                    placeholder={defaultListingInquiry(ownerName)}
+                    placeholder={defaultListingInquiry(recipientName)}
                     multiline
                     numberOfLines={4}
                     value={messageText}
@@ -588,23 +749,33 @@ export default function ListingDetailScreen() {
                     editable={!sending}
                     onFocus={() => {
                       messageFocused.current = true;
+                      setMessageFocusedState(true);
                     }}
                     onBlur={() => {
                       messageFocused.current = false;
+                      setMessageFocusedState(false);
                     }}
                     style={{ minHeight: 90, maxHeight: 160, textAlignVertical: "top" }}
                   />
 
-                  {messageError ? <Text className="text-red-500 text-xs">{messageError}</Text> : null}
+                  <ErrorMessage compact>{messageError}</ErrorMessage>
 
                   <Button onPress={() => handleStartChat()} loading={sending} disabled={!messageText.trim()}>
                     Send message
                   </Button>
                 </View>
               </DetailCard>
+              </View>
             ) : null}
           </View>
         </Animated.ScrollView>
+
+        {showTop && !keyboardOpen && !messageFocusedState ? (
+          <BackToTopButton
+            bottom={insets.bottom + 16}
+            onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

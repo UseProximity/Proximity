@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Link, useNavigation, useRouter } from "expo-router";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { Check } from "lucide-react-native";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -10,19 +9,18 @@ import { useAuthStore } from "../../src/store/authStore";
 import { isAppleSignInAvailable } from "../../src/lib/appleAuth";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { AuthScreen } from "../../src/components/brand/AuthScreen";
 import { colors } from "../../src/theme/tokens";
 
 const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 
-const APPLE_ERRORS = {
-  ACCOUNT_DELETED: "This account has been deleted.",
-  EMAIL_NOT_VERIFIED:
-    "An account with your Apple email exists but isn't verified yet. Verify it, or sign in the way you signed up.",
-  APPLE_EMAIL_REQUIRED: "Apple didn't share a verified email address, so we can't create your account.",
-};
 
 export default function LoginScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { login, signInWithGoogle, signInWithApple, isLoading } = useAuth();
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [email, setEmail] = useState("");
@@ -49,7 +47,7 @@ export default function LoginScreen() {
         setNeedsVerification(true);
         setError(null);
       } else {
-        setError(err?.body?.error ?? err?.message ?? "Sign in failed. Please try again.");
+        setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN));
       }
     }
   }
@@ -63,7 +61,7 @@ export default function LoginScreen() {
       await apiClient.auth.resendVerification(email);
       setResendSuccess(true);
     } catch (err) {
-      setError("Failed to send verification email. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.RESEND_VERIFICATION));
     } finally {
       setResending(false);
     }
@@ -79,7 +77,7 @@ export default function LoginScreen() {
       // to the tabs, as before.
       if (!useAuthStore.getState().user) router.replace("/(tabs)");
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Google sign in failed. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN_GOOGLE));
     }
   }
 
@@ -92,111 +90,113 @@ export default function LoginScreen() {
       // (auth)/_layout.js navigates on, to the pending conversation if any.
       await signInWithApple();
     } catch (err) {
-      const code = err?.body?.error;
-      setError(APPLE_ERRORS[code] ?? code ?? err?.message ?? "Apple sign in failed. Please try again.");
+      setError(
+        getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN_APPLE, {
+          // Apple sign-in words an unverified email its own way.
+          overrides: { EMAIL_NOT_VERIFIED: ERROR_MESSAGES.AUTH.APPLE_EMAIL_NOT_VERIFIED },
+        })
+      );
     }
   }
 
+  // Back goes to the previous screen, except when that was Create Account (which
+  // links here, so going back would loop between the two) or when there is no
+  // previous screen: both land on the Profile tab. The navigator's route list is
+  // the (auth) stack, so the entry just below this one is the screen that opened it.
+  function handleBack() {
+    const { routes, index } = navigation.getState();
+    const cameFromSignup = routes[index - 1]?.name === "signup";
+    if (!cameFromSignup && router.canGoBack()) router.back();
+    else router.dismissTo("/(tabs)/profile");
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <View className="flex-1 justify-center px-7 pb-8">
-          {/* text-[40px] = the `display` type-scale token (design-system/
-              MASTER.md §3). Reserved for one-off brand moments like this
-              wordmark. font-bold (not font-extrabold): DM Sans only has
-              400/500/600/700 weights loaded, so 700 is as heavy as it gets. */}
-          <Text className="text-[40px] font-bold tracking-tight text-gray-900 mb-1.5 text-center">
-            proximity
-          </Text>
-          <Text className="text-base text-gray-500 text-center mb-9">
-            Find your perfect place near campus.
-          </Text>
+    <AuthScreen onBack={handleBack}>
+      <Text className="text-[22px] font-bold text-gray-900 text-center mb-5">Welcome back</Text>
 
-          <View className="gap-3">
-            <TextField
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isLoading}
-            />
-            <TextField
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!isLoading}
-            />
+      <View className="gap-3">
+        <TextField
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+        <TextField
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!isLoading}
+        />
 
-            <Link href="/(auth)/forgot-password" className="self-end">
-              <Text className="text-gray-500 text-[13px]">Forgot password?</Text>
-            </Link>
+        <Link href="/(auth)/forgot-password" className="self-end">
+          <Text className="text-gray-500 text-[13px]">Forgot password?</Text>
+        </Link>
 
-            {needsVerification && (
-              <View className="bg-amber-100 border border-amber-400 rounded-xl p-4 gap-2">
-                <Text className="text-sm font-semibold text-amber-800">Email not verified</Text>
-                <Text className="text-[13px] text-amber-900 leading-[18px]">
-                  Check your inbox for a verification link. Can't find it?
+        {needsVerification && (
+          <View className="bg-amber-100 border border-amber-400 rounded-xl p-4 gap-2">
+            <Text className="text-sm font-semibold text-amber-800">Email not verified</Text>
+            <Text className="text-[13px] text-amber-900 leading-[18px]">
+              Check your inbox for a verification link. Can't find it?
+            </Text>
+            {resendSuccess ? (
+              <View className="flex-row items-center gap-1 mt-1">
+                <Check size={13} color={colors.success} strokeWidth={2.5} />
+                <Text className="text-[13px] font-medium text-green-700">
+                  Verification email sent! Check your inbox.
                 </Text>
-                {resendSuccess ? (
-                  <View className="flex-row items-center gap-1 mt-1">
-                    <Check size={13} color={colors.success} strokeWidth={2.5} />
-                    <Text className="text-[13px] font-medium text-green-700">
-                      Verification email sent! Check your inbox.
-                    </Text>
-                  </View>
-                ) : (
-                  <Pressable
-                    onPress={handleResendVerification}
-                    disabled={resending}
-                    className="self-start mt-1 bg-white border border-amber-400 rounded-lg px-3 py-2"
-                  >
-                    {resending ? (
-                      <ActivityIndicator size="small" color={colors.error} />
-                    ) : (
-                      <Text className="text-[13px] font-semibold text-amber-800">Resend verification email</Text>
-                    )}
-                  </Pressable>
-                )}
               </View>
-            )}
-
-            {error ? <Text className="text-red-500 text-[13px] text-center">{error}</Text> : null}
-
-            <Button onPress={handleLogin} loading={isLoading}>
-              Sign In
-            </Button>
-
-            <View className="flex-row items-center my-1">
-              <View className="flex-1 h-px bg-gray-200" />
-              <Text className="mx-3 text-gray-400 text-[13px]">or</Text>
-              <View className="flex-1 h-px bg-gray-200" />
-            </View>
-
-            <Button variant="secondary" onPress={handleGoogleSignIn} loading={isLoading}>
-              Continue with Google
-            </Button>
-
-            {appleAvailable && (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={12}
-                onPress={handleAppleSignIn}
-                style={{ height: 48 }}
-              />
+            ) : (
+              <Pressable
+                onPress={handleResendVerification}
+                disabled={resending}
+                className="self-start mt-1 bg-white border border-amber-400 rounded-lg px-3 py-2"
+              >
+                {resending ? (
+                  <ActivityIndicator size="small" color={colors.error} />
+                ) : (
+                  <Text className="text-[13px] font-semibold text-amber-800">Resend verification email</Text>
+                )}
+              </Pressable>
             )}
           </View>
+        )}
 
-          <Link href="/(auth)/signup" className="mt-7 self-center">
-            <Text className="text-gray-500 text-sm">
-              Don&apos;t have an account? <Text className="text-gray-900 font-semibold">Sign up</Text>
-            </Text>
-          </Link>
+        <ErrorMessage compact>{error}</ErrorMessage>
+
+        <Button onPress={handleLogin} loading={isLoading}>
+          Sign In
+        </Button>
+
+        <View className="flex-row items-center my-1">
+          <View className="flex-1 h-px bg-gray-200" />
+          <Text className="mx-3 text-gray-400 text-[13px]">or</Text>
+          <View className="flex-1 h-px bg-gray-200" />
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+        <Button variant="secondary" onPress={handleGoogleSignIn} loading={isLoading}>
+          Continue with Google
+        </Button>
+
+        {appleAvailable && (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={12}
+            onPress={handleAppleSignIn}
+            style={{ height: 48 }}
+          />
+        )}
+      </View>
+
+      <Link href="/(auth)/signup" className="mt-7 self-center">
+        <Text className="text-gray-500 text-sm">
+          Don&apos;t have an account? <Text className="text-gray-900 font-semibold">Sign up</Text>
+        </Text>
+      </Link>
+    </AuthScreen>
   );
 }

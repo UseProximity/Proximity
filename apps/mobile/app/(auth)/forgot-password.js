@@ -6,6 +6,9 @@ import { ChevronLeft } from "lucide-react-native";
 import apiClient from "../../src/lib/apiClient";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
+import { ErrorMessage } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import { colors } from "../../src/theme/tokens";
 
 export default function ForgotPasswordScreen() {
@@ -22,7 +25,7 @@ export default function ForgotPasswordScreen() {
       await apiClient.auth.forgotPassword(email);
       setSuccess(true);
     } catch (err) {
-      setError(err?.body?.error ?? err?.message ?? "Something went wrong. Please try again.");
+      setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.RESET_EMAIL));
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +72,7 @@ export default function ForgotPasswordScreen() {
               editable={!isLoading}
             />
 
-            {error ? <Text className="text-red-500 text-[13px] text-center">{error}</Text> : null}
+            <ErrorMessage compact>{error}</ErrorMessage>
 
             <Button onPress={handleSubmit} loading={isLoading} disabled={isLoading || !email}>
               Send Reset Link

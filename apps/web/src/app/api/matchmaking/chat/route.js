@@ -372,6 +372,7 @@ export async function POST(request) {
             student,
             listingAddress: owner.title || owner.address,
             message: typeof body.message === "string" ? body.message : null,
+            req: request,
           });
           sent += 1;
           // Same markup as the browse-page contact flow (POST /api/contacted):

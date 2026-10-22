@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
+import { stagingEmailHeader } from "@/lib/outreach";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import {
@@ -263,12 +264,14 @@ export async function POST(req, { params }) {
       }
 
       const baseUrl = getBaseUrl(req);
+      const testEmailTo = stagingEmailHeader(req);
       after(() =>
         notifyNewChatMessage({
           threadId,
           senderId: authUser.id,
           messageId: data?.messageId ?? null,
           baseUrl,
+          testEmailTo,
         })
       );
       after(() =>
@@ -349,12 +352,14 @@ export async function POST(req, { params }) {
     }
 
     const baseUrl = getBaseUrl(req);
+    const testEmailTo = stagingEmailHeader(req);
     after(() =>
       notifyNewChatMessage({
         threadId,
         senderId: authUser.id,
         messageId: data?.messageId ?? null,
         baseUrl,
+        testEmailTo,
       })
     );
     after(() =>

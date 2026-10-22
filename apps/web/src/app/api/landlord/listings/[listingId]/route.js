@@ -10,6 +10,7 @@ import {
 } from "@/lib/listings/propertyName";
 import { checkListingDescription } from "@/lib/contentRules";
 import { getBaseUrl } from "@/lib/email";
+import { stagingEmailHeader } from "@/lib/outreach";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 
 // listing_amenities / listing_utilities store one boolean column per option.
@@ -271,6 +272,7 @@ export async function PATCH(req, { params }) {
    */
   if (typeof safeUpdates.contact_email === "string" && safeUpdates.contact_email.trim()) {
     const baseUrl = getBaseUrl(req);
+    const testEmailTo = stagingEmailHeader(req);
     after(async () => {
       const { data: holderId } = await supabase.rpc("fn_chat_primary_landlord_id", {
         p_listing_id: listingId,
@@ -280,6 +282,7 @@ export async function PATCH(req, { params }) {
         email: safeUpdates.contact_email,
         listingLabel: updated?.title || updated?.address || null,
         baseUrl,
+        testEmailTo,
       });
     });
   }

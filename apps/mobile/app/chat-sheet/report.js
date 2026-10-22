@@ -7,7 +7,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CHAT_REPORT_REASONS } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
-import { chatErrorMessage } from "../../src/lib/chatFormat";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { showError } from "../../src/lib/showError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 
 export default function ReportSheet() {
   const { threadId, messageId } = useLocalSearchParams();
@@ -32,7 +34,7 @@ export default function ReportSheet() {
               });
             } catch (err) {
               if (err?.status === 401) return; // session expired: the api client already signed out
-              Alert.alert("Couldn't send your report", chatErrorMessage(err, "Please try again."));
+              showError(getErrorMessage(err, ERROR_MESSAGES.CHAT.REPORT));
               return;
             }
             Alert.alert("Report sent", "Thanks, we'll take a look.");

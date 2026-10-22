@@ -7,6 +7,7 @@ import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { isValidCount, isWholeCount } from "@/utils/unitCounts";
+import { stagingEmailHeader } from "@/lib/outreach";
 import { sendNewListingEmail } from "@/lib/email/newListingEmail";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
@@ -670,7 +671,7 @@ export async function POST(req) {
           .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId);
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req);
           }
         }
       } catch (emailErr) {
@@ -684,7 +685,8 @@ export async function POST(req) {
     // have no landlord on our side to confirm them for.
     if (!isImportRequest && ownerId && contactEmail) {
       const baseUrl = getBaseUrl(req);
-      after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl }));
+      const testEmailTo = stagingEmailHeader(req);
+      after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl, testEmailTo }));
     }
 
     return NextResponse.json(

@@ -93,6 +93,7 @@ export async function requestContactVerification({
   listingLabel = null,
   baseUrl,
   force = false,
+  testEmailTo = null,
 }) {
   try {
     const normalized = normalizeContactEmail(email);
@@ -144,6 +145,7 @@ export async function requestContactVerification({
       landlordName: landlord.name,
       listingLabel,
       confirmUrl: `${baseUrl}/contact-verify?token=${encodeURIComponent(rawToken)}`,
+      testEmailTo,
     });
     return "sent";
   } catch (err) {
