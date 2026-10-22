@@ -954,3 +954,39 @@ export async function sendReviewInviteEmail({
     `,
   });
 }
+
+/*
+ * One short note to the team per new review or reply report, so a report gets
+ * looked at instead of sitting in review_reports / review_reply_reports.
+ * Everything but our own labels is user text and is escaped. Off production
+ * sendMailSafe redirects it to the tester's inbox or drops it.
+ */
+export async function sendContentReportEmail({
+  kind,
+  text,
+  author,
+  reporter,
+  listingLabel,
+  listingUrl,
+  req,
+}) {
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  await sendMailSafe(
+    transporter,
+    {
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: "info@useproximity.org",
+      subject: `Reported ${kind}${listingLabel ? `: ${listingLabel}` : ""}`,
+      html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>A ${esc(kind)} was reported${listingLabel ? ` on <b>${esc(listingLabel)}</b>` : ""}.</p>
+        <blockquote style="margin:12px 0;padding:8px 12px;border-left:3px solid #ef4444;color:#333">${esc(text)}</blockquote>
+        <p style="color:#444">Written by ${esc(author)}<br>Reported by ${esc(reporter)}</p>
+        ${listingUrl ? `<p><a href="${esc(listingUrl)}">Open the listing</a></p>` : ""}
+      </div>
+    `,
+    },
+    req
+  );
+}
