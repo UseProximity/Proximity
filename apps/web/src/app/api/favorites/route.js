@@ -4,6 +4,14 @@ import { insertAsUser, deleteAsUser } from "@/lib/supabaseWithUser";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { fetchListings } from "@/app/api/listings/route";
 
+/**
+ * @auth GET optional
+ *
+ * GET answers a logged-out web caller with an empty list on purpose:
+ * FavoritesContext fetches on every page load, signed in or not, and the
+ * response carries no user data. A Bearer header that fails to resolve still
+ * gets a 401 (see below). POST stays guarded.
+ */
 export async function GET(req) {
   const user = await getRequestUser(req);
 

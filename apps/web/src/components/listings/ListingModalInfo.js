@@ -6,7 +6,6 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Phone,
   Mail,
   MessageCircle,
   ThumbsUp,
@@ -521,6 +520,7 @@ function ReviewsTab({
   setValRating,
   reviewLoading,
   handleReviewSubmit,
+  preview = false,
 }) {
   const maxCount = Math.max(...starCounts.map((d) => d.count), 1);
   // Reviews may not name people. Shown as they type; the submit handler and the
@@ -867,7 +867,9 @@ function ReviewsTab({
         </>
       )}
 
-      {/* Leave a Review form */}
+      {/* Leave a Review form. Not in the owner's preview: a landlord can't
+          review their own property, and the sign-up nudge is not for them. */}
+      {!preview && (
       <div className="border-t border-gray-100 pt-6 mt-4">
         {isReviewEligibleEmail(session?.user?.email) ? (
           <>
@@ -926,6 +928,7 @@ function ReviewsTab({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -937,6 +940,8 @@ function ContactTab({
   session,
   selectedLease = null,
   onOpenThread,
+  // The owner's preview: show who students would reach, never open a thread.
+  preview = false,
 }) {
   const { startListingChat } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
@@ -952,7 +957,7 @@ function ContactTab({
   const isOwnListing =
     listing?.owner?._id === userId || listing?.owner?.id === userId;
   const canMessage = Boolean(
-    session?.user?.id && listing?.owner?.canChat && !isOwnListing
+    session?.user?.id && listing?.owner?.canChat && !isOwnListing && !preview
   );
 
   /*
@@ -1233,11 +1238,11 @@ function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted
  * opens in place rather than navigating away, with the original a click further
  * on for anyone who wants to keep it.
  */
-function FloorPlanLink({ url, onOpen }) {
+function FloorPlanLink({ url, onOpen, separator = true }) {
   if (!url) return null;
   return (
     <>
-      <span className="mx-1.5 text-gray-300">·</span>
+      {separator && <span className="mx-1.5 text-gray-300">·</span>}
       <button
         type="button"
         onClick={onOpen}
@@ -1429,6 +1434,14 @@ export default function ListingModalInfo({
    * feed data rather than leaving the skeleton up forever.
    */
   detailLoading = false,
+  /*
+   * The owner looking at their own listing through the dashboard's "View as
+   * Student" (GlobalListingModal with ?preview=1). Everything renders as a
+   * student would see it, but nothing a student would DO is wired: no Save,
+   * no message, no review, no waitlist. A landlord favouriting or reviewing
+   * their own draft would be a record nobody wants.
+   */
+  preview = false,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
@@ -1529,9 +1542,9 @@ export default function ListingModalInfo({
     // Build base labels in original order for stable disambiguation numbering.
     // Each entry has a full label ("2 Bed / 1 Bath") and a short label
     // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
+    // Tabs always say beds/baths, even on named units: that is what a student
+    // is choosing between. The name is shown under the strip once the tab is open.
     const baseLabelOf = deduped.map((u) => {
-      // Named units display their name instead of "2 Bed / 1 Bath".
-      if (u.name) return { full: u.name, short: u.name };
       if (isStudio(u)) return { full: "Studio", short: "Studio" };
       const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
       const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
@@ -1649,21 +1662,15 @@ export default function ListingModalInfo({
 
   /*
    * Name of the open unit, or null when it has none: an unnamed unit gets no
-   * invented label. The specs line is promoted to the heading in that case
-   * rather than restating the bed/bath count twice.
+   * invented label. Beds and baths are not repeated here, the tab says them.
    */
   const selectedUnitName = selectedUnit?.name ?? null;
 
-  const selectedUnitSpecs = [
-    (selectedUnit?.bedrooms ?? 0) === 0
-      ? "Studio"
-      : `${selectedUnit?.bedrooms ?? "?"} bed`,
-    `${selectedUnit?.bathrooms ?? "?"} bath`,
-    // Only when it is known — "? sq ft" is worse than saying nothing.
-    ...(selectedUnit?.area != null
-      ? [`${Number(selectedUnit.area).toLocaleString()} sq ft`]
-      : []),
-  ].join(" · ");
+  // Only when it is known: "? sq ft" is worse than saying nothing.
+  const selectedUnitArea =
+    selectedUnit?.area != null
+      ? `${Number(selectedUnit.area).toLocaleString()} sq ft`
+      : null;
 
   /*
    * Whether to offer furniture rental. Reads unit_leases.furnished — the
@@ -1714,7 +1721,7 @@ export default function ListingModalInfo({
     );
   };
 
-  // When the unit tabs don't all fit, the selector scrolls horizontally and
+  // When the unit tabs don't all fit, the selector overflows horizontally and
   // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
   // full-label row so the decision never feeds back into its own measurement.
   const unitTrackRef = useRef(null);
@@ -1731,6 +1738,93 @@ export default function ListingModalInfo({
     ro.observe(track);
     return () => ro.disconnect();
   }, [sortedUnits]);
+
+  /*
+   * The overflowing strip does not scroll by hand (no swipe, wheel or
+   * scrollbar). Arrows page it instead, and each one only shows while there
+   * are tabs hidden on its side, so the left arrow appears after the first
+   * click and the right one goes away at the end.
+   */
+  const [unitsCanLeft, setUnitsCanLeft] = useState(false);
+  const [unitsCanRight, setUnitsCanRight] = useState(false);
+  const updateUnitArrows = () => {
+    const track = unitTrackRef.current;
+    if (!track) return;
+    setUnitsCanLeft(track.scrollLeft > 1);
+    setUnitsCanRight(
+      track.scrollLeft + track.clientWidth < track.scrollWidth - 1
+    );
+  };
+  useEffect(() => {
+    const track = unitTrackRef.current;
+    if (!track) return;
+    updateUnitArrows();
+    const ro = new ResizeObserver(updateUnitArrows);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [sortedUnits, unitsScroll]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pages by most of the visible width, leaving some overlap so the reader
+  // keeps their place.
+  const pageUnits = (dir) => {
+    const track = unitTrackRef.current;
+    if (!track) return;
+    track.scrollBy({ left: dir * track.clientWidth * 0.8, behavior: "smooth" });
+  };
+
+  /*
+   * Keeps the open tab in view: a tab opened from a filter match can sit
+   * off-screen. Scrolls only the strip, never the page around it, and clears
+   * the arrows so they never cover the tab. A jump lines its tab up at the
+   * start of the strip so the rest of that bed count follows it.
+   */
+  const UNIT_ARROW_WIDTH = 36;
+  const unitAlignStartRef = useRef(false);
+  useEffect(() => {
+    const track = unitTrackRef.current;
+    const tab = track?.children[selectedUnitIdx];
+    if (!track || !tab) return;
+    const alignStart = unitAlignStartRef.current;
+    unitAlignStartRef.current = false;
+    if (alignStart || tab.offsetLeft < track.scrollLeft + UNIT_ARROW_WIDTH) {
+      track.scrollTo({
+        left: tab.offsetLeft - (tab.offsetLeft > 0 ? UNIT_ARROW_WIDTH : 0),
+        behavior: "smooth",
+      });
+    } else if (
+      tab.offsetLeft + tab.offsetWidth >
+      track.scrollLeft + track.clientWidth - UNIT_ARROW_WIDTH
+    ) {
+      track.scrollTo({
+        left:
+          tab.offsetLeft + tab.offsetWidth - track.clientWidth + UNIT_ARROW_WIDTH,
+        behavior: "smooth",
+      });
+    }
+  }, [selectedUnitIdx, unitsScroll]);
+
+  // "Jump to" links: one per bed count, opening the first unit with it. Only
+  // worth showing when the tabs overflow and there is more than one count.
+  const unitBedJumps = useMemo(() => {
+    const firstIdxByBeds = new Map();
+    sortedUnits.forEach(({ unit }, idx) => {
+      const beds = unit.bedrooms ?? 0;
+      if (!firstIdxByBeds.has(beds)) firstIdxByBeds.set(beds, idx);
+    });
+    return [...firstIdxByBeds.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([beds, idx]) => ({
+        beds,
+        idx,
+        label: beds === 0 ? "Studio" : `${beds} Bed`,
+      }));
+  }, [sortedUnits]);
+  const showUnitJumps = unitsScroll && unitBedJumps.length > 1;
+  const selectedUnitBeds = selectedUnit ? selectedUnit.bedrooms ?? 0 : null;
+  const jumpToBeds = (idx) => {
+    unitAlignStartRef.current = true;
+    setSelectedUnitIdx(idx);
+  };
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
@@ -2019,7 +2113,7 @@ export default function ListingModalInfo({
                 </div>
               )}
               {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
-              {!compact && (
+              {!compact && !preview && (
                 <div
                   className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
                   onClick={(e) => e.stopPropagation()}
@@ -2162,21 +2256,47 @@ export default function ListingModalInfo({
             {/* ── Unit Selector ── */}
             {sortedUnits.length > 0 && (
               <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div ref={unitTrackRef} className="flex w-full overflow-x-auto scrollbar-hidden">
-                  {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
+                <div className="relative">
+                  <div
+                    ref={unitTrackRef}
+                    onScroll={updateUnitArrows}
+                    className="flex w-full overflow-x-hidden"
+                  >
+                    {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
+                      <button
+                        key={origIdx}
+                        type="button"
+                        onClick={() => setSelectedUnitIdx(sortedIdx)}
+                        className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
+                          selectedUnitIdx === sortedIdx
+                            ? "bg-red-600 text-white border-red-600"
+                            : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                        }`}
+                      >
+                        {unitsScroll ? shortLabel : label}
+                      </button>
+                    ))}
+                  </div>
+                  {unitsCanLeft && (
                     <button
-                      key={origIdx}
                       type="button"
-                      onClick={() => setSelectedUnitIdx(sortedIdx)}
-                      className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
-                        selectedUnitIdx === sortedIdx
-                          ? "bg-red-600 text-white border-red-600"
-                          : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                      }`}
+                      onClick={() => pageUnits(-1)}
+                      aria-label="Show previous units"
+                      className="absolute left-0 top-0 z-10 flex h-[42px] w-9 items-center justify-center bg-white/95 text-red-600 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.15)] hover:bg-white"
                     >
-                      {unitsScroll ? shortLabel : label}
+                      <ChevronLeft className="h-5 w-5" />
                     </button>
-                  ))}
+                  )}
+                  {unitsCanRight && (
+                    <button
+                      type="button"
+                      onClick={() => pageUnits(1)}
+                      aria-label="Show more units"
+                      className="absolute right-0 top-0 z-10 flex h-[42px] w-9 items-center justify-center bg-white/95 text-red-600 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)] hover:bg-white"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  )}
                 </div>
                 {/* Hidden full-label row used only to measure natural width */}
                 <div
@@ -2194,34 +2314,59 @@ export default function ListingModalInfo({
                   ))}
                 </div>
 
-                {/* Identity of the unit on the open tab. The tab label is the
-                    floor plan ("2 Bed / 1 Bath") or the landlord's own name for
-                    it, neither of which says WHICH unit — so the real identity
-                    ("Apt 1W") is stated here, above the offerings on it. */}
-                <div className="border-t border-gray-100 px-4 pt-3">
-                  {selectedUnitName ? (
-                    <>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {selectedUnitName}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-500">
-                        {selectedUnitSpecs}
-                        <FloorPlanLink
-                          url={selectedUnit?.floorPlanImageUrl}
-                          onOpen={() => setFloorPlanOpen(true)}
-                        />
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm font-semibold text-gray-900">
-                      {selectedUnitSpecs}
+                {/* Identity of the unit on the open tab. The tab label is only
+                    the floor plan ("2 Bed / 1 Bath"), which does not say WHICH
+                    unit, so the real identity ("Apt 1W") is stated here, above
+                    the offerings on it. */}
+                {/* One line: name, size and floor plan on the left, "Jump to"
+                    on the right. Skipped entirely when there is none of it. */}
+                {(selectedUnitName ||
+                  selectedUnitArea ||
+                  selectedUnit?.floorPlanImageUrl ||
+                  showUnitJumps) && (
+                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-gray-100 px-4 pt-3">
+                    <p className="flex flex-wrap items-baseline text-xs text-gray-500">
+                      {selectedUnitName && (
+                        <span className="text-sm font-semibold text-gray-900">
+                          {selectedUnitName}
+                        </span>
+                      )}
+                      {selectedUnitArea && (
+                        <>
+                          {selectedUnitName && (
+                            <span className="mx-1.5 text-gray-300">·</span>
+                          )}
+                          {selectedUnitArea}
+                        </>
+                      )}
                       <FloorPlanLink
                         url={selectedUnit?.floorPlanImageUrl}
                         onOpen={() => setFloorPlanOpen(true)}
+                        separator={Boolean(selectedUnitName || selectedUnitArea)}
                       />
                     </p>
-                  )}
-                </div>
+                    {showUnitJumps && (
+                      <div className="ml-auto flex items-baseline gap-3 text-xs">
+                        <span className="text-gray-500">Jump to:</span>
+                        {unitBedJumps.map(({ beds, idx, label }) => (
+                          <button
+                            key={beds}
+                            type="button"
+                            onClick={() => jumpToBeds(idx)}
+                            aria-current={selectedUnitBeds === beds ? "true" : undefined}
+                            className={`font-medium underline underline-offset-2 transition ${
+                              selectedUnitBeds === beds
+                                ? "text-red-600"
+                                : "text-gray-500 hover:text-gray-700"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Lease options for the unit on the open tab: one card per
                     landlord, their offerings inside it, one Contact for all. */}
@@ -2280,7 +2425,7 @@ export default function ListingModalInfo({
                       own form, so the link hops through our API first: that
                       redirect is the only place a click can still be recorded
                       before the browser leaves for a domain we can't see into. */}
-                  {waitlist &&
+                  {waitlist && !preview &&
                     (session ? (
                       <a
                         href={`/api/waitlist/${listing._id}`}
@@ -2364,6 +2509,7 @@ export default function ListingModalInfo({
                   setValRating={setValRating}
                   reviewLoading={reviewLoading}
                   handleReviewSubmit={handleReviewSubmit}
+                  preview={preview}
                 />
               )}
               {activeTab === "contact" && !session && (
@@ -2378,6 +2524,7 @@ export default function ListingModalInfo({
                   session={session}
                   selectedLease={selectedLease}
                   onOpenThread={openThread}
+                  preview={preview}
                 />
               )}
             </div>
@@ -2386,7 +2533,7 @@ export default function ListingModalInfo({
       </div>
 
       {/* ── Waitlist capture (signed-out only) ── */}
-      {waitlist && !session && (
+      {waitlist && !session && !preview && (
         <WaitlistDialog
           isOpen={waitlistOpen}
           onClose={() => setWaitlistOpen(false)}

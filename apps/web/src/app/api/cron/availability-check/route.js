@@ -41,6 +41,8 @@ export async function GET(req) {
     .from("listings")
     .select("id, title, address, contact_email, contact_name, listing_landlords(user_id, is_primary)")
     .is("deleted_at", null)
+    // A draft has never been in front of students, so there is nothing to check.
+    .not("published_at", "is", null)
     .is("pms_connection_id", null)
     .or("unavailable.is.null,unavailable.eq.false")
     .or(`last_verified_at.is.null,last_verified_at.lt.${staleCutoff}`)

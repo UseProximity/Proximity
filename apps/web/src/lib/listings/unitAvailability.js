@@ -32,16 +32,31 @@
  * sitemap, the landlord dashboard, admin and Proxy cannot disagree again.
  */
 
-/** A live offering: it exists and its owner has not withdrawn it. */
-export const isLiveLease = (lease) => !!lease?.is_active && !lease?.unavailable;
+/*
+ * Drafts. A property, unit or lease with a null published_at exists only on its
+ * owner's dashboard (see 202610100002). A row selected without the column reads
+ * as published, so a select that forgets it shows a draft rather than hiding a
+ * whole live building: every public select includes published_at at each level.
+ */
+export const isPublished = (row) => row?.published_at !== null;
+
+/** The units a student may see: not retired, and not still a draft. */
+export function publicUnits(units) {
+  return (units ?? []).filter((u) => !u.deleted_at && isPublished(u));
+}
+
+/** A live offering: it exists, it is published, and its owner has not withdrawn it. */
+export const isLiveLease = (lease) =>
+  !!lease?.is_active && !lease?.unavailable && isPublished(lease);
 
 /** Every offering on this unit a renter could actually take. */
 export function liveLeasesOf(unit) {
+  if (!isPublished(unit)) return [];
   return (unit?.unit_leases ?? []).filter(isLiveLease);
 }
 
 export function unitIsAvailable(unit) {
-  return (unit?.unit_leases ?? []).some(isLiveLease);
+  return isPublished(unit) && (unit?.unit_leases ?? []).some(isLiveLease);
 }
 
 /**
@@ -60,4 +75,26 @@ export function listingIsUnavailable(row) {
   if (row?.unavailable) return true;
   const units = row?.listing_units ?? [];
   return units.length > 0 && units.every((u) => !unitIsAvailable(u));
+}
+
+/**
+ * When can a renter move into this unit? Read off its LIVE offerings only.
+ *
+ * Returns null for "available now": any live offering with no date (or a date
+ * that has already passed) means the unit can be taken today, and that beats
+ * any pre-lease date on a sibling offering. Otherwise the earliest future
+ * date, as YYYY-MM-DD.
+ *
+ * This used to be computed inline from every lease on the unit, live or not,
+ * and from dated leases only. Rosebury Rentals wore "Available Jun 1, 2027"
+ * for both its buildings because a switched-off import still carried that
+ * date, while the landlord's own undated offering was skipped.
+ */
+export function nextAvailableFrom(unit) {
+  const today = new Date().toISOString().slice(0, 10);
+  const dates = liveLeasesOf(unit).map((l) =>
+    l.available_from ? String(l.available_from).slice(0, 10) : null
+  );
+  if (!dates.length || dates.some((d) => !d || d <= today)) return null;
+  return dates.sort()[0];
 }

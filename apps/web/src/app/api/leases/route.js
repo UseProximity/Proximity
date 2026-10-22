@@ -122,6 +122,9 @@ export async function POST(req) {
       description: shortDescription(description),
       furnished: furnished ?? null,
       ...contact,
+      // An offering added to a live unit from the editor starts as a draft, so
+      // students never see it half filled in (see 202610100002).
+      ...(body.draft === true ? { published_at: null } : {}),
     })
     .select("id")
     .single();

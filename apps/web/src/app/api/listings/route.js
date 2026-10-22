@@ -21,7 +21,13 @@
 
 import supabase from "@/lib/supabase";
 import { shapeLeases } from "@/lib/listings/getListing";
-import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import {
+  unitIsAvailable,
+  listingIsUnavailable,
+  nextAvailableFrom,
+  publicUnits,
+  isPublished,
+} from "@/lib/listings/unitAvailability";
 import {
   LANDLORD_CHAT_SELECT,
   formatListingOwner,
@@ -105,9 +111,10 @@ export function buildListing(row, owner = null) {
    * resource from the select string, so it is done here — and it has to be done
    * at all now that merging duplicate properties soft-deletes the units it
    * collapses. Before that nothing had ever set listing_units.deleted_at, so
-   * nothing filtered on it.
+   * nothing filtered on it. Draft units go the same way: they are the owner's
+   * until published.
    */
-  row = { ...row, listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at) };
+  row = { ...row, listing_units: publicUnits(row.listing_units) };
 
   /*
    * Card imagery is the property's one gallery, in the order the property owner
@@ -178,7 +185,7 @@ export function buildListing(row, owner = null) {
     leaseType: (() => {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
-        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
+        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active && isPublished(l)));
       // Decide the listing's label from its AVAILABLE units when it has any, so
       // an unavailable sublease never forces the badge. Within that pool a
       // standard lease trumps: the card says "Sublease" only when every offering
@@ -222,18 +229,11 @@ export function buildListing(row, owner = null) {
     // Non-null means every open unit is pre-leased until that date, so the UI
     // shows "Available Aug 1" instead of hiding the listing.
     availableFrom: (() => {
-      const today = new Date().toISOString().slice(0, 10);
       const units = (row.listing_units ?? []).filter(unitIsAvailable);
       if (!units.length) return null;
-      const nexts = units.map(
-        (u) =>
-          (u.unit_leases ?? [])
-            .filter((l) => l.available_from)
-            .sort((a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
-            ?.available_from ?? null
-      );
-      if (nexts.some((d) => !d || String(d).slice(0, 10) <= today)) return null;
-      return String(nexts.sort()[0]).slice(0, 10);
+      const nexts = units.map(nextAvailableFrom);
+      if (nexts.some((d) => !d)) return null;
+      return nexts.sort()[0];
     })(),
     // Live-verified: availability/pricing sync daily from the landlord's
     // property management system (pms_connection_id marks the connection).
@@ -279,14 +279,14 @@ export async function fetchListings(listingIds = null) {
       lease_type, contact_email, contact_phone, contact_name,
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
-      city, state, zipcode, created_at,
+      city, state, zipcode, created_at, published_at,
       pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, deleted_at,
+      listing_units(id, bedrooms, bathrooms, area, deleted_at, published_at,
         unit_leases(id, rent, rent_is_per_person, is_active, unavailable, sublease,
-                    available_from, lease_term_months, furnished,
+                    available_from, lease_term_months, furnished, published_at,
                     contact_name, contact_email, contact_phone)),
       listing_landlords(user_id, is_primary),
       listing_amenities(
@@ -303,7 +303,9 @@ export async function fetchListings(listingIds = null) {
       listing_drive_times(minutes, locations(name))
       `
     )
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    // Draft properties belong on their owner's dashboard, not in browse.
+    .not("published_at", "is", null);
 
   if (listingIds?.length > 0) {
     query = query.in("id", listingIds);

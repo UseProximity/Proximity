@@ -14,12 +14,14 @@ import {
   isRoomShareListing,
 } from "./listingConstraints";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
-import { unitIsAvailable, liveLeasesOf } from "@/lib/listings/unitAvailability";
 import {
-  MATCHMAKING_CENTROIDS,
-  NEIGHBORHOOD_RADIUS_KM,
-  haversineKm,
-} from "@/lib/geo/neighborhoods";
+  unitIsAvailable,
+  liveLeasesOf,
+  publicUnits,
+  isPublished,
+} from "@/lib/listings/unitAvailability";
+import { neighborhoodScore } from "@/lib/geo/neighborhoods";
+import { fetchSaturation } from "./saturation";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
@@ -136,28 +138,11 @@ const PLUS_PHRASE = {
   proximity: "a shorter walk",
 };
 
-// Neighborhood centroids for the `area` question now live in the canonical
-// table at lib/geo/neighborhoods.js (shared with the /washu landing pages).
-// A listing is "in" a neighborhood when it falls within NEIGHBORHOOD_RADIUS_KM
-// of the centroid; closeness decays linearly to 0 at the edge.
-const NEIGHBORHOOD_CENTROIDS = MATCHMAKING_CENTROIDS;
-
-// 0..1 closeness of a listing to the NEAREST requested neighborhood centroid
-// (1 = on the centroid, 0 = at/beyond the radius edge). Returns null when no
-// neighborhood is requested or the listing has no coordinates, so the dimension
-// is simply skipped. A score > 0 means the listing sits inside the neighborhood.
-export function neighborhoodScore(listing, areas) {
-  const wanted = (areas ?? []).filter((a) => NEIGHBORHOOD_CENTROIDS[a]);
-  if (!wanted.length) return null;
-  const lat = Number(listing?.latitude), lng = Number(listing?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  let best = Infinity;
-  for (const a of wanted) {
-    const c = NEIGHBORHOOD_CENTROIDS[a];
-    best = Math.min(best, haversineKm(lat, lng, c.lat, c.lng));
-  }
-  return Math.max(0, 1 - best / NEIGHBORHOOD_RADIUS_KM);
-}
+// neighborhoodScore() and fetchSaturation() live in side-effect-free modules
+// (lib/geo/neighborhoods.js, ./saturation.js) so suggested listings can use them
+// without this module's load-time Anthropic client and skill-file read.
+// Re-exported here for the existing importers.
+export { neighborhoodScore, fetchSaturation };
 
 const SKILL_PATH = join(process.cwd(), "src", "lib", "matchmaking", "listing-filter.skill.md");
 let _skillMd;
@@ -978,12 +963,18 @@ export async function fetchActiveListings() {
     .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
     .is("deleted_at", null)
     .eq("unavailable", false)
+    .not("published_at", "is", null)
     .limit(80);
   if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
-  // Retired units (collapsed by a property merge) are not rentable options.
+  // Retired units (collapsed by a property merge) are not rentable options, and
+  // neither are drafts. Draft offerings are dropped here too, so every check
+  // below sees only what students can.
   return (data ?? []).map((row) => ({
     ...row,
-    listing_units: (row.listing_units ?? []).filter((u) => !u.deleted_at),
+    listing_units: publicUnits(row.listing_units).map((u) => ({
+      ...u,
+      unit_leases: (u.unit_leases ?? []).filter(isPublished),
+    })),
   }));
 }
 
@@ -1596,35 +1587,6 @@ export function selectTopThree({ pool, dims, fitById, perPersonById, budgetMax, 
     });
   }
   return top3;
-}
-
-// Live saturation signal from the DB: how oversubscribed each listing already
-// is. Contacts weigh more than prior recommendations (a contact is real demand;
-// merely being shown is softer). Returns listing_id -> weighted count. Best-effort
-// — any failure yields {} so saturation never blocks a ranking.
-export async function fetchSaturation() {
-  const counts = {};
-  try {
-    const { data: itype } = await supabase
-      .from("interaction_types").select("id").eq("name", "contacted").maybeSingle();
-    if (itype?.id) {
-      const { data: rows } = await supabase
-        .from("user_listing_interactions").select("listing_id").eq("interaction_type_id", itype.id);
-      for (const r of rows ?? []) counts[r.listing_id] = (counts[r.listing_id] ?? 0) + 2;
-    }
-  } catch { /* best-effort */ }
-  try {
-    const { data: sessions } = await supabase
-      .from("matchmaking_chat_sessions").select("recommendations").not("recommendations", "is", null);
-    for (const s of sessions ?? []) {
-      const recs = Array.isArray(s.recommendations) ? s.recommendations : s.recommendations?.ranked;
-      for (const r of recs ?? []) {
-        const id = r?.listing_id ?? r?.id;
-        if (id) counts[id] = (counts[id] ?? 0) + 1;
-      }
-    }
-  } catch { /* best-effort */ }
-  return counts;
 }
 
 // STAGE 3 ranking prompt, part 2 of 2 (the per-request half).

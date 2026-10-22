@@ -92,7 +92,6 @@ export default function SubleaseFormPanel({
     sublease_friendly: listing?.sublease_friendly ?? listing?.subleaseFriendly ?? false,
     move_in_date: listing?.move_in_date ?? (listing?.moveInDate ? listing.moveInDate.slice(0, 10) : ""),
     contact_email: listing?.contact_email ?? listing?.contactEmail ?? user?.email ?? "",
-    contact_phone: listing?.contact_phone ?? listing?.contactPhone ?? user?.phone ?? "",
     contact_name: listing?.contact_name ?? listing?.contactName ?? user?.name ?? "",
     amenities: listing?.amenities ?? [],
     utilities_included: listing?.utilities_included ?? listing?.utilitiesIncluded ?? [],
@@ -406,7 +405,6 @@ export default function SubleaseFormPanel({
             sublease_friendly: form.sublease_friendly,
             move_in_date: form.move_in_date || null,
             contact_email: form.contact_email || null,
-            contact_phone: form.contact_phone || null,
             contact_name: form.contact_name || null,
             amenities: form.amenities,
             custom_amenities: customAmenities,
@@ -425,7 +423,6 @@ export default function SubleaseFormPanel({
             unitTypes: unitPayload,
             customAmenities,
             contactEmail: form.contact_email || null,
-            contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
             subleaseRightsConfirmed: rightsConfirmed,
           }),
@@ -739,11 +736,12 @@ export default function SubleaseFormPanel({
           {/* Contact Info */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Contact Info</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Name and email only. Enquiries arrive as Proximity messages at
+                the email; nobody is called (Wyatt, 2026-10-18). */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 { name: "contact_name", label: "Name", type: "text" },
                 { name: "contact_email", label: "Email", type: "email" },
-                { name: "contact_phone", label: "Phone", type: "text" },
               ].map(({ name, label, type }) => (
                 <div key={name}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>

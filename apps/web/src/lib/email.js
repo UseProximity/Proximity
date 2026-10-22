@@ -264,6 +264,10 @@ function chatTimeLabels(list) {
  * No greeting from us, no "X sent you a message" narration, no button. The
  * "reply above this line" marker stays, in the faintest text, because inbound
  * parsing cuts the quoted alert there.
+ *
+ * `reminder` (Wyatt, 2026-10-16): the 3 day follow-up from the check-in cron. Same
+ * email, same subject so it stacks under the original, with one line on top saying
+ * the other person is still waiting.
  */
 export function buildChatMessageEmail({
   senderName,
@@ -276,6 +280,7 @@ export function buildChatMessageEmail({
   recipientIsInterestedUser,
   threadUrl,
   canReply,
+  reminder = false,
 }) {
   const named = displayName(senderName, "");
   const other = named || "Someone";
@@ -299,10 +304,13 @@ export function buildChatMessageEmail({
     ? "You are receiving this because you messaged a landlord on Proximity. You can turn off message emails in your account settings."
     : "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.";
 
+  const nudge = reminder ? `Reminder: ${otherFirst} is still waiting for your reply.` : "";
+
   const small = (line) => `<p style="margin:0 0 6px">${line}</p>`;
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
       ${canReply ? `<p style="color:#c4c8cf;font-size:11px;margin:0 0 20px">Reply above this line to message ${escapeHtml(other)}.</p>` : ""}
+      ${nudge ? `<p style="margin:0 0 18px;color:#6b7280;font-size:14px">${escapeHtml(nudge)}</p>` : ""}
       ${list
         .map((m, i) =>
           labels[i]
@@ -325,6 +333,7 @@ export function buildChatMessageEmail({
 
   const text = [
     canReply ? `Reply above this line to message ${other}.\n` : null,
+    nudge ? `${nudge}\n` : null,
     ...list.map((m, i) => `${labels[i] ? `${labels[i]}\n` : ""}${chatMessageText(m)}\n`),
     other,
     company || null,
@@ -359,6 +368,7 @@ export async function sendChatMessageEmail({
   threadRef,
   references = [],
   testEmailTo,
+  reminder = false,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -372,6 +382,7 @@ export async function sendChatMessageEmail({
       recipientIsInterestedUser,
       threadUrl,
       canReply,
+      reminder,
     });
   const { subject, fromName } = build(false);
 

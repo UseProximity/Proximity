@@ -8,6 +8,11 @@
  *   the unit    — a physical fact of the building; the property owner's
  *   an offering — one landlord's terms on that unit; only that landlord's
  *
+ * On a property that is already live, a unit or offering added here starts as
+ * a draft (202610100002): it carries an amber Draft marker and its own Publish
+ * button, and students see nothing of it until that is pressed. Inside a draft
+ * property nothing is marked, because the whole property is the draft.
+ *
  * Unavailable units are shown rather than hidden. The renter-facing panel drops
  * them, which meant a landlord who marked a unit unavailable had no way to find
  * it again and turn it back on.
@@ -28,6 +33,7 @@ import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
 import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
 import InfoTip from "@/components/ui/InfoTip";
+import { DraftBadge, PublishButton } from "./DraftControls";
 
 
 // Heading for a group of offerings inside a unit.
@@ -107,7 +113,7 @@ function OwnerlessContact({ lease, onChanged }) {
   );
 }
 
-function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
+function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, propertyIsDraft = false }) {
   const [draft, setDraft] = useState(() => leaseDraft(lease));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -230,6 +236,10 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
   return (
     <li className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center gap-2">
+        {lease.isDraft && <DraftBadge />}
+        {lease.isDraft && (
+          <span className="text-[11px] text-amber-700">Students can&apos;t see this yet.</span>
+        )}
         {/* Red because it is a live consequence, not a note: while this is on,
             students cannot find the offering at all. */}
         {draft.unavailable && (
@@ -259,6 +269,10 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
               {saving ? "Saving…" : "Save"}
             </button>
           </>
+        )}
+        {lease.isDraft && !dirty && (
+          <PublishButton kind="lease" id={lease.id} onPublished={onChanged}
+            disabledReason={propertyIsDraft ? "Publish the property first. Its listings go live with it." : null} />
         )}
         <button onClick={remove} disabled={saving} type="button"
           title="Delete this listing" aria-label="Delete this listing"
@@ -334,11 +348,14 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged }) {
             onChange={(e) => set({ furnished: e.target.checked })} />
           Furnished
         </label>
-        <label className="inline-flex items-center gap-2 text-gray-700">
-          <input type="checkbox" checked={draft.unavailable}
-            onChange={(e) => set({ unavailable: e.target.checked })} />
-          Withdrawn (hide from students)
-        </label>
+        {/* A draft is already hidden; withdrawing is for something that was up. */}
+        {!lease.isDraft && (
+          <label className="inline-flex items-center gap-2 text-gray-700">
+            <input type="checkbox" checked={draft.unavailable}
+              onChange={(e) => set({ unavailable: e.target.checked })} />
+            Withdrawn (hide from students)
+          </label>
+        )}
       </div>
 
       {needsRightsConfirmation && (
@@ -367,6 +384,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
 
   const myLeases = (unit.leases ?? []).filter((l) => l.mine);
   const otherLeases = (unit.leases ?? []).filter((l) => !l.mine);
+  // Marked only on a live property; in a draft property everything is a draft.
+  const unitIsDraft = !!unit.isDraft && !listing?.isDraft;
 
   const patchUnit = async (payload, message) => {
     setSaving(true);
@@ -426,24 +445,40 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
           {unit.area != null ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
         </span>
-        {!unit.available && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
+        {unitIsDraft ? (
+          <>
+            <DraftBadge />
+            <span className="text-[11px] text-amber-700">
+              {unit.draftByOther
+                ? "Added by another landlord. Students see it once they publish."
+                : "Students can't see this unit or its listings yet."}
+            </span>
+          </>
+        ) : (
+          !unit.available && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
+          )
         )}
-        {isPropertyOwner && (
-          <div className="ml-auto flex items-center gap-2">
-            {dirty && (
-              <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
-                {saving ? "Saving…" : "Save unit"}
-              </button>
-            )}
+        <div className="ml-auto flex items-center gap-2">
+          {/* Save first: publishing half-edited specs would put the old ones live. */}
+          {unitIsDraft && !dirty && (
+            <PublishButton kind="unit" id={unit.id} label="Publish unit" onPublished={onChanged}
+              disabledReason={unit.draftByOther ? "Another landlord added this unit. It goes live when they publish their listing." : null} />
+          )}
+          {isPropertyOwner && dirty && (
+            <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+              {saving ? "Saving…" : "Save unit"}
+            </button>
+          )}
+          {isPropertyOwner && (
             <button onClick={removeUnit} disabled={saving} type="button"
               title="Delete this unit" aria-label="Delete this unit"
               className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
               <Trash2 className="h-4 w-4" />
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {isPropertyOwner ? (
@@ -513,7 +548,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <SectionLabel>Your listings on this unit</SectionLabel>
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {myLeases.map((lease) => (
-                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged} />
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged}
+                  propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
           </>
@@ -529,7 +565,8 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <ul className="space-y-3 px-4 pb-3 pt-2">
               {otherLeases.map((lease) => (
                 <LeaseRow key={lease.id} lease={lease} listingId={listingId}
-                  isPropertyOwner={isPropertyOwner} onChanged={onChanged} />
+                  isPropertyOwner={isPropertyOwner} onChanged={onChanged}
+                  propertyIsDraft={!!listing?.isDraft} />
               ))}
             </ul>
           </>
@@ -559,11 +596,19 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
                     // After that the server copies the contact block they set
                     // in EditorContact onto every new one.
                     contactEmail: currentUserEmail ?? null,
+                    // On a live unit the new offering is a draft until published,
+                    // so students never see it half filled in. A draft unit or
+                    // property already hides it.
+                    draft: !listing?.isDraft && !unit.isDraft,
                   }),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) return toast.error(data.error || "Couldn't add a listing.");
-                toast.success("Added — fill in your terms below.");
+                toast.success(
+                  !listing?.isDraft && !unit.isDraft
+                    ? "Draft added. Fill in your terms, then publish it."
+                    : "Added. Fill in your terms below."
+                );
                 await onChanged();
               } catch {
                 toast.error("Network error.");
@@ -585,11 +630,18 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           used to carry its own availability flag, set here and reported nowhere
           the landlord looked; it drifted out of step with the marketplace and
           quietly hid live properties. Withdraw the last offering to take a unit
-          off the market; add or restore one to put it back. */}
-      {isPropertyOwner && (
+          off the market; add or restore one to put it back.
+
+          Not on a draft property. Its units are born with published_at set,
+          so one with a live-shaped offering read "On the market, students can
+          see this unit" under a banner saying students can see none of it.
+          The banner is the whole answer there. */}
+      {isPropertyOwner && !listing?.isDraft && (
         <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
           <span className="text-xs text-gray-500">
-            {unit.available
+            {unitIsDraft
+              ? "A draft: students won't see this unit until you publish it."
+              : unit.available
               ? "On the market — students can see this unit."
               : "Hidden from students: every offering on this unit has been withdrawn. Publish one again above, or add a new one, to relist it."}
           </span>
@@ -807,7 +859,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
       const res = await fetch(`/api/landlord/listings/${listingId}/units`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        // A unit added to a live property is a draft until published.
+        body: JSON.stringify({ ...payload, draft: !listing?.isDraft }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -831,6 +884,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
       toast.success(
         data.claimedProperty
           ? "Unit added — this property is now yours to manage."
+          : !listing?.isDraft
+          ? "Draft unit added. Students won't see it until you publish it."
           : "Unit added — add your listing on it below."
       );
       await onChanged();
@@ -924,7 +979,12 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
             {unitTabLabel(u)}
             {/* A unit with nothing on offer still gets a tab — it is the only
                 way back to one — but it should not look like an active listing. */}
-            {!u.available && (
+            {u.isDraft && !listing?.isDraft ? (
+              <span className={`ml-1.5 text-[10px] font-semibold ${
+                openUnit.id === u.id && !drafting ? "text-amber-100" : "text-amber-600"}`}>
+                draft
+              </span>
+            ) : !u.available && (
               <span className={`ml-1.5 text-[10px] font-normal ${
                 openUnit.id === u.id && !drafting ? "text-red-100" : "text-red-400"}`}>
                 hidden

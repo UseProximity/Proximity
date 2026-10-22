@@ -31,6 +31,10 @@ import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
  * bed/bath filters it has no business matching. The caller asks for them before
  * getting here rather than having a placeholder invented for it.
  *
+ * `draft: true` creates the unit unpublished (see 202610100002): it and any
+ * offering added to it stay off the site until someone publishes it. That is
+ * how the editor adds a unit to a building that is already live.
+ *
  * @auth user
  */
 export async function POST(req, { params }) {
@@ -107,6 +111,7 @@ export async function POST(req, { params }) {
       area: num(body.area),
       name,
       sort_order: await nextUnitSortOrder(listingId),
+      ...(body.draft === true ? { published_at: null } : {}),
     })
     .select("id")
     .single();

@@ -13,7 +13,14 @@
 
 import { cache } from "react";
 import supabase from "@/lib/supabase";
-import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import {
+  unitIsAvailable,
+  listingIsUnavailable,
+  nextAvailableFrom,
+  isLiveLease,
+  isPublished,
+  publicUnits,
+} from "@/lib/listings/unitAvailability";
 import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
 import {
   LANDLORD_CHAT_SELECT,
@@ -113,15 +120,15 @@ export function landlordKeyer() {
  *
  * One lease = one owner's offering on that unit, so these are competing options
  * a renter chooses between, not attributes of the unit. Withdrawn offers
- * (is_active false, or the owner flagged unavailable) are dropped — they are
- * neither contactable nor real choices.
+ * (is_active false, or the owner flagged unavailable) and drafts are dropped:
+ * they are neither contactable nor real choices.
  *
  * Contact falls back to the listing row because pre-migration leases carry the
  * property-level contact; once a lease has its own, that wins.
  */
 export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
   return (unitLeases ?? [])
-    .filter((l) => l.is_active && !l.unavailable)
+    .filter(isLiveLease)
     .map((l) => ({
       id: l.id,
       // Which landlord this is, for grouping. Opaque on purpose: see landlordKeyer.
@@ -155,7 +162,8 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
 function buildListing(row, owner = null, reviews = []) {
   // Retired units are not part of the property any more — see the note in
   // api/listings/route.js; PostgREST can't filter an embedded resource.
-  row = { ...row, listing_units: sortUnits((row.listing_units ?? []).filter((u) => !u.deleted_at)) };
+  // Draft units are their owner's until published, so they go too.
+  row = { ...row, listing_units: sortUnits(publicUnits(row.listing_units)) };
   const keyFor = landlordKeyer();
 
   /*
@@ -202,7 +210,7 @@ function buildListing(row, owner = null, reviews = []) {
     unitTypes: (row.listing_units ?? []).map((u) => {
       // Live offerings only, and cheapest first — a withdrawn lease is not this
       // unit's price. Matches the browse feed (api/listings/route.js).
-      const liveLeases = (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable);
+      const liveLeases = (u.unit_leases ?? []).filter(isLiveLease);
       /*
        * Keep the cheapest priced OFFERING, not just its number, so the rent and
        * the basis that explains it travel together. Taking the flag from
@@ -214,12 +222,7 @@ function buildListing(row, owner = null, reviews = []) {
         .filter((l) => l.rent != null)
         .sort((a, b) => Number(a.rent) - Number(b.rent))[0] ?? null;
       const activeRent = cheapestPriced?.rent;
-      const nextAvailable =
-        (u.unit_leases ?? [])
-          .filter((l) => l.available_from)
-          .sort(
-            (a, b) => new Date(a.available_from) - new Date(b.available_from)
-          )[0]?.available_from ?? null;
+      const nextAvailable = nextAvailableFrom(u);
       const activeLease = liveLeases[0];
       // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
       // above stay as the first-active-lease summary so existing callers (cards,
@@ -252,7 +255,7 @@ function buildListing(row, owner = null, reviews = []) {
     leaseType: (() => {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
-        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
+        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active && isPublished(l)));
       // Decide the listing's label from its AVAILABLE units when it has any, so
       // an unavailable sublease never forces the badge. Within that pool a
       // standard lease trumps: the card says "Sublease" only when every offering
@@ -314,14 +317,47 @@ function buildListing(row, owner = null, reviews = []) {
   };
 }
 
+/*
+ * A draft rendered as if it were published right now. The owner's preview
+ * (/api/landlord/listings/[id]/preview) asks "what will students see when I
+ * press Publish?", and the honest answer is this exact builder run over the
+ * same rows with the draft markers removed. Stamping published_at in memory,
+ * rather than teaching every availability helper a second mode, means the
+ * preview cannot drift from the public rendering: whatever buildListing does
+ * to a live row it does to this one. The database row is untouched.
+ */
+function asPublished(row) {
+  const stamp = (r) => (r && r.published_at === null ? { ...r, published_at: "preview" } : r);
+  return {
+    ...stamp(row),
+    listing_units: (row.listing_units ?? []).map((u) => ({
+      ...stamp(u),
+      unit_leases: (u.unit_leases ?? []).map(stamp),
+    })),
+  };
+}
+
 /**
  * Fetch one listing with all v4 relations, reviews, and vote counts.
  * Returns the buildListing() shape, or null when the listing doesn't exist.
  * Throws on unexpected errors so callers can distinguish 404 from 500.
  */
-export const getListing = cache(async (listingId, currentUserId = null) => {
+export const getListing = cache(async (listingId, currentUserId = null) =>
+  fetchListing(listingId, currentUserId, { includeDrafts: false })
+);
+
+/**
+ * The owner's view of a listing. Not cached and never exported to a public
+ * surface: with includeDrafts the draft property, its draft units and draft
+ * leases all render as published. Callers must check ownership first.
+ */
+export function getListingPreview(listingId, { currentUserId = null, includeDrafts = false } = {}) {
+  return fetchListing(listingId, currentUserId, { includeDrafts });
+}
+
+async function fetchListing(listingId, currentUserId, { includeDrafts }) {
   // Fetch listing with all v4 related tables
-  const { data: row, error } = await supabase
+  let query = supabase
     .from("listings")
     .select(
       `
@@ -329,16 +365,16 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
       lease_type, contact_email, contact_phone, contact_name,
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
-      city, state, zipcode, created_at, property_key,
+      city, state, zipcode, created_at, property_key, published_at,
       pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
       listing_units(
-        id, bedrooms, bathrooms, area, deleted_at, name, sort_order, floor_plan_image_url,
+        id, bedrooms, bathrooms, area, deleted_at, published_at, name, sort_order, floor_plan_image_url,
         unit_leases(
           id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
-          unavailable, description, furnished, owner_id,
+          unavailable, description, furnished, owner_id, published_at,
           contact_name, contact_email, contact_phone,
           users!owner_id(id, name, image)
         )
@@ -365,14 +401,18 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
     // JSON-LD advertising removed inventory. Admin reads go via /api/admin/[table],
     // and the landlord dashboard's availability toggle is a PATCH, so neither is
     // affected by this filter.
-    .is("deleted_at", null)
-    .single();
+    .is("deleted_at", null);
+  // A draft is not public yet either: same 404 as a deleted listing. Only the
+  // owner's preview, which has already checked who is asking, gets past this.
+  if (!includeDrafts) query = query.not("published_at", "is", null);
+  const { data: fetched, error } = await query.single();
 
-  if (error || !row) {
+  if (error || !fetched) {
     // PGRST116 = no rows for .single(); treat any fetch failure here as not-found,
     // matching the previous API behavior (it returned 404 on error || !row).
     return null;
   }
+  const row = includeDrafts ? asPublished(fetched) : fetched;
 
   // Resolve primary landlord from listing_landlords
   const ll = row.listing_landlords ?? [];
@@ -557,4 +597,4 @@ export const getListing = cache(async (listingId, currentUserId = null) => {
   });
 
   return buildListing(row, ownerUser, reviews);
-});
+}

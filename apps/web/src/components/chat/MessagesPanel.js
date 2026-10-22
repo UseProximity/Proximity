@@ -83,7 +83,7 @@ export default function MessagesPanel({ onBrowse, className = "" }) {
         <div className="hidden md:flex w-[340px] flex-shrink-0 border-r border-gray-100 flex-col min-h-0">
           <ChatThreadList {...listProps} />
         </div>
-        <div className="flex-1 min-h-0 flex flex-col md:hidden">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col md:hidden">
           {activeThreadId ? (
             <ChatTranscript
               thread={activeThread}
@@ -96,7 +96,7 @@ export default function MessagesPanel({ onBrowse, className = "" }) {
             <ChatThreadList {...listProps} />
           )}
         </div>
-        <div className="hidden md:flex flex-1 min-h-0 flex-col">
+        <div className="hidden md:flex flex-1 min-w-0 min-h-0 flex-col">
           {activeThreadId ? (
             <ChatTranscript
               thread={activeThread}

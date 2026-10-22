@@ -20,6 +20,7 @@ import Footer from "@/components/layout/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import MapPopupCard from "@/components/listings/MapPopupCard";
 import { becomeLandlord } from "@/lib/auth/landlordRole";
+import { trackEvent, setListingSource } from "@/utils/analytics";
 
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
   ssr: false,
@@ -462,7 +463,7 @@ function ReviewsCarousel() {
 
 // ─── Popular Rentals ───────────────────────────────────────────────────────────
 
-function RentalCard({ listing, index, isInView }) {
+function RentalCard({ listing, index, isInView, onSelect = null }) {
   const isMobile = useIsMobile();
   const router = useRouter();
   const imageUrl = listing.images?.[0];
@@ -499,7 +500,10 @@ function RentalCard({ listing, index, isInView }) {
       transition={{ duration: 0.5, delay: index * 0.07 }}
     >
       <div
-        onClick={() => router.push(`/?listing=${listing._id}`)}
+        onClick={() => {
+          onSelect?.();
+          router.push(`/?listing=${listing._id}`);
+        }}
         className="group block cursor-pointer relative"
       >
         {/* Real crawlable link to the canonical listing page. Plain clicks are
@@ -592,17 +596,60 @@ function SkeletonCard() {
   );
 }
 
-function PopularRentals({ initialPopular = null }) {
+/*
+ * The homepage listings row. Signed-in students with enough activity get
+ * "Suggested for you" (the same 2 or 4 picks as the /browse strip); everyone
+ * else, and any student the endpoint returns nothing for, gets the Popular row
+ * exactly as before. The session is server-provided, so signed-out visitors and
+ * crawlers render Popular in the first HTML; signed-in students see skeletons
+ * until the suggestion answer arrives, never Popular flashing into Suggested.
+ */
+function PopularRentals({ initialPopular = null, allListings = null }) {
   // Server-seeded so the ranked cards (and their crawlable /listings/[id]
   // anchors) are in the first HTML; the mount fetch refreshes the ranking.
   const [listings, setListings] = useState(initialPopular ?? []);
   const [loading, setLoading] = useState(
     !(initialPopular && initialPopular.length)
   );
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+  // null = still asking (signed in only); [] = none, show Popular.
+  const [suggested, setSuggested] = useState(userId ? null : []);
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-80px" });
   const isMobile = useIsMobile();
-  const visibleListings = isMobile ? listings.slice(0, 3) : listings;
+  const showSuggested = !!suggested?.length;
+  const visibleListings = showSuggested
+    ? suggested
+    : isMobile
+    ? listings.slice(0, 3)
+    : listings;
+
+  useEffect(() => {
+    if (!userId) {
+      setSuggested([]);
+      return;
+    }
+    fetch("/api/listings/suggested")
+      .then((r) => (r.ok ? r.json() : { ids: [] }))
+      .then((data) => {
+        const byId = new Map((allListings ?? []).map((l) => [String(l._id), l]));
+        const found = (data?.ids ?? [])
+          .map((id) => byId.get(String(id)))
+          .filter(Boolean);
+        // Even count only (0, 2 or 4), matching the browse strip.
+        setSuggested(found.slice(0, found.length - (found.length % 2)));
+      })
+      .catch(() => setSuggested([]));
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showSuggested) return;
+    trackEvent("suggested_impression", {
+      surface: "home",
+      count: suggested.length,
+    });
+  }, [showSuggested]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Server ranks these by recent saves + contacts (last week → month → all
@@ -638,10 +685,12 @@ function PopularRentals({ initialPopular = null }) {
         >
           <div>
             <span className="inline-block px-3 py-1 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest mb-3">
-              Available Now
+              {showSuggested ? "Picked for you" : "Available Now"}
             </span>
             <h2 className="text-4xl md:text-5xl font-black text-gray-900">
-              Popular apartments near WashU.
+              {showSuggested
+                ? "Suggested for you."
+                : "Popular apartments near WashU."}
             </h2>
           </div>
           <Link
@@ -653,8 +702,14 @@ function PopularRentals({ initialPopular = null }) {
         </motion.div>
 
         {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {loading
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${
+            showSuggested ? "lg:grid-cols-4" : "lg:grid-cols-3"
+          }`}
+        >
+          {suggested === null
+            ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+            : loading && !showSuggested
             ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
             : visibleListings.map((listing, i) => (
                 <RentalCard
@@ -662,6 +717,18 @@ function PopularRentals({ initialPopular = null }) {
                   listing={listing}
                   index={i}
                   isInView={isInView}
+                  onSelect={
+                    showSuggested
+                      ? () => {
+                          trackEvent("suggested_click", {
+                            surface: "home",
+                            listing_id: String(listing._id),
+                            position: i + 1,
+                          });
+                          setListingSource(listing._id, "suggested");
+                        }
+                      : null
+                  }
                 />
               ))}
         </div>
@@ -747,7 +814,7 @@ function CTABand() {
 // ─── Matchmaking Prompt Popup ──────────────────────────────────────────────────
 
 function MatchmakingPopup() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -755,17 +822,17 @@ function MatchmakingPopup() {
     if (status === "loading") return;
 
     const check = async () => {
-      if (session?.user) {
-        try {
-          // Don't nag someone who has already started the Proxy chat. The chat
-          // GET returns their latest non-abandoned session (null if none), so a
-          // session here means they're already in the flow.
-          const res = await fetch("/api/matchmaking/chat");
-          const { session: chatSession } = await res.json();
-          if (chatSession) return;
-        } catch {
-          // show popup on error to be safe
-        }
+      try {
+        // Don't nag someone who has already started the Proxy chat. The chat
+        // GET returns their latest non-abandoned session (null if none), so a
+        // session here means they're already in the flow. Signed-out visitors
+        // can chat too now, so this is asked for everyone: for them it answers
+        // from the device cookie (and sets none when there is no chat yet).
+        const res = await fetch("/api/matchmaking/chat");
+        const { session: chatSession } = await res.json();
+        if (chatSession) return;
+      } catch {
+        // show popup on error to be safe
       }
       // Delay before showing
       const t = setTimeout(() => setVisible(true), 3000);
@@ -776,7 +843,7 @@ function MatchmakingPopup() {
     return () => {
       cleanup?.then?.((fn) => fn?.());
     };
-  }, [status, session]);
+  }, [status]);
 
   if (dismissed || !visible) return null;
 
@@ -866,7 +933,10 @@ export default function HomeClient({
     <div className="min-h-screen bg-white">
       <main>
         <HeroMapSection initialListings={initialListings} />
-        <PopularRentals initialPopular={initialPopular} />
+        <PopularRentals
+          initialPopular={initialPopular}
+          allListings={initialListings}
+        />
         <ReviewsCarousel />
         {/* <CollegesBand /> */}
         <CTABand />

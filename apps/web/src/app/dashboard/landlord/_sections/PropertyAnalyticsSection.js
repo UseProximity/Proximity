@@ -17,9 +17,11 @@ import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import ListingMetricsChart from "./ListingMetricsChart";
+import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 
 export default function PropertyAnalyticsSection({
   handleBackToProperties,
+  backLabel = "Back to Properties",
   selectedProperty: p,
   viewAsId,
   onPhotosChanged,
@@ -63,9 +65,22 @@ export default function PropertyAnalyticsSection({
   const totalContacts = contactTotals[listingId] ?? 0;
 
   const images = Array.isArray(p.images) ? p.images : [];
+  const pendingCount = (p.draftUnitCount ?? 0) + (p.draftLeaseCount ?? 0);
 
+  /*
+   * Opens the same listing popup students get from the homepage cards, right
+   * here over the dashboard, through the global ?listing= modal in preview
+   * mode. It used to send the landlord off to the browse page in a new tab,
+   * which could not show a draft at all (the public API hides them) and
+   * counted the landlord's own look as a student click in their metrics.
+   * Built from window.location so the dashboard's own tab/property/viewAs
+   * params, which it writes with history.replaceState, come along.
+   */
   const handleViewAsStudent = () => {
-    window.open(`/browse?panel=${p._id || p.id}`, "_blank");
+    const params = new URLSearchParams(window.location.search);
+    params.set("listing", listingId);
+    params.set("preview", "1");
+    router.push(`?${params.toString()}`);
   };
 
   return (
@@ -79,7 +94,7 @@ export default function PropertyAnalyticsSection({
           className="flex items-center gap-2 hover:bg-red-50 hover:text-red-600"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Properties
+          {backLabel}
         </Button>
         <div className="h-4 w-px bg-gray-300" />
         <div>
@@ -89,15 +104,26 @@ export default function PropertyAnalyticsSection({
           {p.title && <p className="text-sm text-gray-500">{p.address}</p>}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Badge
-            className={`${
-              p.unavailable ? "bg-gray-500" : "bg-green-600"
-            } text-white`}
-          >
-            {p.unavailable ? "Unavailable" : "Available"}
-          </Badge>
+          {p.isDraft ? (
+            <DraftBadge className="px-2.5 py-1 text-xs" />
+          ) : (
+            <Badge
+              className={`${
+                p.unavailable ? "bg-gray-500" : "bg-green-600"
+              } text-white`}
+            >
+              {p.unavailable ? "Unavailable" : "Available"}
+            </Badge>
+          )}
+          {/* On a draft this shows what students WILL see once it's published;
+              on a live property, what they see now. */}
           <button
             onClick={handleViewAsStudent}
+            title={
+              p.isDraft
+                ? "See this draft the way students will once it's published"
+                : "See this property the way students see it now"
+            }
             className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition-colors"
           >
             <Eye className="h-3.5 w-3.5" />
@@ -109,6 +135,46 @@ export default function PropertyAnalyticsSection({
               record and two chances to disagree about it. */}
         </div>
       </div>
+
+      {/*
+        * The draft banner. Amber across the top, so nobody mistakes a draft for
+        * what students are seeing. Publishing the property takes everything on
+        * it live at once; on a live property with unpublished additions, the
+        * same button publishes the owner's pending units and listings together.
+        */}
+      {p.isDraft ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900">
+              This property is a draft. Students can&apos;t see it yet.
+            </p>
+            <p className="text-xs text-amber-800">
+              Check the details, units and listings below, then publish it to put
+              all of it on Proximity.
+            </p>
+          </div>
+          {isPropertyOwner && (
+            <PublishButton kind="property" id={listingId} label="Publish property"
+              size="md" onPublished={onPhotosChanged} />
+          )}
+        </div>
+      ) : (
+        pendingCount > 0 && (
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center">
+            <p className="flex-1 text-sm text-amber-900">
+              <span className="font-semibold">
+                {pendingCount} unpublished {pendingCount === 1 ? "change" : "changes"} here.
+              </span>{" "}
+              Marked Draft below. Students see the property as it was until you
+              publish them.
+            </p>
+            {isPropertyOwner && (
+              <PublishButton kind="property" id={listingId} label="Publish all"
+                size="md" onPublished={onPhotosChanged} />
+            )}
+          </div>
+        )
+      )}
 
       {/* Images */}
       {images.length > 0 && (
@@ -123,7 +189,9 @@ export default function PropertyAnalyticsSection({
           ))}
         </div>
       )}
-      {/* Stat cards */}
+      {/* Stat cards. A draft has had no visitors, so it skips straight to the
+          editor below rather than showing a wall of zeroes. */}
+      {!p.isDraft && (
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         {[
           {
@@ -165,8 +233,12 @@ export default function PropertyAnalyticsSection({
         ))}
       </div>
 
+      )}
+
       {/* Per-listing metrics chart */}
+      {!p.isDraft && (
         <ListingMetricsChart listingId={p._id || p.id} viewAsId={viewAsId} />
+      )}
 
       {/*
         * The listing as a student sees it, made editable. Structured the same

@@ -17,12 +17,14 @@
  *                    means clearing user_id/name/reviewer_email, not setting
  *                    that flag. Landlord contact fields on a review describe a
  *                    DIFFERENT person and are deliberately left in place.
- *   - behavioral     user_listing_interactions, review_votes, waitlist_clicks:
- *                    deleted outright.
+ *   - behavioral     user_listing_interactions, user_filter_summaries,
+ *                    review_votes, waitlist_clicks: deleted outright.
  *   - matchmaking    chat sessions and matchmaking_preferences are KEPT for
  *                    three years (Privacy Policy s8). They record why we showed
  *                    this person the properties we did, so they are erased by
- *                    the retention stage below, not here.
+ *                    the retention stage below, not here. (Signed-out chats that
+ *                    no account claimed within 30 days are a separate, final
+ *                    step of this run: they belong to no one, so their contents are blanked.)
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
@@ -54,6 +56,7 @@ import supabase from "@/lib/supabase";
 import { r2 } from "@/lib/r2";
 import { isProdData } from "@/lib/appEnv";
 import { revokeAppleToken } from "@/lib/appleAuth";
+import { expireAnonymousSessions } from "@/lib/matchmaking/anonymousSessions";
 
 export const dynamic = "force-dynamic";
 
@@ -239,6 +242,10 @@ async function purgeUser(user) {
     "user_listing_interactions",
     supabase.from("user_listing_interactions").delete().eq("user_id", userId)
   );
+  await must(
+    "user_filter_summaries",
+    supabase.from("user_filter_summaries").delete().eq("user_id", userId)
+  );
   await must("review_votes", supabase.from("review_votes").delete().eq("user_id", userId));
   // Matchmaking sessions and preferences are kept for three years; see the header.
   await must("lease_checks", supabase.from("lease_checks").delete().eq("user_id", userId));
@@ -399,6 +406,19 @@ export async function GET(req) {
     }
   }
 
+  // Signed-out matchmaking chats that no account ever claimed (see
+  // lib/matchmaking/anonymousSessions.js): nothing links them to a person, so
+  // once their 30-day claim window has passed their contents and device cookie
+  // are blanked. The empty row stays so the dashboard's signed-out counts hold.
+  let anonymousChatsExpired = 0;
+  let anonymousChatsFailed = false;
+  try {
+    anonymousChatsExpired = await expireAnonymousSessions();
+  } catch (err) {
+    console.error("[purge-accounts] anonymous matchmaking cleanup failed:", err);
+    anonymousChatsFailed = true;
+  }
+
   return NextResponse.json({
     ok: true,
     cutoff,
@@ -408,5 +428,7 @@ export async function GET(req) {
     retentionCutoff,
     retentionErased: erased,
     retentionFailed: eraseFailed.length + (expiredError ? 1 : 0),
+    anonymousChatsExpired,
+    anonymousChatsFailed,
   });
 }

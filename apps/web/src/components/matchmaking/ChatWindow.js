@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
 import RecommendationCards from "./RecommendationCards";
+import LockedMatches from "./LockedMatches";
 import QuestionControls from "./AnswerControls";
 
 // Identity for an active question. Consecutive narrowing tradeoffs all share the
@@ -110,8 +111,10 @@ function DraftCompose({ draft, loading, onSend }) {
 
 // A "matches" turn: Proxy's message types out first (markdown-aware), THEN the
 // listing cards render beneath it — which in turn hold their own skeletons until
-// each card's image has loaded (see RecommendationCards).
-function RecsTurn({ msg, updating, userInitial, onTyped, onGrow }) {
+// each card's image has loaded (see RecommendationCards). For a signed-out
+// visitor the turn is locked: the server sent only each pick's intention label,
+// so the sign-up wall renders in place of the cards (see LockedMatches).
+function RecsTurn({ msg, updating, userInitial, triesLeft, onTyped, onGrow }) {
   const [textDone, setTextDone] = useState(!msg.animate);
   const bubbleMsg = updating ? { ...msg, content: "Updating your matches…", animate: false } : msg;
   return (
@@ -131,9 +134,11 @@ function RecsTurn({ msg, updating, userInitial, onTyped, onGrow }) {
       <div className="ml-9 mr-9 mt-1">
         {updating ? (
           <RecommendationsSkeleton />
-        ) : textDone ? (
+        ) : !textDone ? null : msg.locked ? (
+          <LockedMatches recommendations={msg.recommendations} triesLeft={triesLeft} />
+        ) : (
           <RecommendationCards recommendations={msg.recommendations} />
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -166,7 +171,7 @@ function DraftTurn({ msg, loading, userInitial, onSendDraft, onTyped, onGrow }) 
 // message that's still typing (they've scrolled up to re-read something).
 const NEAR_BOTTOM_PX = 80;
 
-export default function ChatWindow({ messages, loading, recsUpdating, userInitial, onSend, onAnswer, onSendDraft, onEdit }) {
+export default function ChatWindow({ messages, loading, recsUpdating, userInitial, locked = false, triesLeft = null, onSend, onAnswer, onSendDraft, onEdit }) {
   const scrollRef = useRef(null);
   const lastMsgRef = useRef(null);
   const inputRef = useRef(null);
@@ -200,8 +205,9 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
 
   // The free-text composer only appears once the first batch of listings has
   // been shown — before that, the conversation is driven entirely by the
-  // slide-up answer sheets, with nothing docked at the bottom.
-  const hasRecommendations = messages.some((m) => m.recommendations);
+  // slide-up answer sheets, with nothing docked at the bottom. Behind the
+  // sign-up wall there is nothing to refine either, so it stays hidden.
+  const hasRecommendations = !locked && messages.some((m) => m.recommendations);
 
   // The most recent set of picks is the one the answers panel edits in place, so
   // that's the message that flips to skeletons while a preference change re-ranks.
@@ -307,7 +313,14 @@ export default function ChatWindow({ messages, loading, recsUpdating, userInitia
           return (
             <div key={i} ref={isLast ? lastMsgRef : null}>
               {msg.recommendations ? (
-                <RecsTurn msg={msg} updating={updatingThis} userInitial={userInitial} onTyped={onTyped} onGrow={handleGrow} />
+                <RecsTurn
+                  msg={msg}
+                  updating={updatingThis}
+                  userInitial={userInitial}
+                  triesLeft={triesLeft}
+                  onTyped={onTyped}
+                  onGrow={handleGrow}
+                />
               ) : msg.draft ? (
                 <DraftTurn msg={msg} loading={loading} userInitial={userInitial} onSendDraft={onSendDraft} onTyped={onTyped} onGrow={handleGrow} />
               ) : (

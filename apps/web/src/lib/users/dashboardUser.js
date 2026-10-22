@@ -1,6 +1,11 @@
 import supabase from "@/lib/supabase";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
-import { isLiveLease, unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import {
+  isLiveLease,
+  isPublished,
+  unitIsAvailable,
+  listingIsUnavailable,
+} from "@/lib/listings/unitAvailability";
 import { sortUnits } from "@/utils/unitOrder";
 
 /*
@@ -77,13 +82,45 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     : 0;
 
   /*
+   * Drafts (202610100002) are shown to the people who own them and nobody else.
+   * A draft unit belongs to the property's owners and to whoever is letting it;
+   * a draft offering belongs to its owner alone, so a landlord sharing a
+   * building never sees a competitor's unpublished price. ownsProperty is the
+   * same test the contact rules above use.
+   */
+  const isMine = (lease) => !!currentUserId && lease.owner_id === currentUserId;
+  const visibleUnits = (l.listing_units ?? []).filter(
+    (u) =>
+      !u.deleted_at &&
+      (isPublished(u) || ownsProperty || (u.unit_leases ?? []).some(isMine))
+  );
+  const isDraft = l.published_at === null;
+  // A draft unit that arrived with someone else's offering is theirs to
+  // publish (see /api/landlord/publish), so it is not the viewer's pending work.
+  const addedByOthers = (u) => {
+    const leases = (u.unit_leases ?? []).filter((lease) => !lease.deleted_at);
+    return leases.length > 0 && !leases.some(isMine);
+  };
+  // Unpublished additions to a live property. Inside a draft property every
+  // row is unpublished by virtue of the property, so nothing is counted there.
+  const draftUnitCount = isDraft
+    ? 0
+    : visibleUnits.filter((u) => !isPublished(u) && !addedByOthers(u)).length;
+  const draftLeaseCount = isDraft
+    ? 0
+    : visibleUnits
+        .filter(isPublished)
+        .flatMap((u) => u.unit_leases ?? [])
+        .filter((lease) => isMine(lease) && !lease.deleted_at && !isPublished(lease)).length;
+
+  /*
    * The viewer's OWN offerings at this property. A property can now carry leases
    * from several landlords, so the dashboard must be able to show a landlord
    * their own terms rather than the building's aggregate — which, at someone
    * else's property, is mostly other people's prices.
    */
   const myLeases = currentUserId
-    ? sortUnits((l.listing_units ?? []).filter((u) => !u.deleted_at)).flatMap((u) =>
+    ? sortUnits(visibleUnits).flatMap((u) =>
         (u.unit_leases ?? [])
           .filter((lease) => lease.owner_id === currentUserId && !lease.deleted_at)
           .map((lease) => ({
@@ -115,7 +152,8 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
              * is how "Withdraw" stayed on screen after a withdrawal and, worse,
              * re-withdrew the same lease when pressed again.
              */
-            isLive: isLiveLease(lease),
+            isLive: isLiveLease(lease) && isPublished(u),
+            isDraft: !isPublished(lease) || !isPublished(u),
           }))
       )
     : [];
@@ -124,14 +162,17 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
     _id: l.id?.toString(),
     id: l.id,
     myLeases,
+    isDraft,
+    draftUnitCount,
+    draftLeaseCount,
     title: l.title ?? null,
     address: l.address,
     description: l.description ?? null,
-    unitTypes: sortUnits((l.listing_units ?? []).filter((u) => !u.deleted_at)).map((u) => {
+    unitTypes: sortUnits(visibleUnits).map((u) => {
       // Live offerings only — a withdrawn lease (unavailable) is not this unit's
       // current price, and showing one on the dashboard misreports the listing.
       const activeLease = (u.unit_leases ?? []).find(
-        (lease) => lease.is_active && !lease.unavailable
+        (lease) => isLiveLease(lease)
       );
       return {
         id: u.id,
@@ -146,6 +187,8 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
           ? activeLease.lease_term_months.map(Number)
           : [],
         available: unitIsAvailable(u),
+        isDraft: !isPublished(u),
+        draftByOther: !isPublished(u) && addedByOthers(u),
         /*
          * EVERY offering on this unit, not just the first live one. A unit can
          * carry competing leases from different landlords, so a dashboard that
@@ -162,16 +205,19 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
          * hidden; withdrawn ones sort last and carry a Publish again button.
          */
         leases: (u.unit_leases ?? [])
-          .filter((lease) => !lease.deleted_at)
+          .filter((lease) => !lease.deleted_at && (isPublished(lease) || isMine(lease)))
           .map((lease) => ({
             id: lease.id,
+            isDraft: !isPublished(lease),
             rent: lease.rent != null ? Number(lease.rent) : null,
             rentIsPerPerson: lease.rent_is_per_person ?? null,
             sublease: !!lease.sublease,
             // Withdrawn by either route: the editor's checkbox sets unavailable
             // alone, the dashboard button clears is_active as well. One flag
-            // so the editor reads both the same way.
-            unavailable: !isLiveLease(lease),
+            // so the editor reads both the same way. Not isLiveLease: that also
+            // asks whether the row is published, and a draft is not withdrawn,
+            // it has simply never been put up.
+            unavailable: !lease.is_active || !!lease.unavailable,
             furnished: lease.furnished ?? null,
             availableFrom: lease.available_from ?? null,
             leaseTermMonths: Array.isArray(lease.lease_term_months)

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-14T15:00:45.714Z",
-  "count": 124,
+  "_generated": "2026-10-21T02:07:47.663Z",
+  "count": 128,
   "routes": [
     {
       "path": "/api/account",
@@ -285,9 +285,13 @@
     },
     {
       "path": "/api/auth/[...nextauth]",
-      "methods": [],
+      "methods": [
+        "POST"
+      ],
       "auth": "public",
-      "methodAuth": {},
+      "methodAuth": {
+        "POST": "public"
+      },
       "tables": [],
       "file": "src/app/api/auth/[...nextauth]/route.js"
     },
@@ -773,6 +777,7 @@
         "listing_reviews",
         "dorm_reviews",
         "user_listing_interactions",
+        "user_filter_summaries",
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
@@ -961,7 +966,7 @@
       ],
       "auth": "any",
       "methodAuth": {
-        "GET": "any",
+        "GET": "optional",
         "POST": "any"
       },
       "tables": [
@@ -996,6 +1001,20 @@
       },
       "tables": [],
       "file": "src/app/api/feedback/route.js"
+    },
+    {
+      "path": "/api/filter-summary",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "user_filter_summaries"
+      ],
+      "file": "src/app/api/filter-summary/route.js"
     },
     {
       "path": "/api/getUser",
@@ -1133,6 +1152,20 @@
         "users"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/landlords/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/preview",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/landlord/listings/[listingId]/preview/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/property",
@@ -1340,6 +1373,25 @@
       "file": "src/app/api/landlord/pms/request-integration/route.js"
     },
     {
+      "path": "/api/landlord/publish",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_landlords",
+        "listing_units",
+        "listing_image_units",
+        "listing_images",
+        "unit_leases",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/publish/route.js"
+    },
+    {
       "path": "/api/landlord/reviews",
       "methods": [
         "GET"
@@ -1472,6 +1524,18 @@
         "user_listing_interactions"
       ],
       "file": "src/app/api/listings/popular/route.js"
+    },
+    {
+      "path": "/api/listings/suggested",
+      "methods": [
+        "GET"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "GET": "optional"
+      },
+      "tables": [],
+      "file": "src/app/api/listings/suggested/route.js"
     },
     {
       "path": "/api/matchmaking/chat",

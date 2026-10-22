@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** October 12, 2026
+**Last updated:** October 16, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -81,7 +81,8 @@ This matters more here than on most platforms, so we want to be direct about it.
   identity verification, or license checks on anyone.
 - **We do not inspect properties.** We have never visited most of the properties listed.
 - **We do not screen or endorse.** A listing appearing on Proximity (including one the
-  matchmaking assistant recommends) is not a recommendation, endorsement, or judgment that
+  matchmaking assistant recommends or one shown as "Suggested for you") is not a
+  recommendation, endorsement, or judgment that
   the property or the person renting it is safe, legitimate, lawful, or suitable for you.
 - **We are not involved in your money.** We never collect rent, deposits, application fees,
   or any other payment between a student and a landlord, and we will never ask you to send
@@ -254,6 +255,19 @@ and then suggests listings. It is available on the website and in the mobile app
 - **We keep your conversation and preferences.** They are a record of what you asked for
   and why we showed you the listings we did. We keep them while your account is open and
   for three years after you delete it (Privacy Policy §8).
+
+## 9A. Suggested listings
+
+When you are signed in, the homepage and the browse page may show a short "Suggested for
+you" selection. It is chosen automatically from your matchmaking preferences, the listings
+you have saved and contacted, and the browse filters you have saved. Privacy Policy §2.2
+explains how.
+
+- **It is automated and it can be wrong.** A suggestion means a listing resembles what you
+  have looked for, nothing more. It is not advice and not an endorsement (see Section 4).
+- **It never limits what you can see.** Every listing remains available to search, browse,
+  view, and contact. The same gender rule as the matchmaking assistant applies (Section 9).
+- **Landlords cannot pay to be suggested.** Suggestions are not advertising.
 
 ## 10. Lease Check
 
@@ -500,7 +514,8 @@ even if we have been advised of the possibility.
 sublease, or rental arrangement you enter into; the conduct, acts, or omissions of any
 landlord, student, or other user, whether online or in person; the condition, safety,
 legality, or availability of any property; any payment you make to another user; or any
-decision you make in reliance on the matchmaking assistant or Lease Check.
+decision you make in reliance on the matchmaking assistant, suggested listings, or Lease
+Check.
 
 **Our total liability** to you for all claims relating to the Services will not exceed
 **$100 USD**.

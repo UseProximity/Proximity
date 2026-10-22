@@ -25,7 +25,8 @@ import {
 const COMPLETED = "recommendations_ready";
 
 const QUESTION_LABELS = {
-  name_confirm: "Name check (first question)",
+  // Chats saved before 2026-10-20 opened with a name check; that question is
+  // gone, so an old chat that stopped there now reads as stopping at group size.
   group_size: "Group size",
   budget: "Budget",
   area: "Neighborhoods",
@@ -126,19 +127,23 @@ export default async function loadMatchmaking(period) {
   const [sessions, formSaves, guestRows] = await Promise.all([
     fetchAll(
       "matchmaking_chat_sessions",
-      "id, user_id, status, created_at, preferences, recommendations, transcript",
+      "id, user_id, visitor_id, status, created_at, expired_at, preferences, recommendations, transcript",
       (q) => q.gte("created_at", period.prevStart)
     ),
     fetchAll("matchmaking_preferences", "id, created_at", (q) => q.gte("created_at", period.prevStart)),
     fetchAll("users", "id", (q) => q.eq("email", "guest@proximity.test")),
   ]);
-  // Signed-out chats are stored under one shared guest account (see api/matchmaking/chat).
+  // The shared guest account is a house test login, not a student.
   const guestId = guestRows[0]?.id;
 
   const current = sessions.filter((s) => within(s.created_at, period.start));
   const completed = sessions.filter((s) => s.status === COMPLETED);
-  const currentCompleted = current.filter((s) => s.status === COMPLETED);
-  const currentUnfinished = current.filter((s) => s.status !== COMPLETED);
+  // An unclaimed signed-out chat past its 30-day window keeps its row (so the
+  // counts above hold) but not its contents; anything read from what was said
+  // or recommended skips it.
+  const readable = current.filter((s) => !s.expired_at);
+  const currentCompleted = readable.filter((s) => s.status === COMPLETED);
+  const currentUnfinished = readable.filter((s) => s.status !== COMPLETED);
   const prefs = (s) => s.preferences ?? {};
 
   const started = periodTotals(period, sessions);
@@ -146,9 +151,17 @@ export default async function loadMatchmaking(period) {
   const signedIn = (from, to) =>
     new Set(
       sessions
-        .filter((s) => s.user_id && s.user_id !== guestId && within(s.created_at, from, to))
+        .filter((s) => s.user_id && !s.visitor_id && s.user_id !== guestId && within(s.created_at, from, to))
         .map((s) => s.user_id)
     ).size;
+  // Chats that STARTED signed out: visitor_id is only ever set on those, and an
+  // expired one has lost its visitor_id but still has no user_id. A claimed one
+  // is a signed-out chat whose visitor then created an account or logged in:
+  // the sign-up wall's conversion.
+  const startedSignedOut = sessions.filter((s) => s.visitor_id || !s.user_id);
+  const claimed = startedSignedOut.filter((s) => s.user_id);
+  const signedOutStarted = periodTotals(period, startedSignedOut);
+  const signedOutClaimed = periodTotals(period, claimed);
   const studentMessages = (s) => (s.transcript ?? []).filter((m) => m?.role === "user").length;
   const recs = (s) => (Array.isArray(s.recommendations) ? s.recommendations : []);
 
@@ -169,7 +182,19 @@ export default async function loadMatchmaking(period) {
             label: "Signed-in students who chatted",
             current: signedIn(period.start),
             previous: signedIn(period.prevStart, period.start),
-            hint: "Signed-out chats share one guest account, so they are not counted here.",
+            hint: "Distinct accounts. Chats that started signed out are counted below instead.",
+          },
+          {
+            label: "Chats started signed out",
+            ...signedOutStarted,
+            hint: "Visitors can run the whole chat before creating an account; their matches stay locked until they do.",
+          },
+          {
+            label: "Signed-out chats that turned into accounts",
+            current: pct(signedOutClaimed.current, signedOutStarted.current),
+            previous: pct(signedOutClaimed.previous, signedOutStarted.previous),
+            format: "percent",
+            hint: "Share of signed-out chats whose visitor then signed up or logged in on that device.",
           },
           {
             label: "Messages per finished chat",
@@ -220,7 +245,7 @@ export default async function loadMatchmaking(period) {
           {
             label: "Stopped at the first question",
             current: pct(
-              currentUnfinished.filter((s) => stoppedAt(prefs(s)) === QUESTION_LABELS.name_confirm).length,
+              currentUnfinished.filter((s) => stoppedAt(prefs(s)) === QUESTION_LABELS[QUESTION_PLAN[0].id]).length,
               currentUnfinished.length
             ),
             format: "percent",

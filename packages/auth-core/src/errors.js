@@ -13,6 +13,9 @@ export const AUTH_ERRORS = Object.freeze({
   // (Apple School Manager accounts, or an unverified address), and an account
   // cannot be created or matched without one.
   APPLE_EMAIL_REQUIRED: "APPLE_EMAIL_REQUIRED",
+  // Password login temporarily blocked after repeated failures (by email or IP).
+  // Returned identically for known and unknown emails, with HTTP 429 on mobile.
+  TOO_MANY_ATTEMPTS: "TOO_MANY_ATTEMPTS",
   TOKEN_EXPIRED: "TOKEN_EXPIRED",
   MISSING_FIELDS: "MISSING_FIELDS",
   FORBIDDEN: "FORBIDDEN",

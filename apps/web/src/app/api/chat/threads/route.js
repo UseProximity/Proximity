@@ -19,6 +19,7 @@ import {
   applyBlocksToInbox,
   assertListingContactNotBlocked,
 } from "@/lib/chat/safety";
+import { annotateNoReply } from "@/lib/chat/followups";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -46,7 +47,8 @@ export async function GET(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    return NextResponse.json(await applyBlocksToInbox(authUser.id, data ?? []));
+    const inbox = await applyBlocksToInbox(authUser.id, data ?? []);
+    return NextResponse.json(await annotateNoReply(authUser.id, inbox));
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

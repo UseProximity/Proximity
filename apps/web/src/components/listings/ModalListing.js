@@ -1,7 +1,12 @@
 "use client";
 import React, { useEffect } from "react";
 
-export default function ModalListing({ isOpen, onClose, children }) {
+/*
+ * `header` renders above the scrolling body, under the close button: a strip
+ * that must stay visible and must never cover the ×. A sticky strip inside
+ * the scroll area did exactly that (the owner's preview had no way to close).
+ */
+export default function ModalListing({ isOpen, onClose, header = null, children }) {
   // Prevent body scroll when modal is open, restoring exact scroll position on close
   useEffect(() => {
     if (!isOpen) return;
@@ -42,6 +47,7 @@ export default function ModalListing({ isOpen, onClose, children }) {
         >
           ×
         </button>
+        {header}
         <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>

@@ -42,6 +42,18 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     fetchUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /*
+   * The student-view popup (GlobalListingModal, mounted in the root layout) can
+   * publish a draft from its preview strip. It lives outside this tree, so it
+   * announces the publish on window and the dashboard reloads itself the same
+   * way it does after its own Publish button.
+   */
+  useEffect(() => {
+    const onPublished = () => fetchUser();
+    window.addEventListener("proximity:listing-published", onPublished);
+    return () => window.removeEventListener("proximity:listing-published", onPublished);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // restore tab + selected listing from URL on initial load
   useEffect(() => {
     if (!user || initializedFromUrl.current) return;
@@ -50,6 +62,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     const tab = params.get("tab");
     const propertyId = params.get("property");
     if (tab) setActiveView(tab);
+    if (tab === "drafts") setReturnView("drafts");
     if (propertyId) {
       const listing = user.listings?.find(
         (l) => l._id === propertyId || l.id === propertyId
@@ -311,9 +324,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
           ...(profileUpdatePrompt.email && {
             email: profileUpdatePrompt.email,
           }),
-          ...(profileUpdatePrompt.phone && {
-            phone: profileUpdatePrompt.phone,
-          }),
         }),
       });
       await fetchUser();
@@ -335,11 +345,21 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
 
+  /*
+   * Which list a property was opened from, Live ("properties") or "drafts", so
+   * Back returns there rather than dropping someone reviewing drafts onto the
+   * live list. Kept in the URL's tab so a reload lands in the same place.
+   */
+  const listView = activeView === "drafts" ? "drafts" : "properties";
+  const [returnView, setReturnView] = useState("properties");
+
   const handlePropertySelect = (property) => {
+    const from = listView;
+    setReturnView(from);
     setSelectedProperty(property);
-    setActiveView("property-analytics");
+    setActiveView(from);
     const p = new URLSearchParams({
-      tab: "properties",
+      tab: from,
       property: property._id || property.id,
     });
     if (viewAsId) p.set("viewAs", viewAsId);
@@ -348,8 +368,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
 
   const handleBackToProperties = () => {
     setSelectedProperty(null);
-    setActiveView("properties");
-    const p = new URLSearchParams({ tab: "properties" });
+    setActiveView(returnView);
+    const p = new URLSearchParams({ tab: returnView });
     if (viewAsId) p.set("viewAs", viewAsId);
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
@@ -359,6 +379,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     switch (activeView) {
       case "properties":
         return "Properties";
+      case "drafts":
+        return "Drafts";
       case "settings":
         return "Settings";
       case "reviews":
@@ -410,6 +432,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     handleNavigation,
     handlePropertySelect,
     handleBackToProperties,
+    backLabel: returnView === "drafts" ? "Back to Drafts" : "Back to Properties",
     getPageTitle,
     router,
   };

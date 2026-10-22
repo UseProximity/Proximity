@@ -7,6 +7,13 @@
  * entry carries the last messages from both people so the reader can judge
  * it without opening the dashboard.
  *
+ * The same run sends the quiet person one reminder (Wyatt, 2026-10-16): the
+ * normal message alert again, with a line on top saying the other side is
+ * still waiting. Skipped when the silence started more than
+ * REMINDER_MAX_AGE_DAYS ago, the listing is unavailable, or either person has
+ * blocked the other. The outcome is stored on the alert row (reminder_status).
+ * Dry runs send no reminders; the JSON says which would have gone out.
+ *
  * Each silence is reported once. chat_checkin_alerts remembers which
  * unanswered message a thread was alerted on; the same message is never sent
  * again, but a newer message that then goes unanswered is. Every run, success
@@ -29,6 +36,9 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
+import { sendReplyReminder } from "@/lib/chat/notifyEmail";
+import { assertThreadNotBlocked } from "@/lib/chat/safety";
+import { unavailableListingIds, silenceIsTooOld } from "@/lib/chat/followups";
 import {
   findStaleThreads,
   sendCheckinDigestEmail,
@@ -48,7 +58,7 @@ export async function GET(req) {
   const htmlPreview = dryRun && url.searchParams.get("html") === "1";
   const startedAt = new Date();
   const recipients = resolveCheckinRecipients();
-  const stats = { staleFound: 0, alreadyAlerted: 0, alerted: 0, landlordsQuiet: 0, studentsQuiet: 0, emailed: false };
+  const stats = { staleFound: 0, alreadyAlerted: 0, alerted: 0, landlordsQuiet: 0, studentsQuiet: 0, emailed: false, reminders: {} };
 
   try {
     const stale = await findStaleThreads(supabase, { now: startedAt, days: STALE_AFTER_DAYS });
@@ -56,6 +66,7 @@ export async function GET(req) {
 
     // Drop every silence that has already been reported.
     let fresh = stale;
+    let outcomes = [];
     if (stale.length > 0) {
       const { data: prior, error } = await supabase
         .from("chat_checkin_alerts")
@@ -96,6 +107,20 @@ export async function GET(req) {
       const { error: insertError } = await supabase.from("chat_checkin_alerts").insert(rows);
       if (insertError) throw new Error(`alert insert failed: ${insertError.message}`);
       stats.alerted = fresh.length;
+
+      outcomes = await sendReminders(fresh, { now: startedAt, dryRun });
+      for (const o of outcomes) stats.reminders[o.status] = (stats.reminders[o.status] ?? 0) + 1;
+      if (!dryRun) {
+        for (const o of outcomes) {
+          const { error: updateError } = await supabase
+            .from("chat_checkin_alerts")
+            .update({ reminder_status: o.status, reminder_sent_at: o.status === "sent" ? new Date().toISOString() : null })
+            .eq("thread_id", o.threadId)
+            .eq("last_message_id", o.messageId)
+            .eq("dry_run", false);
+          if (updateError) console.error("[chat-checkin] reminder status update failed:", updateError.message);
+        }
+      }
     }
 
     await logRun({ startedAt, ok: true, dryRun, stats });
@@ -105,13 +130,39 @@ export async function GET(req) {
       dryRun,
       ...stats,
       recipients,
-      items: dryRun ? fresh : fresh.map((s) => ({ threadId: s.threadId, quietSide: s.quietSide, silentDays: s.silentDays })),
+      items: (() => {
+        const reminderOf = new Map(outcomes.map((o) => [o.threadId, o.status]));
+        return fresh.map((s) => ({
+          ...(dryRun ? s : { threadId: s.threadId, quietSide: s.quietSide, silentDays: s.silentDays }),
+          reminder: reminderOf.get(s.threadId) ?? null,
+        }));
+      })(),
     });
   } catch (err) {
     console.error("[chat-checkin] failed:", err);
     await logRun({ startedAt, ok: false, dryRun, stats, error: String(err?.message ?? err) });
     return NextResponse.json({ error: "Chat check-in failed" }, { status: 500 });
   }
+}
+
+/*
+ * One reminder per fresh silence, to the side we are waiting on. In a dry run
+ * nothing is sent and the status says what would have happened ("would_send").
+ */
+async function sendReminders(items, { now, dryRun }) {
+  const unavailable = await unavailableListingIds(items.map((s) => s.listing?.id));
+  const out = [];
+  for (const s of items) {
+    const waitingId = s.quietSide === "landlord" ? s.student.id : s.landlord.id;
+    let status;
+    if (silenceIsTooOld(s.silentSince, now)) status = "too_old";
+    else if (s.listing?.id && unavailable.has(s.listing.id)) status = "listing_unavailable";
+    else if (!(await assertThreadNotBlocked(s.threadId, waitingId)).ok) status = "blocked";
+    else if (dryRun) status = "would_send";
+    else status = await sendReplyReminder({ threadId: s.threadId, senderId: waitingId, baseUrl: getBaseUrl() });
+    out.push({ threadId: s.threadId, messageId: s.lastMessage.id, status });
+  }
+  return out;
 }
 
 async function logRun({ startedAt, ok, dryRun, stats, error = null }) {
