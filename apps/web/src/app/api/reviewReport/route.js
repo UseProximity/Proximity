@@ -8,12 +8,14 @@
  * reporter and review, or reporter and reply).
  *
  * Each new report emails the team (sendContentReportEmail). A repeat report
- * sends nothing, and a failed email never fails the report.
+ * sends nothing, and a failed email never fails the report. Reports are capped
+ * per account (lib/reviews/rateLimit.js) so one account can't flood the inbox.
  */
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendContentReportEmail } from "@/lib/email";
+import { reviewReportRateLimited } from "@/lib/reviews/rateLimit";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,6 +27,13 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = requestUser.id;
+
+    if (reviewReportRateLimited(userId)) {
+      return NextResponse.json(
+        { error: "Too many reports. Please try again later." },
+        { status: 429 }
+      );
+    }
 
     const { reviewId, replyId } = await req.json().catch(() => ({}));
     if (replyId !== undefined) return reportReply(req, userId, replyId);
