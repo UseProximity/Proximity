@@ -59,3 +59,24 @@ export function reviewEditRateLimited(userId) {
   _editHits.set(userId, recent);
   return false;
 }
+
+/*
+ * Signed-in reports of reviews and replies: 10 per hour per account. Every new
+ * report emails the team, so without this one account looping over review IDs
+ * could flood the inbox and burn the sender's daily quota. A real person rarely
+ * reports more than one or two. Same per-instance caveat as above.
+ */
+const REPORT_LIMIT = 10;
+const _reportHits = new Map(); // userId -> number[] (timestamps)
+
+export function reviewReportRateLimited(userId) {
+  const now = Date.now();
+  const recent = (_reportHits.get(userId) || []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (recent.length >= REPORT_LIMIT) {
+    _reportHits.set(userId, recent);
+    return true;
+  }
+  recent.push(now);
+  _reportHits.set(userId, recent);
+  return false;
+}

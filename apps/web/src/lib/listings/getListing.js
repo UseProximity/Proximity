@@ -133,7 +133,9 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
       id: l.id,
       // Which landlord this is, for grouping. Opaque on purpose: see landlordKeyer.
       landlordKey: keyFor(l, listingRow),
-      rent: l.rent != null ? Number(l.rent) : null,
+      // A rent of 0 means the price is unknown, not free, so it reads as
+      // "Contact for price" and sorts last instead of heading the list at $0.
+      rent: Number(l.rent) > 0 ? Number(l.rent) : null,
       // null = the landlord never said; rentBasis falls back to inference.
       rentIsPerPerson: l.rent_is_per_person ?? null,
       sublease: !!l.sublease,

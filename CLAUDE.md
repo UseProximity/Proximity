@@ -70,3 +70,4 @@ A local MCP **knowledge server** for this app (`node mcp/src/index.mjs`, registe
 - No hardcoded secrets — everything via `process.env.*`. Never commit `.env*`.
 - Sanitize anything used in file/storage paths; Supabase parameterized calls (`.eq()`, `.in()`, …) are safe — flag string-interpolated SQL.
 - Don't leak stack traces / internal schema names in API error responses.
+- **Every new `SECURITY DEFINER` function must be locked down in the same migration**: `REVOKE ALL ... FROM PUBLIC, anon, authenticated`, `GRANT EXECUTE ... TO service_role`, and `SET search_path = public, pg_temp`. Postgres makes new functions callable by everyone, and the anon key ships in the browser bundle, so an unrevoked definer function bypasses RLS for anyone (see `202610220003_lock_down_as_user_rpcs.sql`). A later `CREATE OR REPLACE` keeps the grants but drops the `search_path`, so repeat that line.
