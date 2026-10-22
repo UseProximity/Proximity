@@ -1386,7 +1386,7 @@
       {
         "table": "listing_review_replies",
         "status": "active",
-        "description": "Landlord replies to reviews. 0 rows in prod so far. 0 rows in prod so far.",
+        "description": "Landlord replies to reviews, one per review. Written by /api/replyReview (POST, PATCH, DELETE: author only). Hard-deleted so the landlord can reply again; action_log keeps a copy. Inserts were blocked by the write-RPC allowlist until migration 202610220001, so 0 rows in prod before 2026-10-22.",
         "columns": [
           "id:uuid",
           "review_id:uuid",
@@ -1394,9 +1394,10 @@
           "reply:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
+          "edited_at:timestamptz",
           "deleted_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk review_id->listing_reviews.id (cascade); user_id->users.id (cascade); unique (review_id); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk review_id->listing_reviews.id (cascade); user_id->users.id (cascade); unique (review_id); rls: on, with policies (app uses the service role anyway); edited_at set only by PATCH (drives the \"Edited\" label); audit trigger added in 202610220002",
         "observed_2026_10_12": {
           "prod_rows": 0,
           "prod_last_write": null
@@ -1431,7 +1432,8 @@
           "anonymous:bool",
           "unit_designator:text",
           "source:text",
-          "confirmation_sent_at:timestamptz"
+          "confirmation_sent_at:timestamptz",
+          "edited_at:timestamptz"
         ],
         "column_notes": {
           "legitimacy": "admin approval gate; false rows are hidden",
@@ -1440,7 +1442,7 @@
           "source": "?src= campaign tag from a printed QR code",
           "confirmation_sent_at": "batched confirmation email (cron review-confirmations)"
         },
-        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies (app uses the service role anyway); edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
         "observed_2026_10_12": {
           "prod_rows": 147,
           "prod_last_write": "2026-10-12"
@@ -2104,6 +2106,19 @@
         }
       },
       {
+        "table": "review_reply_reports",
+        "status": "active",
+        "description": "A user reporting a landlord's reply to a review (unique per reporter and reply). Written by /api/reviewReport { replyId }, cleaned by /api/cron/purge-accounts. Migration 202610220002. Service role only.",
+        "columns": [
+          "id:uuid",
+          "reporter_id:uuid",
+          "reply_id:uuid",
+          "reported_user_id:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk reporter_id->users.id (cascade); reply_id->listing_review_replies.id (cascade, so deleting a reply drops its reports); reported_user_id->users.id (set null); unique (reporter_id, reply_id); rls: service role only (no policies)"
+      },
+      {
         "table": "review_votes",
         "status": "active",
         "description": "Helpful/unhelpful votes on reviews. 0 rows in prod. 0 rows in prod.",
@@ -2493,7 +2508,7 @@
         "name": "rpc_insert_as_user",
         "kind": "rpc",
         "args": "p_user_id, p_table, p_data jsonb",
-        "touches": "allow-listed tables only: users, listings, listing_units, unit_leases, listing_reviews, listing_amenities, listing_utilities, listing_landlords, listing_images, review_votes, user_listing_interactions",
+        "touches": "allow-listed tables only: users, listings, listing_units, unit_leases, listing_reviews, listing_review_replies, listing_amenities, listing_utilities, listing_landlords, listing_images, review_votes, user_listing_interactions",
         "called_from": "lib/supabaseWithUser.js",
         "defined_in": "supabase/migrations/202604240001_write_as_user_rpcs.sql",
         "description": "Generic single-row INSERT that stamps action_log with the acting user. The allowlist inside the function is the only way to add a table to it."
@@ -2897,6 +2912,7 @@
         "listing_images",
         "listing_landlords",
         "listing_metrics_daily",
+        "listing_review_replies",
         "listing_reviews",
         "listing_source_events",
         "listing_source_monitors",
