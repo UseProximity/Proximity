@@ -1,5 +1,6 @@
 import supabase from "@/lib/supabase";
 import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
+import { updateAsUser } from "@/lib/supabaseWithUser";
 
 /*
  * Ids arrive from URL segments, so they are whatever the caller typed. The id
@@ -331,6 +332,69 @@ export async function canManageLease(userId, leaseId) {
   }
 
   return { ok: true, lease, listingId };
+}
+
+/*
+ * Remove a property that a lease-holder's deletion has left as an empty shell.
+ *
+ * A sublease poster who types a new address creates the property but never owns
+ * it (p_claim_property), so once their last offering goes the building record is
+ * left on the site with nobody behind it: a mistyped "725 Interdrive Street"
+ * stayed in browse beside the real 725 Interdrive with no way for its author to
+ * take it down. Call this after deleting a lease to clear it.
+ *
+ * Only a shell this person made is removed, so it can never take a building
+ * from under anyone else:
+ *   no owner          no listing_landlords row (review stubs have Proximity's)
+ *   no other stake    no undeleted lease left on it, from anyone
+ *   no reviews        a review would vanish with it
+ *   their own         its INSERT in action_log is attributed to them, which an
+ *                     import, a scrape or another person's create never is
+ *
+ * Soft-deletes like every other listing removal. Returns true when it did.
+ */
+export async function removeAbandonedProperty(userId, listingId) {
+  if (!isUuid(userId) || !isUuid(listingId)) return false;
+
+  const [owners, leases, reviews, created] = await Promise.all([
+    supabase.from("listing_landlords").select("user_id").eq("listing_id", listingId).limit(1),
+    supabase
+      .from("unit_leases")
+      .select("id, listing_units!unit_id!inner(listing_id)")
+      .eq("listing_units.listing_id", listingId)
+      .is("deleted_at", null)
+      .limit(1),
+    supabase
+      .from("listing_reviews")
+      .select("id")
+      .eq("listing_id", listingId)
+      .is("deleted_at", null)
+      .limit(1),
+    supabase
+      .from("action_log")
+      .select("changed_by_id")
+      .eq("table_name", "listings")
+      .eq("record_id", listingId)
+      .eq("event_type", "INSERT")
+      .limit(1),
+  ]);
+
+  // Any failed read means we can't prove it's a shell, so leave it alone.
+  if (owners.error || leases.error || reviews.error || created.error) return false;
+  if (owners.data.length || leases.data.length || reviews.data.length) return false;
+  if (created.data[0]?.changed_by_id !== userId) return false;
+
+  const { error } = await updateAsUser(supabase, {
+    userId,
+    table: "listings",
+    rowId: listingId,
+    data: { deleted_at: new Date().toISOString() },
+  });
+  if (error) {
+    console.error("[ownership] removeAbandonedProperty failed:", error.message);
+    return false;
+  }
+  return true;
 }
 
 /*

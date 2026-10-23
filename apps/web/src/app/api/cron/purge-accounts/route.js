@@ -57,11 +57,13 @@ import { r2 } from "@/lib/r2";
 import { isProdData } from "@/lib/appEnv";
 import { revokeAppleToken } from "@/lib/appleAuth";
 import { expireAnonymousSessions } from "@/lib/matchmaking/anonymousSessions";
+import { ACCOUNT_GRACE_PERIOD_MS } from "@/lib/auth/accountRestore";
 
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const GRACE_PERIOD_MS = 30 * DAY_MS;
+// The same window sign-in uses to offer a restore (lib/auth/accountRestore).
+const GRACE_PERIOD_MS = ACCOUNT_GRACE_PERIOD_MS;
 const RETENTION_MS = 3 * 365 * DAY_MS;
 const TOMBSTONE_EMAIL = "deleted+%@deleted.invalid";
 

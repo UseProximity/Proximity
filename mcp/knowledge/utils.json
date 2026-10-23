@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-21T02:07:47.692Z",
-  "count": 136,
+  "_generated": "2026-10-22T23:50:32.153Z",
+  "count": 137,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -62,6 +62,10 @@
     {
       "file": "src/lib/appleAuth.js",
       "description": "Sign in with Apple, server side (native iOS flow)."
+    },
+    {
+      "file": "src/lib/auth/accountRestore.js",
+      "description": "Restoring a deleted account inside its 30-day grace period."
     },
     {
       "file": "src/lib/auth/callbackUrl.js",

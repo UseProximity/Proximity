@@ -30,6 +30,7 @@ import {
   recordLoginSuccess,
   clientIp,
 } from "@/lib/auth/loginThrottle";
+import { isRestorable, signRestoreToken } from "@/lib/auth/accountRestore";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
@@ -49,6 +50,12 @@ class EmailNotVerified extends CredentialsSignin {
 // trick as above, so the sign-in form receives the code as `result.code`.
 class LoginLocked extends CredentialsSignin {
   code = AUTH_ERRORS.TOO_MANY_ATTEMPTS;
+}
+
+// The right password on an account deleted within its 30-day grace period. The
+// sign-in form answers it with the restore screen (POST /api/auth/restore-account).
+class AccountDeleted extends CredentialsSignin {
+  code = AUTH_ERRORS.ACCOUNT_DELETED;
 }
 
 /*
@@ -121,16 +128,24 @@ const config = {
           .ilike("email", emailMatchPattern(email))
           .single();
 
-        // Deleted accounts fail exactly like a wrong password — same null
-        // return, no distinct error. Confirming "this account was deleted"
-        // would leak that the address was registered.
-        if (!user || !user.password_hash || user.deleted_at) {
+        if (!user || !user.password_hash) {
           recordLoginFailure(who);
           return null;
         }
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
+          recordLoginFailure(who);
+          return null;
+        }
+
+        // A deleted account is only named as deleted once the password has
+        // proved it is theirs, so "this account was deleted" never leaks that
+        // an address was registered. Inside the grace period that opens the
+        // restore screen; after it (purge pending) it fails like a wrong
+        // password, as before.
+        if (user.deleted_at) {
+          if (user.email_verified && isRestorable(user)) throw new AccountDeleted();
           recordLoginFailure(who);
           return null;
         }
@@ -201,11 +216,17 @@ const config = {
 
       const { data: existing } = await supabase
         .from("users")
-        .select("deleted_at")
+        .select("id, deleted_at")
         .eq("email", user.email)
         .single();
 
       if (existing?.deleted_at) {
+        // Google has just proved the address is theirs, so the login page may
+        // offer a restore. The token stands in for that proof on the restore
+        // request (lib/auth/accountRestore).
+        if (isRestorable(existing)) {
+          return `/login?error=ACCOUNT_DELETED&restore=${encodeURIComponent(signRestoreToken(existing.id))}`;
+        }
         return "/login?error=ACCOUNT_DELETED";
       }
 

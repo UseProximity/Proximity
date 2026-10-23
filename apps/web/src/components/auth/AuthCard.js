@@ -13,6 +13,11 @@
  * drops the card chrome and heading so the host supplies its own. `callbackUrl`
  * also rides along on sign-up and resend, so the emailed verification link comes
  * back to the task rather than to the dashboard.
+ *
+ * Signing in to an account deleted within the last 30 days opens a confirm
+ * screen offering to restore it (POST /api/auth/restore-account). A password
+ * sign-in reaches it through the ACCOUNT_DELETED code; Google comes back to
+ * /login with ?error=ACCOUNT_DELETED&restore=<token>.
  */
 
 import { useState, useEffect } from "react";
@@ -49,6 +54,11 @@ export default function AuthCard({
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotMessage, setForgotMessage] = useState("");
   const [forgotError, setForgotError] = useState("");
+  // { via: "password" | "google", token, deletedAt, restoreBy } while the
+  // restore screen is up.
+  const [restore, setRestore] = useState(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreError, setRestoreError] = useState("");
 
   useEffect(() => {
     if (searchParams.get("verified") === "1") {
@@ -60,11 +70,86 @@ export default function AuthCard({
       );
     }
     if (searchParams.get("error") === "ACCOUNT_DELETED") {
-      setError(
-        "This email is temporarily unavailable because it was recently used by a deleted account. Try again within 30 days. Need help? Contact info@useproximity.org."
-      );
+      const token = searchParams.get("restore");
+      if (token) {
+        openRestore({ via: "google", token }).then((ok) => {
+          if (!ok) {
+            setError(
+              "That restore link has expired. Continue with Google again to restore your account."
+            );
+          }
+        });
+      } else {
+        setError(
+          "This account was deleted more than 30 days ago and can no longer be restored. Need help? Contact info@useproximity.org."
+        );
+      }
     }
+    // openRestore is stable in effect: it only reads its argument.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Ask the server when the account was deleted, then show the restore screen.
+  // Returns false when it can't be restored, so the caller can say why.
+  const openRestore = async ({ via, token }) => {
+    try {
+      const res = await fetch("/api/auth/restore-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(via === "google" ? { token } : { email, password }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      setRestoreError("");
+      setRestore({ via, token, deletedAt: data.deletedAt, restoreBy: data.restoreBy });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleRestore = async () => {
+    setRestoreError("");
+    setRestoreLoading(true);
+    try {
+      const res = await fetch("/api/auth/restore-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          restore.via === "google"
+            ? { token: restore.token, confirm: true }
+            : { email, password, confirm: true }
+        ),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRestoreError(data.error ?? "Something went wrong. Please try again.");
+        setRestoreLoading(false);
+        return;
+      }
+      trackEvent("Account Restored", { provider: restore.via === "google" ? "google" : "email" });
+      // Restored: now an ordinary sign-in.
+      if (restore.via === "google") {
+        signIn("google", { callbackUrl });
+        return;
+      }
+      const result = await signIn("credentials", { email, password, callbackUrl, redirect: false });
+      if (!result || result.error) {
+        // The account is back; only this sign-in failed.
+        setRestore(null);
+        setRestoreLoading(false);
+        setError("Your account is restored. Please sign in.");
+        return;
+      }
+      window.location.href = result.url ?? callbackUrl;
+    } catch {
+      setRestoreError("Something went wrong. Please try again.");
+      setRestoreLoading(false);
+    }
+  };
+
+  const formatDay = (iso) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   const switchTab = (t) => {
     setTab(t);
@@ -118,6 +203,13 @@ export default function AuthCard({
     if (result.code === "EMAIL_NOT_VERIFIED") {
       setVerificationSentTo(email);
       setUnverifiedSignIn(true);
+      return;
+    }
+    if (result.code === "ACCOUNT_DELETED") {
+      setLoading(true);
+      const ok = await openRestore({ via: "password" });
+      setLoading(false);
+      if (!ok) setError("Something went wrong. Please try again.");
       return;
     }
     if (result.code === "TOO_MANY_ATTEMPTS") {
@@ -223,7 +315,43 @@ export default function AuthCard({
         </div>
       )}
 
-      {forgotView ? (
+      {restore ? (
+        <div className="text-center">
+          <div className="mb-4 px-4 py-4 rounded-lg bg-amber-50 text-amber-900 text-sm leading-relaxed text-left">
+            <p className="font-semibold mb-1">Restore your account?</p>
+            <p>
+              You deleted this account on{" "}
+              <span className="font-medium">{formatDay(restore.deletedAt)}</span>. You can
+              bring it back, with your listings, until{" "}
+              <span className="font-medium">{formatDay(restore.restoreBy)}</span>. After that
+              it is removed for good.
+            </p>
+          </div>
+          {restoreError && (
+            <div className="mb-3 px-4 py-3 rounded-lg bg-red-50 text-red-600 text-sm text-left">
+              {restoreError}
+            </div>
+          )}
+          <button
+            onClick={handleRestore}
+            disabled={restoreLoading}
+            className="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition"
+          >
+            {restoreLoading ? "Restoring…" : "Restore my account"}
+          </button>
+          <button
+            onClick={() => {
+              setRestore(null);
+              setRestoreError("");
+              setPassword("");
+            }}
+            disabled={restoreLoading}
+            className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : forgotView ? (
         <div className="text-center">
           {forgotSent ? (
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">

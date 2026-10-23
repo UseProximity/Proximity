@@ -9,7 +9,7 @@ import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 
-function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
+function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
   const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
@@ -69,6 +69,14 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
             className="flex-1 min-w-[4rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
           >
             {deleting ? "…" : "Withdraw"}
+          </button>
+          {/* The permanent one. See handleDeleteSublease. */}
+          <button
+            onClick={() => onRemove(listing)}
+            disabled={deleting}
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-500 hover:text-red-700 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            Delete
           </button>
         </div>
       </div>
@@ -603,6 +611,55 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     }
   }
 
+  /*
+   * Delete a sublease for good, the counterpart to Withdraw. Removes every one
+   * of the student's offerings at this property. When they also created the
+   * property (a new address typed into the sublease form) and nobody else is
+   * on it, the server removes the property too, so a mistyped address doesn't
+   * stay in browse with no way to take it down.
+   */
+  async function handleDeleteSublease(listing) {
+    const listingId = listing._id || listing.id;
+    const leases = listing.myLeases ?? [];
+
+    if (!leases.length) {
+      alert(
+        "We couldn't find your sublease at this property. Try reloading the page."
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        "Delete this sublease for good? Students stop seeing it and it can't be put back. To take it down for now, use Withdraw instead."
+      )
+    )
+      return;
+
+    setDeletingId(listingId);
+    try {
+      for (const lease of leases) {
+        const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+        // Already gone counts as done: a retry after a half-finished delete.
+        if (!res.ok && res.status !== 404) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || "Could not delete that sublease. Please try again.");
+          return;
+        }
+      }
+      setDbUser((prev) => ({
+        ...prev,
+        listings: (prev?.listings ?? []).filter(
+          (l) => (l._id || l.id) !== listingId
+        ),
+      }));
+    } catch {
+      alert("Network error.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   function handleSubleaseSuccess() {
     setSubleaseModal(null);
     // Refresh user data to pick up the new/edited listing
@@ -949,6 +1006,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                             )
                           }
                           onDelete={handleWithdrawSublease}
+                          onRemove={handleDeleteSublease}
                           deleting={deletingId === (listing._id || listing.id)}
                         />
                       ))}

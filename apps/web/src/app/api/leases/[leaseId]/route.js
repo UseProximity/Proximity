@@ -3,7 +3,7 @@ import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
-import { canManageLease } from "@/lib/listings/ownership";
+import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownership";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 
 /*
@@ -148,6 +148,10 @@ export async function PATCH(req, { params }) {
  * market in the same write, so every surface that only knows about is_active
  * and unavailable already treats it as gone.
  *
+ * Deleting the last offering on a property the caller created but never owned
+ * (a sublease at an address they typed) removes that empty property too, so a
+ * mistyped address doesn't stay in browse. See removeAbandonedProperty.
+ *
  * @auth user
  */
 export async function DELETE(_req, { params }) {
@@ -184,5 +188,7 @@ export async function DELETE(_req, { params }) {
     return NextResponse.json({ error: "Could not delete that lease." }, { status: 500 });
   }
 
-  return NextResponse.json({ message: "Lease deleted", listingId: check.listingId });
+  const propertyRemoved = await removeAbandonedProperty(session.user.id, check.listingId);
+
+  return NextResponse.json({ message: "Lease deleted", listingId: check.listingId, propertyRemoved });
 }
