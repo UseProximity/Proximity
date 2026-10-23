@@ -89,6 +89,8 @@ export default function RootLayout() {
         {/* Chat Block and Report: native bottom sheets, dragged down to dismiss. */}
         <Stack.Screen name="chat-sheet/block" options={chatSheetOptions} />
         <Stack.Screen name="chat-sheet/report" options={chatSheetOptions} />
+        {/* Report a listing: the same kind of native sheet. */}
+        <Stack.Screen name="listing-sheet/report" options={chatSheetOptions} />
       </Stack>
       {!fontsLoaded && <View className="absolute inset-0 bg-white" />}
       {showProfileCompletion && (

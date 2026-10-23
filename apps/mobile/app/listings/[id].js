@@ -61,6 +61,7 @@ import {
   MapPin,
   Star,
   Mail,
+  Flag,
 } from "lucide-react-native";
 import {
   getRentRangeLabel,
@@ -255,6 +256,19 @@ export default function ListingDetailScreen() {
       if (err?.status === 401) return; // session expired: the api client already signed out
       showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.REPORT_REVIEW));
     }
+  }
+
+  // Reports the listing itself. The reason list is a native sheet (app/listing-sheet/report.js);
+  // a signed-out visitor is offered sign in first, since the server needs to know who reports.
+  function handleReportListing() {
+    if (!user) {
+      Alert.alert("Sign in to report", "You need an account to report a listing.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign in", onPress: () => router.push("/(auth)/login") },
+      ]);
+      return;
+    }
+    router.push({ pathname: "/listing-sheet/report", params: { listingId: id } });
   }
 
   function handleBlockReviewAuthor(review) {
@@ -767,6 +781,17 @@ export default function ListingDetailScreen() {
               </DetailCard>
               </View>
             ) : null}
+
+            <Pressable
+              onPress={handleReportListing}
+              accessibilityRole="button"
+              accessibilityLabel="Report listing"
+              hitSlop={8}
+              className="flex-row items-center justify-center gap-1.5 py-3 active:opacity-60"
+            >
+              <Flag size={14} color="#9ca3af" />
+              <Text className="text-sm text-gray-400">Report listing</Text>
+            </Pressable>
           </View>
         </Animated.ScrollView>
 
