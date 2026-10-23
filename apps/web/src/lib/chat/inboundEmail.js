@@ -31,10 +31,13 @@
  * tracking pixels (inline images under a few KB) are dropped; a blocked file
  * is dropped and logged, and the text still posts.
  *
- * Spam, automatic mail and unauthenticated mail are dropped silently. The others
- * get a short "not delivered" email, at most one per sender per conversation per
+ * Spam, automatic mail and unauthenticated mail get no reply. The others get a
+ * short "not delivered" email, at most one per sender per conversation per
  * day, and only when the sender was authenticated so we never mail a forged
- * address. Every message received is recorded in chat_inbound_emails.
+ * address. Every message received is recorded in chat_inbound_emails, and the
+ * team is emailed about every reply that was not posted (spam and automatic
+ * mail in the daily check-in, everything else straight away), so a real reply
+ * is never lost silently (Wyatt, 2026-10-23).
  */
 import { randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -50,9 +53,11 @@ import {
   sanitizeChatAttachmentFileName,
 } from "@/lib/chat/attachments";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
+import { authenticated, domainOf } from "@/lib/chat/inboundAuth";
 import { CONTACT_REASONS, redactChatText, screenChatText } from "@/lib/chat/moderation";
 import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { alertTeam } from "@/lib/chat/deliveryAlerts";
 import { scanChatAttachments } from "@/lib/chat/scanAttachment";
 import { recordAttachmentScan } from "@/lib/chat/sendGuards";
 
@@ -83,15 +88,6 @@ function mailBucketClient() {
   return s3;
 }
 
-function domainOf(email) {
-  return String(email ?? "").trim().toLowerCase().split("@")[1] || "";
-}
-
-function aligned(a, b) {
-  if (!a || !b) return false;
-  return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
-}
-
 function headerText(parsed, name) {
   const value = parsed.headers.get(name);
   if (value == null) return "";
@@ -104,31 +100,6 @@ function headerText(parsed, name) {
     return String(v);
   };
   return Array.isArray(value) ? value.map(one).join("\n") : one(value);
-}
-
-/** SPF/DKIM/DMARC from the Authentication-Results header SES adds. */
-export function authenticated(parsed, fromEmail) {
-  const all = parsed.headerLines
-    .filter((h) => h.key === "authentication-results")
-    .map((h) => h.line.replace(/^authentication-results:\s*/i, "").replace(/\s+/g, " "));
-  const results = all.find((r) => /^amazonses\.com\b/i.test(r));
-  if (!results) return false;
-
-  const fromDomain = domainOf(fromEmail);
-  const dmarc = results.match(/\bdmarc=(\w+)/i)?.[1]?.toLowerCase();
-  if (dmarc === "pass") return true;
-  if (dmarc === "fail") return false;
-
-  const spfPass = /\bspf=pass\b/i.test(results);
-  const mailFrom = results.match(/smtp\.mailfrom=([^\s;]+)/i)?.[1] ?? "";
-  if (spfPass && aligned(domainOf(mailFrom.includes("@") ? mailFrom : `x@${mailFrom}`), fromDomain)) {
-    return true;
-  }
-
-  for (const m of results.matchAll(/\bdkim=pass\b[^;]*?header\.(?:i|d)=@?([^\s;]+)/gi)) {
-    if (aligned(m[1].toLowerCase().replace(/^.*@/, ""), fromDomain)) return true;
-  }
-  return false;
 }
 
 /** Out of office, bounces, mailing lists and other mail no person typed. */
@@ -269,6 +240,52 @@ async function reclaim(key) {
  * @param {{ bucket: string, key: string, recipients?: string[] }} input
  */
 export async function processInboundEmail({ bucket, key, recipients = [] }) {
+  const result = await processOne({ bucket, key, recipients });
+  if (!QUIET_OUTCOMES.has(result.status)) await reportNotPosted(key, result);
+  return result;
+}
+
+// Outcomes nobody needs to hear about straight away. Spam and automatic mail
+// are listed in the daily check-in instead, in case a real reply was misread.
+const QUIET_OUTCOMES = new Set(["posted", "duplicate", "spam", "auto_reply"]);
+
+const NOT_POSTED_WHY = {
+  unauthenticated: "SES could not confirm the email really came from the address in its From line.",
+  unknown_address: "The reply address does not match any conversation.",
+  wrong_sender: "It came from an address that is not the one this conversation emails, or it was a forward.",
+  empty: "Nothing new was left once the quoted email and signature were removed.",
+  rejected: "The conversation refused it (deleted, blocked or rate limited).",
+  error: "Processing crashed. SNS retries this automatically; check the logs if it repeats.",
+};
+
+/*
+ * A reply that reached us but not the conversation. The sender gets a "not
+ * delivered" notice for most of these (never for unauthenticated mail, which
+ * may be forged), but the team is told every time so it can relay the reply
+ * by hand.
+ */
+async function reportNotPosted(key, result) {
+  const { data: row } = await supabase
+    .from("chat_inbound_emails")
+    .select("from_email, thread_id, reason, created_at")
+    .eq("s3_key", key)
+    .maybeSingle();
+  await alertTeam({
+    subject: `an emailed reply was not posted (${result.status})`,
+    intro: NOT_POSTED_WHY[result.status] ?? "The reply was not posted to its conversation.",
+    facts: [
+      ["From", row?.from_email ?? "unknown"],
+      ["Conversation", row?.thread_id ?? "not identified"],
+      ["Reason", row?.reason ?? result.reason ?? result.status],
+      ["Received", row?.created_at],
+      ["Stored email", key],
+    ],
+    action:
+      "Read the stored email in the inbound mail bucket. If it is a genuine reply, post it to the conversation or ask the sender to reply in the app.",
+  });
+}
+
+async function processOne({ bucket, key, recipients }) {
   const { data: claimed, error: claimError } = await supabase
     .from("chat_inbound_emails")
     .insert({ s3_key: key, status: "processing" })
@@ -302,7 +319,7 @@ export async function processInboundEmail({ bucket, key, recipients = [] }) {
       await finish(logId, { ...base, status: "auto_reply" });
       return { status: "auto_reply" };
     }
-    if (!fromEmail || !authenticated(parsed, fromEmail)) {
+    if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {
       await finish(logId, { ...base, status: "unauthenticated" });
       return { status: "unauthenticated" };
     }
