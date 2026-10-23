@@ -44,6 +44,7 @@ export async function GET(req) {
   let query = supabase
     .from("dorm_reviews")
     .select(SELECT)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (dormName) {
@@ -62,6 +63,7 @@ export async function GET(req) {
       .from("dorm_reviews")
       .select(SELECT)
       .eq("dorm_id", dormRecord.id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
   }
 
@@ -72,7 +74,14 @@ export async function GET(req) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 
-  return NextResponse.json(reviews || []);
+  /*
+   * This feed is public, and a review posted as anonymous still stores its
+   * author's user_id (and /refer/<id> shows the name for any user id), so the
+   * author's identity never goes out with it.
+   */
+  return NextResponse.json(
+    (reviews || []).map(({ user_id: _userId, reviewer_email: _email, ...review }) => review)
+  );
 }
 
 /*
