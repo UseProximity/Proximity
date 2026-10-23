@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-21T02:07:47.663Z",
-  "count": 128,
+  "_generated": "2026-10-23T16:46:08.771Z",
+  "count": 129,
   "routes": [
     {
       "path": "/api/account",
@@ -441,11 +441,13 @@
     {
       "path": "/api/auth/verify-email",
       "methods": [
-        "GET"
+        "GET",
+        "POST"
       ],
       "auth": "public",
       "methodAuth": {
-        "GET": "public"
+        "GET": "public",
+        "POST": "public"
       },
       "tables": [
         "users"
@@ -785,6 +787,7 @@
         "user_blocks",
         "review_reports",
         "chat_reports",
+        "listing_reports",
         "review_invites",
         "users"
       ],
@@ -1494,6 +1497,21 @@
       },
       "tables": [],
       "file": "src/app/api/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/listingReport",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listings",
+        "listing_reports"
+      ],
+      "file": "src/app/api/listingReport/route.js"
     },
     {
       "path": "/api/listings",
