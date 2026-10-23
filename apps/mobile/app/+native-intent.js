@@ -1,4 +1,5 @@
-import { chatPathFromIncomingLink, isChatLinkRoute } from "../src/lib/chatLinks";
+import { authLinkFromIncomingLink, chatPathFromIncomingLink, isChatLinkRoute } from "../src/lib/chatLinks";
+import { setLinkToken } from "../src/lib/linkTokens";
 
 // Expo Router intercepts every incoming deep link, including
 // expo-auth-session's native OAuth redirect (see src/lib/googleAuth.js,
@@ -14,12 +15,19 @@ import { chatPathFromIncomingLink, isChatLinkRoute } from "../src/lib/chatLinks"
 // /messages?thread=<id>) opens that conversation in the app. Everything else in the
 // URL, including the email's magic-link token, is dropped here and never reaches the
 // router. The same web paths without a usable thread id land on the Chat tab, since
-// the app has no route of that name. Any other URL is passed through unchanged.
+// the app has no route of that name. The password-reset and email-verification links
+// open their screens: the one-time token is handed to src/lib/linkTokens.js and the route
+// returned has none. Any other URL is passed through unchanged.
 export function redirectSystemPath({ path }) {
   if (path.includes("oauthredirect")) {
     return null;
   }
   const chatPath = chatPathFromIncomingLink(path);
   if (chatPath) return chatPath;
+  const authLink = authLinkFromIncomingLink(path);
+  if (authLink) {
+    setLinkToken(authLink.kind, authLink.token);
+    return authLink.path;
+  }
   return isChatLinkRoute(path) ? "/(tabs)/chat" : path;
 }
