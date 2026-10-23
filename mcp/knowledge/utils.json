@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-22T23:50:32.153Z",
-  "count": 137,
+  "_generated": "2026-10-23T17:52:04.575Z",
+  "count": 143,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -128,12 +128,36 @@
       "description": "One-click confirmation for per-listing alert addresses."
     },
     {
+      "file": "src/lib/chat/deliveryAlerts.js",
+      "description": "Tell the team at once when a chat email goes wrong (Wyatt, 2026-10-23)."
+    },
+    {
+      "file": "src/lib/chat/deliveryAudit.js",
+      "description": "Daily chat email audit (Wyatt, 2026-10-23)."
+    },
+    {
       "file": "src/lib/chat/emailReplyText.js",
       "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
     },
     {
+      "file": "src/lib/chat/emailStatus.js",
+      "description": "What an Amazon SES event means for a chat_email_log row (Wyatt, 2026-10-23)."
+    },
+    {
+      "file": "src/lib/chat/emailStatus.test.js",
+      "description": "Run with: npm test (from apps/web). Event shapes follow SES event publishing."
+    },
+    {
       "file": "src/lib/chat/followups.js",
       "description": "Follow-ups for conversations that went quiet (Wyatt, 2026-10-16)."
+    },
+    {
+      "file": "src/lib/chat/inboundAuth.js",
+      "description": "Is an emailed reply really from the domain in its From line?"
+    },
+    {
+      "file": "src/lib/chat/inboundAuth.test.js",
+      "description": "Run with: npm test (from apps/web). The headers are copied from real SES"
     },
     {
       "file": "src/lib/chat/inboundEmail.js",
