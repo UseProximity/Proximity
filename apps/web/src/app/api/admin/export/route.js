@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
+import { stripSecrets } from "@/lib/security/secretColumns";
 import * as XLSX from "xlsx";
 
 function getDbTarget(req) {
@@ -60,12 +61,25 @@ async function fetchTableRows(supabase, table, { roleFilter, roleNameById }) {
   const { data, error } = await query;
   if (error) return { error };
 
-  let rows = Array.isArray(data) ? data : [];
+  // Credentials never go into a file that gets downloaded, emailed and shared.
+  let rows = Array.isArray(data) ? data.map(stripSecrets) : [];
   if (table === "users" && roleNameById) {
     rows = rows.map((r) => ({ ...r, role: roleNameById[r.role_id] ?? null }));
   }
   return { rows };
 }
+
+/*
+ * A spreadsheet treats a cell starting with = + - @ (or a tab/CR before one) as
+ * a formula. Names, descriptions and review text are user-written, so a CSV
+ * opened in Excel or Sheets could run a HYPERLINK/IMPORT formula that sends the
+ * neighbouring rows off-site. A leading quote makes it plain text. Only CSV
+ * needs this: .xlsx stores these cells as strings, never as formulas.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/;
+const neutralizeCell = (v) => (typeof v === "string" && FORMULA_START.test(v) ? `'${v}` : v);
+const neutralizeRow = (row) =>
+  Object.fromEntries(Object.entries(row).map(([k, v]) => [k, neutralizeCell(v)]));
 
 export async function POST(req) {
   const session = await requireSuperOrAdmin();
@@ -122,7 +136,7 @@ export async function POST(req) {
       return Response.json({ error: `${table}: ${error.message}` }, { status: 500 });
     }
     const ws = rows.length > 0
-      ? XLSX.utils.json_to_sheet(rows)
+      ? XLSX.utils.json_to_sheet(rows.map(neutralizeRow))
       : XLSX.utils.aoa_to_sheet([["(empty)"]]);
     const csv = XLSX.utils.sheet_to_csv(ws);
     const filename = `proximity-${envTag}-${table}-${date}.csv`;
