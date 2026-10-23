@@ -22,6 +22,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { hashToken } from "@/lib/auth/tokenHash";
 import { getBaseUrl } from "@/lib/email";
 import { flushReviewConfirmation } from "@/lib/reviews/confirmation";
 
@@ -40,7 +41,7 @@ export async function POST(req) {
       const { data } = await supabase
         .from("users")
         .select("id, profile_setup_expires_at")
-        .eq("profile_setup_token", token)
+        .eq("profile_setup_token", hashToken(token))
         .is("deleted_at", null)
         .maybeSingle();
       const live =

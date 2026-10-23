@@ -45,6 +45,7 @@ import ReviewerContactFields, {
   contactReady,
 } from "./ReviewerContactFields";
 import { checkReviewText } from "@/lib/contentRules";
+import { readStoredToken } from "./setupTokenStore";
 
 export default function ReviewSubmitForm({
   referrerId = null,
@@ -245,6 +246,8 @@ export default function ReviewSubmitForm({
           }
         : null,
       inviteToken,
+      // The inline token this tab already holds, if any (see setupTokenStore).
+      setupToken: requireContact ? readStoredToken() : null,
     };
 
     setSubmitting(true);

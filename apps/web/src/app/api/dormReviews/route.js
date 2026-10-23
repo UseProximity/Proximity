@@ -160,6 +160,7 @@ export async function POST(req) {
       source,
       reviewer,
       inviteToken,
+      setupToken: priorSetupToken,
     } = body;
 
     const session = await auth();
@@ -225,6 +226,8 @@ export async function POST(req) {
     let setupEmail = null;
     // Signed-out reviewer whose email already belongs to a real account.
     let existingAccount = false;
+    // Existing account still to be set up: its owner is emailed the link.
+    let setupByEmail = false;
     if (signedOutReviewer) {
       // With an invite the address comes from the invite row, never from the
       // request body. See /api/reviewReferral for why that is the whole point.
@@ -253,6 +256,8 @@ export async function POST(req) {
         email,
         classYear: gradYear,
         source: normalizeReviewSource(source),
+        inboxProven: !!invite,
+        priorSetupToken,
       });
       if (account.error) {
         return NextResponse.json({ error: account.error }, { status: 400 });
@@ -262,6 +267,7 @@ export async function POST(req) {
       setupToken = account.setupToken;
       setupEmail = email;
       existingAccount = !!account.existingAccount;
+      setupByEmail = !!account.setupByEmail;
 
       // The invite link was opened, which is the proof email verification asks
       // for, arriving before the review instead of after it.
@@ -328,6 +334,9 @@ export async function POST(req) {
         ...review,
         setupToken,
         existingAccount,
+        setupByEmail,
+        // An invite proved the inbox, so the profile step may offer a password.
+        canSetPassword: !!invite,
         prefill: setupToken
           ? {
               firstName: String(signedOutReviewer.firstName || "").trim(),

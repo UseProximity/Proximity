@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
+import { hashToken } from "@/lib/auth/tokenHash";
 import { getBaseUrl, sendPasswordResetEmail } from "@/lib/email";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
@@ -30,7 +31,7 @@ export async function POST(req) {
 
       await supabase
         .from("users")
-        .update({ password_reset_token: token, password_reset_expires_at: expires })
+        .update({ password_reset_token: hashToken(token), password_reset_expires_at: expires })
         .eq("id", user.id);
 
       await sendPasswordResetEmail({

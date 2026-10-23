@@ -2406,6 +2406,7 @@
           "apple_sub:text",
           "apple_account:bool",
           "profile_setup_token:text",
+          "profile_setup_link_hash:text",
           "profile_setup_expires_at:timestamptz",
           "apple_refresh_token:text",
           "company_name:text"
@@ -2417,7 +2418,9 @@
         "column_notes": {
           "role_id": "-> roles (student | landlord | super | admin ...)",
           "email_verified/email_verification_token": "email+password signup flow; google_account / apple_account mark OAuth accounts",
-          "profile_setup_token/_expires_at": "7-day credential-less profile completion after a QR review",
+          "profile_setup_token/_expires_at": "7-day credential-less profile completion after a QR review or waitlist signup. SHA-256 hash of the INLINE token returned to the submitting browser, only for an account that request created; profile fields only, never verifies email or sets a password (lib/reviews/onboarding.js)",
+          "profile_setup_link_hash": "SHA-256 hash of the EMAILED setup link token, minted at send time by the review confirmation and waitlist nudge emails; the only setup token that verifies email_verified and permits a password",
+          "password_reset_token": "SHA-256 hash of the emailed reset token (lib/auth/tokenHash.js), never the raw value",
           "email_notifications": "chat email opt-out (unsubscribe token flips it to false)",
           "is_system": "house accounts such as guest@proximity.test and info@; never treated as a landlord",
           "apple_refresh_token/company_name": "DEV ONLY columns"

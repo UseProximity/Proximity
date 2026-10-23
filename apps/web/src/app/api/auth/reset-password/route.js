@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { hashToken } from "@/lib/auth/tokenHash";
 
 export async function POST(req) {
   try {
@@ -14,7 +15,7 @@ export async function POST(req) {
     const { data: user } = await supabase
       .from("users")
       .select("id")
-      .eq("password_reset_token", token)
+      .eq("password_reset_token", hashToken(token))
       .gt("password_reset_expires_at", now)
       .single();
 
