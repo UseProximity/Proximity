@@ -11,11 +11,14 @@ import nodemailer from "nodemailer";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { sendMailSafe } from "./outreach";
 import { stayOnProximityNote } from "./chat/moderation";
+import { escapeHtml } from "./escapeHtml";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -111,7 +114,7 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl, req 
       subject: "Reset your Proximity password",
       html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-        <h2 style="color:#111">Reset your password${name ? `, ${name}` : ""}</h2>
+        <h2 style="color:#111">Reset your password${name ? `, ${escapeHtml(name)}` : ""}</h2>
         <p>Click the button below to set a new password. This link expires in 1 hour.</p>
         <a href="${resetUrl}"
            style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
@@ -138,7 +141,7 @@ export async function sendLandlordNudgeEmail({ email, name }) {
     subject: "Having trouble getting your listing up?",
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
-        <h2 style="color:#111">Welcome to Proximity${firstName ? `, ${firstName}` : ""}!</h2>
+        <h2 style="color:#111">Welcome to Proximity${firstName ? `, ${escapeHtml(firstName)}` : ""}!</h2>
         <p>I noticed you created a landlord account but haven't posted a listing yet.</p>
         <p>If something's getting in the way — photos, the address, lease details, anything —
            just reply to this email and we'll help you get your place live in a few minutes.</p>
@@ -167,6 +170,16 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
   // future caller omits it — the real default lives in contactNote.js.
   const note = (message && message.trim()) || "I'm a WashU student interested in this listing and would love to learn more.";
+  // Every one of these is typed by a user (the student, or the landlord for their own
+  // name and address), so all of them are escaped before they reach the template.
+  const e = {
+    landlordName: escapeHtml(landlordName || "there"),
+    listingAddress: escapeHtml(listingAddress),
+    studentName: escapeHtml(student.name),
+    studentEmail: escapeHtml(student.email),
+    mailto: escapeHtml(encodeURIComponent(student.email || "")),
+    note: escapeHtml(note),
+  };
   return sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
     to,
@@ -175,15 +188,15 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
     subject: `New Inquiry: ${listingAddress || "Your Listing"} (via Proximity)`,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${landlordName || "there"},</p>
-        <p>You've received a new inquiry${listingAddress ? ` about your listing at <strong>${listingAddress}</strong>` : ""} through Proximity.</p>
+        <p>Hi ${e.landlordName},</p>
+        <p>You've received a new inquiry${listingAddress ? ` about your listing at <strong>${e.listingAddress}</strong>` : ""} through Proximity.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p style="margin: 6px 0;"><strong>From:</strong> ${student.name}</p>
-        <p style="margin: 6px 0;"><strong>Email:</strong> <a href="mailto:${student.email}" style="color: #dc2626;">${student.email}</a></p>
+        <p style="margin: 6px 0;"><strong>From:</strong> ${e.studentName}</p>
+        <p style="margin: 6px 0;"><strong>Email:</strong> <a href="mailto:${e.mailto}" style="color: #dc2626;">${e.studentEmail}</a></p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${note}"</p>
+        <p style="white-space: pre-wrap; color: #374151; font-style: italic;">"${e.note}"</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p>Reply directly to this email to respond to ${student.name}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
+        <p>Reply directly to this email to respond to ${e.studentName}. Quick responses help students make confident decisions, and responsive landlords tend to get the best tenants.</p>
         <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
         ${emailFooter({
           reason: "You are receiving this because a student sent an inquiry about a property listed on Proximity as yours.",
@@ -575,7 +588,7 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next,
       subject: "Verify your Proximity account",
       html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-        <h2 style="color:#111">Welcome to Proximity${name ? `, ${name}` : ""}!</h2>
+        <h2 style="color:#111">Welcome to Proximity${name ? `, ${escapeHtml(name)}` : ""}!</h2>
         <p>Click the button below to verify your email address. This link expires in 24 hours.</p>
         <a href="${verifyUrl}"
            style="display:inline-block;margin:16px 0;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
@@ -831,13 +844,9 @@ export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken 
   });
 }
 
-// Any value a user typed gets escaped before it is interpolated into an email body.
-// Chat matters most: a message is typed by one user and rendered in another user's
-// inbox, so escaping is what stops a body from smuggling markup into that inbox.
-const escapeHtml = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-  );
+// Any value a user typed gets escaped (lib/escapeHtml) before it is interpolated into
+// an email body. Chat matters most: a message is typed by one user and rendered in
+// another user's inbox, so escaping is what stops a body from smuggling markup into it.
 
 /*
  * The placeholders an admin may use in a bulk invite message. Exported so the

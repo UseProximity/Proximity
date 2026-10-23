@@ -273,13 +273,43 @@ function decodeEntities(s) {
     .replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
 }
 
-// Visible text only: scripts, styles, svg, comments and tags stripped.
+/*
+ * Remove every block from an opening match to its closer, in one forward pass.
+ * The old form, /<!--[\s\S]*?-->/ and friends, rescanned to the end of the page
+ * from every opener that had no closer, so a page of "<!--" repeated half a
+ * million times cost ~10^11 steps. Here an unclosed block drops the rest of the
+ * page (as a browser would hide it) and the scan never goes backwards.
+ */
+function stripBlocks(html, openRe, closerFor) {
+  const lower = html.toLowerCase();
+  let out = "";
+  let pos = 0;
+  openRe.lastIndex = 0;
+  let m;
+  while ((m = openRe.exec(html))) {
+    out += html.slice(pos, m.index) + " ";
+    const closer = closerFor(m);
+    const end = lower.indexOf(closer, m.index + m[0].length);
+    if (end === -1) return out;
+    pos = end + closer.length;
+    // A closing tag ("</script") still has its own ">" to step over.
+    if (!closer.endsWith(">")) {
+      const gt = html.indexOf(">", pos);
+      pos = gt === -1 ? html.length : gt + 1;
+    }
+    openRe.lastIndex = pos;
+  }
+  return out + html.slice(pos);
+}
+
+// Visible text only: scripts, styles, svg, comments and tags stripped. Every
+// repeat is bounded or forward-only, so the cost is linear in the page size.
 export function htmlToText(html) {
-  let s = html
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(script|style|noscript|svg|iframe)[^>]*>[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ");
+  let s = stripBlocks(html, /<!--/g, () => "-->");
+  s = stripBlocks(s, /<(script|style|noscript|svg|iframe)\b[^>]{0,2000}>/gi, (m) => `</${m[1].toLowerCase()}`);
+  s = s
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b[^>]{0,2000}>/gi, "\n")
+    .replace(/<[^<>]{1,4000}>/g, " ");
   s = decodeEntities(s);
   return s.replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
 }

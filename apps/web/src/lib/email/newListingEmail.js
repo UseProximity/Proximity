@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 /*
  * "You have a new listing on Proximity": the note a landlord gets when a
@@ -12,6 +13,8 @@ const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -27,10 +30,10 @@ export async function sendNewListingEmail(toEmail, toName, address, listingId, r
     subject: "You have a new listing on Proximity!",
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
+        <p>Hi ${escapeHtml(toName || "there")},</p>
         <p>Congratulations! A new listing has been added to your Proximity account.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p><strong>Address:</strong> ${address}</p>
+        <p><strong>Address:</strong> ${escapeHtml(address)}</p>
         <p style="margin-top: 16px;">
           <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Your Listing</a>
         </p>

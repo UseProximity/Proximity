@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { X, User, UserPlus } from "lucide-react";
 
 export default function ManageCoOwnersModal({ listing, currentUserId, onClose }) {
@@ -10,6 +11,9 @@ export default function ManageCoOwnersModal({ listing, currentUserId, onClose })
   const [email, setEmail] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState(null);
+  // Only staff add co-owners directly; see POST in api/landlord/listings/[id]/landlords.
+  const { data: session } = useSession();
+  const isStaff = session?.user?.role === "super";
   const [removing, setRemoving] = useState(null);
   const [promoting, setPromoting] = useState(null);
 
@@ -190,6 +194,17 @@ export default function ManageCoOwnersModal({ listing, currentUserId, onClose })
             )}
           </div>
 
+          {!isStaff ? (
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-sm text-gray-600">
+              To add a co-owner, email{" "}
+              <a href="mailto:info@useproximity.org" className="text-red-600 hover:underline">
+                info@useproximity.org
+              </a>{" "}
+              with their address and we&apos;ll set it up once they agree.
+            </p>
+          </div>
+          ) : (
           <div className="border-t border-gray-100 pt-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               Add co-owner by email
@@ -216,6 +231,7 @@ export default function ManageCoOwnersModal({ listing, currentUserId, onClose })
               The person must already have a Proximity account.
             </p>
           </div>
+          )}
         </div>
       </div>
     </div>
