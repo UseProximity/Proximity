@@ -1,9 +1,10 @@
-import { auth } from "@/auth";
+// @auth admin
+import { requireDbRole } from "@/lib/userRole";
 import { isProdData, appEnv } from "@/lib/appEnv";
 
 export async function GET() {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
   // Reflects the DB the default client targets: staging resolves to "dev". Doubles as a

@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-22T23:50:32.126Z",
+  "_generated": "2026-10-23T22:36:16.490Z",
   "count": 130,
   "routes": [
     {
@@ -49,7 +49,7 @@
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "public",
+        "GET": "admin",
         "POST": "super",
         "PATCH": "super",
         "DELETE": "super"
@@ -66,9 +66,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [
         "chat_threads",
@@ -84,9 +84,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [
         "chat_threads",
@@ -103,9 +103,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [],
       "file": "src/app/api/admin/db-env/route.js"
@@ -115,9 +115,9 @@
       "methods": [
         "POST"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "POST": "public"
+        "POST": "admin"
       },
       "tables": [
         "roles"
@@ -129,9 +129,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [
         "listings",
@@ -168,7 +168,7 @@
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "public",
+        "GET": "admin",
         "PATCH": "super",
         "DELETE": "super"
       },
@@ -183,9 +183,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "public"
+        "GET": "admin"
       },
       "tables": [
         "users",
@@ -199,10 +199,10 @@
         "GET",
         "POST"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "public",
-        "POST": "public"
+        "GET": "admin",
+        "POST": "admin"
       },
       "tables": [
         "users",
@@ -216,9 +216,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "public"
+        "GET": "admin"
       },
       "tables": [
         "users"
@@ -230,9 +230,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [],
       "file": "src/app/api/admin/schema/route.js"

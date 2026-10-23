@@ -70,7 +70,7 @@ const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 // auth levels, weakest → strongest. "optional" means the handler consults the
 // session to personalize but still serves anonymous callers a safe response
 // (e.g. an empty list) — it is NOT a missing guard.
-const AUTH_RANK = { public: 0, optional: 1, any: 2, "landlord+": 3, super: 4 };
+const AUTH_RANK = { public: 0, optional: 1, any: 2, "landlord+": 3, admin: 4, super: 5 };
 
 // Slice each `export async function METHOD(...) {…}` body out of the route file so
 // auth can be judged per method (a route's GET may be a public read while its POST
@@ -125,6 +125,10 @@ function declaredAuth(content) {
 
 function classifyHandlerAuth(body) {
   if (/requireSuper\(\)/.test(body) || /role\s*!==\s*["']super["']/.test(body)) return "super";
+  // requireDbRole([...]) is the DB-checked staff guard in apps/web/src/lib/userRole.js
+  const dbRole = body.match(/requireDbRole\(\[([^\]]*)\]\)/);
+  if (dbRole) return /["']admin["']/.test(dbRole[1]) ? "admin" : "super";
+  if (/requireSuperOrAdmin\(\)/.test(body)) return "admin";
   // getRequestUser() is the shared session-or-bearer-token helper (apps/web/src/lib/getRequestUser.js)
   if (!/\bauth\(\)/.test(body) && !/getRequestUser\(/.test(body)) return "public"; // never consults the session
   if (noSessionIsSoft(body)) return "optional";  // personalizes but serves anon
