@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-24T18:37:19.652Z",
-  "count": 133,
+  "_generated": "2026-10-24T19:51:35.598Z",
+  "count": 135,
   "routes": [
     {
       "path": "/api/account",
@@ -254,6 +254,34 @@
       },
       "tables": [],
       "file": "src/app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/sent-emails",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "sent_emails"
+      ],
+      "file": "src/app/api/admin/sent-emails/route.js"
+    },
+    {
+      "path": "/api/admin/sent-emails/[id]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "sent_emails"
+      ],
+      "file": "src/app/api/admin/sent-emails/[id]/route.js"
     },
     {
       "path": "/api/admin/update-campus-walk-times",
@@ -1875,6 +1903,7 @@
       },
       "tables": [
         "email_suppressions",
+        "sent_emails",
         "chat_email_log"
       ],
       "file": "src/app/api/ses/events/route.js"
