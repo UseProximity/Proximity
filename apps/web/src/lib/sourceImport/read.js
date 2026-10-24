@@ -321,6 +321,26 @@ function unitsFromFloorPlans(result) {
 }
 
 /* Model units -> raw units. */
+/*
+ * The pasted address. A landlord may paste their availability PDF or Google
+ * Sheet itself rather than a page that links to it: read it as a file.
+ */
+async function fetchMain(url) {
+  if (isDocumentUrl(url)) {
+    const doc = await readDocument(url);
+    if (doc) return doc.page;
+    throw new DraftFetchError("document_unreadable");
+  }
+  try {
+    return await fetchPageSmart(url);
+  } catch (err) {
+    if (err?.code !== "document") throw err;
+    const doc = await readDocument(url);
+    if (doc) return doc.page;
+    throw new DraftFetchError("document_unreadable");
+  }
+}
+
 // Links never worth opening while hunting for a building's facts.
 const SKIP_LINK_RE = /^mailto:|^tel:|facebook\.com|instagram\.com|twitter\.com|\/\/x\.com|linkedin\.com|tiktok\.com|youtube\.com|pinterest\.|google\.[a-z.]+\/maps|maps\.apple|logout|log-out|sign-?out|\.(zip|docx?|xlsx?)(\?|$)/i;
 
@@ -446,7 +466,7 @@ async function discoverSiteInner({ url: rawUrl, skipPmsSteer = false, readSingle
   const crawl = new Crawl();
   let main;
   try {
-    main = await fetchPageSmart(pastedUrl);
+    main = await fetchMain(pastedUrl);
   } catch (err) {
     if (err instanceof DraftFetchError) return { kind: "error", code: err.code };
     throw err;
@@ -633,7 +653,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
 
   if (!main) {
     onStep("Reading your website");
-    main = await fetchPageSmart(startUrl); // throws DraftFetchError
+    main = await fetchMain(startUrl); // throws DraftFetchError
     crawl.add(main);
   }
   const brandName = _brandName ?? extractSiteBrand(main.html);

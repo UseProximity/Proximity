@@ -25,6 +25,7 @@ const FETCH_ERRORS = {
   bad_url: [400, "That doesn't look like a valid website address."],
   unsupported_scheme: [400, "Please paste a normal http(s) website address."],
   private_address: [400, "That address can't be used here."],
+  document_unreadable: [422, "We couldn't read that file. If it's a Google Sheet or Doc, set sharing to \"Anyone with the link\", or paste your website instead."],
   blocked: [422, "Your website's security settings blocked our reader. You can still fill out the form manually."],
   unreachable: [422, "We couldn't reach that page. Double-check the address, or fill out the form manually."],
   no_text: [422, "We couldn't find readable listing info on that page. Try pasting your listings or availability page instead."],
