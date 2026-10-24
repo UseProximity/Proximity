@@ -9,6 +9,9 @@
  *   2. The signature: everything after a "-- " delimiter, "Sent from my iPhone"
  *      style footers, and a trailing block of lines that are only the sender's
  *      name, company, job title, phone, email, website or street address.
+ *      If that trailing block is the whole reply (a student answering "what's
+ *      your number?" with just the number), it is the message, so it stays
+ *      (Wyatt, 2026-10-24).
  *   3. A dangling sign-off left at the end ("Best,", "Regards,"). A sign-off that
  *      is a sentence ("Thanks!") stays, because it is part of the message.
  *
@@ -116,8 +119,11 @@ export function htmlToPlainText(html) {
     .replace(/<div[^>]+class="?[^">]*gmail_quote[\s\S]*$/i, "")
     .replace(/<blockquote[\s\S]*$/i, "")
     .replace(/<div[^>]+id="?(divRplyFwdMsg|appendonsend)[\s\S]*$/i, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+    // iPhone Mail writes <br id="lineBreakAtBeginningOfSignature"> and opens
+    // the "Sent from my iPhone" block with a <div>, so tags with attributes and
+    // opening block tags both have to break the line.
+    .replace(/<br\b[^>]*>/gi, "\n")
+    .replace(/<\/?(p|div|li|tr|h[1-6])\b[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
@@ -167,7 +173,10 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
   const names = [senderName, senderCompany, fromName]
     .flatMap(nameVariants)
     .sort((a, b) => b.length - a.length);
+  const beforeSignature = lines;
+  lines = lines.slice();
   while (lines.length > 0 && isSignatureLine(lines[lines.length - 1], names)) lines.pop();
+  if (!lines.some((l) => l.trim())) lines = beforeSignature;
 
   // 3. a sign-off with nothing after it
   while (lines.length > 0 && (SIGN_OFF.test(lines[lines.length - 1]) || !lines[lines.length - 1].trim())) {
