@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T18:07:56.535Z",
-  "count": 158,
+  "_generated": "2026-10-24T18:35:54.726Z",
+  "count": 159,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -518,6 +518,10 @@
     {
       "file": "src/lib/sourceImport/readers/securecafe.js",
       "description": "SecureCafe (RentCafe online leasing) portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/zillow.js",
+      "description": "A Zillow listing's own photos."
     },
     {
       "file": "src/lib/sourceImport/sanitize.js",

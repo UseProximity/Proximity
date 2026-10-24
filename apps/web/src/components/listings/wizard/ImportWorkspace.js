@@ -110,13 +110,17 @@ function describe(e) {
       return "fill in property details from your website";
     case "photos_added":
       return `${where}add ${e.new_value} photo${e.new_value === 1 ? "" : "s"}`;
+    case "low_confidence":
+      return "The website was hard to read, so nothing on this listing was changed automatically";
+    case "churn_hold":
+      return "More than a fifth of the leases would change at once, so nothing was changed automatically";
     default:
       return `${where}${e.kind}`;
   }
 }
 
 /* An existing listing's tab: the read as proposed changes, then the editor. */
-function Proposed({ listingId, proposed, flagged, onApplied }) {
+function Proposed({ listingId, proposed, flagged, onApplied, claimed = false }) {
   const [picked, setPicked] = useState(() => new Set(proposed.map((e) => e.id)));
   const [busy, setBusy] = useState(false);
   const toggle = (id) =>
@@ -157,7 +161,9 @@ function Proposed({ listingId, proposed, flagged, onApplied }) {
     <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
       <p className="text-sm font-semibold text-gray-900">What your website says differently</p>
       <p className="mt-0.5 text-xs text-gray-600">
-        This listing is already on Proximity, so nothing changed yet. Tick what to apply.
+        {claimed
+          ? "This listing had no landlord, so it is yours now. Its description, your contact details and its photos were filled in from your website. Tick what else to apply."
+          : "This listing is already on Proximity, so nothing changed yet. Tick what to apply."}
       </p>
       {proposed.length > 0 && (
         <ul className="mt-3 space-y-1.5">
@@ -306,7 +312,7 @@ function ListingTab({ job, user, onPublished }) {
       </div>
 
       {p.isDraft && <ImportGaps listing={p} />}
-      {!p.isDraft && <Proposed listingId={p._id || p.id} proposed={data.proposed ?? []} flagged={data.flagged ?? []} onApplied={load} />}
+      {!p.isDraft && <Proposed listingId={p._id || p.id} proposed={data.proposed ?? []} flagged={data.flagged ?? []} onApplied={load} claimed={!!job.target?.alreadyListed?.claimed} />}
 
       <EditorOverview listing={p} canEdit={isPropertyOwner} onChanged={load} />
       <PropertyPhotoRow listing={p} isPropertyOwner={isPropertyOwner} onChanged={load} />

@@ -22,6 +22,7 @@ import {
   fetchPageSmart,
   tryRenderPage,
   renderPageWaited,
+  renderPage,
   htmlToText,
   extractImageCandidates,
   extractLinks,
@@ -57,6 +58,7 @@ import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./re
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
+import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
 import { readWithModel, sortPhotosByUnit } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
@@ -624,7 +626,9 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
      * at most, in that order of usefulness.
      */
     const DEEP_RE = /amenit|feature|faq|fees?\b|pricing|utilit|includ|lease|special|gallery|photo|tour|availab|neighborhood|location/i;
-    const deeper = extractLinks(crawl.structureOf(propPage), propPage.finalUrl, 80)
+    // On a listing portal every such link is another listing (Zillow's
+    // "nearby homes"), so a portal page is read on its own.
+    const deeper = isListingPortal(propPage.finalUrl) ? [] : extractLinks(crawl.structureOf(propPage), propPage.finalUrl, 80)
       .filter((l) => DEEP_RE.test(`${l.url} ${l.text}`) && l.url !== propPage.finalUrl && !/resident|portal|login|apply|pay|blog|feed|wp-json|popup=|\?tour/i.test(l.url))
       .sort((a, b) => DEEP_RE.exec(`${a.url} ${a.text}`).index - DEEP_RE.exec(`${b.url} ${b.text}`).index)
       .slice(0, 6);
@@ -807,7 +811,25 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
 
   // ---- the model: property fields, photos, and units only if nothing read them
   onStep("Filling in the details");
-  const images = crawl.images();
+  let images = crawl.images();
+  // A Zillow page's own gallery, not the neighbours shown around it.
+  let zillowGallery = [];
+  let zillowHost = false;
+  try {
+    zillowHost = ZILLOW_HOST_RE.test(new URL(main.finalUrl).hostname);
+  } catch {
+    zillowHost = false;
+  }
+  if (zillowHost) {
+    const raw = await renderPage(main.finalUrl, { waitMs: 2000, raw: true });
+    const gallery = parseZillowGallery(raw?.html);
+    zillowGallery = gallery;
+    if (gallery.length) {
+      images = gallery.map((url, i) => ({ url, alt: `Photo ${i + 1} of this listing`, pages: [1] }));
+      for (const im of images) crawl.imageMap.set(im.url, { alt: im.alt, pages: new Set([1]) });
+      console.log(`[source-import] zillow gallery: ${gallery.length} photos of this listing`);
+    }
+  }
   const diagrams = new Set(readerUnits.map((u) => u.floorPlanImageUrl).filter(Boolean));
   let listing = _modelDraft;
   let modelUsed = null;
@@ -892,6 +914,12 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   // nominated candidates.
   const floorPlanCheck = await confirmFloorPlans(units, { onStep });
   modelCost += floorPlanCheck.costUsd;
+  // Every photo in a Zillow listing's gallery is of this listing: all of
+  // them are the property's, in the site's order, less any diagram.
+  if (zillowGallery.length) {
+    const plans = new Set(units.map((u) => u.floorPlanImageUrl).filter(Boolean));
+    propertyPhotos.splice(0, propertyPhotos.length, ...zillowGallery.filter((u) => !plans.has(u)).map((url, i) => ({ url, alt: `Photo ${i + 1} of this listing` })));
+  }
 
   // The description must pass the same rules the editor applies on save:
   // no phone numbers, emails, links, handles or people's names.

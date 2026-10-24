@@ -244,6 +244,12 @@ async function monitorIdFor(listingId) {
   return data?.id ?? null;
 }
 
+/* The landlord's own contact details, for a building they just claimed. */
+async function contactFor(userId) {
+  const { data } = await supabase.from("users").select("name, email, phone").eq("id", userId).maybeSingle();
+  return data ?? null;
+}
+
 /* What an earlier read of this listing learned about its leasing portal. */
 async function knownPortalFor(listingId) {
   const { data } = await supabase.from("listing_source_monitors").select("portal").eq("listing_id", listingId).maybeSingle();
@@ -300,6 +306,7 @@ export async function runJob(jobId) {
       // An existing listing is reviewed before anything changes.
       autoApply: mode === "import",
       listingLabel: listing.title ?? listing.address,
+      takeover: target.alreadyListed?.claimed ? { contact: await contactFor(job.user_id) } : null,
     });
 
     if (mode === "import") {

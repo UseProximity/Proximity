@@ -112,7 +112,7 @@ const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y
  * already has data. The difference shows up in a few places: a sync adds new
  * units as drafts and leaves prose alone, an import writes everything.
  */
-export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set() }) {
+export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null }) {
   const changes = [];
   const push = (c) => changes.push({ auto: true, ...c });
   const p = snapshot.property;
@@ -130,6 +130,17 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     const num = (a) => String(a ?? "").match(/^\s*(\d+)/)?.[1];
     if (p.address && num(p.address) && (!num(state.address) || (num(p.address) === num(state.address) && p.address.length > (state.address ?? "").length + 4))) {
       patch.address = p.address;
+    }
+  } else if (takeover) {
+    /*
+     * A building Proximity listed with nobody behind it (from student
+     * reviews), just claimed. What it had was a stub: the landlord's own
+     * website writes the description, and the landlord's contact replaces
+     * whatever the stub carried. Units and leases stay proposed changes.
+     */
+    if (p.description) patch.description = p.description;
+    for (const [k, v] of [["contact_name", takeover.contact?.name], ["contact_email", takeover.contact?.email], ["contact_phone", takeover.contact?.phone]]) {
+      if (v && state[k] !== v) patch[k] = v;
     }
   } else if (p.description && !state.description?.trim()) {
     patch.description = p.description;
@@ -512,7 +523,7 @@ async function withdrawnBySyncFor(listingId) {
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -520,12 +531,14 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (actor && !ownerIds.includes(actor)) ownerIds.push(actor);
   const withdrawnBySync = mode === "sync" ? await withdrawnBySyncFor(listingId) : new Set();
 
-  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync });
+  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover });
   const label = listingLabel ?? state.title ?? state.address;
 
   // Holds: a snapshot the reader was unsure of, or too much churn at once.
   let holdReason = null;
-  if (mode === "sync" && snapshot.confidence === "low") holdReason = "low_confidence";
+  // A claim is the first real read of the building: its changes are already
+  // checked one by one on the tab, so a cautious read does not hold them all.
+  if (mode === "sync" && snapshot.confidence === "low" && !takeover) holdReason = "low_confidence";
   if (mode === "sync" && !holdReason) {
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
     // Churn is leases appearing, vanishing or repricing. A lease whose blurb
@@ -548,7 +561,25 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   const applied = [];
   const held = [];
-  if (!autoApply || holdReason) {
+  // On a building just claimed, the stub's prose, contact and photos are
+  // replaced at once; what it says about units and leases is still offered
+  // as changes to tick.
+  const TAKEOVER_KINDS = new Set(["property_updated", "photos_added"]);
+  if (takeover && (!autoApply || holdReason)) {
+    for (const c of changes) {
+      if (!TAKEOVER_KINDS.has(c.kind)) {
+        held.push(c);
+        continue;
+      }
+      try {
+        c.note = await executeChange(c, { state, userId: actor });
+        applied.push(c);
+      } catch (err) {
+        c.note = `failed: ${err.message}`;
+        held.push(c);
+      }
+    }
+  } else if (!autoApply || holdReason) {
     held.push(...changes);
   } else {
     for (const c of changes) {
