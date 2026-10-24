@@ -39,8 +39,10 @@ import {
   DraftFetchError,
   readCounters,
   setSharedPageCache,
+  extractDocumentLinks,
 } from "@/lib/listingDraft/fetchSite";
 import { pageCacheStore } from "./pageCache.js";
+import { isDocumentUrl, readDocument } from "./readers/document.js";
 
 // Every read shares fetched pages with the rest of its batch
 // (IMPORT_PAGE_CACHE=0 turns it off, for measuring or debugging).
@@ -145,6 +147,9 @@ class Crawl {
     this.links = [
       ...this.links,
       ...extractAllLinks(this.structureOf(fetched), fetched.finalUrl, LINK_CAP).filter((l) => !seen.has(l.url)),
+      // Linked files and embedded frames, from the page as served (frames
+      // are stripped from its text), for the page hunt to choose.
+      ...extractDocumentLinks(fetched.html, fetched.finalUrl).filter((l) => !seen.has(l.url)),
     ].slice(0, LINK_CAP * 2);
   }
   has(url) {
@@ -155,13 +160,25 @@ class Crawl {
     // Already read: hand back the page rather than nothing, so a floor plans
     // link that points at the page we are on still counts as found.
     if (this.has(url)) return this.fetched.find((f) => f.finalUrl === url) ?? null;
+    if (isDocumentUrl(url)) return this.readFile(url);
     try {
       const sub = await fetchPageSmart(url);
       if (this.has(sub.finalUrl)) return sub;
       return this.add(sub);
-    } catch {
+    } catch (err) {
+      // A link that turned out to be a PDF or a picture.
+      if (err?.code === "document") return this.readFile(url);
       return null;
     }
+  }
+  /* A linked file, read into text (readers/document.js); four per read. */
+  async readFile(url) {
+    if ((this.filesRead ?? 0) >= 4) return null;
+    this.filesRead = (this.filesRead ?? 0) + 1;
+    const doc = await readDocument(url);
+    if (!doc) return null;
+    this.fileCost = (this.fileCost ?? 0) + doc.cost;
+    return this.add(doc.page);
   }
   /*
    * Image candidates taken from every page rather than the first two, the
@@ -305,7 +322,7 @@ function unitsFromFloorPlans(result) {
 
 /* Model units -> raw units. */
 // Links never worth opening while hunting for a building's facts.
-const SKIP_LINK_RE = /^mailto:|^tel:|facebook\.com|instagram\.com|twitter\.com|\/\/x\.com|linkedin\.com|tiktok\.com|youtube\.com|pinterest\.|google\.[a-z.]+\/maps|maps\.apple|logout|log-out|sign-?out|\.(pdf|jpe?g|png|webp|gif|zip|docx?)(\?|$)/i;
+const SKIP_LINK_RE = /^mailto:|^tel:|facebook\.com|instagram\.com|twitter\.com|\/\/x\.com|linkedin\.com|tiktok\.com|youtube\.com|pinterest\.|google\.[a-z.]+\/maps|maps\.apple|logout|log-out|sign-?out|\.(zip|docx?|xlsx?)(\?|$)/i;
 
 /*
  * What the read knows and does not know about the building yet, stated
@@ -1073,7 +1090,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       platform && platform !== "generic" ? `floor plans read from the site's own ${platform} data` : null,
     ].filter(Boolean),
   });
-  modelCost += reviewed.cost;
+  modelCost += reviewed.cost + (crawl.fileCost ?? 0);
   trace.modelCostUsd = Math.round(modelCost * 1000) / 1000;
   const reviewedNotes = reviewed.notes;
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);

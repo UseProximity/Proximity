@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T19:55:32.684Z",
-  "count": 160,
+  "_generated": "2026-10-24T20:05:46.973Z",
+  "count": 161,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -494,6 +494,10 @@
     {
       "file": "src/lib/sourceImport/read.js",
       "description": "Read a landlord's website into a snapshot."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/document.js",
+      "description": "Files a landlord's site links to instead of putting the numbers on the"
     },
     {
       "file": "src/lib/sourceImport/readers/embeddedProperties.js",

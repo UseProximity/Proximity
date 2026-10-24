@@ -371,6 +371,7 @@ Rules:
 - Only pages about this property or its landlord's policies for it: its floor plans, availability, pricing, lease terms, FAQ, fees, what's included, amenities, specials, or its leasing portal or application flow (these often show lease lengths and dates). A company-wide FAQ or fee page counts.
 - Never pages about other buildings or other listings ("nearby", "similar homes", another property's name or address), blogs, news, careers, residents' login, payments, maintenance requests, social media or maps.
 - Copy each URL exactly as written in CANDIDATE LINKS. Choose at most the number asked for, best first, and say in a few words what you hope to find on each.
+- Small landlords often keep prices and dates in a file or an embedded sheet: links marked "(linked file)" (a PDF, a picture, a Google Sheet or Doc) and "(embedded in the page)" (a published sheet, a listings widget) are readable and worth choosing when they look like an availability list, price sheet, rate card, floor plans or lease terms.
 - ALREADY READ may answer an item listed as missing (a monthly utility fee answers what the rent includes): do not hunt for what is already answered.
 - If no link is likely to help, return an empty list. An empty list is better than a guess.`;
 

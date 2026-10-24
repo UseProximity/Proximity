@@ -172,6 +172,13 @@ export async function fetchPage(rawUrl) {
     }
     if (res.status === 403 || res.status === 429) throw new DraftFetchError("blocked");
     if (!res.ok) throw new DraftFetchError(`http_${res.status}`);
+    // A PDF or picture is a file to read (lib/sourceImport/readers/document.js),
+    // not a page: as text it is noise.
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (type === "application/pdf" || type.startsWith("image/")) {
+      res.body?.cancel?.().catch?.(() => {});
+      throw new DraftFetchError("document");
+    }
 
     const html = await readBodyCapped(res, MAX_BYTES);
     return { html, finalUrl: url.toString() };
@@ -661,7 +668,7 @@ export async function tryRenderPage(rawUrl) {
 }
 
 // Codes where a render service can't help (or must not be asked to try).
-const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed"]);
+const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed", "document"]);
 
 // 10-minute page cache so the pick-a-property second request (and background
 // queue prefetches) don't re-download pages this instance just fetched.
@@ -948,6 +955,38 @@ export function extractAllLinks(html, baseUrl, cap = 120) {
     seen.add(abs);
     const text = htmlToText(m[2]).replace(/\n/g, " ").slice(0, 80).trim();
     out.push({ url: abs, text, internal: sameSite(abs, baseUrl) });
+  }
+  return out;
+}
+
+/*
+ * What a page offers besides ordinary links: files it links to (a PDF
+ * availability list, a price-sheet picture, a Google Sheet or Doc, a Drive
+ * file) and frames embedded in it (a published Sheet, a listings widget).
+ * Ordinary link extraction drops both; the page hunt gets them, labelled,
+ * and chooses whether to read them.
+ */
+const FILE_LINK_RE = /\.(pdf|jpe?g|png|webp)(\?|#|$)|^https?:\/\/(drive\.google\.com\/(file\/d\/|open\?id=|uc\?)|docs\.google\.com\/(spreadsheets|document|presentation)\/d\/)/i;
+export function extractDocumentLinks(html, baseUrl, cap = 30) {
+  const out = [];
+  const seen = new Set();
+  const push = (raw, text, kind) => {
+    const abs = normalizeLinkUrl(raw, baseUrl);
+    if (!abs || seen.has(abs) || out.length >= cap) return;
+    seen.add(abs);
+    out.push({ url: abs, text, internal: sameSite(abs, baseUrl), kind });
+  };
+  for (const m of String(html ?? "").matchAll(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const abs = normalizeLinkUrl(m[1], baseUrl);
+    if (!abs || !FILE_LINK_RE.test(abs)) continue;
+    const label = htmlToText(m[2]).replace(/\n/g, " ").slice(0, 80).trim() || (m[0].match(/\b(?:title|aria-label)=["']([^"']+)["']/i)?.[1] ?? "");
+    push(m[1], `(linked file) ${label}`.trim(), "file");
+  }
+  for (const m of String(html ?? "").matchAll(/<iframe\b[^>]*>/gi)) {
+    const src = m[0].match(/\bsrc=["']([^"']+)["']/i)?.[1];
+    if (!src || /youtube|vimeo|google\.[a-z.]+\/maps|maps\.google|matterport|facebook|recaptcha|googletagmanager|doubleclick/i.test(src)) continue;
+    const title = m[0].match(/\btitle=["']([^"']*)["']/i)?.[1] ?? "";
+    push(src, `(embedded in the page) ${title}`.trim(), "frame");
   }
   return out;
 }
