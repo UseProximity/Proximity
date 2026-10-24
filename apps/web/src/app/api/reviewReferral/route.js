@@ -59,7 +59,6 @@ import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimi
 import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
 import {
   ensureReviewerAccount,
-  markEmailVerifiedFromLink,
   normalizeClassYear,
   resolveSchoolId,
 } from "@/lib/reviews/onboarding";
@@ -556,8 +555,16 @@ export async function POST(req) {
         email,
         classYear: signedOutReviewer.classYear,
         source: normalizeReviewSource(source),
+        /*
+         * The invite link was opened, which is the same proof the profile-setup
+         * link carries, only earlier. So the account is verified before the
+         * review is even written (inside ensureReviewerAccount, ahead of its
+         * claimability check), and the student never gets a second email asking
+         * them to confirm an address we already watched them use.
+         */
         inboxProven: !!invite,
         priorSetupToken,
+        req,
       });
       if (account.error) {
         return NextResponse.json({ error: account.error }, { status: 400 });
@@ -568,14 +575,6 @@ export async function POST(req) {
       setupToken = account.setupToken;
       existingAccount = !!account.existingAccount;
       setupByEmail = !!account.setupByEmail;
-
-      /*
-       * The invite link was opened, which is the same proof the profile-setup
-       * link carries, only earlier. So the account is verified before the
-       * review is even written, and the student never gets a second email
-       * asking them to confirm an address we already watched them use.
-       */
-      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
     } else {
       return NextResponse.json(
         { error: "Add your name and school email, or sign in, to leave a review." },

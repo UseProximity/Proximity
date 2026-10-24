@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { hashToken } from "@/lib/auth/tokenHash";
-import { getBaseUrl, sendPasswordResetEmail } from "@/lib/email";
+import { sendPasswordReset } from "@/lib/auth/passwordReset";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 
 export async function POST(req) {
@@ -26,21 +25,7 @@ export async function POST(req) {
     const hasPassword = user && !user.google_account && !(user.apple_account && !user.password_hash);
 
     if (hasPassword) {
-      const token = crypto.randomUUID();
-      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-
-      await supabase
-        .from("users")
-        .update({ password_reset_token: hashToken(token), password_reset_expires_at: expires })
-        .eq("id", user.id);
-
-      await sendPasswordResetEmail({
-        email,
-        name: user.name,
-        token,
-        baseUrl: getBaseUrl(),
-        req,
-      });
+      await sendPasswordReset({ userId: user.id, email, name: user.name, req });
     }
 
     return NextResponse.json(

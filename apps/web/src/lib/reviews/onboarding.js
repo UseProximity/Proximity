@@ -17,7 +17,8 @@
  *   inbox is proven). Lives in users.profile_setup_token.
  * - The LINK token is minted at send time and exists only in an email, so
  *   opening it proves control of the inbox and verifies the address. Lives in
- *   users.profile_setup_link_hash.
+ *   users.profile_setup_link_hashes, one entry per email sent, so every link
+ *   from the last week works rather than only the newest.
  *
  * The rules that matter: an account that ALREADY exists never gets an inline
  * token, because anyone can type anyone's address into the form; its owner is
@@ -27,10 +28,16 @@
  */
 import supabase from "@/lib/supabase";
 import { hashToken } from "@/lib/auth/tokenHash";
+import { sendPasswordReset } from "@/lib/auth/passwordReset";
 import { schoolForEmail } from "@/lib/schools";
 import { referralSourceLabel } from "./source";
 
 export const PROFILE_SETUP_TTL_DAYS = 7;
+
+// Emailed setup links kept live at once. A student gets a handful of review
+// confirmations and nudges in a week at most; the cap only stops the array
+// growing without bound.
+const MAX_LINK_HASHES = 5;
 
 // Graduation is stored as month + year; a "Class of 2029" answer only pins the
 // year, so we assume the May commencement and let them correct it on the
@@ -86,9 +93,39 @@ const issueProfileSetupToken = (userId) => storeSetupHash(userId, "profile_setup
  * someone whose first email went to spam simply gets a working link in the
  * next one. Callers must only put the result in mail to the account's own
  * address, never in a response.
+ *
+ * Each email adds its hash alongside the earlier ones (newest MAX_LINK_HASHES
+ * kept), so an older email's link keeps working until the shared expiry or
+ * until the profile is finished. This is a read-then-write, not an atomic
+ * append: two emails minted for one account in the same instant could drop one
+ * hash, which costs that email its link and nothing more. Rare enough at this
+ * volume to accept.
  */
-export const issueProfileSetupLinkToken = (userId) =>
-  storeSetupHash(userId, "profile_setup_link_hash");
+export async function issueProfileSetupLinkToken(userId) {
+  const { data: row, error: readError } = await supabase
+    .from("users")
+    .select("profile_setup_link_hashes")
+    .eq("id", userId)
+    .maybeSingle();
+  if (readError) {
+    console.error("[reviewOnboarding] read link hashes failed:", readError.message);
+    return null;
+  }
+
+  const token = newRawToken();
+  const hashes = [...(row?.profile_setup_link_hashes || []), hashToken(token)].slice(
+    -MAX_LINK_HASHES
+  );
+  const { error } = await supabase
+    .from("users")
+    .update({ profile_setup_link_hashes: hashes, profile_setup_expires_at: expiryIso() })
+    .eq("id", userId);
+  if (error) {
+    console.error("[reviewOnboarding] issue link token failed:", error.message);
+    return null;
+  }
+  return token;
+}
 
 /** Still has a profile to finish and no way to sign in, so a setup link helps. */
 export const needsProfileSetup = (user) =>
@@ -131,7 +168,8 @@ export async function ensureReviewerAccount({
   /*
    * The caller holds proof the submitter controls this inbox (an emailed review
    * invite). Only then may an account that already existed get the inline
-   * token, since only then is the submitter known to be its owner.
+   * token, since only then is the submitter known to be its owner. It also
+   * verifies the address, before anything else is decided (see below).
    */
   inboxProven = false,
   /*
@@ -140,6 +178,9 @@ export async function ensureReviewerAccount({
    * created the account, so it keeps its profile step.
    */
   priorSetupToken = null,
+  // The incoming request, so a password reset email follows the staging test
+  // recipient redirect like every other email (lib/outreach.js).
+  req = null,
 }) {
   const emailNorm = String(email || "").trim().toLowerCase();
   const school = schoolForEmail(emailNorm);
@@ -155,7 +196,7 @@ export async function ensureReviewerAccount({
 
   const { data: existing } = await supabase
     .from("users")
-    .select("id, name, password_hash, google_account, apple_account, profile_complete, is_system, graduation_year, school_id, phone, profile_setup_token, profile_setup_expires_at")
+    .select("id, name, password_hash, google_account, apple_account, profile_complete, is_system, email_verified, graduation_year, school_id, phone, profile_setup_token, profile_setup_expires_at")
     .eq("email", emailNorm)
     .is("deleted_at", null)
     .maybeSingle();
@@ -169,9 +210,41 @@ export async function ensureReviewerAccount({
       return { error: "That email can't be used to leave a review." };
     }
 
+    /*
+     * A proven inbox verifies the address now, BEFORE deciding who holds the
+     * keys. Verification wipes any password set while the address was still
+     * unproven (see markEmailVerifiedFromLink), so judging claimability from
+     * that password would turn away the owner with "sign in any time" and then
+     * take away the only way they had to sign in.
+     */
+    let passwordWiped = false;
+    if (inboxProven && !existing.email_verified) {
+      const verified = await markEmailVerifiedFromLink(existing.id);
+      if (verified) {
+        passwordWiped = !!existing.password_hash;
+        existing.password_hash = null;
+        existing.email_verified = true;
+      }
+    }
+
     const hasCredentials =
       !!existing.password_hash || !!existing.google_account || !!existing.apple_account;
     const claimable = !hasCredentials && !existing.profile_complete;
+
+    /*
+     * The wiped password belonged to a finished profile, so there is no setup
+     * step to hand them into and no other way to sign in. A reset link to the
+     * inbox they just proved is the way back.
+     */
+    let passwordResetSent = false;
+    if (passwordWiped && !hasCredentials && !claimable) {
+      passwordResetSent = await sendPasswordReset({
+        userId: existing.id,
+        email: emailNorm,
+        name: existing.name,
+        req,
+      });
+    }
 
     /*
      * Only ever fill blanks on an account we didn't just create. A real user's
@@ -241,8 +314,12 @@ export async function ensureReviewerAccount({
        * no idea their review landed on the account they already own.
        */
       existingAccount: !(claimable && inboxProven),
-      // ...and whether it still needs setting up, which happens by email.
-      setupByEmail: claimable && !inboxProven,
+      /*
+       * ...and whether getting into it happens by email: a setup link for an
+       * account still to be set up, or the reset link sent above. Either way
+       * the honest message is "check your email", not "sign in any time".
+       */
+      setupByEmail: (claimable && !inboxProven) || passwordResetSent,
     };
   }
 
@@ -256,6 +333,7 @@ export async function ensureReviewerAccount({
    * email_verified false, no password: the account exists but cannot be logged
    * into until they either set a password via the emailed link or sign in with
    * Google on the same address (auth.js matches an existing row by email).
+   * A proven inbox (an emailed invite) is verified from the start instead.
    * Column defaults mirror /api/auth/signup so both paths produce the same shape.
    */
   const verificationToken = crypto.randomUUID();
@@ -267,9 +345,11 @@ export async function ensureReviewerAccount({
       role_id: studentRole?.id ?? null,
       school_id: schoolId,
       profile_complete: false,
-      email_verified: false,
-      email_verification_token: verificationToken,
-      email_verification_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      email_verified: !!inboxProven,
+      email_verification_token: inboxProven ? null : verificationToken,
+      email_verification_expires_at: inboxProven
+        ? null
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       graduation_year: gradYear,
       graduation_month: gradYear ? COMMENCEMENT_MONTH : null,
       gender: "unspecified",
@@ -308,8 +388,8 @@ export async function loadProfileSetupUser(token) {
   // The hash is hex, so it is safe inside the PostgREST or() filter string.
   const { data: user } = await supabase
     .from("users")
-    .select("id, name, email, gender, referral_source, graduation_year, graduation_month, profile_complete, profile_setup_expires_at, profile_setup_link_hash, password_hash, google_account, apple_account, email_verified, roles!role_id(name)")
-    .or(`profile_setup_token.eq.${hash},profile_setup_link_hash.eq.${hash}`)
+    .select("id, name, email, gender, referral_source, graduation_year, graduation_month, profile_complete, profile_setup_expires_at, profile_setup_link_hashes, password_hash, google_account, apple_account, email_verified, roles!role_id(name)")
+    .or(`profile_setup_token.eq.${hash},profile_setup_link_hashes.cs.{${hash}}`)
     .is("deleted_at", null)
     .maybeSingle();
 
@@ -330,7 +410,7 @@ export async function loadProfileSetupUser(token) {
     hasProviderLogin: !!user.google_account || !!user.apple_account,
     emailVerified: !!user.email_verified,
     // True only for the emailed link token: the one thing that proves the inbox.
-    viaEmailLink: user.profile_setup_link_hash === hash,
+    viaEmailLink: (user.profile_setup_link_hashes || []).includes(hash),
     prefill: {
       firstName,
       lastName: rest.join(" "),
@@ -344,13 +424,13 @@ export async function loadProfileSetupUser(token) {
   };
 }
 
-/** Burn both tokens so neither the inline hand-off nor the emailed link outlives the profile. */
+/** Burn every token so neither the inline hand-off nor any emailed link outlives the profile. */
 export async function clearProfileSetupToken(userId) {
   const { error } = await supabase
     .from("users")
     .update({
       profile_setup_token: null,
-      profile_setup_link_hash: null,
+      profile_setup_link_hashes: null,
       profile_setup_expires_at: null,
     })
     .eq("id", userId);
@@ -369,10 +449,14 @@ export async function clearProfileSetupToken(userId) {
  * Any password already on the row is wiped in the same update. Until now no one
  * had proven they own this inbox, so that password was set by whoever typed the
  * address into a form, possibly a stranger pre-registering someone else's
- * email. The owner who just proved the inbox sets their own on the next step.
+ * email. The owner who just proved the inbox sets their own on the next step,
+ * or, for a finished profile, through the reset email ensureReviewerAccount
+ * sends.
+ *
+ * Returns true only when this call flipped the row from unverified.
  */
 export async function markEmailVerifiedFromLink(userId) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .update({
       email_verified: true,
@@ -381,6 +465,11 @@ export async function markEmailVerifiedFromLink(userId) {
       password_hash: null,
     })
     .eq("id", userId)
-    .eq("email_verified", false);
-  if (error) console.error("[reviewOnboarding] verify-from-link failed:", error.message);
+    .eq("email_verified", false)
+    .select("id");
+  if (error) {
+    console.error("[reviewOnboarding] verify-from-link failed:", error.message);
+    return false;
+  }
+  return (data || []).length > 0;
 }
