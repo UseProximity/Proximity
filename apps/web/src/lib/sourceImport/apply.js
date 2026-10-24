@@ -130,6 +130,36 @@ const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y
  * already has data. The difference shows up in a few places: a sync adds new
  * units as drafts and leaves prose alone, an import writes everything.
  */
+/*
+ * Unit tabs in layout order: studios first, then bedrooms, bathrooms, size,
+ * then name. The same order as the editor's "Sort by beds and baths".
+ */
+const layoutCompare = (a, b) =>
+  (a.bedrooms ?? 99) - (b.bedrooms ?? 99) ||
+  (Number(a.bathrooms) || 99) - (Number(b.bathrooms) || 99) ||
+  (Number(a.area) || 0) - (Number(b.area) || 0) ||
+  String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true });
+
+async function unitsInOrder(listingId) {
+  const { data } = await supabase.from("listing_units").select("id, name, bedrooms, bathrooms, area, sort_order").eq("listing_id", listingId).is("deleted_at", null).order("sort_order", { ascending: true });
+  return data ?? [];
+}
+
+/* Whether the listing's tabs are already in layout order (nobody rearranged them). */
+async function inLayoutOrder(listingId) {
+  const units = await unitsInOrder(listingId);
+  return units.map((u) => u.id).join() === [...units].sort(layoutCompare).map((u) => u.id).join();
+}
+
+/* Put the listing's units in layout order. */
+export async function sortUnitsByLayout(listingId) {
+  const units = await unitsInOrder(listingId);
+  const sorted = [...units].sort(layoutCompare);
+  await Promise.all(
+    sorted.map((u, i) => (u.sort_order === i ? null : supabase.from("listing_units").update({ sort_order: i }).eq("id", u.id).eq("listing_id", listingId))).filter(Boolean)
+  );
+}
+
 /* Delete the property's cover when it is a Street View placeholder. */
 async function dropStreetViewCover(listingId) {
   const { data: cover } = await supabase
@@ -663,6 +693,8 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (applied.length && mode === "sync") {
     await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
   }
+  // A new import, or a building just claimed, gets its tabs in layout order.
+  if ((mode === "import" || takeover) && applied.some((c) => c.kind === "unit_new")) await sortUnitsByLayout(listingId);
   return { applied, held, holdReason, summary: summarize(snapshot), takeover: !!takeover };
 }
 
@@ -675,6 +707,10 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied").in("id", eventIds).eq("listing_id", listingId);
+  // New floor plans join in layout order, unless the landlord arranged the
+  // tabs by hand, in which case they go at the end as before.
+  const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
+  const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
   for (const e of events ?? []) {
     if (e.applied || e.detail?.op === "none") continue;
@@ -687,6 +723,7 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
       results.push({ id: e.id, ok: false, error: err.message });
     }
   }
+  if (wasSorted && results.some((r) => r.ok)) await sortUnitsByLayout(listingId);
   return results;
 }
 

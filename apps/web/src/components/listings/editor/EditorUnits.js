@@ -25,7 +25,7 @@
 import { FOCUS_EVENT, revealGap } from "./ImportGaps";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDownWideNarrow, Plus, Trash2 } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
 import { UnitFloorPlan } from "./EditorImageRows";
@@ -791,10 +791,24 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
   const [localOrder, setLocalOrder] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [dragId, setDragId] = useState(null);
-  const [overId, setOverId] = useState(null);
+  /*
+   * While a tab is dragged the others move out of its way: previewOrder is
+   * the order on screen, and releasing saves exactly that. (Working out the
+   * drop position from the tab let go on put a tab dragged rightward one
+   * place short, behind the tab it was dropped on.)
+   */
+  const [previewOrder, setPreviewOrderState] = useState(null);
+  // The same order in a ref: drop and drag-end both fire on release, in one
+  // render, and only the first may save.
+  const previewRef = useRef(null);
+  const setPreviewOrder = (ids) => {
+    previewRef.current = ids;
+    setPreviewOrderState(ids);
+  };
   const canReorder = isPropertyOwner && listed.length > 1 && !savingOrder;
-  const visible = localOrder
-    ? localOrder.map((id) => listed.find((u) => u.id === id)).filter(Boolean)
+  const order = previewOrder ?? localOrder;
+  const visible = order
+    ? order.map((id) => listed.find((u) => u.id === id)).filter(Boolean)
     : listed;
 
   const saveOrder = async (ids) => {
@@ -821,16 +835,43 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
     }
   };
 
-  const dropOn = (targetId) => {
-    const from = dragId;
-    setDragId(null);
-    setOverId(null);
-    if (!from || from === targetId) return;
+  // Dragged over another tab, past its middle: take its place.
+  const dragOver = (e, targetId) => {
+    if (!dragId || targetId === dragId) return;
     const ids = visible.map((u) => u.id);
-    ids.splice(ids.indexOf(from), 1);
-    ids.splice(ids.indexOf(targetId), 0, from);
-    saveOrder(ids);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    // Tabs differ in width; waiting for the middle stops a swap undoing itself.
+    if ((from < to && e.clientX < mid) || (from > to && e.clientX > mid)) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragId);
+    setPreviewOrder(ids);
   };
+
+  // Released: keep what is on screen, saving it if it changed.
+  const finishDrag = () => {
+    const ids = previewRef.current;
+    setDragId(null);
+    setPreviewOrder(null);
+    if (!ids) return;
+    const before = listed.map((u) => u.id);
+    if (ids.join() !== (localOrder ?? before).join()) saveOrder(ids);
+  };
+
+  // Studios first, then by bedrooms, bathrooms and size.
+  const layoutOrder = [...listed]
+    .sort(
+      (a, b) =>
+        (a.bedrooms ?? 99) - (b.bedrooms ?? 99) ||
+        (Number(a.bathrooms) || 99) - (Number(b.bathrooms) || 99) ||
+        (Number(a.area) || 0) - (Number(b.area) || 0) ||
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true })
+    )
+    .map((u) => u.id);
+  const sortedAlready = layoutOrder.join() === visible.map((u) => u.id).join();
 
   /*
    * One unit open at a time, selected by id rather than index so adding or
@@ -970,6 +1011,7 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
             disabled={savingOrder}
             onDragStart={(e) => {
               setDragId(u.id);
+              setPreviewOrder(visible.map((x) => x.id));
               e.dataTransfer.effectAllowed = "move";
               // Firefox will not start a drag without data.
               try { e.dataTransfer.setData("text/plain", u.id); } catch {}
@@ -978,10 +1020,10 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
               if (!dragId) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
-              if (overId !== u.id) setOverId(u.id);
+              dragOver(e, u.id);
             }}
-            onDrop={(e) => { e.preventDefault(); dropOn(u.id); }}
-            onDragEnd={() => { setDragId(null); setOverId(null); }}
+            onDrop={(e) => { e.preventDefault(); finishDrag(); }}
+            onDragEnd={finishDrag}
             className={`flex-1 whitespace-nowrap border-b-2 px-3 py-2.5 text-center text-sm font-semibold transition ${
               savingOrder
                 ? openUnit.id === u.id && !drafting
@@ -991,8 +1033,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
                 ? "border-red-600 bg-red-600 text-white"
                 : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
             }${canReorder ? " cursor-grab active:cursor-grabbing" : ""}${
-              dragId === u.id ? " opacity-40" : ""
-            }${overId === u.id && dragId !== u.id ? " ring-2 ring-inset ring-red-300" : ""}`}
+              dragId === u.id ? " opacity-50 ring-2 ring-inset ring-red-400" : ""
+            }`}
           >
             {unitTabLabel(u)}
             {/* A unit with nothing on offer still gets a tab — it is the only
@@ -1013,16 +1055,26 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
         {addButton}
       </div>
       {isPropertyOwner && listed.length > 1 && (
-        <p className="-mt-1 flex items-center gap-1.5 px-1 text-[11px] text-gray-400">
+        <div className="-mt-1 flex items-center gap-2 px-1 text-[11px] text-gray-400">
           {savingOrder ? (
-            <>
+            <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-gray-500" />
               Saving order…
-            </>
+            </span>
           ) : (
-            "Drag the tabs to change the order students see."
+            <span>Drag the tabs to change the order students see.</span>
           )}
-        </p>
+          <button
+            type="button"
+            onClick={() => saveOrder(layoutOrder)}
+            disabled={savingOrder || sortedAlready}
+            title={sortedAlready ? "Already sorted by bedrooms and bathrooms" : "Sort studios first, then by bedrooms, bathrooms and size"}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 font-medium text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:cursor-default disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+          >
+            <ArrowDownWideNarrow className="h-3 w-3" />
+            Sort by beds and baths
+          </button>
+        </div>
       )}
 
       {drafting ? (
