@@ -112,6 +112,25 @@ const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y
  * already has data. The difference shows up in a few places: a sync adds new
  * units as drafts and leaves prose alone, an import writes everything.
  */
+/* Delete the property's cover when it is a Street View placeholder. */
+async function dropStreetViewCover(listingId) {
+  const { data: cover } = await supabase
+    .from("listing_images")
+    .select("id, source")
+    .eq("listing_id", listingId)
+    .is("unit_id", null)
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (cover?.source !== "street_view") return false;
+  const { error } = await supabase.from("listing_images").delete().eq("id", cover.id);
+  if (error) {
+    console.error("[source-import] street view cover not removed:", error.message);
+    return false;
+  }
+  return true;
+}
+
 export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null }) {
   const changes = [];
   const push = (c) => changes.push({ auto: true, ...c });
@@ -415,6 +434,12 @@ export async function executeChange(change, { state, userId }) {
     }
     case "photos_add": {
       const n = await insertImages({ state, userId, unitId: d.unitId, urls: d.urls, slug });
+      // Real photos of the building retire the Street View stand-in that
+      // was its cover (added when it was listed with nothing else).
+      if (n > 0 && !d.unitId) {
+        const removed = await dropStreetViewCover(state.id);
+        if (removed) return `${n} photo${n === 1 ? "" : "s"}, Street View cover removed`;
+      }
       return `${n} photo${n === 1 ? "" : "s"}`;
     }
     case "unit_insert": {
