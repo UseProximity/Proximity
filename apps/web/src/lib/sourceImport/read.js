@@ -412,8 +412,48 @@ function unitsFromModel(listing) {
  * The model's units fill the gaps in the reader's: bed and bath counts the
  * plan page did not print, matched by name and then by size.
  */
+/*
+ * One key for a floor plan's name across sources: SightMap says "Unit 04",
+ * the portal "04", the website "Plan 04".
+ */
+export const planKey = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/\b(floor\s*plan|floorplan|plan|unit|the|apartment|apt)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+/* Same layout: equal beds and baths, sizes within 2 sq ft. */
+const sameLayout = (a, b) =>
+  a.bedrooms != null && a.bedrooms === b.bedrooms && Number(a.bathrooms) === Number(b.bathrooms) && a.area && b.area && Math.abs(a.area - b.area) <= 2;
+
+/*
+ * Floor plans are unique on beds, baths and size: two entries with the same
+ * layout (a plan the feed and the website both list under different names)
+ * become one, its leases pooled. Entries missing any of the three are left
+ * as they are.
+ */
+export function dedupeLayouts(units) {
+  const out = [];
+  for (const u of units) {
+    const twin = out.find((o) => (planKey(o.name) && planKey(o.name) === planKey(u.name)) || sameLayout(o, u));
+    if (!twin) {
+      out.push(u);
+      continue;
+    }
+    const have = new Set(twin.offers.flatMap((o) => o.apartments ?? []));
+    for (const o of u.offers ?? []) {
+      const apts = o.apartments ?? [];
+      if (apts.length ? apts.some((a) => !have.has(a)) : !twin.offers.some((t) => t.rent === o.rent)) twin.offers.push(o);
+    }
+    twin.floorPlanImageUrl ??= u.floorPlanImageUrl;
+    if (!(twin.photos ?? []).length && (u.photos ?? []).length) twin.photos = u.photos;
+    twin.available = twin.available !== false || u.available !== false;
+  }
+  return out;
+}
+
 function fillFromModel(readerUnits, modelUnits) {
-  const norm = (s) => String(s ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const norm = planKey;
   const used = new Set();
   for (const ru of readerUnits) {
     const i = modelUnits.findIndex(
@@ -438,7 +478,13 @@ function fillFromModel(readerUnits, modelUnits) {
       if (!o.availableFrom && date && !o.apartments?.length) o.availableFrom = date;
     }
   }
-  return readerUnits;
+  /*
+   * Plans the website shows that no feed carried: a plan with nothing free
+   * right now ("Call for details", a waitlist) is missing from a feed of
+   * available apartments but is still a floor plan of the building.
+   */
+  const extra = modelUnits.filter((mu, n) => !used.has(n) && !readerUnits.some((ru) => sameLayout(ru, mu)));
+  return dedupeLayouts([...readerUnits, ...extra]);
 }
 
 // ---------------------------------------------------------------- discovery
@@ -813,7 +859,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (portal) {
       const sc = await readSecureCafe(portal, { known: knownPortal?.propertyId === portal.propertyId ? knownPortal : null, onStep });
       if (sc?.units?.length) {
-        const norm = (x) => String(x ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+        const norm = planKey;
         const byName = new Map(readerUnits.map((u) => [norm(u.name), u]));
         for (const u of sc.units) {
           const e = byName.get(norm(u.name));
@@ -825,7 +871,10 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
           if (!(u.photos ?? []).length) u.photos = e.photos ?? [];
         }
         platform = readerUnits.length ? `${platform}+securecafe` : "securecafe";
-        readerUnits = sc.units;
+        // The portal's apartments win where both list them; plans and
+        // apartments only another reader found (SightMap, the website's own
+        // feed) are kept, not dropped.
+        readerUnits = dedupeLayouts([...sc.units, ...readerUnits]);
         embeddedConcessions = [...new Set([...embeddedConcessions, ...sc.concessions])];
         notes.push(...sc.notes);
         confidence = "high";
@@ -982,7 +1031,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (readerUnits.length) {
       units = fillFromModel(readerUnits, modelUnits);
     } else {
-      units = modelUnits;
+      units = dedupeLayouts(modelUnits);
       if (units.some((u) => u.rentUnknown)) {
         runNotes.push("The site does not say whether its prices are per person or for the whole unit. They were imported as whole-unit rents; switch any that are per person.");
       }

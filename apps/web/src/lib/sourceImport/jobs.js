@@ -259,6 +259,25 @@ async function monitorIdFor(listingId) {
   return data?.id ?? null;
 }
 
+/*
+ * A building this landlord claimed through an import whose read never got
+ * to take it over (the claiming run was cancelled, or failed): the next
+ * import finishes the job. Once one run has taken over, later imports are
+ * ordinary re-reads and leave the description alone.
+ */
+async function claimNotFinished(listingId, userId, jobId) {
+  const { data } = await supabase
+    .from("listing_import_jobs")
+    .select("id, status, target, result")
+    .eq("listing_id", listingId)
+    .eq("user_id", userId)
+    .neq("id", jobId);
+  const rows = data ?? [];
+  const claimed = rows.some((j) => j.target?.alreadyListed?.claimed);
+  const finished = rows.some((j) => j.status === "done" && j.result?.tookOver);
+  return claimed && !finished;
+}
+
 /* The landlord's own contact details, for a building they just claimed. */
 async function contactFor(userId) {
   const { data } = await supabase.from("users").select("name, email, phone").eq("id", userId).maybeSingle();
@@ -321,7 +340,7 @@ export async function runJob(jobId) {
       // An existing listing is reviewed before anything changes.
       autoApply: mode === "import",
       listingLabel: listing.title ?? listing.address,
-      takeover: target.alreadyListed?.claimed ? { contact: await contactFor(job.user_id) } : null,
+      takeover: (target.alreadyListed?.claimed || (await claimNotFinished(listing.id, job.user_id, job.id))) ? { contact: await contactFor(job.user_id) } : null,
     });
 
     if (mode === "import") {
@@ -348,6 +367,7 @@ export async function runJob(jobId) {
           applied: result.applied.length,
           held: result.held.length,
           holdReason: result.holdReason,
+          tookOver: !!result.takeover,
           seconds: Math.round((Date.now() - started) / 1000),
           // What was read and where it came from, for anyone debugging a read.
           trace: { ...(snapshot.trace ?? {}), photosStored: result.applied.filter((c) => c.kind === "photos_added" || c.kind === "unit_new").map((c) => c.note).filter(Boolean) },

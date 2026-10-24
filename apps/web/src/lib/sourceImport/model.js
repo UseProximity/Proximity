@@ -132,7 +132,7 @@ Rules, in order of importance:
    (b) a small building where each apartment is presented on its own: ONE unit per APARTMENT, named as the site does ("6219 S", "2W", "Unit B"), with "apartments" empty.
    (c) a whole house let as one: one unit, name null.
    Never invent a name from the bed and bath count. Studios are bedrooms 0. When one bathroom count is listed alongside several bedroom options, apply it to each. "available" is false for a plan the site marks waitlist, sold out or call for details with no price. "leaseTermMonths" holds lease lengths the site states for this plan in months; empty when it does not say. A sentence like "lease terms from 3 to 24 months" is a range they will discuss, not a price per term: leave leaseTermMonths empty and add a sourceNote.
-   When a KNOWN UNITS section is given, those units were read exactly from the site's own feed or floor plan pages: do not restate them. Return "units" as an empty array and only fill the property fields.
+   When a KNOWN UNITS section is given, those units were read exactly from the site's own feed or floor plan pages: do not restate them. In "units", return only floor plans the pages show that are NOT among the known units (a different bed, bath or square-foot combination), such as plans marked "call for details" or waitlisted, with available false when the page says so. Return an empty array when the known units cover every plan.
 7. AMENITIES: map what the site states onto the allowed values; anything real that does not fit goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
 8. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) photos OF THIS PROPERTY: exteriors, interiors, amenity spaces. Use the alt text, file name and which pages it appeared on as evidence. A floor plan diagram that clearly belongs to one unit goes in that unit's floorPlanImageUrl and not in imageUrls. Exclude logos, maps, people, stock shots and other properties. Return candidate URLs exactly as given.
 9. description: plain prose for a student reader, in paragraphs separated by one blank line, 120 to 350 words, only facts the pages (or a FLYER section) state. Use this order and leave out any paragraph the pages give nothing for:
@@ -163,7 +163,7 @@ function buildSections({ pages, images, links, targetProperty, brandName, knownU
   for (const x of extras) if (x) sections.push(x);
   if (knownUnits?.length) {
     sections.push(
-      `KNOWN UNITS (read exactly from the property's own feed or floor plan pages; do not restate them, return "units": []):\n` +
+      `KNOWN UNITS (read exactly from the property's own feed or floor plan pages; do not restate them; in "units" return only plans the pages show that are not listed here):\n` +
         knownUnits
           .map(
             (u) =>

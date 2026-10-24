@@ -328,7 +328,7 @@ function ListingTab({ job, user, onPublished }) {
       </div>
 
       {p.isDraft && <ImportGaps listing={p} />}
-      {!p.isDraft && <Proposed listingId={p._id || p.id} proposed={data.proposed ?? []} flagged={data.flagged ?? []} onApplied={load} claimed={!!job.target?.alreadyListed?.claimed} />}
+      {!p.isDraft && <Proposed listingId={p._id || p.id} proposed={data.proposed ?? []} flagged={data.flagged ?? []} onApplied={load} claimed={!!(job.target?.alreadyListed?.claimed || job.result?.tookOver)} />}
 
       <EditorOverview listing={p} canEdit={isPropertyOwner} onChanged={load} />
       <PropertyPhotoRow listing={p} isPropertyOwner={isPropertyOwner} onChanged={load} />

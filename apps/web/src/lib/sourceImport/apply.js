@@ -77,11 +77,29 @@ const norm = (s) => String(s ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
  */
 export function matchUnits(snapUnits, dbUnits) {
   const pool = dbUnits.map((u) => ({ u, used: false }));
-  const pairs = [];
+  /*
+   * Names first, across every plan, then layout for what is left. One plan
+   * at a time, 212 Clayton's "09" (781 sq ft) came before "12" and took the
+   * listing's existing "12" (786 sq ft) by size; the real 12 then looked new.
+   */
+  const byName = new Map();
   for (const s of snapUnits) {
     const sName = norm(s.name);
-    let hit = sName ? pool.find((p) => !p.used && norm(p.u.name) === sName) : null;
-    if (!hit && s.bedrooms != null && s.bathrooms != null) {
+    const hit = sName ? pool.find((p) => !p.used && norm(p.u.name) === sName) : null;
+    if (hit) {
+      hit.used = true;
+      byName.set(s, hit.u);
+    }
+  }
+  const pairs = [];
+  for (const s of snapUnits) {
+    if (byName.has(s)) {
+      pairs.push({ snap: s, db: byName.get(s) });
+      continue;
+    }
+    const sName = norm(s.name);
+    let hit = null;
+    if (s.bedrooms != null && s.bathrooms != null) {
       const same = pool.filter((p) => !p.used && Number(p.u.bedrooms) === Number(s.bedrooms) && Number(p.u.bathrooms) === Number(s.bathrooms));
       const gap = (p) => (Number(p.u.area) > 0 && s.area > 0 ? Math.abs(Number(p.u.area) - s.area) / Math.max(Number(p.u.area), s.area) : Infinity);
       hit = same.filter((p) => gap(p) <= 0.05).sort((a, b) => gap(a) - gap(b))[0] ?? null;
@@ -512,7 +530,13 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     // The same held change, run after run, is one open event, not a pile.
     const { data: open } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open");
     const seen = new Set((open ?? []).map((e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`));
-    fresh = changes.filter((c) => !seen.has(`${c.kind}|${c.unitKey ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`));
+    fresh = changes.filter((c) => {
+      const key = `${c.kind}|${c.unitKey ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
+      if (seen.has(key)) return false;
+      // ...and the same change twice in one read is one event too.
+      seen.add(key);
+      return true;
+    });
     if (!fresh.length) return [];
   }
   const rows = fresh.map((c) => ({
@@ -529,8 +553,16 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     detail: { ...c.detail, note: c.note ?? null, judge: c.judgeResult ?? null, unitId: c.unitId ?? c.detail.unitId ?? null, leaseId: c.leaseId ?? c.detail.leaseId ?? null },
   }));
   const { data, error } = await supabase.from("listing_source_events").insert(rows).select("id");
-  if (error) console.error("[source-import] events:", error.message);
-  return data ?? [];
+  if (!error) return data ?? [];
+  // One row the table refuses must not lose the rest: save them one by one.
+  console.error(`[source-import] events: ${error.message}; saving ${rows.length} one at a time`);
+  const saved = [];
+  for (const row of rows) {
+    const one = await supabase.from("listing_source_events").insert(row).select("id");
+    if (one.error) console.error(`[source-import] event ${row.kind} ${row.unit_key ?? ""} not saved: ${one.error.message}`);
+    else saved.push(...(one.data ?? []));
+  }
+  return saved;
 }
 
 /* Lease ids a previous sync withdrew, so a relist of one is routine. */
@@ -631,7 +663,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (applied.length && mode === "sync") {
     await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
   }
-  return { applied, held, holdReason, summary: summarize(snapshot) };
+  return { applied, held, holdReason, summary: summarize(snapshot), takeover: !!takeover };
 }
 
 /*

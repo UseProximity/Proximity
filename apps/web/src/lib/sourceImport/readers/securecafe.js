@@ -29,6 +29,8 @@ import { isoDate, money, num } from "../snapshot.js";
 export const SECURECAFE_RE = /https?:\/\/([a-z0-9-]+)\.securecafe\.com\/onlineleasing\/([a-z0-9-]+)\/oleapplication\.aspx\?([^"'\s<>]*)/i;
 const TIMEOUT_NOTE = "The leasing portal did not answer its price quotes; rents are the ones on its apartment list.";
 const MAX_QUOTED = 150;
+// How far ahead the apartment list is asked for, so later move-ins show.
+const LIST_AHEAD_DAYS = 180;
 const CONCURRENCY = 3;
 
 /* Portal coordinates from any page HTML: { host, slug, propertyId } or null. */
@@ -166,9 +168,9 @@ export const quoteScript = ({ portal, moveIn, apartments }) => `
   (async () => {
     const out = {};
     const clean = (s) => s.replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ');
-    const movein = ${JSON.stringify(encodeURIComponent(moveIn))};
-    for (const a of ${JSON.stringify(apartments.map((a) => ({ u: a.unitId, p: a.planId })))}) {
+    for (const a of ${JSON.stringify(apartments.map((a) => ({ u: a.unitId, p: a.planId, m: encodeURIComponent(a.moveIn ?? moveIn) })))}) {
       const u = a.u;
+      const movein = a.m;
       out[u] = { terms: null, quotes: {} };
       try {
         const page = await fetch('/onlineleasing/${portal.slug}/oleapplication.aspx?Stepname=RentalOptions&myOlePropertyId=${portal.propertyId}&UnitID=' + u + '&FloorPlanID=' + a.p + '&header=1&MoveInDate=' + movein, { credentials: 'include' });
@@ -231,7 +233,7 @@ async function quoteApartments(portal, apartments, moveIn, onStep, progress = { 
       const batch = batches[cursor++];
       if (!batch) return;
       const lead = batch[0];
-      const r = await renderPage(rentalOptionsUrl(portal, lead, moveIn), {
+      const r = await renderPage(rentalOptionsUrl(portal, lead, lead.moveIn ?? moveIn), {
         waitMs: 3000,
         raw: true,
         actions: [{ type: "executeJavascript", script: quoteScript({ portal, moveIn, apartments: batch }) }],
@@ -349,7 +351,13 @@ const MAX_PLAN_PHOTOS = 12;
 export async function readSecureCafe(portal, { known = null, onStep = () => {}, deep = true } = {}) {
   onStep("Reading the leasing portal");
   const moveIn = soon();
-  const page = await renderPage(apartmentsUrl(portal, moveIn), { waitMs: 6000, actions: [{ type: "executeJavascript", script: planImagesScript() }] });
+  /*
+   * The Apartments step lists what is free by the move-in date asked for:
+   * two weeks out, 212 Clayton showed 3 of its 17 apartments. Asked six
+   * months out it lists them all; each is then priced at its own date.
+   */
+  const listMoveIn = mdy(new Date(Date.now() + LIST_AHEAD_DAYS * 86400000));
+  const page = await renderPage(apartmentsUrl(portal, listMoveIn), { waitMs: 6000, actions: [{ type: "executeJavascript", script: planImagesScript() }] });
   const parsed = page ? parseApartmentsPage(page.html) : null;
   if (!parsed) return null;
   let planImages = {};
@@ -374,7 +382,11 @@ export async function readSecureCafe(portal, { known = null, onStep = () => {}, 
     const r = remembered.get(a.unitId);
     return r && r.rent === a.rent && r.termPrices && Array.isArray(r.terms) && r.terms.length;
   };
-  const toQuote = all.filter((a) => a.rent != null && !fresh(a)).slice(0, deep ? MAX_QUOTED : BATCH);
+  const toQuote = all
+    .filter((a) => a.rent != null && !fresh(a))
+    .slice(0, deep ? MAX_QUOTED : BATCH)
+    // Priced for the day it frees up (or soon, if it is free now).
+    .map((a) => ({ ...a, moveIn: a.availableOn && new Date(a.availableOn) > new Date(Date.now() + 86400000) ? mdy(new Date(`${a.availableOn}T12:00:00`)) : moveIn }));
   let range = known?.range ?? null;
   let term = known?.term ?? null;
   let specialValue = null;
