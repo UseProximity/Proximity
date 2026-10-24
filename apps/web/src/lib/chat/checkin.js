@@ -459,6 +459,7 @@ export function renderCheckinDigest({ items, audit = null, baseUrl, dryRun = fal
 export async function sendCheckinDigestEmail({ to, items, audit = null, baseUrl, dryRun = false }) {
   const { subject, html } = renderCheckinDigest({ items, audit, baseUrl, dryRun });
   return sendMailSafe(transporter, {
+    logAs: { kind: "chat_checkin_digest" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     replyTo: "info@useproximity.org",

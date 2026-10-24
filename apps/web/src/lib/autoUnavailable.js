@@ -248,6 +248,7 @@ export async function sendReviewDigestEmail({ to, items, dryRun = false }) {
     (items.corrections?.length ?? 0) + (items.undone?.length ?? 0);
 
   return sendMailSafe(transporter, {
+    logAs: { kind: "auto_unavailable_review" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     replyTo: "info@useproximity.org",

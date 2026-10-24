@@ -25,6 +25,7 @@ export async function sendNewListingEmail(toEmail, toName, address, listingId, r
   }
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
   await sendMailSafe(transporter, {
+    logAs: { kind: "new_listing" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "You have a new listing on Proximity!",

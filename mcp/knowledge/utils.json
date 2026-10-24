@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T18:37:19.684Z",
-  "count": 152,
+  "_generated": "2026-10-24T19:51:35.633Z",
+  "count": 155,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -246,6 +246,18 @@
     {
       "file": "src/lib/email/newListingEmail.js",
       "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
+    },
+    {
+      "file": "src/lib/emailKinds.js",
+      "description": "The categories and labels for the admin \"Sent emails\" page (Wyatt,"
+    },
+    {
+      "file": "src/lib/emailLog.js",
+      "description": "The record of every email the app sends, for the admin \"Sent emails\" page"
+    },
+    {
+      "file": "src/lib/emailLog.test.js",
+      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/escapeHtml.js",

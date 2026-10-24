@@ -289,6 +289,7 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
   }
 
   await sendMailSafe(_mailer, {
+    logAs: { kind: "landlord_review" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     bcc: bccTeam ? TEAM_EMAIL : undefined,
@@ -315,6 +316,7 @@ async function sendContactMismatchAlert({ listingAddress, listingId, ownerEmail,
   }
   const listingUrl = `${SITE_URL}/browse?listing=${listingId}`;
   await sendMailSafe(_mailer, {
+    logAs: { kind: "contact_mismatch" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: TEAM_EMAIL,
     subject: "⚠️ Review landlord-email mismatch on Proximity",

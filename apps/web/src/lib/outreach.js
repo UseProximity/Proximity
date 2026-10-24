@@ -25,8 +25,13 @@
  *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
+ *
+ * Every attempt (sent, redirected, suppressed or failed) is written to sent_emails for
+ * the admin "Sent emails" page (lib/emailLog.js, Wyatt, 2026-10-24). Label the email with
+ * `logAs: { kind, threadId?, userId? }` on the message; it is removed before sending.
  */
 import { outreachEnabled } from "./appEnv.js";
+import { recordEmail } from "./emailLog.js";
 
 // One ordinary address only: commas, semicolons and angle brackets are rejected so a
 // header, cookie or env value cannot name several recipients (nodemailer splits on them).
@@ -74,7 +79,42 @@ async function stagingTestRecipient(req) {
   }
 }
 
+// SES's MessageId is what its delivery events carry; nodemailer's SES transport
+// returns it as `response`. Gmail (SMTP) never reports delivery.
+function sentOutcome(transporter, info, redirectedTo) {
+  const ses = transporter?.transporter?.name === "SESTransport";
+  return {
+    provider: ses ? "ses" : "gmail",
+    providerMessageId: ses ? info?.response ?? null : info?.messageId ?? null,
+    status: "sent",
+    redirectedTo,
+  };
+}
+
 export async function sendMailSafe(transporter, message, req) {
+  const { logAs, ...mail } = message ?? {};
+  let redirectedTo = null;
+  try {
+    const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; });
+    await recordEmail(
+      mail,
+      logAs,
+      info?.suppressed ? { status: "suppressed" } : sentOutcome(transporter, info, redirectedTo)
+    );
+    return info;
+  } catch (err) {
+    const ses = transporter?.transporter?.name === "SESTransport";
+    await recordEmail(mail, logAs, {
+      provider: ses ? "ses" : "gmail",
+      status: "failed",
+      detail: String(err?.message ?? err),
+      redirectedTo,
+    });
+    throw err;
+  }
+}
+
+async function deliver(transporter, message, req, onRedirect) {
   if (outreachEnabled()) {
     return transporter.sendMail(message);
   }
@@ -91,6 +131,7 @@ export async function sendMailSafe(transporter, message, req) {
   if (to) {
     const original = message?.to ?? "(none)";
     console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);
+    onRedirect(to);
     // Collapse everything to the single test inbox — drop cc/bcc so a real (or
     // placeholder) carbon-copy recipient is never emailed off production.
     return transporter.sendMail({

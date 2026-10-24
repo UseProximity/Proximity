@@ -454,6 +454,7 @@ export function renderCheckinReport({ report, dryRun = false }) {
 export async function sendCheckinReportEmail({ to, report, dryRun = false }) {
   const { subject, html } = renderCheckinReport({ report, dryRun });
   return sendMailSafe(checkinTransporter, {
+    logAs: { kind: "chat_checkin_report" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     replyTo: "info@useproximity.org",

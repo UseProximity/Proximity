@@ -8,6 +8,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { sendMailSafe, stagingEmailHeader } from "./outreach.js";
 
+// The sent_emails log needs a database; these tests only check where mail goes.
+process.env.EMAIL_LOG_DISABLED = "1";
+
 const ENV_KEYS = ["APP_ENV", "VERCEL_ENV", "OUTREACH_TEST_RECIPIENT", "STAGING_EMAIL_ALLOWLIST"];
 let saved;
 
@@ -40,6 +43,16 @@ describe("stagingEmailHeader", () => {
     assert.equal(stagingEmailHeader(reqWith(undefined)), null);
     assert.equal(stagingEmailHeader(undefined), null);
     assert.equal(stagingEmailHeader(null), null);
+  });
+});
+
+describe("sent email log label", () => {
+  it("is removed before the message reaches the mail provider", async () => {
+    process.env.APP_ENV = "production";
+    const t = fakeTransporter();
+    await sendMailSafe(t, { ...message(), logAs: { kind: "password_reset" } });
+    assert.equal(t.sent.length, 1);
+    assert.equal("logAs" in t.sent[0], false);
   });
 });
 

@@ -11,6 +11,10 @@ import { TRANSITIONS, statusOf } from "@/lib/chat/emailStatus";
  * publishes DELIVERY, DELIVERY_DELAY, BOUNCE, COMPLAINT, REJECT and
  * RENDERING_FAILURE events to the topic in AWS_SES_EVENTS_TOPIC_ARN.
  *
+ * The same event also moves the email's sent_emails row (the admin "Sent
+ * emails" page, every email the app sends; Wyatt, 2026-10-24) with the same
+ * rules.
+ *
  * Every event moves the matching chat_email_log row along (Wyatt, 2026-10-23):
  * delivered, delayed, bounced, complained, rejected or failed. A row only moves
  * forward, so a late "delayed" never hides a delivery and a delivery never hides
@@ -68,8 +72,8 @@ export async function POST(req) {
   }
 
   const type = event?.eventType || event?.notificationType;
-  const tracked = await trackChatEmail(type, event);
-  if (!tracked) {
+  const [tracked, logged] = await Promise.all([trackChatEmail(type, event), trackSentEmail(type, event)]);
+  if (!tracked || !logged) {
     // 500 makes SNS retry, so a lost status write is not lost for good.
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
@@ -114,6 +118,44 @@ export async function POST(req) {
 
   console.log(`SES events: suppressed ${emails.length} address(es) for ${reason}`);
   return NextResponse.json({ ok: true });
+}
+
+/*
+ * Update the sent_emails row for this SES message. The row is written just
+ * after SES accepts the email, and a delivery can be reported within a second,
+ * so a fresh event that finds nothing waits once and tries again. Returns false
+ * only when the write itself failed.
+ */
+async function trackSentEmail(type, event, retried = false) {
+  const next = statusOf(type, event);
+  const sesId = event?.mail?.messageId;
+  if (!next || !sesId) return true;
+
+  const at = event.delivery?.timestamp ?? event.bounce?.timestamp ?? event.complaint?.timestamp ?? event.mail?.timestamp;
+  const statusAt = at ? new Date(at).toISOString() : new Date().toISOString();
+  const { data: rows, error } = await supabase
+    .from("sent_emails")
+    .update({
+      status: next.status,
+      status_detail: next.detail ? String(next.detail).slice(0, 500) : null,
+      status_at: statusAt,
+      ...(next.status === "delivered" ? { delivered_at: statusAt } : {}),
+    })
+    .eq("provider", "ses")
+    .eq("provider_message_id", sesId)
+    .in("status", TRANSITIONS[next.status])
+    .select("id");
+  if (error) {
+    console.error("SES events: sent email status update failed:", error);
+    return false;
+  }
+
+  const sentAt = Date.parse(event.mail?.timestamp ?? "");
+  if (!rows?.length && !retried && Date.now() - sentAt < 60_000) {
+    await new Promise((r) => setTimeout(r, 2000));
+    return trackSentEmail(type, event, true);
+  }
+  return true;
 }
 
 const TEAM_WORDING = {
