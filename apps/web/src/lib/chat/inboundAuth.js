@@ -14,11 +14,36 @@
  * their own domain. Clocktower's reply of 2026-10-20 was lost that way. Both
  * spellings are read now.
  *
+ * Google Workspace's default DKIM signature counts as proof too (Wyatt,
+ * 2026-10-24). A Workspace customer that never set up its own DKIM key has
+ * its mail signed as <domain with dots as dashes>.<date>.gappssmtp.com, for
+ * example revivalstl-com.20251104.gappssmtp.com. Google only signs that way
+ * for the Workspace account that owns the domain, so a pass proves the mail
+ * came from that domain's own Google account even when its SPF record
+ * forgets to list Google (Revival STL's reply of 2026-10-24 was lost that
+ * way). A free gmail.com sender cannot get one.
+ *
  * Kept free of app imports so the node test runner can load it directly.
  */
 
 export function domainOf(email) {
   return String(email ?? "").trim().toLowerCase().split("@")[1] || "";
+}
+
+// <domain-with-dashes>.<digits>.gappssmtp.com
+const GAPPS_DKIM = /^([a-z0-9-]+)\.\d{6,10}\.gappssmtp\.com$/;
+
+/*
+ * Is `dkimDomain` Google's default Workspace signing domain for `fromDomain`?
+ * Only for a plain name.tld domain with no dash. Turning dots into dashes
+ * makes landlord-co.com and landlord.co.com sign as the same name, so for any
+ * other shape the signature does not say which domain sent it.
+ */
+export function workspaceDefaultDkim(dkimDomain, fromDomain) {
+  const from = String(fromDomain ?? "").toLowerCase();
+  if (!/^[a-z0-9]+\.[a-z]+$/.test(from)) return false;
+  const m = String(dkimDomain ?? "").toLowerCase().match(GAPPS_DKIM);
+  return Boolean(m) && m[1] === from.replace(/\./g, "-");
 }
 
 export function aligned(a, b) {
@@ -57,7 +82,8 @@ export function authenticated(headerLines, fromEmail) {
   }
 
   for (const m of results.matchAll(/\bdkim=pass\b[^;]*?header\.(?:i|d)=@?([^\s;]+)/gi)) {
-    if (aligned(m[1].toLowerCase().replace(/^.*@/, ""), fromDomain)) return true;
+    const dkimDomain = m[1].toLowerCase().replace(/^.*@/, "");
+    if (aligned(dkimDomain, fromDomain) || workspaceDefaultDkim(dkimDomain, fromDomain)) return true;
   }
   return false;
 }

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T17:39:37.734Z",
-  "count": 147,
+  "_generated": "2026-10-24T17:44:21.240Z",
+  "count": 151,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -194,6 +194,22 @@
     {
       "file": "src/lib/chat/replyAddress.js",
       "description": "Private reply addresses for chat alert emails."
+    },
+    {
+      "file": "src/lib/chat/replySenderApproval.js",
+      "description": "Holding, approving and declining emailed replies from someone other than the"
+    },
+    {
+      "file": "src/lib/chat/replySenderRequest.js",
+      "description": "Ask a landlord, once per sender, whether someone else may reply by email on"
+    },
+    {
+      "file": "src/lib/chat/replySenders.js",
+      "description": "Who else may reply by email on a landlord's behalf (Wyatt, 2026-10-24)."
+    },
+    {
+      "file": "src/lib/chat/replySenders.test.js",
+      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/chat/safety.js",

@@ -7,6 +7,7 @@ import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
 import NoReplyNote from "@/components/chat/NoReplyNote";
+import HeldRepliesBanner from "@/components/chat/HeldRepliesBanner";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
@@ -513,6 +514,7 @@ export default function ChatTranscript({
         </div>
       ) : (
       <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
+        {thread?.threadId && !thread?.isInterestedUser && <HeldRepliesBanner threadId={thread.threadId} />}
         {showNoReply && (
           <NoReplyNote
             threadId={thread.threadId}

@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
+import { domainApprovable } from "@/lib/chat/replySenders";
 
 /*
  * One thread in full for the admin Conversations view: every message (deleted
@@ -10,6 +11,11 @@ import { getSupabaseClient } from "@/lib/supabase";
  * a message id are flags on a message that was posted; events without one are
  * attempts that were blocked before anything was posted, kept so an admin can
  * see what someone tried to send.
+ *
+ * Also every emailed reply addressed to this conversation that was not posted
+ * (held for the landlord's approval, refused, failed), and the landlord's
+ * list of who may reply for them by email (Wyatt, 2026-10-24). Decisions on
+ * those are made through /api/admin/chat/reply-senders.
  *
  * Read only. Nothing here marks events reviewed or edits messages.
  *
@@ -38,8 +44,8 @@ function getDbTarget(req) {
 }
 
 export async function GET(req, { params }) {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -83,6 +89,24 @@ export async function GET(req, { params }) {
 
     if (threadError) throw threadError;
     if (!thread) return Response.json({ error: "Not found" }, { status: 404 });
+
+    const [{ data: inbound, error: inError }, { data: senders, error: sendersError }] = await Promise.all([
+      supabase
+        .from("chat_inbound_emails")
+        .select("id, from_email, sender_name, status, reason, body_preview, created_at, approval_requested_at")
+        .eq("thread_id", threadId)
+        .not("status", "in", "(posted,processing)")
+        .order("created_at", { ascending: true }),
+      thread.landlord_id
+        ? supabase
+            .from("landlord_reply_senders")
+            .select("id, pattern, decision, decided_via, updated_at")
+            .eq("landlord_id", thread.landlord_id)
+            .order("updated_at", { ascending: false })
+        : { data: [], error: null },
+    ]);
+    if (inError) throw inError;
+    if (sendersError) throw sendersError;
     if (msgError) throw msgError;
     if (evError) throw evError;
 
@@ -156,12 +180,31 @@ export async function GET(req, { params }) {
         body: m.body,
         type: m.message_type,
         via: m.metadata?.via === "email" ? "email" : "app",
+        emailFrom: m.metadata?.email_from ?? null,
         createdAt: m.created_at,
         deletedAt: m.deleted_at,
         attachments: attachmentsByMessage.get(m.id) ?? [],
         flags: eventsByMessage.get(m.id) ?? [],
       })),
       blockedAttempts,
+      refusedReplies: (inbound ?? []).map((r) => ({
+        id: r.id,
+        fromEmail: r.from_email,
+        senderName: r.sender_name,
+        status: r.status,
+        reason: r.reason,
+        preview: r.body_preview,
+        receivedAt: r.created_at,
+        landlordAskedAt: r.approval_requested_at,
+        canApproveDomain: domainApprovable(r.from_email),
+      })),
+      replySenders: (senders ?? []).map((r) => ({
+        id: r.id,
+        pattern: r.pattern,
+        decision: r.decision,
+        decidedVia: r.decided_via,
+        updatedAt: r.updated_at,
+      })),
     });
   } catch (err) {
     console.error("GET /api/admin/chat/threads/[threadId] failed:", err);
