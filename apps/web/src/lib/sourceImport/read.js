@@ -67,7 +67,7 @@ import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
-import { readWithModel, sortPhotosByUnit, choosePagesToExplore, reviewNotes } from "./model.js";
+import { readWithModel, sortPhotosByUnit, choosePagesToExplore, reviewNotes, judgeSamePlan } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
 export { DraftFetchError };
@@ -427,32 +427,53 @@ const sameLayout = (a, b) =>
   a.bedrooms != null && a.bedrooms === b.bedrooms && Number(a.bathrooms) === Number(b.bathrooms) && a.area && b.area && Math.abs(a.area - b.area) <= 2;
 
 /*
- * Floor plans are unique on beds, baths and size: two entries with the same
- * layout (a plan the feed and the website both list under different names)
- * become one, its leases pooled. Entries missing any of the three are left
- * as they are.
+ * One entry per floor plan. Two entries with the same name (after "Unit",
+ * "Plan" and punctuation are set aside) are one plan, their leases pooled.
+ * Two with different names are different plans, even with the same beds,
+ * baths and size: the Barton's Musial and Cassily are both 1 bed, 1 bath,
+ * 750 sq ft, at different rents. Only when the two come from different
+ * sources (a feed and the website, or two feeds), where one plan can be
+ * listed under two names, does the model look at both (drawings included)
+ * and decide. An entry with no name and the same layout is a duplicate.
  */
-export function dedupeLayouts(units) {
+function mergeInto(twin, u) {
+  const have = new Set(twin.offers.flatMap((o) => o.apartments ?? []));
+  for (const o of u.offers ?? []) {
+    const apts = o.apartments ?? [];
+    if (apts.length ? apts.some((a) => !have.has(a)) : !twin.offers.some((t) => t.rent === o.rent)) twin.offers.push(o);
+  }
+  twin.floorPlanImageUrl ??= u.floorPlanImageUrl;
+  if (!(twin.photos ?? []).length && (u.photos ?? []).length) twin.photos = u.photos;
+  twin.available = twin.available !== false || u.available !== false;
+}
+
+export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
   const out = [];
   for (const u of units) {
-    const twin = out.find((o) => (planKey(o.name) && planKey(o.name) === planKey(u.name)) || sameLayout(o, u));
+    const named = planKey(u.name);
+    let twin = named ? out.find((o) => planKey(o.name) === named) : null;
     if (!twin) {
-      out.push(u);
-      continue;
+      for (const o of out.filter((x) => sameLayout(x, u))) {
+        if (!named || !planKey(o.name)) {
+          twin = o;
+          break;
+        }
+        if ((o.source ?? "website") === (u.source ?? "website")) continue;
+        const verdict = await judge(o, u);
+        console.log(`[source-import] same plan? "${o.name}" (${o.source ?? "website"}) and "${u.name}" (${u.source ?? "website"}): ${verdict.same ? "yes" : "no"}, ${verdict.reason}`);
+        if (verdict.same) {
+          twin = o;
+          break;
+        }
+      }
     }
-    const have = new Set(twin.offers.flatMap((o) => o.apartments ?? []));
-    for (const o of u.offers ?? []) {
-      const apts = o.apartments ?? [];
-      if (apts.length ? apts.some((a) => !have.has(a)) : !twin.offers.some((t) => t.rent === o.rent)) twin.offers.push(o);
-    }
-    twin.floorPlanImageUrl ??= u.floorPlanImageUrl;
-    if (!(twin.photos ?? []).length && (u.photos ?? []).length) twin.photos = u.photos;
-    twin.available = twin.available !== false || u.available !== false;
+    if (twin) mergeInto(twin, u);
+    else out.push(u);
   }
   return out;
 }
 
-function fillFromModel(readerUnits, modelUnits) {
+async function fillFromModel(readerUnits, modelUnits) {
   const norm = planKey;
   const used = new Set();
   for (const ru of readerUnits) {
@@ -483,7 +504,7 @@ function fillFromModel(readerUnits, modelUnits) {
    * right now ("Call for details", a waitlist) is missing from a feed of
    * available apartments but is still a floor plan of the building.
    */
-  const extra = modelUnits.filter((mu, n) => !used.has(n) && !readerUnits.some((ru) => sameLayout(ru, mu)));
+  const extra = modelUnits.filter((mu, n) => !used.has(n)).map((mu) => ({ ...mu, source: "the website's text" }));
   return dedupeLayouts([...readerUnits, ...extra]);
 }
 
@@ -795,7 +816,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       if (!inv) continue;
       {
         platform = "g5";
-        readerUnits = inv.units;
+        readerUnits = inv.units.map((u) => ({ ...u, source: "the G5 feed" }));
         g5Concessions = inv.concessions;
         notes.push(...inv.notes);
         confidence = "high";
@@ -825,7 +846,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       const inv = await fetchSightmapInventory(token);
       if (inv?.units?.length) {
         platform = "sightmap";
-        readerUnits = unitsFromSightmap(inv);
+        readerUnits = unitsFromSightmap(inv).map((u) => ({ ...u, source: "the SightMap feed" }));
         confidence = "high";
         console.log(`[source-import] sightmap: ${inv.units.length} apartments on ${readerUnits.length} plans`);
       }
@@ -840,7 +861,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       const parsed = parseEmbeddedFloorPlans(f.html);
       if (!parsed) continue;
       platform = "rentcafe-embedded";
-      readerUnits = parsed.units;
+      readerUnits = parsed.units.map((u) => ({ ...u, source: "the floor plan data in the page" }));
       embeddedConcessions = parsed.concessions;
       notes.push(...parsed.notes);
       confidence = "high";
@@ -874,7 +895,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         // The portal's apartments win where both list them; plans and
         // apartments only another reader found (SightMap, the website's own
         // feed) are kept, not dropped.
-        readerUnits = dedupeLayouts([...sc.units, ...readerUnits]);
+        readerUnits = await dedupeLayouts([...sc.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits]);
         embeddedConcessions = [...new Set([...embeddedConcessions, ...sc.concessions])];
         notes.push(...sc.notes);
         confidence = "high";
@@ -890,7 +911,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     const parsed = page ? parseEntrataFloorPlans(page.html, page.finalUrl) : null;
     if (parsed) {
       platform = "entrata";
-      readerUnits = parsed.units;
+      readerUnits = parsed.units.map((u) => ({ ...u, source: "the floor plan data in the page" }));
       notes.push(...parsed.notes);
       confidence = "high";
       console.log(`[source-import] entrata: ${parsed.units.length} plans`);
@@ -906,7 +927,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       const result = await fetchFloorPlanUnits(chooseFloorPlansToRead(planUrls));
       if (result.plans.length) {
         platform = "rentcafe";
-        readerUnits = unitsFromFloorPlans(result);
+        readerUnits = unitsFromFloorPlans(result).map((u) => ({ ...u, source: "the floor plan pages" }));
         confidence = "high";
         if (result.termRange?.min) {
           notes.push(`This building quotes lease terms from ${result.termRange.min} to ${result.termRange.max} months and publishes one rate per apartment. Check the term before you publish.`);
@@ -1029,9 +1050,9 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     const modelUnits = unitsFromModel(listing);
     modelUnitCount = modelUnits.length;
     if (readerUnits.length) {
-      units = fillFromModel(readerUnits, modelUnits);
+      units = await fillFromModel(readerUnits, modelUnits);
     } else {
-      units = dedupeLayouts(modelUnits);
+      units = await dedupeLayouts(modelUnits);
       if (units.some((u) => u.rentUnknown)) {
         runNotes.push("The site does not say whether its prices are per person or for the whole unit. They were imported as whole-unit rents; switch any that are per person.");
       }

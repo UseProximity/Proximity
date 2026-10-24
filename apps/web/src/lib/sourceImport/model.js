@@ -428,3 +428,40 @@ export async function reviewNotes({ notes, facts }) {
     return { notes: unique.slice(0, 6), cost: 0 };
   }
 }
+
+/*
+ * Are these two floor plans the same plan? Asked only when two sources (a
+ * feed and the website, or two feeds) list plans with the same beds, baths
+ * and size under different names. The Barton's Musial and Cassily are both
+ * 1 bed, 1 bath, 750 sq ft and are different apartments at different rents;
+ * merging them on the numbers lost the Cassily. The drawings, when there
+ * are any, are the strongest evidence. Unsure means different: two tabs a
+ * landlord can merge are better than one that hides a plan.
+ */
+const SamePlanSchema = z.object({ same: z.boolean(), reason: z.string() });
+
+export async function judgeSamePlan(a, b) {
+  const describe = (u, tag) =>
+    `${tag}: "${u.name ?? "(no name)"}" from ${u.source ?? "the website"}, ${u.bedrooms ?? "?"} bed, ${u.bathrooms ?? "?"} bath, ${u.area ?? "?"} sq ft; ` +
+    `rents ${[...new Set((u.offers ?? []).map((o) => o.rent).filter(Boolean))].slice(0, 6).join(", ") || "none"}; apartments ${[...new Set((u.offers ?? []).flatMap((o) => o.apartments ?? []))].slice(0, 8).join(", ") || "none"}`;
+  const content = [{ type: "text", text: `${describe(a, "PLAN A")}\n${describe(b, "PLAN B")}` }];
+  for (const [u, tag] of [[a, "A"], [b, "B"]]) {
+    if (typeof u.floorPlanImageUrl === "string" && /^https:\/\//.test(u.floorPlanImageUrl)) {
+      content.push({ type: "text", text: `Plan ${tag} drawing:` }, { type: "image", source: { type: "url", url: u.floorPlanImageUrl } });
+    }
+  }
+  content.push({ type: "text", text: "Is plan A the same floor plan as plan B, listed twice under two names? Same layout and the same apartments means same; a different layout, different apartment numbers or a clearly different rent means different. When unsure, answer different." });
+  try {
+    const { parsed } = await parseWith(HAIKU, {
+      system: "You compare two floor plans of one apartment building, read from different parts of its website, and say whether they are one plan listed twice or two different plans.",
+      schema: SamePlanSchema,
+      content,
+      maxTokens: 300,
+      tag: "same plan",
+    });
+    return parsed ?? { same: false, reason: "no answer" };
+  } catch (err) {
+    console.error("[source-import] same-plan check failed:", err?.message);
+    return { same: false, reason: "check failed" };
+  }
+}

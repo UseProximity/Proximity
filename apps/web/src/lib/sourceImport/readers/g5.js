@@ -90,6 +90,13 @@ const PUSHER_HOST = "ws.pusherapp.com";
 const MAX_TERM_LOOKUPS = 80;
 const MATRIX_WAIT_MS = 12000;
 
+function moveInFor(apartment, fallback) {
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const free = String(apartment.availabilityDate ?? "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(free)) return free > tomorrow ? free : tomorrow;
+  return fallback ?? tomorrow;
+}
+
 export async function fetchG5LeaseTerms({ locationUrn, vlsHost = VLS_DEFAULT, plans, apartments, moveInDate }) {
   const out = new Map();
   if (typeof WebSocket !== "function" || !apartments.length) return out;
@@ -102,7 +109,10 @@ export async function fetchG5LeaseTerms({ locationUrn, vlsHost = VLS_DEFAULT, pl
     const body = {
       location_urn: locationUrn,
       location_code: plan.locationCode,
-      needed_by_date: moveInDate,
+      // Prices move with the move-in date: each apartment is priced for the
+      // day it frees up, or tomorrow if it is free now. Asked two months out
+      // for every apartment, the Barton's Musial came back $250 a month high.
+      needed_by_date: moveInFor(a, moveInDate),
       unit_data: {
         floorplan_name: (plan.externalIds ?? [])[0] ?? plan.name,
         apartment_name: a.name,
