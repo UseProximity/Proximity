@@ -5,7 +5,7 @@ export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireImporter } from "../_auth";
-import { createImportBatch, runPendingJobs, MAX_TARGETS } from "@/lib/sourceImport/jobs";
+import { createImportBatch, runLanes, MAX_TARGETS } from "@/lib/sourceImport/jobs";
 
 /*
  * Continue on the picker. Body: { pastedUrl, targets: [{ name, address, url,
@@ -30,7 +30,7 @@ export async function POST(req) {
   const { data: user } = await supabase.from("users").select("name, email, phone").eq("id", gate.userId).maybeSingle();
   try {
     const batch = await createImportBatch({ userId: gate.userId, user, pastedUrl, targets, batchId: typeof body.batchId === "string" ? body.batchId : null });
-    after(() => runPendingJobs({ batchId: batch.batchId, maxJobs: 1, budgetMs: 270000 }).catch((e) => console.error("[source-import] runner:", e?.message)));
+    after(() => runLanes({ batchId: batch.batchId }));
     return NextResponse.json(batch, { status: 202 });
   } catch (err) {
     console.error("[import/start]", err?.message);

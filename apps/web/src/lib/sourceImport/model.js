@@ -349,3 +349,81 @@ export async function judgeChange({ listingLabel, unitLabel, field, oldValue, ne
     return { verdict: "review", reason: err?.message ?? "model error" };
   }
 }
+
+/*
+ * Which pages to open next, chosen by the model.
+ *
+ * The read tells it, from what the readers and earlier extraction actually
+ * returned, what is already known about the building and what is still
+ * missing (lease lengths, availability, rent, what the rent includes). It
+ * picks the links most likely to state the missing facts for THIS building:
+ * an FAQ, a fee guide, a leasing portal, an availability page, wherever.
+ * A word list used to decide this, and it followed Zillow's "nearby homes"
+ * as if they were pages about the building.
+ */
+const ExploreSchema = z.object({
+  pages: z.array(z.object({ url: z.string(), lookingFor: z.string() })),
+});
+
+const EXPLORE_SYSTEM = `You help Proximity, a student-housing marketplace, finish reading one rental property's website. You are told which property this is, what has already been read about it, and what is still missing. From CANDIDATE LINKS, choose the pages most likely to state the missing facts for THIS property.
+
+Rules:
+- Only pages about this property or its landlord's policies for it: its floor plans, availability, pricing, lease terms, FAQ, fees, what's included, amenities, specials, or its leasing portal or application flow (these often show lease lengths and dates). A company-wide FAQ or fee page counts.
+- Never pages about other buildings or other listings ("nearby", "similar homes", another property's name or address), blogs, news, careers, residents' login, payments, maintenance requests, social media or maps.
+- Copy each URL exactly as written in CANDIDATE LINKS. Choose at most the number asked for, best first, and say in a few words what you hope to find on each.
+- ALREADY READ may answer an item listed as missing (a monthly utility fee answers what the rent includes): do not hunt for what is already answered.
+- If no link is likely to help, return an empty list. An empty list is better than a guess.`;
+
+export async function choosePagesToExplore({ target, known, missing, visited, links, max = 4 }) {
+  if (!links.length || !missing.length || max <= 0) return { pages: [], cost: 0 };
+  const content = [
+    `PROPERTY: ${target.name ?? "(unnamed)"}${target.address ? `, ${target.address}` : ""}`,
+    `ALREADY READ:\n${known.map((k) => `- ${k}`).join("\n") || "- nothing yet"}`,
+    `STILL MISSING:\n${missing.map((m) => `- ${m}`).join("\n")}`,
+    `PAGES ALREADY OPENED:\n${visited.slice(0, 30).map((u) => `- ${u}`).join("\n")}`,
+    `CANDIDATE LINKS (url | link text):\n${links.map((l) => `${l.url} | ${l.text || "(no text)"}`).join("\n")}`,
+    `Choose at most ${max}.`,
+  ].join("\n\n");
+  try {
+    const { parsed, cost } = await parseWith(HAIKU, { system: EXPLORE_SYSTEM, schema: ExploreSchema, content, maxTokens: 800, tag: "explore" });
+    const allowed = new Set(links.map((l) => l.url));
+    const pages = (parsed?.pages ?? []).filter((p) => allowed.has(p.url)).slice(0, max);
+    return { pages, cost: cost ?? 0 };
+  } catch (err) {
+    console.error("[source-import] explore failed:", err?.message);
+    return { pages: [], cost: 0 };
+  }
+}
+
+/*
+ * The notes a landlord sees on the import, checked against what the read
+ * finally found. Readers and the extraction each write notes as they go
+ * ("this site does not publish lease lengths"); a later step can answer
+ * one (the leasing portal priced every apartment for 12 months), and two
+ * can say the same thing. The model keeps the ones still true, merges
+ * repeats, and drops the answered. A word filter did this before.
+ */
+const NotesSchema = z.object({ notes: z.array(z.string()) });
+
+const NOTES_SYSTEM = `You tidy the notes shown to a landlord after Proximity imported their property from their website. You get the notes and the FINAL FACTS: what the import ended up with. Return the notes that are still true and useful, in plain English, one or two sentences each.
+
+Rules:
+- Drop a note the final facts contradict or answer (a note saying lease lengths are not published, when the final facts show lease lengths for every lease).
+- Merge notes that say the same thing into one.
+- Keep notes about things the landlord should check or decide; never add a new fact, number or claim of your own.
+- Keep the landlord's wording plain; never mention notes, models, readers, scrapers or this process.
+- Return at most 6, most important first, each under 35 words. An empty list is fine.`;
+
+export async function reviewNotes({ notes, facts }) {
+  const unique = [...new Set(notes.map((n) => String(n ?? "").trim()).filter(Boolean))];
+  if (!unique.length) return { notes: [], cost: 0 };
+  const content = [`FINAL FACTS:\n${facts.map((f) => `- ${f}`).join("\n")}`, `NOTES:\n${unique.map((n, i) => `${i + 1}. ${n}`).join("\n")}`].join("\n\n");
+  try {
+    const { parsed, cost } = await parseWith(HAIKU, { system: NOTES_SYSTEM, schema: NotesSchema, content, maxTokens: 2000, tag: "notes" });
+    if (!parsed) return { notes: unique.slice(0, 6), cost: cost ?? 0 };
+    return { notes: stripEmDashes(parsed.notes).map((n) => n.trim()).filter(Boolean).slice(0, 6), cost: cost ?? 0 };
+  } catch (err) {
+    console.error("[source-import] notes review failed:", err?.message);
+    return { notes: unique.slice(0, 6), cost: 0 };
+  }
+}

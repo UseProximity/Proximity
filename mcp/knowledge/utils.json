@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T18:35:54.726Z",
-  "count": 159,
+  "_generated": "2026-10-24T19:21:01.992Z",
+  "count": 160,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -486,6 +486,10 @@
     {
       "file": "src/lib/sourceImport/model.js",
       "description": "The model calls behind the importer: Haiku first, Sonnet only when Haiku"
+    },
+    {
+      "file": "src/lib/sourceImport/pageCache.js",
+      "description": "The importer's shared page cache (see setSharedPageCache in"
     },
     {
       "file": "src/lib/sourceImport/read.js",

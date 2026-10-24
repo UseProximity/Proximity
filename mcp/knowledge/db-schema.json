@@ -2459,6 +2459,17 @@
           "prod_rows": 33,
           "prod_last_write": "2026-09-19"
         }
+      },
+      {
+        "table": "listing_import_page_cache",
+        "status": "unreleased",
+        "description": "Short-lived cache of landlord pages fetched by the URL importer (lib/sourceImport/pageCache.js), shared by every building of a batch across server instances. Read for 15 minutes, cleared after an hour by the importer. Service role only.",
+        "columns": [
+          "key:text",
+          "page:jsonb",
+          "fetched_at:timestamptz"
+        ],
+        "notes": "pk key ('smart:'|'waited:<ms>:'|'render:<raw>:<ms>:' + url); index on fetched_at; RLS enabled, no policies. Migration 202610240001 (dev applied, prod pending)."
       }
     ],
     "functions": [

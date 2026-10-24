@@ -7,6 +7,7 @@
  * hop, and bodies are size-capped. No JS rendering — we read what the server
  * sends, which Phase 0 showed is enough for most local landlord sites.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import dns from "node:dns/promises";
 import net from "node:net";
 
@@ -357,6 +358,19 @@ export function extractJsonLd(html, cap = 6000) {
  * credits; Firecrawl charges one credit per scrape (five with a wait).
  */
 export const renderCounts = { firecrawl: 0, jina: 0, tavily: 0 };
+export const cacheCounts = { hits: 0, misses: 0 };
+
+/*
+ * Per-read counters. Buildings of a batch now read side by side in one
+ * process, so the module-wide counts above mix them; a read that runs
+ * inside readCounters.run({ render: {}, cache: {} }, ...) gets its own.
+ */
+export const readCounters = new AsyncLocalStorage();
+function bump(kind, name) {
+  (kind === "render" ? renderCounts : cacheCounts)[name] += 1;
+  const mine = readCounters.getStore();
+  if (mine) mine[kind][name] = (mine[kind][name] ?? 0) + 1;
+}
 
 /*
  * One rendered page, on demand, for readers that know the page they want
@@ -364,7 +378,14 @@ export const renderCounts = { firecrawl: 0, jina: 0, tavily: 0 };
  * scripts kept (`raw`) and optional in-page actions whose return values come
  * back as `returns`. Null on any failure.
  */
-export async function renderPage(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
+export async function renderPage(rawUrl, opts = {}) {
+  // A plain render is the same for every building that asks; one with page
+  // actions (a portal's quote sheet) is particular to its caller.
+  if (opts.actions) return renderPageUncached(rawUrl, opts);
+  return shared(`render:${opts.raw ? 1 : 0}:${opts.waitMs ?? 0}:${rawUrl}`, () => renderPageUncached(rawUrl, opts));
+}
+
+async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
   let url;
   try {
     url = new URL(rawUrl);
@@ -374,7 +395,7 @@ export async function renderPage(rawUrl, { waitMs = 0, raw = false, actions = nu
   }
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
-  renderCounts.firecrawl += 1;
+  bump("render", "firecrawl");
   try {
     const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
@@ -413,7 +434,7 @@ export async function renderPage(rawUrl, { waitMs = 0, raw = false, actions = nu
 async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
-  renderCounts.firecrawl += 1;
+  bump("render", "firecrawl");
   try {
     const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
@@ -493,7 +514,7 @@ async function renderPageViaJina(rawUrl) {
 
   for (const key of [...keys, null]) {
     try {
-      renderCounts.jina += 1;
+      bump("render", "jina");
       const res = await jinaFetch(rawUrl, key);
       if (key && (res.status === 402 || res.status === 401 || res.status === 403)) {
         spentJinaKeys.add(key);
@@ -518,7 +539,7 @@ async function renderPageViaJina(rawUrl) {
 async function renderPageViaTavily(rawUrl) {
   const key = process.env.TAVILY_API_KEY;
   if (!key) return null;
-  renderCounts.tavily += 1;
+  bump("render", "tavily");
   try {
     const res = await fetch("https://api.tavily.com/extract", {
       method: "POST",
@@ -581,7 +602,7 @@ export async function renderPageWaited(rawUrl, waitMs = 9000) {
   } catch {
     return null;
   }
-  return renderPageViaFirecrawl(rawUrl, waitMs);
+  return shared(`waited:${waitMs}:${rawUrl}`, () => renderPageViaFirecrawl(rawUrl, waitMs));
 }
 
 // Run the render chain directly (SSRF-checked first) and return the best
@@ -638,9 +659,56 @@ function cachePut(url, page) {
  * render when the plain fetch was blocked or came back thin (JS-rendered site)
  * and a key is configured. Throws DraftFetchError like fetchPage.
  */
+/*
+ * A second cache layer shared across server instances, plugged in by the
+ * importer (lib/sourceImport/pageCache.js). The memory cache above only
+ * helps calls that land on the same instance; an import batch hands each
+ * building to a fresh call, so without this every building re-fetched the
+ * landlord's home page, property list and site-wide pages. Concurrent asks
+ * for the same page also wait for the one fetch in flight.
+ */
+let _sharedStore = null;
+export function setSharedPageCache(store) {
+  _sharedStore = store;
+}
+const _inflight = new Map();
+
+async function shared(key, load) {
+  if (_inflight.has(key)) {
+    // Another building is fetching this page right now: wait for it.
+    bump("cache", "hits");
+    return _inflight.get(key);
+  }
+  const run = (async () => {
+    if (_sharedStore) {
+      const hit = await _sharedStore.get(key).catch(() => null);
+      if (hit) {
+        bump("cache", "hits");
+        return hit;
+      }
+    }
+    bump("cache", "misses");
+    const value = await load();
+    if (value && _sharedStore) await _sharedStore.set(key, value).catch(() => {});
+    return value;
+  })();
+  _inflight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    _inflight.delete(key);
+  }
+}
+
 export async function fetchPageSmart(rawUrl) {
   const hit = _pageCache.get(rawUrl);
   if (hit && Date.now() - hit.at < PAGE_CACHE_TTL_MS) return hit.page;
+  const page = await shared(`smart:${rawUrl}`, () => fetchPageSmartUncached(rawUrl));
+  cachePut(rawUrl, page);
+  return page;
+}
+
+async function fetchPageSmartUncached(rawUrl) {
 
   let page = null;
   let fetchErr = null;

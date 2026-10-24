@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-20T23:05:57.725Z",
-  "count": 89,
+  "_generated": "2026-10-24T19:21:02.034Z",
+  "count": 91,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -189,6 +189,14 @@
     },
     {
       "name": "GSC_SITE_URL",
+      "public": false
+    },
+    {
+      "name": "IMPORT_LANES",
+      "public": false
+    },
+    {
+      "name": "IMPORT_PAGE_CACHE",
       "public": false
     },
     {

@@ -41,6 +41,21 @@ const CAMPUS = { latitude: 38.6488, longitude: -90.3108 };
 const STUCK_AFTER_MS = 6 * 60 * 1000;
 // How long a queued job may wait with no runner before a poll starts one.
 const IDLE_KICK_MS = 15 * 1000;
+/*
+ * Buildings of one batch read side by side. Most of a read is waiting on
+ * rendered pages, portal quotes and the model, so three at once finish a
+ * batch in about a third of the time; more than four would hammer one
+ * landlord's site (every building of a batch is on it) and the render
+ * service's concurrency limit. IMPORT_LANES tunes it, 1 to 6.
+ */
+export const IMPORT_LANES = Math.min(6, Math.max(1, Number(process.env.IMPORT_LANES) || 3));
+
+/* Start `lanes` runners for a batch, each working one job and handing off. */
+export function runLanes({ batchId = null, userId = null, lanes = IMPORT_LANES }) {
+  return Promise.all(
+    Array.from({ length: lanes }, () => runPendingJobs({ batchId, userId, maxJobs: 1, budgetMs: 270000 }).catch((e) => console.error("[source-import] runner:", e?.message)))
+  );
+}
 const MAX_ATTEMPTS = 3;
 export const MAX_TARGETS = 40;
 
@@ -429,11 +444,14 @@ export async function chainRunner({ batchId = null } = {}) {
 export async function keepBatchMoving({ batchId, userId }) {
   await requeueStuck({ batchId });
   const { data: jobs } = await supabase.from("listing_import_jobs").select("status, updated_at, created_at").eq("batch_id", batchId).eq("user_id", userId);
-  const queued = (jobs ?? []).some((j) => j.status === "queued");
-  const running = (jobs ?? []).some((j) => j.status === "running");
-  if (!queued || running) return false;
+  const queued = (jobs ?? []).filter((j) => j.status === "queued").length;
+  const running = (jobs ?? []).filter((j) => j.status === "running").length;
+  // Lanes short of the batch's count, with work waiting: top them up once
+  // the queue has sat still a moment (a hand-off may be on its way).
+  const missing = Math.min(queued, IMPORT_LANES - running);
+  if (missing <= 0) return 0;
   const newest = Math.max(...(jobs ?? []).map((j) => new Date(j.updated_at ?? j.created_at).getTime()));
-  return Date.now() - newest > IDLE_KICK_MS;
+  return Date.now() - newest > IDLE_KICK_MS ? missing : 0;
 }
 
 /* Jobs a dead function left running: back to the queue, or failed for good. */

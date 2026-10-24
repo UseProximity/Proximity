@@ -37,8 +37,14 @@ import {
   SYNCABLE_PMS,
   sameSite,
   DraftFetchError,
-  renderCounts,
+  readCounters,
+  setSharedPageCache,
 } from "@/lib/listingDraft/fetchSite";
+import { pageCacheStore } from "./pageCache.js";
+
+// Every read shares fetched pages with the rest of its batch
+// (IMPORT_PAGE_CACHE=0 turns it off, for measuring or debugging).
+if (process.env.IMPORT_PAGE_CACHE !== "0") setSharedPageCache(pageCacheStore);
 import {
   SIGHTMAP_HINT_RE,
   findSightmapEmbed,
@@ -59,7 +65,7 @@ import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
-import { readWithModel, sortPhotosByUnit } from "./model.js";
+import { readWithModel, sortPhotosByUnit, choosePagesToExplore, reviewNotes } from "./model.js";
 import { isoDate, makeSnapshot, money, num, unitKey } from "./snapshot.js";
 
 export { DraftFetchError };
@@ -298,6 +304,44 @@ function unitsFromFloorPlans(result) {
 }
 
 /* Model units -> raw units. */
+// Links never worth opening while hunting for a building's facts.
+const SKIP_LINK_RE = /^mailto:|^tel:|facebook\.com|instagram\.com|twitter\.com|\/\/x\.com|linkedin\.com|tiktok\.com|youtube\.com|pinterest\.|google\.[a-z.]+\/maps|maps\.apple|logout|log-out|sign-?out|\.(pdf|jpe?g|png|webp|gif|zip|docx?)(\?|$)/i;
+
+/*
+ * What the read knows and does not know about the building yet, stated
+ * from the data itself (not guessed), for the model choosing pages to open
+ * and for the notes review. Missing means a student would see a blank.
+ */
+export function factsAbout({ units = [], flyers = [], listing = null, readerNotes = [] }) {
+  // What the platform readers reported in words (a portal's monthly fees,
+  // its lease-term range) is known too.
+  const known = [...readerNotes];
+  const missing = [];
+  const offers = units.flatMap((u) => u.offers ?? []);
+  if (!units.length) {
+    missing.push("the floor plans or apartments and their rents");
+    missing.push("lease lengths offered");
+    missing.push("when apartments are available");
+  } else {
+    known.push(`${units.length} floor plan${units.length === 1 ? "" : "s"}: ${units.slice(0, 15).map((u) => `${u.name ?? "unnamed"} (${u.bedrooms ?? "?"} bed, ${u.bathrooms ?? "?"} bath)`).join("; ")}${units.length > 15 ? "; ..." : ""}`);
+    const priced = offers.filter((o) => o.rent != null).length;
+    const termed = offers.filter((o) => (o.leaseTermMonths ?? []).length).length;
+    const dated = offers.filter((o) => o.availableFrom || o.availableNow).length;
+    const terms = [...new Set(offers.flatMap((o) => o.leaseTermMonths ?? []))].sort((a, b) => a - b);
+    if (priced) known.push(`rent for ${priced} of ${offers.length} lease${offers.length === 1 ? "" : "s"}`);
+    if (priced < offers.length || !offers.length) missing.push(`rent for ${offers.length ? offers.length - priced : "every"} lease${offers.length - priced === 1 ? "" : "s"}`);
+    if (termed) known.push(`lease lengths ${terms.join(", ")} months on ${termed} of ${offers.length} leases`);
+    if (termed < offers.length || !offers.length) missing.push(`lease lengths offered${termed ? ` for ${offers.length - termed} lease${offers.length - termed === 1 ? "" : "s"}` : ""}`);
+    if (dated) known.push(`an availability date (or "available now") on ${dated} of ${offers.length} leases`);
+    if (dated < offers.length || !offers.length) missing.push(`when apartments are available${dated ? ` for ${offers.length - dated} lease${offers.length - dated === 1 ? "" : "s"}` : ""}`);
+  }
+  const utilities = [...new Set([...(listing?.utilities_included ?? []), ...flyers.flatMap((f) => f.utilities ?? [])])];
+  if (utilities.length) known.push(`utilities included in rent: ${utilities.join(", ")}`);
+  else missing.push("which utilities, if any, the rent includes");
+  if (flyers.length) known.push(`a "what's included" or fee flyer was read (${flyers.map((f) => f.url).join(", ")})`);
+  return { known, missing };
+}
+
 function unitsFromModel(listing) {
   return (listing?.units ?? []).map((u) => {
     const perPerson = u.rentBasis === "per_person";
@@ -552,13 +596,17 @@ export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSing
  *
  * onStep(text) is called as the read moves, for the workspace's progress line.
  */
-export async function readProperty({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, _crawl = null, _brandName = null, _modelDraft = null }) {
+export function readProperty(args) {
+  // Its own credit counters, whatever else runs beside it.
+  return readCounters.run({ render: {}, cache: {} }, () => readPropertyInner(args));
+}
+
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
   const crawl = _crawl ?? new Crawl();
   let main = crawl.fetched[0] ?? null;
-  const rendersBefore = { ...renderCounts };
   let modelCost = 0;
 
   if (!main) {
@@ -619,21 +667,9 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       `[source-import] ${target.name}: property page ${propPage.finalUrl} (${htmlToText(propPage.html).length} chars), ` +
         `floor plans ${floorPlanIndex ? floorPlanIndex.finalUrl : fp ? `link ${fp.url} failed` : "no link found"}`
     );
-    /*
-     * The pages a building's facts are spread over: amenities and features
-     * (utilities, furnishing), FAQ and fees (lease lengths, what is
-     * included), gallery (photos), specials. Same-site, cached, cheap; six
-     * at most, in that order of usefulness.
-     */
-    const DEEP_RE = /amenit|feature|faq|fees?\b|pricing|utilit|includ|lease|special|gallery|photo|tour|availab|neighborhood|location/i;
-    // On a listing portal every such link is another listing (Zillow's
-    // "nearby homes"), so a portal page is read on its own.
-    const deeper = isListingPortal(propPage.finalUrl) ? [] : extractLinks(crawl.structureOf(propPage), propPage.finalUrl, 80)
-      .filter((l) => DEEP_RE.test(`${l.url} ${l.text}`) && l.url !== propPage.finalUrl && !/resident|portal|login|apply|pay|blog|feed|wp-json|popup=|\?tour/i.test(l.url))
-      .sort((a, b) => DEEP_RE.exec(`${a.url} ${a.text}`).index - DEEP_RE.exec(`${b.url} ${b.text}`).index)
-      .slice(0, 6);
-    if (deeper.length) onStep("Reading amenities and details");
-    for (const l of deeper) await crawl.follow(l.url);
+    // Which other pages to open (FAQ, fees, availability, a leasing
+    // portal) is the model's choice, made below once the readers have said
+    // what they found (explore()).
   }
 
   // A small landlord's page per apartment, only the ones carrying this
@@ -790,24 +826,69 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   }
 
   /*
+   * Hunting for what is still missing. The readers (and, the second time,
+   * the extraction) have read what they could; factsAbout says exactly
+   * what is known and what is not, and the model picks which links to open
+   * to find the rest. Twice at most, eight pages in all.
+   */
+  const flyers = [];
+  const MAX_EXPLORED = 8;
+  let explored = 0;
+  const exploredLog = [];
+  const explore = async (unitsNow, listingNow) => {
+    if (explored >= MAX_EXPLORED) return 0;
+    const facts = factsAbout({ units: unitsNow, flyers, listing: listingNow, readerNotes: notes });
+    if (!facts.missing.length) return 0;
+    const visited = new Set(crawl.fetched.map((f) => f.finalUrl));
+    const candidates = crawl.links
+      .filter((l) => /^https?:/i.test(l.url) && !visited.has(l.url) && !SKIP_LINK_RE.test(l.url))
+      .slice(0, 150);
+    if (!candidates.length) return 0;
+    onStep("Looking for what is still missing");
+    const picks = await choosePagesToExplore({
+      target: { name: target.name, address: target.address ?? null },
+      known: facts.known,
+      missing: facts.missing,
+      visited: [...visited],
+      links: candidates,
+      max: Math.min(4, MAX_EXPLORED - explored),
+    });
+    modelCost += picks.cost;
+    let added = 0;
+    for (const p of picks.pages) {
+      const before = crawl.fetched.length;
+      await crawl.follow(p.url);
+      const opened = crawl.fetched.length > before;
+      exploredLog.push({ url: p.url, lookingFor: p.lookingFor, opened });
+      if (opened) {
+        added += 1;
+        explored += 1;
+      }
+    }
+    console.log(`[source-import] ${target.name}: explored ${added} page(s) for ${facts.missing.join("; ")}: ${picks.pages.map((x) => x.url).join(", ") || "none chosen"}`);
+    return added;
+  };
+  await explore(readerUnits, null);
+
+  /*
    * "What's included" and fee-guide flyers: pictures, read by the model's
    * eyes. They are where student-housing sites keep utilities, lease lengths
    * and fees, so they are read before the extraction and handed to it.
    */
-  const flyers = [];
-  {
-    const seen = new Set();
+  const flyerSeen = new Set();
+  const readFlyers = async () => {
     for (const f of crawl.fetched) {
       for (const url of findFlyerCandidates(crawl.structureOf(f), f.finalUrl)) {
-        if (seen.has(url) || flyers.length >= 2) continue;
-        seen.add(url);
+        if (flyerSeen.has(url) || flyers.length >= 2) continue;
+        flyerSeen.add(url);
         onStep("Reading the fee guide");
         const flyer = await readInclusionsFlyer(url);
         if (flyer) flyers.push(flyer);
       }
     }
-  }
-  const flyerSections = flyers.map((f) => `FLYER "what is included" (${f.url}):\n${f.text}`);
+  };
+  await readFlyers();
+  const flyerSections = () => flyers.map((f) => `FLYER "what is included" (${f.url}):\n${f.text}`);
 
   // ---- the model: property fields, photos, and units only if nothing read them
   onStep("Filling in the details");
@@ -833,61 +914,74 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
   const diagrams = new Set(readerUnits.map((u) => u.floorPlanImageUrl).filter(Boolean));
   let listing = _modelDraft;
   let modelUsed = null;
-  if (!listing || (!readerUnits.length && !listing.units?.length)) {
-    const read = await readWithModel({
-      pages: crawl.pages,
-      images: images.filter((im) => !diagrams.has(im.url)),
-      links: isListingPortal(main.finalUrl) ? [] : crawl.links,
-      targetProperty: { name: target.name, address: target.address ?? null },
-      brandName,
-      knownUnits: readerUnits,
-      extras: flyerSections,
-    });
-    listing = read.draft?.listing ?? null;
-    modelUsed = read.model;
-    modelCost += read.cost ?? 0;
-    if (read.escalated) notes.push("Parts of this site were hard to read, so a stronger model was used. Check the units carefully.");
-  }
+  let units = [];
+  let runNotes = [];
+  let modelUnitCount = 0;
+  const extractAndFill = async (force = false) => {
+    runNotes = [];
+    if (force || !listing || (!readerUnits.length && !listing.units?.length)) {
+      const read = await readWithModel({
+        pages: crawl.pages,
+        images: images.filter((im) => !diagrams.has(im.url)),
+        links: isListingPortal(main.finalUrl) ? [] : crawl.links,
+        targetProperty: { name: target.name, address: target.address ?? null },
+        brandName,
+        knownUnits: readerUnits,
+        extras: flyerSections(),
+      });
+      listing = read.draft?.listing ?? null;
+      modelUsed = read.model;
+      modelCost += read.cost ?? 0;
+      if (read.escalated) runNotes.push("Parts of this site were hard to read, so a stronger model was used. Check the units carefully.");
+    }
 
-  const modelUnits = unitsFromModel(listing);
-  let units;
-  if (readerUnits.length) {
-    units = fillFromModel(readerUnits, modelUnits);
-  } else {
-    units = modelUnits;
-    if (units.some((u) => u.rentUnknown)) {
-      notes.push("The site does not say whether its prices are per person or for the whole unit. They were imported as whole-unit rents; switch any that are per person.");
+    const modelUnits = unitsFromModel(listing);
+    modelUnitCount = modelUnits.length;
+    if (readerUnits.length) {
+      units = fillFromModel(readerUnits, modelUnits);
+    } else {
+      units = modelUnits;
+      if (units.some((u) => u.rentUnknown)) {
+        runNotes.push("The site does not say whether its prices are per person or for the whole unit. They were imported as whole-unit rents; switch any that are per person.");
+      }
+      if (units.length) confidence = listing?.confidence >= 0.75 ? "high" : "low";
     }
-    if (units.length) confidence = listing?.confidence >= 0.75 ? "high" : "low";
-  }
 
-  // What the flyers said: lease lengths onto every offer still without them.
-  const flyerTerms = [...new Set(flyers.flatMap((f) => f.leaseTermMonths))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 36).sort((a, b) => a - b);
-  if (flyerTerms.length) {
-    let applied = 0;
-    for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; applied += 1; }
-    if (applied) {
-      for (let i = notes.length - 1; i >= 0; i--) if (/lease lengths/i.test(notes[i])) notes.splice(i, 1);
-      notes.push(`Lease lengths (${flyerTerms.join(", ")} months) come from the site's fee guide. Check them against each floor plan.`);
+    // What the flyers said: lease lengths onto every offer still without them.
+    const flyerTerms = [...new Set(flyers.flatMap((f) => f.leaseTermMonths))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 36).sort((a, b) => a - b);
+    if (flyerTerms.length) {
+      let applied = 0;
+      for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; applied += 1; }
+      if (applied) {
+        runNotes.push(`Lease lengths (${flyerTerms.join(", ")} months) come from the site's fee guide. Check them against each floor plan.`);
+      }
     }
-  }
-  // Lease lengths stated anywhere on the site ("12-month leases" in an FAQ)
-  // go on every offer that has none; a building's terms are the building's.
-  if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
-    const siteTerms = findLeaseTerms(crawl.pages.map((p) => p.text).join("\n"));
-    if (siteTerms.length && siteTerms.length <= 6) {
-      for (const u of units) for (const o of u.offers) o.leaseTermMonths = siteTerms;
-      notes.push(`Lease lengths (${siteTerms.join(", ")} months) were read from the site's general text, not from each floor plan. Check them.`);
+    // Lease lengths stated anywhere on the site ("12-month leases" in an FAQ)
+    // go on every offer that has none; a building's terms are the building's.
+    if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
+      const siteTerms = findLeaseTerms(crawl.pages.map((p) => p.text).join("\n"));
+      if (siteTerms.length && siteTerms.length <= 6) {
+        for (const u of units) for (const o of u.offers) o.leaseTermMonths = siteTerms;
+        runNotes.push(`Lease lengths (${siteTerms.join(", ")} months) were read from the site's general text, not from each floor plan. Check them.`);
+      }
     }
+    // Lease lengths nobody published: say so once rather than leave blanks.
+    if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
+      runNotes.push("This site doesn't publish its lease lengths. Choose them for each lease before publishing.");
+    }
+    const waitlisted = units.filter((u) => u.available === false).length;
+    if (waitlisted) {
+      runNotes.push(`${waitlisted} floor plan${waitlisted === 1 ? " is" : "s are"} waitlist-only on the site, with no price, so ${waitlisted === 1 ? "it is" : "they are"} switched off rather than published as available.`);
+    }
+  };
+  await extractAndFill();
+  // Still missing something after the extraction: one more hunt, and if it
+  // opened anything, read again with those pages in hand.
+  if (await explore(units, listing)) {
+    await readFlyers();
+    await extractAndFill(true);
   }
-  // Lease lengths nobody published: say so once rather than leave blanks.
-  if (units.length && !notes.some((n) => /lease lengths/i.test(n)) && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
-    notes.push("This site doesn't publish its lease lengths. Choose them for each lease before publishing.");
-  }
-  const waitlisted = units.filter((u) => u.available === false).length;
-  if (waitlisted) {
-    notes.push(`${waitlisted} floor plan${waitlisted === 1 ? " is" : "s are"} waitlist-only on the site, with no price, so ${waitlisted === 1 ? "it is" : "they are"} switched off rather than published as available.`);
-  }
+  notes.push(...runNotes);
 
   // ---- photos: the building's, then each unit's own
   const offered = new Set(images.map((im) => im.url));
@@ -935,11 +1029,15 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     reader: platform,
     readerUnits: readerUnits.length,
     model: modelUsed ?? (listing ? "picker" : null),
-    modelUnits: modelUnits.length,
+    modelUnits: modelUnitCount,
     // What this read spent: model dollars (extraction only; the photo sort
     // and flyer reads are logged separately) and paid render calls.
     modelCostUsd: Math.round(modelCost * 1000) / 1000,
-    renders: Object.fromEntries(Object.entries(renderCounts).map(([k, v]) => [k, v - rendersBefore[k]])),
+    renders: { firecrawl: 0, jina: 0, tavily: 0, ...(readCounters.getStore()?.render ?? {}) },
+    // The pages the model chose to open, and what it hoped to find there.
+    explored: exploredLog,
+    // Pages reused from another building of the batch, and fetched fresh.
+    sharedCache: { hits: 0, misses: 0, ...(readCounters.getStore()?.cache ?? {}) },
     found: {
       amenities: (listing?.amenities ?? []).length,
       customAmenities: (listing?.customAmenities ?? []).length,
@@ -955,6 +1053,24 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
     },
     scrubbed: cleaned.removed,
   };
+  /*
+   * The notes, checked by the model against what the read finally found:
+   * a reader's "this site does not publish lease lengths" is dropped once a
+   * leasing portal priced every lease, repeats are merged.
+   */
+  const finalFacts = factsAbout({ units, flyers, listing });
+  const reviewed = await reviewNotes({
+    notes: [...notes, ...(listing?.sourceNotes ?? []).slice(0, 3)],
+    facts: [
+      ...finalFacts.known,
+      ...finalFacts.missing.map((m) => `not found: ${m}`),
+      learned ? "every apartment's rent and lease lengths came from the building's own leasing portal" : null,
+      platform && platform !== "generic" ? `floor plans read from the site's own ${platform} data` : null,
+    ].filter(Boolean),
+  });
+  modelCost += reviewed.cost;
+  trace.modelCostUsd = Math.round(modelCost * 1000) / 1000;
+  const reviewedNotes = reviewed.notes;
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
   const snapshot = makeSnapshot({
     sourceUrl,
@@ -977,12 +1093,7 @@ export async function readProperty({ pastedUrl: rawPasted, target, onStep = () =
       concessions: [...(listing?.concessions ?? []), ...embeddedConcessions, ...g5Concessions],
     },
     units,
-    // Readers and the model warn about lease lengths and rent ranges they
-    // could not see; the portal priced every apartment at every length, so
-    // those warnings would now be wrong.
-    notes: [...notes, ...(listing?.sourceNotes ?? []).filter((n) => !/supplied separately|unit list|instruction|known units/i.test(n)).slice(0, 3)].filter(
-      (n) => !learned || !/lease lengths?|rent range|lowest figure|ranges by floor plan|confirm the current price|per person|one rate per apartment|starting prices?/i.test(n)
-    ),
+    notes: reviewedNotes,
   });
   snapshot.model = modelUsed;
   snapshot.trace = trace;
