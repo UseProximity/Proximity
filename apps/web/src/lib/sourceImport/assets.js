@@ -11,7 +11,7 @@
  */
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { r2, getBucket, getPublicBaseUrl } from "@/lib/r2";
-import { fetchAssetResponse, readAssetCapped } from "@/lib/listingDraft/fetchSite";
+import { fetchAssetResponse, readAssetCapped, renderPage } from "@/lib/listingDraft/fetchSite";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 // Icons and thumbnails, not photos. Floor plan diagrams can be small PNGs,
@@ -46,42 +46,112 @@ async function shrink(buffer, type) {
   }
 }
 
-export async function copyRemoteImage(url, { kind = "photo", slug = "import" } = {}) {
+async function store(raw, type, { kind, slug }) {
+  if (raw.length < (kind === "floor-plan" ? MIN_PLAN_BYTES : MIN_PHOTO_BYTES)) return null;
+  const { buffer, type: finalType } = kind === "floor-plan" ? { buffer: raw, type } : await shrink(raw, type);
+  const ext = EXT[finalType] ?? "jpg";
+  const folder = kind === "floor-plan" ? "floor-plans" : kind === "unit-photo" ? "unit-photos" : `listings/${slug}`;
+  const key = `${folder}/${crypto.randomUUID()}.${ext}`;
+  await r2.send(new PutObjectCommand({ Bucket: getBucket(), Key: key, Body: buffer, ContentType: finalType }));
+  return `${getPublicBaseUrl()}/${key}`;
+}
+
+/* One plain copy. { stored } on success, { blocked } when the host refused us. */
+async function tryCopy(url, opts) {
   try {
     const res = await fetchAssetResponse(url);
     const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     if (!type.startsWith("image/") || type === "image/svg+xml") {
       res.body?.cancel?.().catch?.(() => {});
-      return null;
+      return {};
     }
     const raw = await readAssetCapped(res, MAX_BYTES);
-    if (!raw) return null;
-    if (raw.length < (kind === "floor-plan" ? MIN_PLAN_BYTES : MIN_PHOTO_BYTES)) return null;
-
-    const { buffer, type: finalType } = kind === "floor-plan" ? { buffer: raw, type } : await shrink(raw, type);
-    const ext = EXT[finalType] ?? "jpg";
-    const folder = kind === "floor-plan" ? "floor-plans" : kind === "unit-photo" ? "unit-photos" : `listings/${slug}`;
-    const key = `${folder}/${crypto.randomUUID()}.${ext}`;
-    await r2.send(new PutObjectCommand({ Bucket: getBucket(), Key: key, Body: buffer, ContentType: finalType }));
-    return `${getPublicBaseUrl()}/${key}`;
+    if (!raw) return {};
+    return { stored: await store(raw, type, opts) };
   } catch (err) {
     console.log(`[source-import] could not copy ${url.slice(0, 100)}: ${err?.message ?? err}`);
-    return null;
+    return { blocked: /http_(401|403|429)/.test(String(err?.message ?? "")) };
   }
 }
 
-/* Copy many, a few at a time, keeping the site's order. Drops failures. */
+/*
+ * Photos a host refuses to hand to a server (Apartments.com's image CDN
+ * answers every server fetch 403, whatever the headers, and Firecrawl will
+ * not run scripts on an image). A browser on the host's own site still
+ * shows them, so: render the site's home page once, swap the page for one
+ * photo at a time, and screenshot it. One credit for up to SHOT_BATCH
+ * photos. Returns Map(url -> PNG buffer).
+ */
+const SHOT_BATCH = 10;
+async function screenshotImages(urls) {
+  const out = new Map();
+  let origin;
+  try {
+    const host = new URL(urls[0]).hostname.split(".");
+    origin = `https://www.${host.slice(-2).join(".")}/`;
+  } catch {
+    return out;
+  }
+  const show = (u) =>
+    `(async () => { document.documentElement.innerHTML = '<head><style>html,body{margin:0;padding:0;background:#fff}img{display:block;width:100vw;height:auto}</style></head><body></body>'; const i = new Image(); i.src = ${JSON.stringify(u)}; document.body.appendChild(i); await new Promise((r) => { i.onload = r; i.onerror = r; setTimeout(r, 8000); }); return JSON.stringify({ w: i.naturalWidth, h: i.naturalHeight }); })()`;
+  for (let i = 0; i < urls.length; i += SHOT_BATCH) {
+    const batch = urls.slice(i, i + SHOT_BATCH);
+    const r = await renderPage(origin, { actions: batch.flatMap((u) => [{ type: "executeJavascript", script: show(u) }, { type: "screenshot", fullPage: true }]) });
+    if (!r) continue;
+    await Promise.all(
+      batch.map(async (u, j) => {
+        let size = null;
+        try {
+          size = JSON.parse(r.returns?.[j] ?? "null");
+        } catch {
+          /* unknown */
+        }
+        // A photo that did not load would be a blank white page.
+        if (!size?.w || !r.screenshots?.[j]) return;
+        try {
+          const shot = await fetch(r.screenshots[j], { signal: AbortSignal.timeout(30000) });
+          if (shot.ok) out.set(u, Buffer.from(await shot.arrayBuffer()));
+        } catch {
+          /* this one stays missing */
+        }
+      })
+    );
+  }
+  console.log(`[source-import] screenshot rescue: ${out.size} of ${urls.length} blocked photos recovered from ${origin}`);
+  return out;
+}
+
+export async function copyRemoteImage(url, opts = {}) {
+  const o = { kind: "photo", slug: "import", ...opts };
+  const first = await tryCopy(url, o);
+  if (first.stored || !first.blocked) return first.stored ?? null;
+  const shots = await screenshotImages([url]);
+  const png = shots.get(url);
+  return png ? store(png, "image/png", o).catch(() => null) : null;
+}
+
 export async function copyRemoteImages(urls, opts) {
+  const o = { kind: "photo", slug: "import", ...opts };
   const out = new Array(urls.length).fill(null);
+  const blocked = [];
   let cursor = 0;
   const worker = async () => {
     for (;;) {
       const i = cursor++;
       if (i >= urls.length) return;
-      out[i] = await copyRemoteImage(urls[i], opts);
+      const r = await tryCopy(urls[i], o);
+      out[i] = r.stored ?? null;
+      if (r.blocked) blocked.push(i);
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker));
+  if (blocked.length) {
+    const shots = await screenshotImages(blocked.map((i) => urls[i]));
+    for (const i of blocked) {
+      const png = shots.get(urls[i]);
+      if (png) out[i] = await store(png, "image/png", o).catch(() => null);
+    }
+  }
   const ok = out.filter(Boolean).length;
   console.log(`[source-import] photos: ${ok} of ${urls.length} copied${opts?.slug ? ` for ${opts.slug}` : ""}${ok < urls.length ? ` (first miss: ${urls[out.findIndex((x) => !x)]?.slice(0, 100)})` : ""}`);
   return urls.map((url, i) => ({ url, stored: out[i] })).filter((r) => r.stored);

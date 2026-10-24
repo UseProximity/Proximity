@@ -19,6 +19,7 @@
  */
 import { randomUUID } from "node:crypto";
 import supabase from "@/lib/supabase";
+import { markAlreadyListed } from "./alreadyListed.js";
 import { getBaseUrl } from "@/lib/email";
 import { findPropertyNameConflict } from "@/lib/listings/propertyName";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
@@ -137,7 +138,13 @@ export async function createImportBatch({ userId, user, pastedUrl, targets, batc
   // response creating it never arrives (they left the page mid-way).
   const batchId = typeof requested === "string" && /^[0-9a-f-]{36}$/i.test(requested) ? requested : randomUUID();
   const jobs = [];
-  for (const raw of targets.slice(0, MAX_TARGETS)) {
+  // Ownership is decided here, not by the browser (see alreadyListed.js).
+  const checked = await markAlreadyListed(
+    targets.slice(0, MAX_TARGETS).map((t) => ({ name: String(t.name ?? ""), address: String(t.address ?? ""), url: t.url ?? null, kind: "property" })),
+    userId
+  );
+  for (const [n, given] of targets.slice(0, MAX_TARGETS).entries()) {
+    const raw = { ...given, alreadyListed: checked[n]?.alreadyListed ?? null };
     const target = {
       name: String(raw.name ?? "").slice(0, 200),
       address: String(raw.address ?? "").slice(0, 200),

@@ -403,6 +403,7 @@ export async function renderPage(rawUrl, { waitMs = 0, raw = false, actions = nu
       html: html.slice(0, MAX_BYTES * 3),
       finalUrl: data?.data?.metadata?.url || rawUrl,
       returns: (data?.data?.actions?.javascriptReturns ?? []).map((r) => r?.value),
+      screenshots: data?.data?.actions?.screenshots ?? [],
     };
   } catch {
     return null;

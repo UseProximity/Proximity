@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-21T02:39:24.899Z",
-  "count": 157,
+  "_generated": "2026-10-24T18:07:56.535Z",
+  "count": 158,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -466,6 +466,10 @@
     {
       "file": "src/lib/seo/targets.js",
       "description": "The evidence-backed target-query map the measurement engine tracks."
+    },
+    {
+      "file": "src/lib/sourceImport/alreadyListed.js",
+      "description": "Which of these buildings are already on Proximity, and whose."
     },
     {
       "file": "src/lib/sourceImport/apply.js",

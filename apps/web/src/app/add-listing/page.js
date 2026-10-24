@@ -101,6 +101,21 @@ export default function AddListingPage() {
   // Chosen here, before the request, so leaving mid-way can still cancel it.
   const pendingBatch = useRef(null);
   /*
+   * The guard is for one paste, not one visit. Add Listing is the same page
+   * before and after a workspace, so coming back from one (Done, or the
+   * header link) kept the guard set and the next paste's Continue did
+   * nothing at all. Leaving a workspace re-arms it.
+   */
+  const hadBatch = useRef(!!batchId);
+  useEffect(() => {
+    if (batchId) hadBatch.current = true;
+    else if (hadBatch.current) {
+      hadBatch.current = false;
+      startedRef.current = false;
+      pendingBatch.current = null;
+    }
+  }, [batchId]);
+  /*
    * Leaving while the drafts are being made throws the whole batch away:
    * the request may already have created them, so they are cancelled by the
    * id chosen above, and the jump to the workspace is called off.
