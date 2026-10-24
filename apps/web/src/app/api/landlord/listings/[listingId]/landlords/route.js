@@ -59,6 +59,20 @@ export async function POST(req, { params }) {
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
+  /*
+   * Staff only. For an owner this was an account-lookup oracle (404 vs a name and
+   * user id for any email) and it attached a real person to the caller's
+   * property with no consent, so a scam listing could read "Listed by <them>".
+   * An invite the other person accepts is the follow-up; until then the team
+   * adds co-owners on request.
+   */
+  if (check.session.user.role !== "super") {
+    return NextResponse.json(
+      { error: "Email info@useproximity.org to add a co-owner." },
+      { status: 403 }
+    );
+  }
+
   const { email } = await req.json();
   if (!email?.trim()) return NextResponse.json({ error: "Email required" }, { status: 400 });
 

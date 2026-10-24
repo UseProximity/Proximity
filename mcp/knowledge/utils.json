@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-23T22:53:55.187Z",
-  "count": 140,
+  "_generated": "2026-10-23T23:03:48.127Z",
+  "count": 141,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -202,6 +202,10 @@
     {
       "file": "src/lib/email/newListingEmail.js",
       "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
+    },
+    {
+      "file": "src/lib/escapeHtml.js",
+      "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",

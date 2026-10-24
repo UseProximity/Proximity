@@ -119,13 +119,27 @@ export async function DELETE(request) {
     const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
     if (error) return NextResponse.json({ error }, { status });
 
-    // Delete the review
-    await supabase
+    /*
+     * Only a review still awaiting approval may be dismissed here. Published
+     * reviews auto-approve, so without this an owner could quietly erase every
+     * unfavourable review of their own property. And it is a soft delete, so a
+     * moderator can still see what was removed and by whom (action_log).
+     */
+    if (review.legitimacy !== false || review.deleted_at) {
+      return NextResponse.json(
+        { error: "Only a review awaiting approval can be dismissed." },
+        { status: 403 }
+      );
+    }
+    const { error: deleteError } = await supabase
       .from("listing_reviews")
-      .delete()
-      .eq("id", reviewId);
-
-    void review;
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", reviewId)
+      .eq("legitimacy", false);
+    if (deleteError) {
+      console.error("Error dismissing review:", deleteError.message);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
 
     return NextResponse.json({});
   } catch (error) {

@@ -910,9 +910,10 @@
           "unreadable_pages:_int4",
           "model:text",
           "created_at:timestamptz",
-          "deleted_at:timestamptz"
+          "deleted_at:timestamptz",
+          "analysis_started_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk user_id->users.id (cascade); matched_listing_id->listings.id (set null); rls: service role only (no policies)",
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); matched_listing_id->listings.id (set null); rls: service role only (no policies); analysis_started_at = atomic claim taken by PUT /api/lease-check before the paid analysis (202610230004), cleared on failure",
         "observed_2026_10_12": {
           "prod_rows": 1,
           "prod_last_write": "2026-09-12"
