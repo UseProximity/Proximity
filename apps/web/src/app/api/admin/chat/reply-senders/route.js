@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { isProdData } from "@/lib/appEnv";
 import { getSupabaseClient } from "@/lib/supabase";
 import { processInboundEmail } from "@/lib/chat/inboundEmail";
@@ -37,11 +37,8 @@ function getDbTarget(req) {
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
-async function requireAdmin() {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) return null;
-  return session;
-}
+// The role is read from the database, not the session, like every admin route.
+const requireAdmin = () => requireDbRole(["super", "admin"]);
 
 // Only refused replies are re-run. 'posted' is done, 'processing' is in flight.
 const RERUNNABLE = new Set(["unauthenticated", "wrong_sender", "held", "unknown_address", "empty", "rejected", "error", "spam", "auto_reply"]);

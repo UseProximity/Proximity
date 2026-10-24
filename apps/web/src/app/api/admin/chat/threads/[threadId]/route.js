@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { domainApprovable } from "@/lib/chat/replySenders";
 
@@ -44,8 +44,8 @@ function getDbTarget(req) {
 }
 
 export async function GET(req, { params }) {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
