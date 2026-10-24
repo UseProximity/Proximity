@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseClient } from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
+import { stripSecrets, stripSecretsFromRows } from "@/lib/security/secretColumns";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 
@@ -86,7 +87,8 @@ export async function GET(req, { params }) {
   const { data, error } = await supabase.from(table).select("*").limit(1000);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  return Response.json(data);
+  // Read-only staff included: no role ever needs password hashes or tokens.
+  return Response.json(stripSecretsFromRows(data));
 }
 
 export async function PATCH(req, { params }) {
@@ -180,7 +182,7 @@ export async function PATCH(req, { params }) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json(data);
+  return Response.json(stripSecrets(data));
 }
 
 export async function POST(req, { params }) {
@@ -238,7 +240,7 @@ export async function POST(req, { params }) {
       console.error(`[admin POST] table=${table}`, error);
       return Response.json({ error: "Failed to create record" }, { status: 500 });
     }
-    return Response.json(data, { status: 201 });
+    return Response.json(stripSecrets(data), { status: 201 });
   } catch (err) {
     console.error(`[admin POST] table=${table}`, err);
     return Response.json({ error: "Internal server error" }, { status: 500 });

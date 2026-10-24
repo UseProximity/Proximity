@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-23T22:44:05.340Z",
-  "count": 138,
+  "_generated": "2026-10-23T22:46:45.038Z",
+  "count": 139,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -450,6 +450,10 @@
     {
       "file": "src/lib/schools.js",
       "description": "The universities Proximity serves, and the email domains that prove membership."
+    },
+    {
+      "file": "src/lib/security/secretColumns.js",
+      "description": "Columns that must never leave the server, for any caller, staff included."
     },
     {
       "file": "src/lib/seo/gsc.js",
