@@ -177,7 +177,10 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
     listingAddress: escapeHtml(listingAddress),
     studentName: escapeHtml(student.name),
     studentEmail: escapeHtml(student.email),
-    mailto: escapeHtml(encodeURIComponent(student.email || "")),
+    // Percent-encode so "?", "&" and "#" (all legal in an address's local part) can't
+    // add mailto params like bcc, then put "@" back: some mail clients don't decode
+    // "%40" and the reply would bounce.
+    mailto: escapeHtml(encodeURIComponent(student.email || "").replace(/%40/g, "@")),
     note: escapeHtml(note),
   };
   return sendMailSafe(transporter, {
