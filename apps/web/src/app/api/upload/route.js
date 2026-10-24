@@ -10,7 +10,8 @@ import {
 } from "@/lib/listings/ownership";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
 import { isProdData } from "@/lib/appEnv";
-import { imageUrlInUse, isIssuedUploadUrl } from "@/lib/listings/imageRefs";
+import { imageUrlsInUse, isIssuedUploadUrl } from "@/lib/listings/imageRefs";
+import { hasDbRole } from "@/lib/userRole";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,8 +20,11 @@ function isValidId(id) {
 }
 
 // Only staff may aim an upload at the other environment's bucket (the admin dashboard's
-// prod/dev switch). Anyone else always gets this deployment's own bucket.
-const allowedDb = (requestUser, db) => (requestUser?.role === "super" ? db || null : null);
+// prod/dev switch). Anyone else always gets this deployment's own bucket. The role is
+// read from the DB, not the token, which can be stale after a demotion; the lookup
+// only runs when a bucket is actually requested.
+const allowedDb = async (requestUser, db) =>
+  db && (await hasDbRole(requestUser?.id, ["super"])) ? db : null;
 
 // When db is explicitly "prod", or when no db is given and we're on the real production
 // site, use the prod bucket. Staging & local fall through to the dev bucket.
@@ -144,7 +148,7 @@ export async function PATCH(req) {
     const formData = await req.formData();
     const listingId = formData.get("listingId");
     const unitId = formData.get("unitId") || null;
-    const db = allowedDb(requestUser, formData.get("db"));
+    const db = await allowedDb(requestUser, formData.get("db"));
     /*
      * A floor plan is stored on the unit (listing_units.floor_plan_image_url),
      * not in the gallery. Without this it was written to BOTH: the same picture
@@ -241,7 +245,7 @@ export async function POST(req) {
     }
 
     const { listingId, unitId = null, db: requestedDb, files } = await req.json();
-    const db = allowedDb(requestUser, requestedDb);
+    const db = await allowedDb(requestUser, requestedDb);
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -297,7 +301,7 @@ export async function PUT(req) {
     }
 
     const { listingId, unitId = null, db: requestedDb, urls, attach = true } = await req.json();
-    const db = allowedDb(requestUser, requestedDb);
+    const db = await allowedDb(requestUser, requestedDb);
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -328,10 +332,8 @@ export async function PUT(req) {
      * which deletes the other listing's object from the bucket.
      */
     const issued = { publicBase: getPublicBase(db), folder: addressToFolderSlug(listing.address) };
-    for (const url of urls) {
-      if (!isIssuedUploadUrl(url, issued) || (await imageUrlInUse(url))) {
-        return Response.json({ error: "That isn't an upload for this property." }, { status: 400 });
-      }
+    if (!urls.every((url) => isIssuedUploadUrl(url, issued)) || (await imageUrlsInUse(urls))) {
+      return Response.json({ error: "That isn't an upload for this property." }, { status: 400 });
     }
 
     // Stored, but deliberately not filed in the gallery — the caller is putting
