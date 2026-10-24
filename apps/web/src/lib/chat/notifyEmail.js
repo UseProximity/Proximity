@@ -23,7 +23,10 @@
  * `via` is how the sender wrote: "app" (the default) or "email". It is recorded on the
  * sender's participant row as email_mode.
  *
- * Every send is logged to chat_email_log with the provider's message id. The next alert
+ * Every attempt is logged to chat_email_log: what was sent, to whom, for which message,
+ * and its status. A send that fails outright is logged as 'failed' and the team is emailed
+ * at once (lib/chat/deliveryAlerts.js); SES then reports delivery, bounces and spam
+ * complaints for the rest through /api/ses/events (Wyatt, 2026-10-23). The next alert
  * in the same thread, to the same person, carries those ids as References and In-Reply-To,
  * so Gmail, Outlook and Apple Mail stack the whole conversation in one email thread. SES
  * assigns its own Message-ID (<id@email.amazonses.com>), which is why the ids are read
@@ -33,6 +36,7 @@ import supabase from "@/lib/supabase";
 import { sendChatMessageEmail } from "@/lib/email";
 import { mintChatAccessToken } from "@/lib/chat/accessToken";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
+import { alertTeam } from "@/lib/chat/deliveryAlerts";
 
 const SES_MESSAGE_ID_DOMAIN = "email.amazonses.com";
 const MAX_REFERENCES = 20;
@@ -103,22 +107,77 @@ export async function notifyNewChatMessage({
 
     if (error) {
       console.error("notifyNewChatMessage: recipient lookup failed:", error);
+      await alertTeam({
+        subject: "a message alert could not be prepared",
+        intro: "The database lookup for who to email failed, so no alert went out for this message.",
+        facts: [["Conversation", threadId], ["Message", messageId], ["Error", error.message]],
+        action: "Check the conversation in the admin dashboard and make sure the other side has seen the message.",
+      });
       return;
     }
     if (!data?.recipientEmail) return;
 
-    await deliverAlert(data, { baseUrl, testEmailTo });
+    await deliverAlert(data, { baseUrl, testEmailTo, messageId });
   } catch (err) {
-    // The message is already delivered in-app; a notification failure must stay silent.
+    // The message is already delivered in-app, so the sender never sees this.
+    // The team does (deliverAlert reports its own failures; this is anything else).
     console.error("notifyNewChatMessage failed:", err);
+    await alertTeam({
+      subject: "a message alert crashed",
+      intro: "Something failed while sending the email alert for this message.",
+      facts: [["Conversation", threadId], ["Message", messageId], ["Error", String(err?.message ?? err)]],
+      action: "Check the conversation in the admin dashboard and make sure the other side has seen the message.",
+    });
+  }
+}
+
+async function logAttempt(row) {
+  const { error } = await supabase.from("chat_email_log").insert({ ...row, status_at: new Date().toISOString() });
+  if (error) {
+    console.error("notifyNewChatMessage: log insert failed:", error);
+    await alertTeam({
+      subject: "a chat email was not recorded",
+      intro: `An alert ${row.status === "failed" ? "failed" : "was sent"} but the delivery log could not be written, so delivery will not be tracked for it.`,
+      facts: [["Conversation", row.thread_id], ["To", row.to_email], ["Error", error.message]],
+    });
   }
 }
 
 /*
  * Send one alert for a recipient row from rpc_chat_notification_recipient and log it.
- * Returns the send result, or null when nothing was sent.
+ * Returns the send result, or null when nothing was sent. Never throws: a failed
+ * send is logged as 'failed' and reported to the team.
  */
-async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null }) {
+async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null, messageId = null }) {
+  const attempt = {
+    thread_id: data.threadId,
+    recipient_id: data.recipientId,
+    to_email: data.recipientEmail,
+    kind: reminder ? "reminder" : "alert",
+    message_id: messageId,
+  };
+  try {
+    return await sendAlert(data, { baseUrl, reminder, testEmailTo, attempt });
+  } catch (err) {
+    console.error("deliverAlert: send failed:", err);
+    const detail = String(err?.message ?? err).slice(0, 500);
+    await logAttempt({ ...attempt, provider: null, status: "failed", status_detail: detail });
+    await alertTeam({
+      subject: `a ${attempt.kind === "reminder" ? "reply reminder" : "message alert"} could not be sent`,
+      intro: "Both Amazon SES and the Gmail fallback refused the email. The message is in the app, but the recipient was not emailed.",
+      facts: [
+        ["To", data.recipientEmail],
+        ["Conversation", data.threadId],
+        ["Listing", data.listingTitle || data.listingAddress || data.subject],
+        ["Error", detail],
+      ],
+      action: "Email or call the recipient so they know a message is waiting, then check the email settings in Vercel.",
+    });
+    return null;
+  }
+}
+
+async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
   // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
   // /messages deep link so the notification still arrives.
   //
@@ -157,14 +216,7 @@ async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = nul
   });
 
   if (sent && !sent.suppressed) {
-    const { error: logError } = await supabase.from("chat_email_log").insert({
-      thread_id: data.threadId,
-      recipient_id: data.recipientId,
-      to_email: data.recipientEmail,
-      provider: sent.provider,
-      provider_message_id: sent.messageId,
-    });
-    if (logError) console.error("notifyNewChatMessage: log insert failed:", logError);
+    await logAttempt({ ...attempt, provider: sent.provider, provider_message_id: sent.messageId, status: "sent", status_detail: sent.sesError ? `SES failed, sent through Gmail: ${sent.sesError}` : null });
   }
   return sent ?? null;
 }

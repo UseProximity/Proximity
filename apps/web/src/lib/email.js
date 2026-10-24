@@ -410,6 +410,7 @@ export async function sendChatMessageEmail({
     : undefined;
   const from = { name: fromName, address: CHAT_FROM_ADDRESS };
 
+  let sesError = null;
   if (sesTransporter && replyTo) {
     try {
       const { html, text } = build(true);
@@ -426,6 +427,7 @@ export async function sendChatMessageEmail({
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
     } catch (err) {
       console.error("sendChatMessageEmail: SES send failed, falling back to Gmail:", err);
+      sesError = String(err?.message ?? err).slice(0, 300);
     }
   }
 
@@ -438,7 +440,35 @@ export async function sendChatMessageEmail({
     html,
     text,
   }, testEmailTo);
-  return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed) };
+  return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed), sesError };
+}
+
+/*
+ * Internal email to the team (lib/chat/deliveryAlerts.js). Tries SES first and
+ * Gmail second, so a report that one of the two is failing still gets out
+ * through the other (Wyatt, 2026-10-23).
+ */
+export async function sendTeamEmail({ to, subject, html }) {
+  if (sesTransporter) {
+    try {
+      return await sendMailSafe(sesTransporter, {
+        from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
+        to,
+        replyTo: "info@useproximity.org",
+        subject,
+        html,
+      });
+    } catch (err) {
+      console.error("sendTeamEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  return sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    replyTo: "info@useproximity.org",
+    subject,
+    html,
+  });
 }
 
 // Why an emailed reply did not reach the conversation, in words the sender can

@@ -268,23 +268,24 @@
       },
       {
         "table": "chat_email_log",
-        "status": "unreleased",
-        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Outbound chat alert emails sent through SES or Gmail, with the provider message id. The next alert to the same person in the same thread carries these ids as References/In-Reply-To so mail clients stack them as one thread (lib/chat/notifyEmail.js).",
+        "status": "live",
+        "description": "Every outbound chat email attempt (message alerts and 3 day reply reminders), sent through SES or the Gmail fallback, with the provider message id and a delivery status. SES delivery, delay, bounce, complaint, reject and rendering-failure events (/api/ses/events) move status forward only. Failed sends are logged as 'failed'. The daily check-in audits it (lib/chat/deliveryAudit.js). The next alert to the same person in the same thread carries earlier provider ids as References/In-Reply-To (lib/chat/notifyEmail.js).",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
           "recipient_id:uuid",
           "to_email:text",
-          "provider:text",
+          "provider:text (nullable)",
           "provider_message_id:text",
-          "created_at:timestamptz"
+          "created_at:timestamptz",
+          "kind:text (alert|reminder, default alert)",
+          "message_id:uuid (triggering chat message; no FK, outlives retention)",
+          "status:text (sent|delivered|delayed|bounced|complained|rejected|failed, default sent)",
+          "status_detail:text",
+          "status_at:timestamptz",
+          "delivered_at:timestamptz"
         ],
-        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk thread_id->chat_threads.id (cascade); recipient_id->users.id (set null); check provider in (ses,gmail); rls: service role only (no policies)",
-        "observed_2026_10_12": {
-          "dev_rows": 4,
-          "dev_last_write": "2026-10-12",
-          "prod": "table absent"
-        }
+        "notes": "Live on dev and prod since 2026-10-13. Delivery tracking columns from migration 202610230001 (dev applied 2026-10-23; prod pending until the fix/email-reply-auth release). pk id; fk thread_id->chat_threads.id (cascade); recipient_id->users.id (set null); check provider in (ses,gmail); checks on kind and status; idx (status, created_at desc); rls: service role only (no policies)"
       },
       {
         "table": "chat_inbound_emails",

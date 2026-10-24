@@ -348,10 +348,88 @@ function staleCard(item, baseUrl) {
   </div>`;
 }
 
+const UNALERTED_WHY = {
+  no_alert: "No alert email was recorded and they have not read it in the app",
+  send_failed: "The alert email failed to send",
+  suppressed: "Their address is suppressed after a bounce or spam complaint",
+  emails_off: "They turned message emails off (their choice, shown for completeness)",
+};
+
+const EMAIL_STATUS_WHY = {
+  sent: "No delivery confirmation from SES yet",
+  delayed: "Delayed: the recipient's server is deferring it",
+  bounced: "Bounced",
+  complained: "Marked as spam by the recipient",
+  rejected: "Refused by SES",
+  failed: "Failed to send",
+};
+
+const row = (cells) =>
+  `<tr>${cells.map((c) => `<td style="padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top">${c}</td>`).join("")}</tr>`;
+const table = (rows) =>
+  rows.length ? `<table style="font-size:13px;border-collapse:collapse;width:100%">${rows.join("")}</table>` : "";
+
 /*
- * One digest for the whole run. Callers skip the send when `items` is empty.
+ * The email delivery audit (lib/chat/deliveryAudit.js). Always shows the
+ * totals, so a quiet day still says plainly that everything was checked.
  */
-export function renderCheckinDigest({ items, baseUrl, dryRun = false }) {
+export function deliveryAuditHtml(audit) {
+  if (!audit) return "";
+  if (audit.error) {
+    return sectionHtml(
+      "Email delivery audit",
+      `<p style="color:#E82027;font-size:14px;margin:0">The audit could not run: ${esc(audit.error)}. Check the chat_email_log table by hand.</p>`,
+      "#E82027"
+    );
+  }
+  const s = audit.stats;
+  const summary = `<p style="color:#4b5563;font-size:14px;margin:0 0 8px">
+      ${fmtWhen(audit.since)} to ${fmtWhen(audit.until)}: ${s.messages} message${s.messages === 1 ? "" : "s"},
+      ${s.emailsSent} alert email${s.emailsSent === 1 ? "" : "s"} sent, ${s.emailsDelivered} confirmed delivered.
+      ${s.unalerted + s.undelivered + s.inboundNotPosted === 0 ? "<strong>Nothing missing.</strong>" : ""}
+    </p>`;
+
+  const unalerted = table(
+    audit.unalerted.map((u) =>
+      row([
+        esc(fmtWhen(u.createdAt)),
+        `${esc(u.recipient?.name ?? "")} &middot; ${esc(u.recipient?.email ?? "")}<br><span style="color:#6b7280">${esc(u.listing?.title ?? u.subject ?? "")}</span>`,
+        esc(UNALERTED_WHY[u.reason] ?? u.reason),
+      ])
+    )
+  );
+  const undelivered = table(
+    audit.undelivered.map((l) =>
+      row([
+        esc(fmtWhen(l.created_at)),
+        `${esc(l.to_email)}<br><span style="color:#6b7280">${l.kind === "reminder" ? "reply reminder" : "message alert"} &middot; thread ${esc(String(l.thread_id).slice(0, 8))}</span>`,
+        `${esc(l.provider === "gmail" ? "Sent through the Gmail fallback, which cannot confirm delivery" : EMAIL_STATUS_WHY[l.status] ?? l.status)}${l.status_detail ? `<br><span style="color:#6b7280">${esc(l.status_detail)}</span>` : ""}`,
+      ])
+    )
+  );
+  const inbound = table(
+    audit.inbound.map((e) =>
+      row([
+        esc(fmtWhen(e.created_at)),
+        esc(e.from_email ?? "unknown sender"),
+        `${esc(e.status)}${e.reason ? `<br><span style="color:#6b7280">${esc(e.reason)}</span>` : ""}`,
+      ])
+    )
+  );
+
+  return `
+    ${sectionHtml("Email delivery audit", summary)}
+    ${sectionHtml(`Messages the other side was not told about (${audit.unalerted.length})`, unalerted, "#E82027")}
+    ${sectionHtml(`Alert emails not confirmed delivered (${audit.undelivered.length})`, undelivered, "#E82027")}
+    ${sectionHtml(`Emailed replies that were not posted (${audit.inbound.length})`, inbound, "#E82027")}
+  `;
+}
+
+/*
+ * One digest for the whole run. Callers skip the send when `items` is empty
+ * and the delivery audit found nothing.
+ */
+export function renderCheckinDigest({ items, audit = null, baseUrl, dryRun = false }) {
   const landlordsQuiet = items.filter((i) => i.quietSide === "landlord");
   const studentsQuiet = items.filter((i) => i.quietSide === "student");
 
@@ -364,16 +442,22 @@ export function renderCheckinDigest({ items, baseUrl, dryRun = false }) {
     </p>
     ${sectionHtml(`Landlords who went quiet (${landlordsQuiet.length})`, landlordsQuiet.map((i) => staleCard(i, baseUrl)).join(""), "#E82027")}
     ${sectionHtml(`Students who went quiet (${studentsQuiet.length})`, studentsQuiet.map((i) => staleCard(i, baseUrl)).join(""))}
+    ${deliveryAuditHtml(audit)}
   `;
+  const problems = audit?.error
+    ? 1
+    : (audit?.unalerted ?? []).filter((u) => u.reason !== "emails_off").length +
+      (audit?.undelivered?.length ?? 0) +
+      (audit?.inbound?.length ?? 0);
 
   return {
-    subject: `${dryRun ? "[DRY RUN] " : ""}Chat check-in: ${landlordsQuiet.length} landlord${landlordsQuiet.length === 1 ? "" : "s"} and ${studentsQuiet.length} student${studentsQuiet.length === 1 ? "" : "s"} waiting on a reply`,
+    subject: `${dryRun ? "[DRY RUN] " : ""}${problems > 0 ? `${problems} email delivery problem${problems === 1 ? "" : "s"}, ` : ""}Chat check-in: ${landlordsQuiet.length} landlord${landlordsQuiet.length === 1 ? "" : "s"} and ${studentsQuiet.length} student${studentsQuiet.length === 1 ? "" : "s"} waiting on a reply`,
     html: wrapHtml(inner),
   };
 }
 
-export async function sendCheckinDigestEmail({ to, items, baseUrl, dryRun = false }) {
-  const { subject, html } = renderCheckinDigest({ items, baseUrl, dryRun });
+export async function sendCheckinDigestEmail({ to, items, audit = null, baseUrl, dryRun = false }) {
+  const { subject, html } = renderCheckinDigest({ items, audit, baseUrl, dryRun });
   return sendMailSafe(transporter, {
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
