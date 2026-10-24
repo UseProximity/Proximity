@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { r2, getBucket, getPublicBaseUrl } from "@/lib/r2";
 import { canDeletePhoto } from "@/lib/listings/ownership";
+import { imageUrlInUse } from "@/lib/listings/imageRefs";
 
 /*
  * Remove one photo.
@@ -40,7 +41,9 @@ export async function DELETE(req, { params }) {
   }
 
   const { imageId } = await params;
-  const db = new URL(req.url).searchParams.get("db") || null;
+  // Only staff may reach across to the other environment's bucket.
+  const db =
+    session.user.role === "super" ? new URL(req.url).searchParams.get("db") || null : null;
 
   const check = await canDeletePhoto(session.user.id, imageId);
   if (!check.ok) {
@@ -63,9 +66,13 @@ export async function DELETE(req, { params }) {
    * Storage first, then the row. A failed R2 delete is logged and not fatal —
    * an orphaned object costs a little storage, whereas leaving the row behind
    * would keep a deleted photo visible on the listing.
+   *
+   * The object only goes when nothing else points at it. Owning this ROW says
+   * nothing about who owns the file its URL names: a row carrying another
+   * listing's photo URL must not take that listing's picture down with it.
    */
   const key = keyFromUrl(check.image.url, db);
-  if (key) {
+  if (key && !(await imageUrlInUse(check.image.url, { excludeImageId: imageId }))) {
     try {
       await r2.send(new DeleteObjectCommand({ Bucket: getBucket(db), Key: key }));
     } catch (err) {

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-23T22:46:45.038Z",
-  "count": 139,
+  "_generated": "2026-10-23T22:53:55.187Z",
+  "count": 140,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -266,6 +266,10 @@
     {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
+    },
+    {
+      "file": "src/lib/listings/imageRefs.js",
+      "description": "Guards between listing photo rows and the R2 objects behind them."
     },
     {
       "file": "src/lib/listings/leaseDescription.js",

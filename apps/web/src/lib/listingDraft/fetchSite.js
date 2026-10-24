@@ -4,11 +4,16 @@
  * Fetches only what the landlord pasted (plus, optionally, a couple of same-site
  * pages the caller explicitly resolves): every hostname is DNS-resolved and
  * rejected if any address is private/internal, redirects are re-validated hop by
- * hop, and bodies are size-capped. No JS rendering — we read what the server
+ * hop, and bodies are size-capped. The same check runs again inside the socket's
+ * own DNS lookup (SAFE_AGENT), so the address actually connected to is the one
+ * that was checked: a domain answering a public IP to the first lookup and
+ * 127.0.0.1 to the second (DNS rebinding) gets nowhere. No JS rendering — we read what the server
  * sends, which Phase 0 showed is enough for most local landlord sites.
  */
 import dns from "node:dns/promises";
+import { lookup as lookupCallback } from "node:dns";
 import net from "node:net";
+import { Agent, fetch } from "undici";
 
 export const FETCH_UA = "ProximityListingBot/1.0 (+https://useproximity.org)";
 const MAX_BYTES = 2 * 1024 * 1024; // 2MB per page
@@ -19,39 +24,71 @@ const TIMEOUT_MS = 15000;
 // SSRF guard
 // ---------------------------------------------------------------------------
 
-function ipv4ToInt(ip) {
-  const parts = ip.split(".").map(Number);
-  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
-}
-
-const PRIVATE_V4_RANGES = [
+/*
+ * Every IANA special-purpose range that is not ordinary public unicast. BlockList
+ * matches IPv4-mapped IPv6 (::ffff:127.0.0.1, ::ffff:7f00:1) against the IPv4
+ * rules by itself; ::/96 covers ::, ::1 and the IPv4-compatible form.
+ */
+const BLOCKED = new net.BlockList();
+for (const [base, bits] of [
   ["0.0.0.0", 8], // "this network"
   ["10.0.0.0", 8],
   ["100.64.0.0", 10], // CGNAT
   ["127.0.0.0", 8],
   ["169.254.0.0", 16], // link-local incl. cloud metadata 169.254.169.254
   ["172.16.0.0", 12],
+  ["192.0.0.0", 24], // IETF protocol assignments
+  ["192.0.2.0", 24], // TEST-NET-1
   ["192.168.0.0", 16],
-];
-
-function isPrivateIpv4(ip) {
-  const n = ipv4ToInt(ip);
-  return PRIVATE_V4_RANGES.some(([base, bits]) => {
-    const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
-    return (n & mask) === (ipv4ToInt(base) & mask);
-  });
+  ["198.18.0.0", 15], // benchmarking
+  ["198.51.100.0", 24], // TEST-NET-2
+  ["203.0.113.0", 24], // TEST-NET-3
+  ["224.0.0.0", 4], // multicast
+  ["240.0.0.0", 4], // reserved, incl. broadcast
+]) {
+  BLOCKED.addSubnet(base, bits, "ipv4");
+}
+for (const [base, bits] of [
+  ["::", 96], // unspecified, loopback, IPv4-compatible
+  ["64:ff9b::", 96], // NAT64
+  ["64:ff9b:1::", 48], // local-use NAT64
+  ["100::", 64], // discard-only
+  ["2001:db8::", 32], // documentation
+  ["fc00::", 7], // unique local
+  ["fe80::", 10], // link-local
+  ["ff00::", 8], // multicast
+]) {
+  BLOCKED.addSubnet(base, bits, "ipv6");
 }
 
 function isPrivateIp(ip) {
-  if (net.isIPv4(ip)) return isPrivateIpv4(ip);
-  const lower = ip.toLowerCase();
-  // IPv4-mapped IPv6 (::ffff:1.2.3.4)
-  const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIpv4(mapped[1]);
-  if (lower === "::1" || lower === "::") return true;
-  if (lower.startsWith("fe80:")) return true; // link-local
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA fc00::/7
-  return false;
+  const family = net.isIPv4(ip) ? "ipv4" : net.isIPv6(ip) ? "ipv6" : null;
+  return !family || BLOCKED.check(ip, family);
+}
+
+/*
+ * The DNS lookup the socket itself uses. Rejecting here (not just in
+ * assertSafeUrl) is what stops rebinding: there is no second lookup left for
+ * the attacker's DNS server to answer differently.
+ */
+function guardedLookup(hostname, options, callback) {
+  lookupCallback(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err);
+    if (!addresses.length || addresses.some((a) => isPrivateIp(a.address))) {
+      return callback(Object.assign(new Error("private_address"), { code: "EPRIVATEADDR" }));
+    }
+    if (options?.all) return callback(null, addresses);
+    return callback(null, addresses[0].address, addresses[0].family);
+  });
+}
+
+const SAFE_AGENT = new Agent({ connect: { lookup: guardedLookup } });
+
+// Network failure, or the connect-time guard refusing a private address.
+function fetchFailure(err) {
+  if (err?.name === "TimeoutError") return new DraftFetchError("timeout");
+  if (err?.cause?.code === "EPRIVATEADDR") return new DraftFetchError("private_address");
+  return new DraftFetchError("unreachable");
 }
 
 // Throws on anything that must not be fetched. Returns silently when safe.
@@ -150,6 +187,7 @@ export async function fetchPage(rawUrl) {
     let res;
     try {
       res = await fetch(url, {
+        dispatcher: SAFE_AGENT,
         redirect: "manual",
         signal: AbortSignal.timeout(TIMEOUT_MS),
         headers: {
@@ -159,7 +197,7 @@ export async function fetchPage(rawUrl) {
         },
       });
     } catch (err) {
-      throw new DraftFetchError(err?.name === "TimeoutError" ? "timeout" : "unreachable");
+      throw fetchFailure(err);
     }
 
     if ([301, 302, 303, 307, 308].includes(res.status)) {
@@ -198,12 +236,13 @@ export async function fetchAssetResponse(rawUrl) {
     let res;
     try {
       res = await fetch(url, {
+        dispatcher: SAFE_AGENT,
         redirect: "manual",
         signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
         headers: { "User-Agent": FETCH_UA, Accept: "image/*,*/*;q=0.5" },
       });
     } catch (err) {
-      throw new DraftFetchError(err?.name === "TimeoutError" ? "timeout" : "unreachable");
+      throw fetchFailure(err);
     }
     if ([301, 302, 303, 307, 308].includes(res.status)) {
       const loc = res.headers.get("location");
