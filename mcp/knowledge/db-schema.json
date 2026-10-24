@@ -121,7 +121,7 @@
           "changed_fields:jsonb",
           "changed_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk changed_by_id->users.id (set null); check changed_by_source in (user,system,migration,trigger) | event_type in (INSERT,UPDATE,DELETE); rls: service role only (no policies)",
+        "notes": "status=active; pk id; fk changed_by_id->users.id (set null); check changed_by_source in (user,system,migration,trigger) | event_type in (INSERT,UPDATE,DELETE); rls: service role only (no policies), anon/authenticated grants revoked (202610230003); fn_action_log drops password hash, token and cred_* columns before writing",
         "observed_2026_10_12": {
           "prod_rows": 64269,
           "prod_last_write": null
@@ -540,7 +540,7 @@
           "source:text",
           "confirmation_sent_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk dorm_id->dorms.id (cascade); user_id->users.id (set null); unique (mongo_id); check rating between 1 and 5; rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk dorm_id->dorms.id (cascade); user_id->users.id (set null); unique (mongo_id); check rating between 1 and 5; rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry the user_id behind anonymous reviews; service role only",
         "observed_2026_10_12": {
           "prod_rows": 73,
           "prod_last_write": "2026-10-12"
@@ -1442,7 +1442,7 @@
           "source": "?src= campaign tag from a printed QR code",
           "confirmation_sent_at": "batched confirmation email (cron review-confirmations)"
         },
-        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies (app uses the service role anyway); edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
+        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry reviewer_email and the user_id behind anonymous reviews; service role only; edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
         "observed_2026_10_12": {
           "prod_rows": 147,
           "prod_last_write": "2026-10-12"
