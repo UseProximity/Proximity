@@ -15,7 +15,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..");
@@ -24,9 +24,19 @@ const outDir = join(ROOT, process.env.OUT_DIR || "ci-out");
 const MODEL = "claude-opus-4-8";
 const MAX_DIFF_CHARS = 60000; // keep the prompt well within limits
 
+// base/head come from data.json, which carries values that started life in a PR
+// comment, so they must look like refs and never reach a shell.
+const REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
 function getDiff(base, head) {
+  if (!REF_RE.test(String(base)) || !REF_RE.test(String(head))) {
+    return "(could not compute diff: unexpected ref)";
+  }
   try {
-    const out = execSync(`git diff ${base}...${head}`, { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }).toString();
+    const out = execFileSync("git", ["diff", "--end-of-options", `${base}...${head}`], {
+      cwd: ROOT,
+      maxBuffer: 64 * 1024 * 1024,
+    }).toString();
     if (out.length > MAX_DIFF_CHARS) {
       return out.slice(0, MAX_DIFF_CHARS) + `\n\n…[diff truncated at ${MAX_DIFF_CHARS} chars]`;
     }

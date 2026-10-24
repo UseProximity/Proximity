@@ -13,7 +13,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, dirname, relative, resolve } from "path";
 import { fileURLToPath } from "url";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { readKnowledge } from "./resources.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -183,8 +183,9 @@ function loadRouteMeta() {
 
 // ── Changed-file discovery ──────────────────────────────────────────────────
 
-function git(args) {
-  return execSync(`git ${args}`, { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
+// An argument array, never a shell string: base/head can come from a tool call or CI.
+function git(...args) {
+  return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
 }
 
 function getChangedFiles({ base = "staging", head }) {
@@ -193,13 +194,13 @@ function getChangedFiles({ base = "staging", head }) {
   try {
     if (head) {
       // Comparing two refs explicitly (e.g. for a PR or a CI run).
-      add(git(`diff --name-only ${base}...${head}`));
+      add(git("diff", "--name-only", "--end-of-options", `${base}...${head}`));
     } else {
       // Working-branch mode: committed changes since base + uncommitted + new files.
-      add(git(`diff --name-only ${base}...HEAD`));
-      add(git(`diff --name-only`));
-      add(git(`diff --name-only --cached`));
-      add(git(`ls-files --others --exclude-standard`));
+      add(git("diff", "--name-only", "--end-of-options", `${base}...HEAD`));
+      add(git("diff", "--name-only"));
+      add(git("diff", "--name-only", "--cached"));
+      add(git("ls-files", "--others", "--exclude-standard"));
     }
   } catch (err) {
     return { error: err.message.split("\n")[0], files: [] };
