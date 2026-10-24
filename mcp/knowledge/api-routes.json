@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-24T17:39:37.712Z",
-  "count": 130,
+  "_generated": "2026-10-24T17:44:21.215Z",
+  "count": 133,
   "routes": [
     {
       "path": "/api/account",
@@ -62,6 +62,22 @@
       "file": "src/app/api/admin/[table]/route.js"
     },
     {
+      "path": "/api/admin/chat/reply-senders",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin",
+        "DELETE": "admin"
+      },
+      "tables": [
+        "chat_inbound_emails"
+      ],
+      "file": "src/app/api/admin/chat/reply-senders/route.js"
+    },
+    {
       "path": "/api/admin/chat/threads",
       "methods": [
         "GET"
@@ -94,6 +110,8 @@
         "chat_messages",
         "chat_attachments",
         "chat_moderation_events",
+        "chat_inbound_emails",
+        "landlord_reply_senders",
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
@@ -546,6 +564,18 @@
       "file": "src/app/api/chat/realtime-token/route.js"
     },
     {
+      "path": "/api/chat/reply-senders/[id]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "DELETE": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/reply-senders/[id]/route.js"
+    },
+    {
       "path": "/api/chat/threads",
       "methods": [
         "GET",
@@ -613,6 +643,23 @@
       },
       "tables": [],
       "file": "src/app/api/chat/threads/[threadId]/read/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/reply-senders",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "chat_threads",
+        "chat_inbound_emails"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/reply-senders/route.js"
     },
     {
       "path": "/api/chat/threads/[threadId]/report",

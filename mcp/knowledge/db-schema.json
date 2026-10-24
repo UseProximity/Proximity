@@ -289,8 +289,8 @@
       },
       {
         "table": "chat_inbound_emails",
-        "status": "unreleased",
-        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. One row per email received by the SES inbound pipeline (s3_key unique). status records how it was handled (posted = became a chat message via chat_message_id; spam, auto_reply, unauthenticated, unknown_address, wrong_sender, empty, rejected, error). Migration chat_email_relay_inbound (2026-10-09, dev).",
+        "status": "live",
+        "description": "One row per email received by the SES inbound pipeline (s3_key unique). status: posted (chat_message_id set), held (from someone other than the landlord, awaiting the landlord's approval; approving re-runs it), spam, auto_reply, unauthenticated, unknown_address, wrong_sender (incl. 'declined by landlord', 'forwarded'), empty, rejected, error. body_preview/sender_name keep what a held or refused reply said; approval_requested_at = landlord emailed about this sender (lib/chat/replySenderApproval.js). Unauthenticated rows record the addressed thread_id/user_id for display only.",
         "columns": [
           "id:uuid",
           "s3_key:text",
@@ -303,14 +303,28 @@
           "reason:text",
           "chat_message_id:uuid",
           "notice_sent_at:timestamptz",
-          "created_at:timestamptz"
+          "created_at:timestamptz",
+          "body_preview:text",
+          "sender_name:text",
+          "approval_requested_at:timestamptz"
         ],
-        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk thread_id->chat_threads.id (set null); user_id->users.id (set null); chat_message_id->chat_messages.id (set null); unique (s3_key); check status in (processing,posted,spam,auto_reply,unauthenticated,unknown_address,wrong_sender,empty,rejected,error); rls: service role only (no policies)",
-        "observed_2026_10_12": {
-          "dev_rows": 3,
-          "dev_last_write": "2026-10-12",
-          "prod": "table absent"
-        }
+        "notes": "Live on dev and prod. Status check includes 'held' since migration 202610240001 (dev applied 2026-10-24; prod with the feat/approved-reply-senders release). Partial index (user_id, from_email) where status='held'. pk id; fk thread_id->chat_threads.id (set null); user_id->users.id (set null); chat_message_id->chat_messages.id (set null); unique (s3_key); check status in (processing,posted,spam,auto_reply,unauthenticated,unknown_address,wrong_sender,empty,rejected,error); rls: service role only (no policies)"
+      },
+      {
+        "table": "landlord_reply_senders",
+        "status": "live",
+        "description": "Who may reply by email on a landlord's behalf besides their account email, alert address and same-company domain (Wyatt, 2026-10-24). pattern is one address ('vic@x.com') or a domain ('@x.com', never a shared free-mail domain). decision approved | declined ('not them'; an exact decline beats an approved domain). Managed by the landlord from the held-reply banner in the conversation (HeldRepliesBanner) or by admins in the Conversations view.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "pattern:text",
+          "decision:text (approved|declined)",
+          "decided_by:uuid",
+          "decided_via:text (landlord|admin)",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610240001 (dev applied 2026-10-24; prod with the feat/approved-reply-senders release). pk id; fk landlord_id->users.id (cascade), decided_by->users.id (set null); unique (landlord_id, pattern); rls: service role only (no policies)"
       },
       {
         "table": "chat_messages",

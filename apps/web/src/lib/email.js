@@ -484,6 +484,8 @@ const NOT_DELIVERED_REASONS = {
     "The conversation is no longer available, or too many messages were sent in a short time. Please try again in a few minutes.",
   attachments_removed:
     "The attached file could not be posted. Files that share contact details or ask for payment are not allowed in Proximity conversations.",
+  awaiting_approval:
+    "This address is not set up to reply for this landlord yet, so we have asked them to approve it. Your reply will be delivered as soon as they do.",
 };
 
 /*
@@ -494,15 +496,16 @@ const NOT_DELIVERED_REASONS = {
 export async function sendReplyNotDeliveredEmail({ to, reason, baseUrl }) {
   const why = NOT_DELIVERED_REASONS[reason] || NOT_DELIVERED_REASONS.rejected;
   const inboxUrl = `${baseUrl}/messages`;
+  const waiting = reason === "awaiting_approval";
   const message = {
     from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
     to,
-    subject: "Your reply was not delivered",
+    subject: waiting ? "Your reply is waiting for approval" : "Your reply was not delivered",
     headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" },
-    text: `Your reply was not delivered.\n\n${why}\n\nYou can always reply in the Proximity app:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
+    text: `${waiting ? "Your reply is waiting for approval." : "Your reply was not delivered."}\n\n${why}\n\nYou can always reply in the Proximity app:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
-        <h2 style="color:#111">Your reply was not delivered</h2>
+        <h2 style="color:#111">${waiting ? "Your reply is waiting for approval" : "Your reply was not delivered"}</h2>
         <p>${escapeHtml(why)}</p>
         <p>You can always reply in the Proximity app.</p>
         <a href="${inboxUrl}"
@@ -601,6 +604,64 @@ export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, remove
     }
   }
   await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+}
+
+/*
+ * Ask a landlord whether someone else may reply by email on their behalf
+ * (lib/chat/replySenderApproval.js, Wyatt, 2026-10-24). Sent to the landlord's
+ * own account email, once per sender, when a reply from an address that is not
+ * theirs was held. The link opens the conversation, where they approve or
+ * decline; the held reply is shown in the email so they know what is waiting.
+ */
+export function buildReplySenderApprovalEmail({ landlordFirst, senderName, senderEmail, studentFirst, listingLabel, preview, threadUrl }) {
+  const who = senderName ? `${senderName} (${senderEmail})` : senderEmail;
+  const student = displayName(studentFirst, "a student");
+  const about = listingLabel ? ` about ${listingLabel}` : "";
+  const intro = `${who} replied to ${student}${about} on your behalf. Their reply is waiting, because this address is not set up to reply for you.`;
+  const ask = "If they work with you, approve them and the reply is delivered straight away. If you do not know them, choose \"Not them\" and nothing they send will be posted.";
+  const expiry = "Held replies are kept for 30 days.";
+  const quote = String(preview ?? "").trim();
+  return {
+    subject: `Can ${senderName || senderEmail} reply for you on Proximity?`,
+    text: `Hi ${displayName(landlordFirst, "there")},\n\n${intro}\n\n${quote ? `Their reply:\n"${quote}"\n\n` : ""}${ask}\n\nReview it here:\n${threadUrl}\n\n${expiry}\n\n${POSTAL_ADDRESS}`,
+    html: `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
+        <p style="margin:0 0 14px">Hi ${escapeHtml(displayName(landlordFirst, "there"))},</p>
+        <p style="margin:0 0 14px">${escapeHtml(intro)}</p>
+        ${quote ? `<blockquote style="margin:0 0 14px;padding:10px 14px;border-left:3px solid #e5e7eb;background:#f9fafb;color:#374151;white-space:pre-wrap">${escapeHtml(quote)}</blockquote>` : ""}
+        <p style="margin:0 0 14px">${escapeHtml(ask)}</p>
+        <a href="${threadUrl}"
+           style="display:inline-block;margin:6px 0 16px;padding:12px 24px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Review the reply
+        </a>
+        <p style="margin:0 0 14px;color:#6b7280;font-size:13px">${escapeHtml(expiry)}</p>
+        <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
+          <p style="margin:0 0 6px">You are receiving this because someone replied to a message sent to you on Proximity.</p>
+          <p style="margin:0">${POSTAL_ADDRESS}</p>
+        </div>
+      </div>
+    `,
+  };
+}
+
+export async function sendReplySenderApprovalEmail({ to, ...input }) {
+  const built = buildReplySenderApprovalEmail(input);
+  const message = {
+    from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: built.subject,
+    headers: { "Auto-Submitted": "auto-generated" },
+    text: built.text,
+    html: built.html,
+  };
+  if (sesTransporter) {
+    try {
+      return await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+    } catch (err) {
+      console.error("sendReplySenderApprovalEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  return sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
 // `next` is where to send them once verified, so someone who signed up in the
