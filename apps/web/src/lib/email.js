@@ -109,6 +109,7 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl, req 
   await sendMailSafe(
     transporter,
     {
+      logAs: { kind: "password_reset" },
       from: `"Proximity" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Reset your Proximity password",
@@ -135,6 +136,7 @@ export async function sendPasswordResetEmail({ email, name, token, baseUrl, req 
 export async function sendLandlordNudgeEmail({ email, name }) {
   const firstName = name ? name.split(" ")[0] : "";
   await sendMailSafe(transporter, {
+    logAs: { kind: "landlord_nudge" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: "info@useproximity.org",
@@ -184,6 +186,7 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
     note: escapeHtml(note),
   };
   return sendMailSafe(transporter, {
+    logAs: { kind: "owner_inquiry" },
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
     to,
     cc: student.email || undefined,
@@ -385,6 +388,8 @@ export async function sendChatMessageEmail({
   references = [],
   testEmailTo,
   reminder = false,
+  threadId = null,
+  recipientId = null,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -418,6 +423,7 @@ export async function sendChatMessageEmail({
     try {
       const { html, text } = build(true);
       const info = await sendMailSafe(sesTransporter, {
+        logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
         from,
         to,
         replyTo,
@@ -436,6 +442,7 @@ export async function sendChatMessageEmail({
 
   const { html, text } = build(false);
   const info = await sendMailSafe(transporter, {
+    logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
     subject,
@@ -455,6 +462,7 @@ export async function sendTeamEmail({ to, subject, html }) {
   if (sesTransporter) {
     try {
       return await sendMailSafe(sesTransporter, {
+        logAs: { kind: "team_alert" },
         from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
         to,
         replyTo: "info@useproximity.org",
@@ -466,6 +474,7 @@ export async function sendTeamEmail({ to, subject, html }) {
     }
   }
   return sendMailSafe(transporter, {
+    logAs: { kind: "team_alert" },
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
     replyTo: "info@useproximity.org",
@@ -521,13 +530,13 @@ export async function sendReplyNotDeliveredEmail({ to, reason, baseUrl }) {
   };
   if (sesTransporter) {
     try {
-      await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+      await sendMailSafe(sesTransporter, { logAs: { kind: "reply_not_delivered" }, ...message, ses: SES_SEND_OPTIONS });
       return;
     } catch (err) {
       console.error("sendReplyNotDeliveredEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+  await sendMailSafe(transporter, { logAs: { kind: "reply_not_delivered" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
 // What an emailed reply contained, in words the sender recognises. Keyed by
@@ -600,13 +609,13 @@ export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, remove
   };
   if (sesTransporter) {
     try {
-      await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+      await sendMailSafe(sesTransporter, { logAs: { kind: "reply_guidelines" }, ...message, ses: SES_SEND_OPTIONS });
       return;
     } catch (err) {
       console.error("sendReplyGuidelinesEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  await sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+  await sendMailSafe(transporter, { logAs: { kind: "reply_guidelines" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
 /*
@@ -659,12 +668,12 @@ export async function sendReplySenderApprovalEmail({ to, ...input }) {
   };
   if (sesTransporter) {
     try {
-      return await sendMailSafe(sesTransporter, { ...message, ses: SES_SEND_OPTIONS });
+      return await sendMailSafe(sesTransporter, { logAs: { kind: "reply_sender_approval" }, ...message, ses: SES_SEND_OPTIONS });
     } catch (err) {
       console.error("sendReplySenderApprovalEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  return sendMailSafe(transporter, { ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+  return sendMailSafe(transporter, { logAs: { kind: "reply_sender_approval" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
 // `next` is where to send them once verified, so someone who signed up in the
@@ -677,6 +686,7 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next,
   await sendMailSafe(
     transporter,
     {
+      logAs: { kind: "verification" },
       from: `"Proximity" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verify your Proximity account",
@@ -739,13 +749,13 @@ export async function sendContactVerificationEmail({ to, landlordName, listingLa
   // is not the first time the inbox sees it.
   if (sesTransporter) {
     try {
-      await sendMailSafe(sesTransporter, { ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS }, testEmailTo);
+      await sendMailSafe(sesTransporter, { logAs: { kind: "contact_verification" }, ...message, from: `"Proximity" <${CHAT_FROM_ADDRESS}>`, ses: SES_SEND_OPTIONS }, testEmailTo);
       return;
     } catch (err) {
       console.error("sendContactVerificationEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  await sendMailSafe(transporter, message, testEmailTo);
+  await sendMailSafe(transporter, { ...message, logAs: { kind: "contact_verification" } }, testEmailTo);
 }
 
 // One email per PMS sync run, only when a human should look: errored or
@@ -767,6 +777,7 @@ export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
     )
     .join("");
   await sendMailSafe(transporter, {
+    logAs: { kind: "pms_sync_digest" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     subject: `PMS sync: ${items.length} connection${items.length === 1 ? "" : "s"} need${items.length === 1 ? "s" : ""} a look`,
@@ -849,6 +860,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
        </p>`;
 
   await sendMailSafe(transporter, {
+    logAs: { kind: "review_confirmation" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: OPT_OUT_INBOX,
@@ -909,6 +921,7 @@ export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken 
   const ctaUrl = `${baseUrl}/review/finish?token=${setupToken}`;
 
   await sendMailSafe(transporter, {
+    logAs: { kind: "waitlist_nudge" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: `Finish setting up your Proximity account`,
@@ -1036,6 +1049,7 @@ export async function sendReviewInviteEmail({
     : defaultBody;
 
   await sendMailSafe(transporter, {
+    logAs: { kind: "review_invite" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: "info@useproximity.org",
@@ -1078,6 +1092,7 @@ export async function sendContentReportEmail({
   await sendMailSafe(
     transporter,
     {
+      logAs: { kind: "content_report" },
       from: `"Proximity" <${process.env.EMAIL_USER}>`,
       to: "info@useproximity.org",
       subject: `Reported ${kind}${listingLabel ? `: ${listingLabel}` : ""}`,

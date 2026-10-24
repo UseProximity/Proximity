@@ -110,6 +110,7 @@ export async function POST(req) {
     }
 
     await sendMailSafe(_mailer, {
+      logAs: { kind: "feedback" },
       from: `"Proximity Feedback" <${process.env.EMAIL_USER}>`,
       to: TEAM_EMAILS.join(", "),
       replyTo: providedEmail || undefined,

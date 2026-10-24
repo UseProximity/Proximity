@@ -212,6 +212,8 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
     threadRef: `thread.${data.threadId}.${data.recipientId}`,
     references,
     reminder,
+    threadId: data.threadId,
+    recipientId: data.recipientId,
     testEmailTo,
   });
 

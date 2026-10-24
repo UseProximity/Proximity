@@ -105,6 +105,7 @@ export async function sendAvailabilityCheckEmail({ email, name, listings, baseUr
     .join("");
 
   return sendMailSafe(transporter, {
+    logAs: { kind: "availability_check" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: "info@useproximity.org",

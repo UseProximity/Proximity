@@ -25,6 +25,7 @@ async function sendNewListingEmail(toEmail, toName, address, listingId) {
   }
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
   await sendMailSafe(_adminEmailTransporter, {
+    logAs: { kind: "new_listing" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "You have a new listing on Proximity!",
@@ -52,6 +53,7 @@ async function sendCoLandlordAddedEmail(toEmail, toName, newLandlordName, newLan
   }
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
   await sendMailSafe(_adminEmailTransporter, {
+    logAs: { kind: "co_landlord_added" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "A co-owner has been added to your listing on Proximity",
