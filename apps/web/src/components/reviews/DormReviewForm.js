@@ -26,6 +26,7 @@ import ReviewerContactFields, {
   EMPTY_CONTACT,
   contactReady,
 } from "./ReviewerContactFields";
+import { readStoredToken } from "./setupTokenStore";
 
 export default function DormReviewForm({
   source = null,
@@ -132,6 +133,8 @@ export default function DormReviewForm({
               }
             : null,
           inviteToken,
+          // The inline token this tab already holds, if any (see setupTokenStore).
+          setupToken: requireContact ? readStoredToken() : null,
         }),
       });
       const data = await res.json();

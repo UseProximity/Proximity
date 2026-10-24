@@ -232,7 +232,7 @@ const config = {
 
       return true;
     },
-    async jwt({ token, user, account, trigger, session: updateData }) {
+    async jwt({ token, user, account, trigger }) {
       // Credentials sign-in: user.id is the DB id returned from authorize()
       if (account?.provider === "credentials" && user?.id) {
         const fields = await loadUserTokenFields(user.id);
@@ -350,15 +350,12 @@ const config = {
         }
       }
 
-      // Client called update({ profileComplete, role }) after profile completion
+      // Client called update() after a role or profile change it already saved
+      // server-side. The payload is whatever the browser POSTed to
+      // /api/auth/session, so it is never trusted: clearing roleCheckedAt makes
+      // the refresh below re-read role and profile_complete from the DB now.
       if (trigger === "update") {
-        if (updateData?.profileComplete !== undefined) {
-          token.profileComplete = updateData.profileComplete;
-        }
-        if (updateData?.role !== undefined) {
-          token.role = updateData.role;
-          token.roleCheckedAt = Date.now();
-        }
+        token.roleCheckedAt = 0;
       }
 
       // Auto-heal stale role/profile_complete from DB.

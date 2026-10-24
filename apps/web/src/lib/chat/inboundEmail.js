@@ -15,7 +15,11 @@
  *   5. It comes from that person: their account email, the alert address this
  *      conversation emails them at, or another mailbox at the same company
  *      domain (never a free mail domain or wustl.edu, where sharing a domain
- *      proves nothing). Forwards are refused (Wyatt, 2026-10-09).
+ *      proves nothing), or an address or domain the landlord approved to reply
+ *      for them (lib/chat/replySenders.js). Forwards are refused (Wyatt,
+ *      2026-10-09). A landlord-side reply from anyone else is held, not
+ *      refused, and the landlord is asked once whether to approve the sender
+ *      (Wyatt, 2026-10-24); approving runs it again.
  *   6. Something is left once the quoted email and signature are removed, or
  *      a photo or PDF is attached.
  * Then the text goes in through rpc_send_chat_message like any in-app message,
@@ -54,6 +58,8 @@ import {
 } from "@/lib/chat/attachments";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
 import { authenticated, domainOf } from "@/lib/chat/inboundAuth";
+import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
+import { requestSenderApproval } from "@/lib/chat/replySenderRequest";
 import { CONTACT_REASONS, redactChatText, screenChatText } from "@/lib/chat/moderation";
 import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
@@ -66,15 +72,6 @@ const MAX_BODY = 5000;
 // pixel. A pasted photo or screenshot is far larger and is kept.
 const INLINE_LOGO_MAX_BYTES = 40 * 1024;
 const NOTICE_EVERY_MS = 24 * 60 * 60 * 1000;
-
-// Sharing one of these domains says nothing about being the same business.
-const SHARED_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "outlook.com", "hotmail.com",
-  "live.com", "msn.com", "icloud.com", "me.com", "mac.com", "aol.com", "proton.me",
-  "protonmail.com", "gmx.com", "gmx.us", "mail.com", "yandex.com", "zoho.com",
-  "zohomail.com", "fastmail.com", "hey.com", "att.net", "sbcglobal.net", "comcast.net",
-  "verizon.net", "charter.net", "wustl.edu",
-]);
 
 let s3;
 function mailBucketClient() {
@@ -172,9 +169,11 @@ async function storeAttachments(threadId, files) {
   return stored;
 }
 
+/** Update the log row. Returns false when the update failed. */
 async function finish(id, fields) {
   const { error } = await supabase.from("chat_inbound_emails").update(fields).eq("id", id);
   if (error) console.error("inbound email: log update failed:", error);
+  return !error;
 }
 
 async function maybeSendNotice({ logId, fromEmail, threadId, reason }) {
@@ -197,7 +196,7 @@ async function maybeSendNotice({ logId, fromEmail, threadId, reason }) {
 }
 
 /** A claim this old that never finished belongs to a run that died (timeout, cold kill). */
-const STALE_CLAIM_MS = 5 * 60_000;
+export const STALE_CLAIM_MS = 5 * 60_000;
 
 /**
  * Take over an existing row for this key, if its run failed before posting
@@ -251,6 +250,7 @@ const QUIET_OUTCOMES = new Set(["posted", "duplicate", "spam", "auto_reply"]);
 
 const NOT_POSTED_WHY = {
   unauthenticated: "SES could not confirm the email really came from the address in its From line.",
+  held: "It came from someone other than the landlord. The landlord has been emailed to approve the sender; approving delivers it. You can also approve it in the admin Conversations view.",
   unknown_address: "The reply address does not match any conversation.",
   wrong_sender: "It came from an address that is not the one this conversation emails, or it was a forward.",
   empty: "Nothing new was left once the quoted email and signature were removed.",
@@ -281,7 +281,9 @@ async function reportNotPosted(key, result) {
       ["Stored email", key],
     ],
     action:
-      "Read the stored email in the inbound mail bucket. If it is a genuine reply, post it to the conversation or ask the sender to reply in the app.",
+      result.status === "held"
+        ? "Nothing yet: the landlord decides. If they do not and the sender is genuine, approve them in the admin Conversations view, which delivers the reply."
+        : "Read the stored email in the inbound mail bucket. If it is a genuine reply, post it to the conversation or ask the sender to reply in the app.",
   });
 }
 
@@ -319,12 +321,27 @@ async function processOne({ bucket, key, recipients }) {
       await finish(logId, { ...base, status: "auto_reply" });
       return { status: "auto_reply" };
     }
+    const found = findReplyToken(parsed, recipients);
     if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {
-      await finish(logId, { ...base, status: "unauthenticated" });
+      // Nothing is posted, but note which conversation it was addressed to so
+      // the admin Conversations view can show it there.
+      const { data: addressed } = found
+        ? await supabase
+            .from("chat_participants")
+            .select("thread_id, user_id")
+            .eq("reply_token_hash", hashReplyToken(found.token))
+            .maybeSingle()
+        : { data: null };
+      await finish(logId, {
+        ...base,
+        status: "unauthenticated",
+        thread_id: addressed?.thread_id ?? null,
+        user_id: addressed?.user_id ?? null,
+        to_address: found?.address ?? null,
+      });
       return { status: "unauthenticated" };
     }
 
-    const found = findReplyToken(parsed, recipients);
     const notice = async (status, reason, threadId = null, why = status) => {
       await finish(logId, { ...base, status, reason, thread_id: threadId });
       await maybeSendNotice({ logId, fromEmail, threadId, reason: why });
@@ -367,12 +384,48 @@ async function processOne({ bucket, key, recipients }) {
     const fromDomain = domainOf(fromEmail);
     const sameCompany =
       !SHARED_DOMAINS.has(fromDomain) && allowed.some((e) => domainOf(e) === fromDomain);
+    const forwarded = /^\s*(fwd?|fw)\s*:/i.test(String(parsed.subject ?? ""));
     if (!allowed.includes(fromEmail) && !testers.includes(fromEmail) && !sameCompany) {
-      return notice("wrong_sender", "from address is not this participant", threadId);
+      // Someone else at the landlord's end may have been approved to reply for
+      // them, or is held until the landlord decides (Wyatt, 2026-10-24).
+      const isLandlord = participant.chat_threads?.landlord_id === userId;
+      const decision = isLandlord ? await senderDecision(supabase, userId, fromEmail) : null;
+      if (decision !== "approved") {
+        // What they wrote, kept so the landlord and the admin view can judge it.
+        const senderName = String(parsed.from?.value?.[0]?.name ?? "").trim().slice(0, 120) || null;
+        const preview = extractReplyText({
+          text: parsed.text,
+          html: typeof parsed.html === "string" ? parsed.html : "",
+          senderName: participant.users?.name,
+          senderCompany: participant.users?.company_name,
+          fromName: senderName,
+        }).trim().slice(0, 2000);
+        base.body_preview = preview || null;
+        base.sender_name = senderName;
+        if (decision === "declined") return notice("wrong_sender", "declined by landlord", threadId);
+        if (!isLandlord || forwarded) {
+          return notice("wrong_sender", forwarded ? "forwarded" : "from address is not this participant", threadId);
+        }
+        /*
+         * Only ask the landlord about a reply we actually managed to hold. If the
+         * row can't be stored as held (the schema is missing the held columns,
+         * say), the catch below marks it 'error' so it shows up and can be re-run,
+         * instead of sitting in 'processing' behind an approval email whose
+         * Approve button finds nothing.
+         */
+        const held = await finish(logId, {
+          ...base,
+          status: "held",
+          reason: "sender not approved yet",
+          thread_id: threadId,
+        });
+        if (!held) throw new Error("could not store the reply as held");
+        await requestSenderApproval({ logId, landlordId: userId, threadId, fromEmail, senderName, preview });
+        await maybeSendNotice({ logId, fromEmail, threadId, reason: "awaiting_approval" });
+        return { status: "held", reason: "sender not approved yet" };
+      }
     }
-    if (/^\s*(fwd?|fw)\s*:/i.test(String(parsed.subject ?? ""))) {
-      return notice("wrong_sender", "forwarded", threadId);
-    }
+    if (forwarded) return notice("wrong_sender", "forwarded", threadId);
 
     const extracted = extractReplyText({
       text: parsed.text,
@@ -448,7 +501,9 @@ async function processOne({ bucket, key, recipients }) {
       .single();
     await supabase
       .from("chat_messages")
-      .update({ metadata: { ...(existing?.metadata ?? {}), via: "email" } })
+      // email_from: who actually wrote it, which differs from the account when
+      // an approved colleague replied for the landlord.
+      .update({ metadata: { ...(existing?.metadata ?? {}), via: "email", email_from: fromEmail } })
       .eq("id", sent.messageId);
 
     // Flag-tier signals (a scam narrative, an SSN request) are recorded as they

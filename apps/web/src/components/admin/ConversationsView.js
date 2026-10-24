@@ -10,13 +10,17 @@
  * and attempts that were blocked before anything was posted appear in the
  * timeline where they happened, so the admin sees what someone tried to say.
  *
- * Read only. It fetches its own data against the dashboard's dev/prod switch
+ * Emailed replies that were not posted appear in the timeline too, with the
+ * actions to approve or decline their sender for the landlord, or re-run them
+ * (ReplySenderControls.js, Wyatt, 2026-10-24). Everything else is read only.
+ * It fetches its own data against the dashboard's dev/prod switch
  * rather than going through the hierarchy loader, because a thread list and a
  * thread body are two requests, not one table.
  */
 
 import { useState, useEffect, useMemo } from "react";
 import { adminFetch, Badge, shortId } from "@/components/admin/adminShared";
+import { RefusedReply, ReplySendersList } from "@/components/admin/ReplySenderControls";
 
 // Plain-words labels for the reason keys written by lib/chat/moderation.js,
 // lib/chat/inboundEmail.js and lib/chat/scanAttachment.js. Anything not listed
@@ -133,7 +137,7 @@ function Message({ m, sender, isLandlord }) {
         <span className={`font-semibold ${isLandlord ? "text-blue-800" : "text-gray-800"}`}>{personLabel(sender)}</span>
         <Badge color={isLandlord ? "blue" : "gray"}>{sender?.side === "landlord" ? "landlord" : sender?.side === "student" ? "student" : sender?.role || "user"}</Badge>
         <span>{fmtWhen(m.createdAt)}</span>
-        {m.via === "email" && <Badge color="purple" title="Sent by replying to an alert email">via email</Badge>}
+        {m.via === "email" && <Badge color="purple" title="Sent by replying to an alert email">via email{m.emailFrom ? ` from ${m.emailFrom}` : ""}</Badge>}
         {m.deletedAt && <Badge color="gray" title={`Deleted ${fmtWhen(m.deletedAt)}`}>deleted</Badge>}
         {flagged && <span className="text-red-700 font-semibold">Flagged</span>}
       </div>
@@ -184,8 +188,8 @@ function BlockedAttempt({ e, sender }) {
   );
 }
 
-function ThreadDetail({ detail }) {
-  const { thread, people, messages, blockedAttempts } = detail;
+function ThreadDetail({ detail, dbTarget, onChanged }) {
+  const { thread, people, messages, blockedAttempts, refusedReplies = [], replySenders = [] } = detail;
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
   const landlord = people.find((p) => p.side === "landlord");
   const student = people.find((p) => p.side === "student");
@@ -195,9 +199,10 @@ function ThreadDetail({ detail }) {
     const items = [
       ...messages.map((m) => ({ kind: "message", at: m.createdAt, m })),
       ...blockedAttempts.map((e) => ({ kind: "blocked", at: e.createdAt, e })),
+      ...refusedReplies.map((r) => ({ kind: "refused", at: r.receivedAt, r })),
     ];
     return items.sort((a, b) => new Date(a.at) - new Date(b.at));
-  }, [messages, blockedAttempts]);
+  }, [messages, blockedAttempts, refusedReplies]);
 
   const flaggedCount = messages.filter((m) => m.flags.length > 0).length;
 
@@ -230,8 +235,10 @@ function ThreadDetail({ detail }) {
           {messages.length} message{messages.length === 1 ? "" : "s"}
           {flaggedCount > 0 ? ` · ${flaggedCount} flagged` : ""}
           {blockedAttempts.length > 0 ? ` · ${blockedAttempts.length} blocked before sending` : ""}
+          {refusedReplies.length > 0 ? ` · ${refusedReplies.length} emailed repl${refusedReplies.length === 1 ? "y" : "ies"} not posted` : ""}
           {` · started ${fmtWhen(thread.createdAt)}`}
         </p>
+        <ReplySendersList senders={replySenders} landlordId={thread.landlordId} dbTarget={dbTarget} onChanged={onChanged} />
       </div>
 
       <div className="space-y-2">
@@ -244,6 +251,8 @@ function ThreadDetail({ detail }) {
               sender={byId.get(item.m.senderId)}
               isLandlord={item.m.senderId === thread.landlordId}
             />
+          ) : item.kind === "refused" ? (
+            <RefusedReply key={item.r.id} r={item.r} dbTarget={dbTarget} onChanged={onChanged} />
           ) : (
             <BlockedAttempt key={item.e.id} e={item.e} sender={byId.get(item.e.userId)} />
           )
@@ -261,6 +270,7 @@ export default function ConversationsView({ search, dbTarget }) {
   const [detailError, setDetailError] = useState(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,13 +287,16 @@ export default function ConversationsView({ search, dbTarget }) {
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
     let cancelled = false;
-    setDetail(null);
     setDetailError(null);
     adminFetch(`/api/admin/chat/threads/${selectedId}`, dbTarget)
       .then((d) => { if (!cancelled) setDetail(d); })
       .catch((err) => { if (!cancelled) setDetailError(err.message); });
     return () => { cancelled = true; };
-  }, [selectedId, dbTarget]);
+  }, [selectedId, dbTarget, reloadKey]);
+
+  // A new selection starts from a blank detail; a reload after an action keeps
+  // the old one on screen until the fresh copy arrives.
+  useEffect(() => { setDetail(null); }, [selectedId, dbTarget]);
 
   const q = search.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -355,7 +368,7 @@ export default function ConversationsView({ search, dbTarget }) {
           ) : !detail ? (
             <p className="py-16 text-center text-sm text-gray-400">Loading conversation…</p>
           ) : (
-            <ThreadDetail detail={detail} />
+            <ThreadDetail detail={detail} dbTarget={dbTarget} onChanged={() => setReloadKey((k) => k + 1)} />
           )}
         </div>
       </div>

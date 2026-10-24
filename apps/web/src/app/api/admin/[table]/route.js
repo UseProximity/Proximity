@@ -1,7 +1,11 @@
+// @auth super
+// @auth GET admin
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
 import { getSupabaseClient } from "@/lib/supabase";
+import { requireDbRole } from "@/lib/userRole";
+import { escapeHtml } from "@/lib/escapeHtml";
+import { stripSecrets, stripSecretsFromRows } from "@/lib/security/secretColumns";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 
@@ -9,6 +13,8 @@ const _adminEmailTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -24,10 +30,10 @@ async function sendNewListingEmail(toEmail, toName, address, listingId) {
     subject: "You have a new listing on Proximity!",
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
+        <p>Hi ${escapeHtml(toName || "there")},</p>
         <p>Congratulations! A new listing has been assigned to your Proximity account.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p><strong>Address:</strong> ${address}</p>
+        <p><strong>Address:</strong> ${escapeHtml(address)}</p>
         <p style="margin-top: 16px;">
           <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Your Listing</a>
         </p>
@@ -51,10 +57,10 @@ async function sendCoLandlordAddedEmail(toEmail, toName, newLandlordName, newLan
     subject: "A co-owner has been added to your listing on Proximity",
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
-        <p>A new co-owner has been added to your listing at <strong>${address}</strong>.</p>
+        <p>Hi ${escapeHtml(toName || "there")},</p>
+        <p>A new co-owner has been added to your listing at <strong>${escapeHtml(address)}</strong>.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p><strong>New co-owner:</strong> ${newLandlordName || "Unknown"} (${newLandlordEmail})</p>
+        <p><strong>New co-owner:</strong> ${escapeHtml(newLandlordName || "Unknown")} (${escapeHtml(newLandlordEmail)})</p>
         <p style="margin-top: 16px;">
           <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Listing</a>
         </p>
@@ -71,17 +77,8 @@ function getDbTarget(req) {
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
-async function requireSuper() {
-  const session = await auth();
-  if (!session || session.user.role !== "super") return null;
-  return session;
-}
-
-async function requireSuperOrAdmin() {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) return null;
-  return session;
-}
+const requireSuper = () => requireDbRole(["super"]);
+const requireSuperOrAdmin = () => requireDbRole(["super", "admin"]);
 
 export async function GET(req, { params }) {
   const session = await requireSuperOrAdmin();
@@ -93,7 +90,8 @@ export async function GET(req, { params }) {
   const { data, error } = await supabase.from(table).select("*").limit(1000);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  return Response.json(data);
+  // Read-only staff included: no role ever needs password hashes or tokens.
+  return Response.json(stripSecretsFromRows(data));
 }
 
 export async function PATCH(req, { params }) {
@@ -187,7 +185,7 @@ export async function PATCH(req, { params }) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json(data);
+  return Response.json(stripSecrets(data));
 }
 
 export async function POST(req, { params }) {
@@ -245,7 +243,7 @@ export async function POST(req, { params }) {
       console.error(`[admin POST] table=${table}`, error);
       return Response.json({ error: "Failed to create record" }, { status: 500 });
     }
-    return Response.json(data, { status: 201 });
+    return Response.json(stripSecrets(data), { status: 201 });
   } catch (err) {
     console.error(`[admin POST] table=${table}`, err);
     return Response.json({ error: "Internal server error" }, { status: 500 });

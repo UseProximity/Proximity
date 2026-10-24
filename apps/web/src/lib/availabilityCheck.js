@@ -14,6 +14,7 @@
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "./outreach.js";
+import { escapeHtml } from "./escapeHtml.js";
 
 // Short-lived: a fresh token is emailed every cooldown cycle (14 days), so the
 // validity window is kept just above that to bound how long a leaked/forwarded
@@ -70,6 +71,8 @@ const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -79,14 +82,16 @@ const transporter = nodemailer.createTransport({
  * listings: [{ id, label }]
  */
 export async function sendAvailabilityCheckEmail({ email, name, listings, baseUrl }) {
-  const firstName = name ? name.split(" ")[0] : "";
+  // The name, title and contact name are typed by whoever created the listing, and the
+  // email goes to whatever contact address they entered, so all of it is escaped.
+  const firstName = name ? escapeHtml(name.split(" ")[0]) : "";
   const single = listings.length === 1;
   const rows = listings
     .map((l) => {
       const links = availabilityLinks(l.id, baseUrl);
       return `
       <div style="border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin:12px 0">
-        <div style="font-weight:600;margin-bottom:10px">${l.label}</div>
+        <div style="font-weight:600;margin-bottom:10px">${escapeHtml(l.label)}</div>
         <a href="${links.yes}"
            style="display:inline-block;padding:10px 18px;background:#16a34a;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;margin-right:8px">
           Yes, still available

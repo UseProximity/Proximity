@@ -7,6 +7,7 @@ import {
   listingIsUnavailable,
 } from "@/lib/listings/unitAvailability";
 import { sortUnits } from "@/utils/unitOrder";
+import { stripSecrets } from "@/lib/security/secretColumns";
 
 /*
  * The dashboard payload, built once for whoever is being looked at.
@@ -365,11 +366,12 @@ export async function buildDashboardUser({ email, id } = {}) {
 
   if (userError || !row) return null;
 
-  // The whole row is spread into the payload below (and sent to the browser and
-  // the mobile app), so the Sign in with Apple columns are taken out here: the
-  // refresh token is a secret, and apple_sub is Apple's identifier for the person.
+  // The whole row is spread into the payload below (and sent to the browser, the
+  // mobile app and read-only staff using "view as"), so credentials come out
+  // here: the password hash and every reset/verification/setup token (see
+  // stripSecrets), plus apple_sub, which is Apple's identifier for the person.
   // Every other column is passed through as before.
-  const { apple_refresh_token: _appleRefreshToken, apple_sub: _appleSub, ...user } = row;
+  const { apple_sub: _appleSub, ...user } = stripSecrets(row);
 
   const userId = user.id;
 

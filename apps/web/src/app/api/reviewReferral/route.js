@@ -59,12 +59,12 @@ import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimi
 import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
 import {
   ensureReviewerAccount,
-  markEmailVerifiedFromLink,
   normalizeClassYear,
   resolveSchoolId,
 } from "@/lib/reviews/onboarding";
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 import { checkReviewText } from "@/lib/contentRules";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +77,8 @@ const _mailer = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -265,7 +267,8 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
   }
   const listingUrl = `${SITE_URL}/browse?listing=${listingId}`;
   const loginUrl = `${SITE_URL}/login`;
-  const addr = listingAddress || "your property";
+  // The address and name can come straight from the review form, so both are escaped.
+  const addr = escapeHtml(listingAddress || "your property");
 
   let subject, intro, ctaLabel, ctaUrl;
   if (scenario === "claim_new") {
@@ -292,7 +295,7 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
     subject,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
+        <p>Hi ${escapeHtml(toName || "there")},</p>
         <p>${intro}</p>
         <p style="margin-top: 16px;">
           <a href="${ctaUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">${ctaLabel}</a>
@@ -318,10 +321,10 @@ async function sendContactMismatchAlert({ listingAddress, listingId, ownerEmail,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
         <p>A new review was submitted for an existing listing, but the landlord contact email entered by the reviewer does <strong>not</strong> match the listing owner's email.</p>
-        <p><strong>Property:</strong> ${listingAddress || "—"} (<a href="${listingUrl}">view listing</a>)</p>
-        <p><strong>Listing owner email:</strong> ${ownerEmail}</p>
-        <p><strong>Email entered in review:</strong> ${submittedEmail}</p>
-        <p><strong>Submitted by:</strong> ${reviewerName || "—"}</p>
+        <p><strong>Property:</strong> ${escapeHtml(listingAddress || "—")} (<a href="${listingUrl}">view listing</a>)</p>
+        <p><strong>Listing owner email:</strong> ${escapeHtml(ownerEmail)}</p>
+        <p><strong>Email entered in review:</strong> ${escapeHtml(submittedEmail)}</p>
+        <p><strong>Submitted by:</strong> ${escapeHtml(reviewerName || "—")}</p>
         <p style="color:#6b7280;font-size:13px;">Confirm which landlord is correct for this property.</p>
       </div>
     `,
@@ -368,6 +371,7 @@ export async function POST(req) {
       source,
       reviewer,
       inviteToken,
+      setupToken: priorSetupToken,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
@@ -477,6 +481,8 @@ export async function POST(req) {
     let setupToken = null;
     // Signed-out reviewer whose email already belongs to a real account.
     let existingAccount = false;
+    // Existing account still to be set up: its owner is emailed the link.
+    let setupByEmail = false;
 
     if (session?.user?.id) {
       emailSchool = schoolForEmail(session.user.email);
@@ -549,6 +555,16 @@ export async function POST(req) {
         email,
         classYear: signedOutReviewer.classYear,
         source: normalizeReviewSource(source),
+        /*
+         * The invite link was opened, which is the same proof the profile-setup
+         * link carries, only earlier. So the account is verified before the
+         * review is even written (inside ensureReviewerAccount, ahead of its
+         * claimability check), and the student never gets a second email asking
+         * them to confirm an address we already watched them use.
+         */
+        inboxProven: !!invite,
+        priorSetupToken,
+        req,
       });
       if (account.error) {
         return NextResponse.json({ error: account.error }, { status: 400 });
@@ -558,14 +574,7 @@ export async function POST(req) {
       reviewerDisplayName = account.displayName;
       setupToken = account.setupToken;
       existingAccount = !!account.existingAccount;
-
-      /*
-       * The invite link was opened, which is the same proof the profile-setup
-       * link carries, only earlier. So the account is verified before the
-       * review is even written, and the student never gets a second email
-       * asking them to confirm an address we already watched them use.
-       */
-      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
+      setupByEmail = !!account.setupByEmail;
     } else {
       return NextResponse.json(
         { error: "Add your name and school email, or sign in, to leave a review." },
@@ -829,6 +838,9 @@ export async function POST(req) {
       review,
       setupToken,
       existingAccount,
+      setupByEmail,
+      // An invite proved the inbox, so the profile step may offer a password.
+      canSetPassword: !!invite,
       reviewCount,
       reviewLimit: REVIEW_LIMIT,
       // What the profile step should open pre-filled with, so the student never

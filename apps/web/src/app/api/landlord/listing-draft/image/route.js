@@ -17,6 +17,14 @@ import {
  */
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
+/*
+ * Raster types only, and the outgoing Content-Type is always one of these exact
+ * strings, never the remote server's header. This response is served from our
+ * own origin, so an image/svg+xml body opened as a page would run its scripts
+ * as useproximity.org with the viewer's session. SVG is never accepted.
+ */
+const RASTER_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
+
 export async function GET(req) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -31,8 +39,9 @@ export async function GET(req) {
 
   try {
     const res = await fetchAssetResponse(url);
-    const type = res.headers.get("content-type") ?? "";
-    if (!type.startsWith("image/")) {
+    const declared = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const type = RASTER_TYPES.find((t) => t === declared || (t === "image/jpeg" && declared === "image/jpg"));
+    if (!type) {
       res.body?.cancel?.().catch?.(() => {});
       return NextResponse.json({ error: "Not an image" }, { status: 415 });
     }
@@ -44,7 +53,16 @@ export async function GET(req) {
       return NextResponse.json({ error: "Image too large" }, { status: 413 });
     }
     return new Response(buf, {
-      headers: { "Content-Type": type, "Cache-Control": "private, max-age=300" },
+      headers: {
+        "Content-Type": type,
+        "Cache-Control": "private, max-age=300",
+        // Belt and braces: opened directly, this downloads rather than renders,
+        // and nothing in it could run even if a browser did render it. The
+        // wizard reads it with fetch(), which none of these affect.
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Content-Disposition": "attachment",
+      },
     });
   } catch (err) {
     if (err instanceof DraftFetchError) {

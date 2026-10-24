@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-23T17:52:04.575Z",
-  "count": 143,
+  "_generated": "2026-10-24T18:37:19.684Z",
+  "count": 152,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -88,8 +88,16 @@
       "description": "Run with: npm test (from apps/web). Uses Node's built-in test runner, so there"
     },
     {
+      "file": "src/lib/auth/passwordReset.js",
+      "description": "Mint a password-reset token and email the link. Shared by the forgot-password"
+    },
+    {
       "file": "src/lib/auth/roles.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/auth/tokenHash.js",
+      "description": "Hash for bearer tokens we email or hand out (password reset, profile setup)."
     },
     {
       "file": "src/lib/authMobile.js",
@@ -192,6 +200,22 @@
       "description": "Private reply addresses for chat alert emails."
     },
     {
+      "file": "src/lib/chat/replySenderApproval.js",
+      "description": "Holding, approving and declining emailed replies from someone other than the"
+    },
+    {
+      "file": "src/lib/chat/replySenderRequest.js",
+      "description": "Ask a landlord, once per sender, whether someone else may reply by email on"
+    },
+    {
+      "file": "src/lib/chat/replySenders.js",
+      "description": "Who else may reply by email on a landlord's behalf (Wyatt, 2026-10-24)."
+    },
+    {
+      "file": "src/lib/chat/replySenders.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
       "file": "src/lib/chat/safety.js",
       "description": "Chat block and report support, kept out of the chat RPCs on purpose."
     },
@@ -222,6 +246,10 @@
     {
       "file": "src/lib/email/newListingEmail.js",
       "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
+    },
+    {
+      "file": "src/lib/escapeHtml.js",
+      "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",
@@ -286,6 +314,10 @@
     {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
+    },
+    {
+      "file": "src/lib/listings/imageRefs.js",
+      "description": "Guards between listing photo rows and the R2 objects behind them."
     },
     {
       "file": "src/lib/listings/leaseDescription.js",
@@ -472,6 +504,10 @@
       "description": "The universities Proximity serves, and the email domains that prove membership."
     },
     {
+      "file": "src/lib/security/secretColumns.js",
+      "description": "Columns that must never leave the server, for any caller, staff included."
+    },
+    {
       "file": "src/lib/seo/gsc.js",
       "description": "Google Search Console client using the project service account (token flow"
     },
@@ -497,7 +533,7 @@
     },
     {
       "file": "src/lib/userRole.js",
-      "description": "Resolve a user's authoritative role straight from the database."
+      "description": "Guard for privileged routes: returns the session only when the caller's role"
     },
     {
       "file": "src/lib/users/dashboardUser.js",

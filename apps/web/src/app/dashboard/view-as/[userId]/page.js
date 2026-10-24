@@ -1,13 +1,13 @@
 import { Suspense } from "react";
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import supabase from "@/lib/supabase";
+import { requireDbRole } from "@/lib/userRole";
 import ProximityDashboard from "@/app/dashboard/landlord/page";
 import StudentDashboardPage from "@/app/dashboard/student/page";
 
 export default async function ViewAsPage({ params }) {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) {
     redirect("/");
   }
 

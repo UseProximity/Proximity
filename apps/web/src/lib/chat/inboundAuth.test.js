@@ -69,3 +69,36 @@ test("a header from anyone but SES is ignored", () => {
   const h = [{ key: "authentication-results", line: "Authentication-Results: evil.example; dmarc=pass header.from=landlord-co.com;" }];
   assert.equal(authenticated(h, "leasing@landlord-co.com"), false);
 });
+
+// Google Workspace, SPF record that forgets Google, no DMARC: the reply lost on 2026-10-24.
+const WORKSPACE_SPF_SOFTFAIL = header(
+  [
+    "spf=softfail (spfCheck: transitioning domain of landlordco.com does not designate 209.85.217.49 as permitted sender) client-ip=209.85.217.49; envelope-from=vic@landlordco.com; helo=mail-vs1-f49.google.com;",
+    "dkim=pass header.i=@landlordco-com.20251104.gappssmtp.com;",
+    "dmarc=none header.from=landlordco.com;",
+  ].join("\n ")
+);
+
+test("Google Workspace's default DKIM signature proves its own domain", () => {
+  assert.equal(authenticated(WORKSPACE_SPF_SOFTFAIL, "vic@landlordco.com"), true);
+});
+
+test("a Workspace signature for one domain does not vouch for another", () => {
+  assert.equal(authenticated(WORKSPACE_SPF_SOFTFAIL, "vic@other-co.com"), false);
+});
+
+test("only a plain name.tld domain is proven by a Workspace signature, since landlord-co.com and landlord.co.com share one", () => {
+  const h = header("spf=softfail; envelope-from=vic@landlord-co.com;\n dkim=pass header.i=@landlord-co-com.20251104.gappssmtp.com;\n dmarc=none header.from=landlord-co.com;");
+  assert.equal(authenticated(h, "vic@landlord-co.com"), false);
+  assert.equal(authenticated(h, "vic@landlord.co.com"), false);
+});
+
+test("a look-alike signing domain is refused", () => {
+  const h = header("spf=fail; envelope-from=x@landlordco.com;\n dkim=pass header.i=@landlordco-com.20251104.gappssmtp.com.evil.net;\n dmarc=none header.from=landlordco.com;");
+  assert.equal(authenticated(h, "vic@landlordco.com"), false);
+});
+
+test("DMARC fail still wins over a Workspace signature", () => {
+  const h = header("spf=fail; envelope-from=x@landlordco.com;\n dkim=pass header.i=@landlordco-com.20251104.gappssmtp.com;\n dmarc=fail header.from=landlordco.com;");
+  assert.equal(authenticated(h, "vic@landlordco.com"), false);
+});

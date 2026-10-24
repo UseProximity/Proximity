@@ -1,32 +1,18 @@
+// @auth admin
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
-
-// Columns that must never leave the server, even for supers
-const USER_SENSITIVE_COLS = [
-  "password_hash",
-  "email_verification_token",
-  "email_verification_expires_at",
-  "password_reset_token",
-  "password_reset_expires_at",
-];
+import { stripSecrets } from "@/lib/security/secretColumns";
 
 function getDbTarget(req) {
   const header = req.headers.get("x-db-target");
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
-function stripSensitive(user) {
-  if (!user || typeof user !== "object") return user;
-  const clean = { ...user };
-  for (const col of USER_SENSITIVE_COLS) delete clean[col];
-  return clean;
-}
-
 export async function GET(req, { params }) {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -59,7 +45,7 @@ export async function GET(req, { params }) {
           matchmaking_preferences(*)`)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return Response.json(data.map(stripSensitive));
+      return Response.json(data.map(stripSecrets));
     }
 
     /*

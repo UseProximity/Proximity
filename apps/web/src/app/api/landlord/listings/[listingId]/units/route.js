@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
-import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { isWholeCount } from "@/utils/unitCounts";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
@@ -20,11 +19,12 @@ import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
  * it and are added through /api/leases, which is a separate act of ownership:
  * adding a unit says the apartment exists, not that it is yours.
  *
- * The exception is a property nobody owns — a review stub carrying the Proximity
- * placeholder, or an import with no landlord row. There, a landlord adding the
- * first real unit takes the property record with it, because otherwise they have
- * furnished a building they cannot edit or publish. claimUnclaimedProperty holds
- * the guards on that.
+ * That holds on a property nobody owns too (a review stub or an import with no
+ * landlord row). Adding a unit there used to hand the caller the whole property
+ * record, but the only guard on that was a "landlord" role anyone can give
+ * themselves, so a single request per listing took over every unclaimed
+ * property on the site. Claiming now needs a real offering (/api/leases or
+ * /api/addListing), and verified ownership is a follow-up.
  *
  * Bedrooms and bathrooms are required — they are NOT NULL on the table, and
  * more to the point a unit with unknown specs would appear in browse and match
@@ -129,15 +129,8 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: "Could not add that unit." }, { status: 500 });
   }
 
-  // Best-effort, and deliberately after the insert: the unit is the thing the
-  // caller asked for, and a claim that fails must not fail it.
-  const claimed = await claimUnclaimedProperty({
-    userId: session.user.id,
-    listingId,
-  });
-
   return NextResponse.json(
-    { message: "Unit added", unit: { id: unit.id }, claimedProperty: claimed },
+    { message: "Unit added", unit: { id: unit.id }, claimedProperty: false },
     { status: 201 }
   );
 }

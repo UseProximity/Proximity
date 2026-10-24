@@ -43,6 +43,8 @@ export async function GET(req) {
       // Drives whether the caller still has to show "create your account".
       hasCredentials: found.hasCredentials,
       emailVerified: found.emailVerified,
+      // A password may only be set once the inbox is proven (set-review-password).
+      canSetPassword: found.viaEmailLink || found.emailVerified,
     });
   } catch (e) {
     console.error("GET /api/profile/complete-from-review failed:", e?.message);
