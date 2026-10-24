@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T19:51:35.633Z",
-  "count": 155,
+  "_generated": "2026-10-24T22:48:58.447Z",
+  "count": 156,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -146,6 +146,10 @@
     {
       "file": "src/lib/chat/emailReplyText.js",
       "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
+    },
+    {
+      "file": "src/lib/chat/emailReplyText.test.js",
+      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/chat/emailStatus.js",
