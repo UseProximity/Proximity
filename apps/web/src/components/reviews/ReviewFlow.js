@@ -16,10 +16,10 @@
  *      an incomplete account now exists, so it offers the profile step rather
  *      than a dead-end thank-you.
  *
- * The profile-setup token is kept in localStorage, which is what makes "I'll
- * finish this later" survive a refresh or a closed tab on the same phone. The
- * same token is emailed as a link for a week, so another device works too. It is
- * NOT a session and cannot sign anyone in.
+ * The inline profile-setup token is kept in localStorage (see setupTokenStore),
+ * which is what makes "I'll finish this later" survive a refresh or a closed tab
+ * on the same phone. Another device uses the separate link token in the
+ * confirmation email. Neither is a session and neither can sign anyone in.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -34,30 +34,8 @@ import ReviewAccountStep from "./ReviewAccountStep";
 import { PAGE_BOTTOM_PADDING } from "./reviewFormUi";
 import { readReviewSource } from "@/lib/reviews/source";
 import { trackEvent } from "@/utils/analytics";
+import { readStoredToken, storeToken, clearStoredToken } from "./setupTokenStore";
 
-const SETUP_TOKEN_KEY = "prx_review_setup_token";
-
-function readStoredToken() {
-  try {
-    return localStorage.getItem(SETUP_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-function storeToken(token) {
-  try {
-    if (token) localStorage.setItem(SETUP_TOKEN_KEY, token);
-  } catch {
-    /* private mode: the emailed link is the fallback */
-  }
-}
-function clearStoredToken() {
-  try {
-    localStorage.removeItem(SETUP_TOKEN_KEY);
-  } catch {
-    /* nothing to do */
-  }
-}
 
 function BranchCard({ label, hint, onClick }) {
   return (
@@ -107,7 +85,7 @@ export default function ReviewFlow({
    * twice.
    */
   const [setup, setSetup] = useState(null);
-  const [finished, setFinished] = useState(null); // "completed" | "skipped" | "posted" | "existing"
+  const [finished, setFinished] = useState(null); // "completed" | "skipped" | "posted" | "existing" | "emailed"
   /*
    * Set when they chose a password rather than Google. The address is still
    * unproven at that point, so the Credentials provider will refuse the login
@@ -181,6 +159,7 @@ export default function ReviewFlow({
             prefill: data.prefill,
             email: data.email || data.prefill.email || "",
             hasCredentials: !!data.hasCredentials,
+            canSetPassword: !!data.canSetPassword,
           });
         }
       } catch {
@@ -226,11 +205,14 @@ export default function ReviewFlow({
           prefill: outcome.prefill || null,
           email: outcome.prefill?.email || "",
           hasCredentials: false,
+          canSetPassword: !!outcome.canSetPassword,
         });
         return;
       }
       flushConfirmation(null);
-      setFinished(outcome?.existingAccount ? "existing" : "posted");
+      setFinished(
+        outcome?.setupByEmail ? "emailed" : outcome?.existingAccount ? "existing" : "posted"
+      );
     },
     [flushConfirmation]
   );
@@ -252,6 +234,10 @@ export default function ReviewFlow({
         // nothing to set up, so say where the review went instead of thanking
         // them as though they were a stranger.
         existingAccount: !!data?.existingAccount,
+        // That account still has no way to sign in. Its setup link goes to the
+        // inbox, never to this tab, since whoever typed the address may not own it.
+        setupByEmail: !!data?.setupByEmail,
+        canSetPassword: !!data?.canSetPassword,
       };
 
       /*
@@ -352,6 +338,8 @@ export default function ReviewFlow({
         ? "You’re all set!"
         : finished === "existing"
         ? "Welcome back!"
+        : finished === "emailed"
+        ? "Check your email"
         : "Thank you!";
 
     let body;
@@ -361,6 +349,9 @@ export default function ReviewFlow({
     } else if (finished === "existing") {
       body =
         "You already have a Proximity account with that email, so we posted this review to it. Sign in any time to see it.";
+    } else if (finished === "emailed") {
+      body =
+        "There’s already a Proximity account for that email, so we posted this review to it. We’ll email you a link to finish setting it up.";
     } else if (referrerName) {
       body = `Your review has been posted. Thanks for helping fellow students through ${referrerName}.`;
     } else {
@@ -409,6 +400,7 @@ export default function ReviewFlow({
       <ReviewAccountStep
         token={setup.token}
         email={setup.email}
+        canSetPassword={!!setup.canSetPassword}
         onPasswordSet={(data) => {
           setPasswordEmail(data?.emailVerified ? null : data?.email || setup.email);
           setSetup((prev) => ({ ...prev, hasCredentials: true }));

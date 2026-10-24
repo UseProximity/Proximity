@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-22T20:27:35.907Z",
-  "count": 134,
+  "_generated": "2026-10-23T22:44:05.316Z",
+  "count": 135,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -591,6 +591,11 @@
     {
       "name": "reviewFormUi",
       "file": "src/components/reviews/reviewFormUi.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "setupTokenStore",
+      "file": "src/components/reviews/setupTokenStore.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

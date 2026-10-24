@@ -368,6 +368,7 @@ export async function POST(req) {
       source,
       reviewer,
       inviteToken,
+      setupToken: priorSetupToken,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
@@ -477,6 +478,8 @@ export async function POST(req) {
     let setupToken = null;
     // Signed-out reviewer whose email already belongs to a real account.
     let existingAccount = false;
+    // Existing account still to be set up: its owner is emailed the link.
+    let setupByEmail = false;
 
     if (session?.user?.id) {
       emailSchool = schoolForEmail(session.user.email);
@@ -549,6 +552,8 @@ export async function POST(req) {
         email,
         classYear: signedOutReviewer.classYear,
         source: normalizeReviewSource(source),
+        inboxProven: !!invite,
+        priorSetupToken,
       });
       if (account.error) {
         return NextResponse.json({ error: account.error }, { status: 400 });
@@ -558,6 +563,7 @@ export async function POST(req) {
       reviewerDisplayName = account.displayName;
       setupToken = account.setupToken;
       existingAccount = !!account.existingAccount;
+      setupByEmail = !!account.setupByEmail;
 
       /*
        * The invite link was opened, which is the same proof the profile-setup
@@ -829,6 +835,9 @@ export async function POST(req) {
       review,
       setupToken,
       existingAccount,
+      setupByEmail,
+      // An invite proved the inbox, so the profile step may offer a password.
+      canSetPassword: !!invite,
       reviewCount,
       reviewLimit: REVIEW_LIMIT,
       // What the profile step should open pre-filled with, so the student never

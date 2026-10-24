@@ -221,9 +221,11 @@ export async function POST(req, { params }) {
       /*
        * Same shell-account machinery as the signed-out review flow: a real
        * users row with profile_complete false and no credentials, plus a
-       * setup token that can edit that profile and nothing else. It refuses to
-       * hand a token to an account that already has credentials, which is what
-       * stops someone typing a classmate's address and getting an edit link.
+       * setup token that can edit that profile and nothing else. The token is
+       * only handed back for an account this request created: an existing one
+       * is set up through the link in the waitlist nudge email instead, which
+       * is what stops someone typing a classmate's address and getting an
+       * edit link.
        *
        * requireSchoolEmail is off here: a parent or a non-WashU roommate joining
        * a building's waitlist is a real lead.

@@ -13,9 +13,11 @@
  *   - Continue with Google. Leaves the page for the OAuth round trip and comes
  *     back to /review/claim, which reconciles the address Google returns
  *     against the one they typed into the review.
- *   - Set a password. Stays on the page. The account still cannot be signed
- *     into until the emailed link verifies the address (see
- *     /api/profile/set-review-password), which the confirmation copy says.
+ *   - Set a password. Only once the inbox is proven (the emailed link, or an
+ *     invite): before that, whoever typed the address may not own it, and a
+ *     password they set would start working the moment the real owner verified.
+ *     Until then this step points at the emailed link instead (see
+ *     /api/profile/set-review-password).
  *
  * The email is shown but locked: it is what the review was filed under, and
  * changing it here would silently detach them from it.
@@ -34,6 +36,8 @@ export default function ReviewAccountStep({
   email,
   onPasswordSet,
   onSkip,
+  // False until the inbox is proven; then the password form is offered.
+  canSetPassword = true,
   heading = "Create your account",
   intro = "Your review is posted. Set up sign-in so you can come back to it, edit it, save places and message landlords.",
 }) {
@@ -114,6 +118,12 @@ export default function ReviewAccountStep({
         <span className="h-px flex-1 bg-gray-200" />
       </div>
 
+      {!canSetPassword ? (
+        <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          Prefer a password? We&apos;ll email <span className="font-medium text-gray-800">{email}</span> a
+          link to set one, which also confirms the address is yours.
+        </p>
+      ) : (
       <form onSubmit={handlePassword} className="space-y-3">
         <div>
           <label htmlFor="account-email" className="block text-sm text-gray-600 mb-1.5">
@@ -172,6 +182,7 @@ export default function ReviewAccountStep({
           {saving ? "Saving…" : "Continue"}
         </button>
       </form>
+      )}
 
       <button
         type="button"

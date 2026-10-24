@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-23T22:35:38.034Z",
-  "count": 137,
+  "_generated": "2026-10-23T22:44:05.340Z",
+  "count": 138,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -90,6 +90,10 @@
     {
       "file": "src/lib/auth/roles.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/auth/tokenHash.js",
+      "description": "Hash for bearer tokens we email or hand out (password reset, profile setup)."
     },
     {
       "file": "src/lib/authMobile.js",
