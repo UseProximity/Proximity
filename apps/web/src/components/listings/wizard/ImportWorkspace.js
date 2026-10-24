@@ -86,6 +86,12 @@ function Progress({ job, others = 0 }) {
   );
 }
 
+/* "one at a time", "three at a time": how many buildings are read at once. */
+function atATime(n) {
+  const words = ["one", "two", "three", "four", "five", "six"];
+  return `${words[Math.max(1, n) - 1] ?? n} at a time`;
+}
+
 function describe(e) {
   const where = e.detail?.label ? `${e.detail.label}: ` : "";
   const money = (n) => (n == null ? "no price" : `$${Number(n).toLocaleString("en-US")}`);
@@ -467,7 +473,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
             </p>
             {reading > 0 && jobs.length > 1 && (
               <p className="mt-1 text-xs text-gray-500">
-                Reading {reading} {reading === jobs.length ? "" : "more "}from your website, one at a time.
+                Reading {reading} {reading === jobs.length ? "" : "more "}from your website, {atATime(Math.min(reading, batch?.lanes ?? 1))}.
                 {done > 0 ? " You can check the finished ones meanwhile." : ""}
               </p>
             )}

@@ -486,6 +486,8 @@ export async function loadBatch({ batchId, userId }) {
   const byId = new Map((listings ?? []).map((l) => [l.id, l]));
   return {
     batchId,
+    // How many buildings are read at once, for the workspace's progress line.
+    lanes: IMPORT_LANES,
     pastedUrl: jobs[0]?.target?.pastedUrl ?? null,
     jobs: jobs.map((j) => {
       const l = byId.get(j.listing_id);
