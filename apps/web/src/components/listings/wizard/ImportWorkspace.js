@@ -76,7 +76,7 @@ function Progress({ job, others = 0 }) {
     <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white p-12 text-center">
       <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
       <p className="text-sm text-gray-700">
-        {job.status === "queued" ? "Waiting to read" : job.step || "Reading"} {job.target?.name}…
+        {stepWithName(job.status === "queued" ? "Waiting to read" : job.step || "Reading", job.target?.name)}
       </p>
       <div className="h-1.5 w-64 overflow-hidden rounded-full bg-gray-100">
         <div className="h-full rounded-full bg-red-500 transition-all duration-700" style={{ width: `${pct}%` }} />
@@ -84,6 +84,16 @@ function Progress({ job, others = 0 }) {
       <p className="text-xs text-gray-400">Usually a minute or two.{others > 0 ? " You can check the finished ones meanwhile." : ""}</p>
     </div>
   );
+}
+
+/*
+ * "Looking for what is still missing - Kingsbury…". A step that already
+ * names the building ("Opening Kingsbury") is shown as it is.
+ */
+function stepWithName(step, name) {
+  const text = String(step ?? "").replace(/[.…\s]+$/, "");
+  if (!name || text.toLowerCase().includes(String(name).toLowerCase())) return `${text}…`;
+  return `${text} - ${name}…`;
 }
 
 /* "one at a time", "three at a time": how many buildings are read at once. */
